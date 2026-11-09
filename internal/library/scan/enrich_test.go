@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // fakeCatalog answers fetches from a table; an unknown key is not found, and err fails every fetch.
@@ -64,7 +65,7 @@ func TestEnricherWritesTheCatalogsDetails(t *testing.T) {
 	h.file("Golf (2013) {tmdb-90000201}/Golf (2013) {tmdb-90000201}.mkv", 10)
 	h.run()
 
-	page, err := h.st.ListLibraryItems(ctx, store.LibraryItemQuery{})
+	page, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
 	if err != nil || len(page.Items) != 1 {
 		t.Fatalf("items = %+v, %v", page.Items, err)
 	}
@@ -93,7 +94,7 @@ func TestEnricherWritesTheCatalogsDetails(t *testing.T) {
 	if len(catalog.fetched) != 1 || catalog.fetched[0] != "movie:90000201" || len(rewrites) != 1 {
 		t.Fatalf("fetched %v, rewrote %v", catalog.fetched, rewrites)
 	}
-	page, err = h.st.ListLibraryItems(ctx, store.LibraryItemQuery{})
+	page, err = h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Name != "Golf Course" {
 		t.Fatalf("after the fetch items = %+v, %v", page.Items, err)
 	}
@@ -166,9 +167,9 @@ func TestUpdateDetailsFetchesTheTitleNow(t *testing.T) {
 	if err := e.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	title := func() store.LibraryItemSummary {
+	title := func() librarystore.LibraryItemSummary {
 		t.Helper()
-		page, err := h.st.ListLibraryItems(ctx, store.LibraryItemQuery{})
+		page, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
 		if err != nil || len(page.Items) != 1 {
 			t.Fatalf("items = %+v, %v", page.Items, err)
 		}
@@ -341,7 +342,7 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 // how far each season runs on disk, and TMDB's other orders are asked for.
 func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
-	seriesKey := store.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
+	seriesKey := librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
 	entry := func(season, n int, title string) mp.Record {
 		return mp.Record{
 			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
@@ -365,13 +366,13 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name   string
-		answer *store.LibraryEpisodeOrder
+		answer *librarystore.LibraryEpisodeOrder
 		want   string
 	}{
 		{"nobody has answered", nil, "Golf Show S01E02"},
-		{"TMDB's own seasons", &store.LibraryEpisodeOrder{Choice: store.OrderByCatalog}, "The Back Nine"},
-		{"TMDB's DVD order", &store.LibraryEpisodeOrder{Choice: store.OrderByOrder, OrderID: "90000799a"}, "Sudden Death"},
-		{"the files", &store.LibraryEpisodeOrder{Choice: store.OrderByFiles}, "Golf Show S01E02"},
+		{"TMDB's own seasons", &librarystore.LibraryEpisodeOrder{Choice: librarystore.OrderByCatalog}, "The Back Nine"},
+		{"TMDB's DVD order", &librarystore.LibraryEpisodeOrder{Choice: librarystore.OrderByOrder, OrderID: "90000799a"}, "Sudden Death"},
+		{"the files", &librarystore.LibraryEpisodeOrder{Choice: librarystore.OrderByFiles}, "Golf Show S01E02"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -408,7 +409,7 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 					tc.want, catalog.fetched)
 			}
 			// The show's page says which episodes wait on the answer: all of them, until there is one.
-			shows, err := h.st.ListLibraryItems(ctx, store.LibraryItemQuery{Kind: "series"})
+			shows, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: "series"})
 			if err != nil || len(shows.Items) != 1 {
 				t.Fatalf("shows = %+v, %v", shows, err)
 			}
@@ -448,12 +449,12 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
-	series := store.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
-	movie := store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"}
-	if err := h.st.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{series, movie}); err != nil {
+	series := librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000701"}
+	movie := librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"}
+	if err := h.st.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{series, movie}); err != nil {
 		t.Fatal(err)
 	}
-	for k, version := range map[store.LibraryCatalogKey]int{
+	for k, version := range map[librarystore.LibraryCatalogKey]int{
 		series: catalogVersions[series.Kind] - 1, movie: catalogVersions[movie.Kind],
 	} {
 		if _, err := h.st.SaveLibraryCatalog(ctx, k, `{"Kind":"`+k.Kind+`"}`, version, "", time.Now()); err != nil {
@@ -478,8 +479,8 @@ func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
 func TestEnricherFetchesARecordInAnotherLanguageAgain(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t)
-	movie := store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"}
-	if err := h.st.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{movie}); err != nil {
+	movie := librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"}
+	if err := h.st.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{movie}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie"}`, catalogVersions[movie.Kind], "en-US", time.Now()); err != nil {
@@ -504,7 +505,7 @@ type countingCatalog struct {
 	reads map[string]int
 }
 
-func (c *countingCatalog) LibraryCatalogRecord(ctx context.Context, key store.LibraryCatalogKey) (string, bool, error) {
+func (c *countingCatalog) LibraryCatalogRecord(ctx context.Context, key librarystore.LibraryCatalogKey) (string, bool, error) {
 	c.reads[key.String()]++
 	return c.CatalogStore.LibraryCatalogRecord(ctx, key)
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Two files of one movie: the sharper plays and the other is an extra copy. Removing the copy that
@@ -106,7 +107,7 @@ func TestTheCopyThatPlays(t *testing.T) {
 	}{
 		"arr's file": {[]ItemFile{{Picture: hd}, {Picture: sd, managed: true}}, 1},
 		"sharper":    {[]ItemFile{{Picture: sd}, {Picture: hd}}, 1},
-		"bigger":     {[]ItemFile{{LibraryFile: store.LibraryFile{Size: 9}}, {LibraryFile: store.LibraryFile{Size: 3}}}, 0},
+		"bigger":     {[]ItemFile{{LibraryFile: librarystore.LibraryFile{Size: 9}}, {LibraryFile: librarystore.LibraryFile{Size: 3}}}, 0},
 	} {
 		markExtras(tc.files)
 		for i, f := range tc.files {

@@ -47,7 +47,8 @@ type ChannelDTO struct {
 	// grow their own subtly different copy of those rules.
 	InAppPlayable bool   `json:"inAppPlayable" doc:"True when this channel can be tuned by Loomarr's in-app player"`
 	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned id of the retained managed Tunarr projection; empty until the first-ever successful Tunarr projection and retained after a later switch to internal playout"`
-	IntentRef     string `json:"intentRef,omitempty"`
+	IntentRef     string `json:"intentRef,omitempty" doc:"The suggestion job this channel came from, while that job is kept; absent once it is purged and for a hand-made channel"`
+	FromRequest   bool   `json:"fromRequest" doc:"True when the channel was made from a member's request, which refine and auto-curate re-run; false for a hand-made channel"`
 	// CreatedAtMs and RequestedBy are Home's "New channel" card (#1663): "added Tuesday",
 	// "requested by …". Both absent when unknown (a hand-made channel has no requester).
 	CreatedAtMs int64  `json:"createdAtMs,omitempty" doc:"When the channel was created (Unix ms); absent for an older channel no approval dates"`
@@ -150,7 +151,7 @@ func channelToDTO(ch channelstore.Channel, entryState func(provision.Key) entryA
 	out := ChannelDTO{
 		ID: ch.ID, Revision: ch.Revision, Name: ch.Name, Number: ch.Number, Group: ch.Group, Logo: ch.Logo,
 		Strategy: string(ch.Strategy), Status: string(ch.Status),
-		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef,
+		TunarrID: ch.TunarrID, IntentRef: ch.IntentRef, FromRequest: ch.FromRequest,
 		Decade:       schedule.WatermarkEraDecade(ch.Policy.Scope),
 		ProgramCount: d.ProgramCount(), PendingCount: d.PendingCount(),
 		BreakCount: d.BreakCount(), SlotCount: len(ch.Desired),

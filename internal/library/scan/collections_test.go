@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A collection lists its titles in the household's order; a member that has left the library drops
@@ -22,7 +22,7 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	lib := &Library{ItemStore: h.st, CollectionStore: h.st, Scanner: NewScanner(h.im, 0)}
 	ctx := context.Background()
 	ids := map[string]string{}
-	all, err := lib.Items(ctx, store.LibraryItemQuery{})
+	all, err := lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,12 +88,12 @@ func TestCollectionsRefuseAnUnknownTitle(t *testing.T) {
 	h.run()
 	lib := &Library{ItemStore: h.st, CollectionStore: h.st}
 	ctx := context.Background()
-	all, err := lib.Items(ctx, store.LibraryItemQuery{})
+	all, err := lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if err != nil || len(all.Items) != 1 {
 		t.Fatalf("items = %+v, %v", all, err)
 	}
 	alpha := all.Items[0].ID
-	if _, err := lib.CreateCollection(ctx, "Strays", "", []string{alpha, "90000662"}); !errors.Is(err, store.ErrUnknownLibraryItem) {
+	if _, err := lib.CreateCollection(ctx, "Strays", "", []string{alpha, "90000662"}); !errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		t.Fatalf("create = %v, want ErrUnknownLibraryItem", err)
 	}
 	if list, err := lib.Collections(ctx); err != nil || len(list) != 0 {

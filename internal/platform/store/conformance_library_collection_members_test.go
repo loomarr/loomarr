@@ -14,8 +14,8 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	st := newStore(t)
 	at := time.UnixMilli(1_800_000_000_000)
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
-		{ID: "film", Kind: "movie", Name: "Film", IDs: []LibraryID{{"tmdb", "90000001"}, {"imdb", "tt90000001"}}},
-		{ID: "show", Kind: "series", Name: "Show", IDs: []LibraryID{{"tvdb", "90000002"}, {"tmdb", "90000003"}}},
+		{ID: "film", Kind: "movie", Name: "Film", IDs: []LibraryID{{Namespace: "tmdb", Value: "90000001"}, {Namespace: "imdb", Value: "tt90000001"}}},
+		{ID: "show", Kind: "series", Name: "Show", IDs: []LibraryID{{Namespace: "tvdb", Value: "90000002"}, {Namespace: "tmdb", Value: "90000003"}}},
 		{ID: "home", Kind: "movie", Name: "Home video"},
 	}, at); err != nil {
 		t.Fatal(err)
@@ -37,8 +37,8 @@ func testLibraryCollectionMemberIDs(t *testing.T, newStore NewStoreFunc) {
 	}
 	want := map[string][]LibraryCollectionMember{
 		night: {
-			{CollectionID: night, Kind: "series", IDs: []LibraryID{{"tmdb", "90000003"}, {"tvdb", "90000002"}}},
-			{CollectionID: night, Kind: "movie", IDs: []LibraryID{{"imdb", "tt90000001"}, {"tmdb", "90000001"}}},
+			{CollectionID: night, Kind: "series", IDs: []LibraryID{{Namespace: "tmdb", Value: "90000003"}, {Namespace: "tvdb", Value: "90000002"}}},
+			{CollectionID: night, Kind: "movie", IDs: []LibraryID{{Namespace: "imdb", Value: "tt90000001"}, {Namespace: "tmdb", Value: "90000001"}}},
 		},
 		home: {{CollectionID: home, Kind: "movie"}},
 	}

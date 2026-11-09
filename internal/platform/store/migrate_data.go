@@ -404,7 +404,7 @@ SELECT child.relname, parent.relname
 FROM pg_constraint c
 JOIN pg_class child  ON child.oid  = c.conrelid
 JOIN pg_class parent ON parent.oid = c.confrelid
-WHERE c.contype = 'f'`
+WHERE c.contype = 'f' AND NOT c.condeferred`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("read foreign keys: %w", err)
@@ -428,10 +428,11 @@ WHERE c.contype = 'f'`
 // topoSort returns tables with every parent before its children, preserving the input
 // order otherwise.
 //
-// A cycle cannot be resolved by ordering at all (it would need deferred constraints), so
-// rather than failing the whole migration this emits the remaining tables in input order
-// and lets the insert report the real constraint error. Loomarr's schema has no cycles;
-// this is about failing informatively if one is ever added.
+// A cycle cannot be resolved by ordering at all, so rather than failing the whole migration
+// this emits the remaining tables in input order and lets the insert report the real
+// constraint error. Loomarr breaks its one cycle (channels.intent_ref ↔
+// proposal_jobs.channel_id) with a key checked at commit, which fkParents leaves out: the copy
+// is one transaction. This is about failing informatively if another is ever added.
 func topoSort(tables []string, parents map[string][]string) []string {
 	known := make(map[string]bool, len(tables))
 	for _, t := range tables {

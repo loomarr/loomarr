@@ -1,7 +1,7 @@
 // Package storeadapter bridges the store's filler rows to the ports the filler packages declare.
 //
-// Each adapter translates a store type into the domain type a filler seam speaks (a clip row into
-// a `cliplibrary.StoreClip`, a query row into a `filler.SweepableProposal`) and keeps the few rules
+// Each adapter translates a store type into the domain type a filler seam speaks (a query row into
+// a `filler.SweepableProposal`; a clip row is `clipstore.Clip` on both sides) and keeps the few rules
 // that belong to the translation itself, such as which clips a work list includes and which store
 // error means which domain error. The composition root builds one per seam.
 package storeadapter
@@ -13,7 +13,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
@@ -22,19 +21,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
-// StoreClip is the filler package's view of a stored clip.
-func StoreClip(c clipstore.Clip) cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}
-}
-
-func storeClips(clips []clipstore.Clip) []cliplibrary.StoreClip {
-	out := make([]cliplibrary.StoreClip, len(clips))
-	for i, c := range clips {
-		out[i] = StoreClip(c)
-	}
-	return out
-}
-
 // listWorkClips lists the clips a per-clip work pass (language, transcribe, vision) considers.
 //
 // ⚠ `IncludeHeld` is honoured but `IncludeRemoved` is deliberately NOT set. A held clip is a fine
@@ -42,12 +28,8 @@ func storeClips(clips []clipstore.Clip) []cliplibrary.StoreClip {
 // the gate already tombstoned must not come back round as work: it would be re-detected forever,
 // and on the local backend that is ~341s of QEMU per clip per pass, spent to re-learn an answer
 // already recorded.
-func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
-	clips, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: f.IncludeHeld})
-	if err != nil {
-		return nil, err
-	}
-	return storeClips(clips), nil
+func listWorkClips(ctx context.Context, st store.Store, f filler.ClipQuery) ([]clipstore.Clip, error) {
+	return st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: f.IncludeHeld})
 }
 
 // Sync bridges the store's clip methods → filler.Store (the sync).
@@ -56,18 +38,18 @@ type Sync struct{ st records.Store }
 // NewSync returns the sync's clip store over st.
 func NewSync(st records.Store) Sync { return Sync{st: st} }
 
-func (a Sync) UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error {
-	return a.st.UpsertClip(ctx, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+func (a Sync) UpsertClip(ctx context.Context, c clipstore.Clip) error {
+	return a.st.UpsertClip(ctx, c)
 }
-func (a Sync) GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (a Sync) GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error) {
 	c, err := a.st.GetClip(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return cliplibrary.StoreClip{}, false, nil
+		return clipstore.Clip{}, false, nil
 	}
 	if err != nil {
-		return cliplibrary.StoreClip{}, false, err
+		return clipstore.Clip{}, false, err
 	}
-	return StoreClip(c), true, nil
+	return c, true, nil
 }
 func (a Sync) LiveClipPaths(ctx context.Context) (map[string]string, error) {
 	return a.st.LiveClipPaths(ctx)
@@ -80,28 +62,28 @@ func (a Sync) DeleteClipsNotIn(ctx context.Context, keep []string) (int, error) 
 // (§10 V51b): `filler.ClipStore` for the runner, plus the probe and transcode rungs' writers.
 //
 // ⚠ The PIPELINE table itself needs no adapter — `store.Store` satisfies `filler.PipelineStore`
-// directly, because those five methods already speak `pipelinestate.ClipPipeline`. This adapter exists
-// only for the clip-row translation (`store.Clip` ⇄ `cliplibrary.StoreClip`) every other filler
-// adapter here performs.
+// directly, because those five methods already speak `pipelinestate.ClipPipeline`. This adapter
+// narrows the store to the clip seams the pipeline declares and turns a missing clip into the
+// `found=false` the seam speaks.
 type PipelineClips struct{ st records.Store }
 
 // NewPipelineClips returns the pipeline's clip store over st.
 func NewPipelineClips(st records.Store) PipelineClips { return PipelineClips{st: st} }
 
-func (a PipelineClips) GetClip(ctx context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (a PipelineClips) GetClip(ctx context.Context, id string) (clipstore.Clip, bool, error) {
 	return Sync(a).GetClip(ctx, id)
 }
-func (a PipelineClips) UpsertClip(ctx context.Context, c cliplibrary.StoreClip) error {
+func (a PipelineClips) UpsertClip(ctx context.Context, c clipstore.Clip) error {
 	return Sync(a).UpsertClip(ctx, c)
 }
-func (a PipelineClips) ReplaceClipIdentity(ctx context.Context, oldHash string, c cliplibrary.StoreClip) error {
-	return a.st.ReplaceClipIdentity(ctx, oldHash, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+func (a PipelineClips) ReplaceClipIdentity(ctx context.Context, oldHash string, c clipstore.Clip) error {
+	return a.st.ReplaceClipIdentity(ctx, oldHash, c)
 }
-func (a PipelineClips) ReplaceAiringClip(ctx context.Context, oldHash string, c cliplibrary.StoreClip, rec defects.Record) error {
-	return a.st.ReplaceAiringClip(ctx, oldHash, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt}, rec)
+func (a PipelineClips) ReplaceAiringClip(ctx context.Context, oldHash string, c clipstore.Clip, rec defects.Record) error {
+	return a.st.ReplaceAiringClip(ctx, oldHash, c, rec)
 }
-func (a PipelineClips) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, c cliplibrary.StoreClip) error {
-	return a.st.CommitConditioningPublication(ctx, publication, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+func (a PipelineClips) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, c clipstore.Clip) error {
+	return a.st.CommitConditioningPublication(ctx, publication, c)
 }
 func (a PipelineClips) SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error) {
 	return a.st.SetClipsRemoved(ctx, paths, at)
@@ -120,7 +102,7 @@ type AiringClips struct{ st records.Store }
 // NewAiringClips returns the re-encode's clip lister over st.
 func NewAiringClips(st records.Store) AiringClips { return AiringClips{st: st} }
 
-func (a AiringClips) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
+func (a AiringClips) ListClips(ctx context.Context, f filler.ClipQuery) ([]clipstore.Clip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
@@ -131,7 +113,7 @@ type Language struct{ st store.Store }
 func NewLanguage(st store.Store) Language { return Language{st: st} }
 
 // ListClips is the job's work list: held candidates in, removed clips out (listWorkClips).
-func (a Language) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
+func (a Language) ListClips(ctx context.Context, f filler.ClipQuery) ([]clipstore.Clip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
@@ -150,7 +132,7 @@ type Transcribe struct{ st store.Store }
 // NewTranscribe returns the transcribe rung's clip store over st.
 func NewTranscribe(st store.Store) Transcribe { return Transcribe{st: st} }
 
-func (a Transcribe) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
+func (a Transcribe) ListClips(ctx context.Context, f filler.ClipQuery) ([]clipstore.Clip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 
@@ -165,7 +147,7 @@ type Vision struct{ st records.Store }
 // NewVision returns the vision rung's clip store over st.
 func NewVision(st records.Store) Vision { return Vision{st: st} }
 
-func (a Vision) ListClips(ctx context.Context, f filler.ClipQuery) ([]cliplibrary.StoreClip, error) {
+func (a Vision) ListClips(ctx context.Context, f filler.ClipQuery) ([]clipstore.Clip, error) {
 	return listWorkClips(ctx, a.st, f)
 }
 

@@ -1,0 +1,31 @@
+import { playerChrome } from "@loomarr/design-system";
+import { Platform, type ViewStyle } from "react-native";
+
+// Player-chrome surfaces (frontend-design §9.1). The chrome is flat (#2769): a solid fill and one
+// hairline, over a picture that has one bottom-up scrim. No gradient, inset highlight, drop shadow or
+// backdrop blur, so a native client draws exactly what the web does.
+
+const web = Platform.OS === "web";
+
+/** A web-only style (a transition, a CSS gradient), or nothing on native. */
+const webOnly = (style: Record<string, string | number>): ViewStyle => (web ? (style as ViewStyle) : {});
+
+/** The scrim's CSS gradient on the web; the solid colour it averages to on native. */
+const gradientOr = (gradient: string, solid: string): ViewStyle =>
+  web ? ({ backgroundImage: gradient } as ViewStyle) : { backgroundColor: solid };
+
+/** A solid surface with the one hairline: the band's panel, a sheet, a card. */
+const panel = (): ViewStyle => ({
+  backgroundColor: playerChrome.surface,
+  borderColor: playerChrome.hairline,
+  borderWidth: 1,
+});
+
+/** A solid raised surface with the one hairline: a key, or the strip a row of blocks stands on. */
+const raised = (): ViewStyle => ({
+  backgroundColor: playerChrome.surfaceRaised,
+  borderColor: playerChrome.hairline,
+  borderWidth: 1,
+});
+
+export { gradientOr, panel, raised, webOnly };

@@ -35,18 +35,28 @@ type fixedThresholds struct{ minScorePct, maxTitles int }
 func (f fixedThresholds) MinScorePct(context.Context) int { return f.minScorePct }
 func (f fixedThresholds) MaxTitles(context.Context) int   { return f.maxTitles }
 
-// seedAutoCurateChannel writes a live, intent-backed, auto-curate channel bound to jobID.
+// seedAutoCurateChannel writes a live, intent-backed, auto-curate channel made from jobID, which
+// it writes first: intent_ref is a foreign key to the job (#2793).
 func seedAutoCurateChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, ac *schedule.AutoCurate) {
 	t.Helper()
+	seedOriginJob(t, st, jobID)
 	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
-	ch.IntentRef = jobID
+	ch.IntentRef, ch.FromRequest = jobID, jobID != ""
 	ch.Name = "Ch " + id
 	ch.Number = 5
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusLive
 	ch.Policy = schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac}}
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seedOriginJob writes the settled suggestion job a channel was made from.
+func seedOriginJob(t *testing.T, st store.Store, jobID string) {
+	t.Helper()
+	if err := st.CreateJob(context.Background(), proposalstore.Job{ID: jobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 }

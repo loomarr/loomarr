@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -31,7 +30,7 @@ func (a Defects) RetireDefectiveCopy(ctx context.Context, hash string, at time.T
 	return err
 }
 
-func (a Defects) GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
+func (a Defects) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
 	return Sync(a).GetClip(ctx, hash)
 }
 
@@ -70,8 +69,7 @@ func (a Defects) ListDefectClips(ctx context.Context) ([]defectfloor.DefectClip,
 	}
 	out := make([]defectfloor.DefectClip, len(clips))
 	for i, c := range clips {
-		out[i] = defectfloor.DefectClip{StoreClip: StoreClip(c), CreatedAt: c.CreatedAt,
-			Stage: stage[c.Hash]}
+		out[i] = defectfloor.DefectClip{Clip: c, Stage: stage[c.Hash]}
 	}
 	return out, nil
 }

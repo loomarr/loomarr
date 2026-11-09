@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
@@ -99,7 +100,7 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	}
 	needs, _ = lib.Needs(ctx)
 	got := needs[0].Candidates
-	want := []store.LibraryCandidate{
+	want := []librarystore.LibraryCandidate{
 		{Kind: "movie", ID: tmdbLink("90000303"), Name: "Mystery Film", Year: 2002, Overview: "A mystery.",
 			Poster: "https://image.invalid/90000303.jpg", NameMatch: true, YearMatch: true, LengthMatch: true},
 		{Kind: "movie", ID: tmdbLink("90000302"), Name: "Mystery Films", Year: 2002, YearMatch: true},
@@ -138,7 +139,7 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.run()
-	page, err := lib.Items(ctx, store.LibraryItemQuery{})
+	page, err := lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if err != nil || page.Total != 1 || page.Items[0].Name == needs[0].Name {
 		t.Fatalf("library after the ignore = %+v, %v", page, err)
 	}
@@ -152,7 +153,7 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 	}
 	// A link names an id the catalog fetches for the title's kind: anything else would leave the
 	// title answered with no details to show.
-	for _, id := range []store.LibraryID{{Namespace: "tvdb", Value: "90000304"}, {Namespace: "tmdb"}, {Namespace: "", Value: "90000304"}} {
+	for _, id := range []librarystore.LibraryID{{Namespace: "tvdb", Value: "90000304"}, {Namespace: "tmdb"}, {Namespace: "", Value: "90000304"}} {
 		if err := lib.Link(ctx, string(item.ID), id); !errors.Is(err, ErrNotCatalogID) {
 			t.Fatalf("link to %+v err = %v, want ErrNotCatalogID", id, err)
 		}
@@ -162,7 +163,9 @@ func TestMatcherFindsCandidatesAndAnAnswerGroundsTheTitle(t *testing.T) {
 // tmdbID is a TMDB id as a search hit names it; tmdbLink, as an answer does.
 func tmdbID(v string) mp.ExternalID { return mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: v} }
 
-func tmdbLink(v string) store.LibraryID { return store.LibraryID{Namespace: "tmdb", Value: v} }
+func tmdbLink(v string) librarystore.LibraryID {
+	return librarystore.LibraryID{Namespace: "tmdb", Value: v}
+}
 
 // A movie nothing grounds is matched by its search when exactly one result agrees on its name,
 // year and length (decision 56): it leaves Needs you, decided by the search. Two agreeing results
@@ -285,7 +288,7 @@ func TestTakingBackALinkSplitsTheCopyOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.run()
-	page, _ := lib.Items(ctx, store.LibraryItemQuery{})
+	page, _ := lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if page.Total != 1 || page.Items[0].Files != 2 {
 		t.Fatalf("after the link = %+v, want one title with two copies", page)
 	}
@@ -294,7 +297,7 @@ func TestTakingBackALinkSplitsTheCopyOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.run()
-	page, _ = lib.Items(ctx, store.LibraryItemQuery{})
+	page, _ = lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if page.Total != 2 {
 		t.Fatalf("after taking it back = %+v, want the copy split out", page)
 	}

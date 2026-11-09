@@ -1,4 +1,9 @@
-import { formatGuideTime, formatGuideTimeRange, guideAiringLabel } from "@loomarr/core/guide";
+import {
+  formatGuideEpisode,
+  formatGuideTime,
+  formatGuideTimeRange,
+  formatProgrammeTitle,
+} from "@loomarr/core/guide";
 import { ArtworkFrame, Surface, Text, useFocusLook } from "@loomarr/design-system";
 import type { ComponentRef } from "react";
 import { forwardRef } from "react";
@@ -21,12 +26,6 @@ const edgeWidth = 2;
 const channelRailPercent = (channelRailWidth / tvCanvasWidth) * 100;
 const timelinePercent = ((tvCanvasWidth - channelRailWidth - positionRailWidth) / tvCanvasWidth) * 100;
 const hourMs = 60 * 60_000;
-
-const formatTvEpisode = (season?: number, episode?: number) => {
-  const seasonLabel = season === undefined ? "" : `S${season}`;
-  const episodeLabel = episode === undefined ? "" : `E${episode}`;
-  return seasonLabel || episodeLabel ? `${seasonLabel}${episodeLabel}` : undefined;
-};
 
 type FilterButtonProps = {
   accessibilityLabel: string;
@@ -260,7 +259,7 @@ const TvGuideSurface = ({
                         channel.source.channelId === selection.channelId &&
                         airing.scheduleBlockId === selection.scheduleBlockId;
                       const focused = selected && gridFocused;
-                      const label = airing.source.series?.trim() || guideAiringLabel(airing.source);
+                      const label = airing.source.series?.trim() || formatProgrammeTitle(airing.source);
                       const next = {
                         anchorMs: airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
                         channelId: channel.source.channelId,
@@ -417,12 +416,12 @@ const TvGuideSurface = ({
           <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap={2} minWidth={0}>
             <Text density="tv" numberOfLines={1} textRole="compact">
               {selectedAiring.source.series ??
-                (selectedAiring.source.title.trim() || guideAiringLabel(selectedAiring.source))}
+                (selectedAiring.source.title.trim() || formatProgrammeTitle(selectedAiring.source))}
             </Text>
             <Text density="tv" numberOfLines={1} textRole="metadata" tone="primary">
               {[
                 selectedAiring.source.series ? `“${selectedAiring.source.title}”` : undefined,
-                formatTvEpisode(selectedAiring.source.season, selectedAiring.source.episode),
+                formatGuideEpisode(selectedAiring.source.season, selectedAiring.source.episode),
                 selectedAiring.source.year ? String(selectedAiring.source.year) : undefined,
                 selectedAiring.source.rating,
               ]

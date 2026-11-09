@@ -5,15 +5,15 @@ import (
 	"strconv"
 
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // LibrarySearch is title search's library half (LibrarySearcher): the movies and series the
 // Library holds with a file to play, by name (#2151 step 16). The media server is never asked.
 type LibrarySearch struct {
-	Titles store.LibraryTitleSearcher
-	Facts  store.LibraryItemFactsReader
+	Titles librarystore.LibraryTitleSearcher
+	Facts  librarystore.LibraryItemFactsReader
 }
 
 // Search answers with the Library's titles whose name matches term, best match first.
@@ -46,14 +46,14 @@ func (s LibrarySearch) Search(ctx context.Context, term string, limit int) ([]li
 
 // LibrarySearchResult reads a Library title as a search result: its library item id, name, kind
 // and provider ids, so keys come from the one derivation every title uses.
-func LibrarySearchResult(t store.LibraryTitle) library.SearchResult {
+func LibrarySearchResult(t librarystore.LibraryTitle) library.SearchResult {
 	r := library.SearchResult{LibraryItemID: t.ID, Name: t.Name, MediaType: library.Movie}
 	if t.Kind == "series" {
 		r.MediaType = library.Series
 	}
 	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
-	r.TMDBID, _ = strconv.Atoi(store.IDIn(t.IDs, string(library.TMDB)))
-	r.TVDBID, _ = strconv.Atoi(store.IDIn(t.IDs, string(library.TVDB)))
+	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(t.IDs, string(library.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(t.IDs, string(library.TVDB)))
 	return r
 }
 
@@ -61,7 +61,7 @@ func LibrarySearchResult(t store.LibraryTitle) library.SearchResult {
 // household already owns as in-library, with its library item id and rating (#2151 step 16). It
 // prefers the TMDB id (the discovery id space) and falls back to TVDB for a series with no TMDB id.
 type LibraryOwnership struct {
-	Titles store.LibraryTitleReader
+	Titles librarystore.LibraryTitleReader
 }
 
 // Present reports whether the Library holds the title, with its library item id and rating.
@@ -83,10 +83,10 @@ func (o LibraryOwnership) Present(ctx context.Context, mt provision.MediaType, t
 
 // OwnedTitle is the Library's movie or series a provider id names. A nil reader owns nothing.
 func OwnedTitle(
-	ctx context.Context, titles store.LibraryTitleReader, kind library.ProviderKind, id string, mt library.MediaType,
-) (store.LibraryTitle, bool, error) {
+	ctx context.Context, titles librarystore.LibraryTitleReader, kind library.ProviderKind, id string, mt library.MediaType,
+) (librarystore.LibraryTitle, bool, error) {
 	if titles == nil {
-		return store.LibraryTitle{}, false, nil
+		return librarystore.LibraryTitle{}, false, nil
 	}
 	namespace, libraryKind := "tmdb", "movie"
 	if kind == library.TVDB {
