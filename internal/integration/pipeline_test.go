@@ -33,7 +33,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
@@ -63,15 +62,18 @@ func (a clipCatalog) AllClips(ctx context.Context) ([]filler.Clip, error) {
 	return out, nil
 }
 
-// libDurationResolver adapts library.Client's ItemDurationMs to the engine's
-// DurationResolver (mirrors main.go), so a program slot gets its real runtime from
-// the media server — which is what makes the commercial-break interleave fire.
-func libDurationResolver(lib *library.Client) channels.DurationResolver {
-	return func(ctx context.Context, itemID string) (int64, error) { return lib.ItemDurationMs(ctx, itemID) }
+// libraryDurationResolver reads an item's runtime from the Library's facts (mirrors the app's
+// itemMetadata), so a program slot gets its real runtime — which is what makes the
+// commercial-break interleave fire.
+func libraryDurationResolver(facts store.LibraryItemFactsReader) channels.DurationResolver {
+	return func(ctx context.Context, itemID string) (int64, error) {
+		got, err := facts.LibraryItemFacts(ctx, []string{itemID})
+		return got[itemID].RuntimeMs, err
+	}
 }
 
 // rig is the fully-wired system under test: a real API server backed by the real
-// suggester (over the scriptable LLM + media server + TMDB), the real worker pool,
+// suggester (over the scriptable LLM + the store's Library + TMDB), the real worker pool,
 // and the real channel engine + filler assembler. External boundaries faked: LLM
 // and Tunarr.
 type rig struct {
@@ -82,7 +84,7 @@ type rig struct {
 	clock func() time.Time
 }
 
-func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
+func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 	t.Helper()
 	st, err := records.Open(context.Background(), testkit.MigratedSQLiteDSN(t), true)
 	if err != nil {
@@ -93,13 +95,12 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	tun := tunarrtest.NewTunarr()
 	clock := func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }
 
-	// The REAL suggester over the real catalog (real library search against the
-	// scriptable media server + real TMDB double) and the scripted LLM. This is the
-	// actual grounding path — the LLM can only pick ids the catalog surfaced.
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	// The REAL suggester over the real catalog (real search of the store's Library + real
+	// TMDB double) and the scripted LLM. This is the actual grounding path — the LLM can
+	// only pick ids the catalog surfaced.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
-	cat := catalog.New(lib, tm)
+	cat := catalog.New(catalog.LibrarySearch{Titles: st, Facts: st}, tm)
 	suggester := suggest.New(llmMock, cat, tm, 10)
 
 	// The REAL worker service that runs jobs → persists proposals.
@@ -109,7 +110,7 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 
 	// Real availability (over the store's title records) WITH a real duration
 	// resolver, so program slots carry runtime and the break interleave fires.
-	avail := channels.NewStoreAvailability(context.Background(), st, libDurationResolver(lib), nil)
+	avail := channels.NewStoreAvailability(context.Background(), st, libraryDurationResolver(st), nil)
 
 	engine := channels.New(st, tun, avail, nil, channels.Config{
 		Policy: schedule.PodFill, ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
@@ -230,8 +231,6 @@ func seedFillerClips(t *testing.T, st store.Store) {
 	}
 }
 
-const hourTicks = int64(3600) * 10_000_000 // 1h in Emby RunTimeTicks (100ns units)
-
 // TestPipeline_KidsChannel_EndToEnd is the iron-clad gate. It drives a "90s
 // Saturday morning cartoons for kids" intent through the ENTIRE real stack and
 // proves the ChannelPolicy actually protects the channel:
@@ -243,19 +242,8 @@ const hourTicks = int64(3600) * 10_000_000 // 1h in Emby RunTimeTicks (100ns uni
 //   - enforcement puts the three kids titles on the channel and EXCLUDES the TV-MA
 //     one — proving fail-closed audience runs end to end, not just in unit tests.
 func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	// Real in-library titles with real ratings + runtimes. All four match the theme
-	// term "cartoon" so the model sees them all — enforcement, not search, is what
-	// must keep the adult one off a kids channel.
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-1", Name: "Sunny Toon Hour", Type: "Movie", Year: 1992, TMDBID: 90005001, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-2", Name: "Robo Rangers", Type: "Movie", Year: 1993, TMDBID: 90005002, Genres: []string{"Animation"}, OfficialRating: "TV-Y7", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-3", Name: "Critter Club", Type: "Movie", Year: 1994, TMDBID: 90005003, Genres: []string{"Animation"}, OfficialRating: "TV-Y", RunTimeTicks: hourTicks},
-		testkit.SearchStub{Terms: []string{"cartoon"}, LibraryItemID: "lib-4", Name: "Midnight Mayhem Toons", Type: "Movie", Year: 1994, TMDBID: 90005004, Genres: []string{"Animation"}, OfficialRating: "TV-MA", RunTimeTicks: hourTicks},
-	)
-
 	// The scripted LLM: turn 1 searches the catalog by term (grounding it to the real
-	// library results — the stubs answer "cartoon"); turn 2 returns picks for ALL
+	// library results — every kidsCartoons name holds "cartoon"); turn 2 returns picks for ALL
 	// FOUR real ids it saw + a policy that a kids-cartoon intent implies (TV-Y7
 	// ceiling). The model proposes the adult toon too — the ENFORCER must be what
 	// drops it, not the model's discretion.
@@ -275,16 +263,17 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 			"rationale":"90s Saturday morning cartoons",
 			"dateMeaning":{"kind":"constraints","anchors":[{"field":"description","start":0,"end":3}],"axes":[{"kind":"movie_release","combine":"any","intervals":[{"anchor":0,"start":1990,"end":1999}]}]},
 			"picks":[
-				{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Toon Hour"},
-				{"mediaType":"movie","key":"movie:tmdb:90005002","name":"Robo Rangers"},
-				{"mediaType":"movie","key":"movie:tmdb:90005003","name":"Critter Club"},
-				{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Mayhem Toons"}
+				{"mediaType":"movie","key":"movie:tmdb:90005001","name":"Sunny Cartoon Hour"},
+				{"mediaType":"movie","key":"movie:tmdb:90005002","name":"Robo Rangers Cartoon"},
+				{"mediaType":"movie","key":"movie:tmdb:90005003","name":"Critter Cartoon Club"},
+				{"mediaType":"movie","key":"movie:tmdb:90005004","name":"Midnight Mayhem Cartoons"}
 			],
 			"policy":{"audience":{"ceiling":"TV-Y7"},"genres":{"include":["Animation"]},"ordering":"syndication"}
 		}`),
 	)
 
-	r := newRig(t, ms, llmMock)
+	r := newRig(t, llmMock)
+	seedLibraryMovies(t, r.store, kidsCartoons...)
 	seedFillerClips(t, r.store)
 
 	// 1. SUBMIT the intent → the real worker runs the real suggester.
@@ -324,8 +313,8 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	if len(prop.Refused) != 1 {
 		t.Fatalf("expected the TV-MA toon to be refused at proposal time, got %+v", prop.Refused)
 	}
-	if prop.Refused[0].Item.Name != "Midnight Mayhem Toons" || prop.Refused[0].Reason != "over_ceiling" {
-		t.Errorf("refused = %+v, want Midnight Mayhem Toons / over_ceiling", prop.Refused[0])
+	if prop.Refused[0].Item.Name != "Midnight Mayhem Cartoons" || prop.Refused[0].Reason != "over_ceiling" {
+		t.Errorf("refused = %+v, want Midnight Mayhem Cartoons / over_ceiling", prop.Refused[0])
 	}
 	// ⚠ Refused, NOT deleted. The operator's likely fix is to raise the ceiling, and a pick
 	// that vanished between the model's answer and the approval card is indistinguishable from
@@ -404,7 +393,7 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 	}
 	// ...and the TV-MA "adult" cartoon is EXCLUDED — fail-closed audience, end to end.
 	if programItems["lib-4"] {
-		t.Fatal("TV-MA 'Midnight Mayhem Toons' reached a TV-Y7 kids channel — audience enforcement was violated end-to-end")
+		t.Fatal("TV-MA 'Midnight Mayhem Cartoons' reached a TV-Y7 kids channel — audience enforcement was violated end-to-end")
 	}
 	if programs != 3 {
 		t.Errorf("expected exactly 3 program slots (the 3 kids cartoons), got %d", programs)

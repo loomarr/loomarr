@@ -4,33 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
-// realLibrary builds a library client pointed at the testkit media-server mock. Its
-// search answers "marigold" with three owned films in the real Emby /Items shape,
-// the same shape as the pinned search fixture, whose captured titles are real ones
-// (library/search_test.go keeps exercising that capture).
-func realLibrary(t *testing.T) *library.Client {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
-	)
-	return library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+// testLibrary is the Library's title search over three owned films, as production reads it
+// (catalog.LibrarySearch over the Library's tables).
+func testLibrary(t *testing.T) catalog.LibrarySearcher {
+	t.Helper()
+	return catalog.LibrarySearch{
+		Titles: libraryTitlesFake{
+			{ID: "1000", Kind: "movie", Name: "Marigold Protocol", TMDBID: "90000603"},
+			{ID: "1001", Kind: "movie", Name: "Marigold Protocol II", TMDBID: "90000605"},
+			{ID: "1002", Kind: "movie", Name: "Marigold Protocol III", TMDBID: "90624860"},
+		},
+		Facts: itemFactsFake{"1000": {Year: 1999}, "1001": {Year: 2003}, "1002": {Year: 2021}},
+	}
 }
 
 func TestCatalogSearch_LibraryScope_SetsInLibrary(t *testing.T) {
-	lib := realLibrary(t)
+	lib := testLibrary(t)
 	c := catalog.New(lib, nil)
 
 	got, err := c.Search(context.Background(), "marigold", catalog.ScopeLibrary, 10)
@@ -61,7 +63,7 @@ func TestCatalogSearch_LibraryScope_SetsInLibrary(t *testing.T) {
 }
 
 func TestCatalogSearch_MergesLibraryAndTMDB_ByID(t *testing.T) {
-	lib := realLibrary(t)
+	lib := testLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	c := catalog.New(lib, tm)
@@ -90,7 +92,7 @@ func TestCatalogSearch_MergesLibraryAndTMDB_ByID(t *testing.T) {
 // changing dedupe/ordering, and the merged candidate carries the theme signals the
 // model reasons about. (Guards the risk that enrichment touches identity.)
 func TestCatalogSearch_EnrichesGenreOverview_WithoutChangingDedupe(t *testing.T) {
-	lib := realLibrary(t)
+	lib := testLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	c := catalog.New(lib, tm)
@@ -128,7 +130,7 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 	// A TMDB title absent from the library ("Quiet Engines") → in_library=false.
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
-	c := catalog.New(realLibrary(t), tm)
+	c := catalog.New(testLibrary(t), tm)
 
 	got, err := c.Search(context.Background(), "quiet", catalog.ScopeAll, 20)
 	if err != nil {
@@ -151,30 +153,10 @@ func TestCatalogSearch_TMDBOnly_NotInLibrary(t *testing.T) {
 	}
 }
 
-func TestCatalogSearch_AllScopeSkipsAnUnconfiguredLibrary(t *testing.T) {
-	tmdbServer := testkit.NewTMDB(t)
-	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
-	unconfiguredLibrary := library.NewDynamic(func() library.Connection { return library.Connection{} }, "dev-1")
-	c := catalog.New(unconfiguredLibrary, tmdbClient)
-
-	got, err := c.Search(context.Background(), "marigold", catalog.ScopeAll, 20)
-	if err != nil {
-		t.Fatalf("all configured corpora: %v", err)
-	}
-	if len(got) == 0 || got[0].TMDBID != 90000603 {
-		t.Fatalf("TMDB results after skipping unconfigured Library = %+v", got)
-	}
-
-	_, err = c.Search(context.Background(), "marigold", catalog.ScopeLibrary, 20)
-	if !errors.Is(err, library.ErrConnectionRequired) {
-		t.Fatalf("explicit Library search error = %v, want ErrConnectionRequired", err)
-	}
-}
-
 func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "k")
-	c := catalog.New(realLibrary(t), tm)
+	c := catalog.New(testLibrary(t), tm)
 
 	// "marigold" matches an in-library title; add a TMDB-only via broad-ish search
 	// isn't possible with distinct terms, so just assert in-library sorts first
@@ -196,17 +178,14 @@ func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 // impossible whenever the Library alone fills the limit — even though TMDB returned
 // relevant titles in the same search.
 func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit(t *testing.T) {
-	ms := testkit.NewMediaServer(t)
-	items := make([]testkit.SearchStub, 24)
-	for i := range items {
-		items[i] = testkit.SearchStub{
-			Terms: []string{"a"}, LibraryItemID: fmt.Sprintf("owned-%02d", i),
-			Name: fmt.Sprintf("Archive Pick %02d", i), Type: "Movie", Year: 1990 + i%10,
-			TMDBID: 90_010_000 + i,
+	titles := make(libraryTitlesFake, 24)
+	for i := range titles {
+		titles[i] = store.LibraryTitle{
+			ID: fmt.Sprintf("owned-%02d", i), Kind: "movie", Name: fmt.Sprintf("Archive Pick %02d", i),
+			TMDBID: strconv.Itoa(90_010_000 + i),
 		}
 	}
-	ms.SetSearchItems(items...)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := catalog.LibrarySearch{Titles: titles, Facts: itemFactsFake{}}
 	tmdbServer := testkit.NewTMDB(t)
 	tmdbClient := tmdb.NewWithBase(tmdbServer.URL, "test-key")
 
@@ -274,7 +253,7 @@ func (f fakePresence) Present(_ context.Context, _ provision.MediaType, tmdbID, 
 // In-library backfill: a DISCOVERED title the library already owns comes back
 // InLibrary=true (a lineup pick), not an acquisition. Closes the discovery gap.
 func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
-	lib := realLibrary(t)
+	lib := testLibrary(t)
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "test-key")
 	// The mock owns Marigold Protocol (90000603), rated R → discovery of Action marks it

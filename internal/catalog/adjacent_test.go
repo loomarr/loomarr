@@ -23,7 +23,7 @@ func TestAdjacent_RequiresConsensusAcrossSeeds(t *testing.T) {
 		90000100: {90000603, 90000101}, // Quiet Engines → Marigold, Lemon Tree Heist
 		90000101: {90000603},           // Heist         → Marigold   (Marigold now has 2 votes)
 	})
-	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+	c := catalog.New(testLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
 		[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist")},
@@ -50,7 +50,7 @@ func TestAdjacent_ExcludesWhatTheChannelAlreadyHas(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
 		90000100: {90000603}, 90000101: {90000603},
 	})
-	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+	c := catalog.New(testLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	marigoldKey, err := seed(90000603, "Marigold Protocol").Key()
 	if err != nil {
@@ -78,7 +78,7 @@ func TestAdjacent_IsDeterministic(t *testing.T) {
 	var first []string
 	for range 5 {
 		mt := testkit.NewTMDB(t).WithRecommendations(graph)
-		c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+		c := catalog.New(testLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 		got, err := c.Adjacent(context.Background(),
 			[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist"), seed(90000603, "Marigold Protocol")},
 			map[provision.Key]bool{}, 10)
@@ -111,7 +111,7 @@ func TestAdjacent_UnproductiveSeedIsSkipped(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
 		90000100: {90000603}, 90000101: {90000603}, // 90000999 deliberately unwired
 	})
-	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+	c := catalog.New(testLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
 		[]catalog.Candidate{seed(90000999, "Nonexistent"), seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist")},
@@ -127,7 +127,7 @@ func TestAdjacent_UnproductiveSeedIsSkipped(t *testing.T) {
 // No adjacency corpus wired (no TMDB client) ⇒ no candidates, no error. An install
 // without TMDB keeps working; it simply has one fewer corpus.
 func TestAdjacent_NoCorpusIsEmptyNotAnError(t *testing.T) {
-	c := catalog.New(realLibrary(t), nil)
+	c := catalog.New(testLibrary(t), nil)
 	got, err := c.Adjacent(context.Background(), []catalog.Candidate{seed(90000100, "Quiet Engines")},
 		map[provision.Key]bool{}, 10)
 	if err != nil {
@@ -146,7 +146,7 @@ func TestAdjacent_OneVotePerSeedNotPerOccurrence(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
 		90000100: {90000603, 90000603, 90000603}, // Quiet Engines names Marigold Protocol three times — still ONE seed
 	})
-	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+	c := catalog.New(testLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
 		[]catalog.Candidate{seed(90000100, "Quiet Engines")}, map[provision.Key]bool{}, 10)
@@ -168,7 +168,7 @@ func TestAdjacent_ReportsTheConsensusCount(t *testing.T) {
 	mt := testkit.NewTMDB(t).WithRecommendations(map[int][]int{
 		90000100: {90000603}, 90000101: {90000603}, 90000603: {90000603}, // three seeds all name Marigold Protocol
 	})
-	c := catalog.New(realLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
+	c := catalog.New(testLibrary(t), tmdb.NewWithBase(mt.URL, "test-key"))
 
 	got, err := c.Adjacent(context.Background(),
 		[]catalog.Candidate{seed(90000100, "Quiet Engines"), seed(90000101, "Lemon Tree Heist"), seed(90000603, "Marigold Protocol")},

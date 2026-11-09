@@ -14,7 +14,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -24,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
@@ -40,14 +40,12 @@ func idGen() func() string {
 // marigoldMediaServer is the media-server mock with an owned film trio: its search
 // answers "marigold" with Marigold Protocol (90000603), Marigold Protocol II
 // (90000605) and Marigold Protocol III (90624860), in the real Emby /Items shape.
-func marigoldMediaServer(t *testing.T) *testkit.MediaServer {
-	ms := testkit.NewMediaServer(t)
-	ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
-		testkit.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
+func marigoldLibrary() *catalogfixture.ScriptedLibrary {
+	return catalogfixture.NewScriptedLibrary(
+		catalogfixture.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1000", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603},
+		catalogfixture.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1001", Name: "Marigold Protocol II", Type: "Movie", Year: 2003, TMDBID: 90000605},
+		catalogfixture.SearchStub{Terms: []string{"marigold"}, LibraryItemID: "1002", Name: "Marigold Protocol III", Type: "Movie", Year: 2021, TMDBID: 90624860},
 	)
-	return ms
 }
 
 func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.Service {
@@ -56,8 +54,7 @@ func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.S
 
 // buildServiceWith is buildService over a caller-chosen durable workflow.
 func buildServiceWith(t *testing.T, st suggest.ProposalStore, workflow suggest.DurableWorkflow, llmMock llm.Provider) *suggest.Service {
-	ms := marigoldMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)
@@ -753,8 +750,7 @@ func TestWorker_DurableWorkflowNormalizesContextFailureTrace(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := newStore(t)
 			flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now)
-			ms := marigoldMediaServer(t)
-			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			sug := suggest.New(testkit.NewLLM(), catalog.New(lib, tm), tm, 10).
@@ -805,11 +801,11 @@ func TestWorker_DurableRecurateRestoresChannelFeedbackScope(t *testing.T) {
 		finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 	)
 	flow := workflow.New(st, idGen(), time.Now)
-	ms := marigoldMediaServer(t)
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	suggester := suggest.New(llmMock,
-		catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+		catalog.New(lib, tm), tm, 10).
 		WithFeedback(feedback)
 	svc := suggest.NewService(st, flow, suggester,
 		suggest.Config{Workers: 1, Timeout: time.Second, CacheTTL: time.Hour},
@@ -919,11 +915,11 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 				"":                  {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackNever}},
 				"channel-unrelated": {{Target: "movie:tmdb:90000603", Action: suggest.FeedbackSurprise}},
 			}}
-			ms := marigoldMediaServer(t)
+			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
-				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+				catalog.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
 			flow := workflow.New(base, idGen(), time.Now)
 			terminal := newDoneEmitter()
@@ -949,8 +945,8 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			if llmMock.Calls != 0 {
 				t.Fatalf("ownerless recurate reached provider %d times", llmMock.Calls)
 			}
-			if requests := ms.Requests(); len(requests) != 0 {
-				t.Fatalf("ownerless recurate reached Library: %+v", requests)
+			if searches := lib.Searches(); len(searches) != 0 {
+				t.Fatalf("ownerless recurate reached Library: %+v", searches)
 			}
 			if requests := mt.Requests(); len(requests) != 0 {
 				t.Fatalf("ownerless recurate reached TMDB: %+v", requests)
@@ -990,11 +986,11 @@ func TestWorker_DurableFreshAndRefineStayHouseholdScoped(t *testing.T) {
 				catalogSearchResponse(map[string]any{"query": "marigold"}),
 				finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"}]}`),
 			)
-			ms := marigoldMediaServer(t)
+			lib := marigoldLibrary()
 			mt := testkit.NewTMDB(t)
 			tm := tmdb.NewWithBase(mt.URL, "key")
 			suggester := suggest.New(llmMock,
-				catalog.New(library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1"), tm), tm, 10).
+				catalog.New(lib, tm), tm, 10).
 				WithFeedback(feedback)
 			flow := workflow.New(st, func() string { return "job-fresh" }, time.Now)
 			terminal := newDoneEmitter()
@@ -1047,8 +1043,7 @@ func TestWorker_HungLLMTimesOut_PoolKeepsDraining(t *testing.T) {
 			slow.Delay = 2 * time.Second
 		}
 	}
-	ms := marigoldMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := marigoldLibrary()
 	mt := testkit.NewTMDB(t)
 	tm := tmdb.NewWithBase(mt.URL, "key")
 	cat := catalog.New(lib, tm)

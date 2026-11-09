@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -17,14 +16,20 @@ import (
 
 var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
 
-func setup(t *testing.T) (*Reconciler, store.Store, *testkit.Requester, *testkit.MediaServer) {
+// presentIn makes the Library hold exactly the titles with these TMDB ids.
+func presentIn(lib *libraryfixture.Lookup, tmdbIDs ...string) {
+	lib.Results = map[string]libraryfixture.LookupResult{}
+	for _, id := range tmdbIDs {
+		lib.Results[id] = libraryfixture.LookupResult{ItemID: "lib-" + id, Present: true}
+	}
+}
+
+func setup(t *testing.T) (*Reconciler, store.Store, *testkit.Requester, *libraryfixture.Lookup) {
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	req := &testkit.Requester{}
-	ms := testkit.NewMediaServer(t)
-	t.Cleanup(ms.Close)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-	rc := New(st, req, lib, nil, Config{
+	ms := libraryfixture.NewLookup(nil)
+	rc := New(st, req, ms, nil, Config{
 		RequestTTL: 48 * time.Hour, DownloadingTTL: 12 * time.Hour, Batch: 50, Lease: 2 * time.Minute,
 	}, func() time.Time { return now }, slog.New(slog.DiscardHandler))
 	return rc, st, req, ms
@@ -39,15 +44,13 @@ func (c *captureEmitter) Emit(_ context.Context, ev provision.DomainEvent) {
 }
 
 // setupWithEmitter is setup() with a capturing emitter wired in.
-func setupWithEmitter(t *testing.T) (*Reconciler, store.Store, *testkit.MediaServer, *captureEmitter) {
+func setupWithEmitter(t *testing.T) (*Reconciler, store.Store, *libraryfixture.Lookup, *captureEmitter) {
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	req := &testkit.Requester{}
-	ms := testkit.NewMediaServer(t)
-	t.Cleanup(ms.Close)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	ms := libraryfixture.NewLookup(nil)
 	emit := &captureEmitter{}
-	rc := New(st, req, lib, emit, Config{
+	rc := New(st, req, ms, emit, Config{
 		RequestTTL: 48 * time.Hour, DownloadingTTL: 12 * time.Hour, Batch: 50, Lease: 2 * time.Minute,
 	}, func() time.Time { return now }, slog.New(slog.DiscardHandler))
 	return rc, st, ms, emit
@@ -107,7 +110,7 @@ func TestRetryWantedFailureStaysWanted(t *testing.T) {
 // available (even though no Import webhook arrived).
 func TestMissedWebhookRecheckToAvailable(t *testing.T) {
 	rc, st, _, ms := setup(t)
-	ms.PresentTMDB = "90016153" // library confirms this title
+	presentIn(ms, "90016153") // library confirms this title
 	put(t, st, "movie:tmdb:90016153", provision.Requested, 90016153, now.Add(-time.Hour))
 
 	if _, err := rc.Tick(context.Background()); err != nil {
@@ -153,7 +156,7 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 	if err := st.UpsertTitle(t.Context(), available); err != nil {
 		t.Fatal(err)
 	}
-	ms.PresentTMDB = "90016153"
+	presentIn(ms, "90016153")
 	if _, err := rc.Tick(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +168,7 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 	if err := st.UpsertTitle(t.Context(), failed); err != nil {
 		t.Fatal(err)
 	}
-	ms.PresentTMDB = ""
+	presentIn(ms)
 	if _, err := rc.Tick(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +237,7 @@ func TestReconcilerEmitsTerminalEvents(t *testing.T) {
 	}
 
 	// Missed-webhook re-check confirms the library → available (terminal → event).
-	ms.PresentTMDB = "90016153"
+	presentIn(ms, "90016153")
 	put(t, st, "movie:tmdb:90016153", provision.Requested, 90016153, now.Add(-time.Hour))
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)

@@ -37,6 +37,9 @@ prime directive. For now the adapter follows §6 (split); this option is recorde
 
 ## The core §6 lookup (Phase-5 presence check)
 
+Retired in #2151 step 16: Loomarr reads presence from its own Library, so the lookup and its two
+fixtures are gone. The capture stays as a record of the server's behaviour.
+
 `GET /Items?Recursive=true&IncludeItemTypes=Movie&Limit=1&AnyProviderIdEquals=tmdb.<id>`
 - **Present** → `Items` has 1 entry (fixture `lookup_present.json`, tmdb.16153 = "Alice Doesn't
   Live Here Anymore"). Presence = `Items` non-empty; the id is `Items[0].Id`.
@@ -72,8 +75,8 @@ back **empty** over Tailscale — the §13 "reach the server" check should key o
 
 ## Fixtures
 
-`system_info_authed.json`, `users_list.json`, `lookup_present.json`, `lookup_absent.json`,
-`auth_badpw_response.json`. **No design-doc deviation** (unified-header is an option to consider,
+`system_info_authed.json`, `users_list.json`, `auth_badpw_response.json` (`lookup_present.json`
+and `lookup_absent.json` were retired with the lookup). **No design-doc deviation** (unified-header is an option to consider,
 not a contradiction).
 
 ## Library enumeration for filler sources (captured 2026-08-02, §10 V38c)
