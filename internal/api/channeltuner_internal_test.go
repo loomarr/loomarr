@@ -117,6 +117,22 @@ func TestChannelDTOCarriesServerResolvedInAppPlayable(t *testing.T) {
 	}
 }
 
+// #2767: the channel's decade is on the wire, the same one the on-screen logo's palette uses, and
+// absent for a channel with no single-decade era.
+func TestChannelDTOCarriesTheEraDecade(t *testing.T) {
+	s := &Server{}
+	eighties := store.Channel{Policy: schedule.ChannelPolicy{
+		OperatorPolicy: schedule.OperatorPolicy{},
+		Scope:          schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1980, To: 1989})},
+	}}
+	if got := s.channelDTOAt(eighties, nil, nil, nil, BackendCheckpoint{}).Decade; got != 1980 {
+		t.Fatalf("Decade = %d for a 1980s channel, want 1980", got)
+	}
+	if got := s.channelDTOAt(store.Channel{}, nil, nil, nil, BackendCheckpoint{}).Decade; got != 0 {
+		t.Fatalf("Decade = %d for a channel with no era, want 0 (absent)", got)
+	}
+}
+
 func TestPreparedInternalPublicationOpensOnlyInheritedDeviceTransport(t *testing.T) {
 	checkpoint := BackendCheckpoint{
 		Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,

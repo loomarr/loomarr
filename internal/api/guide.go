@@ -133,8 +133,12 @@ type GuideChannelTimeline struct {
 	// ProgramCount is how many lineup titles are ready, the ChannelDTO's own derivation, so a
 	// downloading channel can say "3 of 12 downloaded" in the guide and on Home (#2727). Absent
 	// means none ready yet.
-	ProgramCount int           `json:"programCount,omitempty"`
-	Airings      []GuideAiring `json:"airings" doc:"In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them"`
+	ProgramCount int `json:"programCount,omitempty"`
+	// Decade is the decade the channel's era sits in (1980 for the 1980s), ChannelDTO's own value,
+	// so a number block can take its decade's colour in the guide rail and on Home (#2767). Absent
+	// when the channel has no single-decade era.
+	Decade  int           `json:"decade,omitempty"`
+	Airings []GuideAiring `json:"airings" doc:"In airtime order. Contiguous for airable blocks; pending placeholders may overlap the block that follows them"`
 }
 
 type guideInput struct {
@@ -269,6 +273,7 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 			// channel cannot read "Filling in" on one surface and healthy on the other.
 			PendingCount: schedule.DesiredLineup{Slots: ch.Desired}.PendingCount(),
 			ProgramCount: schedule.DesiredLineup{Slots: ch.Desired}.ProgramCount(),
+			Decade:       schedule.WatermarkEraDecade(ch.Policy.Scope),
 			Airings:      []GuideAiring{},
 		}
 
