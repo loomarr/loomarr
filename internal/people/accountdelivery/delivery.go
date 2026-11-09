@@ -1,4 +1,8 @@
-package app
+// Package accountdelivery delivers the messages an account depends on: invitation emails and
+// password-recovery emails. It routes each intent, mints its single-use grant only inside a
+// claimed delivery attempt, renders the message, and runs the shared delivery worker; product
+// events reach the same service through the publisher it builds.
+package accountdelivery
 
 import (
 	"context"
@@ -24,12 +28,13 @@ import (
 
 const notificationWorkerLimit = 100
 
-type invitationDeliveryCoordinator struct {
+// InvitationDelivery sends an invitation's email and reports its latest delivery.
+type InvitationDelivery struct {
 	invitations   *access.Service
 	notifications *notifications.Service
 }
 
-func (c *invitationDeliveryCoordinator) SendEmail(
+func (c *InvitationDelivery) SendEmail(
 	ctx context.Context,
 	invitationID string,
 	requestID string,
@@ -64,7 +69,7 @@ func (c *invitationDeliveryCoordinator) SendEmail(
 	return c.LatestEmail(ctx, invitationID)
 }
 
-func (c *invitationDeliveryCoordinator) LatestEmail(
+func (c *InvitationDelivery) LatestEmail(
 	ctx context.Context,
 	invitationID string,
 ) (notifications.DeliverySummary, error) {
@@ -358,52 +363,68 @@ func redactMailbox(address string) string {
 	return string(first) + "***@" + domain
 }
 
-type accountDeliveryBuild struct {
-	invitations *invitationDeliveryCoordinator
-	recovery    *passwordRecoveryCoordinator
-	product     *notifications.ProductPublisher
-	service     *notifications.Service
-	validators  []notifications.DestinationValidator
+// Delivery is the account-message delivery stack: the coordinators the API drives, the product
+// publisher, the notification service and the destination validators.
+type Delivery struct {
+	Invitations *InvitationDelivery
+	Recovery    *PasswordRecovery
+	Product     *notifications.ProductPublisher
+	Service     *notifications.Service
+	Validators  []notifications.DestinationValidator
 }
 
-func buildAccountDelivery(
-	st store.Store,
-	repository notifications.Repository,
-	providerAdapters []notifications.Adapter,
-	set resolved,
-	invitationService *access.Service,
-	recoveryService *auth.PasswordRecoveryService,
-	registry *jobs.Registry,
-	log *slog.Logger,
-) accountDeliveryBuild {
-	if st == nil || set.svc == nil || invitationService == nil || recoveryService == nil {
-		return accountDeliveryBuild{}
+// Store is the identity and contact persistence the delivery stack reads.
+type Store interface {
+	store.UserStore
+	productEmailRecipientReader
+}
+
+// Config is what Build needs.
+type Config struct {
+	Store            Store
+	Repository       notifications.Repository
+	ProviderAdapters []notifications.Adapter
+	// PublicURL resolves access.public_url at call time.
+	PublicURL   func() string
+	Invitations *access.Service
+	Recovery    *auth.PasswordRecoveryService
+	// Registry receives the notification-delivery job; nil registers nothing.
+	Registry *jobs.Registry
+	Log      *slog.Logger
+	NewID    func() string
+}
+
+// Build assembles the delivery stack. Without a store, an invitation service or a recovery
+// service it returns the zero Delivery.
+func Build(c Config) Delivery {
+	if c.Store == nil || c.Invitations == nil || c.Recovery == nil {
+		return Delivery{}
 	}
 	materializer := invitationEmailMaterializer{
-		invitations: invitationService, recovery: recoveryService,
-		contacts:  st,
-		publicURL: func() string { return settings.AccessPublicURL.Get(set) },
+		invitations: c.Invitations, recovery: c.Recovery,
+		contacts:  c.Store,
+		publicURL: c.PublicURL,
 	}
 	adapter := notifications.NewEmailAdapter(materializer, notifications.NewSMTPSender(15*time.Second))
-	adapters := append([]notifications.Adapter{adapter}, providerAdapters...)
-	service := notifications.NewService(repository, combinedNotificationRouter{
+	adapters := append([]notifications.Adapter{adapter}, c.ProviderAdapters...)
+	service := notifications.NewService(c.Repository, combinedNotificationRouter{
 		account: invitationEmailRouter{
-			invitations: invitationService, recovery: recoveryService, destinations: repository,
+			invitations: c.Invitations, recovery: c.Recovery, destinations: c.Repository,
 		},
-		product: notifications.NewDestinationRouter(repository, currentNotificationEligibility{users: st}),
-	}, adapters, newID, time.Now)
-	if registry != nil {
-		registry.Add(notificationDeliveryJob(service))
+		product: notifications.NewDestinationRouter(c.Repository, currentNotificationEligibility{users: c.Store}),
+	}, adapters, c.NewID, time.Now)
+	if c.Registry != nil {
+		c.Registry.Add(notificationDeliveryJob(service))
 	}
-	return accountDeliveryBuild{
-		invitations: &invitationDeliveryCoordinator{invitations: invitationService, notifications: service},
-		product:     notifications.NewProductPublisher(service),
-		service:     service,
-		validators:  []notifications.DestinationValidator{adapter},
-		recovery: &passwordRecoveryCoordinator{
-			recovery: recoveryService, notifications: service,
+	return Delivery{
+		Invitations: &InvitationDelivery{invitations: c.Invitations, notifications: service},
+		Product:     notifications.NewProductPublisher(service),
+		Service:     service,
+		Validators:  []notifications.DestinationValidator{adapter},
+		Recovery: &PasswordRecovery{
+			recovery: c.Recovery, notifications: service,
 			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),
-			log: log,
+			log: c.Log,
 		},
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/access"
+	"github.com/loomarr/loomarr/internal/people/accountdelivery"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
@@ -141,10 +142,16 @@ func buildOperations(
 		providerAdapters = append(providerAdapters, webPushAdapter)
 		providerValidators = append(providerValidators, webPushAdapter)
 	}
-	accountDelivery := buildAccountDelivery(
-		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
-	)
-	providerValidators = append(accountDelivery.validators, providerValidators...)
+	var accountDelivery accountdelivery.Delivery
+	if st != nil && set.svc != nil {
+		accountDelivery = accountdelivery.Build(accountdelivery.Config{
+			Store: st, Repository: destinationRepository, ProviderAdapters: providerAdapters,
+			PublicURL:   func() string { return settings.AccessPublicURL.Get(set) },
+			Invitations: invitationService, Recovery: recoveryService,
+			Registry: registry, Log: log, NewID: newID,
+		})
+	}
+	providerValidators = append(accountDelivery.Validators, providerValidators...)
 	scheduler, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	if err != nil {
 		return operationsBuild{}, err
@@ -170,11 +177,11 @@ func buildOperations(
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, emitter.SettingsChanged, log,
 		),
 		notificationDestinations: buildNotificationDestinations(
-			destinationRepository, providerValidators, accountDelivery.service,
+			destinationRepository, providerValidators, accountDelivery.Service,
 		),
-		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
-		invitationDelivery:   accountDelivery.invitations,
-		passwordRecovery:     accountDelivery.recovery,
+		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.Product, source: st, log: log},
+		invitationDelivery:   accountDelivery.Invitations,
+		passwordRecovery:     accountDelivery.Recovery,
 		jobs:                 jobService,
 		scheduler:            scheduler,
 		database:             buildDatabase(st, set, overrides, eventBus),

@@ -1,4 +1,4 @@
-package app
+package accountdelivery
 
 import (
 	"context"
@@ -51,7 +51,7 @@ func TestInvitationEmailMintsBearerOnlyInsideClaimedAttemptsAndRotatesItBeforeRe
 		ids++
 		return fmt.Sprintf("notification-%d", ids)
 	}, func() time.Time { return now })
-	coordinator := &invitationDeliveryCoordinator{
+	coordinator := &InvitationDelivery{
 		invitations: invitationService, notifications: notificationService,
 	}
 
@@ -140,7 +140,7 @@ func TestPasswordRecoveryRequestDoesNotEnumerateNotificationQueueFailure(t *test
 	}
 	recoveryService := auth.NewPasswordRecoveryService(st, func() string { return "recovery-enumeration" },
 		func() (string, error) { return strings.Repeat("e", 64), nil }, func() time.Time { return now })
-	coordinator := &passwordRecoveryCoordinator{
+	coordinator := &PasswordRecovery{
 		recovery:      recoveryService,
 		notifications: failedRecoveryNotifier{err: errors.New("notification store unavailable")},
 	}
@@ -192,7 +192,7 @@ func TestPasswordRecoveryEmailUsesSharedWorkerAndKeepsBearerEphemeral(t *testing
 		ids++
 		return fmt.Sprintf("recovery-notification-%d", ids)
 	}, func() time.Time { return now })
-	coordinator := &passwordRecoveryCoordinator{recovery: recoveryService, notifications: notificationService}
+	coordinator := &PasswordRecovery{recovery: recoveryService, notifications: notificationService}
 	if err := coordinator.Request(ctx, "Ada", "127.0.0.1|ada"); err != nil {
 		t.Fatal(err)
 	}

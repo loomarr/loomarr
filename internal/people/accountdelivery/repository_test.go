@@ -1,16 +1,17 @@
-package app
+package accountdelivery
 
 import (
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 func notificationRepositoryForTest(t *testing.T, st store.Store) *notifications.ProtectedRepository {
 	t.Helper()
-	protection, err := buildSecretProtection(t.Context(), st, t.TempDir(), nil)
+	protection, err := secretprotection.Boot(t.Context(), st, secretprotection.BootOptions{DataDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

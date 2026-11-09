@@ -8,20 +8,22 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 7 imports — the identity store accounts and sessions live in, the outbound HTTP client notifications are sent through, and the configured installation secret
+- **platform** · 11 imports — the identity store accounts and sessions live in, the outbound HTTP client notifications are sent through, and the configured installation secret
 - **library** · 1 import — signing a member in with their media-server account
 
 ## Packages
 
-- **`people/access`** · 7 importers · → `people/contact`
+- **`people/access`** · 8 importers · → `people/contact`
   Owns how a person gets into Loomarr and back in (§11): an administrator's invitation and its bearer grants, and local-password recovery and its grants (recovery.go).
-- **`people/auth`** · 3 importers · → `library`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore`
+- **`people/accountdelivery`** · 1 importer · → `people/access`, `people/auth`, `people/contact`, `people/notifications`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/identitystore`
+  Delivers the messages an account depends on: invitation emails and password-recovery emails.
+- **`people/auth`** · 4 importers · → `library`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore`
   Issues and validates Loomarr sessions (design §11).
 - **`people/contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).
 - **`people/keyrotation`** · 1 importer · → `people/protectedsettings`, `people/secretprotection`, `platform/settings`
   Operator's view of database secret encryption: whether it is active, and rotating the data key, which reseals every protected setting and every stored notification destination under the new key.
-- **`people/notifications`** · 7 importers · → `people/secretprotection`, `platform/httpx`
+- **`people/notifications`** · 8 importers · → `people/secretprotection`, `platform/httpx`
   Owns channel-neutral notification intents and delivery work (§11).
 - **`people/protectedsettings`** · 2 importers · → `people/secretprotection`, `platform/settings`, `platform/store`
   Keeps the secret settings encrypted at rest: it decides which keys are protected, reads and writes one through the secret-protection manager, opens the whole settings table for boot, and reseals every protected value after a data-key rotation.
