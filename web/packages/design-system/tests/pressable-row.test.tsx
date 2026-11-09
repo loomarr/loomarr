@@ -38,6 +38,34 @@ describe("PressableRow", () => {
     );
   });
 
+  it("forwards mousedown so a combobox option can keep the input focused", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const input = document.createElement("input");
+    document.body.append(input);
+    act(() => {
+      root.render(
+        <LoomarrProvider theme="dark">
+          <PressableRow accessibilityRole="option" onMouseDown={(event) => event.preventDefault()}>
+            Austin
+          </PressableRow>
+        </LoomarrProvider>,
+      );
+    });
+    input.focus();
+    const option = container.querySelector<HTMLElement>('[role="option"]');
+    const mousedown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    act(() => {
+      option?.dispatchEvent(mousedown);
+    });
+    expect(mousedown.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+    act(() => root.unmount());
+    container.remove();
+    input.remove();
+  });
+
   it("runs onPress, and not when disabled", () => {
     const onPress = vi.fn();
     const container = document.createElement("div");
