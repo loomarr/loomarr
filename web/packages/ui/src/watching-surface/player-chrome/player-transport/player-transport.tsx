@@ -11,10 +11,10 @@ import {
 import { type ReactNode, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
-import { glass, webOnly } from "../glass";
+import { raised, webOnly } from "../flat";
 import type { ClipTransportProps, PlayerTransportProps } from "../player-chrome.type";
 
-// The transport (§9.4, plane 4): glass capsules grouped by job — ⟲ play ⟳ · live state and Start
+// The transport (§9.4, plane 4): flat capsules grouped by job — ⟲ play ⟳ · live state and Start
 // over · volume, then, pushed right, view options · window. Play/pause is the one primary control, a
 // white disc; every other tool is a quiet glyph (one size, one weight) with a hover well, an amber
 // glyph and dot when active, and on a pointer a tooltip naming its key. A tool the caller leaves out
@@ -30,7 +30,7 @@ const Capsule = ({ children, end }: { children: ReactNode; end?: boolean }) => (
       gap: 2,
       padding: 4,
       paddingRight: end ? 12 : 4,
-      ...glass(),
+      ...raised(),
     }}
   >
     {children}
@@ -72,7 +72,9 @@ const Tooltip = ({
       paddingHorizontal: 8,
       paddingVertical: 4,
       position: "absolute",
-      ...webOnly({ boxShadow: `0 0 0 1px ${playerChrome.glassRing}`, whiteSpace: "nowrap" }),
+      borderColor: playerChrome.hairline,
+      borderWidth: 1,
+      ...webOnly({ whiteSpace: "nowrap" }),
     }}
   >
     {/* One line: the tooltip hangs off a 36 px button, which would otherwise wrap it word by word. */}
@@ -80,7 +82,7 @@ const Tooltip = ({
       {label}
     </Text>
     {keyHint ? (
-      <View style={{ backgroundColor: playerChrome.glassTop, borderRadius: 3, paddingHorizontal: 4 }}>
+      <View style={{ backgroundColor: playerChrome.surfaceHover, borderRadius: 3, paddingHorizontal: 4 }}>
         <Text density={density} textRole="guideMeta" tone="secondary">
           {keyHint}
         </Text>
@@ -127,7 +129,11 @@ const ToolButton = ({
       onPress={onPress}
       style={{
         alignItems: "center",
-        backgroundColor: active ? playerChrome.signalPast : hovered ? playerChrome.glassTop : "transparent",
+        backgroundColor: active
+          ? playerChrome.signalPast
+          : hovered
+            ? playerChrome.surfaceHover
+            : "transparent",
         borderRadius: 999,
         height: size,
         justifyContent: "center",
@@ -275,7 +281,7 @@ const StartOver = ({ density, onPress }: { density: Density; onPress: () => void
       onPress={onPress}
       style={{
         alignItems: "center",
-        backgroundColor: hovered ? playerChrome.glassTop : "transparent",
+        backgroundColor: hovered ? playerChrome.surfaceHover : "transparent",
         borderRadius: 999,
         flexDirection: "row",
         gap: 6,
@@ -316,9 +322,6 @@ const PlayDisc = ({
         height: size,
         justifyContent: "center",
         width: size,
-        ...webOnly({
-          boxShadow: "inset 0 -2px 0 rgba(0, 0, 0, 0.12), 0 6px 18px -6px rgba(255, 255, 255, 0.35)",
-        }),
       }}
     >
       <Icon

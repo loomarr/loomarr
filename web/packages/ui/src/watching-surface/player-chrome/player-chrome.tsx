@@ -2,7 +2,7 @@ import { playerChrome, ThemeScope } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
 import { View } from "react-native";
 
-import { gradientOr, webOnly } from "./glass";
+import { gradientOr, webOnly } from "./flat";
 import { LowerThirdBand } from "./lower-third-band";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerTransport } from "./player-transport";

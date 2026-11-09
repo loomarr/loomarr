@@ -1,12 +1,12 @@
 import { type Density, decadeFillColor, playerChrome, Text } from "@loomarr/design-system";
 import { View } from "react-native";
 
-import { panelGlass, webOnly } from "../glass";
+import { panel, webOnly } from "../flat";
 import type { PlayerBandData } from "../player-chrome.type";
 
 // The lower third (§9.1, plane 2): identity. An amber channel block — CH over the number — beside a
-// glass panel with `CH n · name`, the programme line, a thin progress line and the time. While a
-// preview card is open the band steps back a plane, dimmer and softened, so the card is in front.
+// flat panel with `CH n · name`, the programme line, a thin progress line and the time. While a
+// preview card is open the band steps back a plane, dimmer, so the card is in front.
 // The same band is the station-ID card: a larger block, and `era · place` after the name.
 
 interface LowerThirdBandProps {
@@ -33,10 +33,7 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
         flexDirection: "row",
         maxWidth: 960,
         opacity: steppedBack ? 0.4 : 1,
-        ...webOnly({
-          filter: steppedBack ? "blur(1px)" : "none",
-          transition: "opacity 220ms ease, filter 220ms ease",
-        }),
+        ...webOnly({ transition: "opacity 220ms ease" }),
       }}
     >
       <View
@@ -50,12 +47,6 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           justifyContent: "center",
           paddingVertical: 6,
           width: ident ? (compact ? 64 : 96) : compact ? 48 : 64,
-          ...webOnly({
-            backgroundImage: decadeColor
-              ? "none"
-              : `linear-gradient(180deg, ${playerChrome.signal}, ${playerChrome.signalDeep})`,
-            boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 0 rgba(0, 0, 0, 0.15)",
-          }),
         }}
       >
         <Text density={density} shout textRole="guideIdent" tone={blockTone} tracking={0.2}>
@@ -80,7 +71,8 @@ const LowerThirdBand = ({ band, density, ident = false, steppedBack = false }: L
           minWidth: 0,
           paddingHorizontal: 16,
           paddingVertical: 10,
-          ...panelGlass(),
+          ...panel(),
+          borderLeftWidth: 0,
         }}
       >
         <Text density={density} numberOfLines={1} textRole="guideMeta" tone="secondary">
