@@ -5,17 +5,25 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 import { ChannelWall } from "./channel-wall";
+import type { ChannelViewer } from "./channel-wall.type";
 
 const MIN = 60_000;
 
 // A mounted router: every tile and the Full guide link route through it.
 const renderWall = async (
   channels: GuideChannelTimeline[],
-  { nowMs = 0, toMs = 1, lastChannelId }: { nowMs?: number; toMs?: number; lastChannelId?: string } = {},
+  {
+    nowMs = 0,
+    toMs = 1,
+    lastChannelId,
+    viewers,
+  }: { nowMs?: number; toMs?: number; lastChannelId?: string; viewers?: ChannelViewer[] } = {},
 ) => {
   const layout = layoutGuide({ channels, fromMs: 0, toMs }, nowMs);
   const rootRoute = createRootRoute({
-    component: () => <ChannelWall layout={layout} nowMs={nowMs} lastChannelId={lastChannelId} />,
+    component: () => (
+      <ChannelWall layout={layout} nowMs={nowMs} lastChannelId={lastChannelId} viewers={viewers} />
+    ),
   });
   const router = createRouter({
     routeTree: rootRoute,
@@ -203,5 +211,36 @@ describe("ChannelWall — every channel as a live tile (#2764)", () => {
       }),
     ]);
     expect(screen.getByRole("heading", { level: 3, name: longTitle })).toBeInTheDocument();
+  });
+});
+
+describe("ChannelWall — who is watching, for an admin (#2785)", () => {
+  const sam = { channelId: "c1", name: "Sam", userId: "u1" };
+  const jo = { channelId: "c1", name: "Jo", userId: "u2" };
+
+  it("names the people on the tile they are watching, and counts them in the header", async () => {
+    await renderWall([live("c1", 7), live("c2", 9)], { viewers: [sam, jo] });
+    expect(screen.getByText("Sam, Jo watching")).toBeInTheDocument();
+    expect(screen.getByText("2 channels · 2 people watching")).toBeInTheDocument();
+    const [other] = tiles().filter((t) => t.getAttribute("href") === "/watch/c2");
+    expect(other).toBeDefined();
+    expect(within(other as HTMLElement).queryByText(/watching/)).not.toBeInTheDocument();
+  });
+
+  it("names a person once when they watch on two devices", async () => {
+    await renderWall([live("c1", 7)], { viewers: [sam, { ...sam }] });
+    expect(screen.getByText("Sam watching")).toBeInTheDocument();
+    expect(screen.getByText("1 channel · 1 person watching")).toBeInTheDocument();
+  });
+
+  it("says nobody is watching when the household is idle", async () => {
+    await renderWall([live("c1", 7)], { viewers: [] });
+    expect(screen.getByText("1 channel · Nobody is watching right now")).toBeInTheDocument();
+  });
+
+  it("shows no names and no count when the caller is given no viewers (a member)", async () => {
+    await renderWall([live("c1", 7)]);
+    expect(screen.queryByText(/watching/)).not.toBeInTheDocument();
+    expect(screen.getByText("1 channel")).toBeInTheDocument();
   });
 });

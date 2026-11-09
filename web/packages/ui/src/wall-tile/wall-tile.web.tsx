@@ -6,6 +6,19 @@ import type { WallTileProps } from "./wall-tile.type";
 // The foot of the tile: dark enough under the words for any still.
 const SCRIM = `linear-gradient(0deg, ${semanticColors.artwork.scrimStrong}, rgba(11, 12, 14, 0.4) 55%, rgba(11, 12, 14, 0))`;
 
+// Visually hidden, still read by a screen reader.
+const SR_ONLY = {
+  border: 0,
+  clip: "rect(0 0 0 0)",
+  height: 1,
+  margin: -1,
+  overflow: "hidden",
+  padding: 0,
+  position: "absolute",
+  whiteSpace: "nowrap",
+  width: 1,
+} as const;
+
 // The channel number on its block: the channel's decade colour (#2767), or neutral without one.
 const NumberBlock = ({ decade, number }: { decade: number | undefined; number: string }) => {
   const fill = decadeFill(decade);
@@ -46,6 +59,7 @@ const WallTile = ({
   progressPercent,
   render,
   title,
+  watchers = [],
 }: WallTileProps) => {
   const host: ReactElement<Record<string, unknown>> = render ?? <button type="button" />;
   const own = host.props as { onClick?: (event: unknown) => void; style?: object };
@@ -146,6 +160,31 @@ const WallTile = ({
             <Text as="span" strong textRole="caption" tone="inverse">
               {compact ? "Last" : "You were here"}
             </Text>
+          </Surface>
+        )}
+        {!last && watchers.length > 0 && (
+          <Surface
+            backgroundColor="artworkScrimStrong"
+            borderColor="borderDecorative"
+            borderRadius="round"
+            borderWidth={1}
+            marginLeft="auto"
+            paddingHorizontal={8}
+            paddingVertical={2}
+          >
+            {/* The phone tile has no room for names: initials show, the full words are read out. */}
+            {compact ? (
+              <>
+                <Text aria-hidden as="span" strong textRole="caption">
+                  {watchers.map((name) => name.slice(0, 1).toUpperCase()).join(" ")}
+                </Text>
+                <span style={SR_ONLY}>{`${watchers.join(", ")} watching`}</span>
+              </>
+            ) : (
+              <Text as="span" numberOfLines={1} strong textRole="caption">
+                {`${watchers.join(", ")} watching`}
+              </Text>
+            )}
           </Surface>
         )}
       </Surface>
