@@ -1,4 +1,4 @@
-import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
+import { Action, LoadingStrip, ProgressTrack, Surface, Text } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
@@ -10,9 +10,9 @@ import { behindLabel, playbackMessage } from "./watching-surface-state";
 
 const LoadingChannels = () => (
   <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
-    {/* The indicator aligns itself to the start (so it never stretches); this wrapper carries it to the centre. */}
+    {/* The page wait is the colour-bar strip (#2789); this wrapper carries it to the centre. */}
     <View style={{ alignSelf: "center" }}>
-      <ActivityIndicator accessibilityLabel="Loading channels" size="tv" />
+      <LoadingStrip accessibilityLabel="Loading channels" density="tv" width={240} />
     </View>
   </View>
 );

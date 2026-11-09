@@ -1,7 +1,6 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Toggle } from "@loomarr/design-system";
-import { Loader2 } from "lucide-react";
+import { Action, LoadingStrip, Toggle } from "@loomarr/design-system";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -45,7 +44,7 @@ const UsersStep = () => {
   if (candidates.isLoading) {
     return (
       <p className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Loader2 className="size-4 animate-spin" aria-hidden />
+        <LoadingStrip decorative width={32} />
         Looking up your media-server accounts…
       </p>
     );
