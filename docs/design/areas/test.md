@@ -12,11 +12,13 @@ One area of the [package map](../package-map.md#start-here).
 
 - **`demolibrary`** · 1 importer
   Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
-- **`eval`** · → `catalog`, `channels`, `channels/schedule`, `episodeevidence`, `library`, `platform/buildinfo`, `platform/llm`, `platform/openroutercatalog`, `platform/rating`, `platform/store`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `testkit`, `tmdb`
+- **`eval`** · → `catalog`, `channels`, `channels/schedule`, `library`, `library/inventory`, `library/tmdb`, `platform/buildinfo`, `platform/llm`, `platform/openroutercatalog`, `platform/rating`, `platform/store`, `proposals`, `proposals/quality`, `proposals/suggest`, `proposals/webreference`, `provision`, `testkit`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
+- **`library/tmdb/tmdbstandin`** · 1 importer · → `provision`
+  One TMDB v3 stand-in: an in-memory catalogue served over the endpoints internal/library/tmdb calls.
 - **`platform/store/storetest`** · → `testkit/postgresimage`
   Builds the conformance suites' private databases: one migrated, boot-seeded template per backend, cloned for every assertion.
-- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/records`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `testkit/execfixture`, `testkit/postgresimage`, `tmdb/tmdbstandin`
+- **`testkit`** · 2 importers · → `channels/schedule`, `demolibrary`, `filler/records`, `library/tmdb/tmdbstandin`, `media/images/rustgen`, `people/access`, `people/notifications`, `platform/llm`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `playout`, `proposals/quality`, `proposals/webreference`, `provision`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/catalogfixture`** · → `catalog`, `library`, `provision`
   Shared no-network adapters for catalog tests.
@@ -30,7 +32,7 @@ One area of the [package map](../package-map.md#start-here).
   In-memory image store and a real image service over it, shared by the adapter tests of internal/app and internal/app/playoutresolve.
 - **`testkit/libraryfixture`** · → `channels/schedule`, `library`, `provision`
   No-network adapters for library-facing tests.
-- **`testkit/moviecollectionsfixture`** · → `moviecollections`
+- **`testkit/moviecollectionsfixture`** · → `library/tmdb`
   The shared deterministic source for movie-collection resolver tests.
 - **`testkit/outlookfixture`** · → `channels/schedule`, `library`
   Shared read-only library observations for tests.
@@ -40,7 +42,5 @@ One area of the [package map](../package-map.md#start-here).
   Owns the single image reference used by Postgres testcontainers and the Make pre-pull that runs before those tests.
 - **`testkit/recordfixture`**
   A shared generic call recorder for isolated tests without depending on application packages.
-- **`tmdb/tmdbstandin`** · 1 importer · → `provision`
-  One TMDB v3 stand-in: an in-memory catalogue served over the endpoints internal/tmdb calls.
 
 **Tests only:** `integration`

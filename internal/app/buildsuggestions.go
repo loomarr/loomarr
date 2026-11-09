@@ -18,8 +18,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/buildinfo"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -35,7 +35,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 type suggestionBuild struct {
@@ -107,7 +106,7 @@ func buildSuggestions(
 		return catalog.LibraryOwnership{Titles: st}
 	})
 	result.search = searchAdapter{catalogService}
-	collectionResolver := moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+	collectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
 		return catalog.LibraryOwnership{Titles: st}
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}

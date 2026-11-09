@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // fakeCatalog answers fetches from a table; an unknown key is not found, and err fails every fetch.

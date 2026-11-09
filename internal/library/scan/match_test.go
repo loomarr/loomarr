@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {

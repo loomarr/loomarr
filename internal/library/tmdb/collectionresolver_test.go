@@ -1,4 +1,4 @@
-package moviecollections_test
+package tmdb_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 	"github.com/loomarr/loomarr/internal/testkit/moviecollectionsfixture"
@@ -14,11 +14,11 @@ import (
 
 func TestResolve_DeduplicatesCollectionsOrdersMembersAndMarksLibraryPresence(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{
+		Refs: map[int]tmdb.CollectionRef{
 			90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"},
 			90000673: {TMDBID: 90001241, Name: "Wren Halloway Collection"},
 		},
-		Collections: map[int]moviecollections.SourceCollection{
+		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
@@ -33,7 +33,7 @@ func TestResolve_DeduplicatesCollectionsOrdersMembersAndMarksLibraryPresence(t *
 	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
 		90000672: {LibraryItemID: "lib-672", OfficialRating: "PG", Genres: []string{"Fantasy"}},
 	}}
-	resolver := moviecollections.New(source).WithPresenceSource(func() catalog.LibraryPresence { return presence })
+	resolver := tmdb.NewCollectionResolver(source).WithPresenceSource(func() catalog.LibraryPresence { return presence })
 
 	got, err := resolver.Resolve(context.Background(), []provision.Key{
 		"movie:tmdb:90000671", "movie:tmdb:90000673", "movie:tmdb:90000671",
@@ -67,11 +67,11 @@ func TestResolve_DeduplicatesCollectionsOrdersMembersAndMarksLibraryPresence(t *
 
 func TestResolve_OmitsAuthoritativeStandaloneMovies(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{
+		Refs: map[int]tmdb.CollectionRef{
 			90000550: {},
 			90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"},
 		},
-		Collections: map[int]moviecollections.SourceCollection{
+		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
@@ -83,7 +83,7 @@ func TestResolve_OmitsAuthoritativeStandaloneMovies(t *testing.T) {
 		},
 	}
 
-	got, err := moviecollections.New(source).Resolve(context.Background(), []provision.Key{
+	got, err := tmdb.NewCollectionResolver(source).Resolve(context.Background(), []provision.Key{
 		"movie:tmdb:90000550", "movie:tmdb:90000671",
 	})
 	if err != nil {
@@ -96,11 +96,11 @@ func TestResolve_OmitsAuthoritativeStandaloneMovies(t *testing.T) {
 
 func TestResolve_ReturnsPartialGroundedCollectionsWithoutInventingFailedOnes(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{
+		Refs: map[int]tmdb.CollectionRef{
 			90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"},
 			90000011: {TMDBID: 90000010, Name: "Hollow Moon Collection"},
 		},
-		Collections: map[int]moviecollections.SourceCollection{
+		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
@@ -113,7 +113,7 @@ func TestResolve_ReturnsPartialGroundedCollectionsWithoutInventingFailedOnes(t *
 		CollectionErrors: map[int]error{90000010: errors.New("tmdb unavailable for collection 90000010")},
 	}
 
-	got, err := moviecollections.New(source).Resolve(context.Background(), []provision.Key{
+	got, err := tmdb.NewCollectionResolver(source).Resolve(context.Background(), []provision.Key{
 		"movie:tmdb:90000671", "movie:tmdb:90000011",
 	})
 	if err != nil {
@@ -126,13 +126,13 @@ func TestResolve_ReturnsPartialGroundedCollectionsWithoutInventingFailedOnes(t *
 
 func TestResolve_ReturnsErrorWhenEveryReferencedCollectionFails(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{
+		Refs: map[int]tmdb.CollectionRef{
 			90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"},
 		},
 		CollectionErrors: map[int]error{90001241: errors.New("tmdb unavailable")},
 	}
 
-	got, err := moviecollections.New(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
+	got, err := tmdb.NewCollectionResolver(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
 	if err == nil {
 		t.Fatalf("resolution = %+v, want a total upstream failure to return an error", got)
 	}
@@ -140,10 +140,10 @@ func TestResolve_ReturnsErrorWhenEveryReferencedCollectionFails(t *testing.T) {
 
 func TestResolve_DropsMalformedDuplicateAndNonMovieRosterMembers(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{
+		Refs: map[int]tmdb.CollectionRef{
 			90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"},
 		},
-		Collections: map[int]moviecollections.SourceCollection{
+		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90001241,
 				Name:   "Wren Halloway Collection",
@@ -159,7 +159,7 @@ func TestResolve_DropsMalformedDuplicateAndNonMovieRosterMembers(t *testing.T) {
 		},
 	}
 
-	got, err := moviecollections.New(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
+	got, err := tmdb.NewCollectionResolver(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,8 +176,8 @@ func TestResolve_DropsMalformedDuplicateAndNonMovieRosterMembers(t *testing.T) {
 
 func TestResolve_RejectsACollectionResponseWithTheWrongIdentity(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"}},
-		Collections: map[int]moviecollections.SourceCollection{
+		Refs: map[int]tmdb.CollectionRef{90000671: {TMDBID: 90001241, Name: "Wren Halloway Collection"}},
+		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90009999,
 				Name:   "Unrelated Collection",
@@ -189,7 +189,7 @@ func TestResolve_RejectsACollectionResponseWithTheWrongIdentity(t *testing.T) {
 		},
 	}
 
-	got, err := moviecollections.New(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
+	got, err := tmdb.NewCollectionResolver(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,8 +200,8 @@ func TestResolve_RejectsACollectionResponseWithTheWrongIdentity(t *testing.T) {
 
 func TestResolve_DoesNotInventMissingCollectionIdentity(t *testing.T) {
 	source := &moviecollectionsfixture.Source{
-		Refs: map[int]moviecollections.CollectionRef{90000671: {TMDBID: 90001241}},
-		Collections: map[int]moviecollections.SourceCollection{
+		Refs: map[int]tmdb.CollectionRef{90000671: {TMDBID: 90001241}},
+		Collections: map[int]tmdb.SourceCollection{
 			90001241: {
 				TMDBID: 90001241,
 				Members: []catalog.Candidate{
@@ -212,7 +212,7 @@ func TestResolve_DoesNotInventMissingCollectionIdentity(t *testing.T) {
 		},
 	}
 
-	got, err := moviecollections.New(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
+	got, err := tmdb.NewCollectionResolver(source).Resolve(context.Background(), []provision.Key{"movie:tmdb:90000671"})
 	if err != nil {
 		t.Fatal(err)
 	}

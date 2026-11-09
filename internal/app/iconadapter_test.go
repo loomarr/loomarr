@@ -12,13 +12,13 @@ import (
 
 	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // iconTestBase is the public URL the test image service builds rendition URLs from, so assertions
@@ -26,7 +26,7 @@ import (
 const iconTestBase = "https://loomarr.test"
 
 // tmdbPoster is the source URL the adapter resolves a poster path to. `original`, not `w500`,
-// since V52 phase 7 — see the imageBase comment in internal/tmdb.
+// since V52 phase 7 — see the imageBase comment in internal/library/tmdb.
 func tmdbPoster(path string) string { return "https://image.tmdb.org/t/p/original" + path }
 
 // iconPosterURL is the image-service URL a warm suggestion carries.

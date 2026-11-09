@@ -13,13 +13,12 @@ import (
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/textmatch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
 	"github.com/loomarr/loomarr/internal/provision"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 const (
@@ -223,9 +222,9 @@ const maxFranchiseMembers = 3
 const maxFranchiseSeeds = 2
 
 // MovieCollectionResolver resolves authoritative TMDB collection rosters, with
-// library presence, for provisioned movie Keys (moviecollections.Resolver).
+// library presence, for provisioned movie Keys (tmdb.CollectionResolver).
 type MovieCollectionResolver interface {
-	Resolve(context.Context, []provision.Key) (moviecollections.Resolution, error)
+	Resolve(context.Context, []provision.Key) (tmdb.CollectionResolution, error)
 }
 
 // franchiseMembers returns up to maxFranchiseMembers in-library titles of the
