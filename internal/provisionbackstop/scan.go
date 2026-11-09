@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -155,7 +156,7 @@ func (s *LibraryScan) persist(ctx context.Context, rec provision.Record, emitted
 		// glance into a log, and the operator's question is "did it arrive?", not "what state
 		// is it in now?".
 		if ev.State == provision.Available {
-			s.activity.Info(ctx, store.ActivityKindTitle, string(ev.Key),
+			s.activity.Info(ctx, activitystore.ActivityKindTitle, string(ev.Key),
 				titleLabel(rec)+" landed — ready to schedule")
 		}
 	}

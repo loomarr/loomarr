@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
+	"github.com/loomarr/loomarr/internal/platform/store/diagnosticsstore"
 )
 
 func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
@@ -410,7 +411,7 @@ func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 		"process":        {ProcessRunID: "x"},
 	} {
 		filter.From, filter.To, filter.Limit = 0, 1<<40, 50
-		sqlText, args := diagnosticEventQuery(filter)
+		sqlText, args := diagnosticsstore.EventQuery(filter)
 		rows, err := tx.QueryContext(ctx, "EXPLAIN "+s.ph(sqlText), args...)
 		if err != nil {
 			t.Fatalf("%s: %v", column, err)

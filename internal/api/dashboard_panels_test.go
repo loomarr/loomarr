@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
 func serverWithPanels(t *testing.T, opts api.Options) (*httptest.Server, records.Store) {
@@ -166,9 +166,9 @@ func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {
 	ctx := context.Background()
 
 	for i, text := range []string{"older entry", "newer entry"} {
-		if err := st.RecordActivity(ctx, store.Activity{
-			At: int64(1_700_000_000 + i*60), Kind: store.ActivityKindTitle,
-			Level: store.ActivityInfo, Text: text,
+		if err := st.RecordActivity(ctx, activitystore.Activity{
+			At: int64(1_700_000_000 + i*60), Kind: activitystore.ActivityKindTitle,
+			Level: activitystore.ActivityInfo, Text: text,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -179,7 +179,7 @@ func TestListActivity_ReadsPersistedRowsNewestFirst(t *testing.T) {
 		t.Fatalf("activity → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Activity []store.Activity `json:"activity"`
+		Activity []activitystore.Activity `json:"activity"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

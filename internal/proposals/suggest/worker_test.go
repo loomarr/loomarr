@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -894,11 +895,11 @@ func TestWorker_DurableRecurateFailsClosedWithoutOneValidOwner(t *testing.T) {
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			for _, event := range []store.DiscoveryFeedback{
-				{ID: "household-never", ActorID: "admin", Scope: store.FeedbackHousehold,
-					Target: "movie:tmdb:90000603", Action: store.FeedbackNever, CreatedAt: now},
-				{ID: "unrelated-surprise", ActorID: "admin", Scope: store.FeedbackChannel, ScopeID: "channel-unrelated",
-					Target: "movie:tmdb:90000603", Action: store.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
+			for _, event := range []channeldatastore.DiscoveryFeedback{
+				{ID: "household-never", ActorID: "admin", Scope: channeldatastore.FeedbackHousehold,
+					Target: "movie:tmdb:90000603", Action: channeldatastore.FeedbackNever, CreatedAt: now},
+				{ID: "unrelated-surprise", ActorID: "admin", Scope: channeldatastore.FeedbackChannel, ScopeID: "channel-unrelated",
+					Target: "movie:tmdb:90000603", Action: channeldatastore.FeedbackSurprise, CreatedAt: now.Add(time.Second)},
 			} {
 				if err := base.AppendDiscoveryFeedback(ctx, event); err != nil {
 					t.Fatal(err)
