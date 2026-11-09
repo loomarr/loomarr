@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/app/connectiontest"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
+	"github.com/loomarr/loomarr/internal/people/protectedsettings"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -62,9 +63,9 @@ func (p storePersister) Apply(ctx context.Context, batch settings.PersistenceBat
 	}
 	for _, row := range batch.Upserts {
 		value := row.Value
-		if p.protection != nil && protectedSetting(settings.NewRegistry(), row.Key) {
+		if p.protection != nil && protectedsettings.IsProtected(settings.NewRegistry(), row.Key) {
 			var err error
-			value, err = p.protection.Seal(settingRecord(row.Key), []byte(value))
+			value, err = p.protection.Seal(protectedsettings.Record(row.Key), []byte(value))
 			if err != nil {
 				return err
 			}

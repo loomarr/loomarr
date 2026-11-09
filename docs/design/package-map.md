@@ -109,7 +109,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `metadataprovider` | — |
 | `people/access` | `people/contact` |
 | `people/contact` | — |
-| `people/notifications` | `platform/httpx` |
+| `people/notifications` | `people/secretprotection`, `platform/httpx` |
+| `people/secretprotection` | `platform/config` |
 | `platform/activity` | `platform/store/activitystore` |
 | `platform/buildinfo` | — |
 | `platform/config` | — |
@@ -122,7 +123,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/rating` | — |
 | `platform/settings` | `library`, `platform/buildinfo`, `platform/config` |
 | `platform/storagegovernor` | — |
-| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision` |
+| `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality`, `provision` |
 | `platform/store/activitystore` | `platform/store/storedb` |
 | `platform/store/channeldatastore` | `platform/store/storedb`, `provision` |
 | `platform/store/channelstore` | `channels/schedule`, `platform/store/storedb`, `provision` |
