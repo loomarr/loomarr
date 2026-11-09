@@ -83,6 +83,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/clips` | — |
 | `filler/defectfloor` | `filler`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/pipelinestate`, `media/creative`, `media/defects`, `media/tools`, `platform/llm` |
 | `filler/enrichment` | `filler/station`, `filler/taxonomy`, `platform/llm` |
+| `filler/fetch` | `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/source`, `media/bgexec`, `platform/storagegovernor` |
 | `filler/language` | `media/bgexec`, `media/tools` |
 | `filler/pipelinestate` | — |
 | `filler/pod` | `channels/schedule`, `filler/clips`, `filler/language` |

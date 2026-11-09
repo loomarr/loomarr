@@ -2,7 +2,6 @@ package filler
 
 import (
 	"context"
-	"errors"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
@@ -178,9 +177,3 @@ type DiscoveredClipStats struct {
 	// Height is the best derivative's vertical resolution — the "480p" quality hint.
 	Height int `json:"height,omitempty"`
 }
-
-// ErrSplitUnavailable reports that compilation splitting cannot run because the
-// filler drop-folder (filler.dir) is unset — clip paths are relative to it, so
-// without it there is nothing to cut. Unlike ErrIngestUnavailable this IS a
-// configuration remedy: Settings → Filler opens it (§10, V34).
-var ErrSplitUnavailable = errors.New("splitting needs the filler drop-folder (filler.dir)")
