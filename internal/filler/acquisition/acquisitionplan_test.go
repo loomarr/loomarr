@@ -9,8 +9,8 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
-func candidate(source, id string, year, height int, license string) acquisition.AcquisitionCandidate {
-	return acquisition.AcquisitionCandidate{
+func candidate(source, id string, year, height int, license string) acquisition.Candidate {
+	return acquisition.Candidate{
 		Identity: acquisition.RemoteIdentity{Provider: "archive", SourceID: source, RemoteID: id},
 		URL:      "https://archive.org/details/" + id, Title: id, License: license,
 		ObservedYear: year, Height: height,
@@ -19,7 +19,7 @@ func candidate(source, id string, year, height int, license string) acquisition.
 
 func TestPlanAcquisition_IsDeterministicAndDiverse(t *testing.T) {
 	intent := acquisition.AcquisitionIntent{Count: 3}
-	input := []acquisition.AcquisitionCandidate{
+	input := []acquisition.Candidate{
 		candidate("a", "third", 1992, 1080, ""),
 		candidate("a", "first", 1990, 480, "cc-by"),
 		candidate("b", "second", 1990, 720, "cc-by"),
@@ -60,7 +60,7 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
-			plan, err := acquisition.PlanAcquisition(tc.intent, []acquisition.AcquisitionCandidate{base}, nil)
+			plan, err := acquisition.PlanAcquisition(tc.intent, []acquisition.Candidate{base}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,7 +74,7 @@ func TestPlanAcquisition_UnknownNeverSatisfiesHardConstraints(t *testing.T) {
 func TestPlanAcquisition_LicenseMetadataDoesNotAffectSelection(t *testing.T) {
 	withLicense := candidate("classic", "z-declared", 1992, 720, "cc-by")
 	withoutLicense := candidate("classic", "a-not-provided", 1992, 720, "")
-	plan, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 1}, []acquisition.AcquisitionCandidate{withLicense, withoutLicense}, nil)
+	plan, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 1}, []acquisition.Candidate{withLicense, withoutLicense}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestPlanAcquisition_LicenseMetadataDoesNotAffectSelection(t *testing.T) {
 func TestPlanAcquisition_ExplainsPriorStateAndDuplicates(t *testing.T) {
 	first := candidate("classic", "same", 1992, 480, "cc-by")
 	key := first.Identity.Key()
-	plan, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 5}, []acquisition.AcquisitionCandidate{
+	plan, err := acquisition.PlanAcquisition(acquisition.AcquisitionIntent{Count: 5}, []acquisition.Candidate{
 		first,
 		first,
 		candidate("classic", "queued", 1992, 480, "cc-by"),

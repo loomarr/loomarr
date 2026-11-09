@@ -20,12 +20,12 @@ func testFillerAcquisitionRepairSummary(t *testing.T, newStore NewStoreFunc) {
 	}
 	for i, id := range []string{"run-old", "run-new"} {
 		at := now.Add(time.Duration(i) * time.Minute)
-		if err := s.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{ID: id, Trigger: acquisition.AcquisitionSource, SourceID: "source", Status: acquisition.AcquisitionSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}); err != nil {
+		if err := s.UpsertAcquisitionRun(ctx, acquisition.AcquisitionRun{ID: id, Trigger: acquisition.TriggerSource, SourceID: "source", Status: acquisition.RunSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	longReason := strings.Repeat("界", 513)
-	artifacts := []acquisition.AcquisitionArtifact{
+	artifacts := []acquisition.Artifact{
 		{ID: "repair-a", AcquisitionID: "run-old", SourceID: "source", Provider: "youtube", SourceURL: "https://youtube.example/a", MediaPath: "a.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: "older", CompletedAt: now, UpdatedAt: now},
 		{ID: "repair-z", AcquisitionID: "run-old", SourceID: "source", Provider: "youtube", SourceURL: "https://youtube.example/z", MediaPath: "z.mp4", MediaSHA256: strings.Repeat("b", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: longReason, CompletedAt: now, UpdatedAt: now},
 	}

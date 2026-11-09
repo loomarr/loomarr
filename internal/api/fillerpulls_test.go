@@ -346,7 +346,7 @@ func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
 		t.Fatalf("downloads = %d, want one", len(ff.ingested))
 	}
 	runs, err := st.ListAcquisitionRuns(t.Context(), 10, time.Now().UTC())
-	if err != nil || len(runs) != 1 || runs[0].PullID != created.ID || runs[0].Status != acquisition.AcquisitionQueued {
+	if err != nil || len(runs) != 1 || runs[0].PullID != created.ID || runs[0].Status != acquisition.RunQueued {
 		t.Fatalf("durable runs = %+v (%v), want exactly one queued run for the pull", runs, err)
 	}
 	decision, err := st.GetPull(t.Context(), created.ID)

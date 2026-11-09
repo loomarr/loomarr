@@ -185,8 +185,8 @@ fi
 func seedArchiveRecoveryRun(t *testing.T, db records.Store, source fetch.Source) {
 	t.Helper()
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
-		ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.AcquisitionPull,
-		Status: acquisition.AcquisitionRunning, Requested: 1,
+		ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull,
+		Status: acquisition.RunRunning, Requested: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

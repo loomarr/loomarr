@@ -832,7 +832,7 @@ type interactiveOperationWriter interface {
 type fillerReadinessStore interface {
 	PipelineOverview(context.Context, time.Time) (pipelinestate.PipelineOverview, error)
 	ListAcquisitionRuns(context.Context, int, time.Time) ([]acquisition.AcquisitionRun, error)
-	AcquisitionRepairSummary(context.Context) (acquisition.AcquisitionRepairSummary, error)
+	AcquisitionRepairSummary(context.Context) (acquisition.RepairSummary, error)
 	CountReadySplitProposals(context.Context) (int, error)
 }
 
@@ -951,13 +951,13 @@ func (a fillerServiceAdapter) Sync(ctx context.Context) (int, int, int, int, err
 // pull uses, because it is the same problem (long external process, no request to hold).
 // ⚠ Downloads only — it does NOT register a source. See `rememberSources`.
 func (a fillerServiceAdapter) Ingest(ctx context.Context, urls []string) (string, error) {
-	return a.ingest(ctx, acquisition.AcquisitionManual, "", acquisitionTargets("", "", urls), nil)
+	return a.ingest(ctx, acquisition.TriggerManual, "", acquisitionTargets("", "", urls), nil)
 }
 
 // IngestSource is the unattended registered-source path. It preserves source attribution through
 // the downloader sidecar while durable acquisition state carries the Enrollment authority.
 func (a fillerServiceAdapter) IngestSource(ctx context.Context, sourceID, sourceKind string, urls []string) (string, error) {
-	return a.ingest(ctx, acquisition.AcquisitionSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
+	return a.ingest(ctx, acquisition.TriggerSource, "", acquisitionTargets(sourceID, sourceKind, urls), nil)
 }
 
 func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
@@ -968,13 +968,13 @@ func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, s
 			DurationMS: int64(item.DurationMS), Height: item.Height, Gap: item.Gap,
 		})
 	}
-	return a.ingest(ctx, acquisition.AcquisitionSource, "", targets, nil)
+	return a.ingest(ctx, acquisition.TriggerSource, "", targets, nil)
 }
 
 // IngestAsked downloads AND remembers the target, for the one path where an operator named it.
 func (a fillerServiceAdapter) IngestAsked(ctx context.Context, urls []string) (string, error) {
 	a.rememberSources(ctx, urls)
-	return a.ingest(ctx, acquisition.AcquisitionManual, "", acquisitionTargets("", "", urls), nil)
+	return a.ingest(ctx, acquisition.TriggerManual, "", acquisitionTargets("", "", urls), nil)
 }
 
 // IngestPull constructs one run for the exact plan, commits its approval before launch,
@@ -988,7 +988,7 @@ func (a fillerServiceAdapter) IngestPull(
 	if commit == nil {
 		return "", errors.New("pull approval commit is required")
 	}
-	return a.ingest(ctx, acquisition.AcquisitionPull, pullID, targets, commit)
+	return a.ingest(ctx, acquisition.TriggerPull, pullID, targets, commit)
 }
 
 func acquisitionTargets(sourceID, sourceKind string, urls []string) []acquisition.AcquisitionTarget {
@@ -1001,7 +1001,7 @@ func acquisitionTargets(sourceID, sourceKind string, urls []string) []acquisitio
 
 func (a fillerServiceAdapter) ingest(
 	ctx context.Context,
-	trigger acquisition.AcquisitionTrigger,
+	trigger acquisition.Trigger,
 	pullID string,
 	targets []acquisition.AcquisitionTarget,
 	commit func(context.Context, acquisition.AcquisitionRun) error,
@@ -1062,7 +1062,7 @@ func (a fillerServiceAdapter) ingest(
 	}
 	run := acquisition.AcquisitionRun{
 		ID: jobID, Trigger: trigger, SourceID: sourceID, PullID: pullID,
-		Status: acquisition.AcquisitionQueued, Requested: len(sources),
+		Status: acquisition.RunQueued, Requested: len(sources),
 		StartedAt: now().UTC(), UpdatedAt: now().UTC(),
 	}
 	if commit != nil {
@@ -1077,7 +1077,7 @@ func (a fillerServiceAdapter) ingest(
 	var res fetch.Result
 	operationTimeout := a.timeout * time.Duration(len(sources))
 	err = a.start(operationTimeout, func(operationCtx context.Context) error {
-		run.Status = acquisition.AcquisitionRunning
+		run.Status = acquisition.RunRunning
 		run.UpdatedAt = now().UTC()
 		a.persistAcquisition(operationCtx, run)
 		a.publishIngest(jobID, "starting", fetch.Result{}, "")
@@ -1098,17 +1098,17 @@ func (a fillerServiceAdapter) ingest(
 		return nil
 	}, func(completionCtx context.Context, runErr error) {
 		if runErr != nil {
-			run.Status = acquisition.AcquisitionError
+			run.Status = acquisition.RunError
 			run.Error = runErr.Error()
 		} else {
-			run.Status = acquisition.AcquisitionSuccess
+			run.Status = acquisition.RunSuccess
 		}
 		run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
 		a.persistAcquisition(completionCtx, run)
 		a.publishIngest(jobID, string(run.Status), res, run.Error)
 	})
 	if err != nil {
-		run.Status = acquisition.AcquisitionError
+		run.Status = acquisition.RunError
 		run.Error = err.Error()
 		run.CompletedAt, run.UpdatedAt = now().UTC(), now().UTC()
 		a.persistAcquisition(ctx, run)

@@ -827,21 +827,21 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	run := acquisition.AcquisitionRun{
-		ID: "identity-acquisition", Trigger: acquisition.AcquisitionSource, SourceID: "youtube:ads",
-		Status: acquisition.AcquisitionSuccess, Requested: 1, Fetched: 1,
+		ID: "identity-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
+		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
 		StartedAt: now, CompletedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	artifact := acquisition.AcquisitionArtifact{
+	artifact := acquisition.Artifact{
 		ID: "identity-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
 		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=identity-artifact",
 		RemoteID: "identity-artifact", MediaPath: old.Path,
 		MediaSHA256: strings.Repeat("a", 64), MediaBytes: 42, ClipHash: old.Hash,
 		State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertClipFingerprint(ctx, old.Hash, "creative-test", frames(1, 2, 3)); err != nil {
@@ -1081,21 +1081,21 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	run := acquisition.AcquisitionRun{
-		ID: "conditioning-acquisition", Trigger: acquisition.AcquisitionSource, SourceID: "youtube:ads",
-		Status: acquisition.AcquisitionSuccess, Requested: 1, Fetched: 1,
+		ID: "conditioning-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
+		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
 		StartedAt: now, CompletedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	artifact := acquisition.AcquisitionArtifact{
+	artifact := acquisition.Artifact{
 		ID: "conditioning-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
 		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=conditioning-artifact",
 		RemoteID: "conditioning-artifact", MediaPath: source.Path,
 		MediaSHA256: strings.Repeat("b", 64), MediaBytes: 84, ClipHash: source.Hash,
 		State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
@@ -1400,12 +1400,12 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
 	older := acquisition.AcquisitionRun{
-		ID: "acq-old", Trigger: acquisition.AcquisitionScheduled, SourceID: "archive:classic",
-		Status: acquisition.AcquisitionRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+		ID: "acq-old", Trigger: acquisition.TriggerScheduled, SourceID: "archive:classic",
+		Status: acquisition.RunRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
 	}
 	newer := acquisition.AcquisitionRun{
-		ID: "acq-new", Trigger: acquisition.AcquisitionPull, SourceID: "archive:vault", PullID: "pull-7",
-		Status: acquisition.AcquisitionSuccess, Requested: 4, Fetched: 2, Skipped: 1, Failed: 1,
+		ID: "acq-new", Trigger: acquisition.TriggerPull, SourceID: "archive:vault", PullID: "pull-7",
+		Status: acquisition.RunSuccess, Requested: 4, Fetched: 2, Skipped: 1, Failed: 1,
 		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
 	}
 	// Establish the pull-bound run through the same durable approval boundary.
@@ -1415,7 +1415,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	approval.Status, approval.DecidedAt = acquisition.PullApproved, newer.StartedAt
-	initial := acquisition.AcquisitionRun{ID: newer.ID, Trigger: newer.Trigger, SourceID: newer.SourceID, PullID: newer.PullID, Status: acquisition.AcquisitionQueued, Requested: newer.Requested, StartedAt: newer.StartedAt, UpdatedAt: newer.StartedAt}
+	initial := acquisition.AcquisitionRun{ID: newer.ID, Trigger: newer.Trigger, SourceID: newer.SourceID, PullID: newer.PullID, Status: acquisition.RunQueued, Requested: newer.Requested, StartedAt: newer.StartedAt, UpdatedAt: newer.StartedAt}
 	if err := s.CommitPullApproval(ctx, approval, initial); err != nil {
 		t.Fatal(err)
 	}
@@ -1425,7 +1425,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 	queued := acquisition.AcquisitionRun{
-		ID: "acq-queued", Trigger: acquisition.AcquisitionManual, Status: acquisition.AcquisitionQueued,
+		ID: "acq-queued", Trigger: acquisition.TriggerManual, Status: acquisition.RunQueued,
 		Requested: 1, StartedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour),
 	}
 	if err := s.UpsertAcquisitionRun(ctx, queued); err != nil {
@@ -1448,13 +1448,13 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	}
 	// #749: "ready" was downloaded for a coverage gap and "rejected" was split out of it, so both
 	// count toward that gap; "review" was an unsteered download of the same run.
-	for _, a := range []acquisition.AcquisitionArtifact{
+	for _, a := range []acquisition.Artifact{
 		{ID: "gap-art", ClipHash: "ready", Gap: "era:1990-1999", MediaPath: "ready.mp4"},
 		{ID: "plain-art", ClipHash: "review", MediaPath: "review.mp4"},
 	} {
 		a.AcquisitionID, a.Provider, a.SourceURL = newer.ID, "archive", "https://archive.org/details/"+a.ID
 		a.MediaSHA256, a.MediaBytes, a.State, a.CompletedAt, a.UpdatedAt = strings.Repeat("d", 64), 1, acquisition.ArtifactConsumed, now, now
-		if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{a}); err != nil {
+		if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{a}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1471,20 +1471,20 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	if len(runs) != 1 || runs[0].ID != newer.ID {
 		t.Fatalf("latest acquisition = %+v, want only %s", runs, newer.ID)
 	}
-	wantOutcome := acquisition.AcquisitionOutcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Ready: 1, Rejected: 1}
+	wantOutcome := acquisition.Outcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Ready: 1, Rejected: 1}
 	if runs[0].Outcome != wantOutcome {
 		t.Fatalf("outcome = %+v, want %+v", runs[0].Outcome, wantOutcome)
 	}
 	if runs[0].PullID != "pull-7" || runs[0].Fetched != 2 || !runs[0].CompletedAt.Equal(now) {
 		t.Fatalf("run facts did not round-trip: %+v", runs[0])
 	}
-	wantYield := []acquisition.AcquisitionGapYield{{Gap: "era:1990-1999", Downloads: 1,
-		Outcome: acquisition.AcquisitionOutcome{Enrolled: 2, Ready: 1, Rejected: 1}}}
+	wantYield := []acquisition.GapYield{{Gap: "era:1990-1999", Downloads: 1,
+		Outcome: acquisition.Outcome{Enrolled: 2, Ready: 1, Rejected: 1}}}
 	if !reflect.DeepEqual(runs[0].GapYield, wantYield) {
 		t.Fatalf("gap yield = %+v, want %+v", runs[0].GapYield, wantYield)
 	}
 
-	newer.Status, newer.Error, newer.UpdatedAt = acquisition.AcquisitionError, "catalogue failed", now.Add(time.Minute)
+	newer.Status, newer.Error, newer.UpdatedAt = acquisition.RunError, "catalogue failed", now.Add(time.Minute)
 	if err := s.UpsertAcquisitionRun(ctx, newer); err != nil {
 		t.Fatal(err)
 	}
@@ -1492,7 +1492,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != acquisition.AcquisitionError || got.Error != "catalogue failed" || got.Outcome != wantOutcome {
+	if got.Status != acquisition.RunError || got.Error != "catalogue failed" || got.Outcome != wantOutcome {
 		t.Fatalf("updated acquisition = %+v", got)
 	}
 	if _, err := s.GetAcquisitionRun(ctx, "missing", now); !errors.Is(err, ErrNotFound) {
@@ -1508,7 +1508,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if run.Status != acquisition.AcquisitionError || run.Error == "" || !run.CompletedAt.Equal(recoveredAt) {
+		if run.Status != acquisition.RunError || run.Error == "" || !run.CompletedAt.Equal(recoveredAt) {
 			t.Fatalf("recovered %s = %+v", id, run)
 		}
 	}
@@ -1527,13 +1527,13 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
 	run := acquisition.AcquisitionRun{
-		ID: "acq-manifest", Trigger: acquisition.AcquisitionSource, SourceID: "archive:classic",
-		Status: acquisition.AcquisitionRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
+		ID: "acq-manifest", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
+		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	artifacts := []acquisition.AcquisitionArtifact{
+	artifacts := []acquisition.Artifact{
 		{
 			ID: "artifact-one", AcquisitionID: run.ID, SourceID: run.SourceID,
 			Provider: "youtube", SourceURL: "https://youtube.com/watch?v=artifact-one", RemoteID: "artifact-one",
@@ -1554,7 +1554,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertAcquisitionArtifacts(ctx, artifacts); err != nil {
 		t.Fatal(err)
 	}
-	page, err := s.ListRecoverableAcquisitionArtifactsAfter(ctx, acquisition.AcquisitionArtifactCursor{UpdatedAt: now, ID: artifacts[0].ID}, 10)
+	page, err := s.ListRecoverableAcquisitionArtifactsAfter(ctx, acquisition.ArtifactCursor{UpdatedAt: now, ID: artifacts[0].ID}, 10)
 	if err != nil || len(page) != 1 || page[0].ID != artifacts[1].ID {
 		t.Fatalf("recoverable page after first artifact = %+v, %v", page, err)
 	}
@@ -1599,7 +1599,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	invalid := artifacts[1]
 	invalid.ID = "invalid"
 	invalid.MediaPath = "../escape.mp4"
-	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{invalid}); err == nil {
+	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{invalid}); err == nil {
 		t.Fatal("invalid manifest reached persistence")
 	}
 }
@@ -3617,8 +3617,8 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 			{SourceID: "classic", Provider: "archive", RemoteID: "ad-one", URL: "https://archive.org/details/ad-one", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 1},
 			{SourceID: "psa", Provider: "archive", RemoteID: "psa-one", URL: "https://archive.org/details/psa-one", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 1},
 		},
-		Rejected: []acquisition.AcquisitionDecision{{Candidate: acquisition.AcquisitionCandidate{Identity: acquisition.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "old"}, URL: "https://archive.org/details/old"}, Disposition: acquisition.CandidateAlreadyCatalogued, Detail: "already present"}},
-		Sources:  []acquisition.AcquisitionSourceDecision{{SourceID: "classic", Provider: "archive", Disposition: acquisition.AcquisitionSourceEnumerated, CandidateCount: 2, Detail: "enumerated metadata"}},
+		Rejected: []acquisition.Decision{{Candidate: acquisition.Candidate{Identity: acquisition.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "old"}, URL: "https://archive.org/details/old"}, Disposition: acquisition.CandidateAlreadyCatalogued, Detail: "already present"}},
+		Sources:  []acquisition.AcquisitionSourceDecision{{SourceID: "classic", Provider: "archive", Disposition: acquisition.SourceEnumerated, CandidateCount: 2, Detail: "enumerated metadata"}},
 	}
 	if err := s.UpsertPull(ctx, p); err != nil {
 		t.Fatal(err)

@@ -18,7 +18,7 @@ const acquisitionArtifactSelect = `SELECT id, acquisition_id, source_id, provide
 
 // UpsertAcquisitionArtifacts records one downloader result atomically. Publication may begin only
 // after this returns, so partial manifest persistence can never make only part of a source visible.
-func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error {
+func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error {
 	for _, artifact := range artifacts {
 		if err := artifact.Validate(); err != nil {
 			return fmt.Errorf("validate filler acquisition artifact %q: %w", artifact.ID, err)
@@ -63,8 +63,8 @@ func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []a
 	return nil
 }
 
-func scanAcquisitionArtifact(sc scannable) (acquisition.AcquisitionArtifact, error) {
-	var artifact acquisition.AcquisitionArtifact
+func scanAcquisitionArtifact(sc scannable) (acquisition.Artifact, error) {
+	var artifact acquisition.Artifact
 	var state string
 	var completedAt, updatedAt int64
 	if err := sc.Scan(
@@ -74,9 +74,9 @@ func scanAcquisitionArtifact(sc scannable) (acquisition.AcquisitionArtifact, err
 		&artifact.RepairReason, &completedAt, &updatedAt, &artifact.ProviderArchiveEntry,
 		&artifact.ProviderArchiveCommitted, &artifact.Gap,
 	); err != nil {
-		return acquisition.AcquisitionArtifact{}, err
+		return acquisition.Artifact{}, err
 	}
-	artifact.State = acquisition.AcquisitionArtifactState(state)
+	artifact.State = acquisition.ArtifactState(state)
 	artifact.CompletedAt = fromEpoch(completedAt)
 	artifact.UpdatedAt = fromEpoch(updatedAt)
 	return artifact, nil
@@ -90,34 +90,34 @@ func scanAcquisitionArtifact(sc scannable) (acquisition.AcquisitionArtifact, err
 func (s *sqlStore) AcquisitionArtifactForClip(
 	ctx context.Context,
 	mediaPath, clipHash string,
-) (acquisition.AcquisitionArtifact, bool, error) {
+) (acquisition.Artifact, bool, error) {
 	sidecarPath := strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 	artifact, err := scanAcquisitionArtifact(s.db.QueryRowContext(ctx, s.ph(acquisitionArtifactSelect+`
 		WHERE media_path = ? OR sidecar_path = ? OR (? <> '' AND clip_hash = ?)
 		ORDER BY updated_at DESC, id DESC LIMIT 1`), mediaPath, sidecarPath, clipHash, clipHash))
 	if errors.Is(err, sql.ErrNoRows) {
-		return acquisition.AcquisitionArtifact{}, false, nil
+		return acquisition.Artifact{}, false, nil
 	}
 	if err != nil {
-		return acquisition.AcquisitionArtifact{}, false, fmt.Errorf("resolve filler acquisition artifact: %w", err)
+		return acquisition.Artifact{}, false, fmt.Errorf("resolve filler acquisition artifact: %w", err)
 	}
 	return artifact, true, nil
 }
 
 // ListRecoverableAcquisitionArtifacts returns bounded non-consumed rows for startup and explicit
 // repair. It includes repair rows because they retain bytes and an actionable reason.
-func (s *sqlStore) ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.AcquisitionArtifact, error) {
-	return s.listRecoverableAcquisitionArtifacts(ctx, acquisition.AcquisitionArtifactCursor{}, limit)
+func (s *sqlStore) ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.Artifact, error) {
+	return s.listRecoverableAcquisitionArtifacts(ctx, acquisition.ArtifactCursor{}, limit)
 }
 
 // ListRecoverableAcquisitionArtifactsAfter continues a stable oldest-first scan. Recovery may
 // update a row's timestamp, so its cursor is captured before processing rather than inferred from
 // the row subsequently persisted.
-func (s *sqlStore) ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after acquisition.AcquisitionArtifactCursor, limit int) ([]acquisition.AcquisitionArtifact, error) {
+func (s *sqlStore) ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after acquisition.ArtifactCursor, limit int) ([]acquisition.Artifact, error) {
 	return s.listRecoverableAcquisitionArtifacts(ctx, after, limit)
 }
 
-func (s *sqlStore) listRecoverableAcquisitionArtifacts(ctx context.Context, after acquisition.AcquisitionArtifactCursor, limit int) ([]acquisition.AcquisitionArtifact, error) {
+func (s *sqlStore) listRecoverableAcquisitionArtifacts(ctx context.Context, after acquisition.ArtifactCursor, limit int) ([]acquisition.Artifact, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -132,7 +132,7 @@ func (s *sqlStore) listRecoverableAcquisitionArtifacts(ctx context.Context, afte
 		return nil, fmt.Errorf("list recoverable filler acquisition artifacts: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	artifacts := make([]acquisition.AcquisitionArtifact, 0)
+	artifacts := make([]acquisition.Artifact, 0)
 	for rows.Next() {
 		artifact, err := scanAcquisitionArtifact(rows)
 		if err != nil {
@@ -163,7 +163,7 @@ func (s *sqlStore) ListAcquisitionRemoteStates(ctx context.Context) (map[string]
 		}
 		identity := acquisition.RemoteIdentity{Provider: provider, SourceID: sourceID, RemoteID: remoteID}
 		remoteState := acquisition.RemoteQueued
-		if acquisition.AcquisitionArtifactState(state) == acquisition.ArtifactConsumed {
+		if acquisition.ArtifactState(state) == acquisition.ArtifactConsumed {
 			remoteState = acquisition.RemoteCatalogued
 		}
 		if out[identity.Key()] != acquisition.RemoteCatalogued {

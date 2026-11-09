@@ -127,7 +127,7 @@ type Downloader interface {
 }
 
 type ArtifactWriter interface {
-	UpsertAcquisitionArtifacts(context.Context, []acquisition.AcquisitionArtifact) error
+	UpsertAcquisitionArtifacts(context.Context, []acquisition.Artifact) error
 }
 
 // ArchiveCommitter advances provider deduplication only after the downloaded output has a
@@ -328,7 +328,7 @@ type Result struct {
 	// Empty counts sources that returned no clips and no error — a
 	// nonexistent/typo'd id or empty source (surfaced so it isn't silent).
 	Empty     int
-	Artifacts []acquisition.AcquisitionArtifact
+	Artifacts []acquisition.Artifact
 }
 
 // Run ingests every source once. A failed source is logged and counted, never
@@ -447,9 +447,9 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 	return res
 }
 
-func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []acquisition.AcquisitionArtifact {
+func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []acquisition.Artifact {
 	now := i.now().UTC()
-	manifests := make([]acquisition.AcquisitionArtifact, 0, len(outputs))
+	manifests := make([]acquisition.Artifact, 0, len(outputs))
 	for _, output := range outputs {
 		outputRelative, outputErr := filepath.Rel(outputDir, output.MediaPath)
 		stagingPath, stageErr := filepath.Rel(i.dropDir, output.MediaPath)
@@ -476,7 +476,7 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []a
 			state = acquisition.ArtifactRepair
 		}
 		identity := sha256.Sum256([]byte(src.AcquisitionID + "\x00" + src.URL + "\x00" + mediaPath + "\x00" + output.SHA256))
-		manifests = append(manifests, acquisition.AcquisitionArtifact{
+		manifests = append(manifests, acquisition.Artifact{
 			ID: hex.EncodeToString(identity[:]), AcquisitionID: src.AcquisitionID, SourceID: src.ID,
 			Provider: string(src.Kind), SourceURL: src.URL, RemoteID: src.RemoteID, StagingPath: stagingPath,
 			MediaPath: mediaPath, SidecarPath: sidecarPath, MediaSHA256: output.SHA256,
@@ -488,8 +488,8 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []a
 	return manifests
 }
 
-func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.AcquisitionArtifact, outputs []Output) ([]acquisition.AcquisitionArtifact, error) {
-	updated := append([]acquisition.AcquisitionArtifact(nil), manifests...)
+func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Artifact, outputs []Output) ([]acquisition.Artifact, error) {
+	updated := append([]acquisition.Artifact(nil), manifests...)
 	for index := range updated {
 		if updated[index].State == acquisition.ArtifactRepair {
 			continue
@@ -525,7 +525,7 @@ func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Acquisit
 // publishSidecar publishes the provenance sidecar idempotently: an existing target that is this
 // artifact's own earlier attempt counts as published, while one belonging to another item is a
 // conflict and is left untouched.
-func publishSidecar(source, target string, artifact acquisition.AcquisitionArtifact) error {
+func publishSidecar(source, target string, artifact acquisition.Artifact) error {
 	if _, err := os.Lstat(target); err == nil {
 		return acceptExistingSidecar(source, target, artifact)
 	} else if !errors.Is(err, os.ErrNotExist) {

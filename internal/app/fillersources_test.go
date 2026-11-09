@@ -341,8 +341,8 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 	if jobID != "acq-17" {
 		t.Fatalf("job id = %q, want acq-17", jobID)
 	}
-	for i, want := range []acquisition.AcquisitionStatus{
-		acquisition.AcquisitionQueued, acquisition.AcquisitionRunning, acquisition.AcquisitionSuccess,
+	for i, want := range []acquisition.RunStatus{
+		acquisition.RunQueued, acquisition.RunRunning, acquisition.RunSuccess,
 	} {
 		select {
 		case run := <-runs:
@@ -352,7 +352,7 @@ func TestIngest_PersistsLifecycleAndCarriesAcquisitionToDownloader(t *testing.T)
 			if run.ID != "acq-17" || run.SourceID != "archive:classic" || run.Requested != 2 {
 				t.Fatalf("snapshot %d = %+v, want stable run identity and request count", i, run)
 			}
-			if want == acquisition.AcquisitionSuccess && (run.Fetched != 2 || run.Skipped != 1 || run.CompletedAt.IsZero()) {
+			if want == acquisition.RunSuccess && (run.Fetched != 2 || run.Skipped != 1 || run.CompletedAt.IsZero()) {
 				t.Fatalf("terminal snapshot = %+v, want downloader counts and completion", run)
 			}
 		case <-time.After(time.Second):
@@ -614,7 +614,7 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	if _, err := a.Ingest(requestCtx, []string{"https://archive.org/details/one"}); err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
-	if run := <-runs; run.Status != acquisition.AcquisitionQueued {
+	if run := <-runs; run.Status != acquisition.RunQueued {
 		t.Fatalf("first run = %q, want queued", run.Status)
 	}
 	<-started
@@ -629,11 +629,11 @@ func TestIngest_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 		t.Fatalf("Shutdown: %v", err)
 	}
 	<-cancelled
-	if run := <-runs; run.Status != acquisition.AcquisitionRunning {
+	if run := <-runs; run.Status != acquisition.RunRunning {
 		t.Fatalf("second run = %q, want running", run.Status)
 	}
 	terminal := <-runs
-	if terminal.Status != acquisition.AcquisitionError || terminal.Error == "" || terminal.CompletedAt.IsZero() {
+	if terminal.Status != acquisition.RunError || terminal.Error == "" || terminal.CompletedAt.IsZero() {
 		t.Fatalf("terminal run = %+v, want durable cancellation error", terminal)
 	}
 }

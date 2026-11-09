@@ -263,7 +263,7 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []ac
 	if f.ingestPullErr != nil {
 		return "", f.ingestPullErr
 	}
-	if err := commit(ctx, acquisition.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: acquisition.AcquisitionPull, Status: acquisition.AcquisitionQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
+	if err := commit(ctx, acquisition.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: acquisition.TriggerPull, Status: acquisition.RunQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		return "", err
 	}
 	f.pullID = pullID

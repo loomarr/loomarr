@@ -62,15 +62,15 @@ func (m *memStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error 
 }
 
 type manifestAuthority struct {
-	artifact acquisition.AcquisitionArtifact
+	artifact acquisition.Artifact
 	found    bool
 }
 
-func (m *manifestAuthority) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.AcquisitionArtifact, bool, error) {
+func (m *manifestAuthority) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.Artifact, bool, error) {
 	return m.artifact, m.found && clipHash == m.artifact.ClipHash, nil
 }
 
-func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifacts []acquisition.AcquisitionArtifact) error {
+func (m *manifestAuthority) UpsertAcquisitionArtifacts(_ context.Context, artifacts []acquisition.Artifact) error {
 	if len(artifacts) == 1 {
 		m.artifact = artifacts[0]
 		m.found = true
@@ -487,7 +487,7 @@ func TestSync_DurableManifestHoldsAndRepairsDownloadedClipWithoutSidecar(t *test
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &manifestAuthority{found: true, artifact: acquisition.AcquisitionArtifact{
+	authority := &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: ".loomarr-acquisitions/acq-1/download.mp4", MediaPath: "download.mp4",
@@ -533,7 +533,7 @@ func TestSync_RefusesManifestDigestSubstitution(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &manifestAuthority{found: true, artifact: acquisition.AcquisitionArtifact{
+	authority := &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", Provider: "youtube",
 		SourceURL: "https://youtube.com/watch?v=one", MediaPath: filepath.Base(media),
 		MediaSHA256: strings.Repeat("f", 64), MediaBytes: size, ClipHash: clipHash,

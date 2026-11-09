@@ -21,10 +21,10 @@ func TestAcquisitionOutcomeFromUsesPipelineLifecycle(t *testing.T) {
 		{Status: pipelinestate.StatusFailed, Disposition: pipelinestate.DispositionRejected},
 		{Status: pipelinestate.StatusDone, Disposition: pipelinestate.DispositionDismissed},
 	}
-	want := acquisition.AcquisitionOutcome{
+	want := acquisition.Outcome{
 		Enrolled: 8, Preparing: 3, NeedsDecision: 1, Ready: 1, Complete: 1, Rejected: 1, Dismissed: 1,
 	}
-	if got := acquisition.AcquisitionOutcomeFrom(rows, now); got != want {
+	if got := acquisition.OutcomeFrom(rows, now); got != want {
 		t.Fatalf("AcquisitionOutcomeFrom() = %+v, want %+v", got, want)
 	}
 }

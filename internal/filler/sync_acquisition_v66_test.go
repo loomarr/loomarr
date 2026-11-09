@@ -14,19 +14,19 @@ import (
 )
 
 type consumedAcquisitionAuthority struct {
-	artifact acquisition.AcquisitionArtifact
+	artifact acquisition.Artifact
 }
 
 func (a *consumedAcquisitionAuthority) AcquisitionArtifactForClip(
 	_ context.Context,
 	_, clipHash string,
-) (acquisition.AcquisitionArtifact, bool, error) {
+) (acquisition.Artifact, bool, error) {
 	return a.artifact, clipHash == a.artifact.ClipHash, nil
 }
 
 func (a *consumedAcquisitionAuthority) UpsertAcquisitionArtifacts(
 	_ context.Context,
-	artifacts []acquisition.AcquisitionArtifact,
+	artifacts []acquisition.Artifact,
 ) error {
 	if len(artifacts) == 1 {
 		a.artifact = artifacts[0]
@@ -97,7 +97,7 @@ func newConsumedV66Fixture(t *testing.T) consumedV66Fixture {
 	}
 
 	now := time.Unix(1_800_000_000, 0).UTC()
-	authority := &consumedAcquisitionAuthority{artifact: acquisition.AcquisitionArtifact{
+	authority := &consumedAcquisitionAuthority{artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "archive:classic",
 		Provider: "archive", SourceURL: "https://archive.example/details/one",
 		MediaPath: "retired-intake-name.mp4", MediaSHA256: sourceSHA, MediaBytes: sourceBytes,

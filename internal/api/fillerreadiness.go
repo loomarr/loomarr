@@ -246,7 +246,7 @@ func acquisitionRunDTO(run acquisition.AcquisitionRun) FillerAcquisitionRunDTO {
 	}
 }
 
-func acquisitionOutcomeDTO(o acquisition.AcquisitionOutcome) AcquisitionOutcomeDTO {
+func acquisitionOutcomeDTO(o acquisition.Outcome) AcquisitionOutcomeDTO {
 	return AcquisitionOutcomeDTO{
 		Enrolled: o.Enrolled, Preparing: o.Preparing, NeedsDecision: o.NeedsDecision,
 		Ready: o.Ready, Complete: o.Complete, Rejected: o.Rejected, Dismissed: o.Dismissed,

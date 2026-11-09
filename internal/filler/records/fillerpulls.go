@@ -25,7 +25,7 @@ type fillerPullPlanDocument struct {
 	Version  string                                  `json:"version"`
 	Intent   acquisition.AcquisitionIntent           `json:"intent"`
 	Selected []acquisition.PullPlanRow               `json:"selected"`
-	Rejected []acquisition.AcquisitionDecision       `json:"rejected"`
+	Rejected []acquisition.Decision                  `json:"rejected"`
 	Sources  []acquisition.AcquisitionSourceDecision `json:"sources"`
 }
 

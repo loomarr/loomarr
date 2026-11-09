@@ -136,7 +136,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	if jobID != "acq-beta-journey" {
 		t.Fatalf("job id = %q, want acq-beta-journey", jobID)
 	}
-	waitForAcquisition(t, st, jobID, now, acquisition.AcquisitionSuccess)
+	waitForAcquisition(t, st, jobID, now, acquisition.RunSuccess)
 
 	held, err := st.ListClips(ctx, clipstore.ClipFilter{IncludeHeld: true})
 	if err != nil {
@@ -226,7 +226,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.AcquisitionStatus) {
+func waitForAcquisition(t *testing.T, st records.Store, id string, at time.Time, want acquisition.RunStatus) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

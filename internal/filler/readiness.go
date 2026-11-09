@@ -50,7 +50,7 @@ type ReadinessInput struct {
 	Pipeline pipelinestate.PipelineOverview
 	Pool     pod.PoolReport
 	Runs     []acquisition.AcquisitionRun
-	Repairs  acquisition.AcquisitionRepairSummary
+	Repairs  acquisition.RepairSummary
 	// NeedsYou is Incoming's needs-help total: the choices Incoming lists. Review asks for a
 	// choice only when Incoming has one to show (#2733).
 	NeedsYou int
@@ -70,7 +70,7 @@ type Readiness struct {
 	Pipeline pipelinestate.PipelineOverview
 	Pool     pod.PoolReport
 	Runs     []acquisition.AcquisitionRun
-	Repairs  acquisition.AcquisitionRepairSummary
+	Repairs  acquisition.RepairSummary
 }
 
 // ProjectReadiness chooses one next action in impact order. Machine blockage precedes operator
@@ -94,7 +94,7 @@ func ProjectReadiness(in ReadinessInput) Readiness {
 	// below, is the accurate next step. Sending it to "choose another folder" was the wrong fix.
 	case in.Repairs.Count > 0:
 		out.Next, out.Count = ReadinessRetryAcquisition, in.Repairs.Count
-	case len(in.Runs) > 0 && (in.Runs[0].Status == acquisition.AcquisitionError || in.Runs[0].Artifacts.Repair > 0):
+	case len(in.Runs) > 0 && (in.Runs[0].Status == acquisition.RunError || in.Runs[0].Artifacts.Repair > 0):
 		out.Next, out.Count = ReadinessRetryAcquisition, in.Runs[0].Failed+in.Runs[0].Artifacts.Repair
 	case in.Pipeline.Recoverable > 0:
 		out.Next, out.Count = ReadinessRetryWork, in.Pipeline.Recoverable

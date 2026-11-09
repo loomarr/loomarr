@@ -75,13 +75,13 @@ type FillerAcquisitionStore interface {
 	UpsertAcquisitionRun(ctx context.Context, run acquisition.AcquisitionRun) error
 	// UpsertAcquisitionArtifacts atomically records the exact downloaded-byte manifest before
 	// publication makes any artifact eligible for intake.
-	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error
+	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error
 	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
-	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.AcquisitionArtifact, bool, error)
+	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
 	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
-	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.AcquisitionArtifact, error)
+	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.Artifact, error)
 	// ListRecoverableAcquisitionArtifactsAfter continues a stable bounded recovery scan.
-	ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after acquisition.AcquisitionArtifactCursor, limit int) ([]acquisition.AcquisitionArtifact, error)
+	ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after acquisition.ArtifactCursor, limit int) ([]acquisition.Artifact, error)
 	// ListAcquisitionRemoteStates is the acquisition planner's exact-item high-water mark.
 	ListAcquisitionRemoteStates(ctx context.Context) (map[string]acquisition.ExistingRemoteState, error)
 	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
@@ -91,7 +91,7 @@ type FillerAcquisitionStore interface {
 	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]acquisition.AcquisitionRun, error)
 	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
 	// the bounded acquisition history page.
-	AcquisitionRepairSummary(ctx context.Context) (acquisition.AcquisitionRepairSummary, error)
+	AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error)
 }
 
 // FillerInferenceStore owns append-only call attribution and the atomic budget

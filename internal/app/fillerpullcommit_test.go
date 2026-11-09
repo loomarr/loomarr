@@ -30,7 +30,7 @@ func TestIngestPull_CommitFailureNeverLaunches(t *testing.T) {
 	}
 	_, err := a.IngestPull(t.Context(), "pull", []acquisition.AcquisitionTarget{{SourceID: "classic", Kind: "archive", URL: "https://archive.org/details/one"}},
 		func(_ context.Context, run acquisition.AcquisitionRun) error {
-			if run.Status != acquisition.AcquisitionQueued || run.ID != "uncommitted" || run.PullID != "pull" {
+			if run.Status != acquisition.RunQueued || run.ID != "uncommitted" || run.PullID != "pull" {
 				t.Errorf("commit received wrong run: %+v", run)
 			}
 			return commitErr
@@ -91,9 +91,9 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 				}
 			}()
 			run, err := st.GetAcquisitionRun(t.Context(), "only-run", now)
-			wantStatus := acquisition.AcquisitionError
+			wantStatus := acquisition.RunError
 			if crash {
-				wantStatus = acquisition.AcquisitionQueued
+				wantStatus = acquisition.RunQueued
 			}
 			if err != nil || run.Status != wantStatus {
 				t.Fatalf("interrupted run = %+v (%v), want %s", run, err, wantStatus)
@@ -117,7 +117,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 				t.Fatalf("decision audit changed after restart: %+v (%v)", decision, err)
 			}
 			runs, err := st.ListAcquisitionRuns(t.Context(), 10, now.Add(time.Minute))
-			if err != nil || len(runs) != 1 || runs[0].ID != "only-run" || runs[0].Status != acquisition.AcquisitionError || runs[0].Error == "" {
+			if err != nil || len(runs) != 1 || runs[0].ID != "only-run" || runs[0].Status != acquisition.RunError || runs[0].Error == "" {
 				t.Fatalf("restart runs = %+v (%v), want one visible error", runs, err)
 			}
 			select {

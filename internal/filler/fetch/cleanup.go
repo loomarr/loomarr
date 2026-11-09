@@ -18,7 +18,7 @@ const acquisitionCleanupGrace = 24 * time.Hour
 
 type AcquisitionCleanupStore interface {
 	GetAcquisitionRun(context.Context, string, time.Time) (acquisition.AcquisitionRun, error)
-	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.AcquisitionArtifactCursor, int) ([]acquisition.AcquisitionArtifact, error)
+	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.ArtifactCursor, int) ([]acquisition.Artifact, error)
 }
 
 // AcquisitionCleaner owns the only user-triggered storage cleanup in Filler. It removes stale
@@ -116,7 +116,7 @@ func (c *AcquisitionCleaner) candidates(ctx context.Context) ([]acquisitionClean
 			continue
 		}
 		run, runErr := c.store.GetAcquisitionRun(ctx, entry.Name(), c.now().UTC())
-		if runErr != nil || (run.Status != acquisition.AcquisitionSuccess && run.Status != acquisition.AcquisitionError) {
+		if runErr != nil || (run.Status != acquisition.RunSuccess && run.Status != acquisition.RunError) {
 			continue
 		}
 		acquisitionDir := filepath.Join(root, entry.Name())
@@ -144,7 +144,7 @@ func (c *AcquisitionCleaner) candidates(ctx context.Context) ([]acquisitionClean
 
 func (c *AcquisitionCleaner) protectedStaging(ctx context.Context, stagingRoot string) (map[string]bool, error) {
 	protected := make(map[string]bool)
-	var cursor acquisition.AcquisitionArtifactCursor
+	var cursor acquisition.ArtifactCursor
 	for {
 		artifacts, err := c.store.ListRecoverableAcquisitionArtifactsAfter(ctx, cursor, 500)
 		if err != nil {
@@ -154,7 +154,7 @@ func (c *AcquisitionCleaner) protectedStaging(ctx context.Context, stagingRoot s
 			return protected, nil
 		}
 		for _, artifact := range artifacts {
-			cursor = acquisition.AcquisitionArtifactCursor{UpdatedAt: artifact.UpdatedAt, ID: artifact.ID}
+			cursor = acquisition.ArtifactCursor{UpdatedAt: artifact.UpdatedAt, ID: artifact.ID}
 			if artifact.State != acquisition.ArtifactStaged && artifact.State != acquisition.ArtifactRepair {
 				continue
 			}

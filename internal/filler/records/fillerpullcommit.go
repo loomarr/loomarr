@@ -11,8 +11,8 @@ import (
 // decision; an insert failure rolls it back, so no downloader may start on a partial commit.
 func (s *sqlStore) CommitPullApproval(ctx context.Context, p acquisition.Pull, run acquisition.AcquisitionRun) error {
 	if p.ID == "" || p.Status != acquisition.PullApproved || p.DecidedAt.IsZero() ||
-		run.ID == "" || run.PullID != p.ID || run.Trigger != acquisition.AcquisitionPull ||
-		run.Status != acquisition.AcquisitionQueued || len(p.Committed()) == 0 || run.Requested != len(p.Committed()) {
+		run.ID == "" || run.PullID != p.ID || run.Trigger != acquisition.TriggerPull ||
+		run.Status != acquisition.RunQueued || len(p.Committed()) == 0 || run.Requested != len(p.Committed()) {
 		return fmt.Errorf("invalid filler pull approval")
 	}
 	plan, err := encodePullPlan(p)

@@ -23,20 +23,20 @@ func openRecoveryStore(t *testing.T) records.Store {
 	return db
 }
 
-func seedRecoveryArtifact(t *testing.T, db records.Store, artifact acquisition.AcquisitionArtifact) {
+func seedRecoveryArtifact(t *testing.T, db records.Store, artifact acquisition.Artifact) {
 	t.Helper()
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
-		ID: artifact.AcquisitionID, Trigger: acquisition.AcquisitionPull, SourceID: artifact.SourceID,
-		Status: acquisition.AcquisitionSuccess, Requested: 1, UpdatedAt: artifact.UpdatedAt,
+		ID: artifact.AcquisitionID, Trigger: acquisition.TriggerPull, SourceID: artifact.SourceID,
+		Status: acquisition.RunSuccess, Requested: 1, UpdatedAt: artifact.UpdatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.AcquisitionArtifact{artifact}); err != nil {
+	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func stagedRecoveryArtifact(t *testing.T, root string) acquisition.AcquisitionArtifact {
+func stagedRecoveryArtifact(t *testing.T, root string) acquisition.Artifact {
 	t.Helper()
 	stage := filepath.Join(root, ".loomarr-acquisitions", "acq-1", "000", "download.mp4")
 	if err := os.MkdirAll(filepath.Dir(stage), 0o750); err != nil {
@@ -59,7 +59,7 @@ func stagedRecoveryArtifact(t *testing.T, root string) acquisition.AcquisitionAr
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
-	return acquisition.AcquisitionArtifact{
+	return acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: filepath.ToSlash(filepath.Join(".loomarr-acquisitions", "acq-1", "000", "download.mp4")),

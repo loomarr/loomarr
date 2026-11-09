@@ -46,8 +46,8 @@ type Store interface {
 // AcquisitionManifestStore resolves and advances durable download manifests. Filesystem
 // validation stays in Syncer because it owns the applied clip root.
 type AcquisitionManifestStore interface {
-	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.AcquisitionArtifact, bool, error)
-	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error
+	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
+	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error
 }
 
 // Syncer reconciles the clip catalog against the Tunarr `local` filler source.
@@ -548,7 +548,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			artifact.ClipHash = rc.ID
 			artifact.RepairReason = ""
 			artifact.UpdatedAt = s.now().UTC()
-			if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+			if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 				return res, fmt.Errorf("consume acquisition artifact %s: %w", artifact.ID, err)
 			}
 		}
@@ -652,7 +652,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 			artifact.State = acquisition.ArtifactRepair
 			artifact.RepairReason = reason
 			artifact.UpdatedAt = s.now().UTC()
-			if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); persistErr != nil {
+			if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); persistErr != nil {
 				return fmt.Errorf("%s; record repair: %w", reason, persistErr)
 			}
 			return errors.New(reason)
@@ -695,7 +695,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 		}
 		artifact.MediaPath = filedPath
 		artifact.UpdatedAt = s.now().UTC()
-		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 			return fmt.Errorf("bind manifested watch arrival: %w", err)
 		}
 		return nil
@@ -710,19 +710,19 @@ func (s *Syncer) warnQuarantined(clipPath string, err error) {
 		"clip", clipPath, "err", err)
 }
 
-func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawClip) (acquisition.AcquisitionArtifact, bool, error) {
+func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawClip) (acquisition.Artifact, bool, error) {
 	if s.acquisitions == nil {
-		return acquisition.AcquisitionArtifact{}, false, nil
+		return acquisition.Artifact{}, false, nil
 	}
 	artifact, found, err := s.acquisitions.AcquisitionArtifactForClip(ctx, rc.Path, rc.ID)
 	if err != nil || !found {
 		return artifact, found, err
 	}
-	fail := func(reason string) (acquisition.AcquisitionArtifact, bool, error) {
+	fail := func(reason string) (acquisition.Artifact, bool, error) {
 		artifact.State = acquisition.ArtifactRepair
 		artifact.RepairReason = reason
 		artifact.UpdatedAt = s.now().UTC()
-		if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); persistErr != nil {
+		if persistErr := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); persistErr != nil {
 			return artifact, true, fmt.Errorf("%s; record repair: %w", reason, persistErr)
 		}
 		return artifact, true, errors.New(reason)
@@ -797,7 +797,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 	}
 	if normalizeConsumedManifest {
 		artifact.UpdatedAt = s.now().UTC()
-		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 			return artifact, true, fmt.Errorf("normalize consumed acquisition artifact: %w", err)
 		}
 	}

@@ -12,11 +12,11 @@ import (
 func TestFetchStoreAdapter_ListAcquisitionRemoteStatesMapsArtifactLifecycle(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	now := time.Unix(1_900_000_000, 0).UTC()
-	run := acquisition.AcquisitionRun{ID: "identity-roundtrip", Trigger: acquisition.AcquisitionSource, SourceID: "archive:classic", Status: acquisition.AcquisitionRunning, Requested: 1, StartedAt: now, UpdatedAt: now}
+	run := acquisition.AcquisitionRun{ID: "identity-roundtrip", Trigger: acquisition.TriggerSource, SourceID: "archive:classic", Status: acquisition.RunRunning, Requested: 1, StartedAt: now, UpdatedAt: now}
 	if err := st.UpsertAcquisitionRun(t.Context(), run); err != nil {
 		t.Fatal(err)
 	}
-	artifacts := []acquisition.AcquisitionArtifact{
+	artifacts := []acquisition.Artifact{
 		{ID: "staged-artifact", AcquisitionID: run.ID, SourceID: run.SourceID, Provider: "archive", RemoteID: "remote-Staged", SourceURL: "https://archive.org/details/remote-Staged", StagingPath: "stage/staged.mp4", MediaPath: "staged.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: acquisition.ArtifactStaged, CompletedAt: now, UpdatedAt: now},
 		{ID: "consumed-artifact", AcquisitionID: run.ID, SourceID: run.SourceID, Provider: "archive", RemoteID: "remote-Consumed", SourceURL: "https://archive.org/details/remote-Consumed", StagingPath: "stage/consumed.mp4", MediaPath: "consumed.mp4", MediaSHA256: strings.Repeat("b", 64), MediaBytes: 1, State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now},
 	}

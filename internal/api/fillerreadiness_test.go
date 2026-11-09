@@ -38,16 +38,16 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			}},
 		},
 		Runs: []acquisition.AcquisitionRun{{
-			ID: "acq-1", Trigger: acquisition.AcquisitionPull, PullID: "pull-1",
-			Status: acquisition.AcquisitionSuccess, Requested: 4, Fetched: 3,
+			ID: "acq-1", Trigger: acquisition.TriggerPull, PullID: "pull-1",
+			Status: acquisition.RunSuccess, Requested: 4, Fetched: 3,
 			StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
-			Outcome:   acquisition.AcquisitionOutcome{Enrolled: 3, Preparing: 1, Ready: 2},
-			Artifacts: acquisition.AcquisitionArtifactOutcome{Consumed: 3},
-			GapYield: []acquisition.AcquisitionGapYield{{Gap: "era:1990-1999", Downloads: 2,
-				Outcome: acquisition.AcquisitionOutcome{Enrolled: 2, Ready: 2}}},
+			Outcome:   acquisition.Outcome{Enrolled: 3, Preparing: 1, Ready: 2},
+			Artifacts: acquisition.ArtifactOutcome{Consumed: 3},
+			GapYield: []acquisition.GapYield{{Gap: "era:1990-1999", Downloads: 2,
+				Outcome: acquisition.Outcome{Enrolled: 2, Ready: 2}}},
 		}},
 		// Two repair rows are higher-priority actionable work than the recoverable pipeline row.
-		Repairs: acquisition.AcquisitionRepairSummary{Count: 2, LatestReason: "latest retained repair"},
+		Repairs: acquisition.RepairSummary{Count: 2, LatestReason: "latest retained repair"},
 	})
 
 	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/readiness", "", memberToken)
@@ -129,8 +129,8 @@ func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Date(2026, 9, 13, 14, 0, 0, 0, time.UTC)
 	if err := st.UpsertAcquisitionRun(context.Background(), acquisition.AcquisitionRun{
-		ID: "acq-found-clip", Trigger: acquisition.AcquisitionSource, SourceID: "archive:classic",
-		Status: acquisition.AcquisitionError, Requested: 1, Failed: 1, Error: "provider timed out",
+		ID: "acq-found-clip", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
+		Status: acquisition.RunError, Requested: 1, Failed: 1, Error: "provider timed out",
 		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)

@@ -49,7 +49,7 @@ func repairedClipFixture(t *testing.T, reason string) (dir string, authority *ma
 		t.Fatal(err)
 	}
 	now = time.Unix(1_800_000_000, 0).UTC()
-	authority = &manifestAuthority{found: true, artifact: acquisition.AcquisitionArtifact{
+	authority = &manifestAuthority{found: true, artifact: acquisition.Artifact{
 		ID: "artifact-1", AcquisitionID: "acq-1", SourceID: "youtube:classic",
 		Provider: "youtube", SourceURL: "https://youtube.com/watch?v=one",
 		StagingPath: ".loomarr-acquisitions/acq-1/download.mp4", MediaPath: "download.mp4",

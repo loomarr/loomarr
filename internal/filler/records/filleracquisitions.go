@@ -69,8 +69,8 @@ func (s *sqlStore) RecoverInterruptedAcquisitionRuns(ctx context.Context, at tim
 	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_acquisition_runs
 		SET status = ?, error = ?, completed_at = ?, updated_at = ?
 		WHERE status IN (?, ?)`),
-		string(acquisition.AcquisitionError), "application restarted before the acquisition completed",
-		epoch(at), epoch(at), string(acquisition.AcquisitionQueued), string(acquisition.AcquisitionRunning))
+		string(acquisition.RunError), "application restarted before the acquisition completed",
+		epoch(at), epoch(at), string(acquisition.RunQueued), string(acquisition.RunRunning))
 	if err != nil {
 		return 0, fmt.Errorf("recover interrupted filler acquisitions: %w", err)
 	}
@@ -90,8 +90,8 @@ func scanAcquisitionRun(sc scannable) (acquisition.AcquisitionRun, error) {
 		&startedAt, &completedAt, &updatedAt); err != nil {
 		return acquisition.AcquisitionRun{}, err
 	}
-	run.Trigger = acquisition.AcquisitionTrigger(trigger)
-	run.Status = acquisition.AcquisitionStatus(status)
+	run.Trigger = acquisition.Trigger(trigger)
+	run.Status = acquisition.RunStatus(status)
 	run.StartedAt = fromEpoch(startedAt)
 	run.CompletedAt = fromEpoch(completedAt)
 	run.UpdatedAt = fromEpoch(updatedAt)
@@ -147,7 +147,7 @@ func (s *sqlStore) ListAcquisitionRuns(ctx context.Context, limit int, at time.T
 }
 
 // attachAcquisitionOutcomes batches pipeline attribution for the bounded run page, then delegates
-// every ownership decision to acquisition.AcquisitionOutcomeFrom. SQL selects; the domain classifies.
+// every ownership decision to acquisition.OutcomeFrom. SQL selects; the domain classifies.
 func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []acquisition.AcquisitionRun, at time.Time) error {
 	if len(runs) == 0 {
 		return nil
@@ -176,7 +176,7 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []acquisi
 		return fmt.Errorf("list acquisition pipelines: %w", err)
 	}
 	for i := range runs {
-		runs[i].Outcome = acquisition.AcquisitionOutcomeFrom(byID[runs[i].ID], at)
+		runs[i].Outcome = acquisition.OutcomeFrom(byID[runs[i].ID], at)
 	}
 	artifactRows, err := s.db.QueryContext(ctx, s.ph(acquisitionArtifactSelect+` WHERE acquisition_id IN (`+
 		strings.Join(placeholders, ",")+`) ORDER BY acquisition_id, updated_at DESC, id DESC`), args...)
@@ -184,7 +184,7 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []acquisi
 		return fmt.Errorf("list acquisition artifacts: %w", err)
 	}
 	defer func() { _ = artifactRows.Close() }()
-	artifactsByID := make(map[string][]acquisition.AcquisitionArtifact, len(runs))
+	artifactsByID := make(map[string][]acquisition.Artifact, len(runs))
 	for artifactRows.Next() {
 		artifact, err := scanAcquisitionArtifact(artifactRows)
 		if err != nil {
@@ -200,8 +200,8 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []acquisi
 		return err
 	}
 	for i := range runs {
-		runs[i].Artifacts = acquisition.AcquisitionArtifactOutcomeFrom(artifactsByID[runs[i].ID])
-		runs[i].GapYield = acquisition.AcquisitionGapYieldFrom(artifactsByID[runs[i].ID], byID[runs[i].ID], parents, at)
+		runs[i].Artifacts = acquisition.ArtifactOutcomeFrom(artifactsByID[runs[i].ID])
+		runs[i].GapYield = acquisition.GapYieldFrom(artifactsByID[runs[i].ID], byID[runs[i].ID], parents, at)
 	}
 	return nil
 }

@@ -20,7 +20,7 @@ import (
 type readinessStoreFuncs struct {
 	pipeline func(context.Context, time.Time) (pipelinestate.PipelineOverview, error)
 	runs     func(context.Context, int, time.Time) ([]acquisition.AcquisitionRun, error)
-	repairs  func(context.Context) (acquisition.AcquisitionRepairSummary, error)
+	repairs  func(context.Context) (acquisition.RepairSummary, error)
 }
 
 func (readinessStoreFuncs) CountReadySplitProposals(context.Context) (int, error) { return 0, nil }
@@ -33,7 +33,7 @@ func (s readinessStoreFuncs) ListAcquisitionRuns(ctx context.Context, limit int,
 	return s.runs(ctx, limit, at)
 }
 
-func (s readinessStoreFuncs) AcquisitionRepairSummary(ctx context.Context) (acquisition.AcquisitionRepairSummary, error) {
+func (s readinessStoreFuncs) AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error) {
 	return s.repairs(ctx)
 }
 
@@ -58,8 +58,8 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 				return pipelinestate.PipelineOverview{Rejected: 2, Recoverable: 2}, nil
 			},
 			runs: func(context.Context, int, time.Time) ([]acquisition.AcquisitionRun, error) { return nil, nil },
-			repairs: func(context.Context) (acquisition.AcquisitionRepairSummary, error) {
-				return acquisition.AcquisitionRepairSummary{}, nil
+			repairs: func(context.Context) (acquisition.RepairSummary, error) {
+				return acquisition.RepairSummary{}, nil
 			},
 		},
 		pool: func(context.Context) (pod.PoolReport, error) {
@@ -101,13 +101,13 @@ func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	for i := 0; i < 21; i++ {
 		at := now.Add(time.Duration(-21+i) * time.Minute)
-		run := acquisition.AcquisitionRun{ID: "acq-" + string(rune('a'+i)), Trigger: acquisition.AcquisitionSource, SourceID: "source", Status: acquisition.AcquisitionSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}
+		run := acquisition.AcquisitionRun{ID: "acq-" + string(rune('a'+i)), Trigger: acquisition.TriggerSource, SourceID: "source", Status: acquisition.RunSuccess, StartedAt: at, CompletedAt: at, UpdatedAt: at}
 		if err := st.UpsertAcquisitionRun(ctx, run); err != nil {
 			t.Fatal(err)
 		}
 		if i == 0 {
-			artifact := acquisition.AcquisitionArtifact{ID: "repair-old", AcquisitionID: run.ID, SourceID: run.SourceID, Provider: "youtube", SourceURL: "https://youtube.example/old", MediaPath: "old.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: "old repair remains actionable", CompletedAt: at, UpdatedAt: at}
-			if err := st.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+			artifact := acquisition.Artifact{ID: "repair-old", AcquisitionID: run.ID, SourceID: run.SourceID, Provider: "youtube", SourceURL: "https://youtube.example/old", MediaPath: "old.mp4", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 1, State: acquisition.ArtifactRepair, RepairReason: "old repair remains actionable", CompletedAt: at, UpdatedAt: at}
+			if err := st.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 				t.Fatal(err)
 			}
 		}

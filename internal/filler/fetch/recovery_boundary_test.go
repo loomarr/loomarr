@@ -13,7 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 )
 
-func recoveryBoundaryArtifact(t *testing.T, root, id string, state acquisition.AcquisitionArtifactState, at time.Time) acquisition.AcquisitionArtifact {
+func recoveryBoundaryArtifact(t *testing.T, root, id string, state acquisition.ArtifactState, at time.Time) acquisition.Artifact {
 	t.Helper()
 	media := filepath.Join(root, "download-"+id+".mp4")
 	if err := os.WriteFile(media, []byte("recovery boundary bytes "+id), 0o600); err != nil {
@@ -30,7 +30,7 @@ func recoveryBoundaryArtifact(t *testing.T, root, id string, state acquisition.A
 	if err != nil {
 		t.Fatal(err)
 	}
-	return acquisition.AcquisitionArtifact{
+	return acquisition.Artifact{
 		ID: id, AcquisitionID: "acq-boundary", SourceID: "youtube:classic", Provider: "youtube",
 		SourceURL: "https://youtube.com/watch?v=boundary", StagingPath: filepath.ToSlash(filepath.Join(".loomarr-acquisitions", id, "download.mp4")),
 		MediaPath: filepath.Base(media), SidecarPath: strings.TrimSuffix(filepath.Base(media), ".mp4") + ".info.json",
@@ -40,7 +40,7 @@ func recoveryBoundaryArtifact(t *testing.T, root, id string, state acquisition.A
 	}
 }
 
-func repairReason(state acquisition.AcquisitionArtifactState) string {
+func repairReason(state acquisition.ArtifactState) string {
 	if state == acquisition.ArtifactRepair {
 		return "boundary repair"
 	}
@@ -49,12 +49,12 @@ func repairReason(state acquisition.AcquisitionArtifactState) string {
 
 func seedBoundaryRun(t *testing.T, db records.Store, at time.Time) {
 	t.Helper()
-	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: "acq-boundary", Trigger: acquisition.AcquisitionPull, SourceID: "youtube:classic", Status: acquisition.AcquisitionSuccess, Requested: 1, UpdatedAt: at}); err != nil {
+	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: "acq-boundary", Trigger: acquisition.TriggerPull, SourceID: "youtube:classic", Status: acquisition.RunSuccess, Requested: 1, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func moveBoundaryMedia(t *testing.T, watch, catalog string, artifact acquisition.AcquisitionArtifact, sidecar bool) string {
+func moveBoundaryMedia(t *testing.T, watch, catalog string, artifact acquisition.Artifact, sidecar bool) string {
 	t.Helper()
 	source := filepath.Join(watch, artifact.MediaPath)
 	destination, err := cliplibrary.ClipPath(catalog, artifact.ClipHash, filepath.Ext(artifact.MediaPath))
@@ -81,7 +81,7 @@ func TestRecoverAcquisitionArtifacts_RestoresMissingCatalogProvenance(t *testing
 	at := time.Unix(1_900_000_000, 0).UTC()
 	seedBoundaryRun(t, db, at)
 	artifact := recoveryBoundaryArtifact(t, watch, "missing-sidecar", acquisition.ArtifactPublished, at)
-	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.AcquisitionArtifact{artifact}); err != nil {
+	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	destination := moveBoundaryMedia(t, watch, catalog, artifact, false)
@@ -103,7 +103,7 @@ func TestRecoverAcquisitionArtifacts_DoesNotReplaceMalformedCatalogProvenance(t 
 	at := time.Unix(1_900_000_000, 0).UTC()
 	seedBoundaryRun(t, db, at)
 	artifact := recoveryBoundaryArtifact(t, watch, "malformed-sidecar", acquisition.ArtifactPublished, at)
-	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.AcquisitionArtifact{artifact}); err != nil {
+	if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	destination := moveBoundaryMedia(t, watch, catalog, artifact, false)
@@ -125,7 +125,7 @@ func TestRecoverAcquisitionArtifacts_DoesNotReplaceMalformedCatalogProvenance(t 
 }
 
 func TestRecoverAcquisitionArtifacts_PagesPastOldNonterminalRows(t *testing.T) {
-	for _, state := range []acquisition.AcquisitionArtifactState{acquisition.ArtifactRepair, acquisition.ArtifactPublished} {
+	for _, state := range []acquisition.ArtifactState{acquisition.ArtifactRepair, acquisition.ArtifactPublished} {
 		t.Run(string(state), func(t *testing.T) {
 			watch, catalog := t.TempDir(), t.TempDir()
 			db := openRecoveryStore(t)
@@ -133,12 +133,12 @@ func TestRecoverAcquisitionArtifacts_PagesPastOldNonterminalRows(t *testing.T) {
 			seedBoundaryRun(t, db, at)
 			for i := 0; i < 500; i++ {
 				artifact := recoveryBoundaryArtifact(t, watch, "old-"+time.Unix(int64(i), 0).UTC().Format("150405.000000000"), state, at.Add(time.Duration(i)*time.Second))
-				if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.AcquisitionArtifact{artifact}); err != nil {
+				if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{artifact}); err != nil {
 					t.Fatal(err)
 				}
 			}
 			target := recoveryBoundaryArtifact(t, watch, "target", acquisition.ArtifactStaged, at.Add(501*time.Second))
-			if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.AcquisitionArtifact{target}); err != nil {
+			if err := db.UpsertAcquisitionArtifacts(t.Context(), []acquisition.Artifact{target}); err != nil {
 				t.Fatal(err)
 			}
 			stage := filepath.Join(watch, target.StagingPath)

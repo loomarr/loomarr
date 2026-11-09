@@ -34,7 +34,7 @@ func foreignSidecar(t *testing.T, root string) []byte {
 }
 
 // copyStagedSidecar reproduces a previous attempt that published the sidecar and died before the media.
-func copyStagedSidecar(t *testing.T, root string, artifact acquisition.AcquisitionArtifact) []byte {
+func copyStagedSidecar(t *testing.T, root string, artifact acquisition.Artifact) []byte {
 	t.Helper()
 	stage := strings.TrimSuffix(filepath.Join(root, filepath.FromSlash(artifact.StagingPath)), ".mp4") + ".info.json"
 	raw, err := os.ReadFile(stage)
@@ -47,7 +47,7 @@ func copyStagedSidecar(t *testing.T, root string, artifact acquisition.Acquisiti
 	return raw
 }
 
-func publishFixture(t *testing.T, root string, artifact acquisition.AcquisitionArtifact) (*Ingestor, []Output) {
+func publishFixture(t *testing.T, root string, artifact acquisition.Artifact) (*Ingestor, []Output) {
 	t.Helper()
 	db := openRecoveryStore(t)
 	seedRecoveryArtifact(t, db, artifact)
@@ -64,7 +64,7 @@ func TestPublish_ExistingIdenticalSidecarIsIdempotentSuccess(t *testing.T) {
 	copyStagedSidecar(t, root, artifact)
 	ing, outputs := publishFixture(t, root, artifact)
 
-	got, err := ing.publish(t.Context(), []acquisition.AcquisitionArtifact{artifact}, outputs)
+	got, err := ing.publish(t.Context(), []acquisition.Artifact{artifact}, outputs)
 	if err != nil || got[0].State != acquisition.ArtifactPublished {
 		t.Fatalf("publish = %+v, %v; want published", got[0], err)
 	}
@@ -79,7 +79,7 @@ func TestPublish_ConflictingSidecarIsReportedWithBothIdentitiesAndNeverOverwritt
 	before := foreignSidecar(t, root)
 	ing, outputs := publishFixture(t, root, artifact)
 
-	got, err := ing.publish(t.Context(), []acquisition.AcquisitionArtifact{artifact}, outputs)
+	got, err := ing.publish(t.Context(), []acquisition.Artifact{artifact}, outputs)
 	if err == nil {
 		t.Fatal("a sidecar belonging to another acquisition must be a conflict")
 	}
@@ -102,7 +102,7 @@ func TestPublish_ConflictingSidecarIsReportedWithBothIdentitiesAndNeverOverwritt
 
 const sidecarExistsReason = "publish sidecar: target /data/filler/_watch/download.info.json already exists"
 
-func repairRow(artifact acquisition.AcquisitionArtifact, reason string) acquisition.AcquisitionArtifact {
+func repairRow(artifact acquisition.Artifact, reason string) acquisition.Artifact {
 	artifact.State = acquisition.ArtifactRepair
 	artifact.RepairReason = reason
 	return artifact

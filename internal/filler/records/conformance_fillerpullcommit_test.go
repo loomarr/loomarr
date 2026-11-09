@@ -21,8 +21,8 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 		}
 		p.Status, p.DecidedAt, p.DecidedBy, p.Note = acquisition.PullApproved, now.Add(time.Minute), "admin-winner", "exact note"
 		p.Plan[1].Dropped = true
-		run := acquisition.AcquisitionRun{ID: "atomic-run", PullID: p.ID, Trigger: acquisition.AcquisitionPull,
-			Status: acquisition.AcquisitionQueued, Requested: 1, StartedAt: p.DecidedAt, UpdatedAt: p.DecidedAt}
+		run := acquisition.AcquisitionRun{ID: "atomic-run", PullID: p.ID, Trigger: acquisition.TriggerPull,
+			Status: acquisition.RunQueued, Requested: 1, StartedAt: p.DecidedAt, UpdatedAt: p.DecidedAt}
 		return s, p, run
 	}
 	t.Run("ConcurrentApprovalsAndRestart", func(t *testing.T) {
@@ -73,7 +73,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("recovered = %d (%v), want one", n, err)
 		}
 		runs, err := s.ListAcquisitionRuns(t.Context(), 10, p.DecidedAt.Add(time.Minute))
-		if err != nil || len(runs) != 1 || runs[0].ID != winner.run.ID || runs[0].Status != acquisition.AcquisitionError || runs[0].Error == "" {
+		if err != nil || len(runs) != 1 || runs[0].ID != winner.run.ID || runs[0].Status != acquisition.RunError || runs[0].Error == "" {
 			t.Fatalf("recovered runs = %+v (%v), want one visible interrupted error", runs, err)
 		}
 		if err := s.CommitPullApproval(t.Context(), p, run); !errors.Is(err, ErrPullNotPending) {
@@ -98,7 +98,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal("snapshot writer created second pull run")
 		}
 		run.PullID = ""
-		run.Trigger = acquisition.AcquisitionManual
+		run.Trigger = acquisition.TriggerManual
 		if err := s.UpsertAcquisitionRun(t.Context(), run); err == nil {
 			t.Fatal("snapshot writer erased pull ownership")
 		}
@@ -106,7 +106,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 	t.Run("RunInsertFailureRollsBackDecision", func(t *testing.T) {
 		s, p, run := fixture(t)
 		occupied := run
-		occupied.PullID, occupied.Trigger = "", acquisition.AcquisitionManual
+		occupied.PullID, occupied.Trigger = "", acquisition.TriggerManual
 		if err := s.UpsertAcquisitionRun(t.Context(), occupied); err != nil {
 			t.Fatal(err)
 		}
@@ -126,7 +126,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 		s, p, run := fixture(t)
 		for _, id := range []string{"historical-one", "historical-two"} {
 			old := run
-			old.ID, old.Status = id, acquisition.AcquisitionError
+			old.ID, old.Status = id, acquisition.RunError
 			// Imported historical snapshots are seeded directly; the live writer
 			// now requires an approval commit before creating a bound run.
 			impl := s.(extended).sqlStore
@@ -159,7 +159,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 		// An existing inconsistent binding forces the last insert to fail. The same
 		// SQL fixture exercises both backends without a dialect-specific fault hook.
 		prior := run
-		prior.ID, prior.PullID, prior.Trigger = "prior-binding", "", acquisition.AcquisitionManual
+		prior.ID, prior.PullID, prior.Trigger = "prior-binding", "", acquisition.TriggerManual
 		if err := s.UpsertAcquisitionRun(t.Context(), prior); err != nil {
 			t.Fatal(err)
 		}

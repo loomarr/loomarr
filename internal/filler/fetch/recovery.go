@@ -18,7 +18,7 @@ import (
 // ArtifactRecoveryStore is the persistence slice needed to resume staged publication.
 type ArtifactRecoveryStore interface {
 	ArtifactWriter
-	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.AcquisitionArtifactCursor, int) ([]acquisition.AcquisitionArtifact, error)
+	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.ArtifactCursor, int) ([]acquisition.Artifact, error)
 }
 
 type RecoveryResult struct {
@@ -43,7 +43,7 @@ func RecoverAcquisitionArtifacts(
 	if now == nil {
 		now = time.Now
 	}
-	var cursor acquisition.AcquisitionArtifactCursor
+	var cursor acquisition.ArtifactCursor
 	processed := make(map[string]struct{})
 	for {
 		artifacts, err := store.ListRecoverableAcquisitionArtifactsAfter(ctx, cursor, 500)
@@ -54,7 +54,7 @@ func RecoverAcquisitionArtifacts(
 			return result, nil
 		}
 		for _, artifact := range artifacts {
-			cursor = acquisition.AcquisitionArtifactCursor{UpdatedAt: artifact.UpdatedAt, ID: artifact.ID}
+			cursor = acquisition.ArtifactCursor{UpdatedAt: artifact.UpdatedAt, ID: artifact.ID}
 			select {
 			case <-ctx.Done():
 				return result, ctx.Err()
@@ -66,7 +66,7 @@ func RecoverAcquisitionArtifacts(
 			processed[artifact.ID] = struct{}{}
 			if artifact.Provider == string(YouTube) && artifact.State == acquisition.ArtifactStaged && artifact.ProviderArchiveEntry == "" {
 				artifact = repairArtifact(artifact, "staged yt-dlp artifact has no durable provider archive entry", now())
-				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 					return result, err
 				}
 				result.Repair++
@@ -78,7 +78,7 @@ func RecoverAcquisitionArtifacts(
 				}
 				artifact.ProviderArchiveCommitted = true
 				artifact.UpdatedAt = now().UTC()
-				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 					return result, err
 				}
 			}
@@ -92,7 +92,7 @@ func RecoverAcquisitionArtifacts(
 			if artifact.State == acquisition.ArtifactRepair {
 				if artifact.RepairReason == acquisition.ArtifactMediaMissing && !manifestedMediaExists(watchDir, clipDir, artifact) {
 					artifact = repairArtifact(artifact, acquisition.ArtifactMediaGone, now())
-					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 						return result, err
 					}
 				}
@@ -104,13 +104,13 @@ func RecoverAcquisitionArtifacts(
 				sidecarErr := verifyPortableProvenance(filepath.Join(watchDir, artifact.SidecarPath), artifact)
 				if err := errors.Join(mediaErr, sidecarErr); err != nil {
 					if consumed, consumedErr := recoverConsumedArtifact(clipDir, artifact, now()); consumedErr == nil {
-						if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{consumed}); err != nil {
+						if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{consumed}); err != nil {
 							return result, err
 						}
 						continue
 					}
 					artifact = repairArtifact(artifact, "published artifact validation: "+err.Error(), now())
-					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 						return result, err
 					}
 					result.Repair++
@@ -128,20 +128,20 @@ func RecoverAcquisitionArtifacts(
 				if targetErr := errors.Join(verifyManifestFile(targetMedia, artifact), verifyPortableProvenance(targetSidecar, artifact)); targetErr == nil {
 					artifact.State = acquisition.ArtifactPublished
 					artifact.UpdatedAt = now().UTC()
-					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 						return result, err
 					}
 					result.Pending++
 					continue
 				}
 				if consumed, consumedErr := recoverConsumedArtifact(clipDir, artifact, now()); consumedErr == nil {
-					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{consumed}); err != nil {
+					if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{consumed}); err != nil {
 						return result, err
 					}
 					continue
 				}
 				artifact = repairArtifact(artifact, "staged artifact validation: "+err.Error(), now())
-				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 					return result, err
 				}
 				result.Repair++
@@ -152,7 +152,7 @@ func RecoverAcquisitionArtifacts(
 			targetSidecar := filepath.Join(watchDir, artifact.SidecarPath)
 			if err := recoverSidecar(stageSidecar, targetSidecar, artifact); err != nil {
 				artifact = repairArtifact(artifact, "staged sidecar validation: "+err.Error(), now())
-				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 					return result, err
 				}
 				result.Repair++
@@ -160,7 +160,7 @@ func RecoverAcquisitionArtifacts(
 			}
 			if err := publishFile(stageMedia, filepath.Join(watchDir, artifact.MediaPath)); err != nil {
 				artifact = repairArtifact(artifact, "resume media publication: "+err.Error(), now())
-				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+				if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 					return result, err
 				}
 				result.Repair++
@@ -168,7 +168,7 @@ func RecoverAcquisitionArtifacts(
 			}
 			artifact.State = acquisition.ArtifactPublished
 			artifact.UpdatedAt = now().UTC()
-			if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.AcquisitionArtifact{artifact}); err != nil {
+			if err := store.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 				return result, err
 			}
 			result.Published++
@@ -176,7 +176,7 @@ func RecoverAcquisitionArtifacts(
 	}
 }
 
-func recoverConsumedArtifact(clipDir string, artifact acquisition.AcquisitionArtifact, at time.Time) (acquisition.AcquisitionArtifact, error) {
+func recoverConsumedArtifact(clipDir string, artifact acquisition.Artifact, at time.Time) (acquisition.Artifact, error) {
 	if clipDir == "" || artifact.ClipHash == "" {
 		return artifact, errors.New("consumed location unavailable")
 	}
@@ -216,7 +216,7 @@ func recoverConsumedArtifact(clipDir string, artifact acquisition.AcquisitionArt
 	return artifact, nil
 }
 
-func verifyManifestFile(path string, artifact acquisition.AcquisitionArtifact) error {
+func verifyManifestFile(path string, artifact acquisition.Artifact) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
@@ -234,7 +234,7 @@ func verifyManifestFile(path string, artifact acquisition.AcquisitionArtifact) e
 	return nil
 }
 
-func recoverSidecar(stagePath, targetPath string, artifact acquisition.AcquisitionArtifact) error {
+func recoverSidecar(stagePath, targetPath string, artifact acquisition.Artifact) error {
 	if targetPath == "" {
 		return errors.New("manifest has no sidecar path")
 	}
@@ -254,7 +254,7 @@ func recoverSidecar(stagePath, targetPath string, artifact acquisition.Acquisiti
 // when it carries this artifact's exact acquisition provenance — both are a previous attempt of the
 // same publication. Anything else belongs to another item: it is reported with both identities and
 // is never replaced.
-func acceptExistingSidecar(stagePath, targetPath string, artifact acquisition.AcquisitionArtifact) error {
+func acceptExistingSidecar(stagePath, targetPath string, artifact acquisition.Artifact) error {
 	if staged, err := os.ReadFile(stagePath); err == nil {
 		if existing, err := os.ReadFile(targetPath); err == nil && bytes.Equal(staged, existing) {
 			return nil
@@ -282,7 +282,7 @@ func isSidecarExistsRepair(reason string) bool {
 // manifestedMediaExists reports whether any location the manifest can name still holds a regular
 // file: the watch-relative media or staging path, the clip-folder path, or the content-addressed
 // catalog path. A transient "missing" repair is only settled as gone when none does.
-func manifestedMediaExists(watchDir, clipDir string, artifact acquisition.AcquisitionArtifact) bool {
+func manifestedMediaExists(watchDir, clipDir string, artifact acquisition.Artifact) bool {
 	candidates := []string{
 		filepath.Join(watchDir, artifact.MediaPath),
 		filepath.Join(watchDir, artifact.StagingPath),
@@ -303,7 +303,7 @@ func manifestedMediaExists(watchDir, clipDir string, artifact acquisition.Acquis
 	return false
 }
 
-func verifyPortableProvenance(path string, artifact acquisition.AcquisitionArtifact) error {
+func verifyPortableProvenance(path string, artifact acquisition.Artifact) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
@@ -322,7 +322,7 @@ func verifyPortableProvenance(path string, artifact acquisition.AcquisitionArtif
 	return nil
 }
 
-func repairArtifact(artifact acquisition.AcquisitionArtifact, reason string, at time.Time) acquisition.AcquisitionArtifact {
+func repairArtifact(artifact acquisition.Artifact, reason string, at time.Time) acquisition.Artifact {
 	artifact.State = acquisition.ArtifactRepair
 	artifact.RepairReason = reason
 	artifact.UpdatedAt = at.UTC()

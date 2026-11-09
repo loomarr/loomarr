@@ -17,7 +17,7 @@ import (
 // own era, as a ranking preference that never rejects a candidate.
 
 func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
-	input := []acquisition.AcquisitionCandidate{
+	input := []acquisition.Candidate{
 		candidate("a", "modern-hd", 2015, 1080, ""),
 		candidate("a", "nineties-sd", 1994, 480, ""),
 	}
@@ -46,7 +46,7 @@ func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
 }
 
 func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
-	input := []acquisition.AcquisitionCandidate{
+	input := []acquisition.Candidate{
 		candidate("a", "modern", 2015, 720, ""),
 		candidate("a", "undated", 0, 720, ""),
 	}
@@ -155,7 +155,7 @@ func TestPlanAcquisitionFor_RoleGapTakesTitledBookendsFirst(t *testing.T) {
 	ident.Title = "Local station ID loop"
 	spot := candidate("a", "spot", 0, 1080, "")
 	spot.Title = "Soda commercial"
-	plan, err := acquisition.PlanAcquisitionFor(acquisition.AcquisitionIntent{Count: 1}, []acquisition.AcquisitionCandidate{spot, ident}, nil,
+	plan, err := acquisition.PlanAcquisitionFor(acquisition.AcquisitionIntent{Count: 1}, []acquisition.Candidate{spot, ident}, nil,
 		acquisition.CoverageGaps{Roles: []clips.Role{clips.Bumper, clips.StationID}})
 	if err != nil {
 		t.Fatal(err)

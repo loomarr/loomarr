@@ -19,8 +19,8 @@ const AcquisitionIntentVersion = "filler-acquisition-intent/v2"
 
 var (
 	ErrInvalidAcquisitionIntent = errors.New("invalid filler acquisition intent")
-	ErrNoAcquisitionSources     = errors.New("no eligible filler acquisition sources")
-	ErrNoAcquisitionCandidates  = errors.New("no filler acquisition candidates satisfy the intent")
+	ErrNoSources                = errors.New("no eligible filler acquisition sources")
+	ErrNoCandidates             = errors.New("no filler acquisition candidates satisfy the intent")
 	ErrProviderPaused           = errors.New("filler provider is paused")
 )
 
@@ -129,9 +129,9 @@ func (i RemoteIdentity) Validate() error {
 	return nil
 }
 
-// AcquisitionCandidate contains metadata-only observations. ObservedYear and PublishedAt are
+// Candidate contains metadata-only observations. ObservedYear and PublishedAt are
 // weak remote hints and must never be copied into an admitted clip as grounded era evidence.
-type AcquisitionCandidate struct {
+type Candidate struct {
 	Identity      RemoteIdentity   `json:"identity"`
 	URL           string           `json:"url"`
 	Title         string           `json:"title,omitempty"`
@@ -184,8 +184,8 @@ const (
 	RemoteDeclined   ExistingRemoteState = "declined"
 )
 
-type AcquisitionDecision struct {
-	Candidate   AcquisitionCandidate `json:"candidate"`
+type Decision struct {
+	Candidate   Candidate            `json:"candidate"`
 	Disposition CandidateDisposition `json:"disposition"`
 	Detail      string               `json:"detail"`
 	// Gap is the channel coverage gap this candidate was selected for (EraGapKey), "" when it was
@@ -193,37 +193,37 @@ type AcquisitionDecision struct {
 	Gap string `json:"gap,omitempty"`
 }
 
-type AcquisitionPlan struct {
+type Plan struct {
 	Intent   AcquisitionIntent           `json:"intent"`
-	Selected []AcquisitionDecision       `json:"selected"`
-	Rejected []AcquisitionDecision       `json:"rejected"`
+	Selected []Decision                  `json:"selected"`
+	Rejected []Decision                  `json:"rejected"`
 	Sources  []AcquisitionSourceDecision `json:"sources"`
 }
 
-// AcquisitionSourceDisposition explains whether and how one registered source participated in
+// SourceDisposition explains whether and how one registered source participated in
 // planning. Source decisions are separate from candidate decisions because a disabled or failed
 // source has no candidate that could honestly carry the explanation.
-type AcquisitionSourceDisposition string
+type SourceDisposition string
 
 const (
-	AcquisitionSourceEnumerated        AcquisitionSourceDisposition = "enumerated"
-	AcquisitionSourceDisabled          AcquisitionSourceDisposition = "disabled"
-	AcquisitionSourceNotFetchable      AcquisitionSourceDisposition = "not_fetchable"
-	AcquisitionSourceNotAllowed        AcquisitionSourceDisposition = "not_allowed"
-	AcquisitionSourceGeographyMismatch AcquisitionSourceDisposition = "geography_mismatch"
-	AcquisitionSourceLimitExceeded     AcquisitionSourceDisposition = "source_limit"
-	AcquisitionSourceEnumerationFailed AcquisitionSourceDisposition = "enumeration_failed"
+	SourceEnumerated        SourceDisposition = "enumerated"
+	SourceDisabled          SourceDisposition = "disabled"
+	SourceNotFetchable      SourceDisposition = "not_fetchable"
+	SourceNotAllowed        SourceDisposition = "not_allowed"
+	SourceGeographyMismatch SourceDisposition = "geography_mismatch"
+	SourceLimitExceeded     SourceDisposition = "source_limit"
+	SourceEnumerationFailed SourceDisposition = "enumeration_failed"
 )
 
 // AcquisitionSourceDecision is the durable, bounded source snapshot behind a pull proposal.
 type AcquisitionSourceDecision struct {
-	SourceID       string                       `json:"sourceId"`
-	Provider       string                       `json:"provider"`
-	Label          string                       `json:"label,omitempty"`
-	Geography      pod.Geography                `json:"geography,omitempty"`
-	Disposition    AcquisitionSourceDisposition `json:"disposition"`
-	CandidateCount int                          `json:"candidateCount"`
-	Detail         string                       `json:"detail"`
+	SourceID       string            `json:"sourceId"`
+	Provider       string            `json:"provider"`
+	Label          string            `json:"label,omitempty"`
+	Geography      pod.Geography     `json:"geography,omitempty"`
+	Disposition    SourceDisposition `json:"disposition"`
+	CandidateCount int               `json:"candidateCount"`
+	Detail         string            `json:"detail"`
 }
 
 func uniqueRoles(in []clips.Role) []clips.Role {

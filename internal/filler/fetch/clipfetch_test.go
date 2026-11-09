@@ -51,14 +51,14 @@ func (m *capacityMeter) ManagedBytes(context.Context, string, storagegovernor.Do
 	return m.managed, nil
 }
 
-type artifactWriterFunc func(context.Context, []acquisition.AcquisitionArtifact) error
+type artifactWriterFunc func(context.Context, []acquisition.Artifact) error
 
 type downloadRequest struct {
 	source fetch.Source
 	dir    string
 }
 
-func (f artifactWriterFunc) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error {
+func (f artifactWriterFunc) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error {
 	return f(ctx, artifacts)
 }
 
@@ -219,7 +219,7 @@ sleep 2
 		t.Fatal(err)
 	}
 	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, discardLog()).
-		WithArtifactWriter(artifactWriterFunc(func(context.Context, []acquisition.AcquisitionArtifact) error { return nil })).
+		WithArtifactWriter(artifactWriterFunc(func(context.Context, []acquisition.Artifact) error { return nil })).
 		WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{{
 		ID: "youtube:test", AcquisitionID: "overrun", Kind: fetch.YouTube,
@@ -298,9 +298,9 @@ func TestRun_EmptySourceIsSurfaced(t *testing.T) {
 
 func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 	dir := t.TempDir()
-	var writer recordfixture.Recorder[[]acquisition.AcquisitionArtifact, struct{}]
+	var writer recordfixture.Recorder[[]acquisition.Artifact, struct{}]
 	targetSeen := false
-	writer.Respond = func(artifacts []acquisition.AcquisitionArtifact) (struct{}, error) {
+	writer.Respond = func(artifacts []acquisition.Artifact) (struct{}, error) {
 		if writer.Calls() == 1 {
 			if _, err := os.Stat(filepath.Join(dir, "download.mp4")); err == nil {
 				targetSeen = true
@@ -323,8 +323,8 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 	}
 	ing := fetch.New(fetch.Downloaders{fetch.Archive: downloaderFunc(func(_ context.Context, src fetch.Source, attemptDir string) (fetch.DownloadResult, error) {
 		return downloader.Call(downloadRequest{source: src, dir: attemptDir})
-	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error {
-		_, err := writer.Call(append([]acquisition.AcquisitionArtifact(nil), artifacts...))
+	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []acquisition.Artifact) error {
+		_, err := writer.Call(append([]acquisition.Artifact(nil), artifacts...))
 		return err
 	}))
 
@@ -356,8 +356,8 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 
 func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
 	dir := t.TempDir()
-	var writer recordfixture.Recorder[[]acquisition.AcquisitionArtifact, struct{}]
-	writer.Respond = func([]acquisition.AcquisitionArtifact) (struct{}, error) { return struct{}{}, nil }
+	var writer recordfixture.Recorder[[]acquisition.Artifact, struct{}]
+	writer.Respond = func([]acquisition.Artifact) (struct{}, error) { return struct{}{}, nil }
 	var downloader recordfixture.Recorder[downloadRequest, fetch.DownloadResult]
 	downloader.Respond = func(req downloadRequest) (fetch.DownloadResult, error) {
 		media := filepath.Join(req.dir, "download.mp4")
@@ -368,8 +368,8 @@ func TestRun_MissingProvenanceRemainsInHiddenRepairQuarantine(t *testing.T) {
 	}
 	ing := fetch.New(fetch.Downloaders{fetch.YouTube: downloaderFunc(func(_ context.Context, src fetch.Source, attemptDir string) (fetch.DownloadResult, error) {
 		return downloader.Call(downloadRequest{source: src, dir: attemptDir})
-	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []acquisition.AcquisitionArtifact) error {
-		_, err := writer.Call(append([]acquisition.AcquisitionArtifact(nil), artifacts...))
+	})}, dir, discardLog()).WithArtifactWriter(artifactWriterFunc(func(ctx context.Context, artifacts []acquisition.Artifact) error {
+		_, err := writer.Call(append([]acquisition.Artifact(nil), artifacts...))
 		return err
 	}))
 
@@ -408,7 +408,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := closed.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.AcquisitionPull, Status: acquisition.AcquisitionRunning, Requested: 1}); err != nil {
+	if err := closed.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull, Status: acquisition.RunRunning, Requested: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := closed.Close(); err != nil {
@@ -445,7 +445,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 
 	second := source
 	second.AcquisitionID = "acq-second"
-	if err := reopened.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: second.AcquisitionID, SourceID: second.ID, Trigger: acquisition.AcquisitionPull, Status: acquisition.AcquisitionRunning, Requested: 1}); err != nil {
+	if err := reopened.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: second.AcquisitionID, SourceID: second.ID, Trigger: acquisition.TriggerPull, Status: acquisition.RunRunning, Requested: 1}); err != nil {
 		t.Fatal(err)
 	}
 	deduped := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(ytdlp, "ffmpeg")}, dir, discardLog()).WithArtifactWriter(reopened).Run(t.Context(), []fetch.Source{second})
@@ -559,7 +559,7 @@ sleep 2
 		t.Fatal(err)
 	}
 	ingestor := fetch.New(fetch.Downloaders{fetch.YouTube: fetch.NewYtDlpDownloader(executable, "ffmpeg")}, root, discardLog()).
-		WithArtifactWriter(artifactWriterFunc(func(context.Context, []acquisition.AcquisitionArtifact) error { return nil })).
+		WithArtifactWriter(artifactWriterFunc(func(context.Context, []acquisition.Artifact) error { return nil })).
 		WithStorageGovernor(governor)
 	plan, err := ingestor.Prepare(t.Context(), []fetch.Source{{
 		ID: "youtube:test", AcquisitionID: "unknown-size", Kind: fetch.YouTube,
