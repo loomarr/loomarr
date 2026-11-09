@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Platform, TVEventControl } from "react-native";
+import { Platform } from "react-native";
 
 /** The part of react-native-tvos's `TVEventControl` the hook drives. */
 interface TvMenuKeyControl {
@@ -26,10 +26,13 @@ const tvRemoteHasDigits = (platform: TvPlatform = Platform): boolean => !isTvOS(
  * enable it only while a screen has somewhere to go back to. Everywhere else Menu goes to the Home
  * screen, as Apple's HIG expects at an app's root. A modal dialog takes Menu itself. Android TV's
  * Back always reaches BackHandler, so it is left alone.
+ *
+ * The TV app passes react-native-tvos's `TVEventControl`: react-native-web, which bundles this
+ * package for the web app, has no such export.
  */
 const useTvMenuKey = (
   enabled: boolean,
-  { control = TVEventControl, tvOS = isTvOS() }: { control?: TvMenuKeyControl; tvOS?: boolean } = {},
+  { control, tvOS = isTvOS() }: { control: TvMenuKeyControl; tvOS?: boolean },
 ) => {
   useEffect(() => {
     if (!enabled || !tvOS) return undefined;

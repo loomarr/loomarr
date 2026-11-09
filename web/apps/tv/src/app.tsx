@@ -54,7 +54,7 @@ import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useTVEventHandler } from "react-native";
+import { TVEventControl, useTVEventHandler } from "react-native";
 import appConfig from "../app.json";
 import { useTvRemote } from "./use-tv-remote";
 
@@ -138,7 +138,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const [autoTuneMs, changeAutoTune] = useTvAutoTune(autoTuneSetting);
-  useTvMenuKey(clientBackDestination(active) !== null);
+  useTvMenuKey(clientBackDestination(active) !== null, { control: TVEventControl });
   // Pending crash reports (last launch's included) go to this server once paired.
   useShellCrashReporting(credential, session, active);
   const [remote, remoteState] = useTvRemote(autoTuneMs, (event, { handled, intent }) => {
@@ -319,7 +319,7 @@ const TvClient = () => {
   usePairingBreadcrumbs(session);
   // PairingShell answers Back on its screens; tvOS sends Menu there only while the key is enabled.
   const pairingState = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
-  useTvMenuKey(pairingBackAvailable(pairingState));
+  useTvMenuKey(pairingBackAvailable(pairingState), { control: TVEventControl });
   return (
     <>
       <ViewportStage>
