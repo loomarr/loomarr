@@ -498,19 +498,18 @@ func TestPlayoutHLS_WarmModePassesRegisteredRouteValidation(t *testing.T) {
 	}
 }
 
-// The retired prepared mode stays in the route contract (#1512 phase 4): a client built before the
-// retirement still probes with it, and a 422 from the enum would read as a failure, not "nothing
-// prepared". Through the registered route it answers 204 and starts nothing.
-func TestPlayoutHLS_RetiredPreparedModeAnswersNoContent(t *testing.T) {
+// An unknown mode, the retired prepared one included (#1742), is refused with 422 and never starts
+// playout: a live start would run an encoder for a channel nobody watches (G1).
+func TestPlayoutHLS_UnknownModeIsRefusedAndStartsNothing(t *testing.T) {
 	f := &fakePlayoutSessions{}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
 	srv, st := harness.Server, harness.Store
 	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
 
 	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/master.m3u8?token="+playoutToken+"&mode=prepared")
-	if resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusUnprocessableEntity {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status = %d, want 204 from the retired prepared mode: %s", resp.StatusCode, body)
+		t.Fatalf("status = %d, want 422 from the retired prepared mode: %s", resp.StatusCode, body)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
