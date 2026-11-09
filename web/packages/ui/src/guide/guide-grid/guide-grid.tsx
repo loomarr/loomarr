@@ -14,6 +14,7 @@ import {
 } from "@loomarr/core/guide";
 import {
   brandChroma,
+  decadeFill,
   PreviewAnchor,
   PreviewGroup,
   Surface,
@@ -26,7 +27,6 @@ import { type ComponentRef, memo, type ReactNode, type RefObject, useEffect, use
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
 import { ChannelIdent } from "../../channel-ident";
-import { GuideNumberBlock } from "../guide-number-block";
 import { guideRailWidth } from "../guide-rail";
 import type { GuideGridProps } from "./guide-grid.type";
 import { GuideRows } from "./guide-rows";
@@ -399,10 +399,21 @@ const Row = memo(
           borderWidth={0}
           flexDirection="row"
           gap={9}
-          paddingLeft={12}
           paddingRight={4}
           width={railWidth}
         >
+          {/* The channel's decade colour as the mock's 4px bar at the rail's edge (#2767), the one
+              place the grid shows it; clear without a decade. The bar takes the rail's old
+              12px inset, so the ident sits where it did. */}
+          <Surface
+            aria-hidden
+            backgroundColor={decadeFill(channel.source.decade) ?? "transparent"}
+            borderRadius="round"
+            borderWidth={0}
+            flexShrink={0}
+            height={24}
+            width={4}
+          />
           <ChannelIdent name={channel.source.name} number={channel.source.number} />
           <Pressable
             accessibilityRole="button"
@@ -412,11 +423,7 @@ const Row = memo(
             onPress={() => onOpenChannelInfo?.(channel.source.channelId)}
             style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
           >
-            <GuideNumberBlock
-              decade={channel.source.decade}
-              number={channel.source.number}
-              textRole="guideNumber"
-            />
+            <Text textRole="guideNumber">{channel.source.number}</Text>
             <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} textRole="cardLabel">
                 {channel.source.name}

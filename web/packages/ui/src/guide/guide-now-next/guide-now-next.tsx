@@ -92,13 +92,7 @@ const NowNextItem = ({
         paddingVertical={10}
       >
         <View style={{ alignItems: "baseline", flexDirection: "row", gap: 6 }}>
-          <GuideNumberBlock
-            decade={channel.source.decade}
-            density="touch"
-            number={number}
-            textRole="cardChannelNumber"
-            tone="secondary"
-          />
+          <GuideNumberBlock decade={channel.source.decade} number={number} />
           <Text density="touch" numberOfLines={1} style={{ flex: 1 }} textRole="cardLabel" tone="secondary">
             {name}
           </Text>
