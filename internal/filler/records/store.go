@@ -23,6 +23,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -268,7 +269,7 @@ type FillerSourceStore interface {
 	// omits them so a re-register cannot blank an operator's tuning. nil clears an override back
 	// to "inherit the global", which is a real action and must be expressible.
 	SetFillerSourceFetchPolicy(ctx context.Context, id string, everySeconds, maxPerRun *int) error
-	SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error
+	SetFillerSourceGeography(ctx context.Context, id string, geography pod.Geography) error
 	// SetFillerSourceEnabled switches a source on or off (V35). ⚠ Disabling is NOT deleting:
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.

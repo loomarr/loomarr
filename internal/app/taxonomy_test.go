@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -137,8 +138,8 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 	if _, err := st.SaveChannel(t.Context(), channel); err != nil {
 		t.Fatal(err)
 	}
-	pods := filler.NewPodAdapter(clipCatalogAdapter{st: st}, nil, func() filler.Policy {
-		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
+	pods := pod.NewAdapter(clipCatalogAdapter{st: st}, nil, func() pod.Policy {
+		return pod.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, slog.New(slog.DiscardHandler))
 	engine := channels.New(st, nil, taxonomyAvailability{
 		provision.Key("movie:tmdb:90000001"): "lib-1",

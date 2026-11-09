@@ -23,6 +23,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/project/evidence/curation-1670/kit"
@@ -536,7 +537,7 @@ type fillerRun struct {
 	Evening   kit.Metrics `json:"evening"`
 }
 
-// fillerSim assembles every break with the REAL filler.Assemble over a synthetic clip pool, two
+// fillerSim assembles every break with the REAL pod.Assemble over a synthetic clip pool, two
 // 2-minute breaks an hour, and compares exposure fed only while watched (today: RecordClipPlay
 // runs when playout resolves a clip for a viewer) against a ledger fed by every assembled break.
 func fillerSim(start, end time.Time) []fillerRun {
@@ -551,16 +552,16 @@ func fillerSim(start, end time.Time) []fillerRun {
 				if mode == "ledger" && v.Name != "nobody" {
 					continue // the ledger does not depend on viewing
 				}
-				exp := map[string]filler.Exposure{}
+				exp := map[string]pod.Exposure{}
 				var airings []kit.Airing
 				for t := start; t.Before(end); t = t.Add(30 * time.Minute) {
-					w := filler.Window{ChannelID: "sim", Seed: seedOf(t), GapMs: 120000, PodMax: 4,
+					w := pod.Window{ChannelID: "sim", Seed: seedOf(t), GapMs: 120000, PodMax: 4,
 						Audience: filler.Audience("general"), Exposures: copyExp(exp), SnapshotAt: t}
 					cooldown := 30 * time.Minute
 					if mode == "ledger" {
 						cooldown = 24 * time.Hour
 					}
-					pod := filler.Assemble(clips, w, filler.Policy{Cooldown: cooldown}, nil)
+					pod := pod.Assemble(clips, w, pod.Policy{Cooldown: cooldown}, nil)
 					a := kit.Airing{Kind: "filler", Start: t}
 					for _, e := range pod.Entries {
 						if e.Hash == "" {
@@ -615,8 +616,8 @@ func seedOf(t time.Time) int64 {
 	return int64(h.Sum64())
 }
 
-func copyExp(m map[string]filler.Exposure) map[string]filler.Exposure {
-	out := make(map[string]filler.Exposure, len(m))
+func copyExp(m map[string]pod.Exposure) map[string]pod.Exposure {
+	out := make(map[string]pod.Exposure, len(m))
 	for k, v := range m {
 		out[k] = v
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
@@ -33,8 +34,8 @@ type fakePods struct {
 	hasCalls      int
 	durationCalls int
 	seeds         []int64
-	sels          []filler.Selection // the selection each call received
-	ids           []string           // the pool to return; nil → ok=false (no filler)
+	sels          []pod.Selection // the selection each call received
+	ids           []string        // the pool to return; nil → ok=false (no filler)
 	duration      int64
 	fitChannels   map[string]bool
 }
@@ -45,22 +46,22 @@ func (catalog fixedClipCatalog) AllClips(context.Context) ([]filler.Clip, error)
 	return catalog, nil
 }
 
-func (f *fakePods) FitForChannel(channelID string, _ filler.Selection, _ filler.Clip) filler.Fit {
+func (f *fakePods) FitForChannel(channelID string, _ pod.Selection, _ filler.Clip) pod.Fit {
 	if f.fitChannels == nil || f.fitChannels[channelID] {
-		return filler.Fit{}
+		return pod.Fit{}
 	}
-	return filler.Fit{Reason: filler.FitAudience}
+	return pod.Fit{Reason: pod.FitAudience}
 }
 
 // HasPool mirrors the real adapter: a pool exists when there are clips to play. The double
 // keys on the same `ids` so a test that seeds clips gets breaks, and one that seeds none does
 // not — the behaviour the gate actually depends on.
-func (f *fakePods) HasPool(_ context.Context, _ string, _ int64, _ filler.Selection) bool {
+func (f *fakePods) HasPool(_ context.Context, _ string, _ int64, _ pod.Selection) bool {
 	f.hasCalls++
 	return len(f.ids) > 0
 }
 
-func (f *fakePods) PlayableDurationMs(_ context.Context, _ string, _ int64, _ filler.Selection) int64 {
+func (f *fakePods) PlayableDurationMs(_ context.Context, _ string, _ int64, _ pod.Selection) int64 {
 	f.durationCalls++
 	if f.duration > 0 {
 		return f.duration
@@ -68,7 +69,7 @@ func (f *fakePods) PlayableDurationMs(_ context.Context, _ string, _ int64, _ fi
 	return int64(len(f.ids)) * 30_000
 }
 
-func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int64, sel filler.Selection) ([]string, bool) {
+func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int64, sel pod.Selection) ([]string, bool) {
 	f.calls++
 	f.seeds = append(f.seeds, seed)
 	f.sels = append(f.sels, sel)
@@ -119,11 +120,11 @@ func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	// Deliberately bypass persistence and its held invariant. Even if a caller supplies this
 	// impossible unheld row, the real pod adapter must not turn it into a scheduled break.
-	pods := filler.NewPodAdapter(fixedClipCatalog{{
+	pods := pod.NewAdapter(fixedClipCatalog{{
 		Hash: "unclassified", Path: "unclassified.mp4", TunarrProgramID: "unclassified-program",
 		Name: "Unknown clip", Role: filler.Unclassified, DurationMs: 30_000,
-	}}, nil, func() filler.Policy {
-		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
+	}}, nil, func() pod.Policy {
+		return pod.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, testkit.Logger())
 	e := newEngine(st, tun, mapAvail{
 		"movie:tmdb:90000001": "lib-1",

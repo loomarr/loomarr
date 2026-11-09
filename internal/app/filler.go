@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
@@ -501,7 +502,7 @@ type fetchStoreAdapter struct {
 	// fetchEvery is the GLOBAL poll interval a source's override resolves against (§10 V38c).
 	// A closure so it hot-applies — an operator changing it expects the next pass to honour it.
 	fetchEvery func() time.Duration
-	home       func() filler.Geography
+	home       func() pod.Geography
 }
 
 func (a fetchStoreAdapter) ListFetchSources(ctx context.Context) ([]filler.FetchSource, error) {
@@ -563,7 +564,7 @@ func (a fetchStoreAdapter) FailCheck(ctx context.Context, id string, leaseUntil,
 	return a.st.FailFillerSourceCheck(ctx, id, leaseUntil, retryAt)
 }
 
-// clipCatalogAdapter bridges the store → filler.CatalogReader (pod assembly).
+// clipCatalogAdapter bridges the store → pod.CatalogReader (pod assembly).
 type clipCatalogAdapter struct{ st store.Store }
 
 // clipExposureAdapter is deliberately separate from the catalog reader: pod planning can read
@@ -576,9 +577,9 @@ type clipExposureAdapter struct{ st store.Store }
 // clip was assembled. The margin covers clock skew between Postgres replicas.
 const airingSettle = playout.OnAirLookahead + 3*time.Second
 
-func (a clipExposureAdapter) FillerAirings(ctx context.Context) (filler.AiringHistory, error) {
+func (a clipExposureAdapter) FillerAirings(ctx context.Context) (pod.AiringHistory, error) {
 	airings, err := a.st.FillerAirings(ctx)
-	return filler.AiringHistory{Airings: airings, Settle: airingSettle}, err
+	return pod.AiringHistory{Airings: airings, Settle: airingSettle}, err
 }
 
 // ⚠ A ZERO filter, and that is what keeps HELD clips out of every pod (§10 V38). Pod assembly,
@@ -764,12 +765,12 @@ type fillerServiceAdapter struct {
 	sources fillerSourceRegistry
 	// providers suggests and verifies the sources an operator is about to register.
 	providers *source.Registry
-	home      func() filler.Geography
+	home      func() pod.Geography
 	// acquisitions is the reconnect truth for background downloads. nil is allowed only in
 	// narrow tests; production always supplies the store before any job can be accepted.
 	acquisitions fillerAcquisitionWriter
 	readiness    fillerReadinessStore
-	pool         func(context.Context) (filler.PoolReport, error)
+	pool         func(context.Context) (pod.PoolReport, error)
 	now          func() time.Time
 	// splitter / splitClips back compilation splitting (§10, V34). nil splitter ⇒
 	// no drop-folder configured ⇒ Split/ConfirmSplit answer ErrSplitUnavailable.
@@ -1283,21 +1284,21 @@ func (a fillerServiceAdapter) publishSplit(jobID, clipHash, status, proposalID s
 	})
 }
 
-// podPreviewAdapter bridges filler.PodAdapter → api.PodPreviewer (§12). It exists to
+// podPreviewAdapter bridges pod.Adapter → api.PodPreviewer (§12). It exists to
 // derive the selection + seed from the channel using the SAME exported helpers the
 // reconciler calls, so a preview and the next reconcile of that channel produce the
 // identical pool. The API stays out of that derivation entirely.
 type podPreviewAdapter struct {
 	store store.Store
-	pods  *filler.PodAdapter
+	pods  *pod.Adapter
 }
 
 // Preview assembles the pool for the channel's SAVED filler selection (the GET …/pods
 // path).
-func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (filler.Pod, error) {
+func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
-		return filler.Pod{}, err
+		return pod.Pod{}, err
 	}
 	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), channels.SelectionForChannel(ch))
 }
@@ -1308,10 +1309,10 @@ func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (fille
 // The SAME call both consumers make, for the §10 one-assembler reason: if the guide computed
 // a break independently, the hover card would eventually list clips that are not the ones
 // playing, and nobody would be able to reproduce the discrepancy on demand.
-func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, slot filler.BreakSlot) (filler.Pod, error) {
-	pods, err := a.PreviewAtMany(ctx, channelID, []filler.BreakSlot{slot})
+func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error) {
+	pods, err := a.PreviewAtMany(ctx, channelID, []pod.BreakSlot{slot})
 	if err != nil {
-		return filler.Pod{}, err
+		return pod.Pod{}, err
 	}
 	return pods[0], nil
 }
@@ -1319,15 +1320,15 @@ func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, slot
 // PreviewAtMany is PreviewAt for every break of one channel in a window (#1420): the channel is
 // read once and the batch shares one catalog and exposure read, while each break keeps its own
 // seed, snapshot and slot length — pod for pod what PreviewAt returns.
-func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, slots []filler.BreakSlot) ([]filler.Pod, error) {
+func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return nil, err
 	}
-	breaks := make([]filler.Break, len(slots))
+	breaks := make([]pod.Break, len(slots))
 	for i, s := range slots {
 		ms := s.Start.UnixMilli()
-		breaks[i] = filler.Break{Seed: channels.PodSeedAt(ch.ID, ms), Start: time.UnixMilli(ms).UTC(), Length: s.Length}
+		breaks[i] = pod.Break{Seed: channels.PodSeedAt(ch.ID, ms), Start: time.UnixMilli(ms).UTC(), Length: s.Length}
 	}
 	return a.pods.PreviewAtMany(ctx, ch.ID, channels.SelectionForChannel(ch), breaks)
 }
@@ -1337,10 +1338,10 @@ func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, 
 // Resolved through `SelectionForChannel`, exactly like the previews above — coverage that
 // derived a channel's selection its own way could report on a different window than the pods
 // it claims to describe, which is the "lying meter" the whole phase exists to prevent.
-func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (filler.CoverageReport, error) {
+func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (pod.CoverageReport, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
-		return filler.CoverageReport{}, err
+		return pod.CoverageReport{}, err
 	}
 	return a.pods.CoverageFor(ctx, ch.ID, channels.SelectionForChannel(ch))
 }
@@ -1351,10 +1352,10 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (fill
 // boundary — for the same reason `PreviewDraft` stopped re-applying the scope era: the era's
 // inherit-vs-explicitly-any decision has exactly one writer, and a second application here could
 // not tell an operator who chose "any era" from one who left the field alone.
-func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.CoverageReport, error) {
+func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.CoverageReport, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
-		return filler.CoverageReport{}, err
+		return pod.CoverageReport{}, err
 	}
 	return a.pods.CoverageFor(ctx, ch.ID, sel)
 }
@@ -1369,7 +1370,7 @@ func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, 
 // they report on breaks that are currently airing; this is a picker, and an operator pinning a
 // clip to a paused channel is making a decision that takes effect when it resumes. Hiding the
 // row would look like the channel had been deleted.
-func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[string]filler.Fit, error) {
+func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[string]pod.Fit, error) {
 	clip, err := a.store.GetClip(ctx, clipPath)
 	if err != nil {
 		return nil, err
@@ -1378,7 +1379,7 @@ func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[st
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]filler.Fit, len(chans))
+	out := make(map[string]pod.Fit, len(chans))
 	for _, ch := range chans {
 		// `store.Clip` embeds `filler.Clip`, so this is the same value the catalog load hands
 		// the assembler — not a re-derivation.
@@ -1397,20 +1398,20 @@ func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[st
 //
 // Paused and detached channels are excluded: their breaks are not airing, so counting them as
 // "uncovered" would report a problem the operator deliberately created.
-func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) {
+func (a podPreviewAdapter) Pool(ctx context.Context) (pod.PoolReport, error) {
 	chans, err := a.store.ListChannels(ctx)
 	if err != nil {
-		return filler.PoolReport{}, err
+		return pod.PoolReport{}, err
 	}
 	// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused,
 	// not detached" (every managed state qualifies, drifted included — a transient "the guide is
 	// catching up", not a channel that stopped airing).
-	poolChannels := make([]filler.PoolChannel, 0, len(chans))
+	poolChannels := make([]pod.PoolChannel, 0, len(chans))
 	for _, ch := range chans {
 		if !ch.Status.Reconcilable() {
 			continue
 		}
-		poolChannels = append(poolChannels, filler.PoolChannel{
+		poolChannels = append(poolChannels, pod.PoolChannel{
 			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Selection: channels.SelectionForChannel(ch),
 		})
 	}
@@ -1419,7 +1420,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// is built on.
 	report, err := a.pods.PoolFor(ctx, poolChannels)
 	if err != nil {
-		return filler.PoolReport{}, err
+		return pod.PoolReport{}, err
 	}
 
 	// Counted in SQL rather than recomputed here — "untagged" is the AI-tagging job's own
@@ -1439,7 +1440,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	// to take len() of the slice.
 	report.Untagged, err = a.store.CountClips(ctx, clipstore.ClipFilter{UntaggedOnly: true})
 	if err != nil {
-		return filler.PoolReport{}, err
+		return pod.PoolReport{}, err
 	}
 	return report, nil
 }
@@ -1457,10 +1458,10 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 // the channel's era over the top of an explicit choice — the exact bug §10 V51f exists to fix.
 // `channels.SelectionFrom` is now the single writer, applied at the API boundary where the draft
 // policy (and therefore the DRAFT's scope, not the saved channel's) is known.
-func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, sel filler.Selection) (filler.Pod, error) {
+func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
-		return filler.Pod{}, err
+		return pod.Pod{}, err
 	}
 	return a.pods.Preview(ctx, ch.ID, channels.PodSeed(ch.ID), sel)
 }

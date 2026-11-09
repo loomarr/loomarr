@@ -6,12 +6,12 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/location"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 // localStations resolves a picked place to the broadcast stations within the household's local
-// radius (#2059 decisions 2 and 7), for filler.Policy.LocalStations. A place the index does not
+// radius (#2059 decisions 2 and 7), for pod.Policy.LocalStations. A place the index does not
 // know, a place outside the asked country, or an unreadable directory resolves to no stations, so
 // local clips fail closed rather than airing in the wrong city.
 type localStations struct {
@@ -56,4 +56,4 @@ func (l *localStations) resolve(country, place string) map[string]bool {
 	return near
 }
 
-var _ filler.LocalStations = (*localStations)(nil).resolve
+var _ pod.LocalStations = (*localStations)(nil).resolve

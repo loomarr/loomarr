@@ -10,7 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -132,7 +132,7 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 	// draft is given). Same assembler + seed as reconcile, so preview == reality.
 	pool := PodPoolDTO{Entries: []PodEntryDTO{}}
 	if s.pods != nil {
-		var pod filler.Pod
+		var pod pod.Pod
 		if draftPolicy != nil {
 			var sel schedule.FillerSelection
 			if draftPolicy.Filler != nil {

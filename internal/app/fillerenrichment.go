@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/station"
@@ -360,7 +361,7 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.
 		// station makes a clip local.
 		geography := source.Geography.Normalize()
 		if geography.Country != "" {
-			signals.Source = enrichment.Geography{Scope: string(filler.GeographicNational), Country: geography.Country}
+			signals.Source = enrichment.Geography{Scope: string(pod.GeographicNational), Country: geography.Country}
 		}
 		break
 	}

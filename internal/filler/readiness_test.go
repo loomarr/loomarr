@@ -4,16 +4,17 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 	t.Parallel()
 	base := filler.ReadinessInput{
 		Fetch: filler.FetchStatus{Enabled: true},
-		Pool: filler.PoolReport{
+		Pool: pod.PoolReport{
 			Eligible: 10,
-			Channels: []filler.ChannelCoverage{{
-				ChannelID: "ch-1", Report: filler.CoverageReport{Level: filler.MatchExact, Total: 10},
+			Channels: []pod.ChannelCoverage{{
+				ChannelID: "ch-1", Report: pod.CoverageReport{Level: pod.MatchExact, Total: 10},
 			}},
 		},
 	}
@@ -46,7 +47,7 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		}, filler.ReadinessNone},
 		{"review before pool quality", func(in *filler.ReadinessInput) {
 			in.NeedsYou = 3
-			in.Pool.Channels[0].Report.Level = filler.MatchAudience
+			in.Pool.Channels[0].Report.Level = pod.MatchAudience
 		}, filler.ReadinessReviewIncoming},
 		// #2733: Overview sends "review" to Incoming, so only a choice Incoming lists may ask
 		// for one. A review-disposition row with no Incoming task would point at an empty page.
@@ -55,13 +56,13 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		}, filler.ReadinessNone},
 		{"empty eligible pool", func(in *filler.ReadinessInput) { in.Pool.Eligible = 0 }, filler.ReadinessAddFiller},
 		{"weakest channel", func(in *filler.ReadinessInput) {
-			in.Pool.Channels[0].Report.Level = filler.MatchAudience
+			in.Pool.Channels[0].Report.Level = pod.MatchAudience
 		}, filler.ReadinessImproveCoverage},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			in := base
-			in.Pool.Channels = append([]filler.ChannelCoverage(nil), base.Pool.Channels...)
+			in.Pool.Channels = append([]pod.ChannelCoverage(nil), base.Pool.Channels...)
 			tt.edit(&in)
 			got := filler.ProjectReadiness(in)
 			if got.Next != tt.want {
@@ -80,7 +81,7 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 func TestProjectReadinessOutstandingRepairsOutrankRecentSuccessfulHistory(t *testing.T) {
 	got := filler.ProjectReadiness(filler.ReadinessInput{
 		Fetch: filler.FetchStatus{Enabled: true},
-		Pool:  filler.PoolReport{Eligible: 1},
+		Pool:  pod.PoolReport{Eligible: 1},
 		Runs:  []filler.AcquisitionRun{{Status: filler.AcquisitionSuccess}},
 		Repairs: filler.AcquisitionRepairSummary{
 			Count: 2, LatestReason: "latest retained repair",

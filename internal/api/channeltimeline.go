@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -218,11 +218,11 @@ func (s *Server) attachTimelinePods(
 		return
 	}
 	var idx []int
-	var slots []filler.BreakSlot
+	var slots []pod.BreakSlot
 	for i, b := range bs {
 		if b.Kind == schedule.SlotFiller {
 			idx = append(idx, i)
-			slots = append(slots, filler.BreakSlot{Start: b.Start, Length: b.BreakLength()})
+			slots = append(slots, pod.BreakSlot{Start: b.Start, Length: b.BreakLength()})
 		}
 	}
 	if len(slots) == 0 {
