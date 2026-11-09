@@ -7,7 +7,12 @@ import "sort"
 //
 // The table below is the single source of truth for which area a package belongs to, and
 // TestArchDocs_AreasCoverEveryPackage keeps it exact. It is temporary: once the packages move
-// into one directory per area, the directory is the area and this table goes.
+// into one directory per area, the directory is the area and this table goes. Most areas already
+// have their directory (media, channels, proposals, playout, filler, people, platform); still
+// directly under internal/ are the library area's catalog, inventory, metadataprovider,
+// moviecollections, episodeevidence, provision, provisionbackstop, requester and tmdb, the edge
+// area is the two directories api and app, and the test area's demolibrary, eval, integration,
+// testkit, tmdb/tmdbstandin and platform/store/storetest sit outside any single directory.
 type area struct {
 	Name        string
 	Title       string
