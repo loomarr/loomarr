@@ -19,6 +19,12 @@ type PressableRowProps = Omit<ComponentProps<typeof Pressable>, "children" | "st
   selected?: boolean;
   /** A hairline under the row, for rows stacked in a list. */
   divided?: boolean;
+  /**
+   * Web: the DOM mousedown on the row, which react-native-web forwards to the element. An option of
+   * a combobox listbox calls `preventDefault` here so the input keeps focus while the row is
+   * pressed. Native has no mousedown and ignores it.
+   */
+  onMouseDown?: (event: { preventDefault: () => void }) => void;
 };
 
 type PressableRowRef = ComponentRef<typeof Pressable>;
@@ -52,7 +58,10 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
       return (
         <Pressable
           accessibilityRole={accessibilityRole}
-          accessibilityState={{ ...accessibilityState, disabled, selected }}
+          // `selected` is announced only for a role that has it (option, tab, row): aria-selected on a
+          // plain button is invalid, so a button row shows the fill alone.
+          accessibilityState={{ ...accessibilityState, disabled }}
+          aria-selected={accessibilityRole === "button" ? undefined : selected}
           disabled={disabled}
           onBlur={focusLook.onBlur}
           onFocus={focusLook.onFocus}

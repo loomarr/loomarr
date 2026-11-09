@@ -1,10 +1,9 @@
-package app
+package capability
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/fs"
 	"strings"
@@ -20,23 +19,18 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
-	"github.com/loomarr/loomarr/internal/platform/metrics"
+	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
-type fillerEnrichmentRepository struct{ st records.Store }
-
-type fillerResearchRepository struct {
-	st records.FillerResearchStore
-}
-
-func activeFillerTextSelection(set resolved, recorder *metrics.Recorder) enrichment.TextSelection {
-	selection := resolveSelection(set)
+// TextSelection is the text model the enrichment pass would ask now: the install's main selection,
+// built into a provider by build. A selection without a URL or model is none.
+func TextSelection(selection llm.Selection, build func(llm.Selection) llm.Provider) enrichment.TextSelection {
 	if selection.URL == "" || selection.Model == "" {
 		return enrichment.TextSelection{}
 	}
-	return enrichment.TextSelection{Provider: buildProviderFor(selection, recorder),
+	return enrichment.TextSelection{Provider: build(selection),
 		ProviderName: selection.Provider, Model: selection.Model}
 }
 
@@ -45,7 +39,10 @@ func capabilityVersion(version string, identity ...string) string {
 	return version + ":" + hex.EncodeToString(sum[:8])
 }
 
-func activeFillerTranscriptCapability(set resolved) enrichment.CapabilitySelection {
+// TranscriptCapability is the speech-to-text capability the install offers now, with the version
+// its choice stamps on a transcript. selection is the install's main language-model selection,
+// which a hosted speech service with no URL of its own reuses.
+func TranscriptCapability(set settings.Reader, selection llm.Selection) enrichment.CapabilitySelection {
 	if !settings.FillerTranscribeEnabled.Get(set) {
 		return enrichment.CapabilitySelection{}
 	}
@@ -54,7 +51,6 @@ func activeFillerTranscriptCapability(set resolved) enrichment.CapabilitySelecti
 		url := strings.TrimSpace(settings.ASRURL.Get(set))
 		identity := "speech-service"
 		if url == "" {
-			selection := resolveSelection(set)
 			url, identity = selection.URL, selection.Provider
 		}
 		if url == "" || model == "" || identity == "" {
@@ -74,11 +70,13 @@ func activeFillerTranscriptCapability(set resolved) enrichment.CapabilitySelecti
 			settings.IngestWhisperPath.Get(set), model)}
 }
 
-func activeFillerVisionCapability(set resolved) enrichment.CapabilitySelection {
+// VisionCapability is the frame-reading capability the install offers now, with the version its
+// endpoint choice stamps on an observation.
+func VisionCapability(set settings.Reader, selection llm.Selection) enrichment.CapabilitySelection {
 	if !settings.FillerVisionEnabled.Get(set) {
 		return enrichment.CapabilitySelection{}
 	}
-	wiring := visionEndpoint(set)
+	wiring := visionEndpoint(set, selection)
 	if wiring.url == "" || strings.TrimSpace(wiring.model) == "" ||
 		(wiring.provider != "openai" && wiring.provider != "ollama") {
 		return enrichment.CapabilitySelection{}
@@ -92,25 +90,44 @@ func activeFillerVisionCapability(set resolved) enrichment.CapabilitySelection {
 			identity, wiring.url, wiring.model)}
 }
 
-type fillerTranscriptObserver interface {
+// TranscriptObserver is the transcribe rung's read-only side.
+type TranscriptObserver interface {
 	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, string, error)
 }
 
-type fillerVisionObserver interface {
+// VisionObserver is the vision rung's read-only side.
+type VisionObserver interface {
 	Observe(context.Context, cliplibrary.StoreClip) (filler.StageResult, filler.VisionObservation, error)
 }
 
-// fillerMediaExecutor is intentionally narrower than filler.Stage: the enrichment coordinator has
+// MediaStore is the slice of the filler store a media executor reads.
+type MediaStore interface {
+	GetClip(ctx context.Context, hash string) (clipstore.Clip, error)
+	ListFillerEnrichment(ctx context.Context, clipHash string) ([]enrichment.State, error)
+	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
+}
+
+// MediaExecutor is intentionally narrower than filler.Stage: the enrichment coordinator has
 // already decided that useful work remains, and this adapter can load media and produce observations
 // but has no readiness, persistence, or conveyor mutation in its interface.
-type fillerMediaExecutor struct {
-	store      records.Store
-	transcript fillerTranscriptObserver
-	vision     fillerVisionObserver
+type MediaExecutor struct {
+	store      MediaStore
+	transcript TranscriptObserver
+	vision     VisionObserver
 	kind       enrichment.Capability
 }
 
-func (e fillerMediaExecutor) Run(ctx context.Context, candidate enrichment.Candidate) (enrichment.CapabilityResult, error) {
+// NewTranscriptExecutor returns the executor for the transcript capability.
+func NewTranscriptExecutor(store MediaStore, observer TranscriptObserver) MediaExecutor {
+	return MediaExecutor{store: store, transcript: observer, kind: enrichment.CapabilityTranscript}
+}
+
+// NewVisionExecutor returns the executor for the vision capability.
+func NewVisionExecutor(store MediaStore, observer VisionObserver) MediaExecutor {
+	return MediaExecutor{store: store, vision: observer, kind: enrichment.CapabilityVision}
+}
+
+func (e MediaExecutor) Run(ctx context.Context, candidate enrichment.Candidate) (enrichment.CapabilityResult, error) {
 	if e.store == nil {
 		return enrichment.CapabilityResult{}, nil
 	}
@@ -191,56 +208,13 @@ func (e fillerMediaExecutor) Run(ctx context.Context, candidate enrichment.Candi
 	}, nil
 }
 
-func (r fillerEnrichmentRepository) ListCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]enrichment.Candidate, error) {
-	clips, err := r.st.ListFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
-	return fillerEnrichmentCandidates(clips, err)
-}
+// ResearchSignals loads the cited-research input for a clip from its source metadata file.
+type ResearchSignals struct{ files fs.FS }
 
-func (r fillerEnrichmentRepository) ListCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]enrichment.Candidate, error) {
-	clips, err := r.st.ListFillerEnrichmentCapabilityCandidates(ctx, producer, producerVersion, taxonomyVersion, limit)
-	return fillerEnrichmentCandidates(clips, err)
-}
+// NewResearchSignals returns the research input loader over the clip library's files.
+func NewResearchSignals(files fs.FS) ResearchSignals { return ResearchSignals{files: files} }
 
-func fillerEnrichmentCandidates(clips []clipstore.Clip, err error) ([]enrichment.Candidate, error) {
-	if err != nil {
-		return nil, err
-	}
-	out := make([]enrichment.Candidate, len(clips))
-	for i, clip := range clips {
-		out[i] = enrichment.Candidate{ClipHash: clip.Hash, Path: clip.Path, Name: clip.Name,
-			Kind: string(clip.Role), Transcript: clip.Transcript, VisibleText: clip.VisibleText}
-	}
-	return out, nil
-}
-
-func (r fillerEnrichmentRepository) ListStates(ctx context.Context, clipHash string) ([]enrichment.State, error) {
-	return r.st.ListFillerEnrichment(ctx, clipHash)
-}
-
-func (r fillerEnrichmentRepository) ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error) {
-	return r.st.ListTaxa(ctx)
-}
-
-func (r fillerEnrichmentRepository) ApplyPass(ctx context.Context, pass enrichment.Pass) (int, error) {
-	return r.st.ApplyFillerEnrichmentPass(ctx, pass)
-}
-
-func (r fillerResearchRepository) ListCandidates(ctx context.Context, producer, producerVersion,
-	adapter, adapterVersion string, limit int) ([]research.Candidate, error) {
-	return r.st.ListFillerResearchCandidates(ctx, producer, producerVersion, adapter, adapterVersion, limit)
-}
-
-func (r fillerResearchRepository) SaveReport(ctx context.Context, report research.Report) error {
-	return r.st.SaveFillerResearchReport(ctx, report)
-}
-
-func (r fillerResearchRepository) PromoteStoredCountries(ctx context.Context, limit int) (int, error) {
-	return r.st.PromoteStoredFillerResearchCountries(ctx, limit)
-}
-
-type fillerResearchSignals struct{ files fs.FS }
-
-func (l fillerResearchSignals) Load(_ context.Context, candidate research.Candidate) (research.Input, error) {
+func (l ResearchSignals) Load(_ context.Context, candidate research.Candidate) (research.Input, error) {
 	input := research.Input{Title: candidate.Name}
 	if metadata, ok := asset.ReadSourceMetadataFS(l.files, candidate.Path); ok {
 		input.Title = metadata.Title
@@ -251,40 +225,21 @@ func (l fillerResearchSignals) Load(_ context.Context, candidate research.Candid
 	return input, nil
 }
 
-// fillerDetailRunner keeps one scheduler row while the modules retain different authority:
-// enrichment writes verified axes; research writes only cited suggestions.
-type fillerDetailRunner struct {
-	enrichment fillerEnrichmentRunner
-	research   *research.Runner
-	retire     *fillerGeographyRetirement // runs last, once geography has had every pass
-}
-
-func (r fillerDetailRunner) Run(ctx context.Context) (enrichment.RunResult, error) {
-	var out enrichment.RunResult
-	var enrichmentErr, researchErr, retireErr error
-	if r.enrichment != nil {
-		out, enrichmentErr = r.enrichment.Run(ctx)
-	}
-	if r.research != nil {
-		var researched research.RunResult
-		researched, researchErr = r.research.Run(ctx)
-		out.Considered += researched.Considered
-		out.Updated += researched.Updated
-		out.Failed += researched.Failed
-	}
-	if r.retire != nil {
-		_, retireErr = r.retire.Run(ctx)
-	}
-	return out, errors.Join(enrichmentErr, researchErr, retireErr)
-}
-
-type fillerEnrichmentSignals struct {
+// EnrichmentSignals loads the evidence the enrichment pass reads for a clip: its source metadata
+// file, the station its text names, and what its source declares.
+type EnrichmentSignals struct {
 	store    records.FillerSourceStore
 	files    fs.FS
 	stations *station.Lazy // nil: no station is ever named
 }
 
-func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate enrichment.Candidate, observedAt time.Time) (enrichment.Signals, error) {
+// NewEnrichmentSignals returns the enrichment signal loader. stations may be nil, in which case no
+// station is ever named.
+func NewEnrichmentSignals(store records.FillerSourceStore, files fs.FS, stations *station.Lazy) EnrichmentSignals {
+	return EnrichmentSignals{store: store, files: files, stations: stations}
+}
+
+func (l EnrichmentSignals) Load(ctx context.Context, candidate enrichment.Candidate, observedAt time.Time) (enrichment.Signals, error) {
 	signals := enrichment.Signals{ClipHash: candidate.ClipHash, Kind: candidate.Kind,
 		Title: candidate.Name, OriginalName: candidate.Name, Transcript: candidate.Transcript,
 		VisibleText: candidate.VisibleText, ObservedAt: observedAt}

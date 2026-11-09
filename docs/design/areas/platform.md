@@ -31,17 +31,17 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`platform/housekeeping`** · 1 importer · → `people/access`, `people/notifications`, `platform/diagnostics`, `platform/jobs`, `platform/settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
-- **`platform/httpx`** · 13 importers · → `platform/metrics`
+- **`platform/httpx`** · 14 importers · → `platform/metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`platform/jobs`** · 6 importers · → `platform/store`, `platform/store/jobstore`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 4 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
-- **`platform/llm`** · 9 importers · → `platform/httpx`, `platform/metrics`
+- **`platform/llm`** · 10 importers · → `platform/httpx`, `platform/metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`platform/logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
-- **`platform/metrics`** · 11 importers · → `media/images/rustgen`, `provision`
+- **`platform/metrics`** · 12 importers · → `media/images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`platform/openroutercatalog`** · 2 importers · → `platform/httpx`, `platform/openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
@@ -51,7 +51,7 @@ One area of the [package map](../package-map.md#start-here).
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
 - **`platform/releaseverify`**
   Validates the repository's release publication policy.
-- **`platform/settings`** · 16 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
+- **`platform/settings`** · 17 importers · → `library`, `platform/buildinfo`, `platform/config`, `platform/langcode`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`platform/storagegovernor`** · 8 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
@@ -63,7 +63,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
 - **`platform/store/channelstore`** · 19 importers · → `channels/schedule`, `platform/store/storedb`, `provision`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
-- **`platform/store/clipstore`** · 6 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
+- **`platform/store/clipstore`** · 7 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 - **`platform/store/crashstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
   Persists the crash reports paired apps send (#1816).

@@ -32,10 +32,49 @@ describe("PressableRow", () => {
     );
   });
 
+  it("announces selected for an option but not for a plain button", () => {
+    expect(
+      markupOf(
+        <PressableRow accessibilityRole="option" selected>
+          A
+        </PressableRow>,
+      ),
+    ).toContain('aria-selected="true"');
+    expect(markupOf(<PressableRow selected>A</PressableRow>)).not.toContain("aria-selected");
+  });
+
   it("draws a hairline only when divided", () => {
     expect(markupOf(<PressableRow divided>A</PressableRow>)).not.toEqual(
       markupOf(<PressableRow>A</PressableRow>),
     );
+  });
+
+  it("forwards mousedown so a combobox option can keep the input focused", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const input = document.createElement("input");
+    document.body.append(input);
+    act(() => {
+      root.render(
+        <LoomarrProvider theme="dark">
+          <PressableRow accessibilityRole="option" onMouseDown={(event) => event.preventDefault()}>
+            Austin
+          </PressableRow>
+        </LoomarrProvider>,
+      );
+    });
+    input.focus();
+    const option = container.querySelector<HTMLElement>('[role="option"]');
+    const mousedown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    act(() => {
+      option?.dispatchEvent(mousedown);
+    });
+    expect(mousedown.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(input);
+    act(() => root.unmount());
+    container.remove();
+    input.remove();
   });
 
   it("runs onPress, and not when disabled", () => {

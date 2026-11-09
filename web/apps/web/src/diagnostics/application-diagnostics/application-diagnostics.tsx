@@ -11,6 +11,7 @@ import {
   Field,
   Icon,
   icons,
+  PressableRow,
   StatusDot,
   type StatusTone,
   Surface,
@@ -579,34 +580,35 @@ const ApplicationDiagnostics = ({
                       className="border-border absolute top-0 left-0 w-full border-b"
                       style={{ transform: `translateY(${virtualRow.start}px)` }}
                     >
-                      <button
-                        type="button"
-                        className={`hover:bg-muted/20 grid w-full cursor-pointer gap-2 px-4 py-3 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start ${open ? "bg-muted/20" : ""}`}
+                      <PressableRow
                         aria-expanded={open}
-                        onClick={() => setExpanded(open ? undefined : event.id)}
+                        onPress={() => setExpanded(open ? undefined : event.id)}
+                        selected={open}
                       >
-                        <span className="inline-flex items-center gap-2 text-xs">
-                          <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-                          {levelLabel(event.level)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium">
-                            {event.message || fallbackMessage(event)}
+                        <div className="grid w-full gap-2 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start">
+                          <span className="inline-flex items-center gap-2 text-xs">
+                            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                            {levelLabel(event.level)}
                           </span>
-                          <span className="text-muted-foreground mt-1 block text-xs">
-                            {sourceLabel(event.source)}
-                            {event.subsystem ? ` · ${event.subsystem}` : ""}
-                            {event.channelId ? " · Channel involved" : ""}
-                            {event.processRunId ? " · Process output available" : ""}
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium">
+                              {event.message || fallbackMessage(event)}
+                            </span>
+                            <span className="text-muted-foreground mt-1 block text-xs">
+                              {sourceLabel(event.source)}
+                              {event.subsystem ? ` · ${event.subsystem}` : ""}
+                              {event.channelId ? " · Channel involved" : ""}
+                              {event.processRunId ? " · Process output available" : ""}
+                            </span>
                           </span>
-                        </span>
-                        <time
-                          className="text-muted-foreground font-mono text-xs sm:text-right"
-                          dateTime={new Date(event.occurredAt).toISOString()}
-                        >
-                          {formatTime(event.occurredAt)}
-                        </time>
-                      </button>
+                          <time
+                            className="text-muted-foreground font-mono text-xs sm:text-right"
+                            dateTime={new Date(event.occurredAt).toISOString()}
+                          >
+                            {formatTime(event.occurredAt)}
+                          </time>
+                        </div>
+                      </PressableRow>
                       {open && (
                         <div className="border-border border-t lg:hidden">
                           <EventDetail
