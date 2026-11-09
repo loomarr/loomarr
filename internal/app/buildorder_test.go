@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -23,7 +23,7 @@ func TestBuild_WorkersStartOnlyAfterTheEngineIsConfigured(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	channel := store.Channel{Channel: schedule.Channel{
+	channel := channelstore.Channel{Channel: schedule.Channel{
 		ID: "ch1", Name: "One", Number: 1, Strategy: schedule.Sequential, Status: schedule.StatusLive,
 	}}
 	channel.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}

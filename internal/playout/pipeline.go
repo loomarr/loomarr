@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/encode"
 )
 
-// The transcode pipeline builder (#1512 phase 1a).
+// The transcode pipeline builder (#1512).
 //
 // Build is a PURE function from three pieces of data to the ffmpeg arguments for one item:
 //
@@ -30,7 +30,7 @@ import (
 //     tone-mapped on the CPU at output size, then uploaded again.
 //
 // Measured on the household Arc (spike #1513): the full-GPU H.264 1080p graph runs at ~0.04 cores
-// per stream and 21x, against ~0.16 cores and 11x for the old CPU-filter chain.
+// per stream and 21x, against ~0.16 cores and 11x for a CPU-filter chain.
 //
 // The host vocabulary (encode.HostProfile, encode.Family, HostFor) and each family's encoder flags
 // (encode.VideoArgs) live in internal/media/encode, shared with the filler pipeline (#2121). The graphs
@@ -71,7 +71,7 @@ const (
 )
 
 // ChannelOutput is the uniform output for a channel profile: its geometry, cadence and audio
-// bitrate, with the maintainer's rate control. The profile's rung bitrate no longer drives video.
+// bitrate, with the maintainer's rate control. The profile's rung bitrate does not drive video.
 func ChannelOutput(p Profile) OutputProfile {
 	return OutputProfile{
 		Width: p.Width, Height: p.Height, FPS: p.Framerate,
@@ -168,7 +168,7 @@ const sdrToHDR10 = "libplacebo=format=p010le:colorspace=bt2020nc:color_primaries
 
 // conformHDRMetadata drops an HDR source's static metadata after the baseline's tone-map. It rides
 // the frames as side data through every family's graph, and the mp4 muxer writes it into the sample
-// entry (mdcv/clli), so a tone-mapped film's stsd differed from every SDR item's and the slate's.
+// entry (mdcv/clli), so a tone-mapped film's stsd would differ from every SDR item's and the slate's.
 // HEVC outputs strip all side data instead (stripSideData).
 const conformHDRMetadata = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL"
 
@@ -555,7 +555,7 @@ func (b *builder) nvenc() error {
 		switch b.gpuTonemapper() {
 		case TonemapperOpenCL:
 			// ffmpeg cannot map CUDA frames to OpenCL, so the downscaled frame hops through system
-			// memory both ways. Measured on the dev GeForce: see the PR's numbers.
+			// memory both ways, which is why this is a declared fallback.
 			b.fallback("tonemap", "tonemap_opencl: the scaled frame is copied through system memory")
 			filterDevice = "ocl"
 			b.p.PreInput = append(b.p.PreInput, "-init_hw_device", "opencl=ocl")

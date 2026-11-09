@@ -5,15 +5,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // blackGaps tags plain intervals as black-detected — the shape most of these tests want, since
 // they are about CUT POSITIONS rather than about which detector found them. The provenance-aware
 // cases below build `detectedGap` values directly.
-func blackGaps(in ...Interval) []detectedGap {
+func blackGaps(in ...tools.Interval) []detectedGap {
 	out := make([]detectedGap, 0, len(in))
 	for _, g := range in {
-		out = append(out, detectedGap{Interval: g, Src: srcBlack})
+		out = append(out, detectedGap{Interval: g, Src: split.SrcBlack})
 	}
 	return out
 }
@@ -22,13 +25,13 @@ func blackGaps(in ...Interval) []detectedGap {
 
 func TestSegmentsFromBoundaries_CutsAtGapMidpoints(t *testing.T) {
 	// Two black gaps at 30s and 60s (each ~0.5s wide) in a 90s compilation.
-	gaps := []Interval{{StartMs: 29800, EndMs: 30200}, {StartMs: 59900, EndMs: 60100}}
+	gaps := []tools.Interval{{StartMs: 29800, EndMs: 30200}, {StartMs: 59900, EndMs: 60100}}
 	segs, _ := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(0))
 	if len(segs) != 3 {
 		t.Fatalf("segments = %+v, want 3", segs)
 	}
 	// Midpoints: 30000 and 60000.
-	want := []Interval{{StartMs: 0, EndMs: 30000}, {StartMs: 30000, EndMs: 60000}, {StartMs: 60000, EndMs: 90000}}
+	want := []tools.Interval{{StartMs: 0, EndMs: 30000}, {StartMs: 30000, EndMs: 60000}, {StartMs: 60000, EndMs: 90000}}
 	for i, w := range want {
 		if segs[i].StartMs != w.StartMs || segs[i].EndMs != w.EndMs {
 			t.Errorf("segment %d = [%d,%d), want [%d,%d)", i, segs[i].StartMs, segs[i].EndMs, w.StartMs, w.EndMs)
@@ -39,7 +42,7 @@ func TestSegmentsFromBoundaries_CutsAtGapMidpoints(t *testing.T) {
 func TestSegmentsFromBoundaries_MergesBlackAndSilenceOnOneBoundary(t *testing.T) {
 	// A fade that is BOTH black and silent must produce ONE cut, not two slivers —
 	// blackdetect and silencedetect routinely bracket the same boundary.
-	gaps := []Interval{
+	gaps := []tools.Interval{
 		{StartMs: 29800, EndMs: 30200}, // black
 		{StartMs: 29900, EndMs: 31000}, // silence overlapping the black
 	}
@@ -51,7 +54,7 @@ func TestSegmentsFromBoundaries_MergesBlackAndSilenceOnOneBoundary(t *testing.T)
 
 func TestSegmentsFromBoundaries_DropsSlivers(t *testing.T) {
 	// A gap 1s in — the "segment" before it is a fade-in artefact, not an advert.
-	gaps := []Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 45000, EndMs: 45500}}
+	gaps := []tools.Interval{{StartMs: 900, EndMs: 1100}, {StartMs: 45000, EndMs: 45500}}
 	segs, _ := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(0))
 	if len(segs) != 2 {
 		t.Fatalf("segments = %+v, want the 1s sliver dropped", segs)
@@ -69,13 +72,13 @@ func TestSegmentsFromBoundaries_NoGapsIsOneWholeSegment(t *testing.T) {
 	if len(segs) != 1 || segs[0].StartMs != 0 || segs[0].EndMs != 149_000 {
 		t.Fatalf("no-gap file = %+v, want one whole-file segment", segs)
 	}
-	if !segs[0].overlong() {
+	if !overlong(segs[0]) {
 		t.Error("a 149s whole-file segment must be over-long (rescue-bound)")
 	}
 }
 
 func TestSegmentsFromChapters_FreeSplitWithTitles(t *testing.T) {
-	chapters := []Chapter{
+	chapters := []tools.Chapter{
 		{StartMs: 0, EndMs: 30000, Title: "Burger Barn"},
 		{StartMs: 30000, EndMs: 30500, Title: "sliver"}, // dropped
 		{StartMs: 30500, EndMs: 61000, Title: "Brickle"},
@@ -98,7 +101,7 @@ func TestSegmentsFromChapters_FreeSplitWithTitles(t *testing.T) {
 
 func TestSegmentsFromBoundaries_DropsUnderTheCatalogFloor(t *testing.T) {
 	// A 5s span between two boundaries — comfortably over MinSegmentMs, under a 10s catalog floor.
-	gaps := []Interval{{StartMs: 19_900, EndMs: 20_100}, {StartMs: 24_900, EndMs: 25_100}}
+	gaps := []tools.Interval{{StartMs: 19_900, EndMs: 20_100}, {StartMs: 24_900, EndMs: 25_100}}
 
 	segs, dropped := segmentsFromBoundaries(90_000, blackGaps(gaps...), newSegmentFloor(10*time.Second))
 	if len(segs) != 2 {
@@ -117,7 +120,7 @@ func TestSegmentsFromBoundaries_DropsUnderTheCatalogFloor(t *testing.T) {
 }
 
 func TestSegmentsFromChapters_DropsUnderTheCatalogFloor(t *testing.T) {
-	chapters := []Chapter{
+	chapters := []tools.Chapter{
 		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
 		{StartMs: 30_000, EndMs: 35_000, Title: "station ID"}, // 5s — the band that sank reels
 		{StartMs: 35_000, EndMs: 66_000, Title: "Brickle"},
@@ -180,7 +183,7 @@ func TestValidateConfirmedSegments_RefusesAnOperatorCutUnderTheCatalogFloor(t *t
 	// ⚠ An 8s hand-drawn cut used to be written, spawned, and THEN rejected `too_short` by the
 	// probe rung — a silent downstream loss the operator never connected to their edit.
 	dur := int64(90_000)
-	segs := []SplitSegment{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 38_000}}
+	segs := []split.Segment{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 38_000}}
 
 	err := validateConfirmedSegments(segs, dur, newSegmentFloor(10*time.Second))
 	if err == nil {
@@ -271,12 +274,8 @@ func TestParseMMS(t *testing.T) {
 
 // --- names / transcripts -----------------------------------------------------
 
-// ⚠ `TestSanitizeClipName` was deleted with the function it covered (§10 V51a). A segment's
-// filename is its content hash now, so there is no display name to make filesystem-safe — the
-// name lives on the catalog row and is read by people, not by the filesystem.
-
 func TestSliceTranscript(t *testing.T) {
-	tr := []TranscriptSegment{
+	tr := []tools.TranscriptSegment{
 		{StartMs: 0, EndMs: 2000, Text: "first"},
 		{StartMs: 2000, EndMs: 4000, Text: "second"},
 		{StartMs: 4000, EndMs: 6000, Text: "third"},
@@ -289,19 +288,19 @@ func TestSliceTranscript(t *testing.T) {
 
 func TestValidateConfirmedSegments(t *testing.T) {
 	dur := int64(90_000)
-	ok := []SplitSegment{{StartMs: 0, EndMs: 30000}, {StartMs: 30000, EndMs: 60000}}
+	ok := []split.Segment{{StartMs: 0, EndMs: 30000}, {StartMs: 30000, EndMs: 60000}}
 	if err := validateConfirmedSegments(ok, dur, newSegmentFloor(0)); err != nil {
 		t.Errorf("valid cut list rejected: %v", err)
 	}
-	overlap := []SplitSegment{{StartMs: 0, EndMs: 31000}, {StartMs: 30000, EndMs: 60000}}
+	overlap := []split.Segment{{StartMs: 0, EndMs: 31000}, {StartMs: 30000, EndMs: 60000}}
 	if err := validateConfirmedSegments(overlap, dur, newSegmentFloor(0)); err == nil {
 		t.Error("overlapping cut list accepted — two clips would share seconds")
 	}
-	outside := []SplitSegment{{StartMs: 0, EndMs: 91_000}}
+	outside := []split.Segment{{StartMs: 0, EndMs: 91_000}}
 	if err := validateConfirmedSegments(outside, dur, newSegmentFloor(0)); err == nil {
 		t.Error("segment past the clip end accepted")
 	}
-	sliver := []SplitSegment{{StartMs: 0, EndMs: 1000}}
+	sliver := []split.Segment{{StartMs: 0, EndMs: 1000}}
 	if err := validateConfirmedSegments(sliver, dur, newSegmentFloor(0)); err == nil {
 		t.Error("sub-minimum segment accepted")
 	}

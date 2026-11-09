@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
@@ -35,7 +35,7 @@ func TestTranscodePreservesMeasuredGeometryCadenceAspectAndAVSkew(t *testing.T) 
 	if raw, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build source fixture: %v: %s", err, raw)
 	}
-	probe := filler.FFprobeNextTo(ffmpeg)
+	probe := cliplibrary.FFprobeNextTo(ffmpeg)
 	input, err := probe(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +113,7 @@ func TestTranscodeInterlacedFixturePreservesFieldOrderOrFailsClosed(t *testing.T
 	if raw, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build interlaced source fixture: %v: %s", err, raw)
 	}
-	probe := filler.FFprobeNextTo(ffmpeg)
+	probe := cliplibrary.FFprobeNextTo(ffmpeg)
 	input, err := probe(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +166,7 @@ func TestTranscodeVariableFrameRateFixturePreservesFrameTiming(t *testing.T) {
 	if !sourceTiming.variable() {
 		t.Fatal("variable-frame-rate source fixture had constant frame timing")
 	}
-	probe := filler.FFprobeNextTo(ffmpeg)
+	probe := cliplibrary.FFprobeNextTo(ffmpeg)
 	input, err := probe(context.Background(), source)
 	if err != nil {
 		t.Fatal(err)

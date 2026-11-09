@@ -1,6 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { Action } from "@loomarr/design-system";
-import { AlertTriangle } from "lucide-react";
+import { Action, Icon, icons } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
@@ -18,7 +17,7 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
         className,
       )}
     >
-      <AlertTriangle className="text-onair-300 size-6" aria-hidden />
+      <Icon decorative glyph={icons.alert} size="control" tone="danger" />
       <div>
         <p className="text-onair-300 font-medium">{p.title ?? "Something went wrong"}</p>
         {p.detail && <p className="text-muted-foreground mt-1 max-w-md text-sm">{p.detail}</p>}

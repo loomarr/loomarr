@@ -3,59 +3,8 @@ package library
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"strings"
 )
-
-// runtimeItem mirrors the /Items slice ItemDurationMs needs. RunTimeTicks is the server-probed
-// duration in 100-ns units (Emby/Jellyfin convention).
-type runtimeItem struct {
-	ID           string `json:"Id"`
-	RunTimeTicks int64  `json:"RunTimeTicks"`
-}
-
-type runtimeItemsResponse struct {
-	Items []runtimeItem `json:"Items"`
-}
-
-// ticksPerMs converts Emby/Jellyfin RunTimeTicks (100-ns units) to milliseconds.
-const ticksPerMs = 10_000
-
-// ItemDurationMs returns a single library item's runtime in milliseconds,
-// resolved from the media server's server-probed RunTimeTicks (§9/§10 — the
-// core never probes media itself). Used by the scheduler to give a program slot
-// a real duration before pushing the lineup to Tunarr (which rejects ≤ 0).
-// Returns (0, nil) if the server reports no runtime.
-//
-// Uses the LIST endpoint `GET /Items?Ids=<id>&Fields=RunTimeTicks` rather than
-// `GET /Items/<id>`: Emby 4.10 rejects the bare single-item path with "could not
-// be found" unless it's user-scoped (`/Users/<uid>/Items/<id>`), and Loomarr
-// authenticates with a token, not a user context. The Ids-filtered list needs no
-// user and is shared across the Emby/Jellyfin flavors. (Caught by the live smoke:
-// the bare path 404'd → duration 0 → Tunarr rejected the lineup push.)
-func (c *Client) ItemDurationMs(ctx context.Context, itemID string) (int64, error) {
-	c, err := c.operation()
-	if err != nil {
-		return 0, err
-	}
-	q := url.Values{}
-	q.Set("Ids", itemID)
-	q.Set("Fields", "RunTimeTicks")
-	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
-	if err != nil {
-		return 0, err
-	}
-	c.flavor().applyTokenAuth(req, c.token(), c.deviceID)
-
-	var resp runtimeItemsResponse
-	if err := c.do(req, &resp); err != nil {
-		return 0, err
-	}
-	if len(resp.Items) == 0 {
-		return 0, nil // item not found / no runtime — caller falls back (never dead air)
-	}
-	return resp.Items[0].RunTimeTicks / ticksPerMs, nil
-}
 
 // virtualFolder is one library as `GET /Library/VirtualFolders` reports it.
 //

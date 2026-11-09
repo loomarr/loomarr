@@ -10,8 +10,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -43,7 +48,7 @@ type podWire struct {
 // handler reads a store whose ListClips fails, while the harness's own Store stays the real one for
 // seeding.
 func startTimelinePodsHarness(
-	t *testing.T, g api.PlayoutGuide, pods api.PodPreviewer, imageService api.ImageService, breakClips bool,
+	t *testing.T, g playoutapi.PlayoutGuide, pods guideapi.PodPreviewer, imageService imagesapi.ImageService, breakClips bool,
 ) *apiHarness {
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
@@ -99,13 +104,13 @@ func timelineBreakGuide(now time.Time) *fakeXMLTVGuide {
 // seedPodClips stores two spots: "clip-still" has a still and a hover loop, "clip-bare" has neither.
 func seedPodClips(t *testing.T, st records.Store) {
 	t.Helper()
-	for _, c := range []filler.Clip{
+	for _, c := range []clips.Clip{
 		{
-			Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial,
+			Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: clips.Commercial,
 			DurationMs: 30_000, ThumbImageHash: "spot-still", HoverImageHash: "spot-hover",
 		},
 		{
-			Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID,
+			Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: clips.StationID,
 			DurationMs: 10_000,
 		},
 	} {
@@ -116,12 +121,12 @@ func seedPodClips(t *testing.T, st records.Store) {
 }
 
 func timelinePodsFixture() (*fakePods, *fakeImageService) {
-	fp := &fakePods{pod: filler.Pod{
-		MatchLevel: filler.MatchExact,
+	fp := &fakePods{pod: pod.Pod{
+		MatchLevel: pod.MatchExact,
 		TotalMs:    40_000,
-		Entries: []filler.PodEntry{
-			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: filler.Commercial, DurationMs: 30_000},
-			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: filler.StationID, DurationMs: 10_000},
+		Entries: []pod.Entry{
+			{Hash: "clip-still", Path: "still.mp4", Name: "Period commercial", Role: clips.Commercial, DurationMs: 30_000},
+			{Hash: "clip-bare", Path: "bare.mp4", Name: "Station ident", Role: clips.StationID, DurationMs: 10_000},
 		},
 	}}
 	img := newFakeImageService()
@@ -164,7 +169,7 @@ func TestChannelTimeline_BreakCarriesPodWithStills(t *testing.T) {
 		t.Fatalf("pod has %d entries, want 2", len(pod.Entries))
 	}
 
-	var still api.ImageDTO
+	var still httpcore.ImageDTO
 	raw, ok := pod.Entries[0]["thumbImage"]
 	if !ok {
 		t.Fatalf("entry with a still has no thumbImage on the wire: %v", pod.Entries[0])
@@ -190,9 +195,9 @@ func TestChannelTimeline_BreakCarriesPodWithStills(t *testing.T) {
 func TestChannelTimeline_FallbackCardHasNoStill(t *testing.T) {
 	now := time.Now()
 	fp, img := timelinePodsFixture()
-	fp.pod = filler.Pod{
-		MatchLevel: filler.MatchBumperCard, TotalMs: 5_000,
-		Entries: []filler.PodEntry{{Name: "Please stand by", Role: filler.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
+	fp.pod = pod.Pod{
+		MatchLevel: pod.MatchBumperCard, TotalMs: 5_000,
+		Entries: []pod.Entry{{Name: "Please stand by", Role: clips.Bumper, DurationMs: 5_000, IsFallbackCard: true}},
 	}
 	h := startTimelinePodsHarness(t, timelineBreakGuide(now), fp, img, false)
 	seedChannel(t, h.Store, "ch1", "Kettleton Classics", 1, "internal")

@@ -2,10 +2,9 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Card } from "@loomarr/design-system";
+import { Action, Card, Icon, icons } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -97,12 +96,14 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   }
 
   // The web mock's watch line: "3 of 4 sources on · 1,284 clips · 3 need you · checked 12m ago".
-  // `held` is the clips waiting for review in Incoming, which is what "need you" counts.
+  // "getting ready" and "need you" are Incoming's own totals (#2733), so this line, Manage and
+  // Incoming always say the same numbers.
   const statusLine = watch
     ? [
         `${watch.sourcesOn} of ${watch.sourcesTotal} sources on`,
         pluralize(watch.clips, "clip"),
-        ...(watch.held > 0 ? [`${watch.held} need you`] : []),
+        ...(watch.preparing > 0 ? [`${watch.preparing} getting ready`] : []),
+        ...(watch.needsYou > 0 ? [`${watch.needsYou} need you`] : []),
         ...(watch.lastScanAt ? [`checked ${formatRelative(watch.lastScanAt)}`] : []),
       ].join(" · ")
     : "";
@@ -145,7 +146,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             to="/filler/manage"
             className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
           >
-            <ArrowLeft className="size-3.5" aria-hidden />
+            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
             Manage
           </Link>
         ) : null}

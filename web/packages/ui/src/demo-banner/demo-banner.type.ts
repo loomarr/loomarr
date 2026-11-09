@@ -11,7 +11,9 @@ type DemoBannerNext = {
 };
 
 type DemoBannerProps = {
-  /** The step on offer, counting from 1. Ignored once `next` is absent. */
+  /** The phone layout: one line of the Demo badge, the next step and the X. */
+  compact?: boolean;
+  /** The step on offer, counting from 1. Ignored once `next` is absent, and on a phone. */
   step: number;
   /** How many steps the tour has. */
   stepCount: number;

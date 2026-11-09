@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
 )
 
 func writePNG(t *testing.T, path string, img image.Image) {
@@ -60,7 +61,7 @@ func artworkFixture(t *testing.T) (context.Context, records.Store, *images.Servi
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
-	svc := newTestImageService(t, t.TempDir(), "", imageStore{st})
+	svc := imagetestkit.NewService(t, t.TempDir(), "", imageStore{st})
 	at := time.UnixMilli(1_790_000_000_000).UTC()
 	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha"}}, at); err != nil {
 		t.Fatal(err)

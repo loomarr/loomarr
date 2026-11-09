@@ -6,9 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // fillerGeographyRetirement removes clips no current place can air (#2059 decision 14): a local
@@ -21,10 +22,10 @@ type fillerGeographyRetirement struct {
 		ListSettledGeographyClips(ctx context.Context) ([]records.SettledGeographyClip, error)
 	}
 	store interface {
-		ListChannels(ctx context.Context) ([]store.Channel, error)
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 		SetClipsRemoved(ctx context.Context, paths []string, at time.Time) (int, error)
 	}
-	policy func() filler.Policy
+	policy func() pod.Policy
 	log    *slog.Logger
 	now    func() time.Time
 }
@@ -43,8 +44,8 @@ func (r fillerGeographyRetirement) Run(ctx context.Context) (int, error) {
 	}
 	var paths []string
 	for _, c := range settled {
-		clip := filler.Clip{GeographicScope: filler.GeographicScope(c.Scope), Country: c.Country, Station: c.Station}
-		if !filler.UsableIn(clip, areas) {
+		clip := clips.Clip{GeographicScope: pod.GeographicScope(c.Scope), Country: c.Country, Station: c.Station}
+		if !pod.UsableIn(clip, areas) {
 			paths = append(paths, c.Path)
 		}
 	}

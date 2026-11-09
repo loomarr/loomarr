@@ -61,3 +61,29 @@ func (r Rating) AtOrBelow(ceiling Rating) bool {
 	cc, cok := ladderRank[ceiling]
 	return rok && cok && rr <= cc
 }
+
+// ceilingByRank names each ladder rank as an audience ceiling: the TV system's rating, the one
+// the channel policy editor offers.
+var ceilingByRank = [...]Rating{"TV-Y", "TV-Y7", "TV-G", "TV-PG", "TV-14", "TV-MA"}
+
+// Ladder is every known rating, ordered by rank (TV before film within a rank). It is the closed
+// set the API declares for a rating a client may send.
+func Ladder() []Rating {
+	return []Rating{"TV-Y", "TV-Y7", "TV-G", "G", "TV-PG", "PG", "TV-14", "PG-13", "TV-MA", "R", "NC-17"}
+}
+
+// LowestCeilingAdmitting is the strictest audience ceiling that admits every mapped rating in rs
+// (#3012): the TV rating at the highest rank among them. Unrated values are skipped, because no
+// ceiling decides them (the unrated policy does). False when rs holds no mapped rating.
+func LowestCeilingAdmitting(rs []Rating) (Rating, bool) {
+	top := -1
+	for _, r := range rs {
+		if n, ok := ladderRank[r]; ok && n > top {
+			top = n
+		}
+	}
+	if top < 0 {
+		return "", false
+	}
+	return ceilingByRank[top], true
+}

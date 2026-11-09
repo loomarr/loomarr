@@ -1,8 +1,7 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
-import { StatusLabel } from "@loomarr/design-system";
-import { SearchField } from "@loomarr/ui";
-import { KeyRound, Server } from "lucide-react";
+import { Text } from "@loomarr/design-system";
+import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -90,77 +89,40 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
           <p className="text-muted-foreground text-sm">Try another name, role, or status.</p>
         </div>
       ) : (
-        <div className="border-border bg-card overflow-hidden rounded-lg border">
-          <div
-            className="border-static-800 text-static-400 hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] gap-4 border-b px-4 py-2 font-mono text-xs tracking-wide uppercase md:grid"
-            aria-hidden
-          >
-            <span>Person</span>
-            <span>Role</span>
-            <span>Requests</span>
-            <span>Status</span>
-            <span>Last seen</span>
-          </div>
-          <ul>
-            {filtered.map((user) => (
-              <li key={user.id} className="border-static-800 border-b last:border-b-0">
-                <button
-                  type="button"
-                  aria-current={selectedId === user.id ? "true" : undefined}
-                  onClick={() => onSelect(user)}
-                  className={cn(
-                    "hover:bg-accent focus-visible:ring-ring relative grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] md:items-center",
-                    user.disabled && "bg-static-900/40",
-                    selectedId === user.id && "bg-accent",
-                  )}
-                >
-                  {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
-                  <span className="sr-only">Manage</span>{" "}
-                  <span className="min-w-0">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-medium">{user.name}</span>
-                      {selfId === user.id && <StatusLabel tone="notice">You</StatusLabel>}
-                    </span>
-                    <span className="text-static-400 mt-1 flex items-center gap-1.5 text-xs">
-                      {user.local ? (
-                        <KeyRound className="size-3" aria-hidden />
-                      ) : (
-                        <Server className="size-3" aria-hidden />
-                      )}
-                      {credentialLabel(user.local, user.offlineLogin)}
-                    </span>
-                  </span>
-                  <span className="flex items-center justify-between gap-3 md:block">
-                    <span className="text-muted-foreground text-xs md:hidden">Role</span>
-                    <StatusLabel tone={user.role === "admin" ? "notice" : "off"}>
-                      {user.role === "admin" ? "Admin" : "Member"}
-                    </StatusLabel>
-                  </span>
-                  <span className="flex items-center justify-between gap-3 font-mono text-sm tabular-nums md:block">
-                    <span className="text-muted-foreground font-sans text-xs md:hidden">Requests</span>
-                    {`${user.pendingAcquisitions} / ${user.effectiveQuota}`}
-                  </span>
-                  <span className="flex items-center justify-between gap-3 md:block">
-                    <span className="text-muted-foreground text-xs md:hidden">Status</span>
-                    {user.disabled ? (
-                      <StatusLabel tone="error">Disabled</StatusLabel>
-                    ) : (
-                      <StatusLabel tone="ok">Enabled</StatusLabel>
-                    )}
-                  </span>
-                  {/* The web mock's Last seen: mono, muted. The API leaves it out for someone who
-                      has never signed in (#1667). */}
-                  <span className="flex items-center justify-between gap-3 md:block">
-                    <span className="text-muted-foreground text-xs md:hidden">Last seen</span>
-                    <span className="text-muted-foreground font-mono text-xs">
-                      {user.lastSeenAt === undefined ? "Never" : formatRelative(user.lastSeenAt, now)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ListGroup aria-labelledby="people-roster-title">
+          {filtered.map((user) => (
+            <div
+              key={user.id}
+              aria-current={selectedId === user.id ? "true" : undefined}
+              className={cn(selectedId === user.id && "bg-accent")}
+            >
+              <RowCard
+                action={
+                  <CardAction accessibilityLabel={`Manage ${user.name}`} onPress={() => onSelect(user)}>
+                    Manage
+                  </CardAction>
+                }
+                lead={<Text textRole="cardInitials">{user.name.slice(0, 1).toUpperCase()}</Text>}
+                meta={[
+                  user.disabled ? (
+                    <CardStatus key="status" label="Disabled" tone="off" />
+                  ) : (
+                    <CardStatus key="status" label={selfId === user.id ? "You" : "Active"} tone="ok" />
+                  ),
+                  user.role === UserBodyRole.admin ? "Admin" : "Member",
+                  credentialLabel(user.local, user.offlineLogin),
+                  // Named a quota, not "requests" (#2751): it is a cap, not a count of what they asked for.
+                  `Request quota ${user.pendingAcquisitions} / ${user.effectiveQuota}`,
+                  // The API leaves last seen out for someone who has never signed in (#1667).
+                  user.lastSeenAt === undefined
+                    ? "Never seen"
+                    : `seen ${formatRelative(user.lastSeenAt, now)}`,
+                ]}
+                title={user.name}
+              />
+            </div>
+          ))}
+        </ListGroup>
       )}
     </section>
   );

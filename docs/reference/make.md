@@ -83,7 +83,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make test-ffmpeg` | ✅ | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |
 | `make research-verify` |  | compile the archived filler research module against its pinned core (all build tags; not a CI gate) |
 | `make eval-contract` | ✅ | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
-| `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
+| `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LOOMARR_LIBRARY_DB/TMDB_API_KEY; NOT in the hermetic gate) |
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |
 | `make eval-planner-cert` |  | compare one model against the frozen planner corpus; explicit, inference-spending, non-CI |
 | `make eval-planner-smoke` |  | replay one frozen base Intent per planner family; explicit, inference-spending, non-CI |

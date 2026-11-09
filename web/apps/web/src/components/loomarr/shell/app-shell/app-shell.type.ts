@@ -1,4 +1,5 @@
-import type { ComponentType, ReactNode } from "react";
+import type { IconName } from "@loomarr/design-system";
+import type { ReactNode } from "react";
 
 // The app's top-level nav destinations — literals so TanStack `Link to={to}` stays
 // type-checked against the route tree.
@@ -18,7 +19,7 @@ type NavTo =
 interface NavItem {
   to: NavTo;
   label: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: IconName;
   // No `admin?: boolean`. Role is expressed by WHICH LIST an item is in (§12: two authored
   // navs), not by a flag a filter reads — a flag can hide an entry but cannot rename one,
   // and the member nav needs different names for the same routes.
@@ -34,11 +35,13 @@ interface WatchNavItem {
   to: "/watch/$id";
   channelId: string;
   label: "Watch";
-  icon: ComponentType<{ className?: string }>;
+  icon: IconName;
 }
 
 interface AppShellProps {
   children: ReactNode;
+  /** A full-width strip above the page (the demo tour). Outside `main`, so it never scrolls with it. */
+  banner?: ReactNode;
   isAdmin?: boolean;
   userName?: string;
   /** Server-reported build identity from GET /v1/system/version. */

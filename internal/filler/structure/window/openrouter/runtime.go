@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/structure/assessment"
 	"github.com/loomarr/loomarr/internal/filler/structure/cut"
@@ -37,7 +37,7 @@ type CertifiedRuntimeConfig struct {
 	MediaRoot    string
 	EvidenceRoot string
 	FFmpegPath   string
-	// CutFamily is the family this host cuts on now (fillerstructuremedia.CutFamily). It is asked
+	// CutFamily is the family this host cuts on now (cut.CutFamily). It is asked
 	// per source because a host's encoder settles after boot.
 	CutFamily     func() encode.Family
 	Ledger        Ledger
@@ -100,7 +100,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	return &CertifiedRuntime{config: config, media: media, preparer: preparer, evidence: evidence, client: client}, nil
 }
 
-func (r *CertifiedRuntime) Assess(ctx context.Context, input filler.StructureAssessmentSource) (structure.Artifact, error) {
+func (r *CertifiedRuntime) Assess(ctx context.Context, input split.AssessmentSource) (structure.Artifact, error) {
 	if r == nil || r.preparer == nil || r.evidence == nil || r.client == nil {
 		return structure.Artifact{}, errors.New("structure window certified runtime is unavailable")
 	}
@@ -257,4 +257,4 @@ func cleanAbsolutePath(path string) bool {
 	return filepath.IsAbs(path) && filepath.Clean(path) == path
 }
 
-var _ filler.CompleteTimelineStructureDecisioner = (*CertifiedRuntime)(nil)
+var _ split.CompleteTimelineDecisioner = (*CertifiedRuntime)(nil)

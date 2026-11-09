@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { SettingsContextNav } from "./settings-context-nav";
 

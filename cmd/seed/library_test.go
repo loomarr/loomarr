@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
+	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -51,7 +52,7 @@ func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t 
 		t.Fatal(err)
 	}
 
-	jobs := workflow.New(st, func() string { return "unused" }, time.Now)
+	jobs := workflow.New(st, func() string { return "unused" }, time.Now, suggest.IntentHash)
 	journeys, err := jobs.List(ctx, workflow.Viewer{UserID: admin.ID, Admin: true}, workflow.ListOptions{})
 	if err != nil {
 		t.Fatalf("List seeded library Proposal Jobs through the workflow: %v", err)

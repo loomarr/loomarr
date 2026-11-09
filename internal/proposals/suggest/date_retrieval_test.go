@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -22,11 +22,11 @@ func TestProjectDiscoveryWindowsCoalescedMovieAndAiring(t *testing.T) {
 		DateExecutionAxis{Kind: DateAxisMovieRelease, Windows: []DateYearRange{{Start: 1990, End: 1999}}},
 		DateExecutionAxis{Kind: DateAxisSeriesAiring, Windows: []DateYearRange{{Start: 1990, End: 1999}}},
 	)
-	got := projectDiscoveryWindows(catalog.DiscoveryQuery{MediaType: provision.Movie, Genres: []string{"Action"}}, meaning)
+	got := projectDiscoveryWindows(titlesearch.DiscoveryQuery{MediaType: provision.Movie, Genres: []string{"Action"}}, meaning)
 	if len(got) != 1 || got[0].YearFrom != 1990 || got[0].YearTo != 1999 || got[0].MediaType != provision.Movie {
 		t.Fatalf("movie projection = %+v", got)
 	}
-	series := projectDiscoveryWindows(catalog.DiscoveryQuery{MediaType: provision.Series, Genres: []string{"Drama"}}, meaning)
+	series := projectDiscoveryWindows(titlesearch.DiscoveryQuery{MediaType: provision.Series, Genres: []string{"Drama"}}, meaning)
 	if len(series) != 1 || series[0].YearFrom != 0 || series[0].YearTo != 0 {
 		t.Fatalf("airing became series premiere filter: %+v", series)
 	}
@@ -34,7 +34,7 @@ func TestProjectDiscoveryWindowsCoalescedMovieAndAiring(t *testing.T) {
 
 func TestProjectDiscoveryWindowsKeepsOtherMediaUnconstrained(t *testing.T) {
 	meaning := executionMeaning(DateExecutionAxis{Kind: DateAxisMovieRelease, Windows: []DateYearRange{{Start: 1990, End: 1994}, {Start: 2000, End: 2004}}})
-	got := projectDiscoveryWindows(catalog.DiscoveryQuery{Genres: []string{"Comedy"}}, meaning)
+	got := projectDiscoveryWindows(titlesearch.DiscoveryQuery{Genres: []string{"Comedy"}}, meaning)
 	if len(got) != 3 || got[0].MediaType != provision.Movie || got[0].YearFrom != 1990 || got[1].YearFrom != 2000 || got[2].MediaType != provision.Series || got[2].YearFrom != 0 {
 		t.Fatalf("mixed projection = %+v", got)
 	}
@@ -55,8 +55,8 @@ func TestWorkLedgerReservesAllWindowsAtomically(t *testing.T) {
 }
 
 func TestRunToolProjectsAcceptedMovieWindowsBeforeUnionDispatch(t *testing.T) {
-	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Window Movie", Year: 1995}}}
-	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Window Movie", Year: 1995}}}
+	s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 	ledger := newWorkLedger()
 	ledger.beginGeneration()
 	if !ledger.reserve(1) {
@@ -81,7 +81,7 @@ func TestRunToolProjectsAcceptedMovieWindowsBeforeUnionDispatch(t *testing.T) {
 
 func TestRunToolRejectsAllDateWindowsBeforeDispatchWhenGenerationCapacityIsShort(t *testing.T) {
 	corpus := &catalogfixture.Corpus{}
-	s := New(nil, catalog.New(nil, corpus), nil, 10)
+	s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 	ledger := &workLedger{total: 2, generation: 2}
 	if !ledger.reserve(1) { // every model attempt is charged before its arguments are decoded
 		t.Fatal("attempt charge failed")
@@ -112,10 +112,10 @@ func TestDateUnionMembershipFailurePreservesDispatchTrace(t *testing.T) {
 	for _, failure := range []error{errors.New("membership lookup failed"), context.Canceled} {
 		t.Run(failure.Error(), func(t *testing.T) {
 			corpus := &catalogfixture.Corpus{
-				Candidates: []catalog.Candidate{{MediaType: provision.Series, TVDBID: 90000762, Name: "Grand Oak Hotel", Year: 1987}},
-				SearchFunc: func(context.Context, string, int) ([]catalog.Candidate, error) { return nil, failure },
+				Candidates: []titlesearch.Candidate{{MediaType: provision.Series, TVDBID: 90000762, Name: "Grand Oak Hotel", Year: 1987}},
+				SearchFunc: func(context.Context, string, int) ([]titlesearch.Candidate, error) { return nil, failure },
 			}
-			s := New(nil, catalog.New(nil, corpus), nil, 10)
+			s := New(nil, titlesearch.New(nil, corpus), nil, 10)
 			intent := Intent{Intent: proposals.Intent{Description: "1980s named programming block with Grand Oak Hotel"}, membershipKeys: make(map[provision.Key]bool), membershipSources: newMembershipSourceState()}
 			arguments := map[string]any{
 				"media_type": "series",
@@ -128,7 +128,7 @@ func TestDateUnionMembershipFailurePreservesDispatchTrace(t *testing.T) {
 			if len(corpus.Discoveries()) != 1 || len(corpus.Searches()) != 1 {
 				t.Fatalf("expected discovery followed by membership lookup, discoveries=%v searches=%v", corpus.Discoveries(), corpus.Searches())
 			}
-			if !valid || len(candidates) != 0 || trace.Terminal != TerminalRetrievalFailure || !strings.Contains(result, failure.Error()) {
+			if !valid || len(candidates) != 0 || trace.Terminal != proposals.TerminalRetrievalFailure || !strings.Contains(result, failure.Error()) {
 				t.Fatalf("failure lost: result=%s candidates=%v trace=%+v valid=%v", result, candidates, trace, valid)
 			}
 			if trace.WindowsCompleted != 1 || trace.SourceQueriesDispatched != 1 {

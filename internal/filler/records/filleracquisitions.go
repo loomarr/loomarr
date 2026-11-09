@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -21,13 +22,13 @@ const acquisitionRunInsert = `INSERT INTO filler_acquisition_runs
 		 empty_count, error, started_at, completed_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-func acquisitionRunArgs(run filler.AcquisitionRun) []any {
+func acquisitionRunArgs(run acquisition.AcquisitionRun) []any {
 	return []any{run.ID, string(run.Trigger), run.SourceID, run.PullID, string(run.Status), run.Requested, run.Fetched, run.Skipped, run.Failed, run.Empty, run.Error, epoch(run.StartedAt), epoch(run.CompletedAt), epoch(run.UpdatedAt)}
 }
 
 // UpsertAcquisitionRun persists one execution snapshot. The app adapter is the single writer and
 // rewrites the whole snapshot as the job moves queued -> running -> success/error.
-func (s *sqlStore) UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error {
+func (s *sqlStore) UpsertAcquisitionRun(ctx context.Context, run acquisition.AcquisitionRun) error {
 	// Only the approval transaction may create a pull-bound run. Updates may also
 	// settle historical runs, whose audit predates the unique decision binding.
 	if run.PullID != "" {
@@ -68,8 +69,8 @@ func (s *sqlStore) RecoverInterruptedAcquisitionRuns(ctx context.Context, at tim
 	res, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_acquisition_runs
 		SET status = ?, error = ?, completed_at = ?, updated_at = ?
 		WHERE status IN (?, ?)`),
-		string(filler.AcquisitionError), "application restarted before the acquisition completed",
-		epoch(at), epoch(at), string(filler.AcquisitionQueued), string(filler.AcquisitionRunning))
+		string(acquisition.RunError), "application restarted before the acquisition completed",
+		epoch(at), epoch(at), string(acquisition.RunQueued), string(acquisition.RunRunning))
 	if err != nil {
 		return 0, fmt.Errorf("recover interrupted filler acquisitions: %w", err)
 	}
@@ -80,17 +81,17 @@ func (s *sqlStore) RecoverInterruptedAcquisitionRuns(ctx context.Context, at tim
 	return int(n), nil
 }
 
-func scanAcquisitionRun(sc scannable) (filler.AcquisitionRun, error) {
-	var run filler.AcquisitionRun
+func scanAcquisitionRun(sc scannable) (acquisition.AcquisitionRun, error) {
+	var run acquisition.AcquisitionRun
 	var trigger, status string
 	var startedAt, completedAt, updatedAt int64
 	if err := sc.Scan(&run.ID, &trigger, &run.SourceID, &run.PullID, &status,
 		&run.Requested, &run.Fetched, &run.Skipped, &run.Failed, &run.Empty, &run.Error,
 		&startedAt, &completedAt, &updatedAt); err != nil {
-		return filler.AcquisitionRun{}, err
+		return acquisition.AcquisitionRun{}, err
 	}
-	run.Trigger = filler.AcquisitionTrigger(trigger)
-	run.Status = filler.AcquisitionStatus(status)
+	run.Trigger = acquisition.Trigger(trigger)
+	run.Status = acquisition.RunStatus(status)
 	run.StartedAt = fromEpoch(startedAt)
 	run.CompletedAt = fromEpoch(completedAt)
 	run.UpdatedAt = fromEpoch(updatedAt)
@@ -99,24 +100,24 @@ func scanAcquisitionRun(sc scannable) (filler.AcquisitionRun, error) {
 
 // GetAcquisitionRun returns one run plus its current pipeline outcomes. An unknown id is
 // ErrNotFound, matching pulls and sources rather than leaking sql.ErrNoRows through the API seam.
-func (s *sqlStore) GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error) {
+func (s *sqlStore) GetAcquisitionRun(ctx context.Context, id string, at time.Time) (acquisition.AcquisitionRun, error) {
 	run, err := scanAcquisitionRun(s.db.QueryRowContext(ctx, s.ph(acquisitionRunSelect+` WHERE id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return filler.AcquisitionRun{}, store.ErrNotFound
+		return acquisition.AcquisitionRun{}, store.ErrNotFound
 	}
 	if err != nil {
-		return filler.AcquisitionRun{}, fmt.Errorf("get filler acquisition %s: %w", id, err)
+		return acquisition.AcquisitionRun{}, fmt.Errorf("get filler acquisition %s: %w", id, err)
 	}
-	runs := []filler.AcquisitionRun{run}
+	runs := []acquisition.AcquisitionRun{run}
 	if err := s.attachAcquisitionOutcomes(ctx, runs, at); err != nil {
-		return filler.AcquisitionRun{}, err
+		return acquisition.AcquisitionRun{}, err
 	}
 	return runs[0], nil
 }
 
 // ListAcquisitionRuns returns newest first and bounded. A non-positive limit uses the UI-sized
 // default; callers cannot accidentally materialise an unbounded execution history.
-func (s *sqlStore) ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error) {
+func (s *sqlStore) ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]acquisition.AcquisitionRun, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -128,7 +129,7 @@ func (s *sqlStore) ListAcquisitionRuns(ctx context.Context, limit int, at time.T
 		return nil, fmt.Errorf("list filler acquisitions: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	runs := make([]filler.AcquisitionRun, 0)
+	runs := make([]acquisition.AcquisitionRun, 0)
 	for rows.Next() {
 		run, err := scanAcquisitionRun(rows)
 		if err != nil {
@@ -146,14 +147,14 @@ func (s *sqlStore) ListAcquisitionRuns(ctx context.Context, limit int, at time.T
 }
 
 // attachAcquisitionOutcomes batches pipeline attribution for the bounded run page, then delegates
-// every ownership decision to filler.AcquisitionOutcomeFrom. SQL selects; the domain classifies.
-func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.AcquisitionRun, at time.Time) error {
+// every ownership decision to acquisition.OutcomeFrom. SQL selects; the domain classifies.
+func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []acquisition.AcquisitionRun, at time.Time) error {
 	if len(runs) == 0 {
 		return nil
 	}
 	placeholders := make([]string, len(runs))
 	args := make([]any, len(runs))
-	byID := make(map[string][]filler.ClipPipeline, len(runs))
+	byID := make(map[string][]pipelinestate.ClipPipeline, len(runs))
 	for i := range runs {
 		placeholders[i] = "?"
 		args[i] = runs[i].ID
@@ -175,7 +176,7 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 		return fmt.Errorf("list acquisition pipelines: %w", err)
 	}
 	for i := range runs {
-		runs[i].Outcome = filler.AcquisitionOutcomeFrom(byID[runs[i].ID], at)
+		runs[i].Outcome = acquisition.OutcomeFrom(byID[runs[i].ID], at)
 	}
 	artifactRows, err := s.db.QueryContext(ctx, s.ph(acquisitionArtifactSelect+` WHERE acquisition_id IN (`+
 		strings.Join(placeholders, ",")+`) ORDER BY acquisition_id, updated_at DESC, id DESC`), args...)
@@ -183,7 +184,7 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 		return fmt.Errorf("list acquisition artifacts: %w", err)
 	}
 	defer func() { _ = artifactRows.Close() }()
-	artifactsByID := make(map[string][]filler.AcquisitionArtifact, len(runs))
+	artifactsByID := make(map[string][]acquisition.Artifact, len(runs))
 	for artifactRows.Next() {
 		artifact, err := scanAcquisitionArtifact(artifactRows)
 		if err != nil {
@@ -199,8 +200,8 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 		return err
 	}
 	for i := range runs {
-		runs[i].Artifacts = filler.AcquisitionArtifactOutcomeFrom(artifactsByID[runs[i].ID])
-		runs[i].GapYield = filler.AcquisitionGapYieldFrom(artifactsByID[runs[i].ID], byID[runs[i].ID], parents, at)
+		runs[i].Artifacts = acquisition.ArtifactOutcomeFrom(artifactsByID[runs[i].ID])
+		runs[i].GapYield = acquisition.GapYieldFrom(artifactsByID[runs[i].ID], byID[runs[i].ID], parents, at)
 	}
 	return nil
 }

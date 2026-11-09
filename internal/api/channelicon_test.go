@@ -18,10 +18,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // Channel icon upload + serve had NO test coverage at all before this file — `icons_test.go`
@@ -40,7 +41,7 @@ func newIconUploadServer(t *testing.T) (*httptest.Server, records.Store, *fakeIm
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/iconupload.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
@@ -192,14 +193,14 @@ func TestUploadChannelIcon_IngestsAndLinksTheChannel(t *testing.T) {
 func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 	base := openTestStore(t, t.TempDir()+"/icon-concurrent.db")
 	t.Cleanup(func() { _ = base.Close() })
-	if _, err := base.SaveChannel(context.Background(), store.Channel{
+	if _, err := base.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	wrapped := &staleOnceChannelStore{Store: base}
-	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+	wrapped.before = func(ctx context.Context, _ channelstore.Channel) error {
 		winner, err := base.GetChannel(ctx, "ch-1")
 		if err != nil {
 			return err
@@ -231,7 +232,7 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 		body, _ := io.ReadAll(read.Body)
 		t.Fatalf("read after upload = %d, want 200: %s", read.StatusCode, body)
 	}
-	var got api.ChannelDTO
+	var got channelsapi.ChannelDTO
 	if err := json.NewDecoder(read.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
@@ -251,14 +252,14 @@ func TestUploadChannelIcon_ConcurrentChannelEditIsPreserved(t *testing.T) {
 func TestUploadChannelIcon_ConcurrentChannelDeleteReturnsNotFound(t *testing.T) {
 	base := openTestStore(t, t.TempDir()+"/icon-delete.db")
 	t.Cleanup(func() { _ = base.Close() })
-	if _, err := base.SaveChannel(context.Background(), store.Channel{
+	if _, err := base.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	wrapped := &staleOnceChannelStore{Store: base}
-	wrapped.before = func(ctx context.Context, _ store.Channel) error {
+	wrapped.before = func(ctx context.Context, _ channelstore.Channel) error {
 		current, err := base.GetChannel(ctx, "ch-1")
 		if err != nil {
 			return err
@@ -569,7 +570,7 @@ func TestUploadChannelIcon_RefreshesTheTunerListLikeALogoEdit(t *testing.T) {
 func TestUploadChannelWatermark_ReconcilesWithoutATunerRescan(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/watermark-upload.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Strategy: schedule.Sequential, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)

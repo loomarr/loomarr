@@ -1,7 +1,7 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
@@ -21,6 +21,7 @@ const downloadBackup = (name: string) => {
 
 const BackupPage = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const list = systemApi.useSystemBackupsList();
   const entries = useSettingsEntries();
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +73,7 @@ const BackupPage = () => {
             list={list.data.data}
             onBackUpNow={handleBackUpNow}
             onDownload={downloadBackup}
+            onOpenTasks={() => void navigate({ to: "/settings/system/tasks" })}
             pending={backUpNow.isPending}
             error={error}
           />

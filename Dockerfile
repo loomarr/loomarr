@@ -286,23 +286,17 @@ RUN set -eux; \
     # linux/amd64,linux/arm64) AND every local build on an Apple-Silicon Mac. Everything
     # else in this list is arch-neutral and stays shared — the VAAPI/Vulkan stack is
     # what an ARM SBC with a Mali/V3D GPU actually uses.
-    # A FONT IS A FUNCTIONAL DEPENDENCY OF PLAYOUT, not a nicety (§16, §9.1).
+    # A FONT IS A FUNCTIONAL DEPENDENCY of the demo site's image, not a nicety.
     #
-    # The offline/test card labels itself with ffmpeg's `drawtext`, which fails at filter
-    # INIT on a missing fontfile — so playout.FindFont stats real paths and, finding none,
-    # emits no `-vf` at all rather than killing the encode. That fail-safe is correct, but
-    # in an image with zero fonts the degradation is TOTAL: the card's source is
-    # `color=c=black` plus `anullsrc`, so it renders as an unlabelled black frame with
-    # silent audio — indistinguishable from the dead channel the card exists to replace.
+    # demo-library (cmd/demo-library, run from docker/demo.Dockerfile on top of this image)
+    # renders its title cards and timecodes with ffmpeg's `drawtext`, passing no fontfile, so
+    # drawtext uses fontconfig's DEFAULT font. The base is debian:stable-slim, which ships no
+    # /usr/share/fonts at all and nothing above pulls a font in transitively: without a font
+    # here the cards render unlabelled or drawtext fails at filter init, and no test catches
+    # it.
     #
-    # This was live: the base is debian:stable-slim, which ships no /usr/share/fonts at
-    # all, and nothing above pulls a font in transitively. `font.go` asserted the opposite
-    # ("The image installs fonts-dejavu-core (§16)") and §16 had never said so — a comment
-    # claiming a dependency exists is not the dependency existing. §16 now records it.
-    #
-    # `fonts-dejavu-core` (not `fonts-dejavu`) is the ~1.5MB subset carrying DejaVuSans.ttf
-    # — the first entry in fontCandidates — and it is arch-neutral, so unlike
-    # intel-media-va-driver below it stays in the shared list.
+    # `fonts-dejavu-core` (not `fonts-dejavu`) is the ~1.5MB subset carrying DejaVuSans.ttf, and
+    # it is arch-neutral, so unlike intel-media-va-driver below it stays in the shared list.
     apt-get install -y --no-install-recommends \
       libva2 libva-drm2 libvulkan1 libdrm2 libx11-6 libxext6 \
       mesa-va-drivers mesa-vulkan-drivers \

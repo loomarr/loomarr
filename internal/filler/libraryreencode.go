@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 )
 
 // The library re-encode sweep (#2121, decisions 8 and 10). A deliberate exception to the rule
@@ -14,7 +16,7 @@ import (
 
 // AiringClips lists the clips on air: unheld, not removed, not composite.
 type AiringClips interface {
-	ListClips(ctx context.Context, f ClipQuery) ([]StoreClip, error)
+	ListClips(ctx context.Context, f ClipQuery) ([]cliplibrary.StoreClip, error)
 }
 
 // WithLibraryReencode lets an idle pass re-encode one airing clip onto the current profile.
@@ -35,10 +37,10 @@ type libraryReencode struct {
 }
 
 // next is the first airing clip due a re-encode, or false when none is.
-func (r *libraryReencode) next(ctx context.Context, now time.Time) (StoreClip, bool, error) {
+func (r *libraryReencode) next(ctx context.Context, now time.Time) (cliplibrary.StoreClip, bool, error) {
 	clips, err := r.airing.ListClips(ctx, ClipQuery{})
 	if err != nil {
-		return StoreClip{}, false, err
+		return cliplibrary.StoreClip{}, false, err
 	}
 	for _, c := range clips {
 		if r.attempts[c.Hash] >= MaxAttempts || now.Before(r.retryAt[c.Hash]) {
@@ -48,7 +50,7 @@ func (r *libraryReencode) next(ctx context.Context, now time.Time) (StoreClip, b
 			return c, true, nil
 		}
 	}
-	return StoreClip{}, false, nil
+	return cliplibrary.StoreClip{}, false, nil
 }
 
 // reencodeIdle re-encodes one airing clip when the pass found no conveyor work and playback

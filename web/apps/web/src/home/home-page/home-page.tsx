@@ -10,17 +10,18 @@ import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { ChannelIdeas } from "../channel-ideas";
+import { ChannelWall } from "../channel-wall";
 import { HomeStrip } from "../home-strip";
+import { useNeedsYou } from "../needs-you";
 import { NewThisWeek, newSince } from "../new-this-week";
-import { OnNow } from "../on-now";
 import { OnTheWay, YourRequests } from "../on-the-way";
-import { RecentlyTuned } from "../recently-tuned";
 import { Tonight } from "../tonight";
 import { WatchingNow } from "../watching-now";
 
-// HomePage — the landing page for both roles (#1822 evidence): a neutral inventory line, then
-// what's on, in the approved order (Recently tuned, On now, Watching now, Tonight, New this week,
-// role-specific requests/ideas, the admin footer). Machine state (encoders, services, activity)
+// HomePage — the landing page for both roles (#2764): it opens on the channel wall, every channel as
+// a live tile with the last-tuned one first and marked (an admin's "Needs you" line above the tiles),
+// then Watching now, Tonight, New this week, role-specific requests/ideas and the admin footer.
+// Machine state (encoders, services, activity)
 // lives in Settings → This server (Q-H7), which the admin footer points to.
 //
 // Loading, zero-channels and initial-error are whole-page states (the record's state contract):
@@ -58,35 +59,24 @@ const HomePage = () => {
   const since = newSince(nowMs);
   const arrivals = titlesApi.useListTitles({ since }, { query: { enabled: hasLife } });
   const allChannels = channelsApi.useListChannels({ query: { enabled: hasLife } });
-  // Channels an active own-viewing session already represents, so Recently tuned never duplicates
-  // the choice Watching now already shows (#1822 evidence).
-  const activeChannelIds = useMemo(
-    () => new Set((viewingBody?.viewers ?? []).filter((v) => v.you).map((v) => v.channelId)),
-    [viewingBody],
-  );
+  const needs = useNeedsYou(isAdmin && hasLife);
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Home" />
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1">
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
         <div className="max-w-overview mx-auto flex flex-col gap-6 p-4 sm:gap-8 sm:p-6">
-          <HomeStrip
-            state={stripState}
-            count={channels.length}
-            isAdmin={isAdmin}
-            onRetry={() => void guide.refetch()}
-          />
+          <HomeStrip state={stripState} isAdmin={isAdmin} onRetry={() => void guide.refetch()} />
           {hasLife && layout && (
-            <RecentlyTuned
-              continueWatching={viewingBody?.continueWatching}
+            <ChannelWall
+              lastChannelId={viewingBody?.continueWatching?.channelId}
               layout={layout}
+              needs={needs}
               nowMs={nowMs}
-              activeChannelIds={activeChannelIds}
             />
           )}
-          {hasLife && layout && <OnNow layout={layout} nowMs={nowMs} />}
           {hasLife && layout && viewingBody && (
             <WatchingNow viewing={viewingBody} layout={layout} nowMs={nowMs} />
           )}

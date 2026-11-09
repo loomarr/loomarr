@@ -16,8 +16,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/provision"
@@ -46,25 +48,22 @@ type Availability interface {
 // interface with the consumer makes new persistence dependencies an explicit
 // channels-package decision instead of inheriting the aggregate store surface.
 type EngineStore interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-	GetChannel(ctx context.Context, id string) (store.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
 	AttachTunarrChannel(ctx context.Context, id, expectedTunarrID, newTunarrID string, expectedNumber, newNumber int) (int64, error)
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error
-	GetJob(ctx context.Context, id string) (store.Job, error)
-	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
+	GetJob(ctx context.Context, id string) (proposalstore.Job, error)
+	SaveChannel(ctx context.Context, ch channelstore.Channel) (channelstore.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
 	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
-	RecordScheduledAirings(ctx context.Context, channelID string, airings []store.ScheduledAiring, recordedAt time.Time) error
+	RecordScheduledAirings(ctx context.Context, channelID string, airings []channeldatastore.ScheduledAiring, recordedAt time.Time) error
 	LastScheduledByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
-// AvailabilityStore is the title and episode cache used to resolve scheduled
-// content. It is separate from EngineStore because availability is independently
-// replaceable in tests and at composition time.
+// AvailabilityStore is the title store used to resolve scheduled content. It is separate from
+// EngineStore because availability is independently replaceable in tests and at composition time.
 type AvailabilityStore interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
-	GetSeriesEpisodes(ctx context.Context, libraryID string) (store.SeriesEpisodes, error)
-	UpsertSeriesEpisodes(ctx context.Context, episodes store.SeriesEpisodes) error
 }
 
 // PodFiller answers the backend-specific views of a channel's matched filler
@@ -78,20 +77,19 @@ type PodFiller interface {
 	// Selection (§10 — era/audience/category/roles + pinned/excluded). ok=false → no
 	// pool (empty catalog / only the fallback card): the engine skips the attach and
 	// the channel's flex falls back to the bumper card (never dead air).
-	BuildFillerList(ctx context.Context, channelID string, seed int64, sel filler.Selection) (programIDs []string, ok bool)
+	BuildFillerList(ctx context.Context, channelID string, seed int64, sel pod.Selection) (programIDs []string, ok bool)
 	// HasPool reports whether the channel has ANY playable commercials — the question
 	// "should breaks be interleaved at all?".
 	//
-	// Separate from BuildFillerList since §9.1, because the two ask different questions and
-	// sharing one method conflated them. BuildFillerList is Tunarr-specific: it returns only
-	// clips carrying a Tunarr program uuid, since that is what a filler-list references. On an
-	// internal-playout install with no Tunarr, no clip has one — so a channel with a perfectly
-	// good pod would report "no pool" and get NO BREAKS AT ALL, which is exactly the inverted
-	// dependency §9.1 set out to remove, one level up.
-	HasPool(ctx context.Context, channelID string, seed int64, sel filler.Selection) bool
+	// Separate from BuildFillerList (§9.1) because the two ask different questions.
+	// BuildFillerList is Tunarr-specific: it returns only clips carrying a Tunarr program uuid,
+	// since that is what a filler-list references. On an internal-playout install with no
+	// Tunarr, no clip has one — so a channel with a perfectly good pod would report "no pool"
+	// and get NO BREAKS AT ALL.
+	HasPool(ctx context.Context, channelID string, seed int64, sel pod.Selection) bool
 	// PlayableDurationMs reports how much real media the deterministic pod contains.
 	// It excludes the generated fallback card, which has no bytes to air.
-	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel filler.Selection) int64
+	PlayableDurationMs(ctx context.Context, channelID string, seed int64, sel pod.Selection) int64
 }
 
 // Engine reconciles every channel's local desired state and, only when that channel's
@@ -105,8 +103,7 @@ type Engine struct {
 	guide GuidePoker
 	pods  PodFiller // §10 pod assembly; nil = flex-only (Phase-10 default)
 	// ratings heals an approved lineup entry that reached the scheduler UNRATED
-	// (an acquisition that hadn't landed at proposal time, or a pre-fix cached
-	// proposal — §389). Optional: nil ⇒ no heal (the entry stays unrated and a
+	// (an acquisition that hadn't landed at proposal time — §389). Optional: nil ⇒ no heal (the entry stays unrated and a
 	// fail-closed audience gate drops it). Bounded to unrated entries, so a
 	// normally-stamped channel never calls it.
 	ratings RatingResolver
@@ -303,8 +300,7 @@ func (e *Engine) WithBoxSets(r BoxSetResolver) *Engine {
 }
 
 // WithPods enables ad-pod assembly for filler gaps (§10). Without it the engine
-// leaves filler slots as flex (the Phase-10 default). Returns the engine for
-// chaining. Kept as a setter so New's signature stays stable for Phase-10 callers.
+// leaves filler slots as flex. Returns the engine for chaining.
 func (e *Engine) WithPods(p PodFiller) *Engine {
 	e.pods = p
 	return e
@@ -386,13 +382,13 @@ type storeAvailability struct {
 	duration DurationResolver // optional; nil ⇒ duration unknown (0), caller falls back
 	// durations is the BULK form of `duration`, used to prewarm durMemo before a layout so the
 	// per-key Resolve calls all hit the memo instead of issuing one HTTP request each. Optional:
-	// nil ⇒ no prewarm and the per-item path behaves exactly as before.
+	// nil ⇒ no prewarm; every key takes the per-item path.
 	durations DurationsResolver
 	episodes  EpisodeResolver // optional; nil ⇒ series resolve to a pending slot
 
 	// Memo over the three lookups a cycle layout repeats. ComputeDesiredAt walks the lineup
-	// several times while laying out a cycle, and each miss used to be a fresh round-trip to
-	// the media server: ONE guide request issued 72 library calls.
+	// several times while laying out a cycle, and without the memo each miss is a fresh
+	// round-trip to the media server (one guide request issued 72 library calls).
 	//
 	// ⚠ LIFETIME. The composition root builds ONE of these at boot with the process-lifetime
 	// `rootCtx` (app.go), so this memo lives for the life of the process — it is NOT
@@ -401,10 +397,9 @@ type storeAvailability struct {
 	// re-encoded item would keep its old duration until a restart.
 	//
 	// The TTL is deliberately SHORT. It exists to collapse the repeats inside one operation
-	// (the thing that was costing 72 calls), not to serve as a real cache — the durable answer
-	// for episode enumeration is the persisted store, refreshed by the library-scan job. Set
-	// it longer and this quietly becomes a cache with no invalidation signal, which is the bug
-	// this comment used to describe as a safety property.
+	// (the thing that cost 72 calls), not to serve as a real cache — the durable answer
+	// for episode enumeration is the Library's own tables. Set it longer and this quietly
+	// becomes a cache with no invalidation signal.
 	//
 	// Guarded by a mutex: the guide resolves channels concurrently, and a map is not safe
 	// under that on its own.
@@ -412,10 +407,7 @@ type storeAvailability struct {
 	titleMemo map[provision.Key]titleLookup
 	durMemo   map[string]memoEntry[int64]
 	epsMemo   map[string]memoEntry[schedule.EpisodeResolution]
-	// episodeMaxAge keeps cache policy inside this adapter. Nil/zero retains the
-	// documented default while composition can supply the live setting.
-	episodeMaxAge func() time.Duration
-	now           func() time.Time
+	now       func() time.Time
 }
 
 // memoTTL bounds every memoized answer. Long enough to collapse the repeated resolves within
@@ -453,10 +445,8 @@ type DurationResolver func(ctx context.Context, libraryItemID string) (int64, er
 // 375ms, which was the whole of GET /v1/guide's cold latency — the arrangement itself is
 // microseconds.
 //
-// The media server has supported this all along: library.ItemMetadataByID already requests
-// RunTimeTicks and returns RuntimeMs for a comma-separated id list ("120 episodes returned in
-// 24ms"). Nothing new is asked of the server; the bulk answer was simply never wired to the
-// scheduler's duration path.
+// The media server answers this in one call: library.ItemMetadataByID requests RunTimeTicks and
+// returns RuntimeMs for a comma-separated id list ("120 episodes returned in 24ms").
 //
 // Missing ids may be absent from the result — the caller treats an absent id as an unknown
 // duration (0) exactly as a failed single lookup does.
@@ -481,22 +471,11 @@ func NewStoreAvailability(ctx context.Context, st AvailabilityStore, dur Duratio
 	}
 }
 
-// WithEpisodeMaxAge supplies the live cache-age policy without exposing cache
-// mechanics to schedule.Availability callers or their test adapters.
-func WithEpisodeMaxAge(a Availability, maxAge func() time.Duration) Availability {
-	if sa, ok := a.(*storeAvailability); ok {
-		sa.episodeMaxAge = maxAge
-	}
-	return a
-}
-
 // WithBulkDurations attaches the bulk duration resolver used to prewarm the duration memo
 // (see DurationsResolver / PrewarmDurations), and returns the same Availability for chaining.
 //
-// A SETTER rather than a NewStoreAvailability parameter on purpose: the constructor already has
-// four arguments and a dozen call sites across the tests, and every one of them would have had to
-// grow a `nil` for a capability they do not use. Optional-by-construction also keeps the
-// degradation honest — an install that never calls this behaves exactly as it did before.
+// A SETTER rather than a NewStoreAvailability parameter on purpose: callers that do not use the
+// capability need not pass a `nil`, and an install that never calls this simply skips the prewarm.
 //
 // Takes an Availability (not the unexported concrete type) so the composition root can call it
 // without reaching inside this package; a non-storeAvailability implementation is returned
@@ -656,17 +635,9 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 		return schedule.EpisodeResolution{}
 	}
 
-	// THREE tiers, cheapest first. Enumerating a show is the most expensive library call there
-	// is, and a series in the lineup is re-resolved on every layout pass.
-	//
-	// PROFILED: a multi-series channel pays one enumeration PER SHOW, and that was ~90% of the
-	// Guide's latency — Star Trek Classics (4 shows) spent 232ms here while a 25-film movie
-	// channel spent 1ms.
-	//
-	//	1. in-process memo  — collapses the repeats within ONE layout (milliseconds apart)
-	//	2. persisted cache  — survives restarts; refreshed by channel-maintenance (§18.1)
-	//	3. the library      — the source of truth, and the fallback that keeps a cold cache
-	//	                      behaving exactly like today rather than emptying channels
+	// A series in the lineup is re-resolved on every layout pass, so the memo collapses the
+	// repeats within one layout. Behind it the Library's tables answer (#2151 step 16): its
+	// largest show reads in under 10ms, so no persisted cache sits between them.
 	now := s.clock()
 	s.mu.Lock()
 	if hit, ok := s.epsMemo[rec.LibraryID]; ok && now.Before(hit.exp) {
@@ -675,57 +646,12 @@ func (s *storeAvailability) ResolveEpisodes(key provision.Key) schedule.EpisodeR
 	}
 	s.mu.Unlock()
 
-	// Tier 2. A store read replaces a media-server round-trip: this is the whole point of the
-	// cache. A cached EMPTY list is a HIT, not a miss — ErrNotFound is the only "never asked",
-	// so a genuinely-empty show does not re-enumerate on every request.
-	var cached []schedule.ResolvedProgram
-	var hasCached bool
-	var cacheFresh bool
-	if s.store != nil {
-		if se, err := s.store.GetSeriesEpisodes(s.ctx, rec.LibraryID); err == nil {
-			cached, hasCached = se.Episodes, true
-			cacheFresh = !s.episodeCacheAged(se.FetchedAt, now)
-			if cacheFresh {
-				result := schedule.EpisodeResolution{Programs: cached}
-				s.memoEpisodes(rec.LibraryID, result, now)
-				return result
-			}
-		}
+	var result schedule.EpisodeResolution
+	if eps, err := s.episodes(s.ctx, rec.LibraryID); err == nil {
+		result.Programs = eps
 	}
-
-	// Tier 3. Never enumerated (or the store is unavailable) — ask the library and write the
-	// answer back, so the next request and the next restart both take tier 2.
-	eps, err := s.episodes(s.ctx, rec.LibraryID)
-	if err != nil {
-		if hasCached && len(cached) > 0 {
-			result := schedule.EpisodeResolution{Programs: cached, EditorialUnavailable: true}
-			s.memoEpisodes(rec.LibraryID, result, now)
-			return result
-		}
-		result := schedule.EpisodeResolution{}
-		s.memoEpisodes(rec.LibraryID, result, now)
-		return result
-	} else if s.store != nil {
-		// Best-effort: a write failure costs a re-fetch next time, never correctness, so it
-		// must not fail the resolve that is otherwise complete.
-		_ = s.store.UpsertSeriesEpisodes(s.ctx, store.SeriesEpisodes{
-			LibraryID: rec.LibraryID, Episodes: eps, FetchedAt: now,
-		})
-	}
-
-	result := schedule.EpisodeResolution{Programs: eps}
 	s.memoEpisodes(rec.LibraryID, result, now)
 	return result
-}
-
-func (s *storeAvailability) episodeCacheAged(fetchedAt, now time.Time) bool {
-	age := 24 * time.Hour
-	if s.episodeMaxAge != nil {
-		if configured := s.episodeMaxAge(); configured > 0 {
-			age = configured
-		}
-	}
-	return fetchedAt.IsZero() || !fetchedAt.After(now.Add(-age))
 }
 
 // memoEpisodes records an episode list in the in-process memo. The empty result is memoized
@@ -777,8 +703,8 @@ func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy)
 // land without rewriting what is on air: the deck loops from the channel's anchor forever. Such a
 // channel keeps its seeded order and reads no history.
 //
-// BEST-EFFORT: a store that cannot answer yields an empty map, and placement falls back to the
-// positional rotation it used before the signal existed. A history read must never be able to
+// BEST-EFFORT: a store that cannot answer yields an empty map, and placement falls back to
+// positional rotation. A history read must never be able to
 // fail a reconcile — the channel still has to air something.
 //
 // Called from BOTH reconcile and CyclePreview, through this one helper, so the preview cannot
@@ -857,7 +783,7 @@ func scheduledPrograms(slots []schedule.Slot, anchor, until time.Time) []playout
 // stamped as known from the programme's start, so a window arranged later reads every programme
 // that started before it opened, however late the reconcile that records it runs. Idempotent, and
 // best-effort: a ledger write never fails a reconcile.
-func (e *Engine) recordScheduled(ctx context.Context, ch store.Channel, now time.Time) {
+func (e *Engine) recordScheduled(ctx context.Context, ch channelstore.Channel, now time.Time) {
 	if e.store == nil || len(ch.Desired) == 0 || ch.PlayoutAnchor.IsZero() {
 		return
 	}
@@ -868,8 +794,8 @@ func (e *Engine) recordScheduled(ctx context.Context, ch store.Channel, now time
 		}
 	}
 	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
-		airing := store.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
-		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []store.ScheduledAiring{airing}, b.Start); err != nil {
+		airing := channeldatastore.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
+		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []channeldatastore.ScheduledAiring{airing}, b.Start); err != nil {
 			e.log.Debug("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
 			return
 		}

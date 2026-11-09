@@ -41,7 +41,7 @@ Moved to [`design/acquisition.md`](design/acquisition.md#state-machine).
 ## 5. Persistence — Postgres **and** SQLite
 
 The store, retention, PostgreSQL concurrency and the SQLite → PostgreSQL migration moved to
-[`design/storage.md`](design/storage.md); the media inventory and cached series episodes moved to
+[`design/storage.md`](design/storage.md); the media inventory and series episodes moved to
 [`design/library.md`](design/library.md); airing history moved to
 [`design/scheduling.md`](design/scheduling.md#airing-history); the activity and diagnostic evidence
 tables moved to [`design/observability.md`](design/observability.md).

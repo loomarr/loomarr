@@ -23,7 +23,7 @@ func twoItemTimeline(t *testing.T) (init []byte, segments [][]byte, frameTicks i
 	const frameDur = 3000 // 30 fps on 90 kHz
 	var v, a int64
 	for item := range 2 {
-		stream := readStream(bytes.NewReader(raw))
+		stream := readStream(nil, bytes.NewReader(raw))
 		first := true
 		for frag := range stream.frags {
 			// Stamped as Packager.forward does: an item's first fragment is rewritten (priming

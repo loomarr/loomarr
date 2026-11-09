@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// The active picture (#1512 phase 1d): the part of the coded frame that is picture, with baked-in
+// The active picture (#1512): the part of the coded frame that is picture, with baked-in
 // letterbox or pillarbox bars excluded, so the channel watermark anchors to the picture's corner
 // instead of sitting in a black bar.
 //

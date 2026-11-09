@@ -8,9 +8,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/research"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 )
 
@@ -20,9 +25,8 @@ import (
 // on-screen text the model says it read (an inferred brand is dropped), and records every read so
 // the rung completes. Its done record on the ladder is what stops a re-run paying twice.
 //
-// ⚠ **Ported from `visionjob_test.go` when V51b retired the sweep.** `BoundsOnePass` went with it —
-// the bound is `filler.pipeline.max_vision`, enforced by the runner and tested there. Everything
-// else survives, because the grounding rule is the part that matters and it did not change.
+// ⚠ The per-pass bound is `filler.pipeline.max_vision`, enforced by the runner and tested there;
+// the grounding rule is the part that matters, and it is tested here.
 
 // fakeVisionStore records what the rung wrote, without a database.
 type fakeVisionStore struct {
@@ -96,11 +100,11 @@ func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte
 	return s.frames, s.err
 }
 
-func (s *scriptedVision) Chapters(context.Context, string) ([]filler.Chapter, error) { return nil, nil }
-func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]filler.Interval, []filler.Interval, error) {
+func (s *scriptedVision) Chapters(context.Context, string) ([]tools.Chapter, error) { return nil, nil }
+func (s *scriptedVision) Boundaries(context.Context, string, int64, int64) ([]tools.Interval, []tools.Interval, error) {
 	return nil, nil, nil
 }
-func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]filler.TranscriptSegment, error) {
+func (s *scriptedVision) Transcribe(context.Context, string, int64, int64) ([]tools.TranscriptSegment, error) {
 	return nil, nil
 }
 func (s *scriptedVision) Fingerprint(context.Context, string, int64, int64) (creative.Fingerprint, error) {
@@ -146,32 +150,32 @@ var oneFrame = [][]byte{[]byte("\xff\xd8jpeg\xff\xd9")}
 
 // visionClip builds an untagged candidate clip vision has not read. Hash is DERIVED from the
 // path rather than equal to it, so a hash-keyed call and a path-keyed one stay distinguishable.
-func visionClip(path string) filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial, DurationMs: 30_000,
+func visionClip(path string) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial, DurationMs: 30_000,
 	}}
 }
 
 // wordless marks a clip as a silent visual spot — the case vision exists for: no dialogue
 // (Language "none"), no transcript beyond the wordless sentinel. It stays untagged, so it is a
 // candidate.
-func wordless(c filler.StoreClip) filler.StoreClip {
-	c.Language = filler.LangNone
-	c.Transcript = filler.TranscriptNone
+func wordless(c cliplibrary.StoreClip) cliplibrary.StoreClip {
+	c.Language = language.None
+	c.Transcript = clips.TranscriptNone
 	return c
 }
 
 // fullyTagged marks a clip resolved by the cheaper tiers (era + audience + category), so it is NOT
 // a vision candidate.
-func fullyTagged(c filler.StoreClip) filler.StoreClip {
+func fullyTagged(c cliplibrary.StoreClip) cliplibrary.StoreClip {
 	c.Era = 1994
-	c.Audience = filler.Kids
+	c.Audience = clips.Kids
 	c.Category = "toys"
 	return c
 }
 
 // newVisionStage wires the rung with a scripted store/tools/provider, always ENABLED.
-func newVisionStage(st filler.VisionClipStore, tools filler.MediaTools, provider llm.VisionProvider) *filler.VisionStage {
+func newVisionStage(st filler.VisionClipStore, tools tools.MediaTools, provider llm.VisionProvider) *filler.VisionStage {
 	return filler.NewVisionStage(tools, provider, st, "/filler",
 		func() bool { return true },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
@@ -179,7 +183,7 @@ func newVisionStage(st filler.VisionClipStore, tools filler.MediaTools, provider
 
 // runVision applies + runs, failing the test on an unexpected error. It returns the applied flag so
 // a test can assert "did not run" by COST rather than by outcome.
-func runVision(t *testing.T, s *filler.VisionStage, c filler.StoreClip) bool {
+func runVision(t *testing.T, s *filler.VisionStage, c cliplibrary.StoreClip) bool {
 	t.Helper()
 	if applies, _ := s.Applies(context.Background(), c); !applies {
 		return false
@@ -372,8 +376,8 @@ func TestVisionStage_GroundsEraOnlyWhenYearIsVisible(t *testing.T) {
 	}
 }
 
-// An out-of-enum category is dropped exactly as validateTags drops one (the enum check survives the
-// grounding generalisation).
+// An out-of-enum category is dropped exactly as the text tagger drops one (the enum check survives
+// the grounding generalisation).
 func TestVisionStage_DropsOutOfEnumCategory(t *testing.T) {
 	st := newFakeVisionStore()
 	prov := &scriptedProvider{answer: `{"visibleText":"insurance you can trust","brand":"","era":0,"category":"insurance"}`}
@@ -417,9 +421,9 @@ func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
 	if tools.spanCalls != 1 || tools.calls != 0 {
 		t.Fatalf("KeyframesIn calls = %d, whole-clip calls = %d; want the measured span once", tools.spanCalls, tools.calls)
 	}
-	if tools.spanStart != 0 || tools.spanEnd != clip.DurationMs || tools.spanCount != filler.VisionKeyframes {
+	if tools.spanStart != 0 || tools.spanEnd != clip.DurationMs || tools.spanCount != split.VisionKeyframes {
 		t.Fatalf("semantic span = %d..%d x%d, want 0..%d x%d",
-			tools.spanStart, tools.spanEnd, tools.spanCount, clip.DurationMs, filler.VisionKeyframes)
+			tools.spanStart, tools.spanEnd, tools.spanCount, clip.DurationMs, split.VisionKeyframes)
 	}
 }
 
@@ -429,7 +433,7 @@ func TestVisionStage_BoundsSemanticFramesToTheMeasuredClip(t *testing.T) {
 func TestVisionStage_SkipsClipsWithNothingToGain(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		clip filler.StoreClip
+		clip cliplibrary.StoreClip
 	}{
 		{"already fully tagged", fullyTagged(visionClip("done.mp4"))},
 	} {

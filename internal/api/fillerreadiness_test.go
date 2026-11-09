@@ -7,44 +7,47 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
+	fillerapi "github.com/loomarr/loomarr/internal/api/filler"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 )
 
 func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	ff.readiness = filler.ProjectReadiness(filler.ReadinessInput{
-		Fetch: filler.FetchStatus{Enabled: true, CatalogClips: 12, MaxCatalog: 500},
+		Fetch: acquisition.FetchStatus{Enabled: true, CatalogClips: 12, MaxCatalog: 500},
 		Storage: filler.StorageStatus{
 			TotalBytes: 500 << 30, FreeBytes: 200 << 30, ManagedBytes: 2 << 30,
 			ReservedBytes: 1 << 20, FilesystemReservedBytes: 2 << 20,
 			SoftBudgetBytes: 20 << 30, HardReserveBytes: 10 << 30, AvailableBytes: 18 << 30,
 			Automatic: true,
 		},
-		Pipeline: filler.PipelineOverview{
+		Pipeline: pipelinestate.PipelineOverview{
 			Runnable: 2, NeedsDecision: 3, Ready: 9, Complete: 2, Rejected: 4, Recoverable: 1,
 		},
-		Pool: filler.PoolReport{
+		Pool: pod.PoolReport{
 			Clips: 12, BreakBody: 10, Eligible: 8,
-			Channels: []filler.ChannelCoverage{{
+			Channels: []pod.ChannelCoverage{{
 				ChannelID: "ch-7", Name: "Saturday Morning", Number: 7,
-				Report: filler.CoverageReport{
-					Level: filler.MatchAudience, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
+				Report: pod.CoverageReport{
+					Level: pod.MatchAudience, Total: 6, DurationMs: 180_000, Categories: 3, Brands: 4,
 				},
 			}},
 		},
-		Runs: []filler.AcquisitionRun{{
-			ID: "acq-1", Trigger: filler.AcquisitionPull, PullID: "pull-1",
-			Status: filler.AcquisitionSuccess, Requested: 4, Fetched: 3,
+		Runs: []acquisition.AcquisitionRun{{
+			ID: "acq-1", Trigger: acquisition.TriggerPull, PullID: "pull-1",
+			Status: acquisition.RunSuccess, Requested: 4, Fetched: 3,
 			StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
-			Outcome:   filler.AcquisitionOutcome{Enrolled: 3, Preparing: 1, Ready: 2},
-			Artifacts: filler.AcquisitionArtifactOutcome{Consumed: 3},
-			GapYield: []filler.AcquisitionGapYield{{Gap: "era:1990-1999", Downloads: 2,
-				Outcome: filler.AcquisitionOutcome{Enrolled: 2, Ready: 2}}},
+			Outcome:   acquisition.Outcome{Enrolled: 3, Preparing: 1, Ready: 2},
+			Artifacts: acquisition.ArtifactOutcome{Consumed: 3},
+			GapYield: []acquisition.GapYield{{Gap: "era:1990-1999", Downloads: 2,
+				Outcome: acquisition.Outcome{Enrolled: 2, Ready: 2}}},
 		}},
 		// Two repair rows are higher-priority actionable work than the recoverable pipeline row.
-		Repairs: filler.AcquisitionRepairSummary{Count: 2, LatestReason: "latest retained repair"},
+		Repairs: acquisition.RepairSummary{Count: 2, LatestReason: "latest retained repair"},
 	})
 
 	res := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/readiness", "", memberToken)
@@ -52,7 +55,7 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
-	var body api.FillerReadinessDTO
+	var body fillerapi.FillerReadinessDTO
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -87,10 +90,10 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 
 func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
-	ff.cleanupPreview = filler.StorageCleanupPreview{Items: 3, Bytes: 4096}
-	ff.cleanupResult = filler.StorageCleanupResult{
+	ff.cleanupPreview = acquisition.StorageCleanupPreview{Items: 3, Bytes: 4096}
+	ff.cleanupResult = acquisition.StorageCleanupResult{
 		RemovedItems: 2, RemovedBytes: 3072, FailedItems: 1,
-		Remaining: filler.StorageCleanupPreview{Items: 1, Bytes: 1024},
+		Remaining: acquisition.StorageCleanupPreview{Items: 1, Bytes: 1024},
 	}
 
 	for _, path := range []string{"/v1/filler/storage/cleanup"} {
@@ -102,7 +105,7 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 	}
 	previewResponse := sourceReq(t, http.MethodGet, srv.URL+"/v1/filler/storage/cleanup", "", adminToken)
 	defer func() { _ = previewResponse.Body.Close() }()
-	var preview api.FillerStorageCleanupPreviewDTO
+	var preview fillerapi.FillerStorageCleanupPreviewDTO
 	if err := json.NewDecoder(previewResponse.Body).Decode(&preview); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +115,7 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 
 	cleanupResponse := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/storage/cleanup", "", adminToken)
 	defer func() { _ = cleanupResponse.Body.Close() }()
-	var result api.FillerStorageCleanupResultDTO
+	var result fillerapi.FillerStorageCleanupResultDTO
 	if err := json.NewDecoder(cleanupResponse.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
@@ -125,9 +128,9 @@ func TestFillerStorageCleanupIsAdminOnlyAndReturnsServerOwnedPreview(t *testing.
 func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	now := time.Date(2026, 9, 13, 14, 0, 0, 0, time.UTC)
-	if err := st.UpsertAcquisitionRun(context.Background(), filler.AcquisitionRun{
-		ID: "acq-found-clip", Trigger: filler.AcquisitionSource, SourceID: "archive:classic",
-		Status: filler.AcquisitionError, Requested: 1, Failed: 1, Error: "provider timed out",
+	if err := st.UpsertAcquisitionRun(context.Background(), acquisition.AcquisitionRun{
+		ID: "acq-found-clip", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
+		Status: acquisition.RunError, Requested: 1, Failed: 1, Error: "provider timed out",
 		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -145,7 +148,7 @@ func TestFillerAcquisitionReturnsDurableReconnectState(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("acquisition read = %d, want 200", res.StatusCode)
 	}
-	var body api.FillerAcquisitionRunDTO
+	var body fillerapi.FillerAcquisitionRunDTO
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}

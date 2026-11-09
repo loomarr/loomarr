@@ -7,6 +7,14 @@ const GENERIC_START_FAILURE = "Couldn't start this channel. Try again in a momen
 /** The sentence shown when the paired server could not be reached at all while starting a channel. */
 const SERVER_UNREACHABLE = "Couldn't reach Loomarr. Check your connection and try again.";
 
+/** A request that never reached the paired server (offline, refused, timed out). */
+class ServerUnreachable extends Error {
+  constructor() {
+    super(SERVER_UNREACHABLE);
+    this.name = "ServerUnreachable";
+  }
+}
+
 /**
  * A channel start the server refused and explained (a 5xx problem response to the manifest that
  * starts the stream). It is final for this tune: the server already waited out its own start
@@ -53,4 +61,4 @@ const parseStartFailureReason = (status: number, body: unknown): string | undefi
   return GENERIC_START_FAILURE;
 };
 
-export { GENERIC_START_FAILURE, parseStartFailureReason, SERVER_UNREACHABLE, StartFailure };
+export { GENERIC_START_FAILURE, parseStartFailureReason, ServerUnreachable, StartFailure };

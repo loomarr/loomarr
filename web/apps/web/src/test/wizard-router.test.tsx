@@ -413,8 +413,7 @@ describe("wizard", () => {
     await screen.findByRole("heading", { name: /connect your services/i });
     const rail = within(screen.getByRole("complementary"));
     await userEvent.click(rail.getByRole("button", { name: "Media server" }));
-    await userEvent.click(await screen.findByRole("combobox", { name: /library flavor/i }));
-    await userEvent.click(await screen.findByRole("option", { name: "emby" }));
+    await userEvent.selectOptions(await screen.findByRole("combobox", { name: /library flavor/i }), "emby");
 
     // The media-server block is the one open, so its Test button is the first.
     const [testButton] = screen.getAllByRole("button", { name: /test connection/i });
@@ -710,7 +709,8 @@ describe("wizard", () => {
       });
       renderAt("/wizard?step=playout");
 
-      expect(await screen.findByLabelText("Loomarr address")).toBeDisabled();
+      // Read-only, not disabled: the pinned value stays at full strength (#2759).
+      expect(await screen.findByLabelText("Loomarr address")).toHaveAttribute("readonly");
       expect(screen.getByText(/set via environment/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
     });

@@ -3,6 +3,7 @@ import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { SettingKind } from "@loomarr/api/models/settingKind";
 import { SettingPresentation } from "@loomarr/api/models/settingPresentation";
+import { SettingUnit } from "@loomarr/api/models/settingUnit";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { SettingField } from "./setting-field";
@@ -14,7 +15,8 @@ const base: SettingEntry = {
   group: "connections.media_server",
   owner: "settings.connections",
   kind: "url",
-  doc: "Base URL of your Emby/Jellyfin server.",
+  doc: "The address of your media server.",
+  detail: "For example http://emby:8096.",
   advanced: false,
   apply: SettingEntryApply.live,
   secret: false,
@@ -23,7 +25,8 @@ const base: SettingEntry = {
 };
 
 // One registry key as a control (config-design §2/§3): the kinds that look different,
-// plus the two provenance/secret states an operator actually has to reason about.
+// plus the two provenance/secret states an operator actually has to reason about. The base entry
+// carries a detail, so its summary sits under the field and the rest behind the (i).
 const meta = {
   title: "Settings/SettingField",
   component: SettingField,
@@ -103,6 +106,46 @@ const DownloadSchedule: Story = {
   },
 };
 
+// A whole number of seconds edited in a unit: 14400 reads as 4 hours and still saves as seconds.
+const SecondsWithUnit: Story = {
+  args: {
+    entry: {
+      ...base,
+      key: SettingKey.FillerCooldownSeconds,
+      group: "filler",
+      owner: "filler.playback",
+      kind: SettingKind.int,
+      unit: SettingUnit.seconds,
+      label: "Repeat spacing · same commercial",
+      doc: "How long before a commercial airs again.",
+    },
+    value: "14400",
+  },
+};
+
+// The server's zones in a native select, the viewer's device first.
+const Timezone: Story = {
+  args: {
+    entry: {
+      ...base,
+      key: SettingKey.GuideTimezone,
+      group: "playout",
+      owner: "settings.playback",
+      kind: SettingKind.string,
+      presentation: SettingPresentation.timezone,
+      label: "Timezone",
+      doc: "Which timezone the TV guide's times are shown in.",
+      presets: [
+        { value: "", label: "Each viewer's device" },
+        { value: "UTC", label: "UTC" },
+        { value: "America/New_York", label: "America/New York" },
+        { value: "Europe/London", label: "Europe/London" },
+      ],
+    },
+    value: "America/New_York",
+  },
+};
+
 const Invalid: Story = {
   args: {
     value: "not-a-url",
@@ -111,4 +154,4 @@ const Invalid: Story = {
 };
 
 export default meta;
-export { Bool, DownloadSchedule, Enum, EnvPinned, Invalid, StoredSecret, Url };
+export { Bool, DownloadSchedule, Enum, EnvPinned, Invalid, SecondsWithUnit, StoredSecret, Timezone, Url };

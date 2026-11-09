@@ -6,27 +6,28 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	"github.com/loomarr/loomarr/internal/filler/station"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 )
 
 // currentAreas resolves every current place to its area: the installation's, then each channel's
 // own (#2059 decisions 7 and 8). No areas means no installation country, so nothing is bounded.
 func currentAreas(ctx context.Context, channels interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-}, policy filler.Policy) ([]filler.Area, error) {
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+}, policy pod.Policy) ([]pod.Area, error) {
 	list, err := channels.ListChannels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list channels: %w", err)
 	}
-	places := make([]filler.Geography, 0, len(list))
+	places := make([]pod.Geography, 0, len(list))
 	for _, ch := range list {
 		if ch.Policy.Filler != nil && ch.Policy.Filler.Geography != nil {
-			places = append(places, filler.Geography{Country: ch.Policy.Filler.Geography.Country,
+			places = append(places, pod.Geography{Country: ch.Policy.Filler.Geography.Country,
 				Place: ch.Policy.Filler.Geography.Place})
 		}
 	}
@@ -35,8 +36,8 @@ func currentAreas(ctx context.Context, channels interface {
 
 // nearbyPlaceStations is every station within the radius of some current place.
 func nearbyPlaceStations(ctx context.Context, channels interface {
-	ListChannels(ctx context.Context) ([]store.Channel, error)
-}, policy filler.Policy) (map[string]bool, error) {
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+}, policy pod.Policy) (map[string]bool, error) {
 	areas, err := currentAreas(ctx, channels, policy)
 	if err != nil {
 		return nil, err
@@ -55,10 +56,10 @@ func nearbyPlaceStations(ctx context.Context, channels interface {
 // for its local sources). A source the operator switched either way stays as they left it.
 type localCuratedSources struct {
 	store interface {
-		ListChannels(ctx context.Context) ([]store.Channel, error)
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 		SwitchLocalCuratedSources(ctx context.Context, near map[string]bool) (on, off []string, err error)
 	}
-	policy func() filler.Policy
+	policy func() pod.Policy
 	log    *slog.Logger
 }
 
@@ -89,11 +90,11 @@ type openArchiveSearch struct {
 		Search(ctx context.Context, query string, limit int) (fetch.DiscoveryResult, error)
 	}
 	channels interface {
-		ListChannels(ctx context.Context) ([]store.Channel, error)
+		ListChannels(ctx context.Context) ([]channelstore.Channel, error)
 	}
-	policy   func() filler.Policy
+	policy   func() pod.Policy
 	stations interface {
-		get(context.Context) (*station.Directory, error)
+		Get(context.Context) (*station.Directory, error)
 	}
 	languages func(context.Context) (string, error)
 }
@@ -109,20 +110,20 @@ func (o openArchiveSearch) OpenSearch(ctx context.Context, query string, limit i
 // Provider is the provider an open-search hit is acquired from.
 func (o openArchiveSearch) Provider() source.ID { return archiveprovider.ID }
 
-func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error) {
+func (o openArchiveSearch) Gate(ctx context.Context) (acquisition.ListingGate, error) {
 	near, err := nearbyPlaceStations(ctx, o.channels, o.policy())
 	if err != nil {
-		return filler.ListingGate{}, err
+		return acquisition.ListingGate{}, err
 	}
-	directory, err := o.stations.get(ctx)
+	directory, err := o.stations.Get(ctx)
 	if err != nil {
-		return filler.ListingGate{}, err
+		return acquisition.ListingGate{}, err
 	}
 	languages, err := o.languages(ctx)
 	if err != nil {
-		return filler.ListingGate{}, err
+		return acquisition.ListingGate{}, err
 	}
-	return filler.ListingGate{Languages: languages, Station: func(title string) (string, bool) {
+	return acquisition.ListingGate{Languages: languages, Station: func(title string) (string, bool) {
 		match, ok := directory.Identify(title, "", "", "")
 		if !ok || !near[match.Station.ID] {
 			return "", false
@@ -134,7 +135,7 @@ func (o openArchiveSearch) Gate(ctx context.Context) (filler.ListingGate, error)
 // nearbyCallSigns are the call signs a short pass searches for (#2059 decision 9): every one a
 // nearby station held during an era gap, or ever when there is none. Sorted, so the searches a
 // pass rotates through are stable.
-func nearbyCallSigns(near map[string]bool, eras []filler.EraRange, directory *station.Directory) []string {
+func nearbyCallSigns(near map[string]bool, eras []pod.EraRange, directory *station.Directory) []string {
 	spans := [][2]string{{"", ""}}
 	if len(eras) > 0 {
 		spans = spans[:0]

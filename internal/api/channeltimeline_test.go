@@ -11,6 +11,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	guideapi "github.com/loomarr/loomarr/internal/api/guide"
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
+	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -45,18 +49,18 @@ func (f *fakeTimelineThumbs) askedCount() int {
 	return len(f.asked)
 }
 
-func newTimelineServer(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver) (*httptest.Server, records.Store) {
+func newTimelineServer(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver) (*httptest.Server, records.Store) {
 	return newTimelineServerWithImages(t, g, thumbs, nil)
 }
 
-func newTimelineServerWithImages(t *testing.T, g api.PlayoutGuide, thumbs api.TimelineThumbResolver, imageService api.ImageService) (*httptest.Server, records.Store) {
+func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs guideapi.TimelineThumbResolver, imageService imagesapi.ImageService) (*httptest.Server, records.Store) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/timeline.db")
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store:          st,
-		Auth:           api.NewTokenAuthorizer(adminToken),
+		Auth:           httpcore.NewTokenAuthorizer(adminToken),
 		Log:            slog.New(slog.DiscardHandler),
 		PlayoutGuide:   g,
 		TimelineThumbs: thumbs,
@@ -96,7 +100,7 @@ func TestChannelTimeline_ProgrammeCarriesImageServiceRecord(t *testing.T) {
 }
 
 // getTimeline fetches + decodes the timeline airings for a channel.
-func getTimeline(t *testing.T, srv *httptest.Server, channelID string) []api.GuideAiring {
+func getTimeline(t *testing.T, srv *httptest.Server, channelID string) []guideapi.GuideAiring {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/channels/"+channelID+"/timeline", nil)
 	req.Header.Set("Authorization", "Bearer "+adminToken)
@@ -109,7 +113,7 @@ func getTimeline(t *testing.T, srv *httptest.Server, channelID string) []api.Gui
 		t.Fatalf("timeline status %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Airings []api.GuideAiring `json:"airings"`
+		Airings []guideapi.GuideAiring `json:"airings"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)

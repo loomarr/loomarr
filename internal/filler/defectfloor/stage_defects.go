@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
 )
 
@@ -32,11 +34,11 @@ func NewDefectsStage(verdicts DefectVerdicts) *DefectsStage {
 	return &DefectsStage{verdicts: verdicts}
 }
 
-func (s *DefectsStage) ID() filler.StageID     { return filler.StageDefects }
-func (s *DefectsStage) Cost() filler.StageCost { return filler.CostCheap }
+func (s *DefectsStage) ID() pipelinestate.StageID { return pipelinestate.StageDefects }
+func (s *DefectsStage) Cost() filler.StageCost    { return filler.CostCheap }
 
 // Applies to every clip that may air as an ad of its own, the clips the floor judges.
-func (s *DefectsStage) Applies(_ context.Context, c filler.StoreClip) (bool, string) {
+func (s *DefectsStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
 	switch {
 	case c.IsComposite:
 		return false, "a recording of a whole break is judged through its segments"
@@ -49,29 +51,29 @@ func (s *DefectsStage) Applies(_ context.Context, c filler.StoreClip) (bool, str
 // Run admits a clip that passed, or that had too little picture to judge, and refuses one that
 // failed. Without a current verdict the clip waits its turn, spending no attempt. A held clip that
 // fails is refused here, by the pipeline; the floor retires only copies already on air.
-func (s *DefectsStage) Run(ctx context.Context, c filler.StoreClip) (filler.StageResult, error) {
+func (s *DefectsStage) Run(ctx context.Context, c cliplibrary.StoreClip) (filler.StageResult, error) {
 	rec, ok, err := s.verdicts.GetClipDefects(ctx, c.Hash)
 	if err != nil {
 		return filler.StageResult{}, err
 	}
 	if !ok || rec.Readings.Version != defects.MeasurementVersion || rec.Assessment.Version != defects.FloorVersion ||
 		rec.Era != c.Era {
-		return filler.StageResult{Verdict: filler.VerdictDefer, Note: "waiting for the defect floor to measure the picture and sound"}, nil
+		return filler.StageResult{Verdict: pipelinestate.VerdictDefer, Note: "waiting for the defect floor to measure the picture and sound"}, nil
 	}
 	switch rec.Verdict {
 	case defects.VerdictPass:
-		return filler.StageResult{Verdict: filler.VerdictContinue, Note: "meets the floor for its era"}, nil
+		return filler.StageResult{Verdict: pipelinestate.VerdictContinue, Note: "meets the floor for its era"}, nil
 	case defects.VerdictUndecided:
-		return filler.StageResult{Verdict: filler.VerdictContinue, Note: "too little picture to judge against the floor"}, nil
+		return filler.StageResult{Verdict: pipelinestate.VerdictContinue, Note: "too little picture to judge against the floor"}, nil
 	case defects.VerdictFail:
 		if definitiveFail(rec) {
-			return filler.StageResult{Verdict: filler.VerdictReject, Reason: filler.ReasonDefect, Detail: defectDetail(rec)}, nil
+			return filler.StageResult{Verdict: pipelinestate.VerdictReject, Reason: pipelinestate.ReasonDefect, Detail: defectDetail(rec)}, nil
 		}
 		// No judge could rule: none is configured, or it would not answer. Nothing automatic will
 		// settle the clip, so it is the operator's call rather than a wait with no end.
-		return filler.StageResult{Verdict: filler.VerdictReview, Note: "borderline picture, and no vision model could rule on it: " + defectDetail(rec)}, nil
+		return filler.StageResult{Verdict: pipelinestate.VerdictReview, Note: "borderline picture, and no vision model could rule on it: " + defectDetail(rec)}, nil
 	default:
-		return filler.StageResult{Verdict: filler.VerdictDefer, Note: "waiting for the judge to rule on a borderline picture"}, nil
+		return filler.StageResult{Verdict: pipelinestate.VerdictDefer, Note: "waiting for the judge to rule on a borderline picture"}, nil
 	}
 }
 

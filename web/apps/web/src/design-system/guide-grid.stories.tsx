@@ -161,6 +161,48 @@ type Story = StoryObj<typeof meta>;
 
 const Evening: Story = {};
 
+// A channel still downloading its titles, with nothing but breaks in the window, is one labelled
+// block, not hours of unlabelled pod slivers (#2727).
+const DownloadingChannel: Story = {
+  args: {
+    layout: layoutGuide(
+      {
+        ...evening,
+        channels: [
+          evening.channels[0] as GuideChannelTimeline,
+          {
+            ...channel(
+              31,
+              "Rainy Day Movies",
+              "live",
+              Array.from({ length: 16 }, (_, i) => pod(at(20, i * 15), at(20, (i + 1) * 15))),
+              9,
+            ),
+            programCount: 3,
+          },
+        ],
+      },
+      now,
+    ),
+  },
+};
+
+// The rail's 4px bar in each channel's decade colour (#2767, the mock's `tint=era`): the 1980s,
+// 1990s and 1970s, and a channel with no single-decade era, whose bar stays clear. The number
+// stays neutral.
+const decadeLayout = layoutGuide(
+  {
+    ...evening,
+    channels: evening.channels.map((c, i) => {
+      const decade = [1980, 1990, 1970, undefined][i];
+      return decade === undefined ? c : { ...c, decade };
+    }),
+  },
+  now,
+);
+const Decades: Story = { args: { layout: decadeLayout } };
+const DecadesLight: Story = { args: { layout: decadeLayout }, globals: { theme: "light" } };
+
 const viewportTall: Story["decorators"] = [
   (Story) => (
     <div style={{ display: "flex", flexDirection: "column", height: 720 }}>
@@ -219,4 +261,4 @@ const JumpToAFarChannel: Story = {
 };
 
 export default meta;
-export { Evening, HundredChannels, JumpToAFarChannel, Keyboard };
+export { Decades, DecadesLight, DownloadingChannel, Evening, HundredChannels, JumpToAFarChannel, Keyboard };

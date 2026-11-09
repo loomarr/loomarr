@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { Badge, LoomarrProvider, ProgressTrack, StatusDot, Text } from "../index";
+import { Badge, LoomarrProvider, ProgressTrack, StatusDot, StatusWord, Text } from "../index";
 import { declarationsOf, stylesOfText, tagBefore, withoutRuntimeMarker } from "./support/atomic-css";
 
 describe("StatusDot", () => {
@@ -34,6 +34,37 @@ describe("StatusDot", () => {
       </LoomarrProvider>,
     );
     expect(markup).toMatch(/width:6px/);
+  });
+});
+
+describe("StatusWord", () => {
+  const words = {
+    ok: "OK",
+    attention: "Needs attention",
+    notSetUp: "Not set up",
+    overdue: "Overdue",
+    expired: "Expired",
+  } as const;
+
+  it.each(Object.entries(words))("%s reads as its one word", (kind, word) => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <StatusWord kind={kind as keyof typeof words} />
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain(word);
+  });
+
+  it("gives every state a different dot colour", () => {
+    const dots = Object.keys(words).map((kind) => {
+      const markup = renderToStaticMarkup(
+        <LoomarrProvider>
+          <StatusWord kind={kind as keyof typeof words} />
+        </LoomarrProvider>,
+      );
+      return /background-color:\s*([^;"]+)/.exec(markup)?.[1];
+    });
+    expect(new Set(dots).size).toBe(dots.length);
   });
 });
 

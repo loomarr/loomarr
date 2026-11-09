@@ -1,6 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
-import type { LivePlaybackState, TuneDirection } from "@loomarr/player";
+import type { LivePlaybackState, PlayerFailureCause, TuneDirection } from "@loomarr/player";
 import type { LiveLadder, LiveQuality } from "@loomarr/player/browser";
 
 /**
@@ -37,6 +37,8 @@ interface WatchPlayer {
   /** What is airing on `channel` now. */
   currentTitle?: string;
   error?: string;
+  /** With an `error` from the player: what stopped the picture. Absent for a channel the app can't play. */
+  failureCause?: PlayerFailureCause;
   /** The tuned channel's rungs this browser plays and the height on air; empty until known. */
   ladder: LiveLadder;
   /** The viewer's live position and the controls that move it. */

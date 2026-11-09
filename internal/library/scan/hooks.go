@@ -70,6 +70,9 @@ type ArrHooks struct {
 
 	mu     sync.Mutex
 	status map[string]HookStatus
+	// written holds the apps registered since start. The first registration writes the connection
+	// even when it looks unchanged, since the arr masks the password Loomarr would compare.
+	written map[string]bool
 }
 
 // Run registers at start and every hour until ctx ends.
@@ -99,7 +102,10 @@ func (h *ArrHooks) Register(ctx context.Context, app string) error {
 		h.setState(app, HookNoAddress, nil)
 		return nil
 	}
-	_, err := client.Register(ctx, url, h.Secret)
+	h.mu.Lock()
+	rewrite := !h.written[app]
+	h.mu.Unlock()
+	_, err := client.Register(ctx, url, h.Secret, rewrite)
 	switch {
 	case errors.Is(err, arrhook.ErrNotConfigured):
 		h.setState(app, HookNotConfigured, nil)
@@ -115,6 +121,12 @@ func (h *ArrHooks) Register(ctx context.Context, app string) error {
 		}
 		return err
 	}
+	h.mu.Lock()
+	if h.written == nil {
+		h.written = map[string]bool{}
+	}
+	h.written[app] = true
+	h.mu.Unlock()
 	h.setState(app, HookRegistered, nil)
 	return nil
 }

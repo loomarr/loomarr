@@ -12,6 +12,9 @@ interface NumberFieldProps {
   onAmount: (amount: number) => void;
   onBlur?: () => void;
   placeholder?: string;
+  // A value the operator cannot change here (an environment pin): shown at full strength, unlike
+  // `disabled`, which dims it to look empty.
+  readOnly?: boolean;
 }
 
 export type { NumberFieldProps };

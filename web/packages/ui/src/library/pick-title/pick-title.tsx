@@ -67,14 +67,14 @@ const PickTitle = ({
         <Text textRole="body" tone="secondary">{`Nothing matches "${query}".`}</Text>
       ) : null}
       {list.map((c) => (
-        <Line flexWrap="nowrap" key={c.tmdbId}>
+        <Line flexWrap="nowrap" key={`${c.externalId.namespace}:${c.externalId.value}`}>
           <Stack flexShrink={0} width={28}>
             <LibraryPoster art={c.poster} name={c.poster ? c.name : ""} />
           </Stack>
           <Stack flexBasis={0} flexGrow={1} minWidth={0}>
             <Text textRole="body">{nameYear(c)}</Text>
           </Stack>
-          <Action onPress={() => onPick(c)} variant="secondary">
+          <Action accessibilityLabel={`Use ${nameYear(c)}`} onPress={() => onPick(c)} variant="secondary">
             Use this one
           </Action>
         </Line>

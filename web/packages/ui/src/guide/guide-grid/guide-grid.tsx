@@ -10,29 +10,32 @@ import {
   guideChannelForTypeahead,
   guideChannelState,
   guideSelectionForChannel,
+  guideWaitingForTitles,
 } from "@loomarr/core/guide";
 import {
   brandChroma,
+  decadeFill,
   PreviewAnchor,
   PreviewGroup,
   Surface,
   Text,
   type TextTone,
   useFocusLook,
+  useWindowWidth,
 } from "@loomarr/design-system";
 import { type ComponentRef, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
 import { ChannelIdent } from "../../channel-ident";
+import { guideRailWidth } from "../guide-rail";
 import type { GuideGridProps } from "./guide-grid.type";
 import { GuideRows } from "./guide-rows";
 
-// The web mock's time grid (#1659, decision N7): a 260 px channel column beside a timeline of
+// The web mock's time grid (#1659, decision N7): a 200–280 px channel column beside a timeline of
 // blocks, one 56 px row per channel. GuideRows virtualises the rows per platform. The keyboard
 // model is a roving tabindex: the selected block is the grid's one Tab stop, arrow keys move it
 // through the guide controller, and typing a channel number or name jumps to that channel.
 
-const RAIL = 260;
 const ROW = 56;
 const RULER = 30;
 const hourMs = 3_600_000;
@@ -259,6 +262,75 @@ const Block = ({
   );
 };
 
+type WaitingBlockProps = Omit<BlockProps, "airing" | "offAir" | "preview" | "px" | "timezone"> & {
+  airings: GuideAiringLayout[];
+  label: string;
+};
+
+// A channel still downloading its titles, with nothing but breaks in the window, is ONE labelled
+// block (#2727) instead of hours of unlabelled pod slivers. It stands for every airing in the row,
+// so the keyboard model is unchanged: it is selected whenever one of them is.
+const WaitingBlock = ({
+  airings,
+  focusPending,
+  focusable,
+  label,
+  onOpen,
+  onSelect,
+  selected,
+}: WaitingBlockProps) => {
+  const ref = useRef<ComponentRef<typeof View>>(null);
+  const first = airings[0];
+  const last = airings.at(-1);
+  const { focused, ...focusHandlers } = useFocusLook({
+    onFocus: () => {
+      if (!selected && first) onSelect?.(selectionOf(first));
+    },
+  });
+
+  useEffect(() => {
+    if (selected && focusPending?.current) {
+      focusPending.current = false;
+      ref.current?.focus();
+    }
+  }, [focusPending, selected]);
+
+  if (!first || !last) return null;
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      tabIndex={focusable ? 0 : -1}
+      {...focusHandlers}
+      onPress={onOpen}
+      ref={ref}
+      style={{
+        bottom: 6,
+        left: `${first.startRatio * 100}%`,
+        position: "absolute",
+        top: 6,
+        width: `${(last.startRatio + last.widthRatio - first.startRatio) * 100}%`,
+      }}
+    >
+      <Surface
+        backgroundColor="guideBreakFill"
+        borderColor={focused ? "actionFocus" : "borderDecorative"}
+        borderRadius={4}
+        borderWidth={1}
+        flex={1}
+        justifyContent="center"
+        overflow="hidden"
+        paddingHorizontal={8}
+      >
+        {/* Primary, as on a break block: muted on the break fill fails contrast (3.3:1, #2867). */}
+        <Text numberOfLines={1} textAlign="left" textRole="cardLabel" tone="primary">
+          {label}
+        </Text>
+      </Surface>
+    </Pressable>
+  );
+};
+
 const nowLine = (ratio: number) => (
   <View
     pointerEvents="none"
@@ -281,7 +353,9 @@ const Row = memo(
     focusPending,
     nowRatio,
     onOpenChannel,
+    onOpenChannelInfo,
     onSelect,
+    railWidth,
     renderRowMenu,
     renderPreview,
     tabStop,
@@ -292,7 +366,9 @@ const Row = memo(
     focusPending: RefObject<boolean>;
     nowRatio?: number;
     onOpenChannel?: (channelId: string) => void;
+    onOpenChannelInfo?: (channelId: string) => void;
     onSelect?: (selection: GuideSelection) => void;
+    railWidth: number;
     renderRowMenu?: (channel: GuideChannelLayout["source"]) => ReactNode;
     renderPreview?: (selection: GuideSelection) => ReactNode;
     /** The block that is the grid's Tab stop, when it is in this row. */
@@ -302,6 +378,8 @@ const Row = memo(
   }) => {
     const { broadcast, health } = guideChannelState(channel.source);
     const chip = health ? healthChip[health] : undefined;
+    const waiting = guideWaitingForTitles(channel.source);
+    const inRow = channel.airings.some((airing) => airing.scheduleBlockId === tabStop);
     return (
       <Surface
         backgroundColor="transparent"
@@ -321,17 +399,28 @@ const Row = memo(
           borderWidth={0}
           flexDirection="row"
           gap={9}
-          paddingLeft={12}
           paddingRight={4}
-          width={RAIL}
+          width={railWidth}
         >
+          {/* The channel's decade colour as the mock's 4px bar at the rail's edge (#2767), the one
+              place the grid shows it; clear without a decade. The bar takes the rail's old
+              12px inset, so the ident sits where it did. */}
+          <Surface
+            aria-hidden
+            backgroundColor={decadeFill(channel.source.decade) ?? "transparent"}
+            borderRadius="round"
+            borderWidth={0}
+            flexShrink={0}
+            height={24}
+            width={4}
+          />
           <ChannelIdent name={channel.source.name} number={channel.source.number} />
           <Pressable
             accessibilityRole="button"
-            // Out of the Tab order: Enter on any of the row's blocks opens the same channel, and
+            // The channel's name opens the channel's page; its blocks tune it. Out of the Tab order:
             // a hundred rows must not mean a hundred more Tab stops.
             tabIndex={-1}
-            onPress={() => onOpenChannel?.(channel.source.channelId)}
+            onPress={() => onOpenChannelInfo?.(channel.source.channelId)}
             style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
           >
             <Text textRole="guideNumber">{channel.source.number}</Text>
@@ -369,21 +458,33 @@ const Row = memo(
           <View style={{ alignItems: "center", width: 28 }}>{renderRowMenu?.(channel.source)}</View>
         </Surface>
         <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
-          {channel.airings.map((airing) => (
-            <Block
-              airing={airing}
-              focusable={airing.scheduleBlockId === tabStop}
+          {waiting ? (
+            <WaitingBlock
+              airings={channel.airings}
+              focusable={inRow}
               focusPending={focusPending}
-              key={airing.scheduleBlockId}
-              offAir={health === "paused"}
+              label={waiting}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
-              preview={renderPreview?.(selectionOf(airing))}
-              px={airing.widthRatio * timelineWidth}
-              selected={airing.scheduleBlockId === tabStop}
-              timezone={timezone}
+              selected={inRow}
             />
-          ))}
+          ) : (
+            channel.airings.map((airing) => (
+              <Block
+                airing={airing}
+                focusable={airing.scheduleBlockId === tabStop}
+                focusPending={focusPending}
+                key={airing.scheduleBlockId}
+                offAir={health === "paused"}
+                onOpen={() => onOpenChannel?.(channel.source.channelId)}
+                onSelect={onSelect}
+                preview={renderPreview?.(selectionOf(airing))}
+                px={airing.widthRatio * timelineWidth}
+                selected={airing.scheduleBlockId === tabStop}
+                timezone={timezone}
+              />
+            ))
+          )}
           {nowRatio === undefined ? null : nowLine(nowRatio)}
         </View>
       </Surface>
@@ -396,11 +497,13 @@ const GuideGrid = ({
   nowMs,
   onMove,
   onOpenChannel,
+  onOpenChannelInfo,
   onSelect,
   renderRowMenu,
   renderPreview,
   selection,
 }: GuideGridProps) => {
+  const railWidth = guideRailWidth(useWindowWidth());
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
   const typed = useRef({ at: 0, query: "" });
@@ -424,7 +527,7 @@ const GuideGrid = ({
         borderColor="borderDecorative"
         borderRightWidth={1}
         borderWidth={0}
-        width={RAIL}
+        width={railWidth}
       />
       <View
         onLayout={(e: LayoutChangeEvent) => setTimelineWidth(e.nativeEvent.layout.width)}
@@ -521,7 +624,9 @@ const GuideGrid = ({
             focusPending={focusPending}
             nowRatio={nowRatio}
             onOpenChannel={onOpenChannel}
+            onOpenChannelInfo={onOpenChannelInfo ?? onOpenChannel}
             onSelect={onSelect}
+            railWidth={railWidth}
             renderRowMenu={renderRowMenu}
             renderPreview={renderPreview}
             tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}

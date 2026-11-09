@@ -1,0 +1,40 @@
+package ops
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/proposals/quality"
+)
+
+func (s *Handlers) registerDiscoveryQuality(api huma.API) {
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "export-discovery-quality", Method: http.MethodGet, Path: "/v1/system/discovery-quality/export",
+		Summary:     "Export local discovery-quality measurements",
+		Description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included. " + httpcore.OperatorAPI,
+		Tags:        []string{"system"},
+	}, httpcore.RoleAdmin), s.discoveryQualityExport)
+}
+
+type discoveryQualityExportOutput struct {
+	ContentDisposition string `header:"Content-Disposition"`
+	Body               quality.Export
+}
+
+func (s *Handlers) discoveryQualityExport(ctx context.Context, _ *struct{}) (*discoveryQualityExportOutput, error) {
+	if s.store == nil {
+		return nil, huma.Error501NotImplemented("discovery-quality export is unavailable")
+	}
+	export, err := s.store.ExportQualityLedger(ctx, time.Now())
+	if err != nil {
+		return nil, huma.Error500InternalServerError("export discovery-quality measurements", err)
+	}
+	return &discoveryQualityExportOutput{
+		ContentDisposition: `attachment; filename="loomarr-discovery-quality.json"`,
+		Body:               export,
+	}, nil
+}

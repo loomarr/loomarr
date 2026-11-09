@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 )
 
@@ -64,7 +64,7 @@ func TestTaxonomy_WritesRequireAdmin(t *testing.T) {
 
 func TestTaxonomy_ImpactPreviewExplainsConsequencesWithoutMutation(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
+	seedClip(t, st, "b1", clips.Commercial, 1994, clips.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag beer → %d", p.StatusCode)
 	}
@@ -142,7 +142,7 @@ func TestTaxonomy_CreateReindexesRollups(t *testing.T) {
 	}
 
 	// Seed a real clip and tag it `energy-drink` via the clip PATCH — grounding must now accept it.
-	seedClip(t, st, "e1", filler.Commercial, 1999, filler.General, "")
+	seedClip(t, st, "e1", clips.Commercial, 1999, clips.General, "")
 	patch := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"e1","tags":["energy-drink"]}`)
 	if patch.StatusCode != http.StatusOK {
 		t.Fatalf("tag clip energy-drink → %d, want 200 (the taxon now exists)", patch.StatusCode)
@@ -184,7 +184,7 @@ func TestTaxonomy_EditRejectsCycleAndCrossAxisParent(t *testing.T) {
 
 func TestTaxonomy_ListReportsWholeCatalogUsageAndProtectsAssertedDelete(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
+	seedClip(t, st, "b1", clips.Commercial, 1994, clips.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag beer → %d", p.StatusCode)
 	}
@@ -235,7 +235,7 @@ func TestTaxonomy_ListReportsWholeCatalogUsageAndProtectsAssertedDelete(t *testi
 // the taxonomy is the one vocabulary, and a slug not in it is never silently persisted.
 func TestTaxonomy_ClipPatchRejectsUnknownTag(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	seedClip(t, st, "u1", filler.Commercial, 1990, filler.General, "")
+	seedClip(t, st, "u1", clips.Commercial, 1990, clips.General, "")
 	resp := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"u1","tags":["cryptocurrency"]}`)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("patch with off-vocabulary tag → %d, want 422 (grounding gate)", resp.StatusCode)
@@ -250,7 +250,7 @@ func TestTaxonomy_DeleteReparentsAndReindexes(t *testing.T) {
 
 	// Insert energy-drink under drinks, tag a clip, then delete drinks' child chain is not needed —
 	// delete `alcohol` (a real middle node: beer → alcohol → drinks) and confirm beer reparents to drinks.
-	seedClip(t, st, "b1", filler.Commercial, 1994, filler.General, "")
+	seedClip(t, st, "b1", clips.Commercial, 1994, clips.General, "")
 	if p := do(t, srv, http.MethodPatch, "/v1/filler/tags", adminToken, `{"hash":"b1","tags":["beer"]}`); p.StatusCode != http.StatusOK {
 		t.Fatalf("tag beer → %d", p.StatusCode)
 	}

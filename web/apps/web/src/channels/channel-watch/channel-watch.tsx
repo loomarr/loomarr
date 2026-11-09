@@ -3,6 +3,7 @@ import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
+import type { PlayerFailureCause } from "@loomarr/player";
 import {
   PlayerChrome,
   PlayerCover,
@@ -56,6 +57,23 @@ const SEEK_STEP_MS = 10_000;
 
 // The station-ID card's time on screen after a settled tune (playback-clients: Station ID).
 const IDENT_MS = 5_000;
+
+// What the stopped cover says for each cause, in plain words (the H mock's copy). A channel the app
+// can't play has no cause and reads as a stream that stopped.
+const STOPPED_COVER: Record<PlayerFailureCause | "none", { message?: string; title: string }> = {
+  channel: {
+    message:
+      "Loomarr is running, but it couldn't start the video for this channel. Trying again usually fixes it.",
+    title: "This channel couldn't start",
+  },
+  none: { title: "The stream stopped." },
+  server: {
+    message:
+      "The picture stopped because this device lost touch with Loomarr. Check that the server is running and that you're on the same network, then try again.",
+    title: "Loomarr's server isn't answering",
+  },
+  stream: { message: "Trying again usually brings it back.", title: "The stream stopped." },
+};
 
 // A rung as Settings names it: the premium by its class, the rest by lines.
 const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
@@ -201,6 +219,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const chromeData = playbarFromTimeline({
     airings,
     channel: {
+      ...(osdChannel.decade === undefined ? {} : { decade: osdChannel.decade }),
       era: filler?.era,
       name: osdChannel.name,
       number: String(osdChannel.number),
@@ -320,8 +339,9 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           density={density}
           kind="error"
           onLeave={onLeave}
+          message={STOPPED_COVER[player.failureCause ?? "none"].message}
           onRetry={player.retry}
-          title="The stream stopped."
+          title={STOPPED_COVER[player.failureCause ?? "none"].title}
         />
       </ThemeScope>
     ) : undefined;

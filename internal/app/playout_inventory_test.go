@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -41,7 +41,7 @@ func TestBuildSixtyFourConfiguredChannelsWithoutViewersStartsNoMediaProcesses(t 
 	// Seed after composition so this test isolates inventory growth from the separate one-time
 	// codec migration pass. Saving a Channel is the real supported configuration boundary.
 	for i := range 64 {
-		_, err = st.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+		_, err = st.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 			ID:       fmt.Sprintf("configured-%02d", i),
 			Name:     fmt.Sprintf("Configured %02d", i),
 			Number:   i + 1,

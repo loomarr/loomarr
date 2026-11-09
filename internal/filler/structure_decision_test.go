@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
 func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
-	if err := ValidateStructureDecisionProjection(*proposal.Structure, *proposal.StructureDecision); err != nil {
+	if err := split.ValidateDecisionProjection(*proposal.Structure, *proposal.StructureDecision); err != nil {
 		t.Fatal(err)
 	}
 
@@ -20,7 +21,7 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateStructureDecisionProjection(*proposal.Structure, artifact); err == nil {
+		if err := split.ValidateDecisionProjection(*proposal.Structure, artifact); err == nil {
 			t.Fatal("held decision projected")
 		}
 	})
@@ -34,7 +35,7 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateStructureDecisionProjection(*proposal.Structure, artifact); err == nil {
+		if err := split.ValidateDecisionProjection(*proposal.Structure, artifact); err == nil {
 			t.Fatal("different confirmed role projected")
 		}
 	})
@@ -49,7 +50,7 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateStructureDecisionProjection(*proposal.Structure, artifact); err == nil {
+		if err := split.ValidateDecisionProjection(*proposal.Structure, artifact); err == nil {
 			t.Fatal("different confirmed span projected")
 		}
 	})
@@ -59,7 +60,7 @@ func TestValidateStructureDecisionProjectionRequiresExactConfirmedPlan(t *testin
 		artifact.Decision.Segments = append([]structure.DecisionSegment(nil), artifact.Decision.Segments...)
 		artifact.Decision.Segments[0].Role = structure.RolePSA
 		artifact.SHA256 = structure.ArtifactSHA256(artifact)
-		if err := ValidateStructureDecisionProjection(*proposal.Structure, artifact); err == nil {
+		if err := split.ValidateDecisionProjection(*proposal.Structure, artifact); err == nil {
 			t.Fatal("rehashed non-replayable decision projected")
 		}
 	})

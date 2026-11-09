@@ -313,6 +313,8 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
                 // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
                 // itself, because it changes what approving this row gets you.
                 refused={p.proposal.refused ?? []}
+                audienceLimit={p.proposal.policy?.audience?.ceiling || undefined}
+                raiseAudienceTo={p.raiseAudienceTo}
                 seasonNotKept={p.proposal.seasonNotKept}
                 status={deciding.has(p.id) ? "approving" : "pending"}
                 error={rowError(p.id)}
@@ -347,6 +349,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
                         ...(pending.drop?.length ? { drop: pending.drop } : {}),
                         ...(pending.add?.length ? { add: pending.add } : {}),
                         ...(note ? { note } : {}),
+                        ...(pending.audience ? { audience: pending.audience } : {}),
                       }
                     : {};
                   approve.mutate({ id: p.id, data });

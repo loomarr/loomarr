@@ -30,9 +30,10 @@ type retentionStore struct {
 	crashKeep          int
 	pairingsAt         time.Time
 	operationsBefore   time.Time
-	recipientsBefore   time.Time
 	titlesBefore       time.Time
 	catalogAt          time.Time
+	tableRowsAt        time.Time
+	tableRowsBefore    time.Time
 }
 
 type retentionDiagnostics struct {
@@ -70,10 +71,6 @@ func (s *retentionStore) PurgeUnusedTitles(_ context.Context, before time.Time) 
 	s.titlesBefore = before
 	return 0, nil
 }
-func (s *retentionStore) PurgeOrphanNotificationReferenceRecipients(_ context.Context, before time.Time) (int, error) {
-	s.recipientsBefore = before
-	return 0, nil
-}
 func (s *retentionStore) PurgeTerminalInvitations(_ context.Context, before time.Time) (int, error) {
 	s.invitationBefore = before
 	return 3, s.invitationErr
@@ -97,6 +94,10 @@ func (s *retentionStore) PurgeClientCrashReports(_ context.Context, before time.
 }
 func (s *retentionStore) PurgeExpiredSessions(context.Context, time.Time) (int, error) {
 	s.sessionsCalled = true
+	return 0, nil
+}
+func (s *retentionStore) RecordTableRows(_ context.Context, at, before time.Time) (int, error) {
+	s.tableRowsAt, s.tableRowsBefore = at, before
 	return 0, nil
 }
 func (s *retentionStore) MaintainQualityLedger(_ context.Context, at time.Time) error {
@@ -149,14 +150,15 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	if want := now.Add(-7 * 24 * time.Hour); !store.operationsBefore.Equal(want) {
 		t.Fatalf("finished operation horizon = %v, want %v", store.operationsBefore, want)
 	}
-	if want := now.Add(-30 * 24 * time.Hour); !store.recipientsBefore.Equal(want) {
-		t.Fatalf("orphan recipient grace = %v, want %v", store.recipientsBefore, want)
-	}
 	if want := now.Add(-180 * 24 * time.Hour); !store.titlesBefore.Equal(want) {
 		t.Fatalf("unused title horizon = %v, want %v", store.titlesBefore, want)
 	}
 	if !store.catalogAt.Equal(now) {
 		t.Fatalf("catalog purge time = %v, want %v", store.catalogAt, now)
+	}
+	// Table row counts (#2793): recorded each night, kept for 400 days.
+	if want := now.Add(-400 * 24 * time.Hour); !store.tableRowsAt.Equal(now) || !store.tableRowsBefore.Equal(want) {
+		t.Fatalf("table rows recorded at %v keeping since %v, want %v and %v", store.tableRowsAt, store.tableRowsBefore, now, want)
 	}
 }
 

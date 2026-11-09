@@ -42,7 +42,6 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err != nil {
 		return err
 	}
-	// The filler enrichment backfill runs after these, in fillerstore.Open.
 	return clipstore.RebuildTaxonomyDerived(ctx, s.catalogCluster, taxonomy.New(taxa))
 }
 

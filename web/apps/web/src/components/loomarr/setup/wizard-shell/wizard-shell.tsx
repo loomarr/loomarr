@@ -1,5 +1,4 @@
-import { Action, Card } from "@loomarr/design-system";
-import { Check } from "lucide-react";
+import { Action, Card, Icon, icons } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -75,7 +74,11 @@ const WizardShell = ({
                   MARKER[status],
                 )}
               >
-                {status === "done" ? <Check className="size-3.5" aria-hidden /> : i + 1}
+                {status === "done" ? (
+                  <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                ) : (
+                  i + 1
+                )}
               </span>
               <span
                 className={cn("text-sm", isCurrent ? "text-foreground font-medium" : "text-muted-foreground")}

@@ -3,13 +3,11 @@
 // (the homelab default) and OpenAI-compatible. `NewProvider` builds one or the
 // other and nothing else.
 //
-// ⚠ **`llm.provider` names a WIRE KIND, not a brand**, and this doc said otherwise
-// until 2026-08-10: it claimed an "Anthropic (opt-in)" provider, which does not
-// exist — there is no anthropic.go, and no case for it. Claude is reached over the
-// OpenAI-compatible wire through OpenRouter, which `llm.hosted_provider` selects as
-// a BRAND on top of the same transport (see hosted.go). Conflating the two sends a
-// reader looking for an implementation that was never written, and an operator
-// looking for a provider value that nothing accepts.
+// ⚠ **`llm.provider` names a WIRE KIND, not a brand.** There is no separate Anthropic
+// provider: Claude is reached over the OpenAI-compatible wire through OpenRouter, which
+// `llm.hosted_provider` selects as a BRAND on top of the same transport (see hosted.go).
+// Conflating the two sends a reader looking for an implementation that does not exist, and
+// an operator looking for a provider value that nothing accepts.
 //
 // The provider only translates messages/tools to/from its wire format and
 // normalizes quirks (Ollama tool-call arguments arrive as a parsed object, the
@@ -55,6 +53,13 @@ type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments map[string]any
+	// ArgumentsError is set when the provider could not decode the model's arguments into an
+	// object (malformed JSON). Arguments is then empty, and the dispatcher must answer the model
+	// with this error instead of running the call as if it had sent no arguments.
+	//
+	// The tag keeps a call's serialized shape (and the frozen diagnostic hashes over it) unchanged
+	// when it decoded fine.
+	ArgumentsError string `json:",omitempty"`
 	// wireEnvelope preserves a provider transport shape without exposing it to tool dispatch.
 	wireEnvelope bool
 }
@@ -211,28 +216,6 @@ type Warmer interface {
 // warmed nothing; returning a plain error makes an expected, correct state read as a
 // failure. This is a third outcome, so it gets its own name.
 var ErrNothingToWarm = errors.New("llm: no model configured to warm")
-
-// Evictor is the MIRROR of Warmer (§8.2, §9.1 V47): unload the local model from memory
-// NOW, instead of waiting out keep_alive. It exists because the suggester and playout share
-// one GPU — a resident 6GB model and several ffmpeg hardware encoders contend for VRAM, and a
-// hardware encode that cannot allocate its device context fails silently (no frame → a black
-// channel). A live stream is latency-critical and a suggestion can afford a cold reload, so
-// when the encoders need VRAM, playout evicts the model and reclaims it.
-//
-// Optional and local-only for the same reason as Warmer: a hosted endpoint has no residency
-// to manage. Callers type-assert; a provider that doesn't implement it is simply never evicted
-// (and a hosted LLM never contends for the local GPU, so there is nothing to do).
-type Evictor interface {
-	// Evict unloads the model, returning once the request is acknowledged. Best-effort by
-	// contract: an error is worth logging but never fatal — the worst case is the VRAM stays
-	// occupied and the encode falls back to software (§9.1). ErrNothingToEvict when there is
-	// no model to unload (nothing was resident to begin with).
-	Evict(ctx context.Context) error
-}
-
-// ErrNothingToEvict mirrors ErrNothingToWarm: the unload was declined because there is no
-// configured model to unload, not that one failed. Same three-outcome honesty.
-var ErrNothingToEvict = errors.New("llm: no model configured to evict")
 
 // NewProvider builds the configured provider (§8). url is the base (Ollama
 // baseURL, or the OpenAI-compatible base ending in /v1); key is used only by the

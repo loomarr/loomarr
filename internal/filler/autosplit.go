@@ -3,25 +3,17 @@ package filler
 import (
 	"fmt"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler/split"
 )
 
 // Auto-confirm for split proposals (§10 V43) — the gate behind
 // `filler.autosplit.enabled`.
 //
-// ⚠ **RETIRED IN V54: the whole reel no longer qualifies or fails together.** The paragraph below
-// is the rule as it stood, kept because its reasoning is still half-right and the half that
-// changed is worth naming. It assumed there was no per-segment evidence, so confirming a subset
-// would have been an ARBITRARY split of one decision. Boundary confidence (§10 V34) supplies that
-// evidence, so holding five cuts back out of 52 is routing rather than splitting. What the old
-// rule cost was total: one doubtful segment sent all 52 back, and ~50 reels sat parked with none
-// ever auto-confirmed.
-//
-// ⚠ **The whole reel qualifies or none of it does.** Confirming the good segments and surfacing
-// the rest would split one reel's decision across two places and hand the operator fragments to
-// judge without the picture. It also matches how the 69% case actually fails: a badly-split reel
-// is not uniformly slightly-wrong, it has obvious tells — one 6-minute block the detector could
-// not resolve, sitting beside perfectly good 30-second cuts. One doubtful segment is evidence
-// about the REEL, not just about itself.
+// ⚠ **Each segment qualifies on its own evidence, and the doubtful ones stay behind.** Boundary
+// confidence (§10 V34) is per-segment evidence, so holding five cuts back out of 52 is routing
+// rather than an arbitrary split of one decision. The earlier all-or-nothing rule parked ~50 reels
+// with none ever auto-confirmed, because one doubtful segment sent the whole reel back.
 
 // AutoSplitPolicy is what the gate reads, resolved per call so a settings change takes effect on
 // the next run rather than at the next restart.
@@ -71,8 +63,8 @@ const (
 )
 
 // minConfidence resolves the operator's threshold, defaulting to the registry's 85 when the
-// policy carries no reader. Clamped to the same ceiling the tagger uses: `filler.Score` caps an
-// ungrounded era strictly below it, and a value above would silently break that guarantee.
+// policy carries no reader. Clamped to MaxAutoSplitConfidence, the strictest threshold an operator
+// can pick and the level at which segmentVerdict also requires a grounded era.
 func minConfidence(pol *AutoSplitPolicy) int {
 	if pol == nil || pol.MinConfidence == nil {
 		return 85
@@ -84,17 +76,12 @@ func minConfidence(pol *AutoSplitPolicy) int {
 	return n
 }
 
-// ⚠ **This comment used to say "there is no per-segment confidence NUMBER to read, and this is
-// better than one", and it was RIGHT about the thing it was defending.** Its argument: a grounded
-// era lands in `Era`, an ungrounded guess lands in `SuggestedEra`, and inventing a score to compare
-// against would launder that refusal into a number — the exact move the era rule exists to prevent.
-//
-// V54 adds a number, and the argument survives intact because the number answers a DIFFERENT
-// question. `BoundaryConfidence` is about WHERE a cut was made, not what the clip is:
-// `boundaryScore` cannot see `SuggestedEra`, `Era`, `Looked`, `Category` or `Tags`, so no tag fact
-// can move it. And the ordering below enforces the rest — every refusal is checked first and holds
-// at any score. A guessed era still disqualifies at 100. Nothing is laundered; a second, narrower
-// question was added beside the first.
+// ⚠ **The only number here is about WHERE a cut was made, never what the clip is.** A grounded era
+// lands in `Era` and an ungrounded guess in `SuggestedEra`; scoring the guess would launder that
+// refusal into a number, which the era rule exists to prevent. `boundaryScore` cannot see
+// `SuggestedEra`, `Era`, `Looked`, `Category` or `Tags`, so no tag fact can move it, and the
+// ordering below checks every refusal first so it holds at any score. A guessed era still
+// disqualifies at 100.
 //
 // ⚠ `MinConfidence` now gates two things, and both are honest uses of one dial: the ERA at the
 // ceiling (95 requires a grounded year, and lowering it does NOT admit guesses — `SuggestedEra`
@@ -107,7 +94,7 @@ func minConfidence(pol *AutoSplitPolicy) int {
 // refused segment is refused at any score — that ordering is what keeps `boundaryScore` from
 // laundering a refusal into a number, which is the objection recorded above. Confidence can only
 // hold back a segment that already passed everything.
-func segmentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
+func segmentVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
 	if s.Unsplittable {
 		return RejectUnsplittable
 	}
@@ -127,7 +114,7 @@ func segmentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration, maxDu
 
 // segmentContentVerdict owns refusals that remain relevant after an independently certified
 // complete-timeline decision. It deliberately knows nothing about detector success or confidence.
-func segmentContentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
+func segmentContentVerdict(s split.Segment, pol *AutoSplitPolicy, minClipDuration, maxDur time.Duration) AutoSplitReject {
 	if s.DupOf != "" {
 		return RejectDuplicate
 	}
@@ -167,11 +154,8 @@ func segmentContentVerdict(s SplitSegment, pol *AutoSplitPolicy, minClipDuration
 // AutoConfirmable partitions a proposal into the segments that may be cut unattended and the ones
 // that stay behind for a human (§10 V54).
 //
-// ⚠ **This was ALL-OR-NOTHING until V54** — one doubtful segment sent the whole reel to review,
-// which meant the operator's work never shrank and ~50 reels sat parked with none ever confirmed.
-// The old rule was right that splitting a decision ARBITRARILY is worse than making it once; what
-// changed is that there is now per-segment evidence, so keeping five back out of 52 is routing by
-// evidence rather than an arbitrary split.
+// Keeping five segments back out of 52 is routing by per-segment evidence, so the operator's work
+// shrinks with every pass instead of the whole reel waiting on its one doubtful cut.
 //
 // A whole-proposal refusal (disabled, no segments) returns in `Reject` with nothing confirmable.
 func AutoConfirmable(p SplitProposal, pol *AutoSplitPolicy, minClipDuration time.Duration) SplitPartition {
@@ -204,12 +188,12 @@ func AutoConfirmable(p SplitProposal, pol *AutoSplitPolicy, minClipDuration time
 // SplitPartition is what the gate decided, segment by segment.
 type SplitPartition struct {
 	// Confirm may be cut into held child work items unattended.
-	Confirm []SplitSegment
+	Confirm []split.Segment
 	// Hold stays in the proposal, each carrying the reason it was kept back.
-	Hold []SplitSegment
+	Hold []split.Segment
 	// Discard is complete-plan material intentionally omitted with retained structure authority.
 	// It is neither publishable nor an unresolved hold.
-	Discard []SplitSegment
+	Discard []split.Segment
 	// Reject is set only for a WHOLE-proposal refusal (auto-split switched off, nothing detected).
 	// A per-segment refusal is on the segment, not here.
 	Reject AutoSplitReject

@@ -43,7 +43,7 @@ func EstimateDiagnosticOutput(prefixBytes, tailBytes int) (int64, bool) {
 // UnknownAcquisitionCeilingBytes is the staging cap for an item whose provider reports neither a
 // byte count nor a duration. Filler clips are short commercials and bumpers, so 512 MiB is far
 // above any legitimate one; anything larger is aborted mid-download by the write guard rather
-// than refused up front. Refusing was the old behaviour and stalled a whole source (#1394).
+// than refused up front, since refusing would stall a whole source (#1394).
 const UnknownAcquisitionCeilingBytes = 512 << 20
 
 // EstimateAcquisition budgets ONE acquisition (download into private staging). The acquisition
@@ -54,9 +54,9 @@ const UnknownAcquisitionCeilingBytes = 512 << 20
 //	reservation = ceiling
 //
 // Later stages (transcode, split, artwork) each reserve their own peak through
-// Reserve when they run, so this lease deliberately does not pre-reserve their derivatives. The
-// old shared formula (ceiling×4 + 64 MiB, ~5× the source) held budget for work that had not
-// started and made auto-fetch pause on library_limit long before the disk was actually full.
+// Reserve when they run, so this lease deliberately does not pre-reserve their derivatives:
+// holding budget (~5× the source) for work that has not started would make auto-fetch pause on
+// library_limit long before the disk was actually full.
 func EstimateAcquisition(estimate MediaEstimate) (MediaBudget, bool) {
 	budget, ok := EstimateMedia(estimate)
 	if !ok {

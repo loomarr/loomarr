@@ -143,6 +143,30 @@ describe("NotificationDestinationsPanel", () => {
     expect(requestID).not.toBe("");
   });
 
+  it("says what a provider would be told about when none is set up yet", async () => {
+    server.use(
+      providerTypeHandler,
+      http.get("*/v1/notifications/providers", () => HttpResponse.json({ providers: [] })),
+    );
+    render(<NotificationDestinationsPanel />, { wrapper });
+
+    const empty = (await screen.findByText("No notification providers yet")).closest(
+      "section",
+    ) as HTMLElement;
+    // Every event any provider offers, each once, in words.
+    for (const event of [
+      "Proposal Submitted",
+      "Proposal Approved",
+      "Channel Degraded",
+      "Acquisition Gave Up",
+      "Proposal Denied",
+      "Channel Live",
+    ]) {
+      expect(empty).toHaveTextContent(event);
+    }
+    expect(empty.textContent?.match(/Channel Degraded/g)).toHaveLength(1);
+  });
+
   it("adds a configured provider in the single provider-settings-events flow", async () => {
     let created: Record<string, unknown> | undefined;
     server.use(

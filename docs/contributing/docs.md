@@ -20,7 +20,7 @@ Pages in the app have three extra rules, all tested in `docs/embed_test.go`:
   absolute site URL, or the app opens "Help page not found".
 
 Headings in `guides/troubleshooting.md` are an API contract: setup checks deep-link to them. Don't
-rename one without updating `internal/api/setup.go`. When you rename or move any app page or
+rename one without updating `internal/api/setup/setup.go`. When you rename or move any app page or
 heading, add the old link to `movedPages` or `movedSections` in `docs/embed.go`; the frozen list in
 `docs/testdata/` fails until you do.
 
@@ -134,6 +134,6 @@ Never edit these by hand:
 
 `make docs-lint` runs the diagrams check, markdownlint, lychee (offline), the inline-path check
 and Vale. The inline-path check (`scripts/check-doc-paths.sh`) fails when a live doc names a repo
-path in inline code, such as `` `internal/api/help.go` ``, that no longer exists. A doc that must
+path in inline code, such as `` `internal/api/system/help.go` ``, that no longer exists. A doc that must
 name a missing path on purpose, like a retirement note, lists it with its reason in
 `scripts/check-doc-paths.allow`.

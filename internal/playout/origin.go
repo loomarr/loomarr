@@ -115,7 +115,7 @@ type readSeekCloser interface {
 type Asset struct {
 	Content  readSeekCloser
 	Modified time.Time
-	// Playlist marks a live media playlist (a packager variant, #1512 phase 2b): its URIs are bare
+	// Playlist marks a live media playlist (a packager variant, #1512): its URIs are bare
 	// asset names the transport must make self-authenticating, as it does for the Tune manifest.
 	Playlist bool
 }
@@ -135,7 +135,7 @@ type hlsOrigin interface {
 }
 
 // Origin is the one playout seam used by transport adapters: the channel packager serves every
-// delivery behind it (#1512 phase 2), and callers never see its layout.
+// delivery behind it (#1512), and callers never see its layout.
 type Origin struct {
 	sessions sessionAttacher
 	hls      hlsOrigin
@@ -157,7 +157,7 @@ type Origin struct {
 
 // OriginDependencies are the implementations hidden behind the one production playout seam.
 type OriginDependencies struct {
-	// Packager is live playout (#1512 phase 2): one channel packager per watched channel serves
+	// Packager is live playout (#1512): one channel packager per watched channel serves
 	// the browser's HLS and every media-server tuner's MPEG-TS. Nil leaves live playout off.
 	Packager *PackagerHLS
 	// Available is a fail-closed admission gate. Nil means always available (the SQLite
@@ -231,8 +231,8 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 	if err != nil || lease == nil {
 		return presentation, err
 	}
-	// Admission already owns the shared remux. Readiness must not keep lifecycle
-	// teardown from cancelling that remux, or outlive an abandoned HTTP request.
+	// Admission already owns the shared packager. Readiness must not keep lifecycle
+	// teardown from cancelling that packager, or outlive an abandoned HTTP request.
 	manifest, release, err := lease.readManifest(ctx)
 	if err != nil {
 		return Presentation{}, err
@@ -264,7 +264,7 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 	}
 }
 
-// OpenAsset opens a follow-up HLS resource without exposing the live remux layout to callers.
+// OpenAsset opens a follow-up HLS resource without exposing the packager's file layout to callers.
 func (o *Origin) OpenAsset(ctx context.Context, channelID string, rel string, speculative bool) (Asset, bool, error) {
 	asset, lease, ok, err := o.acquireAsset(ctx, channelID, rel, speculative)
 	if err != nil || !ok || lease == nil {

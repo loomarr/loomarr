@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/platform/events"
 )
 
@@ -103,7 +104,7 @@ func publishSite(lit *ast.CompositeLit) (name, payload string) {
 			}
 		case key.Name == "Payload":
 			if p, ok := kv.Value.(*ast.CompositeLit); ok {
-				if sel, ok := p.Type.(*ast.SelectorExpr); ok && isSelector(sel, "api", sel.Sel.Name) {
+				if sel, ok := p.Type.(*ast.SelectorExpr); ok && isSelector(sel, "opsapi", sel.Sel.Name) {
 					payload = sel.Sel.Name
 				}
 			}
@@ -174,18 +175,18 @@ func TestEveryFrameStreamsWithItsEventName(t *testing.T) {
 		want    string
 		payload any
 	}{
-		{"title", api.TitleEvent{Key: "movie:tmdb:90000001", State: "available", Name: "Ashgrove Anomaly"}},
-		{"channel", api.ChannelEvent{ChannelID: "ch_1", Status: "live"}},
-		{"suggestion", api.SuggestionEvent{JobID: "j1", Phase: "scoring", Round: 3}},
-		{"job", api.JobEvent{Name: "library-scan"}},
-		{"activity", api.ActivityEvent{}},
-		{"health", api.HealthEvent{}},
-		{"settings", api.SettingsEvent{}},
-		{"filler_ingest", api.FillerIngestEvent{JobID: "j1", Status: "success", Fetched: 2}},
-		{"filler_split", api.FillerSplitEvent{JobID: "j1", Status: "success", ProposalID: "p1"}},
-		{"llm_pull", api.LLMPullEvent{JobID: "j1", Model: "llama", Status: "pulling", Percent: 42}},
-		{"database", api.DatabaseEvent{Phase: "migrating", Parity: "unknown"}},
-		{"playout", api.PlayoutEvent{Active: 2}},
+		{"title", opsapi.TitleEvent{Key: "movie:tmdb:90000001", State: "available", Name: "Ashgrove Anomaly"}},
+		{"channel", opsapi.ChannelEvent{ChannelID: "ch_1", Status: "live"}},
+		{"suggestion", opsapi.SuggestionEvent{JobID: "j1", Phase: "scoring", Round: 3}},
+		{"job", opsapi.JobEvent{Name: "library-scan"}},
+		{"activity", opsapi.ActivityEvent{}},
+		{"health", opsapi.HealthEvent{}},
+		{"settings", opsapi.SettingsEvent{}},
+		{"filler_ingest", opsapi.FillerIngestEvent{JobID: "j1", Status: "success", Fetched: 2}},
+		{"filler_split", opsapi.FillerSplitEvent{JobID: "j1", Status: "success", ProposalID: "p1"}},
+		{"llm_pull", opsapi.LLMPullEvent{JobID: "j1", Model: "llama", Status: "pulling", Percent: 42}},
+		{"database", opsapi.DatabaseEvent{Phase: "migrating", Parity: "unknown"}},
+		{"playout", opsapi.PlayoutEvent{Active: 2}},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			srv, bus := newEventsServer(t)

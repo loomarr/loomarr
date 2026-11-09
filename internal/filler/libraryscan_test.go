@@ -6,6 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // libraryOnDisk writes clip files into a library folder, with subfolders as the names say.
@@ -36,7 +40,7 @@ func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
 	lib := libraryOnDisk(t, "Crunchlings 1993.mp4", "Idents/Station ID.mkv", "Idents/cover.jpg", ".staging/part.mp4")
 	watch := filepath.Join(t.TempDir(), "watch")
 
-	res, err := NewLibraryScanner(nil).Scan(context.Background(), lib, watch, nil)
+	res, err := cliplibrary.NewLibraryScanner(nil).Scan(context.Background(), lib, watch, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +69,7 @@ func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
 // folder off disk again, forever.
 func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
 	lib := libraryOnDisk(t, "filed.mp4", "new.mp4", "waiting.mp4")
-	filedID, err := ClipID(filepath.Join(lib, "filed.mp4"))
+	filedID, err := asset.ClipID(filepath.Join(lib, "filed.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +80,7 @@ func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(watch, "waiting.mp4"), []byte("queued"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	res, err := NewLibraryScanner(nil).Scan(context.Background(), lib, watch, func(id, ext string) bool {
+	res, err := cliplibrary.NewLibraryScanner(nil).Scan(context.Background(), lib, watch, func(id, ext string) bool {
 		return id == filedID && ext == ".mp4"
 	})
 	if err != nil || res.Found != 3 || res.Copied != 1 || res.Catalogued != 1 || res.Unreadable != 0 {
@@ -87,7 +91,7 @@ func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
 	}
 
 	all := libraryOnDisk(t, "filed.mp4")
-	res, err = NewLibraryScanner(nil).Scan(context.Background(), all, filepath.Join(t.TempDir(), "watch"),
+	res, err = cliplibrary.NewLibraryScanner(nil).Scan(context.Background(), all, filepath.Join(t.TempDir(), "watch"),
 		func(string, string) bool { return true })
 	if err != nil || res.Catalogued != 1 {
 		t.Errorf("all-catalogued Scan = %+v, %v; want no error", res, err)
@@ -99,8 +103,8 @@ func TestLibraryScan_SkipsClipsTheCatalogAlreadyHolds(t *testing.T) {
 // different: mount a volume, or add some clips. The named error is what lets the UI say which.
 func TestLibraryScan_AnUnreadableFolderIsNamedNotSilent(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
-	_, err := NewLibraryScanner(nil).Scan(context.Background(), filepath.Join(t.TempDir(), "not-mounted"), watch, nil)
-	if !errors.Is(err, ErrLibraryUnreachableStorage) {
+	_, err := cliplibrary.NewLibraryScanner(nil).Scan(context.Background(), filepath.Join(t.TempDir(), "not-mounted"), watch, nil)
+	if !errors.Is(err, cliplibrary.ErrLibraryUnreachableStorage) {
 		t.Errorf("err = %v, want ErrLibraryUnreachableStorage — an operator cannot tell a mount "+
 			"problem from an empty library without it", err)
 	}
@@ -110,11 +114,11 @@ func TestLibraryScan_AnUnreadableFolderIsNamedNotSilent(t *testing.T) {
 // the same way, the named error would carry no information.
 func TestLibraryScan_AnEmptyLibraryIsNotAnError(t *testing.T) {
 	watch := filepath.Join(t.TempDir(), "watch")
-	res, err := NewLibraryScanner(nil).Scan(context.Background(), t.TempDir(), watch, nil)
+	res, err := cliplibrary.NewLibraryScanner(nil).Scan(context.Background(), t.TempDir(), watch, nil)
 	if err != nil {
 		t.Errorf("an empty library reported %v, want no error", err)
 	}
-	if res != (LibraryScanResult{}) {
+	if res != (cliplibrary.LibraryScanResult{}) {
 		t.Errorf("Scan = %+v, want an empty result", res)
 	}
 }
@@ -122,14 +126,14 @@ func TestLibraryScan_AnEmptyLibraryIsNotAnError(t *testing.T) {
 // Nothing configured is a no-op. The sync calls this for every source row, and a library row with
 // no folder must not become a scan of everything.
 func TestLibraryScan_UnconfiguredIsANoOp(t *testing.T) {
-	s := NewLibraryScanner(nil)
+	s := cliplibrary.NewLibraryScanner(nil)
 	for _, tc := range []struct{ name, lib, watch string }{
 		{"no folder", "", "/tmp/watch"},
 		{"no watch folder", t.TempDir(), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res, err := s.Scan(context.Background(), tc.lib, tc.watch, nil)
-			if err != nil || res != (LibraryScanResult{}) {
+			if err != nil || res != (cliplibrary.LibraryScanResult{}) {
 				t.Errorf("Scan = %+v, %v; want an empty no-op", res, err)
 			}
 		})
@@ -140,11 +144,11 @@ func TestLibraryScan_UnconfiguredIsANoOp(t *testing.T) {
 
 // fakeScanSources is a ScanSourceStore returning a fixed list.
 type fakeScanSources struct {
-	srcs []ScanSource
+	srcs []cliplibrary.ScanSource
 	err  error
 }
 
-func (f fakeScanSources) ListScanSources(context.Context) ([]ScanSource, error) {
+func (f fakeScanSources) ListScanSources(context.Context) ([]cliplibrary.ScanSource, error) {
 	return f.srcs, f.err
 }
 
@@ -160,11 +164,11 @@ func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
 	s := &Syncer{
 		dir:   clipDir,
 		watch: watch,
-		scanSources: fakeScanSources{srcs: []ScanSource{
+		scanSources: fakeScanSources{srcs: []cliplibrary.ScanSource{
 			{ID: "lib:broken", Kind: "library", URI: filepath.Join(t.TempDir(), "not-mounted")},
 			{ID: "lib:working", Kind: "library", URI: good},
 		}},
-		libraries: NewLibraryScanner(nil),
+		libraries: cliplibrary.NewLibraryScanner(nil),
 	}
 	s.drainScanSources(context.Background(), nil)
 
@@ -177,7 +181,7 @@ func TestDrainScanSources_OneBadSourceDoesNotStopTheRest(t *testing.T) {
 	})
 	if filed == "" {
 		t.Error("the working library's clip never arrived — one dead source cost the others")
-	} else if tags, ok := ReadSidecarTags(filed); !ok || tags.SourceID != "lib:working" || !SidecarFetchedByUs(filed) {
+	} else if tags, ok := asset.ReadSidecarTags(filed); !ok || tags.SourceID != "lib:working" || !asset.SidecarFetchedByUs(filed) {
 		t.Errorf("working library provenance = %+v/%v, want lib:working held-pipeline marker", tags, ok)
 	}
 }
@@ -198,8 +202,8 @@ func TestDrainScanSources_RegisteredFolderIsDrainedNotScannedInPlace(t *testing.
 
 	s := &Syncer{
 		dir:         clipDir,
-		watch:       filepath.Join(clipDir, WatchDirName),
-		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:extra", Kind: "folder", URI: extra}}},
+		watch:       filepath.Join(clipDir, cliplibrary.WatchDirName),
+		scanSources: fakeScanSources{srcs: []cliplibrary.ScanSource{{ID: "folder:extra", Kind: "folder", URI: extra}}},
 	}
 	s.drainScanSources(context.Background(), nil)
 
@@ -215,7 +219,7 @@ func TestDrainScanSources_RegisteredFolderIsDrainedNotScannedInPlace(t *testing.
 		t.Fatalf("clip folder holds %v, want the one drained clip", filed)
 	}
 	if len(filed) == 1 {
-		if tags, ok := ReadSidecarTags(filed[0]); !ok || tags.SourceID != "folder:extra" || !SidecarFetchedByUs(filed[0]) {
+		if tags, ok := asset.ReadSidecarTags(filed[0]); !ok || tags.SourceID != "folder:extra" || !asset.SidecarFetchedByUs(filed[0]) {
 			t.Errorf("registered-folder provenance = %+v/%v, want folder:extra held-pipeline marker", tags, ok)
 		}
 	}
@@ -240,8 +244,8 @@ func TestDrainScanSources_SkipsTheClipFolderItself(t *testing.T) {
 
 	s := &Syncer{
 		dir:         clipDir,
-		watch:       filepath.Join(clipDir, WatchDirName),
-		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:self", Kind: "folder", URI: clipDir}}},
+		watch:       filepath.Join(clipDir, cliplibrary.WatchDirName),
+		scanSources: fakeScanSources{srcs: []cliplibrary.ScanSource{{ID: "folder:self", Kind: "folder", URI: clipDir}}},
 	}
 	s.drainScanSources(context.Background(), nil)
 
@@ -282,7 +286,7 @@ func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T
 		t.Run(tc.name, func(t *testing.T) {
 			parent := t.TempDir()
 			clipDir := filepath.Join(parent, "clips")
-			layout, err := NewLayout(clipDir, "")
+			layout, err := cliplibrary.NewLayout(clipDir, "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -294,11 +298,11 @@ func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T
 			if err := os.WriteFile(candidate, body, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			id, err := ClipID(candidate)
+			id, err := asset.ClipID(candidate)
 			if err != nil {
 				t.Fatal(err)
 			}
-			filed, err := ClipPath(layout.ClipDir(), id, ".mp4")
+			filed, err := cliplibrary.ClipPath(layout.ClipDir(), id, ".mp4")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -310,14 +314,14 @@ func TestDrainScanSources_SkipsEveryAliasAndOverlapOfTheClipLibrary(t *testing.T
 			}
 
 			source := tc.source(t, parent, layout.ClipDir(), filed)
-			if _, err := layout.intakeSource(source); err == nil {
+			if _, err := layout.IntakeSource(source); err == nil {
 				t.Fatalf("overlapping registered source %q passed layout validation", source)
 			}
 			s := &Syncer{
 				layout:      layout,
 				dir:         layout.ClipDir(),
 				watch:       layout.WatchDir(),
-				scanSources: fakeScanSources{srcs: []ScanSource{{ID: "folder:overlap", Kind: "folder", URI: source}}},
+				scanSources: fakeScanSources{srcs: []cliplibrary.ScanSource{{ID: "folder:overlap", Kind: "folder", URI: source}}},
 			}
 			s.drainScanSources(context.Background(), nil)
 
@@ -343,12 +347,12 @@ func TestDrainScanSources_AnUnrewrittenLibraryRowDoesNoWork(t *testing.T) {
 
 	s := &Syncer{
 		dir:   clipDir,
-		watch: filepath.Join(clipDir, WatchDirName),
-		scanSources: fakeScanSources{srcs: []ScanSource{
+		watch: filepath.Join(clipDir, cliplibrary.WatchDirName),
+		scanSources: fakeScanSources{srcs: []cliplibrary.ScanSource{
 			{ID: "lib:none", Kind: "library", URI: "Commercials"},
 			{ID: "folder:extra", Kind: "folder", URI: extra},
 		}},
-		libraries: NewLibraryScanner(nil),
+		libraries: cliplibrary.NewLibraryScanner(nil),
 	}
 	s.drainScanSources(context.Background(), nil)
 
@@ -371,7 +375,7 @@ func TestDrainScanSources_UnwiredIsANoOp(t *testing.T) {
 // with the first copy's derivative on clips.hash.
 func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	lib := libraryOnDisk(t, "Crunchlings 1993.mp4")
-	rawID, err := ClipID(filepath.Join(lib, "Crunchlings 1993.mp4"))
+	rawID, err := asset.ClipID(filepath.Join(lib, "Crunchlings 1993.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,12 +383,12 @@ func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	s := &Syncer{
 		dir:         clipDir,
 		watch:       filepath.Join(t.TempDir(), "watch"),
-		scanSources: fakeScanSources{srcs: []ScanSource{{ID: "lib:ads", Kind: "library", URI: lib}}},
-		libraries:   NewLibraryScanner(nil),
+		scanSources: fakeScanSources{srcs: []cliplibrary.ScanSource{{ID: "lib:ads", Kind: "library", URI: lib}}},
+		libraries:   cliplibrary.NewLibraryScanner(nil),
 	}
 
 	s.drainScanSources(context.Background(), nil)
-	rawFiled, err := ClipPath(clipDir, rawID, ".mp4")
+	rawFiled, err := cliplibrary.ClipPath(clipDir, rawID, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,8 +399,8 @@ func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	// The transcode retains the raw bytes as a source master under the media-asset root (keyed by
 	// SHA-256, not by the clip identity), publishes the normalized derivative under its own hash
 	// with a sidecar naming that master, and retires the raw filed path.
-	tags, _ := ReadSidecarTags(rawFiled)
-	master, err := preserveSourceMasterWithStorage(context.Background(), clipDir, rawFiled, rawID, tags, nil)
+	tags, _ := asset.ReadSidecarTags(rawFiled)
+	master, err := asset.PreserveSourceMasterWithStorage(context.Background(), clipDir, rawFiled, rawID, tags, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,11 +412,11 @@ func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	if err := os.WriteFile(derivedProbe, derived, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	derivedID, err := ClipID(derivedProbe)
+	derivedID, err := asset.ClipID(derivedProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	derivedFiled, err := ClipPath(clipDir, derivedID, ".mp4")
+	derivedFiled, err := cliplibrary.ClipPath(clipDir, derivedID, ".mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,17 +426,17 @@ func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	if err := os.WriteFile(derivedFiled, derived, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tags.MediaAssets = &MediaAssetManifest{Version: mediaAssetManifestVersion, SourceMaster: master}
-	if err := WriteSidecarTags(derivedFiled, tags, true); err != nil {
+	tags.MediaAssets = &asset.Manifest{Version: asset.ManifestVersion, SourceMaster: master}
+	if err := asset.WriteSidecarTags(derivedFiled, tags, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(sidecarPathFor(rawFiled)); err != nil {
+	if err := os.Remove(tools.SidecarPathFor(rawFiled)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(rawFiled); err != nil {
 		t.Fatal(err)
 	}
-	if got, ok := ReadSidecarTags(derivedFiled); !ok || got.MediaAssets == nil || got.MediaAssets.SourceMaster.ClipHash != rawID {
+	if got, ok := asset.ReadSidecarTags(derivedFiled); !ok || got.MediaAssets == nil || got.MediaAssets.SourceMaster.ClipHash != rawID {
 		t.Fatalf("derivative sidecar = %+v/%v, want it to name the raw source master", got, ok)
 	}
 

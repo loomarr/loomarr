@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  Action,
   Dialog,
   DialogClose,
   DialogContent,
@@ -12,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  LoomarrProvider,
 } from "../index";
 
 // The web Dialog, on Base UI. What it owes a keyboard user is pinned here by driving the keys, not
@@ -223,6 +225,54 @@ describe("Dialog", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Back to the list" }));
   });
 
+  // The command palette: no title to show, so the dialog is named by a label; no corner close, so
+  // Escape is the way out; and it sits near the top, not centred.
+  it("holds an untitled command surface near the top, named by its label and closed by Escape", async () => {
+    const Palette = () => {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Search
+          </button>
+          <Dialog onOpenChange={setOpen} open={open}>
+            <DialogContent accessibilityLabel="Search Loomarr" placement="top">
+              <input aria-label="Search" />
+            </DialogContent>
+          </Dialog>
+        </>
+      );
+    };
+    const user = userEvent.setup();
+    render(<Palette />);
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    const surface = await screen.findByRole("dialog", { name: "Search Loomarr" });
+    expect(surface.style.top).toBe("96px");
+    expect(surface.style.maxWidth).toBe("576px");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Search" }));
+  });
+
+  // A phone's full-screen search: it covers the screen and draws its own close, so the dialog adds
+  // no corner close of its own.
+  it("fills the screen with no corner close of its own", async () => {
+    render(
+      <Dialog defaultOpen>
+        <DialogContent accessibilityLabel="Search Loomarr" placement="fill">
+          <input aria-label="Search" />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const surface = await screen.findByRole("dialog", { name: "Search Loomarr" });
+    expect(surface.style.inset).toBe("0px");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
+
   // jsdom never matches `:focus-visible`, so it stands in for the browser here: focus that arrives by
   // the keyboard is visible, the way Chrome, Firefox and Safari decide it.
   it("rings the corner button while the browser marks its focus visible", async () => {
@@ -241,5 +291,56 @@ describe("Dialog", () => {
 
     await press(user);
     expect(close.style.boxShadow).toBe("");
+  });
+
+  // The trigger hands Base UI's onClick to the Action it renders. react-native-web's Pressable
+  // never calls an onClick prop, and a `render` Action used to overwrite it with onPress, so
+  // either Action opened nothing.
+  it.each([
+    ["an Action", <Action key="pressable">Open settings</Action>],
+    [
+      "an Action composed onto a button",
+      <Action key="render" render={<button type="button" />}>
+        Open settings
+      </Action>,
+    ],
+  ])("opens from %s as the trigger", async (_, trigger) => {
+    const user = userEvent.setup();
+    render(
+      <LoomarrProvider>
+        <Dialog>
+          <DialogTrigger>{trigger}</DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </LoomarrProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+  });
+
+  it("still runs the Action's own onPress when it is the trigger", async () => {
+    const user = userEvent.setup();
+    const onPress = vi.fn();
+    render(
+      <LoomarrProvider>
+        <Dialog>
+          <DialogTrigger>
+            <Action onPress={onPress}>Open settings</Action>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </LoomarrProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(onPress).toHaveBeenCalledOnce();
   });
 });

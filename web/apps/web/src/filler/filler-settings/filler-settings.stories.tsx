@@ -46,7 +46,7 @@ const readiness: FillerReadinessDTO = {
   acquisitions: [],
 };
 
-const withSettings: Decorator = (Story) => {
+const withSettings: Decorator = (Story, { parameters }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(getSettingsListQueryKey(), {
     status: 200,
@@ -65,7 +65,7 @@ const withSettings: Decorator = (Story) => {
   });
   client.setQueryData(getFillerReadinessQueryKey(), {
     status: 200,
-    data: readiness,
+    data: (parameters.readiness as FillerReadinessDTO | undefined) ?? readiness,
     headers: new Headers(),
   });
   client.setQueryData(getFillerResearchStatusQueryKey(), {
@@ -101,6 +101,26 @@ const Storage: Story = {
   args: { section: "storage" },
   decorators: [withRouter("/filler")],
 };
+// #2737: a nearly full allowance is a warning with a Raise allowance action.
+const StorageNearlyFull: Story = {
+  args: { section: "storage" },
+  decorators: [withRouter("/filler")],
+  parameters: {
+    readiness: {
+      ...readiness,
+      storage: {
+        ...readiness.storage,
+        state: "approaching",
+        managedBytes: 50 * 1000 ** 3,
+        softBudgetBytes: 50 * 1000 ** 3,
+        availableBytes: 49.8 * 1000 ** 2,
+      },
+    } satisfies FillerReadinessDTO,
+  },
+  play: async ({ canvas }) => {
+    await canvas.findByRole("button", { name: "Raise allowance" });
+  },
+};
 const Details: Story = {
   args: { section: "details" },
   decorators: [withRouter("/filler/settings/details")],
@@ -110,4 +130,4 @@ const Details: Story = {
 };
 
 export default meta;
-export { Details, Downloads, Storage };
+export { Details, Downloads, Storage, StorageNearlyFull };

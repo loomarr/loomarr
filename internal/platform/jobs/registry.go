@@ -33,10 +33,9 @@ func NewRegistry() *Registry { return &Registry{} }
 // a programming error, caught at boot rather than silently shadowing a job.
 //
 // ⚠ **Panics if the registry is SEALED**, and that is the point of Seal existing. `New`
-// snapshots the jobs into a map, so an Add afterwards used to be accepted here and then
-// silently never scheduled — while `Jobs()` still listed it, so `GET /v1/jobs` showed a
-// task that could never run. Verified: registry reported 2 jobs, scheduler ran 1, nothing
-// logged. A boot-time panic naming the job is the honest failure.
+// snapshots the jobs into a map, so an Add afterwards would be accepted here and then
+// silently never scheduled — while `Jobs()` still listed it, so `GET /v1/jobs` would show a
+// task that could never run. A boot-time panic naming the job is the honest failure.
 func (r *Registry) Add(j Job) *Registry {
 	if r.sealed {
 		panic(fmt.Sprintf("scheduler: job %q registered after the scheduler was built — "+

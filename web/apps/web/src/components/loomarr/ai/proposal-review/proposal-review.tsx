@@ -1,6 +1,7 @@
 import { provisionKey } from "@loomarr/core/provision";
 import { Action, Badge, type BadgeTone, Field } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import {
   MAX_SUGGESTION_OPTIONS,
@@ -67,7 +68,6 @@ const ProposalReview = ({
   const [editingBrief, setEditingBrief] = useState(false);
   const [findingMore, setFindingMore] = useState(false);
   const findingMoreStarted = useRef(false);
-  const [brief, setBrief] = useState(proposal.intent.description);
   const [reason, setReason] = useState("");
   const reasonId = useId();
   const lineup = proposal.lineup ?? [];
@@ -90,6 +90,15 @@ const ProposalReview = ({
     currentLineup: _previousLineup,
     ...requestIntent
   } = proposal.intent;
+  const briefForm = useAppForm({
+    defaultValues: { brief: proposal.intent.description },
+    onSubmit: ({ value }) => {
+      const description = value.brief.trim();
+      if (!description || !onRevise) return;
+      onRevise({ ...requestIntent, description, currentLineup });
+      setEditingBrief(false);
+    },
+  });
   const statusDisplay = selfService ? (status === "approved" ? STATUS.approved : undefined) : STATUS[status];
   const scoresCurrent = status !== "partially-edited" && proposal.scores?.version === 1;
   const partialTheme = scoresCurrent && proposal.scores?.theme.status !== "supported";
@@ -147,29 +156,23 @@ const ProposalReview = ({
           className="border-suggest/40 bg-suggest/5 flex flex-col gap-3 rounded-lg border p-4"
           onSubmit={(event) => {
             event.preventDefault();
-            const description = brief.trim();
-            if (!description || !onRevise) return;
-            onRevise({ ...requestIntent, description, currentLineup });
-            setEditingBrief(false);
+            void briefForm.handleSubmit();
           }}
         >
-          <div>
-            <label htmlFor="proposal-brief" className="text-sm font-medium">
-              Update your brief
-            </label>
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              Loomarr will refresh its suggestions. Your title choices stay with the draft.
-            </p>
-          </div>
-          <textarea
-            id="proposal-brief"
-            aria-label="Channel brief"
-            rows={3}
-            value={brief}
-            disabled={controlsDisabled}
-            onChange={(event) => setBrief(event.target.value)}
-            className="border-input bg-background focus-visible:border-suggest focus-visible:ring-suggest w-full resize-none rounded-lg border px-3 py-2 text-sm leading-relaxed shadow-sm focus-visible:ring-2 focus-visible:outline-none"
-          />
+          <briefForm.Field name="brief">
+            {(field) => (
+              <Field
+                accessibilityLabel="Channel brief"
+                description="Loomarr will refresh its suggestions. Your title choices stay with the draft."
+                disabled={controlsDisabled}
+                label="Update your brief"
+                multiline
+                numberOfLines={3}
+                onChangeText={field.handleChange}
+                value={field.state.value}
+              />
+            )}
+          </briefForm.Field>
           {requestDetails.length > 0 && (
             <details className="text-sm">
               <summary className="text-muted-foreground w-fit cursor-pointer">
@@ -189,13 +192,13 @@ const ProposalReview = ({
             <Action onPress={() => setEditingBrief(false)} variant="ghost">
               Cancel
             </Action>
-            <Action
-              // A real submit button under Action's look, so Enter in a field still submits.
-              render={<button disabled={controlsDisabled || brief.trim() === ""} type="submit" />}
-              variant="suggest"
-            >
-              Update suggestions
-            </Action>
+            <briefForm.Subscribe selector={(state) => state.values.brief.trim() === ""}>
+              {(empty) => (
+                <Action disabled={controlsDisabled || empty} submit variant="suggest">
+                  Update suggestions
+                </Action>
+              )}
+            </briefForm.Subscribe>
           </div>
         </form>
       ) : (
@@ -206,7 +209,7 @@ const ProposalReview = ({
               <Action
                 disabled={controlsDisabled}
                 onPress={() => {
-                  setBrief(proposal.intent.description);
+                  briefForm.reset({ brief: proposal.intent.description });
                   setEditingBrief(true);
                 }}
                 variant="ghost"

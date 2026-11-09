@@ -9,8 +9,11 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -62,7 +65,7 @@ func entry(n int, name string) schedule.LineupEntry {
 // seedChannel writes an auto-curate channel bound to jobID with an existing lineup + policy.
 func seedChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, pol schedule.ChannelPolicy) {
 	t.Helper()
-	ch := store.Channel{Lineup: lineup}
+	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
 	ch.IntentRef = jobID
 	ch.Name = "Ch " + id
@@ -98,7 +101,7 @@ func seedApprovedProposalRetiring(
 		Retired: retired,
 	}
 	now := time.Now()
-	p := store.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, Body: body, CreatedAt: now, UpdatedAt: now}
+	p := proposalstore.Proposal{ID: id, JobID: jobID, Status: "approved", ApprovedBy: approvedBy, Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +111,7 @@ func inLib(n int, name string) proposals.ProposalItem {
 	return proposals.ProposalItem{MediaType: provision.Movie, TMDBID: demoTMDBID(n), Name: name, InLibrary: true, LibraryItemID: "lib-" + name}
 }
 
-func lineupKeys(ch store.Channel) map[provision.Key]bool {
+func lineupKeys(ch channelstore.Channel) map[provision.Key]bool {
 	m := map[provision.Key]bool{}
 	for _, e := range ch.Lineup {
 		m[e.Key] = true
@@ -132,7 +135,7 @@ func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 	// The refresh re-picks only Copper Canyon and adds a NEW film (Night Warden 2) — Tin Sheriff
 	// + Clockwork Hunter are simply omitted (not excluded, still available).
 	putAvailable(t, st, 4, "Night Warden 2")
-	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
+	seedApprovedProposal(t, st, "p1", "job1", accept.AutoCuratedBy,
 		[]proposals.ProposalItem{inLib(3, "Copper Canyon"), inLib(4, "Night Warden 2")}, nil)
 
 	b := approval.New(st, nil, nil, testkit.Logger())
@@ -175,7 +178,7 @@ func TestPlan_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
 		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Retired")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
 	putAvailable(t, st, 3, "Incoming")
-	seedApprovedProposalRetiring(t, st, "p1", "job1", suggest.AutoCuratedBy,
+	seedApprovedProposalRetiring(t, st, "p1", "job1", accept.AutoCuratedBy,
 		[]proposals.ProposalItem{inLib(3, "Incoming")}, nil, []provision.Key{movieKey(2)})
 
 	b := approval.New(st, nil, nil, testkit.Logger())
@@ -232,7 +235,7 @@ func TestPlan_AutoCurate_DropsUnavailable(t *testing.T) {
 	seedChannel(t, st, "c1", "job1",
 		[]schedule.LineupEntry{entry(1, "Keeper"), entry(2, "Gone")},
 		schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{AutoCurate: &schedule.AutoCurate{}}})
-	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy,
+	seedApprovedProposal(t, st, "p1", "job1", accept.AutoCuratedBy,
 		[]proposals.ProposalItem{inLib(1, "Keeper")}, nil) // neither re-picked "Gone"
 
 	b := approval.New(st, nil, nil, testkit.Logger())
@@ -293,7 +296,7 @@ func TestPlan_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
 		[]schedule.LineupEntry{entry(1, "Film")},
 		schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Rules: rules}, OperatorPolicy: schedule.OperatorPolicy{AutoCurate: ac, Window: schedule.WindowFull}})
 	// The refreshed proposal's policy carries NONE of these operator-owned fields.
-	seedApprovedProposal(t, st, "p1", "job1", suggest.AutoCuratedBy, []proposals.ProposalItem{inLib(1, "Film")}, nil)
+	seedApprovedProposal(t, st, "p1", "job1", accept.AutoCuratedBy, []proposals.ProposalItem{inLib(1, "Film")}, nil)
 
 	b := approval.New(st, nil, nil, testkit.Logger())
 	ch, err := b.PlanApprovedChannel(context.Background(), mustProposal(t, st, "p1"))
@@ -326,12 +329,12 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 		}},
 		Lineup: []proposals.ProposalItem{inLib(1, "Exact")},
 	}
-	candidate := store.Proposal{
+	candidate := proposalstore.Proposal{
 		ID: "p-exact", JobID: "job-exact", Status: "approved", ApprovedBy: "admin",
 		Body: body, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 
-	if err := st.CreateJob(ctx, store.Job{ID: candidate.JobID, Kind: "suggest", Status: "done"}); err != nil {
+	if err := st.CreateJob(ctx, proposalstore.Job{ID: candidate.JobID, Kind: "suggest", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
 	// A different approved row for the same job proves planning does not re-resolve
@@ -390,7 +393,7 @@ func TestPlan_RejectsAnythingOtherThanAnApprovedCandidate(t *testing.T) {
 	st := newStore(t)
 	b := approval.New(st, nil, nil, testkit.Logger())
 
-	if _, err := b.PlanApprovedChannel(context.Background(), store.Proposal{
+	if _, err := b.PlanApprovedChannel(context.Background(), proposalstore.Proposal{
 		ID: "p-submitted", JobID: "job", Status: "submitted",
 	}); err == nil {
 		t.Fatal("planned a submitted proposal")
@@ -404,7 +407,7 @@ type recordingCodec struct {
 
 func (r *recordingCodec) ComputeChannelCodec(_ context.Context, channelID string) (string, error) {
 	r.channelID = channelID
-	return store.BroadcastCodecH264, r.err
+	return channelstore.BroadcastCodecH264, r.err
 }
 
 type recordingReconciler struct {
@@ -432,7 +435,7 @@ func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
 	reconciler := &recordingReconciler{err: errors.New("tunarr unavailable")}
 	activity := &recordedActivity{}
 	b := approval.New(st, reconciler, codec, nil).WithActivity(activity)
-	ch := store.Channel{Channel: schedule.Channel{ID: "ch-committed", Name: "Committed", Number: 7}}
+	ch := channelstore.Channel{Channel: schedule.Channel{ID: "ch-committed", Name: "Committed", Number: 7}}
 
 	// There is deliberately no returned error: once local approval has committed,
 	// derived/external convergence cannot undo it.
@@ -441,12 +444,12 @@ func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
 	if codec.channelID != ch.ID || reconciler.channelID != ch.ID {
 		t.Errorf("post-commit calls = codec:%q reconcile:%q, want %q", codec.channelID, reconciler.channelID, ch.ID)
 	}
-	if activity.kind != store.ActivityKindChannel || activity.subjectID != ch.ID || activity.text == "" {
+	if activity.kind != activitystore.ActivityKindChannel || activity.subjectID != ch.ID || activity.text == "" {
 		t.Errorf("reconcile failure activity = %+v", activity)
 	}
 }
 
-func mustProposal(t *testing.T, st store.Store, id string) store.Proposal {
+func mustProposal(t *testing.T, st store.Store, id string) proposalstore.Proposal {
 	t.Helper()
 	p, err := st.GetProposal(context.Background(), id)
 	if err != nil {

@@ -2,7 +2,8 @@ import { cn } from "@/lib/utils";
 import { type SnowTile, useSnowTile } from "./snow-tile";
 import type { TvStaticProps } from "./tv-static.type";
 
-// TvStatic — the CRT snow behind idle surfaces (login, wizard, empty states) and NOWHERE
+// TvStatic — the CRT snow at entry moments only (login, the wizard, the player's tune-in; #2789:
+// not resting pages such as the Guide's empty state) and NOWHERE
 // near data, tables, or forms (§1). A full-bleed noise layer that FLICKERS like real TV
 // static: the noise layer is oversized and its transform jumps between offsets on a stepped
 // keyframe (`animate-tv-snow`, defined in the token theme), so the grain shifts a few times a

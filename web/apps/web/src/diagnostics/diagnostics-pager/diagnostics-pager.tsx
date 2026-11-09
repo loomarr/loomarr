@@ -1,6 +1,4 @@
-import { Tooltip } from "@loomarr/design-system";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Action, Tooltip } from "@loomarr/design-system";
 
 const DiagnosticsPager = ({
   label,
@@ -24,18 +22,18 @@ const DiagnosticsPager = ({
     className="border-border bg-card flex items-center justify-between rounded-lg border px-2 py-1.5"
   >
     <Tooltip content="Go toward the newest matching results">
-      <Button variant="ghost" size="sm" disabled={!canGoNewer} onClick={onNewer}>
-        <ChevronLeft aria-hidden /> Newer
-      </Button>
+      <Action disabled={!canGoNewer} icon="pageNewer" onPress={onNewer} variant="ghost">
+        Newer
+      </Action>
     </Tooltip>
     <span className="flex flex-col items-center text-xs">
       <strong className="text-foreground font-medium">Page {page}</strong>
       <span className="text-muted-foreground">Up to 50 {itemLabel}</span>
     </span>
     <Tooltip content="Go further back in time">
-      <Button variant="ghost" size="sm" disabled={!canGoOlder} onClick={onOlder}>
-        Older <ChevronRight aria-hidden />
-      </Button>
+      <Action disabled={!canGoOlder} icon="pageOlder" iconPlacement="end" onPress={onOlder} variant="ghost">
+        Older
+      </Action>
     </Tooltip>
   </nav>
 );

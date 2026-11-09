@@ -11,33 +11,44 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/platform/llm"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+// actionDiscovery is the model's genre discovery, as the prompt asks for a genre intent: TMDB's
+// Action films, marked in-library from the Library's titles. A bare "action" query would match no
+// title.
+func actionDiscovery() llm.Response {
+	return testkit.ToolCallResponse("catalog_search", map[string]any{
+		"genres": []any{"Action"}, "media_type": "movie",
+		"dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}},
+	})
+}
+
 func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
-	llmMock := testkit.NewLLM(
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
+	llmMock := testkit.NewLLM(t,
+		actionDiscovery(),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
 			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
+		actionDiscovery(),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
 			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
+		actionDiscovery(),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
 			{"mediaType":"movie","key":"movie:tmdb:90000101","name":"Lemon Tree Heist"}
 		]}`),
-		testkit.ToolCallResponse("catalog_search", map[string]any{"query": "action", "dateMeaning": map[string]any{"kind": "none", "anchors": []any{}, "axes": []any{}}}),
+		actionDiscovery(),
 		testkit.FinalResponse(`{"dateMeaning":{"kind":"none","anchors":[],"axes":[]},"picks":[
 			{"mediaType":"movie","key":"movie:tmdb:90000603","name":"Marigold Protocol"},
 			{"mediaType":"movie","key":"movie:tmdb:90000100","name":"Quiet Engines"},
@@ -48,10 +59,10 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 	llmMock.OnChat = func() { toolOrders.capture(llmMock.LastMessages) }
 	h := newHarness(t, withLLM(llmMock), withJobWorkers(1))
 	admin := h.asAdmin()
-	h.ms.SetSearchItems(
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-marigold", Name: "Marigold Protocol", Type: "Movie", Year: 1999, TMDBID: 90000603, Genres: []string{"Action", "Science Fiction"}},
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-engines", Name: "Quiet Engines", Type: "Movie", Year: 1994, TMDBID: 90000100, Genres: []string{"Action", "Thriller"}},
-		testkit.SearchStub{Terms: []string{"action"}, LibraryItemID: "lib-heist", Name: "Lemon Tree Heist", Type: "Movie", Year: 1996, TMDBID: 90000101, Genres: []string{"Action", "Thriller"}},
+	seedLibraryMovies(t, h.store,
+		libraryMovie{ID: "lib-marigold", Name: "Marigold Protocol", Year: 1999, TMDBID: 90000603, Genres: []string{"Action", "Science Fiction"}},
+		libraryMovie{ID: "lib-engines", Name: "Quiet Engines", Year: 1994, TMDBID: 90000100, Genres: []string{"Action", "Thriller"}},
+		libraryMovie{ID: "lib-heist", Name: "Lemon Tree Heist", Year: 1996, TMDBID: 90000101, Genres: []string{"Action", "Thriller"}},
 	)
 
 	ctx := context.Background()
@@ -62,7 +73,7 @@ func TestDiscoveryFeedback_DurableRecurationKeepsChannelScope(t *testing.T) {
 		if i == 1 {
 			channelID = "channel-b"
 		}
-		if _, err := h.store.SaveChannel(ctx, store.Channel{Channel: schedule.Channel{
+		if _, err := h.store.SaveChannel(ctx, channelstore.Channel{Channel: schedule.Channel{
 			ID: channelID, Number: 80 + i, Name: channelID, Status: schedule.StatusBuilding,
 			IntentRef: id, Strategy: schedule.Sequential,
 		}, IntentJSON: `{"description":"action"}`,
@@ -157,7 +168,7 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 	ctx := context.Background()
 	deadline := time.Now().Add(workerWait)
 	for time.Now().Before(deadline) {
-		var found []store.Proposal
+		var found []proposalstore.Proposal
 		for _, status := range []string{"submitted", "approved"} {
 			proposals, err := h.store.ListProposalsByStatus(ctx, status)
 			if err != nil {
@@ -171,7 +182,7 @@ func awaitRecuratedProposalAfter(t *testing.T, h *harness, channelID string, pre
 			}
 		}
 		if len(found) > previous {
-			slices.SortFunc(found, func(a, b store.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
+			slices.SortFunc(found, func(a, b proposalstore.Proposal) int { return a.CreatedAt.Compare(b.CreatedAt) })
 			return found[len(found)-1].Body, len(found)
 		}
 		time.Sleep(20 * time.Millisecond)

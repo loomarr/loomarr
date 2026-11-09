@@ -34,12 +34,31 @@ clients show them beside the data.
    available through Seerr or the arr apps. Once it arrives, `titles.library_id` says which item it
    became. Until the switch to Loomarr's own scanner (#2151) that is the media server's id, which
    the switch rewrites to the library's.
-4. **`series_episodes` and `library_item_paths`: the media server's caches.** Copies of what Emby or
-   Jellyfin says, so channels don't ask it on every request. They exist only until the #2151
-   switch, which moves channels onto `library_*` and deletes them.
 
 Every layer is pruned: the nightly housekeeping deletes reports, files and library rows long gone
-and caches nothing names (each table's retention says when).
+(each table's retention says when).
+
+## Which tables are growing
+
+Every night, after its clean-up, the housekeeping task records how many rows each table holds in
+`database_table_rows`, and keeps 400 days of counts. A table that keeps growing month after month
+is one nothing trims. This lists the ten that grew most over the last 30 days, on SQLite or
+Postgres:
+
+```sql
+SELECT latest.table_name, latest.row_count AS rows_now,
+       latest.row_count - COALESCE(earlier.row_count, 0) AS grew_by
+FROM database_table_rows latest
+LEFT JOIN database_table_rows earlier
+  ON earlier.table_name = latest.table_name
+ AND earlier.recorded_at = latest.recorded_at - 30 * 86400
+WHERE latest.recorded_at = (SELECT MAX(recorded_at) FROM database_table_rows)
+ORDER BY grew_by DESC
+LIMIT 10;
+```
+
+If Prometheus scrapes Loomarr, the latest counts are also the `loomarr_database_table_rows` gauge,
+one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the same growth.
 
 ## Reading the values
 

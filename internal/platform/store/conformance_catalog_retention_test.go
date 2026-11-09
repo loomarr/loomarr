@@ -47,16 +47,6 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 			"x-"+it.id, "src-"+it.id, old.Unix(), old.Unix(), it.missing)
 	}
 
-	// Files: a present one, one missing past the window, and one whose removal waits for a person.
-	for _, f := range []struct {
-		path, item string
-		missingMs  int64
-		held       bool
-	}{{"/m/present.mkv", "lib-ep", 0, false}, {"/m/gone.mkv", "", old.UnixMilli(), false}, {"/m/held.mkv", "lib-held", old.UnixMilli(), true}} {
-		exec(`INSERT INTO library_files (path, root, size_bytes, modified_ns, seen_at_ms, missing_at_ms, held,
-			inventory_item_id) VALUES (?, '/m', 1, 1, ?, ?, ?, ?)`, f.path, old.UnixMilli(), f.missingMs, f.held, f.item)
-	}
-
 	// Library rows: only lib-gone has nothing left. inv-kept has its item, lib-held a held file,
 	// lib-member a collection, lib-named a title, lib-series an episode, lib-recent is recent.
 	for _, it := range []struct {
@@ -69,14 +59,25 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 		{"lib-recent", "movie", "", "", recent},
 	} {
 		exec(`INSERT INTO library_items (id, kind, name, sort_name, updated_at_ms, catalog, series_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, it.id, it.kind, it.id, it.id, it.updated.UnixMilli(), it.catalog, it.series)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, it.id, it.kind, it.id, it.id, it.updated.UnixMilli(), it.catalog,
+			libraryLink(it.series))
+	}
+
+	// Files: a present one, one missing past the window, and one whose removal waits for a person.
+	for _, f := range []struct {
+		path, item string
+		missingMs  int64
+		held       bool
+	}{{"/m/present.mkv", "lib-ep", 0, false}, {"/m/gone.mkv", "", old.UnixMilli(), false}, {"/m/held.mkv", "lib-held", old.UnixMilli(), true}} {
+		exec(`INSERT INTO library_files (path, root, size_bytes, modified_ns, seen_at_ms, missing_at_ms, held,
+			inventory_item_id) VALUES (?, '/m', 1, 1, ?, ?, ?, ?)`, f.path, old.UnixMilli(), f.missingMs, f.held,
+			libraryLink(f.item))
 	}
 	exec(`INSERT INTO library_collections (id, name, created_at_ms, updated_at_ms) VALUES ('c1', 'Kept', 1, 1)`)
 	exec(`INSERT INTO library_collection_members (collection_id, inventory_item_id, position) VALUES ('c1', 'lib-member', 0)`)
-	exec(`INSERT INTO library_candidates (inventory_item_id, rank, kind, tmdb_id, name) VALUES ('lib-gone', 0, 'movie', '90000220', 'Guess')`)
+	exec(`INSERT INTO library_candidates (inventory_item_id, rank, kind, namespace, external_id, name) VALUES ('lib-gone', 0, 'movie', 'tmdb', '90000220', 'Guess')`)
 	exec(`INSERT INTO images (hash, origin, mime) VALUES ('img-gone', 'remote', 'image/png')`)
-	exec(`INSERT INTO image_refs (image_hash, owner_kind, owner_id, role) VALUES ('img-gone', ?, 'lib-gone', 'poster')`,
-		LibraryItemImageOwner)
+	exec(`INSERT INTO library_item_images (image_hash, item_id, role) VALUES ('img-gone', 'lib-gone', 'poster')`)
 	named := sampleRecord("movie:tmdb:90000210", provision.Available, time.Time{})
 	named.LibraryID = "lib-named"
 	if err := st.UpsertTitle(ctx, named); err != nil {
@@ -95,24 +96,14 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 			VALUES ('tmdb', 'movie', ?, ?, ?)`, c.id, c.fetched, c.retryAt)
 	}
 
-	// The media server's caches: a title's show and path stay; nobody's go once old.
-	for _, c := range []struct {
-		id string
-		at time.Time
-	}{{"lib-named", old}, {"emby-gone", old}, {"emby-recent", recent}} {
-		exec(`INSERT INTO series_episodes (library_id, episodes_json, episode_count, fetched_at) VALUES (?, '[]', 0, ?)`,
-			c.id, c.at.Unix())
-		exec(`INSERT INTO library_item_paths (item_id, server_path, updated_at) VALUES (?, '/p', ?)`, c.id, c.at.Unix())
-	}
-
 	n, err := st.PurgeSpentCatalog(ctx, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 2 reports + 1 source + 1 item + 1 file + 1 candidate + 1 image ref + 1 library row
-	// + 2 catalog records + 1 episode list + 1 path.
-	if n != 12 {
-		t.Errorf("purged %d rows, want 12", n)
+	// 2 reports + 1 source + 1 item + 1 file + 1 library row + 2 catalog records. The library
+	// row's candidate and image ref go by cascade, which RowsAffected doesn't count.
+	if n != 8 {
+		t.Errorf("purged %d rows, want 8", n)
 	}
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM inventory_items`:                                               2,
@@ -125,13 +116,9 @@ func testCatalogRetention(t *testing.T, newStore NewStoreFunc) {
 		`SELECT count(*) FROM library_items`:                                                 7,
 		`SELECT count(*) FROM library_items WHERE id = 'lib-gone'`:                           0,
 		`SELECT count(*) FROM library_candidates`:                                            0,
-		`SELECT count(*) FROM image_refs`:                                                    0,
+		`SELECT count(*) FROM library_item_images`:                                           0,
 		`SELECT count(*) FROM library_catalog`:                                               3,
 		`SELECT count(*) FROM library_catalog WHERE external_id IN ('90000202', '90000204')`: 0,
-		`SELECT count(*) FROM series_episodes`:                                               2,
-		`SELECT count(*) FROM series_episodes WHERE library_id = 'emby-gone'`:                0,
-		`SELECT count(*) FROM library_item_paths`:                                            2,
-		`SELECT count(*) FROM library_item_paths WHERE item_id = 'emby-gone'`:                0,
 	} {
 		var got int
 		if err := sqlSt.db.QueryRowContext(ctx, query).Scan(&got); err != nil {

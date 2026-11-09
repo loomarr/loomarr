@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -45,7 +45,7 @@ func TestReconcile_PremeasuresEveryProgrammeInTheNext48Hours(t *testing.T) {
 					asked = append(asked, ids...)
 				},
 			}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
-			ch := store.Channel{Lineup: lineup}
+			ch := channelstore.Channel{Lineup: lineup}
 			ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "pre", "Pre", 8, schedule.Sequential, schedule.StatusBuilding
 			if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 				t.Fatal(err)

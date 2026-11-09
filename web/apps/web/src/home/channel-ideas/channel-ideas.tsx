@@ -4,13 +4,11 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, SectionHeader, StatusDot } from "@loomarr/design-system";
+import { Action, Badge, SectionHeader, StatusDot, Tooltip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 
@@ -68,22 +66,18 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
                 shipped idea card named this as waiting on the mock; #1872 is the approved one. */}
             <Action
               accessibilityRole="link"
-              render={<Link to="/guide" search={{ manual: "1", ideaId: idea.id }} />}
+              render={<Link to="/requests/new" search={{ manual: 1, ideaId: idea.id }} />}
               variant="ghost"
             >
               Edit first
             </Action>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={`Not for me: ${idea.name}`}
-              title="Not for me"
-              disabled={busy}
-              onClick={onHide}
-              className="text-static-400 hover:bg-static-800 hover:text-foreground ml-auto w-8 px-0"
-            >
-              <X aria-hidden />
-            </Button>
+            <div className="ml-auto">
+              <Tooltip content="Not for me">
+                <Action disabled={busy} icon="close" layout="icon" onPress={onHide} variant="ghost">
+                  {`Not for me: ${idea.name}`}
+                </Action>
+              </Tooltip>
+            </div>
           </div>
         )}
       </div>
@@ -132,6 +126,9 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
 
   if (!list.isSuccess) return null;
   const ideas = unwrap(list.data, (b) => b.ideas) ?? [];
+  // Home shows the section only when it has an idea (#2763). The one exception is the idea just
+  // hidden: its Undo has to stay reachable until the member is done with it.
+  if (ideas.length === 0 && !hidden) return null;
   const start = ideas.length > 0 ? (page * PAGE) % ideas.length : 0;
   const shown = [...ideas.slice(start), ...ideas.slice(0, start)].slice(0, PAGE);
 
@@ -149,14 +146,14 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
         {hidden && (
           <>
             <span className="text-static-400 text-xs">Hid {hidden.name}</span>
-            <button
-              type="button"
+            <Action
               disabled={unhide.isPending}
-              onClick={() => unhide.mutate({ ideaId: hidden.id })}
-              className="text-foreground focus-visible:ring-ring cursor-pointer border-none bg-transparent p-0 text-xs underline underline-offset-[3px] focus-visible:ring-2 focus-visible:outline-none"
+              layout="text"
+              onPress={() => unhide.mutate({ ideaId: hidden.id })}
+              variant="link"
             >
               Undo
-            </button>
+            </Action>
           </>
         )}
         {ideas.length > PAGE && (
@@ -204,7 +201,7 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
       <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
         <Action
           accessibilityRole="link"
-          render={<Link to="/guide" search={{ manual: "1" }} />}
+          render={<Link to="/requests/new" search={{ manual: 1 }} />}
           variant="ghost"
         >
           Don’t see it? Describe your own channel

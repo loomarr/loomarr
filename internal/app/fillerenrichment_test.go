@@ -7,27 +7,32 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-type recordingTranscriptObserver struct{ clip filler.StoreClip }
+type recordingTranscriptObserver struct{ clip cliplibrary.StoreClip }
 
-func (s *recordingTranscriptObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, string, error) {
+func (s *recordingTranscriptObserver) Observe(_ context.Context, clip cliplibrary.StoreClip) (filler.StageResult, string, error) {
 	s.clip = clip
-	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, "spoken words", nil
+	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, "spoken words", nil
 }
 
 type recordingVisionObserver struct {
-	clip        filler.StoreClip
+	clip        cliplibrary.StoreClip
 	observation filler.VisionObservation
 }
 
-func (s *recordingVisionObserver) Observe(_ context.Context, clip filler.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
+func (s *recordingVisionObserver) Observe(_ context.Context, clip cliplibrary.StoreClip) (filler.StageResult, filler.VisionObservation, error) {
 	s.clip = clip
-	return filler.StageResult{Clip: clip, Verdict: filler.VerdictContinue}, s.observation, nil
+	return filler.StageResult{Clip: clip, Verdict: pipelinestate.VerdictContinue}, s.observation, nil
 }
 
 func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) {
@@ -96,9 +101,9 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_100, 0).UTC()
-	clip := clipstore.Clip{Clip: filler.Clip{
-		Hash: "ready", Path: "ready.mp4", Name: "Ready advert", Role: filler.Commercial,
-		Placement: filler.PlacementBreakBody, Held: false, DurationMs: 30_000,
+	clip := clipstore.Clip{Clip: clips.Clip{
+		Hash: "ready", Path: "ready.mp4", Name: "Ready advert", Role: clips.Commercial,
+		Placement: clips.PlacementBreakBody, Held: false, DurationMs: 30_000,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -109,7 +114,7 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observer.clip.Hash != clip.Hash || observer.clip.Held || observer.clip.Placement != filler.PlacementBreakBody {
+	if observer.clip.Hash != clip.Hash || observer.clip.Held || observer.clip.Placement != clips.PlacementBreakBody {
 		t.Fatalf("stage clip = %+v", observer.clip)
 	}
 	if result.Observation == nil || result.Observation.Transcript == nil ||
@@ -117,7 +122,7 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 		t.Fatalf("capability result = %+v", result)
 	}
 	stored, err := st.GetClip(t.Context(), clip.Hash)
-	if err != nil || stored.Held || stored.Placement != filler.PlacementBreakBody {
+	if err != nil || stored.Held || stored.Placement != clips.PlacementBreakBody {
 		t.Fatalf("stored clip = %+v, err %v", stored, err)
 	}
 }
@@ -125,9 +130,9 @@ func TestFillerMediaExecutorLoadsAReadyClipWithoutOwningReadiness(t *testing.T) 
 func TestFillerEnrichmentVisionPassCommitsObservationWithoutReplacingOperatorAnswers(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_200, 0).UTC()
-	clip := clipstore.Clip{Clip: filler.Clip{
-		Hash: "operator", Path: "operator.mp4", Name: "Operator advert", Role: filler.Commercial,
-		Brand: "Operator Brand", Era: 1987, Placement: filler.PlacementBreakBody,
+	clip := clipstore.Clip{Clip: clips.Clip{
+		Hash: "operator", Path: "operator.mp4", Name: "Operator advert", Role: clips.Commercial,
+		Brand: "Operator Brand", Era: 1987, Placement: clips.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -188,9 +193,9 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := clipstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: clips.Clip{
 		Hash: "inherited-geography", Path: "inherited-geography.mp4", Name: "Local advert",
-		Role: filler.Commercial, Placement: filler.PlacementBreakBody,
+		Role: clips.Commercial, Placement: clips.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -211,7 +216,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicUnknown || got.Country != "" {
+	if got.GeographicScope != pod.GeographicUnknown || got.Country != "" {
 		t.Fatalf("inherited source invented clip geography = %+v", got.Clip)
 	}
 }
@@ -221,13 +226,13 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 	at := time.Unix(1_700_000_400, 0).UTC()
 	source := records.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
 		"Regional source", at)
-	source.Geography = filler.Geography{Country: "GB"}
+	source.Geography = pod.Geography{Country: "GB"}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := clipstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: clips.Clip{
 		Hash: "explicit-geography", Path: "explicit-geography.mp4", Name: "Regional advert",
-		Role: filler.Commercial, Placement: filler.PlacementBreakBody,
+		Role: clips.Commercial, Placement: clips.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -249,7 +254,7 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 		t.Fatal(err)
 	}
 	// A source declares a country, so its default is national; only a station makes a clip local.
-	if got.GeographicScope != filler.GeographicNational || got.Country != "GB" {
+	if got.GeographicScope != pod.GeographicNational || got.Country != "GB" {
 		t.Fatalf("explicit source geography = %+v, want national GB", got.Clip)
 	}
 }
@@ -260,9 +265,9 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAnswer(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_500, 0).UTC()
-	clip := clipstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: clips.Clip{
 		Hash: "cleveland-news", Path: "cleveland-news.mp4", Name: "WEWS NewsChannel 5 News Update 03/10/1991",
-		Role: filler.Interstitial, Placement: filler.PlacementBreakBody,
+		Role: clips.Interstitial, Placement: clips.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -274,13 +279,13 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	if _, changed, err := st.ApplyFillerEnrichment(t.Context(), research, at); err != nil || !changed {
 		t.Fatalf("apply research = changed %v, err %v", changed, err)
 	}
-	if got, _ := st.GetClip(t.Context(), clip.Hash); got.GeographicScope != filler.GeographicNational {
+	if got, _ := st.GetClip(t.Context(), clip.Hash); got.GeographicScope != pod.GeographicNational {
 		t.Fatalf("precondition: research projected %+v, want national", got.Clip)
 	}
 
 	runner := enrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: &stationDirectory{list: st.ListBroadcastStations}}.Load,
+		fillerEnrichmentSignals{store: st, files: fstest.MapFS{}, stations: station.NewLazy(st.ListBroadcastStations)}.Load,
 		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {
@@ -290,10 +295,10 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" || got.Station != "fcc:59441" || got.AirDate != "1991-03-10" {
+	if got.GeographicScope != pod.GeographicLocal || got.Country != "US" || got.Station != "fcc:59441" || got.AirDate != "1991-03-10" {
 		t.Fatalf("after the station pass the clip row = %+v, want local to WEWS (fcc:59441) on 1991-03-10", got.Clip)
 	}
-	if filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
+	if pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatal("Cleveland station news is still eligible for a US household with no local area")
 	}
 }
@@ -304,8 +309,8 @@ func TestDeterministicFillerEnrichmentLocatesStationNewsOverAnEarlierNationalAns
 func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := clipstore.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Brambly Sauce Advert",
-		Role: filler.Commercial}, UpdatedAt: at, CreatedAt: at}
+	clip := clipstore.Clip{Clip: clips.Clip{Hash: "existing", Path: "existing.mp4", Name: "Brambly Sauce Advert",
+		Role: clips.Commercial}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +322,7 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
 	driver := newFillerPipelineDriver(nil, coordinator, nil)
 	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
-		return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
+		return filler.PipelineResult{Overview: pipelinestate.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
 	}
 	if err := driver.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -333,13 +338,13 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 func geographyFixture(t *testing.T, st records.Store, at time.Time, country, title string) (clipstore.Clip, fstest.MapFS) {
 	t.Helper()
 	source := records.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
-	source.Geography = filler.Geography{Country: country}
+	source.Geography = pod.Geography{Country: country}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
-	clip := clipstore.Clip{Clip: filler.Clip{
+	clip := clipstore.Clip{Clip: clips.Clip{
 		Hash: "geo-clip", Path: "geo-clip.mp4", Name: title,
-		Role: filler.Commercial, Placement: filler.PlacementBreakBody,
+		Role: clips.Commercial, Placement: clips.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
@@ -363,10 +368,10 @@ func runDeterministic(t *testing.T, st records.Store, files fstest.MapFS, at tim
 	}
 }
 
-func usPod(c filler.Clip) filler.Pod {
-	c.Placement = filler.PlacementBreakBody
-	return filler.Assemble([]filler.Clip{c}, filler.Window{ChannelID: "ch1", Seed: 1, GapMs: 60000, PodMax: 2},
-		filler.Policy{Geography: filler.Geography{Country: "US"}}, nil)
+func usPod(c clips.Clip) pod.Pod {
+	c.Placement = clips.PlacementBreakBody
+	return pod.Assemble([]clips.Clip{c}, pod.Window{ChannelID: "ch1", Seed: 1, GapMs: 60000, PodMax: 2},
+		pod.Policy{Geography: pod.Geography{Country: "US"}}, nil)
 }
 
 // #1670: British archive ads aired on a US-only household labelled country=US, because a source
@@ -380,14 +385,14 @@ func TestFillerEnrichmentUndeclaredSourceLeavesClipGeographyUnknown(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Country != "" || got.GeographicScope == filler.GeographicNational {
+	if got.Country != "" || got.GeographicScope == pod.GeographicNational {
 		t.Fatalf("undeclared source labelled the clip %+v; want unknown geography", got.Clip)
 	}
-	if filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
+	if pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatalf("clip from an undeclared source passed the US-only filter: %+v", got.Clip)
 	}
-	if pod := usPod(got.Clip); pod.MatchLevel != filler.MatchBumperCard {
-		t.Fatalf("US pod aired an unknown-geography clip: %+v", pod)
+	if brk := usPod(got.Clip); brk.MatchLevel != pod.MatchBumperCard {
+		t.Fatalf("US pod aired an unknown-geography clip: %+v", brk)
 	}
 }
 
@@ -400,12 +405,12 @@ func TestFillerEnrichmentDeclaredSourceStillLabelsClips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicNational || got.Country != "US" ||
+	if got.GeographicScope != pod.GeographicNational || got.Country != "US" ||
 		got.GeoEvidence != "registered_source:archive:geo" {
 		t.Fatalf("declared US source geography = %+v, want national US from the source", got.Clip)
 	}
-	if pod := usPod(got.Clip); pod.MatchLevel == filler.MatchBumperCard {
-		t.Fatalf("US pod over a declared-US clip fell back to the bumper card: %+v", pod)
+	if brk := usPod(got.Clip); brk.MatchLevel == pod.MatchBumperCard {
+		t.Fatalf("US pod over a declared-US clip fell back to the bumper card: %+v", brk)
 	}
 }
 
@@ -450,7 +455,7 @@ func TestFillerEnrichmentRetractsEarlierHomeCountryStamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Country != "" || got.GeoEvidence != "" || filler.GeographicallyEligible(got.Clip, filler.Area{Country: "US"}) {
+	if got.Country != "" || got.GeoEvidence != "" || pod.GeographicallyEligible(got.Clip, pod.Area{Country: "US"}) {
 		t.Fatalf("re-enrichment kept the inherited US stamp: %+v", got.Clip)
 	}
 	states, err := st.ListFillerEnrichment(t.Context(), clip.Hash)

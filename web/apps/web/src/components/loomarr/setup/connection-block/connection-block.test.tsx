@@ -1,15 +1,18 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { ConnectionBlock } from "./connection-block";
 
-// The `.reveal` grid trick keeps the body in the DOM even when collapsed (clipped, not
-// unmounted), so open/closed is asserted via aria-expanded + the reveal state attribute — the
-// same convention CollapsibleSection uses. A failing block's "Fix" is a routed Link, so the
-// tree renders inside RouterHarness (which mounts async — hence findBy* on first query).
+// The Disclosure keeps the body mounted even when collapsed, so open/closed is asserted via
+// aria-expanded and the `hidden` state of the panel the header controls. A failing block's
+// "Fix" is a routed Link, so the tree renders inside RouterHarness (which mounts async — hence
+// findBy* on first query).
 const withRouter = (ui: ReactElement) => render(<RouterHarness content={ui} initialPath="/settings" />);
+
+const panelOf = (header: HTMLElement) => document.getElementById(header.getAttribute("aria-controls") ?? "");
 
 const bodyText = "the connection fields";
 
@@ -25,7 +28,7 @@ describe("ConnectionBlock", () => {
 
     const header = await screen.findByRole("button", { name: /media server/i });
     expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-closed");
+    expect(panelOf(header)).toHaveAttribute("hidden", "until-found");
 
     await user.click(header);
     expect(onToggle).toHaveBeenCalledOnce();
@@ -41,11 +44,10 @@ describe("ConnectionBlock", () => {
         initialPath="/settings"
       />,
     );
-    expect(await screen.findByRole("button", { name: /media server/i })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(screen.getByText(bodyText).closest(".reveal")).toHaveAttribute("data-open", "");
+    const opened = await screen.findByRole("button", { name: /media server/i });
+    expect(opened).toHaveAttribute("aria-expanded", "true");
+    expect(panelOf(opened)).not.toHaveAttribute("hidden");
+    expect(panelOf(opened)).toContainElement(screen.getByText(bodyText));
   });
 
   // ⚠ THE BUG V50d FIXED, and it is asserted here because nothing else can see it: this component
@@ -70,9 +72,9 @@ describe("ConnectionBlock", () => {
       </ConnectionBlock>,
     );
 
-    await screen.findByRole("button", { name: /media server/i });
-    const panel = screen.getByText(bodyText).closest(".reveal");
+    const panel = panelOf(await screen.findByRole("button", { name: /media server/i }));
     expect(panel).toHaveAttribute("hidden", "until-found");
+    expect(panel).toContainElement(screen.getByText(bodyText));
     // Still MOUNTED — the fix must not unmount the body, or a half-filled connection form would
     // lose its state every time the block collapsed.
     expect(panel).toBeInTheDocument();
@@ -100,6 +102,25 @@ describe("ConnectionBlock", () => {
     expect(fix.getAttribute("href")).toMatch(/^\/help\?/);
   });
 
+  it("shows an optional service that is not set up without a red cross or Fix link", async () => {
+    withRouter(
+      <ConnectionBlock
+        title="TMDB"
+        optional
+        open
+        onToggle={() => {}}
+        verdict={{ ok: false, notSetUp: true, hint: "set your TMDB API key" }}
+        docHref="troubleshooting#tmdb"
+      >
+        <p>{bodyText}</p>
+      </ConnectionBlock>,
+    );
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("set your TMDB API key");
+    expect(status).not.toHaveClass("text-onair-300");
+    expect(screen.queryByRole("link", { name: /fix/i })).not.toBeInTheDocument();
+  });
+
   it("shows a passing verdict as 'Connection OK' and no Fix link", async () => {
     withRouter(
       <ConnectionBlock title="TMDB" open onToggle={() => {}} verdict={{ ok: true }}>
@@ -117,7 +138,7 @@ describe("ConnectionBlock", () => {
         <p>{bodyText}</p>
       </ConnectionBlock>,
     );
-    expect(await screen.findByText("optional")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /requester/i })).toHaveTextContent(/optional/);
   });
 
   // The v2 mock's `bk.summary`. It exists so a COLLAPSED block still says where it stands:
@@ -127,6 +148,11 @@ describe("ConnectionBlock", () => {
     ["not tested yet", {}],
     ["OK", { verdict: { ok: true } }],
     ["needs attention", { verdict: { ok: false } }],
+    // #2781: an optional service nobody set up is neutral, not failing…
+    ["Not set up", { optional: true, verdict: { ok: false, notSetUp: true } }],
+    // …but a required one is still red, and a set-up optional failure still needs attention.
+    ["needs attention", { verdict: { ok: false, notSetUp: true } }],
+    ["needs attention", { optional: true, verdict: { ok: false } }],
     // testing wins over the standing verdict — a probe in flight is the newer truth.
     ["testing…", { verdict: { ok: true }, testing: true }],
   ])("summarises the connection as %s in the header", async (expected, props) => {

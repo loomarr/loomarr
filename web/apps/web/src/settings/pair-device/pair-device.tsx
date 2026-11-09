@@ -2,12 +2,11 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Field } from "@loomarr/design-system";
+import { Action, Field } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
-import { Button } from "@/components/ui/button";
 
 // The pairing screen a TV sends someone to (§11, Shield P1) — the address the device puts on
 // screen, so it must be SHORT and memorable: `<your-server>/pair`.
@@ -34,11 +33,15 @@ const SignInFirst = ({ code }: { code: string }) => {
         Sign in first, then we'll bring you straight back here to finish adding your device.
       </p>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
-      <Button
-        className="mt-8 h-14 px-8 text-lg"
-        render={<a href={`/login?redirect=${encodeURIComponent(here)}`}>Sign in</a>}
-        size="lg"
-      />
+      <div className="mt-8 flex justify-center">
+        <Action
+          accessibilityRole="link"
+          density="touch"
+          render={<a href={`/login?redirect=${encodeURIComponent(here)}`} />}
+        >
+          Sign in
+        </Action>
+      </div>
     </div>
   );
 };
@@ -144,13 +147,14 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
           {(userCode) => (
-            <Button
-              className="h-14 w-full text-lg"
+            <Action
+              density="touch"
               disabled={!userCode.trim() || approve.isPending}
-              type="submit"
+              style={{ width: "100%" }}
+              submit
             >
               {approve.isPending ? "Checking…" : "Add device"}
-            </Button>
+            </Action>
           )}
         </form.Subscribe>
       </form>
@@ -175,9 +179,11 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
                 <p className="text-caution text-md">
                   Couldn't reach Loomarr. Check your connection and try again.
                 </p>
-                <Button className="mt-3" onClick={retry} type="button" variant="secondary">
-                  Try again
-                </Button>
+                <div className="mt-3 flex justify-center">
+                  <Action onPress={retry} variant="secondary">
+                    Try again
+                  </Action>
+                </div>
               </div>
             );
           })()

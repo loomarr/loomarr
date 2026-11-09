@@ -71,6 +71,30 @@ describe("measureSource", () => {
     assert.deepEqual(measureSource(other, appFile("components/ui/dialog/dialog.tsx")), { legacyUi: 1 });
   });
 
+  it("counts each lucide-react import, however it is written", () => {
+    const source = `
+      import { Check, X } from "lucide-react";
+      import type { LucideIcon } from "lucide-react";
+      import { Icon } from "@loomarr/design-system";
+      export { Plus } from "lucide-react";
+    `;
+    assert.deepEqual(measureSource(source, appFile("feature/view.tsx")), { lucideReact: 3 });
+  });
+
+  it("counts each raw button element, and not a design-system Action or a prop named button", () => {
+    const source = `
+      export const Row = ({ button }: { button: string }) => (
+        <div>
+          <button type="button">Close</button>
+          <Action>Open</Action>
+          <label data-kind="button" />
+          <button type="submit" />
+        </div>
+      );
+    `;
+    assert.deepEqual(measureSource(source, appFile("feature/row.tsx")), { rawButton: 2 });
+  });
+
   it("counts legacy component imports in CSS", () => {
     const css = `@import "tailwindcss";\n@import "@/components/ui/button/button.css";\n`;
     assert.deepEqual(measureSource(css, appFile("styles.css")), { legacyUi: 1 });
@@ -89,6 +113,14 @@ describe("compareToLedger", () => {
       "src/a.tsx: tailwindClasses rose from 10 to 11",
       "src/b.tsx: new file with legacy usage (baseUi 1)",
     ]);
+  });
+
+  it("fails a rise in the icon and raw-button measures", () => {
+    const { violations } = compareToLedger(
+      { "src/a.tsx": { tailwindClasses: 10, cva: 1, lucideReact: 3, rawButton: 2 } },
+      { "src/a.tsx": { tailwindClasses: 10, cva: 1, lucideReact: 2, rawButton: 2 } },
+    );
+    assert.deepEqual(violations, ["src/a.tsx: lucideReact rose from 2 to 3"]);
   });
 
   it("passes a fall and reports that the ledger can shrink", () => {

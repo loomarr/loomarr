@@ -8,13 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/inventory"
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/library/scan"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/media/images"
+	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
 	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
@@ -24,8 +28,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/requester"
-	"github.com/loomarr/loomarr/internal/tmdb"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.
@@ -36,6 +38,7 @@ type libraryStore interface {
 	store.LibraryProjection
 	store.LibraryCatalogStore
 	store.LibraryNeedsStore
+	store.LibraryEpisodeOrderStore
 	store.LibraryCollectionStore
 	store.LibraryPeopleStore
 	store.LibraryIDMapStore
@@ -86,8 +89,8 @@ func libraryNotifierOf(c *productNotificationCoordinator) libraryNotifier {
 
 // libraryServices is Settings → Library and the arrs' webhooks; both nil without a store.
 type libraryServices struct {
-	roots api.LibraryRootService
-	hooks api.LibraryHookService
+	roots libraryapi.LibraryRootService
+	hooks libraryapi.LibraryHookService
 }
 
 // buildLibrary wires Settings → Library (#2151 decision 6) and starts the scanner, its folder
@@ -113,7 +116,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	if err != nil {
 		deps.log.Error("library scan: not started", "err", err)
 		return libraryServices{roots: &scan.Library{Roots: roots, ItemStore: st, Inventory: inv, CollectionStore: st,
-			SetRecords: st}}
+			Records: st}}
 	}
 	conns := set.arrConns()
 	sonarr, radarr := arr.NewSonarr(conns.Sonarr, nil), arr.NewRadarr(conns.Radarr, nil)
@@ -123,6 +126,13 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	managers := []scan.Manager{
 		{Authority: "sonarr", Lister: sonarr, Fetcher: sonarr, Address: address(conns.Sonarr)},
 		{Authority: "radarr", Lister: radarr, Fetcher: radarr, Address: address(conns.Radarr)},
+	}
+	// The catalog the Library's details come from; its declared ids are the Library's catalog rows.
+	var provider *mptmdb.Provider
+	var keys scan.CatalogKeys
+	if deps.tmdb != nil {
+		provider = mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
+		keys = provider.Capabilities().Resolves
 	}
 	im := &scan.Importer{
 		Store:     st,
@@ -137,6 +147,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Art:      localart.New(),
 		Artwork:  libraryArtworkOf(deps.images, st),
 		Catalog:  st,
+		Keys:     keys,
 		Answers:  st,
 		Resolver: resolver,
 		Header:   libraryHeader(playout.FFprobeSourceNextTo(deps.ffmpegPath, deps.processes)),
@@ -184,9 +195,8 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
-		CollectionStore: st, SetRecords: st}
-	if deps.tmdb != nil {
-		provider := mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
+		Orders: st, CollectionStore: st, Records: st, Keys: keys}
+	if provider != nil {
 		enricher := &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Language: func() string {
@@ -269,7 +279,7 @@ func tmdbSearcher(client *tmdb.Client) scan.Searcher {
 				continue
 			}
 			hits = append(hits, scan.SearchHit{
-				Kind: string(c.MediaType), TMDBID: strconv.Itoa(c.TMDBID), Name: c.Name, Year: c.Year, Overview: c.Overview,
+				Kind: string(c.MediaType), ID: mp.ExternalID{Namespace: mp.NamespaceTMDB, Value: strconv.Itoa(c.TMDBID)}, Name: c.Name, Year: c.Year, Overview: c.Overview,
 			})
 		}
 		return hits, nil
@@ -293,7 +303,7 @@ func libraryHeader(probe playout.SourceProber) func(context.Context, string) (he
 		if err != nil {
 			return header.Header{}, err
 		}
-		facts := inventoryFactsOf(observed)
+		facts := playoutresolve.InventoryFactsOf(observed)
 		return header.Header{
 			Container: facts.Container, DurationMillis: facts.DurationMillis, Bitrate: facts.Bitrate,
 			Streams: facts.Streams,

@@ -1,9 +1,8 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Action, Field, FieldHint, StatusLabel, Toggle } from "@loomarr/design-system";
+import { Action, Field, FieldHint, Icon, icons, StatusLabel, Toggle } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
-import { KeyRound, Mail, Server } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { SessionList } from "@/components/loomarr/people/session-list";
@@ -106,9 +105,9 @@ const PersonDetail = ({
         </div>
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
           {user.local ? (
-            <KeyRound className="size-4" aria-hidden />
+            <Icon decorative glyph={icons.key} size="compact" tone="inherit" />
           ) : (
-            <Server className="size-4" aria-hidden />
+            <Icon decorative glyph={icons.server} size="compact" tone="inherit" />
           )}
           {user.local
             ? "Loomarr-local credentials"
@@ -134,7 +133,7 @@ const PersonDetail = ({
         {user.contactAddress ? (
           <div className="border-static-800 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Mail className="text-muted-foreground size-4" aria-hidden />
+              <Icon decorative glyph={icons.mail} size="compact" tone="muted" />
               <span className="text-sm break-all">{user.contactAddress.email}</span>
               <StatusLabel tone={user.contactAddress.status === "verified" ? "ok" : "off"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
@@ -193,10 +192,7 @@ const PersonDetail = ({
               </FieldHint>
             )}
             <div className="flex flex-wrap gap-2">
-              <Action
-                // A real submit button under Action's look, so Enter in a field still submits.
-                render={<button disabled={contactSaving} type="submit" />}
-              >
+              <Action disabled={contactSaving} submit>
                 Save email
               </Action>
               <Action
@@ -357,10 +353,7 @@ const PersonDetail = ({
                 </FieldHint>
               )}
               <div className="flex flex-wrap gap-2">
-                <Action
-                  // A real submit button under Action's look, so Enter in a field still submits.
-                  render={<button disabled={resetting} type="submit" />}
-                >
+                <Action disabled={resetting} submit>
                   Set new password
                 </Action>
                 <Action

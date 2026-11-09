@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { LoomarrProvider } from "@loomarr/design-system";
+import { LoomarrProvider, playerChrome, semanticColors } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -171,6 +171,23 @@ describe("PlayerChrome", () => {
     );
     expect(shown.textContent).not.toContain("1990s");
     expect(button(shown, "Pause")).toBeDefined();
+  });
+
+  it("fills the channel block with the channel's decade colour, amber without one", () => {
+    const g = globalThis as unknown as {
+      getComputedStyle(n: Node): { backgroundColor: string; color: string };
+    };
+    const block = (host: Host) => {
+      const number = Array.from(host.querySelectorAll("div")).find((el) => el.textContent === "CH7") as Node;
+      return g.getComputedStyle(number).backgroundColor;
+    };
+    const rgb = (hex: string) =>
+      `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+
+    const era = mount(chrome({ band: { channelName: "Coast 90s", channelNumber: "7", decade: 1990 } }));
+    expect(block(era)).toBe(rgb(semanticColors.decade["1990"]));
+    const plain = mount(chrome());
+    expect(block(plain)).toBe(rgb(playerChrome.signal));
   });
 
   it("offers Info when there is a programme to describe", () => {

@@ -10,18 +10,12 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
-// Local account management (§11). Two operations the identity model implied but
-// never had: a local user changing their own password, and an admin creating a
-// second local account.
+// Local account management (§11). Two operations beyond bootstrap (which succeeds
+// exactly once): a local user changing their own password, and an admin creating
+// a further local account. The users list labels every row `local` / `Media-server
+// account` to explain why a password action applies to some users and not others.
 //
-// Until now the ONLY way a local user came into existence was `POST
-// /v1/setup/bootstrap`, which succeeds exactly once — so the password chosen in
-// wizard step 1 was permanent, and an install could never gain a second local
-// account. Meanwhile the users list labels every row `local` / `Media-server
-// account` expressly "to explain why a password action applies to some users and
-// not others" — for an action that did not exist.
-//
-// The §11 invariants are unchanged by any of this:
+// The §11 invariants hold throughout:
 //   - The `users` table stays the allowlist and the source of truth.
 //   - Provider linkage is explicit. A linked user may carry an offline verifier,
 //     but that does not turn it into a local credential.

@@ -134,7 +134,8 @@ func TestIDsAndNumberingInNames(t *testing.T) {
 }
 
 // An episode's series folder is the one above its season folder, else the nearest named by an id,
-// else its own; it is never assumed to be the root's first folder.
+// else its own; it is never assumed to be the root's first folder. One with no series folder takes
+// the show its name gives, and a season folder never names a show.
 func TestSeriesFolder(t *testing.T) {
 	cases := map[string]string{
 		"Kilo/Season 02/Kilo S02E01.mkv":                      "Kilo",
@@ -143,8 +144,12 @@ func TestSeriesFolder(t *testing.T) {
 		"TV/Kids/Lima {tvdb-90081191}/S01/Lima S01E01.mkv":    "TV/Kids/Lima {tvdb-90081191}",
 		"TV/Kids/Lima {tvdb-90081191}/Disc 1/Lima S01E01.mkv": "TV/Kids/Lima {tvdb-90081191}",
 		"Mike/Mike S01E01.mkv":                                "Mike",
-		"Mike S01E01.mkv":                                     "",
-		"Season 1/Mike S01E01.mkv":                            "Season 1",
+		"Mike S01E01.mkv":                                     "Mike",
+		"Season 1/Mike S01E01.mkv":                            "Mike",
+		"November.Show.S01E02.mkv":                            "November Show",
+		"Oscar_Show - 1x03 - Pilot.mkv":                       "Oscar Show",
+		"S01E02.mkv":                                          "",
+		"Season 1/S01E02.mkv":                                 "",
 	}
 	for rel, want := range cases {
 		if got := seriesFolder(rel); got != want {

@@ -1,7 +1,7 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryItemDTO } from "@loomarr/api/models/libraryItemDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { LibraryCollectionEditor, type LibraryCollectionMember } from "@loomarr/ui";
+import { LibraryCollectionEditor, type LibraryCollectionMember, StatePanel } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -81,8 +81,7 @@ const CollectionEditorPage = ({ id }: { id?: string }) => {
       titles: draft.members.map((m) => m.id),
     };
     try {
-      const res = id ? await libraryApi.updateCollection(id, body) : await libraryApi.createCollection(body);
-      if (res.status !== 200 && res.status !== 201) throw new Error("not saved");
+      await (id ? libraryApi.updateCollection(id, body) : libraryApi.createCollection(body));
       await done();
     } catch {
       setFailed("save");
@@ -95,8 +94,7 @@ const CollectionEditorPage = ({ id }: { id?: string }) => {
     setBusy(true);
     setFailed(undefined);
     try {
-      const res = await libraryApi.deleteCollection(id);
-      if (res.status !== 204) throw new Error("not deleted");
+      await libraryApi.deleteCollection(id);
       await done();
     } catch {
       setFailed("delete");
@@ -105,7 +103,7 @@ const CollectionEditorPage = ({ id }: { id?: string }) => {
   };
 
   if (saved.error && !current) return <ErrorState error={saved.error} onRetry={() => void saved.refetch()} />;
-  if (!draft) return null;
+  if (!draft) return <StatePanel kind="loading" title="Loading this collection" />;
 
   return (
     <LibraryCollectionEditor

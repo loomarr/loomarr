@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // The Library's rows follow inventory writes: a snapshot writes its item's row, an origin marked
@@ -96,8 +96,9 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 			it.Countries = []string{"Canada", "Ireland"}
 			it.Tagline, it.Trailer = "Keep the lamps lit.", "https://www.youtube.com/watch?v=show9000"
 			it.Credits = []LibraryCredit{
-				{Name: "Station Lead", Role: "actor", Character: "Keeper", TMDB: "90003202", Photo: "https://img.invalid/lead.jpg"},
-				{Name: "Station Lead", Role: "creator", TMDB: "90003202"},
+				{Name: "Station Lead", Role: "actor", Character: "Keeper", ID: LibraryID{Namespace: "tmdb", Value: "90003202"},
+					Photo: "https://img.invalid/lead.jpg"},
+				{Name: "Station Lead", Role: "creator", ID: LibraryID{Namespace: "tmdb", Value: "90003202"}},
 				{Name: "Pen Name", Role: "writer"},
 				{Name: "", Role: "actor"},
 			}
@@ -122,7 +123,7 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 	}
 	row := func(id inventory.ItemID) (seriesID, rating, from string) {
 		t.Helper()
-		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT series_id, rating, rating_from FROM library_items
+		if err := sqlSt.db.QueryRowContext(ctx, sqlSt.ph(`SELECT COALESCE(series_id, ''), rating, rating_from FROM library_items
 			WHERE id = ?`), string(id)).Scan(&seriesID, &rating, &from); err != nil {
 			t.Fatal(err)
 		}
@@ -191,8 +192,8 @@ func testLibraryTitleFacts(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("credits = %d, %v; want the actor, the creator and the writer", credits, err)
 	}
 	if err := sqlSt.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM library_people WHERE
-		(id = 'tmdb:90003202' AND tmdb_id = '90003202' AND photo = 'https://img.invalid/lead.jpg') OR
-		(id = 'name:Pen Name' AND tmdb_id = '' AND name = 'Pen Name')`).Scan(&people); err != nil || people != 2 {
+		(id = 'tmdb:90003202' AND namespace = 'tmdb' AND external_id = '90003202' AND photo = 'https://img.invalid/lead.jpg') OR
+		(id = 'name:Pen Name' AND namespace = '' AND external_id = '' AND name = 'Pen Name')`).Scan(&people); err != nil || people != 2 {
 		t.Fatalf("people = %d, %v; want the linked lead with their photo and the unlinked writer", people, err)
 	}
 	var ids int

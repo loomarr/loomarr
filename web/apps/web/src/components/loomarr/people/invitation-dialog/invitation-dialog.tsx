@@ -302,10 +302,7 @@ const InvitationDialog = ({
                 <Action disabled={busy} onPress={() => changeOpen(false)} variant="outline">
                   Cancel
                 </Action>
-                <Action
-                  // A real submit button under Action's look, so Enter in a field still submits.
-                  render={<button disabled={busy} type="submit" />}
-                >
+                <Action disabled={busy} submit>
                   {busy ? "Creating…" : "Create invitation"}
                 </Action>
               </DialogFooter>

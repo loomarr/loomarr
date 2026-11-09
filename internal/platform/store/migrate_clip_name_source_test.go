@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
 // Migration 00134 backfills a clip's name provenance from what its row already records (#1988):
@@ -70,7 +70,7 @@ func testClipNameSourceMigration(t *testing.T, s *sqlStore, migrationDir string)
 	for _, r := range rows {
 		kind := r.kind
 		if kind == "" {
-			kind = string(filler.Commercial)
+			kind = string(clips.Commercial)
 		}
 		// Seeded through the schema as it stood at 00133: current UpsertClip writes name_source.
 		if _, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO clips

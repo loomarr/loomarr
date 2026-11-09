@@ -1,8 +1,8 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
-import { AlertTriangle, Database } from "lucide-react";
+import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
+import { missingNights } from "./missing-nights";
 
 // BackupPanel — Settings → System → Backup (§16, V12; v2 mock System → Backup).
 //
@@ -15,8 +15,17 @@ import type { BackupPanelProps } from "./backup-panel.type";
 // CLI operation (stop, replace the file, start), and the panel says so rather than leaving
 // its absence to read as an oversight.
 
-const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className }: BackupPanelProps) => {
+const BackupPanel = ({
+  list,
+  onBackUpNow,
+  onDownload,
+  onOpenTasks,
+  pending,
+  error,
+  className,
+}: BackupPanelProps) => {
   const backups = list.backups ?? [];
+  const missing = missingNights(backups);
 
   // On Postgres in-app backup is not offered at all (§16). An empty table would read as
   // "backups are broken" on the one install where the operator is correctly using pg_dump,
@@ -25,7 +34,7 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
     return (
       <section className={cn("border-border rounded-lg border p-4", className)}>
         <div className="flex items-center gap-2">
-          <Database className="text-muted-foreground size-4" aria-hidden />
+          <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <h2 className="text-sm font-medium">Backups</h2>
         </div>
         <p className="text-muted-foreground mt-2 text-sm">
@@ -55,9 +64,34 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
 
       {error ? (
         <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span className="mt-0.5 flex">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+          </span>
           {error}
         </p>
+      ) : null}
+
+      {missing > 0 ? (
+        <Surface
+          alignItems="center"
+          backgroundColor="transparent"
+          borderWidth={0}
+          flexDirection="row"
+          flexWrap="wrap"
+          gap="inline"
+          marginTop={12}
+          role="status"
+        >
+          <Icon decorative glyph={icons.warning} size="compact" tone="warning" />
+          <Text textRole="body" tone="warning">
+            {pluralize(missing, "night")} missing from the nightly backups.
+          </Text>
+          {onOpenTasks ? (
+            <Action onPress={onOpenTasks} variant="ghost">
+              Open Tasks
+            </Action>
+          ) : null}
+        </Surface>
       ) : null}
 
       {backups.length === 0 ? (
@@ -95,7 +129,7 @@ const BackupPanel = ({ list, onBackUpNow, onDownload, pending, error, className 
             so describeCron would render "Custom" — which tells the operator nothing. */}
         {list.schedule} into {list.dir} · keeps{" "}
         {list.retain > 0 ? pluralize(list.retain, "backup") : "every backup"} · restore is a command-line
-        operation, deliberately
+        operation
       </p>
     </section>
   );

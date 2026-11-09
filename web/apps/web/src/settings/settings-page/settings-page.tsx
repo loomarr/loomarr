@@ -11,6 +11,11 @@ import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { cn } from "@/lib/utils";
 import { useSettingsEdits } from "../settings-edits";
+import {
+  announceSettingsChange,
+  announceSettingsFailure,
+  announceSettingsResults,
+} from "../settings-feedback";
 import type { SettingsPageProps } from "./settings-page.type";
 
 // One Settings page: several blocks, ONE save bar (config-design §5). The page owns the
@@ -62,7 +67,9 @@ const SettingsPage = ({
               .map((result) => result.key),
           );
         }
+        if (response.status === 200) announceSettingsResults(response.data.results ?? []);
       },
+      onError: (error) => announceSettingsFailure(error),
     },
   });
   // Taking a key back from the environment (config-design §3.1). One of §9's inline-commit
@@ -72,7 +79,13 @@ const SettingsPage = ({
   // The claim changes provenance and lock state, and unlocking seeds a stored value the field
   // must render, so the list refetches through the `settings` row.
   const envOverride = settingsApi.useSettingsEnvOverride({
-    mutation: { onSuccess: () => invalidateSettings(queryClient) },
+    mutation: {
+      onSuccess: async (_response, { data }) => {
+        await invalidateSettings(queryClient);
+        announceSettingsChange(data.enabled ? "Now editable here" : "Handed back to the environment");
+      },
+      onError: (error) => announceSettingsFailure(error, "Couldn't change who manages this setting"),
+    },
   });
   const onEnvOverride = (key: string, enabled: boolean) => {
     envOverride.mutate({ key, data: { enabled } });
@@ -114,7 +127,11 @@ const SettingsPage = ({
   useEffect(() => {
     if (!checksReady || openBlocks !== undefined) return;
     const connectionBlocks = blocks.filter((b) => b.check);
-    const broken = connectionBlocks.filter((b) => !standingFor(b.check)?.ok);
+    // An optional service nobody has set up is not broken (#2781), so it never takes the triage focus.
+    const broken = connectionBlocks.filter((b) => {
+      const standing = standingFor(b.check);
+      return !standing?.ok && !(b.optional && standing?.notSetUp);
+    });
     const initial: Record<string, boolean> = {};
     for (const b of connectionBlocks) initial[b.group] = false;
     const focused = connectionBlocks.find((block) => block.group === initialOpenGroup);
@@ -192,7 +209,9 @@ const SettingsPage = ({
             // verdict, so a block reports its health without a click (like the wizard).
             const live = testResult[block.check];
             const standing = standingFor(block.check);
-            const verdict = live ?? (standing ? { ok: standing.ok, hint: standing.hint } : undefined);
+            const verdict =
+              live ??
+              (standing ? { ok: standing.ok, hint: standing.hint, notSetUp: standing.notSetUp } : undefined);
             const blockFooter =
               typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer;
             const checkLabel =

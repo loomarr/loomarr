@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
@@ -59,25 +60,25 @@ func TestPlaybackIntegrityEvaluatorHoldsArtifactOrSidecarDrift(t *testing.T) {
 		}},
 		{name: "missing sidecar", wantReason: "playback_sidecar_missing", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			if err := os.Remove(filler.SidecarPathFor(media.PlaybackPath)); err != nil {
+			if err := os.Remove(tools.SidecarPathFor(media.PlaybackPath)); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "invalid sidecar", wantReason: "playback_sidecar_invalid", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			if err := os.WriteFile(filler.SidecarPathFor(media.PlaybackPath), []byte("{"), 0o600); err != nil {
+			if err := os.WriteFile(tools.SidecarPathFor(media.PlaybackPath), []byte("{"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "oversized sidecar", wantReason: "playback_sidecar_invalid", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			if err := os.Truncate(filler.SidecarPathFor(media.PlaybackPath), segmentScreeningSidecarMaxBytes+1); err != nil {
+			if err := os.Truncate(tools.SidecarPathFor(media.PlaybackPath), segmentScreeningSidecarMaxBytes+1); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "symlinked sidecar", wantReason: "playback_sidecar_invalid", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			path := filler.SidecarPathFor(media.PlaybackPath)
+			path := tools.SidecarPathFor(media.PlaybackPath)
 			target := path + ".target"
 			if err := os.Rename(path, target); err != nil {
 				t.Fatal(err)
@@ -107,12 +108,12 @@ func TestPlaybackIntegrityEvaluatorHoldsArtifactOrSidecarDrift(t *testing.T) {
 func TestPlaybackIntegrityEvaluatorMapsMeasuredQualityToClosedOutcome(t *testing.T) {
 	tests := []struct {
 		name        string
-		quality     filler.MediaQuality
+		quality     tools.MediaQuality
 		wantOutcome SegmentScreeningOutcome
 		wantReason  string
 	}{
-		{name: "dead air", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 27_000}}, nil, nil), wantOutcome: ScreenReject, wantReason: "playback_quality_reject"},
-		{name: "long black", quality: playbackIntegrityQuality([]filler.Interval{{StartMs: 0, EndMs: 5_000}}, nil, nil), wantOutcome: ScreenHold, wantReason: "playback_quality_hold"},
+		{name: "dead air", quality: playbackIntegrityQuality([]tools.Interval{{StartMs: 0, EndMs: 27_000}}, nil, nil), wantOutcome: ScreenReject, wantReason: "playback_quality_reject"},
+		{name: "long black", quality: playbackIntegrityQuality([]tools.Interval{{StartMs: 0, EndMs: 5_000}}, nil, nil), wantOutcome: ScreenHold, wantReason: "playback_quality_hold"},
 		{name: "clear", quality: validPlaybackIntegrityQuality(), wantOutcome: ScreenPass, wantReason: "playback_verified"},
 	}
 	for _, test := range tests {
@@ -160,20 +161,20 @@ func TestPlaybackIntegrityEvaluatorRefusesASecondAnswerForSettledOperation(t *te
 	}
 }
 
-// The subject's own quality-versus-conditioning check lives in internal/filler; this test needs
+// The subject's own quality-versus-conditioning check lives in filler/asset; this test needs
 // the rendered-child media fixture below, which is why it sits here.
 func TestSegmentScreeningSubjectRequiresPlaybackQualityToMatchConditioning(t *testing.T) {
 	media := playbackIntegrityMediaFixture(t, validPlaybackIntegrityQuality())
-	tags, ok := filler.ReadSidecarTags(media.PlaybackPath)
+	tags, ok := asset.ReadSidecarTags(media.PlaybackPath)
 	if !ok {
 		t.Fatal("playback sidecar is unavailable")
 	}
 	playback := *tags.MediaAssets.Playback
-	playback.Quality.Black = []filler.Interval{{StartMs: 0, EndMs: 5_000}}
+	playback.Quality.Black = []tools.Interval{{StartMs: 0, EndMs: 5_000}}
 	manifest := *tags.MediaAssets
 	manifest.Playback = &playback
 	tags.MediaAssets = &manifest
-	if _, err := filler.NewSegmentScreeningSubject(playback.Asset.ClipHash, tags); err == nil {
+	if _, err := asset.NewSegmentScreeningSubject(playback.Asset.ClipHash, tags); err == nil {
 		t.Fatal("subject accepted playback quality that differed from post-rewrite conditioning")
 	}
 }
@@ -189,12 +190,12 @@ func mustPlaybackIntegrityEvaluator(t *testing.T, repository SegmentScreeningAxi
 	return evaluator
 }
 
-func validPlaybackIntegrityQuality() filler.MediaQuality {
+func validPlaybackIntegrityQuality() tools.MediaQuality {
 	return playbackIntegrityQuality(nil, nil, nil)
 }
 
-func playbackIntegrityQuality(black, silence, freeze []filler.Interval) filler.MediaQuality {
-	return filler.MediaQuality{
+func playbackIntegrityQuality(black, silence, freeze []tools.Interval) tools.MediaQuality {
+	return tools.MediaQuality{
 		EvidenceVersion: tools.MediaQualityEvidenceV1,
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
@@ -204,7 +205,7 @@ func playbackIntegrityQuality(black, silence, freeze []filler.Interval) filler.M
 	}
 }
 
-func playbackIntegrityMediaFixture(t *testing.T, quality filler.MediaQuality) SegmentScreeningMedia {
+func playbackIntegrityMediaFixture(t *testing.T, quality tools.MediaQuality) SegmentScreeningMedia {
 	t.Helper()
 	root := t.TempDir()
 	manifest := screeningSubjectManifest(t)
@@ -218,27 +219,27 @@ func playbackIntegrityMediaFixture(t *testing.T, quality filler.MediaQuality) Se
 	writeScreeningArtifactFixture(t, playbackPath, []byte("final-playback-derivative-bytes"), &manifest.Playback.Asset)
 	manifest.Evidence.InputSHA256 = manifest.SourceMaster.SHA256
 	manifest.Playback.InputSHA256 = manifest.SourceMaster.SHA256
-	lineage := filler.ConditioningLineage{
+	lineage := asset.ConditioningLineage{
 		ChildHash: manifest.SourceMaster.ClipHash, ParentHash: "7777777777777777777777777777777777777777777777777777777777777777",
-		ParentAssetRole: string(filler.SplitSourceEvidence), ParentAssetSHA256: "8888888888888888888888888888888888888888888888888888888888888888",
+		ParentAssetRole: string(split.SourceEvidence), ParentAssetSHA256: "8888888888888888888888888888888888888888888888888888888888888888",
 		StructureDecisionSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		StructureRole:           filler.SegmentRoleCommercial,
+		StructureRole:           split.RoleCommercial,
 		IntendedStartMs:         1_000, IntendedEndMs: 31_000,
 	}
 	measurement := completeConditioningMeasurement(-23)
 	measurement.Quality = quality
-	conditioning := filler.ConditioningEvidence{
+	conditioning := asset.ConditioningEvidence{
 		BeforeRewriteHash: manifest.SourceMaster.ClipHash, AfterRewriteHash: manifest.Playback.Asset.ClipHash,
 		BeforeRewrite: measurement, AfterRewrite: measurement, DerivedParentEdgesAfterRewrite: measurement.Cuts[0],
 	}
-	tags := filler.SidecarTags{
+	tags := asset.SidecarTags{
 		SourceID: "archive:commercials", AcquisitionID: "acq-17", MediaAssets: &manifest,
 		ConditioningLineage: &lineage, Conditioning: &conditioning,
 	}
-	if err := filler.WriteSidecarTags(playbackPath, tags, false); err != nil {
+	if err := asset.WriteSidecarTags(playbackPath, tags, false); err != nil {
 		t.Fatal(err)
 	}
-	subject, err := filler.NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, tags)
+	subject, err := asset.NewSegmentScreeningSubject(manifest.Playback.Asset.ClipHash, tags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +249,7 @@ func playbackIntegrityMediaFixture(t *testing.T, quality filler.MediaQuality) Se
 	}
 }
 
-func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, identity *filler.MediaAssetIdentity) {
+func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, identity *asset.Identity) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -256,11 +257,11 @@ func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, ident
 	if err := os.WriteFile(path, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sha256, bytes, err := filler.FileSHA256(path)
+	sha256, bytes, err := asset.FileSHA256(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clipHash, err := filler.ClipID(path)
+	clipHash, err := asset.ClipID(path)
 	if err != nil {
 		t.Fatal(err)
 	}

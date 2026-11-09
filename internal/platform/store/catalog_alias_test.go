@@ -101,7 +101,7 @@ func TestSQLStoreCatalogIsTheEmbeddedCluster(t *testing.T) {
 }
 
 // store.Handle.Clips is the extension stores' way to a ClipTx; it must hand back the catalog's own
-// type, bound to the same cluster, so fillerstore's writes keep one owner.
+// type, bound to the same cluster, so extension-store writes keep one owner.
 func TestHandleClipsReturnsTheCatalogClipTx(t *testing.T) {
 	ctx := context.Background()
 	st := newSQLiteStore(t)

@@ -11,14 +11,20 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/source"
+	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/structure"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
@@ -45,12 +51,12 @@ import (
 // tell them apart. A key-confusion bug is invisible by construction against such a fixture.
 //
 // ⚠ Real 64-hex hashes are still deliberately NOT used. The store does not care what a hash looks
-// like — only `filler.ClipPath` validates the shape, and that is tested where it belongs
+// like — only `cliplibrary.ClipPath` validates the shape, and that is tested where it belongs
 // (`filler/clippath_test.go`). A wall of hex would cost readability without buying coverage. The
 // property that matters is that the two fields are DISTINGUISHABLE, not that the hash is realistic,
 // so the readable path gets a short readable hash beside it.
-func clipAt(path, name string, kind filler.Role, durationMs int64) filler.Clip {
-	return filler.Clip{Hash: clipHashFor(path), Path: path, Name: name, Role: kind, DurationMs: durationMs}
+func clipAt(path, name string, kind clips.Role, durationMs int64) clips.Clip {
+	return clips.Clip{Hash: clipHashFor(path), Path: path, Name: name, Role: kind, DurationMs: durationMs}
 }
 
 // clipHashFor derives a fixture clip's identity from its path, and clipPathFor derives a fixture
@@ -63,13 +69,13 @@ func clipHashFor(path string) string { return "h:" + path }
 
 func clipPathFor(hash string) string { return "p/" + hash + ".mp4" }
 
-func sampleClip(id, name string, kind filler.Role, era int, aud filler.Audience, cat string) Clip {
+func sampleClip(id, name string, kind clips.Role, era int, aud clips.Audience, cat string) Clip {
 	c := Clip{}
 	// ⚠ Identity is the HASH since V38c, not the path (§10).
 	//
 	// These tests use the READABLE id as the hash — "c1", not 64 hex characters — so assertions
 	// stay legible (`GetClip(ctx, "c1")`) and a failure names a clip a human recognises. The
-	// store does not care what a hash looks like; only `filler.ClipPath` validates the shape, and
+	// store does not care what a hash looks like; only `cliplibrary.ClipPath` validates the shape, and
 	// that is covered where it belongs, in `filler/clippath_test.go`. Using real hashes here
 	// would make every assertion a wall of hex and would test nothing extra.
 	//
@@ -151,12 +157,12 @@ func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
 
 // exposuresBefore is a break's rotation snapshot the way pod assembly reads it: the household's
 // stored airings, cut before `before` by the filler domain (a zero cutoff keeps everything).
-func exposuresBefore(ctx context.Context, s Store, before time.Time, settle time.Duration) (map[string]filler.Exposure, error) {
+func exposuresBefore(ctx context.Context, s Store, before time.Time, settle time.Duration) (map[string]pod.Exposure, error) {
 	airings, err := s.FillerAirings(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return filler.ExposuresBefore(filler.AiringHistory{Airings: airings, Settle: settle}, before), nil
+	return pod.ExposuresBefore(pod.AiringHistory{Airings: airings, Settle: settle}, before), nil
 }
 
 // src1 is the source this suite registers first, re-read. Fatals if it has gone missing, so a
@@ -173,26 +179,26 @@ func src1(t *testing.T, s Store) FillerSource {
 func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	c1 := sampleClip("c1", "Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal")
-	c1.GeographicScope, c1.Country = filler.GeographicLocal, "US"
+	c1 := sampleClip("c1", "Crunchlings", clips.Commercial, 1992, clips.Kids, "cereal")
+	c1.GeographicScope, c1.Country = pod.GeographicLocal, "US"
 	c1.Network, c1.Station, c1.AirDate, c1.GeoEvidence = "Kestrel One", "fcc:900001", "1992-04-03", "filename: WKTL 1992-04-03"
 	putClip(t, s, c1)
-	putClip(t, s, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
-	putClip(t, s, sampleClip("b1", "Bumper", filler.Bumper, 1992, filler.General, ""))
-	putClip(t, s, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", "")) // untagged
+	putClip(t, s, sampleClip("c2", "Shell Squad figures", clips.Commercial, 1994, clips.Kids, "toys"))
+	putClip(t, s, sampleClip("b1", "Bumper", clips.Bumper, 1992, clips.General, ""))
+	putClip(t, s, sampleClip("u1", "untagged.mp4", clips.Commercial, 0, "", "")) // untagged
 
 	// Round-trip.
 	got, err := s.GetClip(ctx, "c1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Crunchlings" || got.Role != filler.Commercial || got.Era != 1992 || got.Audience != filler.Kids || got.Category != "cereal" {
+	if got.Name != "Crunchlings" || got.Role != clips.Commercial || got.Era != 1992 || got.Audience != clips.Kids || got.Category != "cereal" {
 		t.Errorf("clip round-trip mismatch: %+v", got.Clip)
 	}
 	if got.DurationMs != 30000 {
 		t.Errorf("duration lost: %d", got.DurationMs)
 	}
-	if got.GeographicScope != filler.GeographicLocal || got.Country != "US" ||
+	if got.GeographicScope != pod.GeographicLocal || got.Country != "US" ||
 		got.Network != "Kestrel One" || got.Station != "fcc:900001" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
 		t.Errorf("geography round-trip mismatch: %+v", got.Clip)
 	}
@@ -201,18 +207,18 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Filter by kind.
-	comms, _ := s.ListClips(ctx, ClipFilter{Role: filler.Commercial})
+	comms, _ := s.ListClips(ctx, ClipFilter{Role: clips.Commercial})
 	if len(comms) != 3 {
 		t.Errorf("kind=commercial = %d, want 3", len(comms))
 	}
 	// Filter by audience + era.
 	// ⚠ Assert on Hash, not Path: identity is the hash (§10 V38c). Asserting the path here read
 	// as correct only while the fixture made the two equal.
-	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: filler.Kids, Era: 1992})
+	kids92, _ := s.ListClips(ctx, ClipFilter{Audience: clips.Kids, Era: 1992})
 	if len(kids92) != 1 || kids92[0].Hash != "c1" {
 		t.Errorf("kids+1992 = %+v, want just c1", ids2(kids92))
 	}
-	local, _ := s.ListClips(ctx, ClipFilter{GeographicScope: filler.GeographicLocal, Country: "us"})
+	local, _ := s.ListClips(ctx, ClipFilter{GeographicScope: pod.GeographicLocal, Country: "us"})
 	if len(local) != 1 || local[0].Hash != "c1" {
 		t.Errorf("US local geography = %+v, want just c1", ids2(local))
 	}
@@ -220,7 +226,7 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	updated, _ := s.GetClip(ctx, "c1")
-	if updated.GeographicScope != filler.GeographicNational || updated.Country != "CA" || updated.GeoEvidence != "operator" {
+	if updated.GeographicScope != pod.GeographicNational || updated.Country != "CA" || updated.GeoEvidence != "operator" {
 		t.Errorf("updated geography = %+v", updated.Clip)
 	}
 	// Untagged only.
@@ -245,14 +251,14 @@ func testClipNeedsDetailsAgreesWithSQL(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	fixtures := []Clip{
-		sampleClip("full", "full.mp4", filler.Commercial, 1991, filler.Kids, "toys"),
-		sampleClip("no-era", "no-era.mp4", filler.Commercial, 0, filler.Kids, "toys"),
-		sampleClip("no-aud", "no-aud.mp4", filler.Commercial, 1991, "", "toys"),
-		sampleClip("no-cat", "no-cat.mp4", filler.Commercial, 1991, filler.Kids, ""),
-		sampleClip("bare", "bare.mp4", filler.Commercial, 0, "", ""),
-		sampleClip("bumper", "bumper.mp4", filler.Bumper, 0, "", ""),
-		sampleClip("station", "station.mp4", filler.StationID, 0, "", ""),
-		sampleClip("psa", "psa.mp4", filler.PSA, 1991, "", ""),
+		sampleClip("full", "full.mp4", clips.Commercial, 1991, clips.Kids, "toys"),
+		sampleClip("no-era", "no-era.mp4", clips.Commercial, 0, clips.Kids, "toys"),
+		sampleClip("no-aud", "no-aud.mp4", clips.Commercial, 1991, "", "toys"),
+		sampleClip("no-cat", "no-cat.mp4", clips.Commercial, 1991, clips.Kids, ""),
+		sampleClip("bare", "bare.mp4", clips.Commercial, 0, "", ""),
+		sampleClip("bumper", "bumper.mp4", clips.Bumper, 0, "", ""),
+		sampleClip("station", "station.mp4", clips.StationID, 0, "", ""),
+		sampleClip("psa", "psa.mp4", clips.PSA, 1991, "", ""),
 	}
 	for _, c := range fixtures {
 		putClip(t, s, c)
@@ -291,8 +297,8 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
-	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", filler.Commercial, 0, "", ""))
-	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", filler.Bumper, 1992, filler.General, ""))
+	_ = s.UpsertClip(ctx, sampleClip("u1", "untagged.mp4", clips.Commercial, 0, "", ""))
+	_ = s.UpsertClip(ctx, sampleClip("keep", "keep.mp4", clips.Bumper, 1992, clips.General, ""))
 
 	// Tag the untagged clip (the AI-tagging job path).
 	if err := s.SetClipTags(ctx, "u1", []string{"cereal"}); err != nil {
@@ -302,7 +308,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	got, _ := s.GetClip(ctx, "u1")
-	if got.Era != 1994 || got.Audience != filler.Kids || got.Category != "cereal" {
+	if got.Era != 1994 || got.Audience != clips.Kids || got.Category != "cereal" {
 		t.Errorf("tag update didn't persist: %+v", got.Clip)
 	}
 	if !got.Tagged() {
@@ -341,9 +347,9 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 func testClipNameSearch(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
-	putClip(t, s, sampleClip("c1", "Brightfield Crunchlings", filler.Commercial, 1992, filler.Kids, "cereal"))
-	putClip(t, s, sampleClip("c2", "Shell Squad figures", filler.Commercial, 1994, filler.Kids, "toys"))
-	putClip(t, s, sampleClip("c3", "100% Juice", filler.Commercial, 1993, filler.Kids, "drinks"))
+	putClip(t, s, sampleClip("c1", "Brightfield Crunchlings", clips.Commercial, 1992, clips.Kids, "cereal"))
+	putClip(t, s, sampleClip("c2", "Shell Squad figures", clips.Commercial, 1994, clips.Kids, "toys"))
+	putClip(t, s, sampleClip("c3", "100% Juice", clips.Commercial, 1993, clips.Kids, "drinks"))
 
 	names := func(f ClipFilter) []string {
 		t.Helper()
@@ -392,7 +398,7 @@ func testClipPlayCounters(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	mustSaveChannel(t, s, sampleChannel("channel-1", 1, time.Time{}))
 
-	c := sampleClip("1994/toys.mp4", "Shell Squad toys", filler.Commercial, 1994, filler.Kids, "toys")
+	c := sampleClip("1994/toys.mp4", "Shell Squad toys", clips.Commercial, 1994, clips.Kids, "toys")
 	c.Thumbnail = "1994/toys.jpg"
 	// ⚠ The animated preview is a SEPARATE column, not derived from the still (V39, 00035). Both
 	// are asserted here because a column added to the INSERT and forgotten in the SELECT (or
@@ -477,7 +483,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	mustSaveChannel(t, s, sampleChannel("channel-a", 1, time.Time{}))
 	mustSaveChannel(t, s, sampleChannel("channel-b", 2, time.Time{}))
-	clip := sampleClip("rotation-hash", "rotation.mp4", filler.Commercial, 1994, filler.Kids, "toys")
+	clip := sampleClip("rotation-hash", "rotation.mp4", clips.Commercial, 1994, clips.Kids, "toys")
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
@@ -542,7 +548,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("break snapshot = %+v, want the history immediately before its cutoff", got)
 	}
 	// A tune-in on channel-b records, as the break airs, a clip that started before the break.
-	tuneIn := sampleClip("tune-in-hash", "tune-in.mp4", filler.Commercial, 1994, filler.Kids, "toys")
+	tuneIn := sampleClip("tune-in-hash", "tune-in.mp4", clips.Commercial, 1994, clips.Kids, "toys")
 	if _, err := s.RecordClipPlay(ctx, "channel-b", tuneIn.Hash, first.Add(-time.Minute), second.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -645,7 +651,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	if got := all[missing]; got.PlayCount != 1 || !got.LastPlayedAt.Equal(second) {
 		t.Fatalf("pruned clip exposure = %+v, want durable actual airing", got)
 	}
-	restored := sampleClip(missing, "restored.mp4", filler.Commercial, 1994, filler.Kids, "toys")
+	restored := sampleClip(missing, "restored.mp4", clips.Commercial, 1994, clips.Kids, "toys")
 	if err := s.UpsertClip(ctx, restored); err != nil {
 		t.Fatal(err)
 	}
@@ -686,7 +692,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	mustSaveChannel(t, s, sampleChannel("channel-1", 1, time.Time{}))
 
-	c := sampleClip("k1", "keyed.mp4", filler.Commercial, 0, "", "")
+	c := sampleClip("k1", "keyed.mp4", clips.Commercial, 0, "", "")
 	if c.Hash == c.Path {
 		t.Fatalf("fixture bug: hash and path are equal (%q) — this test cannot distinguish the "+
 			"two keys and neither can any other test in this file", c.Hash)
@@ -814,35 +820,35 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
 
-	old := sampleClip("old-content", "Burger Barn 1993", filler.Commercial, 1993, filler.Kids, "fast_food")
+	old := sampleClip("old-content", "Burger Barn 1993", clips.Commercial, 1993, clips.Kids, "fast_food")
 	old.ParentHash = "parent-reel"
 	old.Held = true
 	old.Transcript = "two all beef patties"
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
-	run := filler.AcquisitionRun{
-		ID: "identity-acquisition", Trigger: filler.AcquisitionSource, SourceID: "youtube:ads",
-		Status: filler.AcquisitionSuccess, Requested: 1, Fetched: 1,
+	run := acquisition.AcquisitionRun{
+		ID: "identity-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
+		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
 		StartedAt: now, CompletedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	artifact := filler.AcquisitionArtifact{
+	artifact := acquisition.Artifact{
 		ID: "identity-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
 		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=identity-artifact",
 		RemoteID: "identity-artifact", MediaPath: old.Path,
 		MediaSHA256: strings.Repeat("a", 64), MediaBytes: 42, ClipHash: old.Hash,
-		State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertClipFingerprint(ctx, old.Hash, "creative-test", frames(1, 2, 3)); err != nil {
 		t.Fatal(err)
 	}
-	child := sampleClip("child", "Child", filler.Commercial, 1993, filler.Kids, "toys")
+	child := sampleClip("child", "Child", clips.Commercial, 1993, clips.Kids, "toys")
 	child.ParentHash = old.Hash
 	if err := s.UpsertClip(ctx, child); err != nil {
 		t.Fatal(err)
@@ -851,9 +857,9 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetClipTags(ctx, old.Hash, []string{"cereal"}); err != nil {
 		t.Fatal(err)
 	}
-	pipeline := filler.ClipPipeline{
-		ClipHash: old.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	pipeline := pipelinestate.ClipPipeline{
+		ClipHash: old.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
 		t.Fatal(err)
@@ -898,7 +904,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if len(got.Tags) == 0 {
 		t.Error("taxonomy tags stayed behind on the old identity")
 	}
-	if row, found, err := s.GetClipPipeline(ctx, replacement.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
+	if row, found, err := s.GetClipPipeline(ctx, replacement.Hash); err != nil || !found || row.Stage != pipelinestate.StageTranscode {
 		t.Errorf("pipeline did not follow replacement: %+v, %v, %v", row, found, err)
 	}
 	if _, found, err := s.GetClipPipeline(ctx, old.Hash); err != nil || found {
@@ -944,7 +950,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	at := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
 
-	old := sampleClip("ready-old-bytes", "Soda Splash 1991", filler.Commercial, 1991, filler.Kids, "drinks")
+	old := sampleClip("ready-old-bytes", "Soda Splash 1991", clips.Commercial, 1991, clips.Kids, "drinks")
 	old.Held, old.UpdatedAt = true, at
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
@@ -963,23 +969,23 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	pipeline := filler.ClipPipeline{
-		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: filler.StageFinish,
-		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+	pipeline := pipelinestate.ClipPipeline{
+		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: pipelinestate.StageFinish,
+		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
 		EnrolledAt: at, UpdatedAt: at,
 	}
-	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
-		pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	for _, stage := range pipelinestate.StageOrder[:len(pipelinestate.StageOrder)-1] {
+		pipeline.Stages = append(pipeline.Stages, pipelinestate.StageRecord{Stage: stage, Status: pipelinestate.StatusDone, At: at})
 	}
 	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
 		t.Fatal(err)
 	}
-	pipeline.Status, pipeline.Disposition = filler.StatusDone, filler.DispositionReady
-	pipeline.Stages = append(pipeline.Stages, filler.StageRecord{Stage: filler.StageFinish, Status: filler.StatusDone, At: at})
+	pipeline.Status, pipeline.Disposition = pipelinestate.StatusDone, pipelinestate.DispositionReady
+	pipeline.Stages = append(pipeline.Stages, pipelinestate.StageRecord{Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, At: at})
 	if err := s.CommitFillerReady(ctx, filler.ReadyCommit{Pipeline: pipeline, Event: filler.ReadyEvent{
 		ID: "ready:" + old.Hash, ClipHash: old.Hash, AcquisitionID: pipeline.AcquisitionID,
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: pipeline.AcquisitionID},
-		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+		Placement:  clips.PlacementBreakBody, CreatedAt: at,
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1014,7 +1020,7 @@ func testAiringClipReplacement(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
-	old := sampleClip("airing-old-bytes", "Soda Splash 1991", filler.Commercial, 1991, filler.Kids, "drinks")
+	old := sampleClip("airing-old-bytes", "Soda Splash 1991", clips.Commercial, 1991, clips.Kids, "drinks")
 	old.UpdatedAt = at
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
@@ -1068,34 +1074,34 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_900_634_000, 0).UTC()
 
-	source := sampleClip("conditioning-source", "Reviewed child", filler.Commercial, 1993, filler.Kids, "food")
+	source := sampleClip("conditioning-source", "Reviewed child", clips.Commercial, 1993, clips.Kids, "food")
 	source.ParentHash = "retained-parent"
 	source.Transcript = "source-owned transcript"
 	source.UpdatedAt = now
 	if err := s.UpsertClip(ctx, source); err != nil {
 		t.Fatal(err)
 	}
-	run := filler.AcquisitionRun{
-		ID: "conditioning-acquisition", Trigger: filler.AcquisitionSource, SourceID: "youtube:ads",
-		Status: filler.AcquisitionSuccess, Requested: 1, Fetched: 1,
+	run := acquisition.AcquisitionRun{
+		ID: "conditioning-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
+		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
 		StartedAt: now, CompletedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	artifact := filler.AcquisitionArtifact{
+	artifact := acquisition.Artifact{
 		ID: "conditioning-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
 		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=conditioning-artifact",
 		RemoteID: "conditioning-artifact", MediaPath: source.Path,
 		MediaSHA256: strings.Repeat("b", 64), MediaBytes: 84, ClipHash: source.Hash,
-		State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+		State: acquisition.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
 	}
-	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-		ClipHash: source.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+		ClipHash: source.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1113,7 +1119,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, reconstructed); err != nil {
 		t.Fatal(err)
 	}
-	publication := filler.ConditioningPublication{
+	publication := asset.ConditioningPublication{
 		State: "pending", Owner: "0123456789abcdef0123456789abcdef",
 		SourceHash: source.Hash, TargetHash: target.Hash,
 	}
@@ -1133,7 +1139,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if got.Path != target.Path || got.DurationMs != target.DurationMs || got.Quality != target.Quality {
 		t.Fatalf("adopted target lost transformed facts: %+v", got)
 	}
-	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != pipelinestate.StageTranscode {
 		t.Fatalf("adopted target pipeline = %+v, found=%v err=%v", pipeline, found, err)
 	}
 	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, target.Path, target.Hash)
@@ -1151,7 +1157,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc) {
 	for _, tc := range []struct {
 		name          string
-		mutateMarker  func(*filler.ConditioningPublication, *Clip)
+		mutateMarker  func(*asset.ConditioningPublication, *Clip)
 		mutateSource  func(*Clip)
 		mutateTarget  func(*Clip)
 		withTargetRow bool
@@ -1159,19 +1165,19 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 	}{
 		{
 			name: "owner is absent",
-			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+			mutateMarker: func(publication *asset.ConditioningPublication, _ *Clip) {
 				publication.Owner = ""
 			},
 		},
 		{
 			name: "marker target differs from staged target",
-			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+			mutateMarker: func(publication *asset.ConditioningPublication, _ *Clip) {
 				publication.TargetHash = "other-conditioned-target"
 			},
 		},
 		{
 			name: "marker collapses source and target ownership",
-			mutateMarker: func(publication *filler.ConditioningPublication, _ *Clip) {
+			mutateMarker: func(publication *asset.ConditioningPublication, _ *Clip) {
 				publication.TargetHash = publication.SourceHash
 			},
 		},
@@ -1210,7 +1216,7 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 			ctx := context.Background()
 			now := time.Unix(1_900_634_100, 0).UTC()
 
-			source := sampleClip("conditioning-ambiguous-source", "Reviewed child", filler.Commercial, 1993, filler.Kids, "food")
+			source := sampleClip("conditioning-ambiguous-source", "Reviewed child", clips.Commercial, 1993, clips.Kids, "food")
 			source.ParentHash = "retained-parent"
 			source.UpdatedAt = now
 			target := source
@@ -1218,7 +1224,7 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 			target.Path = clipPathFor(target.Hash)
 			target.DurationMs = 30_033
 			target.Quality = "480p"
-			publication := filler.ConditioningPublication{
+			publication := asset.ConditioningPublication{
 				State: "pending", Owner: "0123456789abcdef0123456789abcdef",
 				SourceHash: source.Hash, TargetHash: target.Hash,
 			}
@@ -1234,9 +1240,9 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 				t.Fatal(err)
 			}
 			if source.Hash == publication.SourceHash {
-				if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-					ClipHash: publication.SourceHash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-					Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+				if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+					ClipHash: publication.SourceHash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+					Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 				}); err != nil {
 					t.Fatal(err)
 				}
@@ -1260,7 +1266,7 @@ func testConditioningPublicationFailsClosed(t *testing.T, newStore NewStoreFunc)
 				if err != nil || got.Hash != source.Hash || got.ParentHash != source.ParentHash || got.Path != source.Path {
 					t.Fatalf("ambiguous publication changed source evidence: %+v, %v", got, err)
 				}
-				if pipeline, found, err := s.GetClipPipeline(ctx, publication.SourceHash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
+				if pipeline, found, err := s.GetClipPipeline(ctx, publication.SourceHash); err != nil || !found || pipeline.Stage != pipelinestate.StageTranscode {
 					t.Fatalf("ambiguous publication lost source reference: %+v, found=%v, err=%v", pipeline, found, err)
 				}
 			}
@@ -1283,7 +1289,7 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
 
-	clip := sampleClip("unchanged-content", "Already normalized", filler.Commercial, 1995, filler.General, "")
+	clip := sampleClip("unchanged-content", "Already normalized", clips.Commercial, 1995, clips.General, "")
 	clip.Path = "un/ch/unchanged-content.mkv"
 	clip.TunarrProgramID = "old-program"
 	if err := s.UpsertClip(ctx, clip); err != nil {
@@ -1292,9 +1298,9 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClipFingerprint(ctx, clip.Hash, "creative-test", frames(1, 2, 3)); err != nil {
 		t.Fatal(err)
 	}
-	pipeline := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageTranscode, Status: filler.StatusRunning,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	pipeline := pipelinestate.ClipPipeline{
+		ClipHash: clip.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, pipeline); err != nil {
 		t.Fatal(err)
@@ -1337,7 +1343,7 @@ func testClipIdentityReplacementSameHash(t *testing.T, newStore NewStoreFunc) {
 	if got.TunarrProgramID != "canonical-program" {
 		t.Errorf("same-path retry cleared Tunarr program id: %q", got.TunarrProgramID)
 	}
-	if row, found, err := s.GetClipPipeline(ctx, clip.Hash); err != nil || !found || row.Stage != filler.StageTranscode {
+	if row, found, err := s.GetClipPipeline(ctx, clip.Hash); err != nil || !found || row.Stage != pipelinestate.StageTranscode {
 		t.Errorf("same-identity pipeline changed: %+v, found=%v err=%v", row, found, err)
 	}
 	if cached, found, err := cachedClipFingerprint(ctx, s, clip.Hash, "creative-test"); err != nil || !found || len(cached) != 3 {
@@ -1350,25 +1356,25 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	rows := []filler.ClipPipeline{
-		{ClipHash: "due", Stage: filler.StageProbe, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(-time.Minute)},
-		{ClipHash: "active", Stage: filler.StageTranscode, Status: filler.StatusRunning,
-			Disposition: filler.DispositionRunning},
-		{ClipHash: "backoff", Stage: filler.StageVision, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
-		{ClipHash: "deferred", Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, NextRun: now.Add(time.Hour)},
-		{ClipHash: "review", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReview},
-		{ClipHash: "ready", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReady},
-		{ClipHash: "complete", Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionComplete},
-		{ClipHash: "rejected", Stage: filler.StageTranscode, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable},
-		{ClipHash: "dismissed", Stage: filler.StageVision, Status: filler.StatusDone,
-			Disposition: filler.DispositionDismissed},
+	rows := []pipelinestate.ClipPipeline{
+		{ClipHash: "due", Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(-time.Minute)},
+		{ClipHash: "active", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusRunning,
+			Disposition: pipelinestate.DispositionRunning},
+		{ClipHash: "backoff", Stage: pipelinestate.StageVision, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{ClipHash: "deferred", Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, NextRun: now.Add(time.Hour)},
+		{ClipHash: "review", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReview},
+		{ClipHash: "ready", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReady},
+		{ClipHash: "complete", Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionComplete},
+		{ClipHash: "rejected", Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRejected, RejectReason: pipelinestate.ReasonUnplayable},
+		{ClipHash: "dismissed", Stage: pipelinestate.StageVision, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionDismissed},
 	}
 	for i := range rows {
 		rows[i].EnrolledAt, rows[i].UpdatedAt = now, now
@@ -1380,7 +1386,7 @@ func testClipPipelineOverview(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filler.PipelineOverview{
+	want := pipelinestate.PipelineOverview{
 		Runnable: 1, InProgress: 1, Scheduled: 2, NeedsDecision: 1,
 		Ready: 1, Complete: 1, Rejected: 1, Dismissed: 1, Recoverable: 1,
 	}
@@ -1394,47 +1400,47 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	older := filler.AcquisitionRun{
-		ID: "acq-old", Trigger: filler.AcquisitionScheduled, SourceID: "archive:classic",
-		Status: filler.AcquisitionRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
+	older := acquisition.AcquisitionRun{
+		ID: "acq-old", Trigger: acquisition.TriggerScheduled, SourceID: "archive:classic",
+		Status: acquisition.RunRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
 	}
-	newer := filler.AcquisitionRun{
-		ID: "acq-new", Trigger: filler.AcquisitionPull, SourceID: "archive:vault", PullID: "pull-7",
-		Status: filler.AcquisitionSuccess, Requested: 4, Fetched: 2, Skipped: 1, Failed: 1,
+	newer := acquisition.AcquisitionRun{
+		ID: "acq-new", Trigger: acquisition.TriggerPull, SourceID: "archive:vault", PullID: "pull-7",
+		Status: acquisition.RunSuccess, Requested: 4, Fetched: 2, Skipped: 1, Failed: 1,
 		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
 	}
 	// Establish the pull-bound run through the same durable approval boundary.
-	approval := filler.Pull{ID: newer.PullID, Status: filler.PullPending, CreatedAt: newer.StartedAt,
-		Plan: []filler.PullPlanRow{{SourceID: "archive:vault"}, {SourceID: "archive:vault"}, {SourceID: "archive:vault"}, {SourceID: "archive:vault"}}}
+	approval := acquisition.Pull{ID: newer.PullID, Status: acquisition.PullPending, CreatedAt: newer.StartedAt,
+		Plan: []acquisition.PullPlanRow{{SourceID: "archive:vault"}, {SourceID: "archive:vault"}, {SourceID: "archive:vault"}, {SourceID: "archive:vault"}}}
 	if err := s.UpsertPull(ctx, approval); err != nil {
 		t.Fatal(err)
 	}
-	approval.Status, approval.DecidedAt = filler.PullApproved, newer.StartedAt
-	initial := filler.AcquisitionRun{ID: newer.ID, Trigger: newer.Trigger, SourceID: newer.SourceID, PullID: newer.PullID, Status: filler.AcquisitionQueued, Requested: newer.Requested, StartedAt: newer.StartedAt, UpdatedAt: newer.StartedAt}
+	approval.Status, approval.DecidedAt = acquisition.PullApproved, newer.StartedAt
+	initial := acquisition.AcquisitionRun{ID: newer.ID, Trigger: newer.Trigger, SourceID: newer.SourceID, PullID: newer.PullID, Status: acquisition.RunQueued, Requested: newer.Requested, StartedAt: newer.StartedAt, UpdatedAt: newer.StartedAt}
 	if err := s.CommitPullApproval(ctx, approval, initial); err != nil {
 		t.Fatal(err)
 	}
-	for _, run := range []filler.AcquisitionRun{older, newer} {
+	for _, run := range []acquisition.AcquisitionRun{older, newer} {
 		if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 			t.Fatal(err)
 		}
 	}
-	queued := filler.AcquisitionRun{
-		ID: "acq-queued", Trigger: filler.AcquisitionManual, Status: filler.AcquisitionQueued,
+	queued := acquisition.AcquisitionRun{
+		ID: "acq-queued", Trigger: acquisition.TriggerManual, Status: acquisition.RunQueued,
 		Requested: 1, StartedAt: now.Add(-2 * time.Hour), UpdatedAt: now.Add(-2 * time.Hour),
 	}
 	if err := s.UpsertAcquisitionRun(ctx, queued); err != nil {
 		t.Fatal(err)
 	}
-	pipelines := []filler.ClipPipeline{
-		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: filler.StageVision, Status: filler.StatusRunning,
-			Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "review", AcquisitionID: newer.ID, Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: filler.StageFinish, Status: filler.StatusDone,
-			Disposition: filler.DispositionReady, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: filler.StageProbe, Status: filler.StatusFailed,
-			Disposition: filler.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
+	pipelines := []pipelinestate.ClipPipeline{
+		{ClipHash: "preparing", AcquisitionID: newer.ID, Stage: pipelinestate.StageVision, Status: pipelinestate.StatusRunning,
+			Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "review", AcquisitionID: newer.ID, Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "ready", AcquisitionID: newer.ID, Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone,
+			Disposition: pipelinestate.DispositionReady, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: "rejected", AcquisitionID: newer.ID, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusFailed,
+			Disposition: pipelinestate.DispositionRejected, EnrolledAt: now, UpdatedAt: now},
 	}
 	for _, row := range pipelines {
 		if err := s.UpsertClipPipeline(ctx, row); err != nil {
@@ -1443,17 +1449,17 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	}
 	// #749: "ready" was downloaded for a coverage gap and "rejected" was split out of it, so both
 	// count toward that gap; "review" was an unsteered download of the same run.
-	for _, a := range []filler.AcquisitionArtifact{
+	for _, a := range []acquisition.Artifact{
 		{ID: "gap-art", ClipHash: "ready", Gap: "era:1990-1999", MediaPath: "ready.mp4"},
 		{ID: "plain-art", ClipHash: "review", MediaPath: "review.mp4"},
 	} {
 		a.AcquisitionID, a.Provider, a.SourceURL = newer.ID, "archive", "https://archive.org/details/"+a.ID
-		a.MediaSHA256, a.MediaBytes, a.State, a.CompletedAt, a.UpdatedAt = strings.Repeat("d", 64), 1, filler.ArtifactConsumed, now, now
-		if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{a}); err != nil {
+		a.MediaSHA256, a.MediaBytes, a.State, a.CompletedAt, a.UpdatedAt = strings.Repeat("d", 64), 1, acquisition.ArtifactConsumed, now, now
+		if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{a}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	split := sampleClip("rejected", "rejected.mp4", filler.Commercial, 1994, filler.General, "")
+	split := sampleClip("rejected", "rejected.mp4", clips.Commercial, 1994, clips.General, "")
 	split.ParentHash = "ready"
 	if err := s.UpsertClip(ctx, split); err != nil {
 		t.Fatal(err)
@@ -1466,20 +1472,20 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	if len(runs) != 1 || runs[0].ID != newer.ID {
 		t.Fatalf("latest acquisition = %+v, want only %s", runs, newer.ID)
 	}
-	wantOutcome := filler.AcquisitionOutcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Ready: 1, Rejected: 1}
+	wantOutcome := acquisition.Outcome{Enrolled: 4, Preparing: 1, NeedsDecision: 1, Ready: 1, Rejected: 1}
 	if runs[0].Outcome != wantOutcome {
 		t.Fatalf("outcome = %+v, want %+v", runs[0].Outcome, wantOutcome)
 	}
 	if runs[0].PullID != "pull-7" || runs[0].Fetched != 2 || !runs[0].CompletedAt.Equal(now) {
 		t.Fatalf("run facts did not round-trip: %+v", runs[0])
 	}
-	wantYield := []filler.AcquisitionGapYield{{Gap: "era:1990-1999", Downloads: 1,
-		Outcome: filler.AcquisitionOutcome{Enrolled: 2, Ready: 1, Rejected: 1}}}
+	wantYield := []acquisition.GapYield{{Gap: "era:1990-1999", Downloads: 1,
+		Outcome: acquisition.Outcome{Enrolled: 2, Ready: 1, Rejected: 1}}}
 	if !reflect.DeepEqual(runs[0].GapYield, wantYield) {
 		t.Fatalf("gap yield = %+v, want %+v", runs[0].GapYield, wantYield)
 	}
 
-	newer.Status, newer.Error, newer.UpdatedAt = filler.AcquisitionError, "catalogue failed", now.Add(time.Minute)
+	newer.Status, newer.Error, newer.UpdatedAt = acquisition.RunError, "catalogue failed", now.Add(time.Minute)
 	if err := s.UpsertAcquisitionRun(ctx, newer); err != nil {
 		t.Fatal(err)
 	}
@@ -1487,7 +1493,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != filler.AcquisitionError || got.Error != "catalogue failed" || got.Outcome != wantOutcome {
+	if got.Status != acquisition.RunError || got.Error != "catalogue failed" || got.Outcome != wantOutcome {
 		t.Fatalf("updated acquisition = %+v", got)
 	}
 	if _, err := s.GetAcquisitionRun(ctx, "missing", now); !errors.Is(err, ErrNotFound) {
@@ -1503,7 +1509,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if run.Status != filler.AcquisitionError || run.Error == "" || !run.CompletedAt.Equal(recoveredAt) {
+		if run.Status != acquisition.RunError || run.Error == "" || !run.CompletedAt.Equal(recoveredAt) {
 			t.Fatalf("recovered %s = %+v", id, run)
 		}
 	}
@@ -1521,14 +1527,14 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	run := filler.AcquisitionRun{
-		ID: "acq-manifest", Trigger: filler.AcquisitionSource, SourceID: "archive:classic",
-		Status: filler.AcquisitionRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
+	run := acquisition.AcquisitionRun{
+		ID: "acq-manifest", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
+		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	artifacts := []filler.AcquisitionArtifact{
+	artifacts := []acquisition.Artifact{
 		{
 			ID: "artifact-one", AcquisitionID: run.ID, SourceID: run.SourceID,
 			Provider: "youtube", SourceURL: "https://youtube.com/watch?v=artifact-one", RemoteID: "artifact-one",
@@ -1536,20 +1542,20 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 			SidecarPath: "one.info.json", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 42,
 			ProviderArchiveEntry: "youtube artifact-one", ProviderArchiveCommitted: true,
 			Gap:   "era:1990-1999", // #749: which coverage gap this download was for
-			State: filler.ArtifactStaged, CompletedAt: now, UpdatedAt: now,
+			State: acquisition.ArtifactStaged, CompletedAt: now, UpdatedAt: now,
 		},
 		{
 			ID: "artifact-two", AcquisitionID: run.ID, SourceID: run.SourceID,
 			Provider: "archive", SourceURL: "https://archive.org/details/two", RemoteID: "two",
 			StagingPath: ".loomarr-acquisitions/acq-manifest/two.mp4", MediaPath: "two.mp4",
 			SidecarPath: "two.info.json", MediaSHA256: strings.Repeat("b", 64), MediaBytes: 84,
-			State: filler.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
+			State: acquisition.ArtifactPublished, CompletedAt: now, UpdatedAt: now,
 		},
 	}
 	if err := s.UpsertAcquisitionArtifacts(ctx, artifacts); err != nil {
 		t.Fatal(err)
 	}
-	page, err := s.ListRecoverableAcquisitionArtifactsAfter(ctx, filler.AcquisitionArtifactCursor{UpdatedAt: now, ID: artifacts[0].ID}, 10)
+	page, err := s.ListRecoverableAcquisitionArtifactsAfter(ctx, acquisition.ArtifactCursor{UpdatedAt: now, ID: artifacts[0].ID}, 10)
 	if err != nil || len(page) != 1 || page[0].ID != artifacts[1].ID {
 		t.Fatalf("recoverable page after first artifact = %+v, %v", page, err)
 	}
@@ -1559,7 +1565,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	}
 	artifacts[0].ClipHash = strings.Repeat("c", 64)
 	artifacts[0].MediaPath = "aa/bb/" + artifacts[0].ClipHash + ".mp4"
-	artifacts[0].State = filler.ArtifactConsumed
+	artifacts[0].State = acquisition.ArtifactConsumed
 	artifacts[0].UpdatedAt = now.Add(time.Minute)
 	if err := s.UpsertAcquisitionArtifacts(ctx, artifacts[:1]); err != nil {
 		t.Fatal(err)
@@ -1579,8 +1585,8 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remoteStates[(filler.RemoteIdentity{Provider: "youtube", SourceID: run.SourceID, RemoteID: "artifact-one"}).Key()] != filler.RemoteCatalogued ||
-		remoteStates[(filler.RemoteIdentity{Provider: "archive", SourceID: run.SourceID, RemoteID: "two"}).Key()] != filler.RemoteQueued {
+	if remoteStates[(acquisition.RemoteIdentity{Provider: "youtube", SourceID: run.SourceID, RemoteID: "artifact-one"}).Key()] != acquisition.RemoteCatalogued ||
+		remoteStates[(acquisition.RemoteIdentity{Provider: "archive", SourceID: run.SourceID, RemoteID: "two"}).Key()] != acquisition.RemoteQueued {
 		t.Fatalf("remote acquisition states = %v", remoteStates)
 	}
 	runs, err := s.ListAcquisitionRuns(ctx, 10, now)
@@ -1594,7 +1600,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	invalid := artifacts[1]
 	invalid.ID = "invalid"
 	invalid.MediaPath = "../escape.mp4"
-	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{invalid}); err == nil {
+	if err := s.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{invalid}); err == nil {
 		t.Fatal("invalid manifest reached persistence")
 	}
 }
@@ -1663,23 +1669,23 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	clip := clipAt("retry/failed.mp4", "Failed encode", filler.Commercial, 30_000)
+	clip := clipAt("retry/failed.mp4", "Failed encode", clips.Commercial, 30_000)
 	if err := s.UpsertClip(ctx, Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.SetClipsRemoved(ctx, []string{clip.Path}, now); err != nil {
 		t.Fatal(err)
 	}
-	failed := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageTranscode, Status: filler.StatusFailed,
-		Disposition: filler.DispositionRejected, RejectReason: filler.ReasonUnplayable,
+	failed := pipelinestate.ClipPipeline{
+		ClipHash: clip.Hash, Stage: pipelinestate.StageTranscode, Status: pipelinestate.StatusFailed,
+		Disposition: pipelinestate.DispositionRejected, RejectReason: pipelinestate.ReasonUnplayable,
 		Attempts: filler.MaxAttempts, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, failed); err != nil {
 		t.Fatal(err)
 	}
 	retry := failed
-	retry.Status, retry.Disposition, retry.Attempts = filler.StatusQueued, filler.DispositionRunning, 0
+	retry.Status, retry.Disposition, retry.Attempts = pipelinestate.StatusQueued, pipelinestate.DispositionRunning, 0
 	retry.RejectReason, retry.ForceRun, retry.UpdatedAt = "", true, now.Add(time.Minute)
 	if err := s.RetryClipPipeline(ctx, failed, retry, true); err != nil {
 		t.Fatal(err)
@@ -1695,7 +1701,7 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("restored clip = removed:%v held:%v, want present and held", got.RemovedAt, got.Held)
 	}
 	row, found, err := s.GetClipPipeline(ctx, clip.Hash)
-	if err != nil || !found || row.Status != filler.StatusQueued || row.Disposition != filler.DispositionRunning || !row.ForceRun {
+	if err != nil || !found || row.Status != pipelinestate.StatusQueued || row.Disposition != pipelinestate.DispositionRunning || !row.ForceRun {
 		t.Fatalf("retry row = %+v found=%v err=%v", row, found, err)
 	}
 }
@@ -1706,8 +1712,8 @@ func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)
 	ctx := context.Background()
-	one := sampleClip("fingerprint-one", "One", filler.Commercial, 1993, filler.General, "")
-	two := sampleClip("fingerprint-two", "Two", filler.Commercial, 1994, filler.General, "")
+	one := sampleClip("fingerprint-one", "One", clips.Commercial, 1993, clips.General, "")
+	two := sampleClip("fingerprint-two", "Two", clips.Commercial, 1994, clips.General, "")
 	if err := s.UpsertClip(ctx, one); err != nil {
 		t.Fatal(err)
 	}
@@ -1759,8 +1765,8 @@ func testClipDefects(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
-	one := sampleClip("defects-one", "One", filler.Commercial, 1988, filler.General, "")
-	two := sampleClip("defects-two", "Two", filler.Commercial, 2012, filler.General, "")
+	one := sampleClip("defects-one", "One", clips.Commercial, 1988, clips.General, "")
+	two := sampleClip("defects-two", "Two", clips.Commercial, 2012, clips.General, "")
 	for _, c := range []Clip{one, two} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -1877,7 +1883,7 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 
 	// A composite (the recorded break) and two segments split out of it.
-	comp := sampleClip("break1", "wktl-1996.mp4", filler.Commercial, 1996, filler.General, "")
+	comp := sampleClip("break1", "wktl-1996.mp4", clips.Commercial, 1996, clips.General, "")
 	comp.DurationMs = 971_000
 	if err := s.UpsertClip(ctx, comp); err != nil {
 		t.Fatal(err)
@@ -1885,9 +1891,9 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SetClipComposite(ctx, comp.Hash, true, now); err != nil {
 		t.Fatal(err)
 	}
-	seg1 := sampleClip("seg1", "aw-root-beer.mp4", filler.Commercial, 1996, filler.General, "fast_food")
+	seg1 := sampleClip("seg1", "aw-root-beer.mp4", clips.Commercial, 1996, clips.General, "fast_food")
 	seg1.ParentHash = comp.Hash
-	seg2 := sampleClip("seg2", "drumstick-shack.mp4", filler.Commercial, 1996, filler.General, "fast_food")
+	seg2 := sampleClip("seg2", "drumstick-shack.mp4", clips.Commercial, 1996, clips.General, "fast_food")
 	seg2.ParentHash = comp.Hash
 	if err := s.UpsertClip(ctx, seg1); err != nil {
 		t.Fatal(err)
@@ -1955,7 +1961,7 @@ func testCompositeLineage(t *testing.T, newStore NewStoreFunc) {
 	// therefore survives even though the new detector did not reproduce it; seg1 is retired but
 	// remains recoverable as a tombstoned row. A newly accepted hash is restored if an earlier
 	// generation had already tombstoned it.
-	seg3 := sampleClip("seg3", "better-cut.mp4", filler.Commercial, 1996, filler.General, "drinks")
+	seg3 := sampleClip("seg3", "better-cut.mp4", clips.Commercial, 1996, clips.General, "drinks")
 	seg3.ParentHash = comp.Hash
 	if err := s.UpsertClip(ctx, seg3); err != nil {
 		t.Fatal(err)
@@ -1995,13 +2001,13 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
-	parent := sampleClip("atomic-parent", "atomic-parent.mp4", filler.Commercial, 1994, filler.General, "")
+	parent := sampleClip("atomic-parent", "atomic-parent.mp4", clips.Commercial, 1994, clips.General, "")
 	parent.Held = true
-	old := sampleClip("atomic-old", "atomic-old.mp4", filler.Commercial, 1994, filler.General, "")
+	old := sampleClip("atomic-old", "atomic-old.mp4", clips.Commercial, 1994, clips.General, "")
 	old.ParentHash = parent.Hash
-	first := sampleClip("atomic-first", "atomic-first.mp4", filler.Commercial, 1994, filler.General, "")
+	first := sampleClip("atomic-first", "atomic-first.mp4", clips.Commercial, 1994, clips.General, "")
 	first.ParentHash = parent.Hash
-	second := sampleClip("atomic-second", "atomic-second.mp4", filler.Commercial, 1994, filler.General, "")
+	second := sampleClip("atomic-second", "atomic-second.mp4", clips.Commercial, 1994, clips.General, "")
 	second.ParentHash = parent.Hash
 	for _, clip := range []Clip{parent, old, first, second} {
 		if err := s.UpsertClip(ctx, clip); err != nil {
@@ -2011,14 +2017,14 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.SetClipsRemoved(ctx, []string{first.Path, second.Path}, now); err != nil {
 		t.Fatal(err)
 	}
-	parentPipeline := filler.ClipPipeline{
-		ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, NextRun: now.Add(time.Hour),
+	parentPipeline := pipelinestate.ClipPipeline{
+		ClipHash: parent.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, NextRun: now.Add(time.Hour),
 		EnrolledAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Minute),
 	}
-	firstPipeline := filler.ClipPipeline{
-		ClipHash: first.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	firstPipeline := pipelinestate.ClipPipeline{
+		ClipHash: first.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, parentPipeline); err != nil {
 		t.Fatal(err)
@@ -2028,7 +2034,7 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	proposal := filler.SplitProposal{
 		ID: "atomic-proposal", ClipHash: parent.Hash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "first"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "first"}},
 	}
 	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -2059,11 +2065,11 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("failed completion changed parent: %+v, %v", gotParent, err)
 	}
 	gotParentPipeline, found, err := s.GetClipPipeline(ctx, parent.Hash)
-	if err != nil || !found || gotParentPipeline.Disposition != filler.DispositionReview {
+	if err != nil || !found || gotParentPipeline.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("failed completion changed parent pipeline: %+v, found=%v err=%v", gotParentPipeline, found, err)
 	}
 	gotFirstPipeline, found, err := s.GetClipPipeline(ctx, first.Hash)
-	if err != nil || !found || gotFirstPipeline.Disposition != filler.DispositionReview {
+	if err != nil || !found || gotFirstPipeline.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("failed completion activated first child: %+v, found=%v err=%v", gotFirstPipeline, found, err)
 	}
 	active, err := s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
@@ -2087,7 +2093,7 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("committed completion parent = %+v, %v", gotParent, err)
 	}
 	gotParentPipeline, found, err = s.GetClipPipeline(ctx, parent.Hash)
-	if err != nil || !found || gotParentPipeline.Disposition != filler.DispositionComplete {
+	if err != nil || !found || gotParentPipeline.Disposition != pipelinestate.DispositionComplete {
 		t.Fatalf("committed completion parent pipeline = %+v, found=%v err=%v", gotParentPipeline, found, err)
 	}
 	active, err = s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
@@ -2096,7 +2102,7 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 	}
 	for _, hash := range []string{first.Hash, second.Hash} {
 		pipeline, found, err := s.GetClipPipeline(ctx, hash)
-		if err != nil || !found || pipeline.Disposition != filler.DispositionRunning {
+		if err != nil || !found || pipeline.Disposition != pipelinestate.DispositionRunning {
 			t.Errorf("committed child pipeline %s = %+v, found=%v err=%v", hash, pipeline, found, err)
 		}
 	}
@@ -2105,11 +2111,11 @@ func testSplitConfirmationAtomic(t *testing.T, newStore NewStoreFunc) {
 func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFunc) {
 	for _, tc := range []struct {
 		name              string
-		parentDisposition *filler.Disposition
+		parentDisposition *pipelinestate.Disposition
 	}{
 		{name: "missing parent pipeline"},
-		{name: "parent already complete", parentDisposition: func() *filler.Disposition {
-			disposition := filler.DispositionComplete
+		{name: "parent already complete", parentDisposition: func() *pipelinestate.Disposition {
+			disposition := pipelinestate.DispositionComplete
 			return &disposition
 		}()},
 	} {
@@ -2117,11 +2123,11 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 			s := newStore(t)
 			ctx := context.Background()
 			now := time.Unix(1_900_100_000, 0).UTC()
-			parent := sampleClip("review-parent", "review-parent.mp4", filler.Commercial, 1994, filler.General, "")
+			parent := sampleClip("review-parent", "review-parent.mp4", clips.Commercial, 1994, clips.General, "")
 			parent.Held = true
-			old := sampleClip("review-old", "review-old.mp4", filler.Commercial, 1994, filler.General, "")
+			old := sampleClip("review-old", "review-old.mp4", clips.Commercial, 1994, clips.General, "")
 			old.ParentHash = parent.Hash
-			child := sampleClip("review-child", "review-child.mp4", filler.Commercial, 1994, filler.General, "")
+			child := sampleClip("review-child", "review-child.mp4", clips.Commercial, 1994, clips.General, "")
 			child.ParentHash = parent.Hash
 			for _, clip := range []Clip{parent, old, child} {
 				if err := s.UpsertClip(ctx, clip); err != nil {
@@ -2131,16 +2137,16 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 			if _, err := s.SetClipsRemoved(ctx, []string{child.Path}, now); err != nil {
 				t.Fatal(err)
 			}
-			childPipeline := filler.ClipPipeline{
-				ClipHash: child.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-				Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+			childPipeline := pipelinestate.ClipPipeline{
+				ClipHash: child.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+				Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 			}
 			if err := s.UpsertClipPipeline(ctx, childPipeline); err != nil {
 				t.Fatal(err)
 			}
 			if tc.parentDisposition != nil {
-				if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-					ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
+				if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+					ClipHash: parent.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
 					Disposition: *tc.parentDisposition, EnrolledAt: now, UpdatedAt: now,
 				}); err != nil {
 					t.Fatal(err)
@@ -2148,7 +2154,7 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 			}
 			proposal := filler.SplitProposal{
 				ID: "review-proposal", ClipHash: parent.Hash, CreatedAt: now,
-				Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
+				Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
 			}
 			if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 				t.Fatal(err)
@@ -2173,7 +2179,7 @@ func testSplitConfirmationRequiresReviewParent(t *testing.T, newStore NewStoreFu
 				t.Fatalf("failed completion changed held parent: %+v, %v", gotParent, err)
 			}
 			gotChildPipeline, found, err := s.GetClipPipeline(ctx, child.Hash)
-			if err != nil || !found || gotChildPipeline.Disposition != filler.DispositionReview {
+			if err != nil || !found || gotChildPipeline.Disposition != pipelinestate.DispositionReview {
 				t.Fatalf("failed completion activated child: %+v, found=%v err=%v", gotChildPipeline, found, err)
 			}
 			active, err := s.ListClips(ctx, ClipFilter{ParentHash: parent.Hash})
@@ -2190,8 +2196,8 @@ func testSplitConfirmationRefusesFiledParent(t *testing.T, newStore NewStoreFunc
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_200_000, 0).UTC()
-	parent := sampleClip("filed-parent", "filed-parent.mp4", filler.Commercial, 1994, filler.General, "")
-	child := sampleClip("filed-child", "filed-child.mp4", filler.Commercial, 1994, filler.General, "")
+	parent := sampleClip("filed-parent", "filed-parent.mp4", clips.Commercial, 1994, clips.General, "")
+	child := sampleClip("filed-child", "filed-child.mp4", clips.Commercial, 1994, clips.General, "")
 	child.ParentHash = parent.Hash
 	for _, clip := range []Clip{parent, child} {
 		if err := s.UpsertClip(ctx, clip); err != nil {
@@ -2201,11 +2207,11 @@ func testSplitConfirmationRefusesFiledParent(t *testing.T, newStore NewStoreFunc
 	if _, err := s.SetClipsRemoved(ctx, []string{child.Path}, now); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []filler.ClipPipeline{
-		{ClipHash: parent.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
-		{ClipHash: child.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-			Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+	for _, p := range []pipelinestate.ClipPipeline{
+		{ClipHash: parent.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now},
+		{ClipHash: child.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now},
 	} {
 		if err := s.UpsertClipPipeline(ctx, p); err != nil {
 			t.Fatal(err)
@@ -2213,7 +2219,7 @@ func testSplitConfirmationRefusesFiledParent(t *testing.T, newStore NewStoreFunc
 	}
 	proposal := filler.SplitProposal{
 		ID: "filed-proposal", ClipHash: parent.Hash, CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "child"}},
 	}
 	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -2244,7 +2250,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	now := time.Unix(1_901_000_000, 0).UTC()
 	proposal := filler.SplitProposal{
 		ID: "claim-proposal", ClipHash: "claim-parent", CreatedAt: now,
-		Segments: []filler.SplitSegment{{StartMs: 0, EndMs: 10_000, Name: "one"}},
+		Segments: []split.Segment{{StartMs: 0, EndMs: 10_000, Name: "one"}},
 	}
 	if err := s.UpsertSplitProposal(ctx, proposal); err != nil {
 		t.Fatal(err)
@@ -2258,11 +2264,11 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	}
 
 	changed := proposal
-	changed.Segments = []filler.SplitSegment{{StartMs: 10_000, EndMs: 20_000, Name: "two"}}
+	changed.Segments = []split.Segment{{StartMs: 10_000, EndMs: 20_000, Name: "two"}}
 	changed.Spawned = []string{"claim-child"}
-	childPipeline := filler.ClipPipeline{
-		ClipHash: "claim-child", Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionReview, EnrolledAt: now, UpdatedAt: now,
+	childPipeline := pipelinestate.ClipPipeline{
+		ClipHash: "claim-child", Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionReview, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, childPipeline); err != nil {
 		t.Fatal(err)
@@ -2295,7 +2301,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	if err := s.CompletePartialSplitConfirmation(ctx, partial); err == nil {
 		t.Fatal("partial completion succeeded without every staged child pipeline")
 	}
-	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != filler.DispositionReview {
+	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != pipelinestate.DispositionReview {
 		t.Fatalf("failed partial completion activated first child: %+v, found=%v err=%v", pipeline, found, err)
 	}
 	if got, err := s.GetSplitProposal(ctx, proposal.ID); err != nil || !reflect.DeepEqual(got.Segments, proposal.Segments) {
@@ -2309,7 +2315,7 @@ func testSplitProposalClaimFencesConfirmers(t *testing.T, newStore NewStoreFunc)
 	if err != nil || !reflect.DeepEqual(got.Segments, changed.Segments) {
 		t.Fatalf("winning partial completion = %+v, %v", got, err)
 	}
-	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != filler.DispositionRunning {
+	if pipeline, found, err := s.GetClipPipeline(ctx, "claim-child"); err != nil || !found || pipeline.Disposition != pipelinestate.DispositionRunning {
 		t.Fatalf("winning partial completion pipeline: %+v, found=%v err=%v", pipeline, found, err)
 	}
 	if _, err := s.AcquireSplitProposalClaim(ctx, proposal.ID, "owner-c", now.Add(2*time.Minute), now.Add(3*time.Minute)); err != nil {
@@ -2350,7 +2356,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal("seeded forest missing 'beer' — the seed did not load from SeedForest")
 	}
 	for _, hash := range []string{"clipA", "clipB"} {
-		c := sampleClip(hash, hash+".mp4", filler.Commercial, 0, "", "")
+		c := sampleClip(hash, hash+".mp4", clips.Commercial, 0, "", "")
 		c.Held = true
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
@@ -2381,7 +2387,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	realClip.Hash = "clipReal"
 	realClip.Path = "cr/clipReal.mp4"
 	realClip.Name = "Real"
-	realClip.Role = filler.Commercial
+	realClip.Role = clips.Commercial
 	realClip.DurationMs = 30000
 	if err := s.UpsertClip(ctx, realClip); err != nil {
 		t.Fatal(err)
@@ -2560,7 +2566,7 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: shadowTaxon}, now); err != nil {
 		t.Fatal(err)
 	}
-	shadowClip := Clip{Clip: clipAt("shadow.mp4", "Shadow", filler.Commercial, 30_000), UpdatedAt: now}
+	shadowClip := Clip{Clip: clipAt("shadow.mp4", "Shadow", clips.Commercial, 30_000), UpdatedAt: now}
 	if err := s.UpsertClip(ctx, shadowClip); err != nil {
 		t.Fatal(err)
 	}
@@ -2618,7 +2624,7 @@ func testAtomicTaxonomyEdit(t *testing.T, s Store, ctx context.Context, now time
 	if err := s.ApplyTaxonomyEdit(ctx, TaxonomyEdit{Create: true, Taxon: taxonomy.Taxon{Slug: "pilsner", Label: "Pilsner", Parent: "ale-family", Axis: taxonomy.AxisProduct}}, now); err != nil {
 		t.Fatal(err)
 	}
-	clipC := sampleClip("clipC", "clipC.mp4", filler.Commercial, 0, "", "")
+	clipC := sampleClip("clipC", "clipC.mp4", clips.Commercial, 0, "", "")
 	clipC.Held = true
 	if err := s.UpsertClip(ctx, clipC); err != nil {
 		t.Fatal(err)
@@ -2689,7 +2695,7 @@ func testClipCounts(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 
 	seed := func(id, source string, held bool, era int) {
-		c := sampleClip(id, id+".mp4", filler.Commercial, era, filler.Kids, "toys")
+		c := sampleClip(id, id+".mp4", clips.Commercial, era, clips.Kids, "toys")
 		c.Source = source
 		c.Held = held
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -2706,7 +2712,7 @@ func testClipCounts(t *testing.T, newStore NewStoreFunc) {
 		"catalog":  {},
 		"held":     {HeldOnly: true},
 		"untagged": {UntaggedOnly: true},
-		"by-kind":  {Role: filler.Commercial},
+		"by-kind":  {Role: clips.Commercial},
 	}
 	for name, f := range filters {
 		listed, err := s.ListClips(ctx, f)
@@ -2761,14 +2767,14 @@ func testClipLicense(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	licensed := Clip{Clip: filler.Clip{
+	licensed := Clip{Clip: clips.Clip{
 		Hash: "licensed.mp4",
-		Path: "licensed.mp4", Name: "Licensed", Role: filler.Commercial, DurationMs: 30000,
+		Path: "licensed.mp4", Name: "Licensed", Role: clips.Commercial, DurationMs: 30000,
 		License: "https://creativecommons.org/publicdomain/zero/1.0/",
 	}, UpdatedAt: now}
-	unknown := Clip{Clip: filler.Clip{
+	unknown := Clip{Clip: clips.Clip{
 		Hash: "unknown.mp4",
-		Path: "unknown.mp4", Name: "Unknown", Role: filler.Commercial, DurationMs: 30000,
+		Path: "unknown.mp4", Name: "Unknown", Role: clips.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
 	for _, c := range []Clip{licensed, unknown} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -2800,12 +2806,12 @@ func testClipNameSource(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	named := Clip{Clip: filler.Clip{
+	named := Clip{Clip: clips.Clip{
 		Hash: "named.mp4", Path: "named.mp4", Name: "Widgetmax Ad 1991", NameSource: clips.NameFromFilename,
-		Role: filler.Commercial, DurationMs: 30000,
+		Role: clips.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
-	unrecorded := Clip{Clip: filler.Clip{
-		Hash: "unrecorded.mp4", Path: "unrecorded.mp4", Name: "Unrecorded", Role: filler.Commercial, DurationMs: 30000,
+	unrecorded := Clip{Clip: clips.Clip{
+		Hash: "unrecorded.mp4", Path: "unrecorded.mp4", Name: "Unrecorded", Role: clips.Commercial, DurationMs: 30000,
 	}, UpdatedAt: now}
 	for _, c := range []Clip{named, unrecorded} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -2867,15 +2873,15 @@ func testClipHeld(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	at := time.Now().UTC().Truncate(time.Second)
 
-	filed := Clip{Clip: filler.Clip{
+	filed := Clip{Clip: clips.Clip{
 		Hash: "filed.mp4",
-		Path: "filed.mp4", Name: "Filed", Role: filler.Commercial, DurationMs: 30000,
-		Era: 1990, Audience: filler.Kids, Category: "toys",
+		Path: "filed.mp4", Name: "Filed", Role: clips.Commercial, DurationMs: 30000,
+		Era: 1990, Audience: clips.Kids, Category: "toys",
 	}, UpdatedAt: at}
-	held := Clip{Clip: filler.Clip{
+	held := Clip{Clip: clips.Clip{
 		Hash: "held.mp4",
-		Path: "held.mp4", Name: "Held", Role: filler.Commercial, DurationMs: 30000,
-		Era: 1990, Audience: filler.Kids, Category: "toys", Held: true,
+		Path: "held.mp4", Name: "Held", Role: clips.Commercial, DurationMs: 30000,
+		Era: 1990, Audience: clips.Kids, Category: "toys", Held: true,
 	}, UpdatedAt: at}
 	for _, c := range []Clip{filed, held} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -3035,7 +3041,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		ID: "src-1", Kind: "archive", URI: "conformance_fixture_collection",
 		Label:     "Classic TV commercials",
 		License:   "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-		Geography: filler.Geography{Country: "US"},
+		Geography: pod.Geography{Country: "US"},
 		// ⚠ Only ~8% of archive items declare a licence, so the empty case below is the
 		// common one — both are covered.
 		CreatedAt: created,
@@ -3097,10 +3103,10 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if added[0].Geography != src.Geography {
 		t.Errorf("source geography = %+v, want %+v", added[0].Geography, src.Geography)
 	}
-	if err := s.SetFillerSourceGeography(ctx, "src-1", filler.Geography{Country: "ca"}); err != nil {
+	if err := s.SetFillerSourceGeography(ctx, "src-1", pod.Geography{Country: "ca"}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := findSource(t, s, "src-1"); got.Geography != (filler.Geography{Country: "CA"}) {
+	if got, _ := findSource(t, s, "src-1"); got.Geography != (pod.Geography{Country: "CA"}) {
 		t.Errorf("updated source geography = %+v", got.Geography)
 	}
 	if added[1].License != "" {
@@ -3201,10 +3207,10 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil); err != nil || claimed {
 		t.Fatalf("overlapping source check claim = %v, %v, want false/nil", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), filler.SourceCheckCompletion{CheckedAt: checked}); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), acquisition.SourceCheckCompletion{CheckedAt: checked}); !errors.Is(err, acquisition.ErrSourceCheckClaimLost) {
 		t.Fatalf("stale source check completion = %v, want claim lost", err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, filler.SourceCheckCompletion{CheckedAt: checked}); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, acquisition.SourceCheckCompletion{CheckedAt: checked}); err != nil {
 		t.Fatal(err)
 	}
 	if !src1(t, s).LastCheckedAt.Equal(checked) {
@@ -3235,7 +3241,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("retry source check claim = %v, %v", claimed, err)
 	}
 	checked = retryAt.Add(time.Minute)
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, filler.SourceCheckCompletion{CheckedAt: checked}); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, acquisition.SourceCheckCompletion{CheckedAt: checked}); err != nil {
 		t.Fatal(err)
 	}
 	recoveredSource := src1(t, s)
@@ -3308,9 +3314,9 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// ⚠ Deleting a source must NOT delete its clips: they are real files already tagged and
 	// possibly pinned into a channel, and forgetting where something came from is not a
 	// reason to throw it away.
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+	if err := s.UpsertClip(ctx, Clip{Clip: clips.Clip{
 		Hash: "from-src-1.mp4",
-		Path: "from-src-1.mp4", Name: "From src 1", Role: filler.Commercial, DurationMs: 30000,
+		Path: "from-src-1.mp4", Name: "From src 1", Role: clips.Commercial, DurationMs: 30000,
 		Source: "archive", License: src.License,
 	}, UpdatedAt: created}); err != nil {
 		t.Fatal(err)
@@ -3354,7 +3360,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !claimed {
 		t.Fatalf("restart source success claim = %v, %v", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, filler.SourceCheckCompletion{
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, acquisition.SourceCheckCompletion{
 		CheckedAt: restartChecked,
 		Checkpoint: source.Checkpoint{
 			Cursor: "video-10", PendingWatermark: "video-1", Watermark: "prior-video",
@@ -3374,7 +3380,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !claimed {
 		t.Fatalf("continuation source check claim = %v, %v", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, continuedLease, filler.SourceCheckCompletion{
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, continuedLease, acquisition.SourceCheckCompletion{
 		CheckedAt:  continuedAt,
 		Checkpoint: source.Checkpoint{Watermark: "video-1"},
 		Outcomes:   source.Outcomes{source.OutcomeTooShort: 2},
@@ -3423,7 +3429,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		_ = reopened.Close()
 		t.Fatalf("new sweep claim after restart = %v, %v", claimed, err)
 	}
-	if err := reopened.CompleteFillerSourceCheck(ctx, restartSource.ID, newSweepLease, filler.SourceCheckCompletion{
+	if err := reopened.CompleteFillerSourceCheck(ctx, restartSource.ID, newSweepLease, acquisition.SourceCheckCompletion{
 		CheckedAt: newSweepAt, Checkpoint: source.Checkpoint{Watermark: "new-video"},
 		ReplaceOutcomes: true,
 		Outcomes:        source.Outcomes{source.OutcomeLive: 1},
@@ -3604,16 +3610,16 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	created := time.Now().UTC().Truncate(time.Second)
 
-	p := filler.Pull{
+	p := acquisition.Pull{
 		ID: "pull_1", Title: "Top up the 1990s", Reason: "Saturday Mornings falls back to bumpers.",
-		ProposedBy: "admin-1", Status: filler.PullPending, CreatedAt: created,
-		Intent: filler.AcquisitionIntent{Version: filler.AcquisitionIntentVersion, EraStart: 1990, EraEnd: 1999, Count: 2},
-		Plan: []filler.PullPlanRow{
+		ProposedBy: "admin-1", Status: acquisition.PullPending, CreatedAt: created,
+		Intent: acquisition.AcquisitionIntent{Version: acquisition.AcquisitionIntentVersion, EraStart: 1990, EraEnd: 1999, Count: 2},
+		Plan: []acquisition.PullPlanRow{
 			{SourceID: "classic", Provider: "archive", RemoteID: "ad-one", URL: "https://archive.org/details/ad-one", Tag: "1990s", Name: "Classic TV commercials", Why: "Era match", EstimateClips: 1},
 			{SourceID: "psa", Provider: "archive", RemoteID: "psa-one", URL: "https://archive.org/details/psa-one", Tag: "psa", Name: "Public service", Why: "Filler variety", EstimateClips: 1},
 		},
-		Rejected: []filler.AcquisitionDecision{{Candidate: filler.AcquisitionCandidate{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "old"}, URL: "https://archive.org/details/old"}, Disposition: filler.CandidateAlreadyCatalogued, Detail: "already present"}},
-		Sources:  []filler.AcquisitionSourceDecision{{SourceID: "classic", Provider: "archive", Disposition: filler.AcquisitionSourceEnumerated, CandidateCount: 2, Detail: "enumerated metadata"}},
+		Rejected: []acquisition.Decision{{Candidate: acquisition.Candidate{Identity: acquisition.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "old"}, URL: "https://archive.org/details/old"}, Disposition: acquisition.CandidateAlreadyCatalogued, Detail: "already present"}},
+		Sources:  []acquisition.AcquisitionSourceDecision{{SourceID: "classic", Provider: "archive", Disposition: acquisition.SourceEnumerated, CandidateCount: 2, Detail: "enumerated metadata"}},
 	}
 	if err := s.UpsertPull(ctx, p); err != nil {
 		t.Fatal(err)
@@ -3626,7 +3632,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	if len(got.Plan) != 2 || got.Plan[0].RemoteID != "ad-one" || got.Plan[0].EstimateClips != 1 {
 		t.Errorf("plan did not round-trip: %+v", got.Plan)
 	}
-	if got.Intent.EraStart != 1990 || len(got.Rejected) != 1 || got.Rejected[0].Disposition != filler.CandidateAlreadyCatalogued || len(got.Sources) != 1 {
+	if got.Intent.EraStart != 1990 || len(got.Rejected) != 1 || got.Rejected[0].Disposition != acquisition.CandidateAlreadyCatalogued || len(got.Sources) != 1 {
 		t.Errorf("intent/evidence did not round-trip: %+v", got)
 	}
 	if !got.CreatedAt.Equal(created) {
@@ -3644,7 +3650,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	// Approve with one row dropped.
 	decided := created.Add(time.Hour)
 	got.Plan[1].Dropped = true
-	got.Status = filler.PullApproved
+	got.Status = acquisition.PullApproved
 	got.Note = "no local dealers"
 	got.DecidedAt = decided
 	got.DecidedBy = "admin-2"
@@ -3675,10 +3681,10 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// Status filtering, and the fact that a decided pull is KEPT rather than deleted.
-	if pending, err := s.ListPulls(ctx, filler.PullPending); err != nil || len(pending) != 0 {
+	if pending, err := s.ListPulls(ctx, acquisition.PullPending); err != nil || len(pending) != 0 {
 		t.Errorf("pending = %d (%v), want 0", len(pending), err)
 	}
-	approved, err := s.ListPulls(ctx, filler.PullApproved)
+	approved, err := s.ListPulls(ctx, acquisition.PullApproved)
 	if err != nil || len(approved) != 1 {
 		t.Fatalf("approved = %d (%v), want 1 — the history must survive the decision", len(approved), err)
 	}
@@ -3700,43 +3706,43 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	source := filler.SplitSourceAsset{
-		Role: filler.SplitSourceEvidence, SHA256: strings.Repeat("a", 64), Bytes: 42,
+	source := split.SourceAsset{
+		Role: split.SourceEvidence, SHA256: strings.Repeat("a", 64), Bytes: 42,
 		ClipHash: strings.Repeat("b", 64), Path: ".loomarr-media/evidence/aa/bb/evidence.mp4", DurationMs: 149_000,
 	}
-	assessed, err := filler.AssessSourceStructure(filler.SourceStructureInput{
+	assessed, err := split.Assess(split.Input{
 		Source: source, AssessedAt: now,
-		Observations: []filler.StructureObservation{
-			{ID: "black", Kind: filler.ObservationBlackInterval, Effect: filler.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("c", 64)},
-			{ID: "silence", Kind: filler.ObservationSilenceInterval, Effect: filler.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("d", 64)},
-			{ID: "role-left", Kind: filler.ObservationOCRLogoChange, Effect: filler.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("e", 64)},
-			{ID: "role-right", Kind: filler.ObservationTranscriptChange, Effect: filler.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("f", 64)},
+		Observations: []split.Observation{
+			{ID: "black", Kind: split.ObservationBlackInterval, Effect: split.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("c", 64)},
+			{ID: "silence", Kind: split.ObservationSilenceInterval, Effect: split.ObservationProposesBoundary, StartMs: 29_900, EndMs: 30_100, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("d", 64)},
+			{ID: "role-left", Kind: split.ObservationOCRLogoChange, Effect: split.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("e", 64)},
+			{ID: "role-right", Kind: split.ObservationTranscriptChange, Effect: split.ObservationSupportsBoundary, StartMs: 30_000, EndMs: 30_000, Producer: "fixture:v1", EvidenceSHA256: strings.Repeat("f", 64)},
 		},
-		RoleClaims: []filler.StructureRoleClaim{
-			{StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial, EvidenceIDs: []string{"role-left"}, Reason: "commercial evidence"},
-			{StartMs: 30_000, EndMs: 149_000, Role: filler.SegmentRolePromo, EvidenceIDs: []string{"role-right"}, Reason: "promo evidence"},
+		RoleClaims: []split.RoleClaim{
+			{StartMs: 0, EndMs: 30_000, Role: split.RoleCommercial, EvidenceIDs: []string{"role-left"}, Reason: "commercial evidence"},
+			{StartMs: 30_000, EndMs: 149_000, Role: split.RolePromo, EvidenceIDs: []string{"role-right"}, Reason: "promo evidence"},
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	roleEvidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
-		Source: source, StartMs: 0, EndMs: 30_000, Role: filler.SegmentRoleCommercial,
+	roleEvidence, err := split.NewRoleEvidence(split.RoleEvidenceInput{
+		Source: source, StartMs: 0, EndMs: 30_000, Role: split.RoleCommercial,
 		Reason: "product offer and closing brand card", Frames: [][]byte{[]byte("opening"), []byte("closing")},
 		PromptVersion: "filler-vision-grounding-v2", Prompt: "bounded segment prompt", Response: `{"role":"commercial"}`,
 		RequestedProvider: "ollama", ResolvedProvider: "ollama", RequestedModel: "vision", ResolvedModel: "vision@sha256:fixture",
-		Modalities: []string{"image", "text"}, Tokens: filler.StructureRoleTokenUsage{Prompt: 20, Completion: 5, Image: 2},
+		Modalities: []string{"image", "text"}, Tokens: split.RoleTokenUsage{Prompt: 20, Completion: 5, Image: 2},
 		LatencyMs: 100, Attempts: 1, AssessedAt: now,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	videoRoleEvidence, err := filler.NewStructureRoleEvidence(filler.StructureRoleEvidenceInput{
-		Source: source, StartMs: 30_000, EndMs: 61_000, Role: filler.SegmentRolePromo,
+	videoRoleEvidence, err := split.NewRoleEvidence(split.RoleEvidenceInput{
+		Source: source, StartMs: 30_000, EndMs: 61_000, Role: split.RolePromo,
 		Reason: "complete sequence promotes a programme", Video: []byte("bounded-video-derivative"),
 		PromptVersion: "filler-segment-video-role-v1", Prompt: "bounded video prompt", Response: `{"role":"promo"}`,
 		RequestedProvider: "openrouter", ResolvedProvider: "openrouter", RequestedModel: "video", ResolvedModel: "video",
-		Modalities: []string{"audio", "text", "video"}, Tokens: filler.StructureRoleTokenUsage{Prompt: 30, Completion: 5, Video: 4, Audio: 2},
+		Modalities: []string{"audio", "text", "video"}, Tokens: split.RoleTokenUsage{Prompt: 30, Completion: 5, Video: 4, Audio: 2},
 		LatencyMs: 200, Attempts: 1, GenerationID: "video-generation", AssessedAt: now,
 	})
 	if err != nil {
@@ -3780,8 +3786,8 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		ArtworkPrepared:    true,
 		LanguagePreference: "en",
 		LanguageExclusions: []filler.SplitLanguageExclusion{{StartMs: 149_000, EndMs: 179_000, Name: "Polish advert", DetectedLanguage: "pl", ExpectedLanguage: "en", Reason: filler.SplitExclusionLanguageMismatch}},
-		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true, ArtworkChecked: true, ArtworkImageHash: "preview-one"},
+		Segments: []split.Segment{
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: clips.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true, ArtworkChecked: true, ArtworkImageHash: "preview-one"},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence, ArtworkChecked: true},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …", LanguageChecked: true, LanguageReason: filler.SplitLanguageFailed, LanguageNote: "Language could not be checked"},
 		},
@@ -3821,11 +3827,11 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	draft := filler.SplitProposal{
 		ID: "sp_draft", ClipHash: clipHashFor("comps/long.mp4"), CreatedAt: now.Add(time.Minute),
 		Language: &filler.SplitLanguageProgress{Want: "en", Next: 1},
-		Detection: &filler.SplitDetectionProgress{
+		Detection: &split.DetectionProgress{
 			ScannedThroughMs: 600_000,
-			Black:            []filler.Interval{{StartMs: 29_900, EndMs: 30_100}},
+			Black:            []tools.Interval{{StartMs: 29_900, EndMs: 30_100}},
 			ChapterEdges:     []int64{0, 30_000, 33_000, 600_000},
-			Discarded:        []filler.Interval{{StartMs: 30_000, EndMs: 33_000}},
+			Discarded:        []tools.Interval{{StartMs: 30_000, EndMs: 33_000}},
 		},
 	}
 	if err := s.UpsertSplitProposal(ctx, draft); err != nil {
@@ -3843,7 +3849,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// cut-lists for one file is a review bug, not a choice. The NEW id answers the old
 	// one's GET with ErrNotFound.
 	p2 := filler.SplitProposal{ID: "sp_2", ClipHash: p.ClipHash, CreatedAt: now.Add(time.Hour),
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 149000, Name: "whole"}}}
 	if err := s.UpsertSplitProposal(ctx, p2); err != nil {
 		t.Fatal(err)
 	}
@@ -3856,7 +3862,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// DeleteClip (confirm drops the compilation row) + proposal cleanup.
-	if err := s.UpsertClip(ctx, Clip{Clip: clipAt("comps/1987.mp4", "1987", filler.Commercial, 149000), UpdatedAt: now}); err != nil {
+	if err := s.UpsertClip(ctx, Clip{Clip: clipAt("comps/1987.mp4", "1987", clips.Commercial, 149000), UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteClip(ctx, "comps/1987.mp4"); err != nil {
@@ -3881,7 +3887,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// races `Confirm`. Two properties are pinned here, and the second is the load-bearing one.
 	p3 := filler.SplitProposal{
 		ID: "sp_3", ClipHash: "h:comps/1991.mp4", CreatedAt: now,
-		Segments: []filler.SplitSegment{
+		Segments: []split.Segment{
 			{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one"},
 			{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two"},
 		},
@@ -3893,7 +3899,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// 1. The grounding fields round-trip — including `Looked`, which is what distinguishes
 	// "looked at and found nothing" from "not reached yet". Inferring it from Category/Era would
 	// make a resumable budget retry the ungroundable segments forever.
-	grounded := []filler.SplitSegment{
+	grounded := []split.Segment{
 		{Index: 0, StartMs: 0, EndMs: 30_000, Name: "one", Looked: true, Category: "toys", Era: 1991},
 		{Index: 1, StartMs: 30_000, EndMs: 61_000, Name: "two", Looked: true},
 	}
@@ -3947,14 +3953,14 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// Measured 2026-08-11: deleting every clip file and running filler-sync pruned `clips` to 0
 	// and left **48** proposals behind, which Incoming rendered as 48 "compilations to review"
 	// titled with raw content hashes, each opening a review of a file that was gone.
-	keeper := clipAt("comps/keeper.mp4", "Keeper", filler.Commercial, 149_000)
-	orphan := clipAt("comps/orphan.mp4", "Orphan", filler.Commercial, 149_000)
-	for _, c := range []filler.Clip{keeper, orphan} {
+	keeper := clipAt("comps/keeper.mp4", "Keeper", clips.Commercial, 149_000)
+	orphan := clipAt("comps/orphan.mp4", "Orphan", clips.Commercial, 149_000)
+	for _, c := range []clips.Clip{keeper, orphan} {
 		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	seg := []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}}
+	seg := []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000}}
 	for id, hash := range map[string]string{"sp_keep": keeper.Hash, "sp_orphan": orphan.Hash} {
 		if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
 			ID: id, ClipHash: hash, CreatedAt: now, Segments: seg,
@@ -4011,10 +4017,10 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	// next scan legitimately does not see it. Without the exemption `DeleteClipsNotIn` removes the
 	// row — and every clip cut out of that reel carries `parent_hash` pointing at it, so one sweep
 	// would dangle all of its children and take V45's lineage with it.
-	reaped := clipAt("comps/reaped.mp4", "Reaped", filler.Commercial, 149_000)
-	child := clipAt("cuts/child.mp4", "Child", filler.Commercial, 30_000)
+	reaped := clipAt("comps/reaped.mp4", "Reaped", clips.Commercial, 149_000)
+	child := clipAt("cuts/child.mp4", "Child", clips.Commercial, 30_000)
 	child.ParentHash = reaped.Hash
-	for _, c := range []filler.Clip{reaped, child} {
+	for _, c := range []clips.Clip{reaped, child} {
 		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
@@ -4051,7 +4057,7 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	clip := clipAt("a/b/one.mp4", "One", filler.Commercial, 30_000)
+	clip := clipAt("a/b/one.mp4", "One", clips.Commercial, 30_000)
 	if err := s.UpsertClip(ctx, Clip{Clip: clip, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
@@ -4065,16 +4071,16 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("ListClipsWithoutPipeline = %+v, want just %s", missing, clip.Hash)
 	}
 
-	p := filler.ClipPipeline{
-		ClipHash: clip.Hash, Stage: filler.StageVision, Status: filler.StatusRunning,
-		Progress: 40, Disposition: filler.DispositionRunning,
+	p := pipelinestate.ClipPipeline{
+		ClipHash: clip.Hash, Stage: pipelinestate.StageVision, Status: pipelinestate.StatusRunning,
+		Progress: 40, Disposition: pipelinestate.DispositionRunning,
 		Attempts: 1, ForceRun: true, NextRun: now, EnrolledAt: now, UpdatedAt: now,
 		PreparationAttempt: 2, PreparationStartedAt: now.Add(-5 * time.Minute),
-		PreparationStartReason: filler.PreparationStartedByRestart, PreparationProgress: 61,
+		PreparationStartReason: pipelinestate.PreparationStartedByRestart, PreparationProgress: 61,
 		StageQueuedAt: now.Add(-2 * time.Minute), StageStartedAt: now.Add(-time.Minute),
-		Stages: []filler.StageRecord{
-			{Stage: filler.StageProbe, Status: filler.StatusDone, StartedAt: now.Add(-4 * time.Minute), At: now},
-			{Stage: filler.StageTranscribe, Status: filler.StatusSkipped, Note: "the description already says enough", At: now},
+		Stages: []pipelinestate.StageRecord{
+			{Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusDone, StartedAt: now.Add(-4 * time.Minute), At: now},
+			{Stage: pipelinestate.StageTranscribe, Status: pipelinestate.StatusSkipped, Note: "the description already says enough", At: now},
 		},
 	}
 	if err := s.UpsertClipPipeline(ctx, p); err != nil {
@@ -4091,25 +4097,25 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !found {
 		t.Fatalf("GetClipPipeline = (%+v, %v, %v)", got, found, err)
 	}
-	if got.Stage != filler.StageVision || got.Status != filler.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
+	if got.Stage != pipelinestate.StageVision || got.Status != pipelinestate.StatusRunning || got.Progress != 40 || got.Attempts != 1 {
 		t.Errorf("header round-trip lost fields: %+v", got)
 	}
 	if !got.ForceRun {
 		t.Error("pipeline round-trip lost the explicit rerun marker")
 	}
 	if got.PreparationAttempt != 2 || got.PreparationProgress != 61 ||
-		got.PreparationStartReason != filler.PreparationStartedByRestart ||
+		got.PreparationStartReason != pipelinestate.PreparationStartedByRestart ||
 		!got.PreparationStartedAt.Equal(p.PreparationStartedAt) || !got.StageQueuedAt.Equal(p.StageQueuedAt) ||
 		!got.StageStartedAt.Equal(p.StageStartedAt) || !got.Stages[0].StartedAt.Equal(p.Stages[0].StartedAt) {
 		t.Errorf("preparation evidence round-trip lost fields: %+v", got)
 	}
 	// The LADDER is what the Incoming tab renders as history — including WHY a stage was skipped.
 	// A skip with no note reads as "nothing happened", which is a different and false claim.
-	if len(got.Stages) != 2 || got.Stages[1].Status != filler.StatusSkipped ||
+	if len(got.Stages) != 2 || got.Stages[1].Status != pipelinestate.StatusSkipped ||
 		got.Stages[1].Note != "the description already says enough" {
 		t.Errorf("ladder round-trip = %+v", got.Stages)
 	}
-	preparation, err := s.ListPreparationWork(ctx, filler.PipelineFilter{Dispositions: []filler.Disposition{filler.DispositionRunning}, Limit: 1})
+	preparation, err := s.ListPreparationWork(ctx, pipelinestate.PipelineFilter{Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRunning}, Limit: 1})
 	if err != nil || len(preparation) != 1 || preparation[0].Pipeline.ClipHash != clip.Hash || preparation[0].DurationMs != 30_000 {
 		t.Fatalf("ListPreparationWork = %+v, err=%v", preparation, err)
 	}
@@ -4143,8 +4149,8 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	// terminal here: the pipeline has done all it can and is waiting on a person, so re-running
 	// the ladder would burn Whisper and vision calls on a clip whose only missing input is a
 	// human decision.
-	for _, d := range []filler.Disposition{
-		filler.DispositionReview, filler.DispositionReady, filler.DispositionComplete, filler.DispositionRejected,
+	for _, d := range []pipelinestate.Disposition{
+		pipelinestate.DispositionReview, pipelinestate.DispositionReady, pipelinestate.DispositionComplete, pipelinestate.DispositionRejected,
 	} {
 		term := p
 		term.Disposition = d
@@ -4159,19 +4165,19 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 
 	// --- The rejected read model carries the CODE and the measured detail. ---
 	rej := p
-	rej.Disposition = filler.DispositionRejected
-	rej.RejectReason = filler.ReasonTooShort
+	rej.Disposition = pipelinestate.DispositionRejected
+	rej.RejectReason = pipelinestate.ReasonTooShort
 	rej.RejectDetail = "8.2s; floor is 10s"
 	if err := s.UpsertClipPipeline(ctx, rej); err != nil {
 		t.Fatal(err)
 	}
-	rejected, err := s.ListClipPipelines(ctx, filler.PipelineFilter{
-		Dispositions: []filler.Disposition{filler.DispositionRejected},
+	rejected, err := s.ListClipPipelines(ctx, pipelinestate.PipelineFilter{
+		Dispositions: []pipelinestate.Disposition{pipelinestate.DispositionRejected},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rejected) != 1 || rejected[0].RejectReason != filler.ReasonTooShort ||
+	if len(rejected) != 1 || rejected[0].RejectReason != pipelinestate.ReasonTooShort ||
 		rejected[0].RejectDetail != "8.2s; floor is 10s" {
 		t.Fatalf("rejected read model = %+v — the code AND the measured fact must both survive", rejected)
 	}
@@ -4207,13 +4213,13 @@ func testClipPipeline(t *testing.T, newStore NewStoreFunc) {
 	//
 	// A second clip is enrolled first, so the assertion distinguishes "pruned the orphan" from
 	// "emptied the table".
-	keeper := clipAt("c/d/two.mp4", "Two", filler.Commercial, 30_000)
+	keeper := clipAt("c/d/two.mp4", "Two", clips.Commercial, 30_000)
 	if err := s.UpsertClip(ctx, Clip{Clip: keeper, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	kept := filler.ClipPipeline{
-		ClipHash: keeper.Hash, Stage: filler.StageProbe, Status: filler.StatusQueued,
-		Disposition: filler.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
+	kept := pipelinestate.ClipPipeline{
+		ClipHash: keeper.Hash, Stage: pipelinestate.StageProbe, Status: pipelinestate.StatusQueued,
+		Disposition: pipelinestate.DispositionRunning, EnrolledAt: now, UpdatedAt: now,
 	}
 	if err := s.UpsertClipPipeline(ctx, kept); err != nil {
 		t.Fatal(err)
@@ -4295,7 +4301,7 @@ func testClipPaging(t *testing.T, newStore NewStoreFunc) {
 		{"p9", "middle of the road", 30000, 5, 1_700_000_800},
 	}
 	for _, r := range rows {
-		c := sampleClip(r.id, r.name, filler.Commercial, 1990, filler.Kids, "toys")
+		c := sampleClip(r.id, r.name, clips.Commercial, 1990, clips.Kids, "toys")
 		c.DurationMs = r.duration
 		c.PlayCount = r.plays
 		c.CreatedAt = time.Unix(r.created, 0).UTC()
@@ -4454,12 +4460,12 @@ func testClipSearchWidened(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 
-	named := sampleClip("s1", "Crunchy Flakes 1994", filler.Commercial, 1994, filler.Kids, "cereal")
-	branded := sampleClip("s2", "unnamed spot", filler.Commercial, 1994, filler.Kids, "cereal")
+	named := sampleClip("s1", "Crunchy Flakes 1994", clips.Commercial, 1994, clips.Kids, "cereal")
+	branded := sampleClip("s2", "unnamed spot", clips.Commercial, 1994, clips.Kids, "cereal")
 	branded.Brand = "Brightfield's"
-	seen := sampleClip("s3", "silent visual", filler.Commercial, 1994, filler.Kids, "cereal")
+	seen := sampleClip("s3", "silent visual", clips.Commercial, 1994, clips.Kids, "cereal")
 	seen.VisibleText = "VENTOR TOUGH"
-	spoken := sampleClip("s4", "chatty spot", filler.Commercial, 1994, filler.Kids, "cereal")
+	spoken := sampleClip("s4", "chatty spot", clips.Commercial, 1994, clips.Kids, "cereal")
 	spoken.Transcript = "every inventor drives a Ventor this weekend"
 	for _, c := range []Clip{named, branded, seen, spoken} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -4533,12 +4539,12 @@ func testClipTopLevelOnly(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 
-	brk := sampleClip("brk", "WKTL break 1996", filler.Commercial, 1996, filler.General, "")
+	brk := sampleClip("brk", "WKTL break 1996", clips.Commercial, 1996, clips.General, "")
 	brk.IsComposite = true
-	standalone := sampleClip("solo", "a single advert", filler.Commercial, 1996, filler.General, "toys")
-	segA := sampleClip("seg-a", "advert 1", filler.Commercial, 1996, filler.General, "toys")
+	standalone := sampleClip("solo", "a single advert", clips.Commercial, 1996, clips.General, "toys")
+	segA := sampleClip("seg-a", "advert 1", clips.Commercial, 1996, clips.General, "toys")
 	segA.ParentHash = "brk"
-	segB := sampleClip("seg-b", "advert 2", filler.Commercial, 1996, filler.General, "toys")
+	segB := sampleClip("seg-b", "advert 2", clips.Commercial, 1996, clips.General, "toys")
 	segB.ParentHash = "brk"
 	for _, c := range []Clip{brk, standalone, segA, segB} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -4585,7 +4591,7 @@ func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 
 	arrived := time.Unix(1_700_000_000, 0).UTC()
-	c := sampleClip("ca1", "arrived once", filler.Commercial, 1994, filler.Kids, "toys")
+	c := sampleClip("ca1", "arrived once", clips.Commercial, 1994, clips.Kids, "toys")
 	c.CreatedAt = arrived
 	c.UpdatedAt = arrived
 	if err := s.UpsertClip(ctx, c); err != nil {
@@ -4593,7 +4599,7 @@ func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// A re-sync: same clip, a later UpdatedAt, and — as the folder scan does — no CreatedAt at all.
-	rescanned := sampleClip("ca1", "arrived once", filler.Commercial, 1994, filler.Kids, "toys")
+	rescanned := sampleClip("ca1", "arrived once", clips.Commercial, 1994, clips.Kids, "toys")
 	rescanned.UpdatedAt = arrived.Add(48 * time.Hour)
 	if err := s.UpsertClip(ctx, rescanned); err != nil {
 		t.Fatal(err)
@@ -4613,7 +4619,7 @@ func testClipCreatedAt(t *testing.T, newStore NewStoreFunc) {
 
 	// A writer that never heard of the column (every pre-V51d call site) still gets an honest
 	// value rather than a 0 that sorts to the far end of "recently added" forever.
-	fresh := sampleClip("ca2", "no created_at supplied", filler.Commercial, 1994, filler.Kids, "toys")
+	fresh := sampleClip("ca2", "no created_at supplied", clips.Commercial, 1994, clips.Kids, "toys")
 	fresh.UpdatedAt = arrived
 	if err := s.UpsertClip(ctx, fresh); err != nil {
 		t.Fatal(err)
@@ -4632,7 +4638,7 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := sampleClip("enrichment-clip", "Brambly Sauce Advert", filler.Commercial, 0, "", "")
+	clip := sampleClip("enrichment-clip", "Brambly Sauce Advert", clips.Commercial, 0, "", "")
 	clip.UpdatedAt = at
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
@@ -4772,7 +4778,7 @@ func testSettledGeographyClips(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	at := time.Unix(1_700_000_900, 0).UTC()
 	apply := func(id string, geography enrichment.Geography, kind enrichment.EvidenceKind) string {
-		clip := sampleClip(id, id, filler.Commercial, 1990, "", "")
+		clip := sampleClip(id, id, clips.Commercial, 1990, "", "")
 		if err := s.UpsertClip(ctx, clip); err != nil {
 			t.Fatal(err)
 		}
@@ -4789,7 +4795,7 @@ func testSettledGeographyClips(t *testing.T, newStore NewStoreFunc) {
 	declared := apply("declared-foreign", enrichment.Geography{Scope: "national", Country: "GB"}, enrichment.EvidenceSourceDefault)
 	station := apply("station-local", enrichment.Geography{Scope: "local", Country: "US", Station: "fcc:7"}, enrichment.EvidenceTrustedMap)
 	apply("inferred-foreign", enrichment.Geography{Scope: "national", Country: "GB"}, enrichment.EvidenceInference)
-	if err := s.UpsertClip(ctx, sampleClip("unknown", "unknown", filler.Commercial, 1990, "", "")); err != nil {
+	if err := s.UpsertClip(ctx, sampleClip("unknown", "unknown", clips.Commercial, 1990, "", "")); err != nil {
 		t.Fatal(err)
 	}
 	removed := apply("removed-local", enrichment.Geography{Scope: "local", Country: "US", Station: "fcc:8"}, enrichment.EvidenceTrustedMap)
@@ -4823,10 +4829,10 @@ func testFillerEraObservation(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_500, 0).UTC()
-	guess := sampleClip("guess-clip", "Twirlpop Classic Commercial", filler.Commercial, 0, "", "")
+	guess := sampleClip("guess-clip", "Twirlpop Classic Commercial", clips.Commercial, 0, "", "")
 	guess.Source = "archive:classic_tv_commercials"
 	guess.UpdatedAt = at
-	known := sampleClip("known-clip", "Known Commercial", filler.Commercial, 1992, "", "")
+	known := sampleClip("known-clip", "Known Commercial", clips.Commercial, 1992, "", "")
 	known.UpdatedAt = at
 	for _, c := range []Clip{guess, known} {
 		if err := s.UpsertClip(ctx, c); err != nil {
@@ -4872,7 +4878,7 @@ func testFillerEraObservation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("latest beside cited research = %+v, err %v", got, err)
 	}
 	// Nor may the newer guess hide the cited country from catch-up promotion.
-	if err := s.UpdateClipGeography(ctx, guess.Hash, string(filler.GeographicUnknown), "", "", "", "", "", at.Add(6*time.Second)); err != nil {
+	if err := s.UpdateClipGeography(ctx, guess.Hash, string(pod.GeographicUnknown), "", "", "", "", "", at.Add(6*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3); err != nil || promoted != 1 {
@@ -4885,7 +4891,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	at := time.Unix(1_700_000_500, 0).UTC()
-	clip := sampleClip("context-clip", "Twirlpop Classic Commercial", filler.Commercial, 0, "", "")
+	clip := sampleClip("context-clip", "Twirlpop Classic Commercial", clips.Commercial, 0, "", "")
 	clip.Source = "archive:classic_tv_commercials"
 	clip.UpdatedAt = at
 	if err := s.UpsertClip(ctx, clip); err != nil {
@@ -4912,7 +4918,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projected.GeographicScope != filler.GeographicNational || projected.Country != "US" ||
+	if projected.GeographicScope != pod.GeographicNational || projected.Country != "US" ||
 		projected.Station != "" || !strings.HasPrefix(projected.GeoEvidence, "context.report:mediawiki:citations:") {
 		t.Fatalf("cited country projection = %+v", projected.Clip)
 	}
@@ -4941,7 +4947,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	}
 	// Simulate a pre-projection database: the cited report and accepted state exist, but the clip
 	// projection is absent. The bounded catch-up must repair it without another retrieval.
-	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", at.Add(2*time.Second)); err != nil {
+	if err := s.UpdateClipGeography(ctx, clip.Hash, string(pod.GeographicUnknown), "", "", "", "", "", at.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3)
@@ -4949,12 +4955,12 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("PromoteStoredFillerResearchCountries() = %d, %v", promoted, err)
 	}
 	projected, err = s.GetClip(ctx, clip.Hash)
-	if err != nil || projected.Country != "US" || projected.GeographicScope != filler.GeographicNational {
+	if err != nil || projected.Country != "US" || projected.GeographicScope != pod.GeographicNational {
 		t.Fatalf("caught-up country = %+v, err %v", projected.Clip, err)
 	}
 	// A newer report that abstains supersedes an older confident suggestion for catch-up. Do not
 	// resurrect stale context just because it is the newest report that happens to qualify.
-	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", at.Add(3*time.Second)); err != nil {
+	if err := s.UpdateClipGeography(ctx, clip.Hash, string(pod.GeographicUnknown), "", "", "", "", "", at.Add(3*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	abstained := report
@@ -4976,7 +4982,7 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	projected, err = s.GetClip(ctx, clip.Hash)
-	if err != nil || projected.GeographicScope != filler.GeographicLocal || projected.Country != "US" ||
+	if err != nil || projected.GeographicScope != pod.GeographicLocal || projected.Country != "US" ||
 		projected.Station != "fcc:7" {
 		t.Fatalf("local research projection = %+v, err %v", projected.Clip, err)
 	}
@@ -5059,7 +5065,7 @@ func testFillerResearchWebUsage(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || next.RequestCount != 0 || next.Month != "2026-10" {
 		t.Fatalf("next month usage = %+v, err %v", next, err)
 	}
-	clip := sampleClip("web-attempt", "Web attempt", filler.Commercial, 0, "", "")
+	clip := sampleClip("web-attempt", "Web attempt", clips.Commercial, 0, "", "")
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
@@ -5088,30 +5094,30 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 
 	for _, c := range []Clip{
-		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
-			Role: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
-		{Clip: filler.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
-			Role: filler.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
+		{Clip: clips.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
+			Role: clips.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
+		{Clip: clips.Clip{Hash: "ready-reel", Path: "reels/ready.mp4", Name: "Ready reel",
+			Role: clips.Commercial, DurationMs: 1_180_000, IsComposite: true, Source: "archive:test"}},
 	} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
-			ClipHash: c.Hash, Stage: filler.StageSplit, Status: filler.StatusQueued,
-			Disposition: filler.DispositionRunning, UpdatedAt: time.Now().UTC(),
+		if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.Hash, Stage: pipelinestate.StageSplit, Status: pipelinestate.StatusQueued,
+			Disposition: pipelinestate.DispositionRunning, UpdatedAt: time.Now().UTC(),
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
 		ID: "sp-draft", ClipHash: "draft-reel", CreatedAt: time.Now().UTC(),
-		Detection: &filler.SplitDetectionProgress{ScannedThroughMs: 600_000},
+		Detection: &split.DetectionProgress{ScannedThroughMs: 600_000},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertSplitProposal(ctx, filler.SplitProposal{
 		ID: "sp-ready", ClipHash: "ready-reel", CreatedAt: time.Now().UTC(),
-		Segments: []filler.SplitSegment{{Index: 0, StartMs: 0, EndMs: 30_000}},
+		Segments: []split.Segment{{Index: 0, StartMs: 0, EndMs: 30_000}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -5211,8 +5217,8 @@ func testFillerHeldClipUpsertAndCompositeRelease(t *testing.T, newStore NewStore
 	ctx := context.Background()
 	at := time.Date(2026, 9, 13, 2, 0, 0, 0, time.UTC)
 	hash := strings.Repeat("8", 64)
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
-		Hash: hash, Path: "88/88/" + hash + ".mp4", Name: "Held candidate", Role: filler.Unclassified,
+	if err := s.UpsertClip(ctx, Clip{Clip: clips.Clip{
+		Hash: hash, Path: "88/88/" + hash + ".mp4", Name: "Held candidate", Role: clips.Unclassified,
 		DurationMs: 30_000, Held: true,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
@@ -5248,48 +5254,48 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	at := time.Date(2026, time.September, 13, 18, 0, 0, 0, time.UTC)
 	hash := strings.Repeat("7", 64)
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+	if err := s.UpsertClip(ctx, Clip{Clip: clips.Clip{
 		Hash: hash, Path: "77/77/" + hash + ".mp4", Name: "Unknown enrolled clip",
-		Role: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		Role: clips.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
 		DurationMs: 30_000,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	current := filler.ClipPipeline{
-		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: filler.StageFinish,
-		Status: filler.StatusRunning, Progress: 100, Disposition: filler.DispositionRunning,
+	current := pipelinestate.ClipPipeline{
+		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: pipelinestate.StageFinish,
+		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
 		EnrolledAt: at, UpdatedAt: at,
 	}
-	for _, stage := range filler.StageOrder[:len(filler.StageOrder)-1] {
-		current.Stages = append(current.Stages, filler.StageRecord{Stage: stage, Status: filler.StatusDone, At: at})
+	for _, stage := range pipelinestate.StageOrder[:len(pipelinestate.StageOrder)-1] {
+		current.Stages = append(current.Stages, pipelinestate.StageRecord{Stage: stage, Status: pipelinestate.StatusDone, At: at})
 	}
 	if err := s.UpsertClipPipeline(ctx, current); err != nil {
 		t.Fatal(err)
 	}
 	settled := current
-	settled.Status = filler.StatusDone
-	settled.Disposition = filler.DispositionReady
+	settled.Status = pipelinestate.StatusDone
+	settled.Disposition = pipelinestate.DispositionReady
 	settled.NextRun = time.Time{}
-	settled.Stages = append(settled.Stages, filler.StageRecord{Stage: filler.StageFinish, Status: filler.StatusDone, At: at})
+	settled.Stages = append(settled.Stages, pipelinestate.StageRecord{Stage: pipelinestate.StageFinish, Status: pipelinestate.StatusDone, At: at})
 	event := filler.ReadyEvent{
 		ID: "ready:" + hash, ClipHash: hash, AcquisitionID: current.AcquisitionID,
 		Enrollment: filler.Enrollment{Kind: filler.EnrollmentAcquisition, Reference: current.AcquisitionID},
-		Placement:  filler.PlacementBreakBody, CreatedAt: at,
+		Placement:  clips.PlacementBreakBody, CreatedAt: at,
 	}
 	commit := filler.ReadyCommit{Event: event, Pipeline: settled}
 	if err := s.CommitFillerReady(ctx, commit); err != nil {
 		t.Fatal(err)
 	}
 	clip, err := s.GetClip(ctx, hash)
-	if err != nil || clip.Held || clip.Placement != filler.PlacementBreakBody || clip.Role != filler.Unclassified {
+	if err != nil || clip.Held || clip.Placement != clips.PlacementBreakBody || clip.Role != clips.Unclassified {
 		t.Fatalf("ready clip = %+v, err = %v", clip, err)
 	}
 	row, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || row.Disposition != filler.DispositionReady || row.Status != filler.StatusDone {
+	if err != nil || !found || row.Disposition != pipelinestate.DispositionReady || row.Status != pipelinestate.StatusDone {
 		t.Fatalf("ready pipeline = %+v, found=%t err=%v", row, found, err)
 	}
 	gotEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
-	if err != nil || !found || gotEvent.ID != event.ID || gotEvent.Placement != filler.PlacementBreakBody ||
+	if err != nil || !found || gotEvent.ID != event.ID || gotEvent.Placement != clips.PlacementBreakBody ||
 		gotEvent.Enrollment != event.Enrollment {
 		t.Fatalf("ready event = %+v, found=%t err=%v", gotEvent, found, err)
 	}
@@ -5314,7 +5320,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	restarted.ForceRun = true
 	restarted.PreparationAttempt = 2
 	restarted.PreparationStartedAt = restartedAt
-	restarted.PreparationStartReason = filler.PreparationStartedByRestart
+	restarted.PreparationStartReason = pipelinestate.PreparationStartedByRestart
 	restarted.StageQueuedAt = restartedAt
 	restarted.StageStartedAt = restartedAt
 	restarted.UpdatedAt = restartedAt
@@ -5333,12 +5339,12 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("publish after a completed restart: %v", err)
 	}
 	republishedClip, err := s.GetClip(ctx, hash)
-	if err != nil || republishedClip.Held || republishedClip.Placement != filler.PlacementBreakBody {
+	if err != nil || republishedClip.Held || republishedClip.Placement != clips.PlacementBreakBody {
 		t.Fatalf("restarted clip was not republished = %+v, err=%v", republishedClip, err)
 	}
 	republishedRow, found, err := s.GetClipPipeline(ctx, hash)
-	if err != nil || !found || republishedRow.Disposition != filler.DispositionReady ||
-		republishedRow.Status != filler.StatusDone || republishedRow.PreparationAttempt != 2 {
+	if err != nil || !found || republishedRow.Disposition != pipelinestate.DispositionReady ||
+		republishedRow.Status != pipelinestate.StatusDone || republishedRow.PreparationAttempt != 2 {
 		t.Fatalf("restarted conveyor was not settled = %+v, found=%t err=%v", republishedRow, found, err)
 	}
 	unchangedEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
@@ -5347,9 +5353,9 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	staleHash := strings.Repeat("6", 64)
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+	if err := s.UpsertClip(ctx, Clip{Clip: clips.Clip{
 		Hash: staleHash, Path: "66/66/" + staleHash + ".mp4", Name: "No pipeline",
-		Role: filler.Unclassified, Source: "test-folder", Held: true, DurationMs: 30_000,
+		Role: clips.Unclassified, Source: "test-folder", Held: true, DurationMs: 30_000,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
@@ -5364,7 +5370,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("missing conveyor error = %v, want not found", err)
 	}
 	staleClip, err := s.GetClip(ctx, staleHash)
-	if err != nil || !staleClip.Held || staleClip.Placement != filler.PlacementNotPlayable {
+	if err != nil || !staleClip.Held || staleClip.Placement != clips.PlacementNotPlayable {
 		t.Fatalf("failed ready transaction changed clip = %+v, err=%v", staleClip, err)
 	}
 	if _, found, err := s.GetFillerReadyEvent(ctx, staleHash); err != nil || found {
@@ -5374,16 +5380,16 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	// A caller cannot publish a fabricated completed ladder over a row whose header still looks
 	// current. The transaction compares every persisted prior rung before changing any table.
 	driftHash := strings.Repeat("5", 64)
-	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
+	if err := s.UpsertClip(ctx, Clip{Clip: clips.Clip{
 		Hash: driftHash, Path: "55/55/" + driftHash + ".mp4", Name: "Drifted ladder",
-		Role: filler.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
+		Role: clips.Unclassified, Source: "archive:classic_tv_commercials", Held: true,
 		DurationMs: 30_000,
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
 	driftedCurrent := current
 	driftedCurrent.ClipHash = driftHash
-	driftedCurrent.Stages = append([]filler.StageRecord(nil), current.Stages...)
+	driftedCurrent.Stages = append([]pipelinestate.StageRecord(nil), current.Stages...)
 	driftedCurrent.Stages[0].Note = "the persisted probe evidence changed"
 	if err := s.UpsertClipPipeline(ctx, driftedCurrent); err != nil {
 		t.Fatal(err)
@@ -5396,7 +5402,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("drifted ladder error = %v, want ErrReadyStale", err)
 	}
 	driftedClip, err := s.GetClip(ctx, driftHash)
-	if err != nil || !driftedClip.Held || driftedClip.Placement != filler.PlacementNotPlayable {
+	if err != nil || !driftedClip.Held || driftedClip.Placement != clips.PlacementNotPlayable {
 		t.Fatalf("drifted transaction changed clip = %+v, err=%v", driftedClip, err)
 	}
 	if _, found, err := s.GetFillerReadyEvent(ctx, driftHash); err != nil || found {
@@ -5486,12 +5492,12 @@ func testCreativeIdentityMerge(t *testing.T, newStore NewStoreFunc) {
 	now := time.UnixMilli(1_800_000_000_000).UTC()
 	mustSaveChannel(t, s, sampleChannel("channel-a", 1, time.Time{}))
 	mustSaveChannel(t, s, sampleChannel("channel-b", 2, time.Time{}))
-	loser := sampleClip("loser", "Burger Barn (curated)", filler.Commercial, 1988, filler.General, "food")
+	loser := sampleClip("loser", "Burger Barn (curated)", clips.Commercial, 1988, clips.General, "food")
 	loser.NameSource = clips.NameFromCurated
-	survivor := sampleClip("survivor", "Untitled commercial", filler.Commercial, 1988, filler.General, "food")
+	survivor := sampleClip("survivor", "Untitled commercial", clips.Commercial, 1988, clips.General, "food")
 	survivor.NameSource = clips.NameFromGrounded
-	cutDown := sampleClip("cut-down", "Burger Barn 15", filler.Commercial, 1988, filler.General, "food")
-	earlier := sampleClip("earlier-copy", "Burger Barn", filler.Commercial, 1988, filler.General, "food")
+	cutDown := sampleClip("cut-down", "Burger Barn 15", clips.Commercial, 1988, clips.General, "food")
+	earlier := sampleClip("earlier-copy", "Burger Barn", clips.Commercial, 1988, clips.General, "food")
 	for _, c := range []Clip{loser, survivor, cutDown, earlier} {
 		if err := s.UpsertClip(ctx, c); err != nil {
 			t.Fatal(err)

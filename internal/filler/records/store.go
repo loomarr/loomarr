@@ -22,7 +22,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/structure/window"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -50,15 +55,15 @@ var ErrPullNotPending = errors.New("store: pull already decided or acquired")
 // to download, and when, and who said so", which a delete erases. Same reason §7 keeps deny
 // reasons on title proposals.
 type FillerPullStore interface {
-	GetPull(ctx context.Context, id string) (filler.Pull, error)
+	GetPull(ctx context.Context, id string) (acquisition.Pull, error)
 	// ListPulls returns pulls with the given status, newest first; an empty status means all.
-	ListPulls(ctx context.Context, status filler.PullStatus) ([]filler.Pull, error)
-	UpsertPull(ctx context.Context, p filler.Pull) error
+	ListPulls(ctx context.Context, status acquisition.PullStatus) ([]acquisition.Pull, error)
+	UpsertPull(ctx context.Context, p acquisition.Pull) error
 	// CommitPullApproval atomically saves the pending decision and its one queued run.
 	// Existing historical runs and losing decisions return ErrPullNotPending.
-	CommitPullApproval(ctx context.Context, p filler.Pull, run filler.AcquisitionRun) error
+	CommitPullApproval(ctx context.Context, p acquisition.Pull, run acquisition.AcquisitionRun) error
 	// DismissPull compares-and-sets pending without overwriting a concurrent approval.
-	DismissPull(ctx context.Context, p filler.Pull) error
+	DismissPull(ctx context.Context, p acquisition.Pull) error
 }
 
 // FillerAcquisitionStore is the reconnect truth for filler downloads and their resulting clip
@@ -67,26 +72,26 @@ type FillerPullStore interface {
 type FillerAcquisitionStore interface {
 	// UpsertAcquisitionRun creates unbound runs and updates existing snapshots.
 	// Pull-bound creation belongs to CommitPullApproval; execution ownership is immutable.
-	UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error
+	UpsertAcquisitionRun(ctx context.Context, run acquisition.AcquisitionRun) error
 	// UpsertAcquisitionArtifacts atomically records the exact downloaded-byte manifest before
 	// publication makes any artifact eligible for intake.
-	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []filler.AcquisitionArtifact) error
+	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []acquisition.Artifact) error
 	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
-	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (filler.AcquisitionArtifact, bool, error)
+	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
 	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
-	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]filler.AcquisitionArtifact, error)
+	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]acquisition.Artifact, error)
 	// ListRecoverableAcquisitionArtifactsAfter continues a stable bounded recovery scan.
-	ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after filler.AcquisitionArtifactCursor, limit int) ([]filler.AcquisitionArtifact, error)
+	ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after acquisition.ArtifactCursor, limit int) ([]acquisition.Artifact, error)
 	// ListAcquisitionRemoteStates is the acquisition planner's exact-item high-water mark.
-	ListAcquisitionRemoteStates(ctx context.Context) (map[string]filler.ExistingRemoteState, error)
+	ListAcquisitionRemoteStates(ctx context.Context) (map[string]acquisition.ExistingRemoteState, error)
 	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
 	// The beta is single-replica; startup is therefore the exact ownership boundary.
 	RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error)
-	GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error)
-	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
+	GetAcquisitionRun(ctx context.Context, id string, at time.Time) (acquisition.AcquisitionRun, error)
+	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]acquisition.AcquisitionRun, error)
 	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
 	// the bounded acquisition history page.
-	AcquisitionRepairSummary(ctx context.Context) (filler.AcquisitionRepairSummary, error)
+	AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error)
 }
 
 // FillerInferenceStore owns append-only call attribution and the atomic budget
@@ -190,31 +195,31 @@ type FillerSplitProposalStore interface {
 // core's store.ClipTx, inside the transition's transaction.
 type FillerPipelineStore interface {
 	// UpsertClipPipeline writes an ordinary runner transition.
-	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
+	UpsertClipPipeline(ctx context.Context, p pipelinestate.ClipPipeline) error
 	// RetryClipPipeline writes the recovery transition and, for an exhausted terminal failure,
 	// restores the catalog tombstone while holding the clip in the same transaction.
-	RetryClipPipeline(ctx context.Context, failed, retry filler.ClipPipeline, restore bool) error
+	RetryClipPipeline(ctx context.Context, failed, retry pipelinestate.ClipPipeline, restore bool) error
 	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
-	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
+	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
 	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
-	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
-	// PipelineOverview groups the durable state through filler.ClipPipeline.Lifecycle so API,
+	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)
+	// PipelineOverview groups the durable state through pipelinestate.ClipPipeline.Lifecycle so API,
 	// runner telemetry and persistence cannot acquire separate ownership predicates.
-	PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error)
+	PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error)
 	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
-	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
+	ListClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error)
 	// CountClipPipelines shares ListClipPipelines' lifecycle predicate while ignoring its cursor
 	// and limit, so a bounded page and its total cannot describe different populations.
-	CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error)
+	CountClipPipelines(ctx context.Context, f pipelinestate.PipelineFilter) (int, error)
 	// ListPreparationWork joins bounded pipeline facts to only the clip duration needed for local
 	// progress calibration. It never exposes paths or descriptive media content.
-	ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error)
+	ListPreparationWork(ctx context.Context, f pipelinestate.PipelineFilter) ([]filler.PreparationWork, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error)
 	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
 	// row, and appends the effective Ready event. It is the only non-composite publication path.
 	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
@@ -222,7 +227,7 @@ type FillerPipelineStore interface {
 	// CommitConditioningPublication checks the transcode rung's owner-bound publication record,
 	// then has the core adopt the conditioned target (store.AdoptConditionedClip). Any mismatch
 	// is filler.ErrConditioningOwnershipMismatch.
-	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target clipstore.Clip) error
+	CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target clipstore.Clip) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
@@ -260,7 +265,7 @@ type FillerSourceStore interface {
 	// Claim/complete/fail are the durable source-check lease and retry boundary shared by the
 	// scheduler and the manual Look for new clips command.
 	ClaimFillerSourceCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
-	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion) error
+	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil time.Time, completion acquisition.SourceCheckCompletion) error
 	FailFillerSourceCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
 	//
@@ -268,11 +273,15 @@ type FillerSourceStore interface {
 	// omits them so a re-register cannot blank an operator's tuning. nil clears an override back
 	// to "inherit the global", which is a real action and must be expressible.
 	SetFillerSourceFetchPolicy(ctx context.Context, id string, everySeconds, maxPerRun *int) error
-	SetFillerSourceGeography(ctx context.Context, id string, geography filler.Geography) error
+	SetFillerSourceGeography(ctx context.Context, id string, geography pod.Geography) error
 	// SetFillerSourceEnabled switches a source on or off (V35). ⚠ Disabling is NOT deleting:
 	// the row keeps its licence and fetch history, and clips it already brought in stay in the
 	// catalog. It only withdraws the source from future searching and downloading.
 	SetFillerSourceEnabled(ctx context.Context, id string, enabled bool) error
+	// ChangeFillerSource applies one operator edit (switch, coverage, fetch tuning) in one
+	// statement, so a PATCH that names several of them cannot half-apply. store.ErrNotFound for an
+	// unknown id.
+	ChangeFillerSource(ctx context.Context, id string, change FillerSourceChange) error
 }
 
 // Store is the core store extended with the filler store: the one value the composition root

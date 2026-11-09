@@ -73,6 +73,13 @@ func entry(key, title string) schedule.LineupEntry {
 	return schedule.LineupEntry{Key: provision.Key(key), Title: title}
 }
 
+// computeDesired is the policy-free build: an empty ChannelPolicy and a zero clock, so seasonality
+// is off and the channel's strategy supplies the ordering. Reconcile calls ComputeDesiredAt with
+// the channel's own policy and a clock.
+func computeDesired(ch schedule.Channel, entries []schedule.LineupEntry, avail schedule.Availability, pending schedule.PendingPolicy) schedule.DesiredLineup {
+	return schedule.ComputeDesiredAt(ch, entries, avail, pending, schedule.ChannelPolicy{}, time.Time{})
+}
+
 func seqChannel() schedule.Channel {
 	return schedule.Channel{ID: "ch1", Name: "Test", Number: 5, Strategy: schedule.Sequential}
 }
@@ -84,7 +91,7 @@ func TestComputeDesired_Sequential_AvailableBecomesProgram(t *testing.T) {
 	}
 	avail := mapAvail{"movie:tmdb:90000001": "lib-A", "movie:tmdb:90000002": "lib-B"}
 
-	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
+	got := computeDesired(seqChannel(), entries, avail, schedule.PodFill)
 
 	if len(got.Slots) != 2 {
 		t.Fatalf("want 2 slots, got %d", len(got.Slots))
@@ -563,7 +570,7 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 		entry("movie:tmdb:90000003", "C"), entry("movie:tmdb:90000004", "D"),
 	}
 
-	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
+	got := computeDesired(breakChannel(4), entries, avail, schedule.PodFill)
 
 	if got.ProgramCount() != 4 {
 		t.Fatalf("want 4 programs, got %d", got.ProgramCount())
@@ -596,7 +603,7 @@ func TestComputeDesired_UsesChannelBreakDuration(t *testing.T) {
 		"movie:tmdb:90000001": {id: "l1", dur: 15 * 60 * 1000},
 		"movie:tmdb:90000002": {id: "l2", dur: 15 * 60 * 1000},
 	}
-	got := schedule.ComputeDesired(ch, []schedule.LineupEntry{
+	got := computeDesired(ch, []schedule.LineupEntry{
 		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"),
 	}, avail, schedule.PodFill)
 	if len(got.Slots) != 3 || got.Slots[1].Kind != schedule.SlotFiller {
@@ -623,7 +630,7 @@ func TestDesiredCounts_BreaksAreNotPending(t *testing.T) {
 		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"),
 		entry("movie:tmdb:90000003", "C"), entry("movie:tmdb:90000004", "D"),
 	}
-	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
+	got := computeDesired(breakChannel(4), entries, avail, schedule.PodFill)
 
 	if got.ProgramCount() != 4 {
 		t.Fatalf("want 4 programs, got %d", got.ProgramCount())
@@ -647,7 +654,7 @@ func TestDesiredCounts_PodFillPlaceholderIsPending(t *testing.T) {
 	avail := durAvail{"movie:tmdb:90000001": {id: "l1", dur: min15}} // :2 absent → pod-fill pending
 	entries := []schedule.LineupEntry{entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B")}
 
-	got := schedule.ComputeDesired(breakChannel(0), entries, avail, schedule.PodFill)
+	got := computeDesired(breakChannel(0), entries, avail, schedule.PodFill)
 
 	if got.ProgramCount() != 1 {
 		t.Fatalf("want 1 program, got %d", got.ProgramCount())
@@ -672,7 +679,7 @@ func TestComputeDesired_ShortProgramsFewerBreaks(t *testing.T) {
 	}
 	entries := []schedule.LineupEntry{entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B")}
 
-	got := schedule.ComputeDesired(breakChannel(4), entries, avail, schedule.PodFill)
+	got := computeDesired(breakChannel(4), entries, avail, schedule.PodFill)
 
 	// After prog1 (22min > 15) → break. After prog2 (would be last) → no trailing.
 	// So exactly 1 break between the two sitcoms.
@@ -688,7 +695,7 @@ func TestComputeDesired_NoBreaksWhenDensityZero(t *testing.T) {
 	avail := durAvail{"movie:tmdb:90000001": {id: "l1", dur: min15}, "movie:tmdb:90000002": {id: "l2", dur: min15}}
 	entries := []schedule.LineupEntry{entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B")}
 
-	got := schedule.ComputeDesired(breakChannel(0), entries, avail, schedule.PodFill)
+	got := computeDesired(breakChannel(0), entries, avail, schedule.PodFill)
 
 	if b := countKind(got.Slots, schedule.SlotFiller); b != 0 {
 		t.Errorf("breaks-per-hour 0 → want 0 breaks, got %d", b)
@@ -706,7 +713,7 @@ func TestComputeDesired_ProgramCarriesResolvedDuration(t *testing.T) {
 	entries := []schedule.LineupEntry{entry("movie:tmdb:90000603", "Marigold Protocol")}
 	avail := durAvail{"movie:tmdb:90000603": {id: "lib-603", dur: 8_160_000}} // 136 min
 
-	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
+	got := computeDesired(seqChannel(), entries, avail, schedule.PodFill)
 
 	if got.Slots[0].DurationMs != 8_160_000 {
 		t.Fatalf("program slot duration = %d, want 8160000 (resolved from library)", got.Slots[0].DurationMs)
@@ -729,7 +736,7 @@ func TestComputeDesired_SeriesExpandsToEpisodes(t *testing.T) {
 		},
 	}
 
-	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill)
+	got := computeDesired(seqChannel(), entries, avail, schedule.PodFill)
 
 	if got.ProgramCount() != 3 {
 		t.Fatalf("series expanded to %d programs, want 3 episodes", got.ProgramCount())
@@ -763,7 +770,7 @@ func TestComputeDesired_SeasonRangeFiltersEpisodes(t *testing.T) {
 		},
 	}
 
-	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
+	got := computeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
 
 	if got.ProgramCount() != 2 {
 		t.Fatalf("season range 1–2 expanded to %d programs, want 2 (s1e1, s2e1)", got.ProgramCount())
@@ -785,7 +792,7 @@ func TestComputeDesired_SeasonRangeNoMatchIsPending(t *testing.T) {
 			"series:tvdb:90000456": {{LibraryItemID: "s1e1", DurationMs: 1320000, Season: 1}},
 		},
 	}
-	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.ComingSoon)
+	got := computeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.ComingSoon)
 	if len(got.Slots) != 1 || got.Slots[0].Kind != schedule.SlotPending {
 		t.Fatalf("out-of-range series = %+v, want one pending slot", got.Slots)
 	}
@@ -798,7 +805,7 @@ func TestComputeDesired_SeriesNoEpisodesIsPending(t *testing.T) {
 	entries := []schedule.LineupEntry{entry("series:tvdb:90000001", "New Show")}
 	avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{}} // none yet
 
-	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.ComingSoon)
+	got := computeDesired(seqChannel(), entries, avail, schedule.ComingSoon)
 
 	if len(got.Slots) != 1 || got.Slots[0].Kind != schedule.SlotPending {
 		t.Fatalf("series with no episodes = %+v, want one pending slot", got.Slots)
@@ -812,7 +819,7 @@ func TestComputeDesired_ResolvedZeroFallsBackToEntry(t *testing.T) {
 	e.DurationMs = 5_400_000 // 90 min known on the entry
 	avail := durAvail{"movie:tmdb:90000001": {id: "lib-A", dur: 0}}
 
-	got := schedule.ComputeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
+	got := computeDesired(seqChannel(), []schedule.LineupEntry{e}, avail, schedule.PodFill)
 
 	if got.Slots[0].DurationMs != 5_400_000 {
 		t.Fatalf("duration = %d, want fallback to entry's 5400000", got.Slots[0].DurationMs)
@@ -821,7 +828,7 @@ func TestComputeDesired_ResolvedZeroFallsBackToEntry(t *testing.T) {
 
 func TestComputeDesired_PendingPodFill_KeepsKeyAsFiller(t *testing.T) {
 	entries := []schedule.LineupEntry{entry("movie:tmdb:90000009", "Coming")}
-	got := schedule.ComputeDesired(seqChannel(), entries, mapAvail{}, schedule.PodFill)
+	got := computeDesired(seqChannel(), entries, mapAvail{}, schedule.PodFill)
 
 	s := got.Slots[0]
 	if s.Kind != schedule.SlotFiller {
@@ -840,7 +847,7 @@ func TestComputeDesired_PendingPodFill_KeepsKeyAsFiller(t *testing.T) {
 
 func TestComputeDesired_PendingComingSoon_KeepsKeyAsPending(t *testing.T) {
 	entries := []schedule.LineupEntry{entry("series:tvdb:90000007", "Later")}
-	got := schedule.ComputeDesired(seqChannel(), entries, mapAvail{}, schedule.ComingSoon)
+	got := computeDesired(seqChannel(), entries, mapAvail{}, schedule.ComingSoon)
 
 	s := got.Slots[0]
 	if s.Kind != schedule.SlotPending {
@@ -863,8 +870,8 @@ func TestComputeDesired_Shuffle_DeterministicUnderSeed(t *testing.T) {
 	}
 	ch := schedule.Channel{ID: "ch", Name: "S", Number: 1, Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 42}}
 
-	first := schedule.ComputeDesired(ch, entries, avail, schedule.PodFill)
-	second := schedule.ComputeDesired(ch, entries, avail, schedule.PodFill)
+	first := computeDesired(ch, entries, avail, schedule.PodFill)
+	second := computeDesired(ch, entries, avail, schedule.PodFill)
 
 	// Same seed → identical order every reconcile (§9: guide doesn't scramble).
 	for i := range first.Slots {
@@ -875,7 +882,7 @@ func TestComputeDesired_Shuffle_DeterministicUnderSeed(t *testing.T) {
 	// A different seed should (very likely) reorder — guards against a no-op shuffle.
 	other := ch
 	other.Shuffle.Seed = 99
-	diff := schedule.ComputeDesired(other, entries, avail, schedule.PodFill)
+	diff := computeDesired(other, entries, avail, schedule.PodFill)
 	same := true
 	for i := range first.Slots {
 		if first.Slots[i].Title != diff.Slots[i].Title {

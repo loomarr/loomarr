@@ -54,6 +54,9 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
           <Action density={density} onPress={() => undefined} tone="danger">
             Disconnect
           </Action>
+          <Action density={density} onPress={() => undefined} tone="success">
+            Pass
+          </Action>
         </Surface>
       </Surface>
 
@@ -73,6 +76,15 @@ const InteractionWorkshop = ({ density = "pointer" }: { density?: Density }) => 
           density={density}
           error="Enter an HTTPS address."
           label="Invalid address"
+          onChangeText={() => undefined}
+          value="http://loomarr.local"
+        />
+        {/* The error takes the help line's place, and is the line the input is described by. */}
+        <Field
+          density={density}
+          description="Use the address shown by your Loomarr server."
+          error="Enter an HTTPS address."
+          label="Server address with help and error"
           onChangeText={() => undefined}
           value="http://loomarr.local"
         />

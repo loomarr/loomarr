@@ -79,6 +79,70 @@ describe("Field", () => {
     expect(onEscape).toHaveBeenCalledOnce();
   });
 
+  // The text a screen reader joins into the input's description: what its aria-describedby ids resolve to.
+  const describedBy = (input: HTMLElement) =>
+    (input.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .filter(Boolean)
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(" ");
+
+  it("describes the input by its help line", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Field description="Use the address your server shows." label="Server address" />
+      </LoomarrProvider>,
+    );
+
+    expect(describedBy(screen.getByRole("textbox", { name: "Server address" }))).toBe(
+      "Use the address your server shows.",
+    );
+  });
+
+  it("describes the input by its error line instead of the help line", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Field
+          description="Use the address your server shows."
+          error="Enter an HTTPS address."
+          label="Server address"
+        />
+      </LoomarrProvider>,
+    );
+
+    const input = screen.getByRole("textbox", { name: "Server address" });
+    expect(describedBy(input)).toBe("Enter an HTTPS address.");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("keeps a description the caller points at, ahead of its own line", () => {
+    const callerProps = { "aria-describedby": "elsewhere" };
+    render(
+      <LoomarrProvider theme="dark">
+        <p id="elsewhere">Shown by the form.</p>
+        <Field {...callerProps} description="Field help." label="Server address" />
+      </LoomarrProvider>,
+    );
+
+    expect(describedBy(screen.getByRole("textbox", { name: "Server address" }))).toBe(
+      "Shown by the form. Field help.",
+    );
+  });
+
+  it("keeps two fields' descriptions apart and leaves a bare field undescribed", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Field description="First help." label="First" />
+        <Field description="Second help." label="Second" />
+        <Field label="Bare" />
+      </LoomarrProvider>,
+    );
+
+    expect(describedBy(screen.getByRole("textbox", { name: "First" }))).toBe("First help.");
+    expect(describedBy(screen.getByRole("textbox", { name: "Second" }))).toBe("Second help.");
+    expect(screen.getByRole("textbox", { name: "Bare" }).hasAttribute("aria-describedby")).toBe(false);
+  });
+
   it("offers no reveal button on a plain field", () => {
     render(
       <LoomarrProvider theme="dark">

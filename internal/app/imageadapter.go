@@ -10,8 +10,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/filler"
+	imagesapi "github.com/loomarr/loomarr/internal/api/images"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/platform/config"
@@ -42,7 +42,7 @@ import (
 // and the first call would panic on a store-less boot — the exact state §9's "keep serving so
 // /readyz can explain why" is designed to survive. app.go already carries this warning for
 // `*tmdb.Client`; this is the same trap, one type over.
-func imageService(s *images.Service) api.ImageService {
+func imageService(s *images.Service) imagesapi.ImageService {
 	if s == nil {
 		return nil
 	}
@@ -377,7 +377,7 @@ func (a artworkAdoptStore) ListPendingArtwork(ctx context.Context, limit int) ([
 		// an install with no filler is a supported shape (§10).
 		return nil, nil
 	}
-	cache := filepath.Join(dir, filler.ThumbDirName)
+	cache := filepath.Join(dir, cliplibrary.ThumbDirName)
 
 	rows, err := a.st.ListClipsPendingArtworkAdoption(ctx, limit)
 	if err != nil {

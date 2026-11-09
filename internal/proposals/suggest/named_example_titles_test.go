@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/moviecollections"
+	"github.com/loomarr/loomarr/internal/library/titlesearch"
+	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
@@ -59,21 +59,21 @@ func namedTitlesCorpus() *catalogfixture.Corpus {
 // namedTitlesCorpusOf builds the #1497 library from rows, in order, with ids from
 // 90002000. Search behaves like a title search: every query word must appear in the name.
 func namedTitlesCorpusOf(rows []titleRow) *catalogfixture.Corpus {
-	cands := make([]catalog.Candidate, 0, len(rows))
+	cands := make([]titlesearch.Candidate, 0, len(rows))
 	for i, r := range rows {
 		votes := 1000
 		if r.year == 2019 {
 			votes = 3 // the documentary namesake
 		}
-		cands = append(cands, catalog.Candidate{
+		cands = append(cands, titlesearch.Candidate{
 			MediaType: "movie", TMDBID: 90_002_000 + i, Name: r.name, Year: r.year, InLibrary: true, Genres: r.genres,
 			VoteCount: votes, Overview: "An 1980s film in the library.",
 		})
 	}
 	corpus := &catalogfixture.Corpus{Candidates: cands}
-	corpus.SearchFunc = func(_ context.Context, query string, limit int) ([]catalog.Candidate, error) {
+	corpus.SearchFunc = func(_ context.Context, query string, limit int) ([]titlesearch.Candidate, error) {
 		words := strings.Fields(strings.ToLower(strings.NewReplacer(":", " ", "-", " ", "&", " ").Replace(query)))
-		var out []catalog.Candidate
+		var out []titlesearch.Candidate
 	next:
 		for _, c := range cands {
 			name := strings.ToLower(strings.NewReplacer(":", " ", "-", " ", "&", " ").Replace(c.Name))
@@ -99,21 +99,21 @@ func TestSuggest_ExampleTitlesInRequestAreAnchored(t *testing.T) {
 	description := "A Sunday-afternoon channel of 1980s adventure movies like Atlas Finch and The Tinkerlings"
 	meaning := fixtureDateMeaning("movie_release", "description", 30, 35, 1980, 1989)
 	corpus := namedTitlesCorpus()
-	byName := func(name string) catalog.Candidate {
+	byName := func(name string) titlesearch.Candidate {
 		for _, c := range corpus.Candidates {
 			if c.Name == name {
 				return c
 			}
 		}
 		t.Fatalf("fixture has no %q", name)
-		return catalog.Candidate{}
+		return titlesearch.Candidate{}
 	}
 	kite := byName("Kite over the Harbour")
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Atlas Finch", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(kite.TMDBID)+`","name":"Kite over the Harbour"}]}`, meaning),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
 	if err != nil {
@@ -144,11 +144,11 @@ func TestSuggest_LikeAsVerbNamesNoExample(t *testing.T) {
 	meaning := fixtureDateMeaning("movie_release", "description", 20, 25, 1980, 1989)
 	corpus := namedTitlesCorpus()
 	tinkerlings := corpus.Candidates[3]
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "The Tinkerlings", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(tinkerlings.TMDBID)+`","name":"The Tinkerlings"}]}`, meaning),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	if _, err := s.Suggest(context.Background(), proposals.Intent{Description: description}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,19 +186,19 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.description, func(t *testing.T) {
 			corpus := namedTitlesCorpus()
-			var robots catalog.Candidate
+			var robots titlesearch.Candidate
 			for _, c := range corpus.Candidates {
 				if c.Name == "Pocket Robots 5" {
 					robots = c
 				}
 			}
-			model := testkit.NewLLM(
+			model := testkit.NewLLM(t,
 				catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": tc.meaning}),
 				finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(robots.TMDBID)+`","name":"Pocket Robots 5"}]}`, tc.meaning),
 			)
 			collections, presence := atlasFinchCollection(corpus)
-			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
-				WithMovieCollections(moviecollections.New(collections).WithPresenceSource(func() catalog.LibraryPresence { return presence }))
+			s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10).
+				WithMovieCollections(tmdb.NewCollectionResolver(collections).WithPresenceSource(func() titlesearch.LibraryPresence { return presence }))
 			prop, err := s.Suggest(context.Background(), proposals.Intent{Description: tc.description})
 			if err != nil {
 				t.Fatal(err)
@@ -224,19 +224,19 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 // atlasFinchCollection is TMDB's authoritative roster for the franchise. It
 // includes Seekers of the Sunken Bell, whose title does not begin "Atlas Finch".
 func atlasFinchCollection(corpus *catalogfixture.Corpus) (*moviecollectionsfixture.Source, *catalogfixture.Presence) {
-	var members []catalog.Candidate
-	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{}}
-	refs := map[int]moviecollections.CollectionRef{}
+	var members []titlesearch.Candidate
+	presence := &catalogfixture.Presence{Hits: map[int]titlesearch.Presence{}}
+	refs := map[int]tmdb.CollectionRef{}
 	for _, c := range corpus.Candidates {
-		presence.Hits[c.TMDBID] = catalog.Presence{LibraryItemID: "item-" + strconv.Itoa(c.TMDBID)}
+		presence.Hits[c.TMDBID] = titlesearch.Presence{LibraryItemID: "item-" + strconv.Itoa(c.TMDBID)}
 		if c.Name == "Seekers of the Sunken Bell" || strings.HasPrefix(c.Name, "Atlas Finch") {
-			members = append(members, catalog.Candidate{MediaType: "movie", TMDBID: c.TMDBID, Name: c.Name, Year: c.Year})
-			refs[c.TMDBID] = moviecollections.CollectionRef{TMDBID: 90000084, Name: "Atlas Finch Collection"}
+			members = append(members, titlesearch.Candidate{MediaType: "movie", TMDBID: c.TMDBID, Name: c.Name, Year: c.Year})
+			refs[c.TMDBID] = tmdb.CollectionRef{TMDBID: 90000084, Name: "Atlas Finch Collection"}
 		}
 	}
 	return &moviecollectionsfixture.Source{
 		Refs:        refs,
-		Collections: map[int]moviecollections.SourceCollection{90000084: {TMDBID: 90000084, Name: "Atlas Finch Collection", Members: members}},
+		Collections: map[int]tmdb.SourceCollection{90000084: {TMDBID: 90000084, Name: "Atlas Finch Collection", Members: members}},
 	}, presence
 }
 
@@ -246,11 +246,11 @@ func TestSuggest_ExampleTitleSurvivesTrailingParenthetical(t *testing.T) {
 	description := "A Sunday-afternoon channel of 1980s adventure movies like Atlas Finch and The Tinkerlings (v3-1)"
 	meaning := fixtureDateMeaning("movie_release", "description", 30, 35, 1980, 1989)
 	corpus := namedTitlesCorpus()
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:90002016","name":"Pocket Robots 5"}]}`, meaning),
 	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
@@ -271,10 +271,10 @@ func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
 	meaning := fixtureDateMeaning("movie_release", "description", 13, 18, 1980, 1989)
 	corpus := namedTitlesCorpus()
 	responses := []llm.Response{catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": meaning})}
-	for range 6 {
+	for range 3 { // every unusable final the suggester asks for before it falls back to the anchors
 		responses = append(responses, llm.Response{Content: "I could not decide."})
 	}
-	s := suggest.New(testkit.NewLLM(responses...), catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	s := suggest.New(testkit.NewLLM(t, responses...), titlesearch.New(nil, corpus), referenceExistsValidator{}, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)
@@ -290,11 +290,11 @@ func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
 func TestSuggest_ExampleAnchorSurvivesEmptyPicks(t *testing.T) {
 	description := "A channel of 1980s adventure movies such as The Tinkerlings"
 	meaning := fixtureDateMeaning("movie_release", "description", 13, 18, 1980, 1989)
-	model := testkit.NewLLM(
+	model := testkit.NewLLM(t,
 		catalogSearchResponse(map[string]any{"query": "Pocket Robots", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[]}`, meaning),
 	)
-	s := suggest.New(model, catalog.New(nil, namedTitlesCorpus()), referenceExistsValidator{}, 10)
+	s := suggest.New(model, titlesearch.New(nil, namedTitlesCorpus()), referenceExistsValidator{}, 10)
 	prop, err := s.Suggest(context.Background(), proposals.Intent{Description: description})
 	if err != nil {
 		t.Fatal(err)

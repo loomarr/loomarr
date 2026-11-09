@@ -45,6 +45,16 @@ describe("SourceLocationForm", () => {
     });
   });
 
+  it("has nothing to save while the area is the one already saved", () => {
+    renderForm(
+      fillerSource({ id: "archive:classic", kind: "archive", country: "CA", locationSource: "source" }),
+      {
+        updateSource: vi.fn(),
+      },
+    );
+    expect(screen.getByRole("button", { name: "Save different area" })).toBeDisabled();
+  });
+
   it("clears a source-level area on the server and then locally", async () => {
     const updateSource = vi.fn((_id, _data, callbacks) => callbacks.onSuccess());
     renderForm(

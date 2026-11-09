@@ -6,7 +6,7 @@ import "time"
 // (softwareladder.go, #1517), from the encoder's own -progress stream. It only decides; it never
 // touches a process.
 //
-// # Contract for the caller (the phase 2 channel packager)
+// # Contract for the caller (the channel packager)
 //
 // Feed one SpeedSample per -progress block (encode.ReadProgress) of the item encoder, with the wall clock
 // of the block and, when the platform can read it, the encoder process's CPU time (user+sys). When
@@ -95,6 +95,7 @@ type SpeedSample struct {
 	At      time.Time     // wall clock when the block arrived
 	OutTime time.Duration // Progress.OutTimeMS: media produced by this encoder process
 	CPU     time.Duration // this encoder process's CPU time; 0 when unknown
+	Speed   float64       // Progress.Speed: ffmpeg's own realtime multiple; 0 before it reports one
 }
 
 // RungDecision is what Observe asks of the caller.

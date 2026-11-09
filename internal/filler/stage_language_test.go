@@ -9,17 +9,18 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/clips"
+	"github.com/loomarr/loomarr/internal/filler/language"
+	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The language rung (§10 V40's gate, V51b's stage). Its whole risk is that it REFUSES clips, so
 // most of these assert that it does not.
 //
-// ⚠ **Ported from `languagejob_test.go` when V51b retired the sweep, and two of the old cases went
-// with it rather than being rewritten.** `BoundsOnePass` tested the job's batch constant and
-// `SkipsClipsAlreadyChecked`'s work-list half tested its own filtering — both are the runner's
-// concerns now, and both are covered against the runner in `pipeline_test.go`. Keeping them here
-// as stage tests would have meant asserting behaviour this file no longer owns.
+// ⚠ The per-pass batch bound and the work-list filtering are the runner's concerns, not the
+// stage's, and are tested against the runner in `pipeline_test.go`.
 
 // fakeLangStore records what the rung wrote without a database.
 type fakeLangStore struct {
@@ -52,14 +53,14 @@ func (d *fixedDetector) DetectLanguage(context.Context, string, int64, int64) (s
 	return d.lang, d.err
 }
 
-func langClip(path, language string) filler.StoreClip {
-	return filler.StoreClip{Clip: filler.Clip{
-		Hash: path + "-hash", Path: path, Name: path, Role: filler.Commercial,
+func langClip(path, language string) cliplibrary.StoreClip {
+	return cliplibrary.StoreClip{Clip: clips.Clip{
+		Hash: path + "-hash", Path: path, Name: path, Role: clips.Commercial,
 		DurationMs: 30_000, Language: language,
 	}}
 }
 
-func newLangStage(st filler.LanguageClipStore, d filler.LanguageDetector, want string) *filler.LanguageStage {
+func newLangStage(st filler.LanguageClipStore, d language.Detector, want string) *filler.LanguageStage {
 	return filler.NewLanguageStage(d, st, "/filler",
 		func(context.Context) (string, error) { return want, nil },
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() })
@@ -76,7 +77,7 @@ func TestLanguageStage_KeepsALanguageAnyChannelAirs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := out.Verdict == filler.VerdictReject; got != tc.reject {
+		if got := out.Verdict == pipelinestate.VerdictReject; got != tc.reject {
 			t.Errorf("heard %s: rejected = %v, want %v (detail %q)", tc.heard, got, tc.reject, out.Detail)
 		}
 	}
@@ -98,7 +99,7 @@ func TestLanguageStage_AFailedChannelReadRetriesRatherThanSkipping(t *testing.T)
 	if err == nil {
 		t.Fatal("want the read failure surfaced so the runner retries")
 	}
-	if out.Verdict == filler.VerdictReject || det.calls != 0 || len(st.langs) != 0 {
+	if out.Verdict == pipelinestate.VerdictReject || det.calls != 0 || len(st.langs) != 0 {
 		t.Errorf("verdict=%v calls=%d recorded=%v, want nothing done without the wanted set",
 			out.Verdict, det.calls, st.langs)
 	}
@@ -133,7 +134,7 @@ func TestLanguageStage_RejectsAForeignClip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictReject || out.Reason != filler.ReasonLanguage {
+	if out.Verdict != pipelinestate.VerdictReject || out.Reason != pipelinestate.ReasonLanguage {
 		t.Errorf("verdict=%v reason=%q, want the Spanish clip refused", out.Verdict, out.Reason)
 	}
 	// ⚠ The answer is recorded even though the clip is going away. Without it a re-scan that
@@ -152,18 +153,18 @@ func TestLanguageStage_RejectsAForeignClip(t *testing.T) {
 // the best filler — `none` is a final answer that KEEPS.
 func TestLanguageStage_KeepsASilentClip(t *testing.T) {
 	st := newFakeLangStore()
-	out, err := newLangStage(st, &fixedDetector{lang: filler.LangNone}, "en").
+	out, err := newLangStage(st, &fixedDetector{lang: language.None}, "en").
 		Run(context.Background(), langClip("quiet.mp4", ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictContinue {
+	if out.Verdict != pipelinestate.VerdictContinue {
 		t.Errorf("verdict = %v — a clip with no speech is not a foreign clip", out.Verdict)
 	}
 	// Recorded as `none`, so it is never re-checked.
-	if st.langs["quiet.mp4"] != filler.LangNone {
+	if st.langs["quiet.mp4"] != language.None {
 		t.Errorf("language = %q, want %q recorded so the rung stops re-checking it",
-			st.langs["quiet.mp4"], filler.LangNone)
+			st.langs["quiet.mp4"], language.None)
 	}
 }
 
@@ -181,7 +182,7 @@ func TestLanguageStage_ABackendFailureNeitherRecordsNorRejects(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error so the runner retries with backoff")
 	}
-	if out.Verdict == filler.VerdictReject {
+	if out.Verdict == pipelinestate.VerdictReject {
 		t.Error("refused the clip on a detector failure — a broken backend must not empty the catalog")
 	}
 	if len(st.langs) != 0 {
@@ -197,12 +198,12 @@ func TestLanguageStage_ABackendFailureNeitherRecordsNorRejects(t *testing.T) {
 // bounds it: three attempts, then the rung is skipped and the clip advances.
 func TestLanguageStage_UndeterminedIsNotAVerdict(t *testing.T) {
 	st := newFakeLangStore()
-	out, err := newLangStage(st, &fixedDetector{lang: filler.LangUndetermined}, "en").
+	out, err := newLangStage(st, &fixedDetector{lang: language.Undetermined}, "en").
 		Run(context.Background(), langClip("a.mp4", ""))
 	if err == nil {
 		t.Fatal("want an error so the attempt is counted and eventually given up on")
 	}
-	if out.Verdict == filler.VerdictReject || len(st.langs) != 0 {
+	if out.Verdict == pipelinestate.VerdictReject || len(st.langs) != 0 {
 		t.Errorf("verdict=%v recorded=%v, want neither for an undetermined answer", out.Verdict, st.langs)
 	}
 }
@@ -215,7 +216,7 @@ func TestLanguageStage_KeepsAMatchingClip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Verdict != filler.VerdictContinue {
+	if out.Verdict != pipelinestate.VerdictContinue {
 		t.Errorf("verdict = %v — this clip is in the expected language", out.Verdict)
 	}
 	if st.langs["a.mp4"] != "en" {
@@ -231,12 +232,12 @@ func TestLanguageStage_DoesNotApplyToAnAlreadyHeardClip(t *testing.T) {
 	stage := newLangStage(newFakeLangStore(), det, "en")
 	for _, tc := range []struct {
 		name string
-		clip filler.StoreClip
+		clip cliplibrary.StoreClip
 		want bool
 	}{
 		{"never heard", langClip("fresh.mp4", ""), true},
 		{"heard, English", langClip("checked.mp4", "en"), false},
-		{"heard, wordless", langClip("silent.mp4", filler.LangNone), false},
+		{"heard, wordless", langClip("silent.mp4", language.None), false},
 	} {
 		if got, _ := stage.Applies(context.Background(), tc.clip); got != tc.want {
 			t.Errorf("%s: applies = %v, want %v", tc.name, got, tc.want)
@@ -277,7 +278,7 @@ func TestLanguageStage_AFailedRecordIsNotAReject(t *testing.T) {
 	if err == nil {
 		t.Fatal("want the store failure surfaced")
 	}
-	if out.Verdict == filler.VerdictReject {
+	if out.Verdict == pipelinestate.VerdictReject {
 		t.Error("refused the clip although its language was never recorded")
 	}
 }
@@ -310,7 +311,7 @@ func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
 	}}
 	model := "stale-model-with-no-audio"
 
-	det := filler.NewHostedLanguage(
+	det := language.NewHosted(
 		func() tools.AudioTranscriptionClient { return rec },
 		func() string { return model }, // read per call, like a settings closure
 		"", t.TempDir())
@@ -346,9 +347,9 @@ func TestHostedLanguage_ReadsItsModelLivePerCall(t *testing.T) {
 
 // A nil recognizer (hosted selected, nothing configured) keeps every clip rather than erroring.
 func TestHostedLanguage_UnconfiguredIsInertNotBroken(t *testing.T) {
-	det := filler.NewHostedLanguage(func() tools.AudioTranscriptionClient { return nil }, func() string { return "" }, "", t.TempDir())
+	det := language.NewHosted(func() tools.AudioTranscriptionClient { return nil }, func() string { return "" }, "", t.TempDir())
 	got, err := det.DetectLanguage(context.Background(), "/nonexistent.mp4", 0, 10_000)
-	if err != nil || got != filler.LangUndetermined {
+	if err != nil || got != language.Undetermined {
 		t.Errorf("got (%q, %v), want (undetermined, nil) — an unconfigured backend must not reject", got, err)
 	}
 }
@@ -357,7 +358,7 @@ func TestHostedLanguage_UsesTheSpeechServicesDetectedLanguage(t *testing.T) {
 	rec := &recordingRecognizer{result: tools.AudioTranscription{
 		Language: "es", Segments: []tools.TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "compre ahora"}},
 	}}
-	det := filler.NewHostedLanguage(func() tools.AudioTranscriptionClient { return rec }, func() string { return "whisper" }, "", t.TempDir())
+	det := language.NewHosted(func() tools.AudioTranscriptionClient { return rec }, func() string { return "whisper" }, "", t.TempDir())
 	dir := t.TempDir()
 	clip := filepath.Join(dir, "c.wav")
 	if err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-ac", "1", "-ar", "16000", "-y", clip).Run(); err != nil {

@@ -8,26 +8,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 )
 
 type cleanupStore struct {
-	runs      map[string]filler.AcquisitionRun
-	artifacts []filler.AcquisitionArtifact
+	runs      map[string]acquisition.AcquisitionRun
+	artifacts []acquisition.Artifact
 }
 
-func (s cleanupStore) GetAcquisitionRun(_ context.Context, id string, _ time.Time) (filler.AcquisitionRun, error) {
+func (s cleanupStore) GetAcquisitionRun(_ context.Context, id string, _ time.Time) (acquisition.AcquisitionRun, error) {
 	run, ok := s.runs[id]
 	if !ok {
-		return filler.AcquisitionRun{}, errors.New("not found")
+		return acquisition.AcquisitionRun{}, errors.New("not found")
 	}
 	return run, nil
 }
 
 func (s cleanupStore) ListRecoverableAcquisitionArtifactsAfter(
-	_ context.Context, after filler.AcquisitionArtifactCursor, limit int,
-) ([]filler.AcquisitionArtifact, error) {
-	rows := make([]filler.AcquisitionArtifact, 0, limit)
+	_ context.Context, after acquisition.ArtifactCursor, limit int,
+) ([]acquisition.Artifact, error) {
+	rows := make([]acquisition.Artifact, 0, limit)
 	for _, artifact := range s.artifacts {
 		if artifact.UpdatedAt.Before(after.UpdatedAt) ||
 			(artifact.UpdatedAt.Equal(after.UpdatedAt) && artifact.ID <= after.ID) {
@@ -74,15 +74,15 @@ func TestAcquisitionCleanerRemovesOnlyProvenDisposableTerminalStaging(t *testing
 	unknown := writeAttempt("unknown", "custom", 500)
 
 	cleaner := NewAcquisitionCleaner(watch, cleanupStore{
-		runs: map[string]filler.AcquisitionRun{
-			"terminal":  {Status: filler.AcquisitionSuccess},
-			"active":    {Status: filler.AcquisitionRunning},
-			"repair":    {Status: filler.AcquisitionError},
-			"symlinked": {Status: filler.AcquisitionError},
-			"unknown":   {Status: filler.AcquisitionError},
+		runs: map[string]acquisition.AcquisitionRun{
+			"terminal":  {Status: acquisition.RunSuccess},
+			"active":    {Status: acquisition.RunRunning},
+			"repair":    {Status: acquisition.RunError},
+			"symlinked": {Status: acquisition.RunError},
+			"unknown":   {Status: acquisition.RunError},
 		},
-		artifacts: []filler.AcquisitionArtifact{{
-			ID: "repair-artifact", State: filler.ArtifactRepair,
+		artifacts: []acquisition.Artifact{{
+			ID: "repair-artifact", State: acquisition.ArtifactRepair,
 			StagingPath: filepath.ToSlash(filepath.Join(".loomarr-acquisitions", "repair", "000", "download.mp4")),
 			UpdatedAt:   now.Add(-time.Hour),
 		}},
@@ -125,7 +125,7 @@ func TestAcquisitionCleanerReportsRemovalFailureAndFreshRemainingPreview(t *test
 		t.Fatal(err)
 	}
 	cleaner := NewAcquisitionCleaner(watch, cleanupStore{
-		runs: map[string]filler.AcquisitionRun{"terminal": {Status: filler.AcquisitionError}},
+		runs: map[string]acquisition.AcquisitionRun{"terminal": {Status: acquisition.RunError}},
 	}, func() time.Time { return now })
 	cleaner.remove = func(string) error { return errors.New("read-only filesystem") }
 

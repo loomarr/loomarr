@@ -283,6 +283,36 @@ var Corpus = withProductionStructuralBounds([]Case{
 		MinJudgeScore: 0.65, MinRelevanceScore: 0.7, MinSerendipityScore: 0.55,
 	},
 	{
+		// "cartoons" names a format, not an audience (#2739): no kids ceiling, so
+		// the TV-G and TV-PG 90s shows an adult remembers are not dropped.
+		Name:          "nostalgia_cartoons_are_not_a_kids_request",
+		Intent:        Intent{Description: "90s cartoons", Era: "1990s", MaxAcquire: 3},
+		MinGrounded:   3,
+		ExpectEraFrom: 1990, ExpectEraTo: 1999,
+		JudgeRubric: "A good result is genuine 1990s animated shows and movies, including ones aimed at general or older audiences. " +
+			"Penalize non-animated titles and non-90s titles; do not penalize an animated title for being above a preschool rating.",
+	},
+	{
+		// The guard that stays: a cartoon request that names a young child is kids.
+		Name:               "cartoons_for_young_child_keep_kids_ceiling",
+		Intent:             Intent{Description: "cartoons for my 5-year-old", MaxAcquire: 3},
+		MinGrounded:        1,
+		ExpectCeiling:      "TV-Y7",
+		ForbidRatingsAbove: "TV-Y7",
+		JudgeRubric:        "A good result is gentle animated programming suitable for a five-year-old. Penalize anything above TV-Y7.",
+	},
+	{
+		// Title words alone are not evidence (#2740): "ghosts" must not pull in
+		// movies that merely have "Ghost" in the name.
+		Name:          "halloween_ghost_title_words_are_not_evidence",
+		Intent:        Intent{Description: "Halloween channel with ghosts, witches and haunted houses", MaxAcquire: 3},
+		MinLineup:     1,
+		TitleEvidence: TitleEvidenceGrounded,
+		ForbidTitles:  []string{"Mission: Impossible - Ghost Protocol", "Ghost World"},
+		JudgeRubric: "A good result is Halloween programming about ghosts, witches or haunted houses. " +
+			"Penalize titles that only share a word with the request, such as an action film or a drama with Ghost in the name.",
+	},
+	{
 		Name: "holiday_family_halloween",
 		Intent: Intent{
 			Description: "Playful Halloween movies for families, spooky but never gruesome",

@@ -71,6 +71,32 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	if _, ok, err := st.LibraryPlayingVideo(ctx, "90000001"); err != nil || ok {
 		t.Errorf("a media-server id's video: ok = %v, %v; want no answer", ok, err)
 	}
+	// A movie plays a copy in each edition (decision 54); a channel airs the default one, though
+	// an edition's path sorts first.
+	cut, plain := "/media/cut/Cut {edition-Directors Cut}.mkv", "/media/cut/Cut.mkv"
+	editions := LibraryItem{ID: "m2", Kind: "movie", Name: "Cut", Sources: []LibrarySource{
+		{Path: cut, Edition: "Directors Cut", Plays: true, DurationMs: 9_000_000,
+			Streams: []LibraryStream{{Index: 0, Kind: "video", Codec: "hevc"}}},
+		{Path: plain, Plays: true, DurationMs: 7_200_000, Streams: []LibraryStream{{Index: 0, Kind: "video", Codec: "h264"}}},
+	}}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{editions}, at); err != nil {
+		t.Fatal(err)
+	}
+	cutFile, plainFile := file(cut, LibraryHeaderRead), file(plain, LibraryHeaderRead)
+	cutFile.ItemID, plainFile.ItemID = "m2", "m2"
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{cutFile, plainFile}); err != nil {
+		t.Fatal(err)
+	}
+	if path, ok, err := st.LibraryPlayingFile(ctx, "m2"); err != nil || !ok || path != plain {
+		t.Errorf("playing file of a movie with an edition = %q, %v, %v; want the default %q", path, ok, err, plain)
+	}
+	if v, ok, err := st.LibraryPlayingVideo(ctx, "m2"); err != nil || !ok || v.Codec != "h264" {
+		t.Errorf("playing video of a movie with an edition = %+v, %v, %v; want the default's h264", v, ok, err)
+	}
+	// Its runtime is the copy that airs, so a schedule leaves no gap after the shorter default.
+	if facts, err := st.LibraryItemFacts(ctx, []string{"m2"}); err != nil || facts["m2"].RuntimeMs != 7_200_000 {
+		t.Errorf("runtime of a movie with an edition = %+v, %v; want the default's 7200000", facts["m2"], err)
+	}
 	gone := file("/media/film/a.mkv", LibraryHeaderRead)
 	gone.MissingAt = at
 	if err := st.SaveLibraryFiles(ctx, []LibraryFile{gone}); err != nil {

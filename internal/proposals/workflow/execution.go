@@ -2,20 +2,49 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/suggest"
 )
 
-// ErrStaleAttempt reports a terminal write from an Attempt that recovery or a requeue replaced.
-var ErrStaleAttempt = suggest.ErrStaleAttempt
+// ErrStaleAttempt reports a terminal write from an Attempt that recovery or a requeue replaced: its
+// compare-and-swap lost because a newer Attempt owns the Job. The worker drops that result, since
+// the replacement execution, not this one, decides the Job's outcome.
+var ErrStaleAttempt = errors.New("proposal workflow: stale attempt")
 
-// Work is a versioned lease token. The Job id alone is never sufficient to
-// commit an activity result because an expired worker may finish after recovery
-// has already issued the next Attempt.
-type Work = suggest.WorkflowWork
+// Work is a versioned lease token and the activity input the worker executes. The Job id alone is
+// never sufficient to commit an activity result because an expired worker may finish after recovery
+// has already issued the next Attempt; Version plus Attempt form the compare-and-swap token for
+// terminal writes.
+type Work struct {
+	Version   int
+	JobID     string
+	Attempt   int
+	Kind      string
+	CreatedBy string
+	// ChannelID names the channel a refine or re-curation job re-curates; empty for a request.
+	ChannelID string
+	Intent    proposals.Intent
+}
+
+// CommittedProposal is the durably committed Proposal returned to the caller once generation (or a
+// recording) succeeds, for the optional approval grants.
+type CommittedProposal struct {
+	ID        string
+	JobID     string
+	CreatedBy string
+	Proposal  proposals.Proposal
+	CreatedAt time.Time
+}
+
+// Submission is the result of submitting an Intent: the new Job, or the cached Proposal a recent
+// successful Job of the same Intent already produced.
+type Submission struct {
+	JobID          string
+	CachedProposal *CommittedProposal
+}
 
 // Completion is committed atomically: the Proposal and the terminal Job and
 // Attempt transitions either all become visible or none do.
@@ -51,25 +80,25 @@ func (w *Workflow) Claim(ctx context.Context, now time.Time, lease time.Duration
 
 // Complete atomically publishes a grounded Proposal and closes the current
 // Attempt. A stale lease token must be rejected by the repository guard.
-func (w *Workflow) Complete(ctx context.Context, work Work, prop proposals.Proposal) (suggest.WorkflowProposal, error) {
+func (w *Workflow) Complete(ctx context.Context, work Work, prop proposals.Proposal) (CommittedProposal, error) {
 	if err := validateWork(work); err != nil {
-		return suggest.WorkflowProposal{}, err
+		return CommittedProposal{}, err
 	}
 	if len(prop.Lineup)+len(prop.Acquisitions)+len(prop.Alternates)+len(prop.Refused) == 0 {
-		return suggest.WorkflowProposal{}, suggest.ErrNoGroundedTitles
+		return CommittedProposal{}, proposals.ErrNoGroundedTitles
 	}
 	if err := validateProposalIdentities(prop); err != nil {
-		return suggest.WorkflowProposal{}, err
+		return CommittedProposal{}, err
 	}
-	if prop.Trace.Version != suggest.DecisionTraceVersion {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, prop.Trace.Version, suggest.DecisionTraceVersion)
+	if prop.Trace.Version != proposals.DecisionTraceVersion {
+		return CommittedProposal{}, fmt.Errorf("%w: Proposal decision trace version = %d, want %d", ErrInvalidState, prop.Trace.Version, proposals.DecisionTraceVersion)
 	}
-	if err := suggest.ValidateDecisionTrace(prop.Trace); err != nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
+	if err := proposals.ValidateDecisionTrace(prop.Trace); err != nil {
+		return CommittedProposal{}, fmt.Errorf("%w: invalid Proposal decision trace: %v", ErrInvalidState, err)
 	}
 	completed, err := w.repository.CompleteAttempt(ctx, Completion{Work: work, Proposal: prop})
 	if err != nil {
-		return suggest.WorkflowProposal{}, fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
+		return CommittedProposal{}, fmt.Errorf("complete Proposal Job %q Attempt %d: %w", work.JobID, work.Attempt, err)
 	}
 	return completed, nil
 }

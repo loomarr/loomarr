@@ -177,11 +177,6 @@ type ResolvedProgram struct {
 	// OfficialRating is THIS episode's own rating, checked against the ceiling at expansion
 	// (§4). "" = the media server has none for the episode, which INHERITS the parent series'
 	// rating rather than failing closed — see episodeVerdict for why.
-	//
-	// ⚠ It is persisted: store.SeriesEpisodes caches []ResolvedProgram, so rows written before
-	// this field existed decode as "". That is precisely the case inheritance makes safe — a
-	// fail-closed reading would have emptied every kids channel on deploy until the refresh
-	// sweep repopulated the cache.
 	OfficialRating rating.Rating
 	// CommunityRating, Overview, and Tags are editorial evidence supplied by the
 	// media server. They never override scope or audience safety; an optional
@@ -304,10 +299,13 @@ func (e LineupEntry) inSeasonRange(season int) bool {
 	return true
 }
 
-// ComputeDesired turns an approved lineup + current availability into a
-// DesiredLineup under a strategy and pending policy (§9). It is PURE: same
-// inputs (including the channel's shuffle seed) always yield the same slots, so
-// the reconcile engine's output is reproducible and tests need no mock Tunarr.
+// ComputeDesiredAt turns an approved lineup + current availability into a
+// DesiredLineup under a strategy, a pending policy and the channel's
+// ChannelPolicy (§9; programming-design §3–§7). It is PURE: same inputs
+// (including the channel's shuffle seed, policy and clock) always yield the same
+// slots, so the reconcile engine's output is reproducible and tests need no mock
+// Tunarr. `now` drives seasonality (§6); a zero `now` disables it (seasonal mode
+// treated as off).
 //
 // Ordering:
 //   - Sequential: entries stay in approved order.
@@ -323,19 +321,6 @@ func (e LineupEntry) inSeasonRange(season int) bool {
 //   - available            → SlotProgram (LibraryItemID set)
 //   - not available, PodFill → SlotFiller (pod-fill placeholder; §10 fills it)
 //   - not available, ComingSoon → SlotPending (explicit gap)
-//
-// ComputeDesired is the policy-free entry point (an empty ChannelPolicy + zero
-// clock): existing callers and tests get byte-identical behavior to the old blind
-// ordering. Reconcile calls ComputeDesiredAt with the channel's policy + a clock.
-func ComputeDesired(ch Channel, entries []LineupEntry, avail Availability, policy PendingPolicy) DesiredLineup {
-	return ComputeDesiredAt(ch, entries, avail, policy, ChannelPolicy{}, time.Time{})
-}
-
-// ComputeDesiredAt is the ChannelPolicy-aware desired-lineup builder (programming-
-// design §3–§7). It is PURE — same inputs (channel seed + policy + clock) always
-// yield the same slots — so reconcile output is reproducible and tests need no mock
-// Tunarr. `now` drives seasonality (§6); a zero `now` disables it (seasonal mode
-// treated as off), which is why the policy-free wrapper passes time.Time{}.
 //
 // Pipeline: filter entries (scope + audience §4, never-relaxed) → seasonal bench
 // (§6) → resolve each entry to slot(s) → policy-aware slotting (ordering §5 +

@@ -9,18 +9,19 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	channelsapi "github.com/loomarr/loomarr/internal/api/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func newIconsServer(t *testing.T) (*httptest.Server, records.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsServer(t *testing.T) (*httptest.Server, records.Store, *testkit.IconService[channelsapi.IconSuggestion]) {
 	return newIconsServerWithConfig(t, nil)
 }
 
-func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, records.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, records.Store, *testkit.IconService[channelsapi.IconSuggestion]) {
 	t.Helper()
 	handler, st, fi := newIconsHandlerWithConfig(t, cfg)
 	srv := httptest.NewServer(handler)
@@ -28,16 +29,16 @@ func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Se
 	return srv, st, fi
 }
 
-func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, records.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, records.Store, *testkit.IconService[channelsapi.IconSuggestion]) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fi := &testkit.IconService[api.IconSuggestion]{}
+	fi := &testkit.IconService[channelsapi.IconSuggestion]{}
 	var liveSettings settings.Reader
 	if cfg != nil {
 		liveSettings = stringSettings(func(key string) string { return cfg[key] })
@@ -64,7 +65,7 @@ func iconsRequest(handler http.Handler, path string) *httptest.ResponseRecorder 
 // own lineup — e.g. a Late-Night Sci-Fi channel offering its series' posters (§icon P2).
 func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 	srv, _, fi := newIconsServer(t)
-	fi.Results = []api.IconSuggestion{
+	fi.Results = []channelsapi.IconSuggestion{
 		{Title: "Cold Relay", URL: "https://image.tmdb.org/t/p/w500/cold-relay.jpg"},
 		{Title: "Ferrocene Station", URL: "https://image.tmdb.org/t/p/w500/ferrocene.jpg"},
 	}
@@ -74,7 +75,7 @@ func TestChannelIconSuggestions_RendersCandidates(t *testing.T) {
 		t.Fatalf("icon-suggestions → %d, want 200", resp.StatusCode)
 	}
 	var body struct {
-		Suggestions []api.IconSuggestion `json:"suggestions"`
+		Suggestions []channelsapi.IconSuggestion `json:"suggestions"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
@@ -130,7 +131,7 @@ func TestChannelIconSuggestions_UnknownChannelIs404(t *testing.T) {
 func TestChannelIconSuggestions_501WhenNoService(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/icons2.db")
 	t.Cleanup(func() { _ = st.Close() })
-	if _, err := st.SaveChannel(context.Background(), store.Channel{
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
 		Channel: schedule.Channel{ID: "ch-1", Name: "Late-Night Sci-Fi", Number: 42, Status: "live"},
 	}); err != nil {
 		t.Fatal(err)

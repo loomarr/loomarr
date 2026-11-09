@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // DefaultTimeout bounds one source's whole analysis (keyframe index plus decode pass).

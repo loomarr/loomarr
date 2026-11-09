@@ -341,8 +341,8 @@ func (f *Forest) All() []Taxon {
 
 // PrimaryProductLeaf picks the single product-axis slug to use as a clip's derived `category` shadow
 // (§10 V45a) — the MOST SPECIFIC product tag among the given leaves. `category` is no longer an input;
-// it is computed from the taxonomy tags so existing category readers keep working during the
-// transition, with the taxonomy graph as the one source of truth.
+// it is computed from the taxonomy tags so category readers keep working, with the taxonomy graph
+// as the one source of truth.
 //
 // "Most specific" = the product-axis leaf with the longest ancestor chain (deepest in the tree); ties
 // break on slug order for determinism. Returns "" when no leaf is on the product axis (a clip tagged

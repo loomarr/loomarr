@@ -4,23 +4,19 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
 
 // sessionAuthorizer resolves a request to a role via the session cookie first
-// (§11), falling back to the API_TOKEN Bearer (admin break-glass, §11). This is
-// the Phase-9 fill of the Phase-8 Authorizer seam.
+// (§11), falling back to the API_TOKEN Bearer (admin break-glass, §11). It is the
+// production implementation of httpcore.Authorizer.
 type sessionAuthorizer struct {
 	mgr             *auth.Manager
 	devices         *auth.DeviceManager
 	apiToken        string
 	apiTokenCurrent func(context.Context) (string, error)
-}
-
-// NewSessionAuthorizer builds the session+token authorizer.
-func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
-	return &sessionAuthorizer{mgr: mgr, apiToken: apiToken}
 }
 
 // NewSessionAuthorizerCurrent builds the production session authorizer with a
@@ -29,48 +25,25 @@ func NewSessionAuthorizer(mgr *auth.Manager, apiToken string) Authorizer {
 // closed and never interfere with a valid user session.
 //
 // devices may be nil, which disables the paired-device path entirely — the authorizer then behaves
-// exactly as it did before §11/Shield P1. It is a constructor parameter rather than a setter so a
+// with sessions and the API_TOKEN only. It is a constructor parameter rather than a setter so a
 // security-critical object cannot exist in a half-configured state, and so the one composition site
 // that enables device auth is greppable.
 func NewSessionAuthorizerCurrent(
 	mgr *auth.Manager,
 	devices *auth.DeviceManager,
 	apiToken func(context.Context) (string, error),
-) Authorizer {
+) httpcore.Authorizer {
 	return &sessionAuthorizer{mgr: mgr, devices: devices, apiTokenCurrent: apiToken}
 }
 
-func (a *sessionAuthorizer) Authorize(r *http.Request) Role {
-	return a.authorizeIdentity(r).role
-}
-
-// AuthorizeUser resolves the role AND the authenticated user (when a session
-// cookie identifies one). The API_TOKEN path has no user (machine/break-glass).
-func (a *sessionAuthorizer) AuthorizeUser(r *http.Request) (Role, *identitystore.User) {
-	identity := a.authorizeIdentity(r)
-	return identity.role, identity.user
-}
-
-type requestIdentity struct {
-	deviceID string
-	role     Role
-	user     *identitystore.User
-}
-
-type identityAuthorizer interface {
-	AuthorizeIdentity(r *http.Request) requestIdentity
-}
-
-func (a *sessionAuthorizer) AuthorizeIdentity(r *http.Request) requestIdentity {
-	return a.authorizeIdentity(r)
-}
-
-func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
+// Authorize resolves the role AND the authenticated user (when a session cookie or a paired
+// device identifies one). The API_TOKEN path has no user (machine/break-glass).
+func (a *sessionAuthorizer) Authorize(r *http.Request) httpcore.Identity {
 	// Session cookie (the normal human path).
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
-		if u, err := a.mgr.Resolve(r.Context(), c.Value, clientLabel(r.UserAgent())); err == nil {
+		if u, err := a.mgr.Resolve(r.Context(), c.Value, httpcore.ClientLabel(r.UserAgent())); err == nil {
 			user := u
-			return requestIdentity{role: roleOf(u), user: &user}
+			return httpcore.Identity{Role: roleOf(u), User: &user}
 		}
 	}
 	const prefix = "Bearer "
@@ -88,7 +61,7 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	if a.devices != nil && len(h) > len(prefix) && h[:len(prefix)] == prefix {
 		if principal, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
 			user := principal.User
-			return requestIdentity{deviceID: principal.ID, role: roleOf(user), user: &user}
+			return httpcore.Identity{DeviceID: principal.ID, Role: roleOf(user), User: &user}
 		}
 	}
 
@@ -104,11 +77,11 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 				apiToken = "" // credential state unavailable: fail bearer auth closed.
 			}
 		}
-		if apiToken != "" && constantEq(h[len(prefix):], apiToken) {
-			return requestIdentity{role: RoleAdmin}
+		if apiToken != "" && httpcore.ConstantEq(h[len(prefix):], apiToken) {
+			return httpcore.Identity{Role: httpcore.RoleAdmin}
 		}
 	}
-	return requestIdentity{role: RoleAnonymous}
+	return httpcore.Identity{Role: httpcore.RoleAnonymous}
 }
 
 // hasBearer reports whether a request carries an Authorization: Bearer credential.
@@ -123,44 +96,9 @@ func hasBearer(r *http.Request) bool {
 	return len(h) > len(prefix) && h[:len(prefix)] == prefix
 }
 
-// UserAuthorizer is implemented by authorizers that can also return the
-// authenticated user (the session authorizer). The middleware uses it to thread
-// identity for /v1/auth/me etc.
-type UserAuthorizer interface {
-	Authorizer
-	AuthorizeUser(r *http.Request) (Role, *identitystore.User)
-}
-
-func roleOf(u identitystore.User) Role {
+func roleOf(u identitystore.User) httpcore.Role {
 	if u.Role == identitystore.RoleAdmin {
-		return RoleAdmin
+		return httpcore.RoleAdmin
 	}
-	return RoleMember
-}
-
-// userCtxKey threads the authenticated store.User for handlers that need
-// identity (e.g. /v1/auth/me). It is stored by the middleware via huma.WithValue.
-type userCtxKey struct{}
-
-func userFrom(ctx context.Context) (identitystore.User, bool) {
-	u, ok := ctx.Value(userCtxKey{}).(identitystore.User)
-	return u, ok
-}
-
-// deviceCtxKey threads the safe token-hash identity of an authenticated paired device. It is set
-// only by the authorizer that validated the bearer credential; handlers never re-parse credentials.
-type deviceCtxKey struct{}
-
-func deviceIDFrom(ctx context.Context) (string, bool) {
-	id, ok := ctx.Value(deviceCtxKey{}).(string)
-	return id, ok && id != ""
-}
-
-// reqCtxKey threads the raw *http.Request so handlers can read the client IP and
-// set cookies (login/logout).
-type reqCtxKey struct{}
-
-func requestFrom(ctx context.Context) *http.Request {
-	r, _ := ctx.Value(reqCtxKey{}).(*http.Request)
-	return r
+	return httpcore.RoleMember
 }

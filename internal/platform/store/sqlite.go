@@ -3,11 +3,35 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
+	"strings"
 
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	_ "modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
+	"modernc.org/sqlite" // pure-Go driver, no cgo (§5, §16)
 )
+
+// SQLite's own lower() folds ASCII only, so a search for "ä" never found "Ä". unicode_lower folds
+// every script, as Go's strings.ToLower does for the term and as Postgres's LOWER does. It is a
+// new name rather than a replacement for lower(), which a CHECK constraint and other stores use.
+func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("unicode_lower", 1,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			if s, ok := args[0].(string); ok {
+				return strings.ToLower(s), nil
+			}
+			return args[0], nil
+		})
+}
+
+// lower is expr folded to lower case in every script, on either backend.
+func (s *sqlStore) lower(expr string) string {
+	if s.dialect == DialectSQLite {
+		return "unicode_lower(" + expr + ")"
+	}
+	return "LOWER(" + expr + ")"
+}
 
 // SQLite claim: a guarded UPDATE that leases the due rows by pushing their
 // deadline to ?1 (now+lease), so they aren't re-claimed until the reconciler
@@ -28,7 +52,7 @@ RETURNING ` + titleColumns
 // SQLite channel claim: same guarded-UPDATE lease as titles, keyed on
 // reconcile_deadline and excluding detached + paused channels (§9/§18) — both are
 // off the sweep (detached = unmanaged; paused = deliberately off-air). RETURNs the
-// full channel column set (channelSelect order) so scanChannel serves it.
+// full channel column set (channelstore.Select order) so channelstore.ScanChannel serves it.
 // Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 //
 // ⚠ **There is deliberately NO `reconcile_deadline > 0` guard. A zero deadline means DUE NOW**
@@ -38,14 +62,14 @@ RETURNING ` + titleColumns
 // Tunarr, while the binder's comment promised "the sweep retries". The sweep retried everything
 // except the one case it existed for. Channels that opt out of reconciliation say so in `status`;
 // that is the only exclusion, and a magic deadline value must never become a second one.
-const sqliteChannelClaimSQL = `
+var sqliteChannelClaimSQL = `
 UPDATE channels SET reconcile_deadline = ?1, revision = revision + 1
 WHERE id IN (
     SELECT id FROM channels
     WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2
     ORDER BY reconcile_deadline LIMIT ?3
 )
-RETURNING ` + channelColumns
+RETURNING ` + channelstore.Columns(channelstore.SQLiteLineup("channels"))
 
 // sqliteMaxOpenConns is the pool size: enough that reads run beside the one writer and River's
 // polls, small enough that a household server's file handles and memory don't notice.
@@ -77,7 +101,26 @@ func optimizeSQLite(ctx context.Context, db *sql.DB) error {
 // openSQLite opens the DB file with WAL + busy_timeout (§5) and returns a store
 // wired with the SQLite claim SQL. dsn is the path after the sqlite:// scheme.
 func openSQLite(ctx context.Context, path string) (*sqlStore, error) {
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	return openSQLiteDriver(ctx, "sqlite", path)
+}
+
+// OpenSQLiteDriver opens an already-migrated SQLite database ("sqlite://path") through the named
+// database/sql driver, which must wrap "sqlite". It exists for tests that watch the statements the
+// store sends (storetest.Recorder, whose query-plan check proves lookups use indexes); production
+// opens with Open.
+func OpenSQLiteDriver(ctx context.Context, driverName, databaseURL string) (Store, error) {
+	s, err := openSQLiteDriver(ctx, driverName, strings.TrimPrefix(databaseURL, "sqlite://"))
+	if err != nil {
+		return nil, err
+	}
+	_ = optimizeSQLite(ctx, s.db)
+	return s, nil
+}
+
+// openSQLiteDriver is openSQLite over a named database/sql driver. Production always passes
+// "sqlite".
+func openSQLiteDriver(ctx context.Context, driverName, path string) (*sqlStore, error) {
+	db, err := sql.Open(driverName, sqliteDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

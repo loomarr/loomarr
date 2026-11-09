@@ -41,9 +41,11 @@ func (s *sqlStore) ListOpenStructureWindowCallLedgerEntries(ctx context.Context,
 	if limit < 1 || limit > 1000 {
 		return nil, errors.New("list open structure window call ledger entries: limit must be between 1 and 1000")
 	}
+	// The open states by name, not "<> settled": an inequality cannot use the (state, requested_at)
+	// index, and the schema's CHECK allows exactly these two besides settled.
 	rows, err := s.db.QueryContext(ctx, s.ph(structureWindowCallLedgerSelect+`
-		WHERE state <> ? ORDER BY requested_at ASC, request_sha256 ASC, attempt ASC LIMIT ?`),
-		string(window.CallLedgerSettled), limit)
+		WHERE state IN (?, ?) ORDER BY requested_at ASC, request_sha256 ASC, attempt ASC LIMIT ?`),
+		string(window.CallLedgerOpen), string(window.CallLedgerHeldBudget), limit)
 	if err != nil {
 		return nil, fmt.Errorf("list open structure window call ledger entries: %w", err)
 	}
