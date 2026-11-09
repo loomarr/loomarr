@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -47,6 +48,9 @@ type Store interface {
 	// names the people watching.
 	ListProposalsByStatus(ctx context.Context, status string) ([]proposalstore.Proposal, error)
 	ListUsers(ctx context.Context) ([]identitystore.User, error)
+	// The watch history (#3010), read and cleared by admins.
+	ListViewings(ctx context.Context, q store.ViewingQuery) ([]store.Viewing, error)
+	DeleteViewings(ctx context.Context, userID string) (int, error)
 }
 
 // ChannelService is the part of the channel-management surface these routes use (§9).
@@ -212,6 +216,7 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerChannelIdeas(api)
 	s.registerMyChannels(api)
 	s.registerHouseholdViewing(api)
+	s.registerWatchHistory(api)
 }
 
 // holidayCalendar is the engine's holiday calendar, or the default (the US, UTC) without one.
