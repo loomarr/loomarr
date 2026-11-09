@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 const (
@@ -95,7 +96,7 @@ func (e *PlaybackIntegrityEvaluator) Evaluate(ctx context.Context, media Segment
 				observation, reasonCode = confirmed, "playback_unsafe"
 				break
 			}
-			manifestSHA256 = asset.MediaAssetManifestAuthoritySHA256(*tags.MediaAssets)
+			manifestSHA256 = asset.ManifestAuthoritySHA256(*tags.MediaAssets)
 			if tags.Conditioning != nil {
 				conditioningSHA256 = asset.ConditioningEvidenceSHA256(*tags.Conditioning)
 			}
@@ -142,7 +143,7 @@ func playbackArtifactHoldReason(observation segmentScreeningArtifactObservation)
 }
 
 func readSegmentScreeningSidecar(mediaPath string) (asset.SidecarTags, asset.SidecarReadState, error) {
-	path := asset.SidecarPathFor(mediaPath)
+	path := tools.SidecarPathFor(mediaPath)
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return asset.SidecarTags{}, asset.SidecarAbsent, nil

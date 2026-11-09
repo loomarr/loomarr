@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
@@ -872,23 +873,23 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 			filepath.Clean(filepath.FromSlash(playback.Path)) != filepath.Clean(filepath.FromSlash(rc.Path)) {
 			return fail(artifactIdentityMismatch)
 		}
-		if err := asset.ValidateMediaAssetFile(ctx, s.dir, playback, asset.MediaAssetPlayback, ""); err != nil {
+		if err := asset.ValidateFile(ctx, s.dir, playback, asset.RolePlayback, ""); err != nil {
 			return fail("manifested playback derivative does not match the portable media manifest")
 		}
 		// Verify the retained source on first normalization and while repairing the historical
 		// false-positive. Once media_path names the immutable master, ordinary scans keep their
 		// former one-full-file-hash cost; any later stage that reuses the master re-verifies it.
 		if artifact.State == ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path {
-			if err := asset.ValidateMediaAssetFile(ctx, s.dir, assets.SourceMaster, asset.MediaAssetSourceMaster, asset.MediaMasterDirName); err != nil {
+			if err := asset.ValidateFile(ctx, s.dir, assets.SourceMaster, asset.RoleSourceMaster, asset.MasterDirName); err != nil {
 				return fail("manifested source master does not match the portable media manifest")
 			}
 		}
 		normalizeConsumedManifest = artifact.State != ArtifactConsumed ||
 			artifact.MediaPath != assets.SourceMaster.Path ||
-			artifact.SidecarPath != asset.SidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
+			artifact.SidecarPath != tools.SidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
 		artifact.State = ArtifactConsumed
 		artifact.MediaPath = assets.SourceMaster.Path
-		artifact.SidecarPath = asset.SidecarPathFor(assets.SourceMaster.Path)
+		artifact.SidecarPath = tools.SidecarPathFor(assets.SourceMaster.Path)
 		artifact.RepairReason = ""
 	} else {
 		if artifact.State == ArtifactRepair && artifact.RepairReason != ArtifactMediaMissing {
@@ -1012,7 +1013,7 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 		return rc, false, err
 	}
 
-	oldSidecar, newSidecar := asset.SidecarPathFor(oldFull), asset.SidecarPathFor(newFull)
+	oldSidecar, newSidecar := tools.SidecarPathFor(oldFull), tools.SidecarPathFor(newFull)
 	if _, err := os.Stat(oldSidecar); err == nil {
 		if _, targetErr := os.Stat(newSidecar); os.IsNotExist(targetErr) {
 			if err := os.Link(oldSidecar, newSidecar); err != nil {

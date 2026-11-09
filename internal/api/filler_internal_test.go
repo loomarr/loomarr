@@ -33,9 +33,9 @@ func TestClipToDTONeedsDetailsFollowsThePredicate(t *testing.T) {
 }
 
 func TestClipMediaDTOProjectsPreparedPlaybackFacts(t *testing.T) {
-	tags := asset.SidecarTags{MediaAssets: &asset.MediaAssetManifest{
-		Playback: &asset.MediaDerivativeLineage{
-			Asset: asset.MediaAssetIdentity{Bytes: 9_361_105},
+	tags := asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Playback: &asset.DerivativeLineage{
+			Asset: asset.Identity{Bytes: 9_361_105},
 			Recipe: tools.DerivativeRecipe{
 				Container: "mp4", VideoCodec: "h264", AudioCodec: "aac",
 				AudioChannels: 2, AudioRateHz: 48_000,

@@ -80,7 +80,7 @@ func (p *splitPublication) prepare(ctx context.Context) error {
 // name is still absent. Once media exists, confirm transfers ownership only after exact byte and
 // lineage validation.
 func prepareSplitSidecar(stagedMedia, finalMedia string) error {
-	stagedSidecar, finalSidecar := asset.SidecarPathFor(stagedMedia), asset.SidecarPathFor(finalMedia)
+	stagedSidecar, finalSidecar := tools.SidecarPathFor(stagedMedia), tools.SidecarPathFor(finalMedia)
 	if err := os.Link(stagedSidecar, finalSidecar); err == nil {
 		return nil
 	} else if !os.IsExist(err) {
@@ -132,6 +132,6 @@ func (p *splitPublication) rollback() {
 		if err := os.Remove(cut.final); err != nil && !os.IsNotExist(err) {
 			continue
 		}
-		_ = os.Remove(asset.SidecarPathFor(cut.final))
+		_ = os.Remove(tools.SidecarPathFor(cut.final))
 	}
 }

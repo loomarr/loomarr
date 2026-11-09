@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -164,7 +165,7 @@ func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 			// watch a folder that never drains. The clip itself is not lost — the copy already
 			// in the clip folder IS this file, byte for byte, which is what the hash asserts.
 			_ = os.Remove(src)
-			_ = os.Remove(asset.SidecarPathFor(src))
+			_ = os.Remove(tools.SidecarPathFor(src))
 			res.Duplicates++
 			continue
 		}
@@ -182,7 +183,7 @@ func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sou
 		}
 		// A sidecar the downloader wrote travels with the clip, so its title/description survive
 		// to reach the tagger.
-		_ = moveIfPresentWithStorage(ctx, asset.SidecarPathFor(src), asset.SidecarPathFor(dst), governor)
+		_ = moveIfPresentWithStorage(ctx, tools.SidecarPathFor(src), tools.SidecarPathFor(dst), governor)
 
 		if err := asset.WriteSidecarTags(dst, asset.SidecarTags{OriginalName: original, SourceID: sourceID}, fetched); err != nil && log != nil {
 			// Not fatal: the clip is in place and catalogueable. A missing sidecar costs the

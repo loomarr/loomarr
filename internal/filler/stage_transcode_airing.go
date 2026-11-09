@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // The library re-encode (#2121, decisions 8, 9 and 11): a clip already on air is re-encoded from
@@ -122,7 +123,7 @@ func (w *airingSwap) admit(ctx context.Context, c StoreClip, staged, newHash str
 func (w *airingSwap) commit(ctx context.Context, oldHash string, c StoreClip, published string) error {
 	if err := w.store.ReplaceAiringClip(ctx, oldHash, c, w.record); err != nil {
 		_ = os.Remove(published)
-		_ = os.Remove(asset.SidecarPathFor(published))
+		_ = os.Remove(tools.SidecarPathFor(published))
 		return err
 	}
 	w.committed = true
@@ -138,7 +139,7 @@ func (w *airingSwap) discardUncommitted(clipDir, evidence string) {
 
 // removeOldEvidence removes the airing clip's own evidence copy once it switched. Evidence is
 // encoded from one clip's master, so no other clip names it; the master itself always stays.
-func (w *airingSwap) removeOldEvidence(clipDir string, assets asset.MediaAssetManifest) {
+func (w *airingSwap) removeOldEvidence(clipDir string, assets asset.Manifest) {
 	if w.oldEvidence == "" || w.oldEvidence == derivativePath(assets.Evidence) || w.oldEvidence == assets.SourceMaster.Path {
 		return
 	}

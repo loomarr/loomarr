@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
+func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (Identity, error) {
 	return PreserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
 }
 
@@ -36,7 +36,7 @@ func TestPreserveSourceMasterRetainsExactPortableBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(bytes) || retained.Role != MediaAssetSourceMaster || retained.Bytes != int64(len(bytes)) {
+	if string(got) != string(bytes) || retained.Role != RoleSourceMaster || retained.Bytes != int64(len(bytes)) {
 		t.Fatalf("retained asset = %+v bytes %q", retained, got)
 	}
 	masterTags, state := ReadSidecarTagsState(master)

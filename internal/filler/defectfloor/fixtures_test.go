@@ -45,25 +45,25 @@ func writeContentAddressedClip(t *testing.T, dir string, body []byte, ext string
 // preserveSourceMaster files a copy of sourcePath in the hidden master tree of clipDir, where
 // filler's pipeline keeps it, and returns the identity a sidecar names it by. The real routine is
 // unexported; the defect floor only needs the file to exist at a valid path with a valid identity.
-func preserveSourceMaster(clipDir, sourcePath, clipHash string) (asset.MediaAssetIdentity, error) {
+func preserveSourceMaster(clipDir, sourcePath, clipHash string) (asset.Identity, error) {
 	digest, size, err := asset.FileSHA256(sourcePath)
 	if err != nil {
-		return asset.MediaAssetIdentity{}, err
+		return asset.Identity{}, err
 	}
 	rel := path.Join(split.MediaAssetRootName, "masters", digest[:2], digest[2:4], digest+strings.ToLower(filepath.Ext(sourcePath)))
 	full := filepath.Join(clipDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		return asset.MediaAssetIdentity{}, err
+		return asset.Identity{}, err
 	}
 	body, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return asset.MediaAssetIdentity{}, err
+		return asset.Identity{}, err
 	}
 	if err := os.WriteFile(full, body, 0o644); err != nil {
-		return asset.MediaAssetIdentity{}, err
+		return asset.Identity{}, err
 	}
-	return asset.MediaAssetIdentity{
-		Role: asset.MediaAssetSourceMaster, SHA256: digest, Bytes: size, ClipHash: clipHash, Path: rel,
+	return asset.Identity{
+		Role: asset.RoleSourceMaster, SHA256: digest, Bytes: size, ClipHash: clipHash, Path: rel,
 	}, nil
 }
 
@@ -88,7 +88,7 @@ func fixtureDerivativeQC(durationMs int64, keyframeSeconds int, hadAudio bool, t
 
 // screeningSubjectManifest is a complete media-asset manifest (source master, evidence and
 // playback lineage). filler's sidecar reader validates it, so an incomplete one reads as invalid.
-func screeningSubjectManifest(t *testing.T) asset.MediaAssetManifest {
+func screeningSubjectManifest(t *testing.T) asset.Manifest {
 	t.Helper()
 	tool := tools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
@@ -110,24 +110,24 @@ func screeningSubjectManifest(t *testing.T) asset.MediaAssetManifest {
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 	}
-	source := asset.MediaAssetIdentity{
-		Role: asset.MediaAssetSourceMaster, SHA256: strings.Repeat("1", 64), Bytes: 1_000,
+	source := asset.Identity{
+		Role: asset.RoleSourceMaster, SHA256: strings.Repeat("1", 64), Bytes: 1_000,
 		ClipHash: strings.Repeat("2", 64), Path: ".loomarr-media/masters/11/11/source.mp4",
 	}
-	return asset.MediaAssetManifest{
+	return asset.Manifest{
 		Version: mediaAssetManifestVersion, SourceMaster: source,
-		Evidence: &asset.MediaDerivativeLineage{
-			Asset: asset.MediaAssetIdentity{
-				Role: asset.MediaAssetEvidence, SHA256: strings.Repeat("3", 64), Bytes: 900,
+		Evidence: &asset.DerivativeLineage{
+			Asset: asset.Identity{
+				Role: asset.RoleEvidence, SHA256: strings.Repeat("3", 64), Bytes: 900,
 				ClipHash: strings.Repeat("4", 64), Path: ".loomarr-media/evidence/11/11/recipe/evidence.mp4",
 			},
 			InputSHA256: source.SHA256, Recipe: evidenceRecipe, RecipeSHA256: evidenceRecipeSHA,
 			Tool: tool, DurationMs: 30_000, QC: fixtureDerivativeQC(30_000, evidenceRecipe.KeyframeSeconds, true, 0),
 			InputProbe: input, OutputProbe: output, Quality: quality,
 		},
-		Playback: &asset.MediaDerivativeLineage{
-			Asset: asset.MediaAssetIdentity{
-				Role: asset.MediaAssetPlayback, SHA256: strings.Repeat("5", 64), Bytes: 800,
+		Playback: &asset.DerivativeLineage{
+			Asset: asset.Identity{
+				Role: asset.RolePlayback, SHA256: strings.Repeat("5", 64), Bytes: 800,
 				ClipHash: strings.Repeat("6", 64), Path: "66/66/playback.mp4",
 			},
 			InputSHA256: source.SHA256, Recipe: playbackRecipe, RecipeSHA256: playbackRecipeSHA,

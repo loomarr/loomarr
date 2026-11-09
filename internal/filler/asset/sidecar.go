@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -64,12 +63,6 @@ type SourceMetadata struct {
 	UploadDate   string
 	OriginalName string
 	SourceID     string
-}
-
-// SidecarPathFor returns the info-JSON path for a media file: "clip.mp4" →
-// "clip.info.json". Mirrors how both writers name them.
-func SidecarPathFor(mediaPath string) string {
-	return strings.TrimSuffix(mediaPath, filepath.Ext(mediaPath)) + ".info.json"
 }
 
 // Loomarr's own keys inside the info-JSON (§10 V38c). Namespaced under `loomarr` so they cannot
@@ -191,7 +184,7 @@ type SidecarTags struct {
 	SplitPublicationToken string `json:"splitPublicationToken,omitempty"`
 	// MediaAssets binds the playable catalog rendition to the immutable source master and every
 	// reproducible derivative. It is portable authority beside the bytes, not a cache-only path hint.
-	MediaAssets *MediaAssetManifest `json:"mediaAssets,omitempty"`
+	MediaAssets *Manifest `json:"mediaAssets,omitempty"`
 	// SegmentScreening points to the exact immutable subject and four-axis aggregate recorded for
 	// this rendered child. It is a portable locator, never release authority: terminal admission
 	// reprojects the current sidecar and replays every referenced evidence record.
@@ -282,7 +275,7 @@ type ConditioningEvidence struct {
 // The guarantee this function keeps is unchanged — it writes `*.info.json` and nothing else. The
 // package-level mutation and retention contracts live with the derivative publisher.
 func WriteSidecarTags(mediaPath string, tags SidecarTags, fetched bool) error {
-	path := SidecarPathFor(mediaPath)
+	path := tools.SidecarPathFor(mediaPath)
 
 	doc := map[string]any{}
 	if raw, err := os.ReadFile(path); err == nil {
@@ -350,7 +343,7 @@ const (
 // Loomarr object into ordinary absence. A valid third-party sidecar with no Loomarr key is valid
 // and returns zero tags; only present malformed state is invalid.
 func ReadSidecarTagsState(mediaPath string) (SidecarTags, SidecarReadState) {
-	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return SidecarTags{}, SidecarAbsent
@@ -461,7 +454,7 @@ func rawJSONInt64(fields map[string]json.RawMessage, name string) bool {
 // unreadability have the same non-authoritative meaning. Safety-sensitive rebuild uses the typed
 // state above.
 func ReadSidecarTags(mediaPath string) (SidecarTags, bool) {
-	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return SidecarTags{}, false
 	}
@@ -476,7 +469,7 @@ func ReadSidecarTags(mediaPath string) (SidecarTags, bool) {
 // (which is what makes it testable with fstest.MapFS and confines it to that subtree). Both parse
 // the same shape; only the read differs.
 func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
-	raw, err := fs.ReadFile(fsys, SidecarPathFor(mediaPath))
+	raw, err := fs.ReadFile(fsys, tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return SidecarTags{}, false
 	}
@@ -488,7 +481,7 @@ func ReadSidecarTagsFS(fsys fs.FS, mediaPath string) (SidecarTags, bool) {
 //
 // ⚠ Reads the FIELD, not the file's existence. See fetchedByKey.
 func SidecarFetchedByUs(mediaPath string) bool {
-	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return false
 	}
@@ -515,7 +508,7 @@ func SidecarFetchedByUs(mediaPath string) bool {
 // grounding: `originalName` stays the grounding text (the year lives in the filename), so the two
 // concerns — what a human READS vs what the tagger GROUNDS against — do not collapse into one field.
 func SidecarTitle(mediaPath string) string {
-	raw, err := os.ReadFile(SidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return ""
 	}
@@ -535,7 +528,7 @@ func SidecarTitle(mediaPath string) string {
 // dump would bury the signal and burn tokens on fields (formats, thumbnails, chapter
 // markers) that say nothing about what the clip IS.
 func SidecarText(fsys fs.FS, mediaPath string) string {
-	raw, err := fs.ReadFile(fsys, SidecarPathFor(mediaPath))
+	raw, err := fs.ReadFile(fsys, tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return "" // no sidecar is normal — drop-folder clips never had one
 	}
@@ -552,7 +545,7 @@ func ReadSourceMetadataFS(fsys fs.FS, mediaPath string) (SourceMetadata, bool) {
 	if fsys == nil {
 		return SourceMetadata{}, false
 	}
-	raw, err := fs.ReadFile(fsys, SidecarPathFor(mediaPath))
+	raw, err := fs.ReadFile(fsys, tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return SourceMetadata{}, false
 	}

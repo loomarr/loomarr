@@ -98,8 +98,8 @@ func runEvidenceBoundConditioning(t *testing.T, probedMs int64) (StageResult, in
 	parentHash := writeContentAddressedClip(t, dir, []byte("playback rendition differs from evidence"), ".mp4")
 	parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
 	parentFull := filepath.Join(dir, filepath.FromSlash(parentRel))
-	if err := asset.WriteSidecarTags(parentFull, asset.SidecarTags{MediaAssets: &asset.MediaAssetManifest{
-		Version: asset.MediaAssetManifestVersion, SourceMaster: master, Evidence: &evidence,
+	if err := asset.WriteSidecarTags(parentFull, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: master, Evidence: &evidence,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestTranscodeStage_BackfillsEvidenceWithoutReencodingExistingPlayback(t *te
 }
 
 func TestTranscodeStage_DerivativeReuseVerifiesCurrentBytes(t *testing.T) {
-	for _, role := range []asset.MediaAssetRole{asset.MediaAssetEvidence, asset.MediaAssetPlayback} {
+	for _, role := range []asset.Role{asset.RoleEvidence, asset.RolePlayback} {
 		t.Run(string(role), func(t *testing.T) {
 			dir := t.TempDir()
 			stage, counts, clip := derivativeReuseFixture(t, dir)
@@ -503,7 +503,7 @@ func TestTranscodeStage_CompletedReuseRejectsDriftedSourceMaster(t *testing.T) {
 }
 
 func TestTranscodeStage_RunCannotReuseCachedQualityForDriftedDerivative(t *testing.T) {
-	for _, role := range []asset.MediaAssetRole{asset.MediaAssetEvidence, asset.MediaAssetPlayback} {
+	for _, role := range []asset.Role{asset.RoleEvidence, asset.RolePlayback} {
 		t.Run(string(role), func(t *testing.T) {
 			dir := t.TempDir()
 			stage, counts, clip := derivativeReuseFixture(t, dir)
@@ -576,7 +576,7 @@ func TestTranscodeStage_DerivativeReuseRejectsPathSubstitution(t *testing.T) {
 			t.Fatal(err)
 		}
 		clip = out.Clip
-		evidence := derivativeAssetPath(t, dir, clip, asset.MediaAssetEvidence)
+		evidence := derivativeAssetPath(t, dir, clip, asset.RoleEvidence)
 		bytes, err := os.ReadFile(evidence)
 		if err != nil {
 			t.Fatal(err)
@@ -630,14 +630,14 @@ func derivativeReuseFixture(t *testing.T, dir string) (*TranscodeStage, *derivat
 	return stage, counts, clip
 }
 
-func derivativeAssetPath(t *testing.T, dir string, clip StoreClip, role asset.MediaAssetRole) string {
+func derivativeAssetPath(t *testing.T, dir string, clip StoreClip, role asset.Role) string {
 	t.Helper()
 	tags, state := asset.ReadSidecarTagsState(filepath.Join(dir, filepath.FromSlash(clip.Path)))
 	if state != asset.SidecarValid || tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil || tags.MediaAssets.Playback == nil {
 		t.Fatalf("completed derivative manifest = %+v state=%v", tags.MediaAssets, state)
 	}
 	identity := tags.MediaAssets.Evidence.Asset
-	if role == asset.MediaAssetPlayback {
+	if role == asset.RolePlayback {
 		identity = tags.MediaAssets.Playback.Asset
 	}
 	return filepath.Join(dir, filepath.FromSlash(identity.Path))

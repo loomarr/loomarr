@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 )
 
@@ -199,7 +200,7 @@ func TestTakeIn_RecordsFetchedByOnlyForOurOwnDownloads(t *testing.T) {
 func TestTakeIn_CarriesTheDownloadersSidecarAcross(t *testing.T) {
 	watch, clips := newIntakeDirs(t)
 	src := writeClip(t, watch, "dl.mp4", 2048, 5)
-	if err := os.WriteFile(asset.SidecarPathFor(src),
+	if err := os.WriteFile(tools.SidecarPathFor(src),
 		[]byte(`{"title":"Crunchlings","description":"They're crunchtastic","view_count":99}`),
 		0o644); err != nil {
 		t.Fatal(err)
@@ -214,7 +215,7 @@ func TestTakeIn_CarriesTheDownloadersSidecarAcross(t *testing.T) {
 	}
 	dst := filepath.Join(clips, filed[0])
 
-	raw, err := os.ReadFile(asset.SidecarPathFor(dst))
+	raw, err := os.ReadFile(tools.SidecarPathFor(dst))
 	if err != nil {
 		t.Fatalf("the downloader's sidecar did not travel with the clip: %v", err)
 	}

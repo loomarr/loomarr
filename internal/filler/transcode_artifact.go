@@ -51,7 +51,7 @@ func snapshotConditioningArtifacts(ctx context.Context, stageDir, source, parent
 
 // validateRecoveredTranscode proves an existing canonical artifact is the exact output and restart
 // record from this attempt. Sparse catalog identity alone is never recovery authority.
-func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, quality MediaQuality, assets *asset.MediaAssetManifest) error {
+func validateRecoveredTranscode(ctx context.Context, staged, published, expectedHash, profileID string, lineage *asset.ConditioningLineage, evidence *asset.ConditioningEvidence, quality MediaQuality, assets *asset.Manifest) error {
 	publishedID, err := asset.ClipID(published)
 	if err != nil || publishedID != expectedHash {
 		return errors.New("existing transformed artifact bytes do not match their identity")

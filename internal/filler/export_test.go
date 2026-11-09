@@ -88,7 +88,7 @@ func moveIfPresent(src, dst string) error {
 	return moveIfPresentWithStorage(context.Background(), src, dst, nil)
 }
 
-func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags asset.SidecarTags) (asset.MediaAssetIdentity, error) {
+func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags asset.SidecarTags) (asset.Identity, error) {
 	return asset.PreserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
 }
 

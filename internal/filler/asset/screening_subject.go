@@ -67,7 +67,7 @@ func NewSegmentScreeningSubject(catalogHash string, tags SidecarTags) (SegmentSc
 		SourceMasterHash: manifest.SourceMaster.ClipHash, SourceMasterSHA256: manifest.SourceMaster.SHA256, SourceMasterBytes: manifest.SourceMaster.Bytes,
 		EvidenceHash: evidence.Asset.ClipHash, EvidenceSHA256: evidence.Asset.SHA256, EvidenceBytes: evidence.Asset.Bytes, EvidenceDurationMs: evidence.DurationMs,
 		PlaybackSHA256: playback.Asset.SHA256, PlaybackBytes: playback.Asset.Bytes, PlaybackDurationMs: playback.DurationMs,
-		MediaManifestSHA256: MediaAssetManifestAuthoritySHA256(manifest),
+		MediaManifestSHA256: ManifestAuthoritySHA256(manifest),
 		SourceID:            strings.TrimSpace(tags.SourceID), AcquisitionID: strings.TrimSpace(tags.AcquisitionID),
 	}
 	if tags.ConditioningLineage != nil {
@@ -145,9 +145,9 @@ func ScreeningBytesSHA256(raw []byte) string {
 	return hex.EncodeToString(digest[:])
 }
 
-// MediaAssetManifestAuthoritySHA256 binds recipes, tools, probes, QC, and byte identities while
+// ManifestAuthoritySHA256 binds recipes, tools, probes, QC, and byte identities while
 // deliberately excluding relocatable filesystem paths.
-func MediaAssetManifestAuthoritySHA256(manifest MediaAssetManifest) string {
+func ManifestAuthoritySHA256(manifest Manifest) string {
 	if err := manifest.Validate(); err != nil {
 		return ""
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 type identityMemStore struct {
@@ -218,8 +219,8 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := asset.WriteSidecarTags(softFull, asset.SidecarTags{MediaAssets: &asset.MediaAssetManifest{
-		Version: asset.MediaAssetManifestVersion, SourceMaster: master,
+	if err := asset.WriteSidecarTags(softFull, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: master,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -242,9 +243,9 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 		fingerprints: map[string]creative.Fingerprint{},
 		variants:     map[string][]string{},
 	}
-	tools := &identityTools{byHash: map[string]creative.Fingerprint{sharp: spot, soft: spot, cutDown: cut}}
+	fakeTools := &identityTools{byHash: map[string]creative.Fingerprint{sharp: spot, soft: spot, cutDown: cut}}
 
-	res, err := NewCreativeIdentity(st, tools, dir, func() float64 { return -23 }, func() time.Time { return t0 }, nil).Run(ctx)
+	res, err := NewCreativeIdentity(st, fakeTools, dir, func() float64 { return -23 }, func() time.Time { return t0 }, nil).Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +259,7 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	if len(st.links) != 1 || !reflect.DeepEqual(st.variants[cutDown], []string{sharp}) {
 		t.Fatalf("links = %v, want the cut-down linked to the survivor once", st.links)
 	}
-	for _, gone := range []string{softFull, asset.SidecarPathFor(softFull), masterFull} {
+	for _, gone := range []string{softFull, tools.SidecarPathFor(softFull), masterFull} {
 		if _, err := os.Stat(gone); !os.IsNotExist(err) {
 			t.Errorf("the inferior copy's file %s survived the merge: %v", gone, err)
 		}
@@ -270,10 +271,10 @@ func TestCreativeIdentity_KeepsTheBestCopyAndLinksTheCutDown(t *testing.T) {
 	}
 
 	// The next pass reuses every fingerprint and finds nothing new to do.
-	tools.calls = 0
+	fakeTools.calls = 0
 	st.clips = st.clips[1:]
-	res, err = NewCreativeIdentity(st, tools, dir, func() float64 { return -23 }, time.Now, nil).Run(ctx)
-	if err != nil || tools.calls != 0 || res.Merged != 0 || res.Linked != 0 {
-		t.Fatalf("second pass = %+v (decodes %d, err %v), want cached fingerprints and no merge", res, tools.calls, err)
+	res, err = NewCreativeIdentity(st, fakeTools, dir, func() float64 { return -23 }, time.Now, nil).Run(ctx)
+	if err != nil || fakeTools.calls != 0 || res.Merged != 0 || res.Linked != 0 {
+		t.Fatalf("second pass = %+v (decodes %d, err %v), want cached fingerprints and no merge", res, fakeTools.calls, err)
 	}
 }

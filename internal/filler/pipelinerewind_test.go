@@ -13,7 +13,7 @@ import (
 func TestEvidenceReleasedReadsTheSidecarTheDefectFloorLeaves(t *testing.T) {
 	dir := t.TempDir()
 	manifest := screeningSubjectManifest(t)
-	clip := func(body string, m asset.MediaAssetManifest) StoreClip {
+	clip := func(body string, m asset.Manifest) StoreClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
 		rel := ClipRelPath(hash, ".mp4")
 		if err := asset.WriteSidecarTags(filepath.Join(dir, rel), asset.SidecarTags{MediaAssets: &m}, false); err != nil {

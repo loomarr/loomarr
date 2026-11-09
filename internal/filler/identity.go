@@ -361,7 +361,7 @@ func (ci *CreativeIdentity) merge(ctx context.Context, loser, survivor IdentityC
 // sidecar, and the source master and evidence copy its sidecar names, unless another clip's sidecar
 // names them too. It reports each file it could not remove.
 func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
-	files := []string{full, asset.SidecarPathFor(full)}
+	files := []string{full, tools.SidecarPathFor(full)}
 	if m := tags.MediaAssets; m != nil {
 		// An asset another clip's sidecar also names is shared; it stays. The count drops either
 		// way, so the last of two copies removed in one pass takes it.
@@ -399,7 +399,7 @@ func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenc
 	return removeOwnFiles(clipDir, full, tags, referenced)
 }
 
-func derivativePath(d *asset.MediaDerivativeLineage) string {
+func derivativePath(d *asset.DerivativeLineage) string {
 	if d == nil {
 		return ""
 	}

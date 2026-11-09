@@ -678,7 +678,7 @@ func (d DirSource) ScanLocalClips(ctx context.Context) (LocalScan, error) {
 // at all (measured during the 2026-07-31 fixture capture), so absence is the common case and says
 // nothing about permission. Callers render "unknown", never a reassuring default.
 func licenseBeside(mediaPath string) string {
-	raw, err := os.ReadFile(asset.SidecarPathFor(mediaPath))
+	raw, err := os.ReadFile(tools.SidecarPathFor(mediaPath))
 	if err != nil {
 		return ""
 	}

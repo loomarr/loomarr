@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
+	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
 // libraryOnDisk writes clip files into a library folder, with subfolders as the names say.
@@ -424,11 +425,11 @@ func TestDrainScanSources_ReSyncOfAnUnchangedLibraryAddsNothing(t *testing.T) {
 	if err := os.WriteFile(derivedFiled, derived, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tags.MediaAssets = &asset.MediaAssetManifest{Version: asset.MediaAssetManifestVersion, SourceMaster: master}
+	tags.MediaAssets = &asset.Manifest{Version: asset.ManifestVersion, SourceMaster: master}
 	if err := asset.WriteSidecarTags(derivedFiled, tags, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(asset.SidecarPathFor(rawFiled)); err != nil {
+	if err := os.Remove(tools.SidecarPathFor(rawFiled)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(rawFiled); err != nil {

@@ -631,7 +631,7 @@ func TestReadConditioningSidecar_ReturnsRetryableErrorWhenPathBecomesDirectory(t
 	if _, present, err := readConditioningSidecar(media); err != nil || !present {
 		t.Fatalf("valid conditioning sidecar = present %v, err %v", present, err)
 	}
-	path := asset.SidecarPathFor(media)
+	path := tools.SidecarPathFor(media)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +766,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			beforeSidecar, err := os.ReadFile(asset.SidecarPathFor(childFull))
+			beforeSidecar, err := os.ReadFile(tools.SidecarPathFor(childFull))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -834,7 +834,7 @@ func TestTranscodeStage_CancellationHoldsConditionedChildBeforePublish(t *testin
 				t.Fatalf("%s cancellation result = %+v, stored=%q removed=%v err=%v", phase, got.out, stored.oldHash, removed, got.err)
 			}
 			afterMedia, mediaErr := os.ReadFile(childFull)
-			afterSidecar, sidecarErr := os.ReadFile(asset.SidecarPathFor(childFull))
+			afterSidecar, sidecarErr := os.ReadFile(tools.SidecarPathFor(childFull))
 			if mediaErr != nil || sidecarErr != nil || !bytes.Equal(afterMedia, beforeMedia) || !bytes.Equal(afterSidecar, beforeSidecar) {
 				t.Fatalf("%s cancellation mutated source media or sidecar", phase)
 			}
@@ -906,7 +906,7 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 			t.Fatalf("raw post-rewrite packet edges were overwritten by derived evidence: %+v", edge)
 		}
 	}
-	raw, err := os.ReadFile(asset.SidecarPathFor(filepath.Join(dir, filepath.FromSlash(out.Clip.Path))))
+	raw, err := os.ReadFile(tools.SidecarPathFor(filepath.Join(dir, filepath.FromSlash(out.Clip.Path))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1111,11 +1111,11 @@ func TestTranscodeStage_ExistingConditionedOutputMustMatchTheCurrentChildEvidenc
 				}
 			}
 			if tc.missing {
-				if err := os.Remove(asset.SidecarPathFor(outputFull)); err != nil && !os.IsNotExist(err) {
+				if err := os.Remove(tools.SidecarPathFor(outputFull)); err != nil && !os.IsNotExist(err) {
 					t.Fatal(err)
 				}
 			} else if raw != nil {
-				if err := os.WriteFile(asset.SidecarPathFor(outputFull), raw, 0o600); err != nil {
+				if err := os.WriteFile(tools.SidecarPathFor(outputFull), raw, 0o600); err != nil {
 					t.Fatal(err)
 				}
 			} else if err := asset.WriteSidecarTags(outputFull, existing, false); err != nil {

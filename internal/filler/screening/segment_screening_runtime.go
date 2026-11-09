@@ -14,7 +14,7 @@ import (
 // the artifact it uses and prove its bytes against Subject before returning a result.
 type SegmentScreeningMedia struct {
 	Subject          asset.SegmentScreeningSubject
-	Manifest         asset.MediaAssetManifest
+	Manifest         asset.Manifest
 	SourceMasterPath string
 	EvidencePath     string
 	PlaybackPath     string
@@ -125,7 +125,7 @@ func validateSegmentScreeningMedia(media SegmentScreeningMedia) error {
 		return fmt.Errorf("segment screening media subject: %w", err)
 	}
 	if err := media.Manifest.Validate(); err != nil ||
-		asset.MediaAssetManifestAuthoritySHA256(media.Manifest) != media.Subject.MediaManifestSHA256 ||
+		asset.ManifestAuthoritySHA256(media.Manifest) != media.Subject.MediaManifestSHA256 ||
 		media.Manifest.SourceMaster.SHA256 != media.Subject.SourceMasterSHA256 ||
 		media.Manifest.SourceMaster.Bytes != media.Subject.SourceMasterBytes || media.Manifest.Evidence == nil ||
 		media.Manifest.Evidence.Asset.SHA256 != media.Subject.EvidenceSHA256 ||

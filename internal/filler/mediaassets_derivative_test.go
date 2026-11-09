@@ -65,7 +65,7 @@ func TestBuildEvidenceDerivativeUsesMasterAndPublishesHiddenLineage(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if lineage.Asset.Role != asset.MediaAssetEvidence || lineage.InputSHA256 != master.SHA256 || lineage.Recipe.ID != "filler-evidence-v2" {
+	if lineage.Asset.Role != asset.RoleEvidence || lineage.InputSHA256 != master.SHA256 || lineage.Recipe.ID != "filler-evidence-v2" {
 		t.Fatalf("evidence lineage = %+v", lineage)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(lineage.Asset.Path))); err != nil {

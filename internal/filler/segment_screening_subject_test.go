@@ -9,7 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/tools"
 )
 
-func screeningSubjectManifest(t *testing.T) asset.MediaAssetManifest {
+func screeningSubjectManifest(t *testing.T) asset.Manifest {
 	t.Helper()
 	tool := tools.MediaToolIdentity{
 		Name: "ffmpeg", Version: "ffmpeg version fixture", ExecutableSHA256: strings.Repeat("9", 64),
@@ -31,24 +31,24 @@ func screeningSubjectManifest(t *testing.T) asset.MediaAssetManifest {
 		Provenance:      tools.MediaQualityProvenanceFFmpegDetectors,
 		DurationMs:      30_000,
 	}
-	source := asset.MediaAssetIdentity{
-		Role: asset.MediaAssetSourceMaster, SHA256: strings.Repeat("1", 64), Bytes: 1_000,
+	source := asset.Identity{
+		Role: asset.RoleSourceMaster, SHA256: strings.Repeat("1", 64), Bytes: 1_000,
 		ClipHash: strings.Repeat("2", 64), Path: ".loomarr-media/masters/11/11/source.mp4",
 	}
-	manifest := asset.MediaAssetManifest{
-		Version: asset.MediaAssetManifestVersion, SourceMaster: source,
-		Evidence: &asset.MediaDerivativeLineage{
-			Asset: asset.MediaAssetIdentity{
-				Role: asset.MediaAssetEvidence, SHA256: strings.Repeat("3", 64), Bytes: 900,
+	manifest := asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: source,
+		Evidence: &asset.DerivativeLineage{
+			Asset: asset.Identity{
+				Role: asset.RoleEvidence, SHA256: strings.Repeat("3", 64), Bytes: 900,
 				ClipHash: strings.Repeat("4", 64), Path: ".loomarr-media/evidence/11/11/recipe/evidence.mp4",
 			},
 			InputSHA256: source.SHA256, Recipe: evidenceRecipe, RecipeSHA256: evidenceRecipeSHA,
 			Tool: tool, DurationMs: 30_000, QC: fixtureDerivativeQC(30_000, evidenceRecipe.KeyframeSeconds, true, 0),
 			InputProbe: input, OutputProbe: output, Quality: quality,
 		},
-		Playback: &asset.MediaDerivativeLineage{
-			Asset: asset.MediaAssetIdentity{
-				Role: asset.MediaAssetPlayback, SHA256: strings.Repeat("5", 64), Bytes: 800,
+		Playback: &asset.DerivativeLineage{
+			Asset: asset.Identity{
+				Role: asset.RolePlayback, SHA256: strings.Repeat("5", 64), Bytes: 800,
 				ClipHash: strings.Repeat("6", 64), Path: "66/66/playback.mp4",
 			},
 			InputSHA256: source.SHA256, Recipe: playbackRecipe, RecipeSHA256: playbackRecipeSHA,
@@ -146,15 +146,15 @@ func TestVerifySegmentScreeningSubjectRejectsCurrentArtifactDrift(t *testing.T) 
 
 func TestMediaAssetManifestAuthorityIdentityIgnoresOnlyPaths(t *testing.T) {
 	manifest := screeningSubjectManifest(t)
-	want := asset.MediaAssetManifestAuthoritySHA256(manifest)
+	want := asset.ManifestAuthoritySHA256(manifest)
 	manifest.SourceMaster.Path = ".loomarr-media/masters/11/11/relocated.mp4"
 	manifest.Evidence.Asset.Path = ".loomarr-media/evidence/11/11/recipe/relocated.mp4"
 	manifest.Playback.Asset.Path = "66/66/relocated.mp4"
-	if got := asset.MediaAssetManifestAuthoritySHA256(manifest); got != want {
+	if got := asset.ManifestAuthoritySHA256(manifest); got != want {
 		t.Fatalf("path relocation changed media authority: got %s want %s", got, want)
 	}
 	manifest.Playback.Asset.SHA256 = strings.Repeat("f", 64)
-	if got := asset.MediaAssetManifestAuthoritySHA256(manifest); got == want {
+	if got := asset.ManifestAuthoritySHA256(manifest); got == want {
 		t.Fatal("playback byte drift did not change media authority")
 	}
 }

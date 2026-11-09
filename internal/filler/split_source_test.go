@@ -58,8 +58,8 @@ func TestResolveSplitSourcePrefersEvidenceAndRejectsDrift(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := asset.WriteSidecarTags(playable, asset.SidecarTags{MediaAssets: &asset.MediaAssetManifest{
-		Version: asset.MediaAssetManifestVersion, SourceMaster: master, Evidence: &evidence,
+	if err := asset.WriteSidecarTags(playable, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: master, Evidence: &evidence,
 	}}, false); err != nil {
 		t.Fatal(err)
 	}

@@ -61,25 +61,25 @@ func TestPlaybackIntegrityEvaluatorHoldsArtifactOrSidecarDrift(t *testing.T) {
 		}},
 		{name: "missing sidecar", wantReason: "playback_sidecar_missing", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			if err := os.Remove(asset.SidecarPathFor(media.PlaybackPath)); err != nil {
+			if err := os.Remove(tools.SidecarPathFor(media.PlaybackPath)); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "invalid sidecar", wantReason: "playback_sidecar_invalid", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			if err := os.WriteFile(asset.SidecarPathFor(media.PlaybackPath), []byte("{"), 0o600); err != nil {
+			if err := os.WriteFile(tools.SidecarPathFor(media.PlaybackPath), []byte("{"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "oversized sidecar", wantReason: "playback_sidecar_invalid", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			if err := os.Truncate(asset.SidecarPathFor(media.PlaybackPath), segmentScreeningSidecarMaxBytes+1); err != nil {
+			if err := os.Truncate(tools.SidecarPathFor(media.PlaybackPath), segmentScreeningSidecarMaxBytes+1); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "symlinked sidecar", wantReason: "playback_sidecar_invalid", mutate: func(t *testing.T, media SegmentScreeningMedia) {
 			t.Helper()
-			path := asset.SidecarPathFor(media.PlaybackPath)
+			path := tools.SidecarPathFor(media.PlaybackPath)
 			target := path + ".target"
 			if err := os.Rename(path, target); err != nil {
 				t.Fatal(err)
@@ -250,7 +250,7 @@ func playbackIntegrityMediaFixture(t *testing.T, quality filler.MediaQuality) Se
 	}
 }
 
-func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, identity *asset.MediaAssetIdentity) {
+func writeScreeningArtifactFixture(t *testing.T, path string, body []byte, identity *asset.Identity) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
