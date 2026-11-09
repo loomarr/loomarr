@@ -56,21 +56,20 @@ describe("AboutPage", () => {
     cleanup();
   });
 
-  // TMDB's terms require their notice word for word, whatever key is in use (decision 51).
-  it("credits TMDB with its required notice, verbatim", () => {
-    expect(TMDB_NOTICE).toBe(
-      "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.",
-    );
+  // TMDB's terms require their notice word for word, whatever key is in use (#2853).
+  it("names TMDB under Data sources with its required notice, verbatim", () => {
+    expect(TMDB_NOTICE).toBe("This product uses the TMDB API but is not endorsed or certified by TMDB.");
     const { host, cleanup } = render();
-    const credits = host.querySelector('[aria-label="Credits"]');
-    expect(credits?.textContent).toContain(TMDB_NOTICE);
-    expect(credits?.textContent).toContain("Film and TV details, posters and artwork come from TMDB.");
+    const sources = host.querySelector('[aria-label="Data sources"]');
+    expect(sources?.textContent).toContain("Data sources");
+    expect(sources?.textContent).toContain(TMDB_NOTICE);
+    expect(sources?.textContent).toContain("Film and TV details, posters and artwork come from TMDB.");
     cleanup();
   });
 
   it("shows TMDB's logo when the host supplies it, and the notice without it", () => {
     const withLogo = render({ tmdbLogo: <img alt="TMDB" src="/tmdb.svg" /> });
-    expect(withLogo.host.querySelector('[aria-label="Credits"] img[alt="TMDB"]')).not.toBeNull();
+    expect(withLogo.host.querySelector('[aria-label="Data sources"] img[alt="TMDB"]')).not.toBeNull();
     withLogo.cleanup();
     const without = render();
     expect(without.host.querySelector("img")).toBeNull();
