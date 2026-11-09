@@ -34,4 +34,4 @@ One area of the [package map](../package-map.md#start-here).
 - **`playout/tunarr/tunarrtest`** · → `channels/schedule`, `playout/tunarr`
   The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 - **`playout/watermark`** · 1 importer
-  Renders a channel's bug (#1512 phase 1d): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
+  Renders a channel's bug (#1512): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
