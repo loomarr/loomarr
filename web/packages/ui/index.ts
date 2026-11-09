@@ -261,6 +261,7 @@ export {
   PlayerOptions,
   PlayerReadout,
   PlayerSheet,
+  PORTRAIT_PICTURE_TOP,
   playbarFromTimeline,
   WatchFrame,
   WatchingPanel,

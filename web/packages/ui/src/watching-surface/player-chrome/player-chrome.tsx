@@ -7,6 +7,8 @@ import { gradientOr, webOnly } from "./flat";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
 import { PlayerTopRow } from "./player-top-row";
+import { PortraitChrome } from "./portrait-chrome";
+import { UnmutePill } from "./unmute-pill";
 
 // PlayerChrome — the chrome every Loomarr player wears (frontend-design §9; the mock of record is
 // design/watch-player, variant H). Drawn over the picture, back to front: one bottom scrim, the band
@@ -21,10 +23,12 @@ const ChromeBody = memo(
     formatTime,
     ident = false,
     keys,
+    layout = "overlay",
     live,
     onGoLive,
     sheet,
     top,
+    unmute,
     visible,
   }: PlayerChromeProps) => {
     const touch = density === "touch";
@@ -33,6 +37,39 @@ const ChromeBody = memo(
     const controls = visible;
     const shown = controls || card;
     const edge = touch ? 16 : 48;
+    // The open sheet, over a dimmed picture, above either layout.
+    const sheetLayer = sheet ? (
+      <>
+        <View
+          pointerEvents="none"
+          style={{
+            backgroundColor: playerChrome.dim,
+            bottom: 0,
+            left: 0,
+            position: "absolute",
+            right: 0,
+            top: 0,
+            zIndex: 39,
+          }}
+        />
+        {sheet}
+      </>
+    ) : null;
+    if (layout === "portrait")
+      return (
+        <ThemeScope theme="dark">
+          <PortraitChrome
+            band={band}
+            formatTime={formatTime}
+            keys={keys}
+            live={live}
+            onGoLive={onGoLive}
+            top={top}
+            unmute={unmute}
+          />
+          {sheetLayer}
+        </ThemeScope>
+      );
     return (
       <ThemeScope theme="dark">
         <View
@@ -90,23 +127,12 @@ const ChromeBody = memo(
         >
           <PlayerTopRow {...top} />
         </View>
-        {sheet ? (
-          <>
-            <View
-              pointerEvents="none"
-              style={{
-                backgroundColor: playerChrome.dim,
-                bottom: 0,
-                left: 0,
-                position: "absolute",
-                right: 0,
-                top: 0,
-                zIndex: 39,
-              }}
-            />
-            {sheet}
-          </>
+        {unmute ? (
+          <View style={{ left: edge, position: "absolute", top: touch ? 16 : 40, zIndex: 40 }}>
+            <UnmutePill onPress={unmute} />
+          </View>
         ) : null}
+        {sheetLayer}
       </ThemeScope>
     );
   },

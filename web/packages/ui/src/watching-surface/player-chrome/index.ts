@@ -29,3 +29,4 @@ export { PlayerOptions } from "./player-options";
 export type { PlayerReadoutProps } from "./player-readout";
 export { PlayerReadout } from "./player-readout";
 export { PlayerSheet } from "./player-sheet";
+export { PORTRAIT_PICTURE_TOP } from "./portrait-chrome";

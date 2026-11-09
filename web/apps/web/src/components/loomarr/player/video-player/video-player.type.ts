@@ -69,6 +69,10 @@ interface VideoPlayerProps {
   // Fill the container's height instead of keeping a 16:9 frame; the <video> letterboxes the
   // picture inside it. Watch uses it wider than a portrait phone, where the picture fills the window.
   fill?: boolean;
+  // With `fill`: pin the picture to the top of the frame, this many px down, instead of centring it.
+  // A portrait phone puts the top row above the picture and the band and keys below it, so nothing
+  // covers the picture (§9.7, #2775).
+  pictureTop?: number;
 }
 
 // What a live player's caller draws its controls from (`renderChrome`).
