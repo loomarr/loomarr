@@ -66,5 +66,5 @@ One area of the [package map](../package-map.md#start-here).
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 - **`filler/structure/window/openrouter`** · 1 importer · → `filler/split`, `filler/structure`, `filler/structure/assessment`, `filler/structure/cut`, `filler/structure/window`, `media/encode`, `platform/httpx`, `platform/openroutercatalog`, `platform/openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
-- **`filler/taxonomy`** · 7 importers
+- **`filler/taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.

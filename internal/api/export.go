@@ -57,12 +57,10 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerSearch(humaAPI)
 	libraryapi.New(libraryapi.Deps{}).Register(humaAPI)
 	fillerapi.New(fillerapi.Deps{}).Register(humaAPI)
-	srv.registerTaxonomy(humaAPI)
 	srv.registerImages(humaAPI)
 	srv.registerDiscoveryQuality(humaAPI)
 	srv.registerDashboardPanels(humaAPI)
 	srv.registerSettings(humaAPI)
-	srv.registerLocations(humaAPI)
 	srv.registerNotificationDestinations(humaAPI)
 	// registerEvents is nil-guarded on the bus; schemaOnly forces the frame schemas out so
 	// the generated client always has the event types even when this export ran without one.

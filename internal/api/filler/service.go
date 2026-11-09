@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/source"
 	"github.com/loomarr/loomarr/internal/filler/split"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Service backs filler acquisition and readiness routes (§10). Clip edits read/write the
@@ -91,6 +92,25 @@ type Service interface {
 	// copy cuts seek rather than decode, so this is seconds, not the detection's
 	// minutes. filler.ErrSplitValidation ⇒ 422; a missing proposal ⇒ ErrNotFound.
 	ConfirmSplit(ctx context.Context, proposalID string, segments []split.Segment) error
+}
+
+// TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
+// atomic graph transaction; this seam adds an authoritative preview and post-commit channel
+// convergence without making HTTP handlers understand either implementation.
+type TaxonomyEditor interface {
+	Preview(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
+	Apply(ctx context.Context, edit clipstore.TaxonomyEdit) (TaxonomyImpact, error)
+}
+
+type TaxonomyImpact struct {
+	Store    clipstore.TaxonomyEditImpact
+	Channels []TaxonomyChannelImpact
+}
+
+type TaxonomyChannelImpact struct {
+	ID     string
+	Name   string
+	Number int
 }
 
 // Rewinder is the optional recovery seam behind the Incoming UI. Separate from Service so a

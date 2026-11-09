@@ -98,6 +98,12 @@ type Deps struct {
 	IntakeLanguages func(context.Context) (string, error)
 	// SourceProviders names every provider a filler source can use.
 	SourceProviders *source.Registry
+	// Taxonomy previews and applies clip taxonomy edits and reconciles the channels they touch;
+	// nil keeps store-only wiring.
+	Taxonomy TaxonomyEditor
+	// Origin says whether the request address may be read from proxy headers (the location
+	// suggestion works from the caller's address).
+	Origin httpcore.Origin
 	// PatchSettings saves settings through the audited Settings path and returns each edit's
 	// status ("saved", "pinned", ...); nil answers 501 where a route needs it.
 	PatchSettings func(ctx context.Context, edits map[string]string, updatedBy string) []string
@@ -122,6 +128,8 @@ type Handlers struct {
 	imageRecords    func(ctx context.Context, hashes []string) map[string]*httpcore.ImageDTO
 	intakeLanguages func(context.Context) (string, error)
 	sourceProviders *source.Registry
+	taxonomy        TaxonomyEditor
+	origin          httpcore.Origin
 	patchSettings   func(ctx context.Context, edits map[string]string, updatedBy string) []string
 	playsCountedOn  bool
 	now             func() time.Time
@@ -137,7 +145,7 @@ func New(d Deps) *Handlers {
 		log: d.Log, store: d.Store, liveSettings: d.LiveSettings, settings: d.Settings, filler: d.Filler,
 		fillerLayout: d.FillerLayout, fillerResearch: d.FillerResearch, fillerDefects: d.FillerDefects,
 		channels: d.Channels, pods: d.Pods, imageRecords: d.ImageRecords, intakeLanguages: d.IntakeLanguages,
-		sourceProviders: d.SourceProviders, patchSettings: d.PatchSettings, playsCountedOn: d.PlaysCounted, now: d.Now,
+		sourceProviders: d.SourceProviders, taxonomy: d.Taxonomy, origin: d.Origin, patchSettings: d.PatchSettings, playsCountedOn: d.PlaysCounted, now: d.Now,
 	}
 }
 
@@ -151,6 +159,8 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerFillerWatch(api)
 	s.registerFillerResearch(api)
 	s.registerFillerDefects(api)
+	s.registerTaxonomy(api)
+	s.registerLocations(api)
 }
 
 // featureOff reports whether a named feature (config-design §7) is configured-off right now. Safe

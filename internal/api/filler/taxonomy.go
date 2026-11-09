@@ -1,4 +1,4 @@
-package api
+package filler
 
 import (
 	"context"
@@ -127,7 +127,7 @@ func updateDTOToTaxon(slug string, d UpdateTaxonDTO) taxonomy.Taxon {
 // registerTaxonomy mounts /v1/taxonomy* and the tagging vocabulary (§10 V45a). Read is visible to any
 // authenticated user (the catalog UI shows tags); every edit is admin (the tag vocabulary is an
 // operator concern, like the rest of filler ingestion).
-func (s *Server) registerTaxonomy(api huma.API) {
+func (s *Handlers) registerTaxonomy(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "list-taxonomy", Method: http.MethodGet, Path: "/v1/taxonomy",
 		Summary: "The clip tag vocabulary (the taxonomy graph)",
@@ -175,7 +175,7 @@ type listTaxonomyOutput struct {
 type previewTaxonomyEditInput struct{ Body TaxonomyImpactCommandDTO }
 type previewTaxonomyEditOutput struct{ Body TaxonomyImpactDTO }
 
-func (s *Server) previewTaxonomyEdit(ctx context.Context, in *previewTaxonomyEditInput) (*previewTaxonomyEditOutput, error) {
+func (s *Handlers) previewTaxonomyEdit(ctx context.Context, in *previewTaxonomyEditInput) (*previewTaxonomyEditOutput, error) {
 	edit, err := impactCommandToEdit(in.Body)
 	if err != nil {
 		return nil, err
@@ -234,7 +234,7 @@ func taxonomyImpactToDTO(impact TaxonomyImpact, deleting bool) TaxonomyImpactDTO
 	return out
 }
 
-func (s *Server) listTaxonomy(ctx context.Context, _ *listTaxonomyInput) (*listTaxonomyOutput, error) {
+func (s *Handlers) listTaxonomy(ctx context.Context, _ *listTaxonomyInput) (*listTaxonomyOutput, error) {
 	taxa, err := s.store.ListTaxa(ctx)
 	if err != nil {
 		return nil, err
@@ -274,7 +274,7 @@ type createTaxonInput struct {
 	Body CreateTaxonDTO
 }
 
-func (s *Server) createTaxon(ctx context.Context, in *createTaxonInput) (*struct{ Body TaxonDTO }, error) {
+func (s *Handlers) createTaxon(ctx context.Context, in *createTaxonInput) (*struct{ Body TaxonDTO }, error) {
 	if in.Body.Slug == "" || in.Body.Label == "" || in.Body.Axis == "" {
 		return nil, httpcore.Unprocessable("Incomplete taxon", "A taxon needs a slug, a label, and an axis.")
 	}
@@ -290,7 +290,7 @@ type updateTaxonInput struct {
 	Body UpdateTaxonDTO
 }
 
-func (s *Server) updateTaxon(ctx context.Context, in *updateTaxonInput) (*struct{ Body TaxonDTO }, error) {
+func (s *Handlers) updateTaxon(ctx context.Context, in *updateTaxonInput) (*struct{ Body TaxonDTO }, error) {
 	if in.Body.Label == "" || in.Body.Axis == "" {
 		return nil, httpcore.Unprocessable("Incomplete taxon", "A taxon needs a label and an axis.")
 	}
@@ -308,7 +308,7 @@ type deleteTaxonInput struct {
 	Slug string `path:"slug"`
 }
 
-func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct{}, error) {
+func (s *Handlers) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct{}, error) {
 	err := s.applyTaxonomyEdit(ctx, clipstore.TaxonomyEdit{Delete: true, Slug: in.Slug})
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpcore.NotFound("Taxon not found", "That tag doesn't exist — it may have already been removed.")
@@ -319,7 +319,7 @@ func (s *Server) deleteTaxon(ctx context.Context, in *deleteTaxonInput) (*struct
 	return &struct{}{}, nil
 }
 
-func (s *Server) applyTaxonomyEdit(ctx context.Context, edit clipstore.TaxonomyEdit) error {
+func (s *Handlers) applyTaxonomyEdit(ctx context.Context, edit clipstore.TaxonomyEdit) error {
 	var err error
 	if s.taxonomy != nil {
 		_, err = s.taxonomy.Apply(ctx, edit)
