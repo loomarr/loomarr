@@ -198,7 +198,7 @@ var areas = []area{
 			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
 			"platform/releaseverify", "platform/buildinfo", "platform/web",
-			"platform/llm", "platform/llm/selection", "platform/openroutercatalog", "platform/openroutermedia",
+			"platform/llm", "platform/llm/picker", "platform/llm/selection", "platform/openroutercatalog", "platform/openroutermedia",
 			"platform/holidayvocab", "platform/langcode", "platform/rating", "platform/textmatch",
 		},
 		MayImport: map[string]string{
@@ -222,7 +222,7 @@ var areas = []area{
 			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/playoutresolve"},
+		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{

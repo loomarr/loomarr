@@ -1,6 +1,7 @@
 import type { Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
+import type { PlayerArt } from "./art";
 import type { PlayerWatermark } from "./watermark-clearance";
 
 /** One spot in a break's pod: a commercial, a bumper, a station ID… (§9.3). */
@@ -67,6 +68,10 @@ interface PlayerBandData {
    * back. It is the logo's text fallback and the logo's accessible name (§9.2).
    */
   title?: string;
+  /** The programme's clear logo; without one the title is set as text (§9.2). */
+  logo?: PlayerArt;
+  /** The programme's fanart, dimmed behind the station-ID card; drawn contained at 16:9, never stretched. */
+  backdrop?: PlayerArt;
   /** `S2 E4 "Episode"` for an episode, `1994 · Drama` for a film. */
   line?: string;
   /** The programme's own time slot, for the progress line's clocks. */
@@ -121,9 +126,17 @@ interface PlayerChromeProps {
   live: PlayerLiveState;
   onGoLive: () => void;
   keys: PlayerKeysProps;
+  /**
+   * `overlay` draws over the picture and auto-hides (§9.1). `portrait` is the phone held upright
+   * (§9.7): the top row above the picture, the band and keys below it, nothing over the picture, and
+   * always shown. The app pins the picture at `PORTRAIT_PICTURE_TOP`.
+   */
+  layout?: "overlay" | "portrait";
   top: PlayerTopRowProps;
   /** Playback details as a panel at the upper left (pointer devices); a phone shows it as a sheet. */
   panel?: ReactNode;
+  /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
+  unmute?: () => void;
   /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
   readout?: { digits: string; missed?: boolean };
   /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
@@ -216,6 +229,7 @@ export type {
   PlaybarSegment,
   PlaybarSpot,
   PlaybarWindow,
+  PlayerArt,
   PlayerBandData,
   PlayerChromeProps,
   PlayerInfoData,

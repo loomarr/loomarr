@@ -1,4 +1,4 @@
-package app
+package operator
 
 import (
 	"context"
@@ -6,22 +6,35 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
-// podPreviewAdapter bridges pod.Adapter → api.PodPreviewer (§12). It exists to
+// PodStore is the slice of the store the pod previews read.
+type PodStore interface {
+	GetChannel(ctx context.Context, id string) (channelstore.Channel, error)
+	ListChannels(ctx context.Context) ([]channelstore.Channel, error)
+	GetClip(ctx context.Context, id string) (clipstore.Clip, error)
+	CountClips(ctx context.Context, filter clipstore.ClipFilter) (int, error)
+}
+
+// PodPreview bridges pod.Adapter → api.PodPreviewer (§12). It exists to
 // derive the selection + seed from the channel using the SAME exported helpers the
 // reconciler calls, so a preview and the next reconcile of that channel produce the
 // identical pool. The API stays out of that derivation entirely.
-type podPreviewAdapter struct {
-	store store.Store
+type PodPreview struct {
+	store PodStore
 	pods  *pod.Adapter
+}
+
+// NewPodPreview returns the pod previewer over the store and the pod assembler.
+func NewPodPreview(store PodStore, pods *pod.Adapter) PodPreview {
+	return PodPreview{store: store, pods: pods}
 }
 
 // Preview assembles the pool for the channel's SAVED filler selection (the GET …/pods
 // path).
-func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (pod.Pod, error) {
+func (a PodPreview) Preview(ctx context.Context, channelID string) (pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return pod.Pod{}, err
@@ -35,7 +48,7 @@ func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (pod.P
 // The SAME call both consumers make, for the §10 one-assembler reason: if the guide computed
 // a break independently, the hover card would eventually list clips that are not the ones
 // playing, and nobody would be able to reproduce the discrepancy on demand.
-func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error) {
+func (a PodPreview) PreviewAt(ctx context.Context, channelID string, slot pod.BreakSlot) (pod.Pod, error) {
 	pods, err := a.PreviewAtMany(ctx, channelID, []pod.BreakSlot{slot})
 	if err != nil {
 		return pod.Pod{}, err
@@ -46,7 +59,7 @@ func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, slot
 // PreviewAtMany is PreviewAt for every break of one channel in a window (#1420): the channel is
 // read once and the batch shares one catalog and exposure read, while each break keeps its own
 // seed, snapshot and slot length — pod for pod what PreviewAt returns.
-func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error) {
+func (a PodPreview) PreviewAtMany(ctx context.Context, channelID string, slots []pod.BreakSlot) ([]pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return nil, err
@@ -64,7 +77,7 @@ func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, 
 // Resolved through `SelectionForChannel`, exactly like the previews above — coverage that
 // derived a channel's selection its own way could report on a different window than the pods
 // it claims to describe, which is the "lying meter" the whole phase exists to prevent.
-func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (pod.CoverageReport, error) {
+func (a PodPreview) Coverage(ctx context.Context, channelID string) (pod.CoverageReport, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return pod.CoverageReport{}, err
@@ -78,7 +91,7 @@ func (a podPreviewAdapter) Coverage(ctx context.Context, channelID string) (pod.
 // boundary — for the same reason `PreviewDraft` does not re-apply the scope era: the era's
 // inherit-vs-explicitly-any decision has exactly one writer, and a second application here could
 // not tell an operator who chose "any era" from one who left the field alone.
-func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.CoverageReport, error) {
+func (a PodPreview) CoverageDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.CoverageReport, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return pod.CoverageReport{}, err
@@ -96,7 +109,7 @@ func (a podPreviewAdapter) CoverageDraft(ctx context.Context, channelID string, 
 // they report on breaks that are currently airing; this is a picker, and an operator pinning a
 // clip to a paused channel is making a decision that takes effect when it resumes. Hiding the
 // row would look like the channel had been deleted.
-func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[string]pod.Fit, error) {
+func (a PodPreview) ClipFit(ctx context.Context, clipPath string) (map[string]pod.Fit, error) {
 	clip, err := a.store.GetClip(ctx, clipPath)
 	if err != nil {
 		return nil, err
@@ -124,7 +137,7 @@ func (a podPreviewAdapter) ClipFit(ctx context.Context, clipPath string) (map[st
 //
 // Paused and detached channels are excluded: their breaks are not airing, so counting them as
 // "uncovered" would report a problem the operator deliberately created.
-func (a podPreviewAdapter) Pool(ctx context.Context) (pod.PoolReport, error) {
+func (a PodPreview) Pool(ctx context.Context) (pod.PoolReport, error) {
 	chans, err := a.store.ListChannels(ctx)
 	if err != nil {
 		return pod.PoolReport{}, err
@@ -179,7 +192,7 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (pod.PoolReport, error) {
 // *unset* from an operator who chose ANY, so it would re-inherit the channel's era over the top of
 // an explicit choice. `channels.SelectionFrom` is the single writer, applied at the API boundary
 // where the draft policy (and therefore the DRAFT's scope, not the saved channel's) is known.
-func (a podPreviewAdapter) PreviewDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.Pod, error) {
+func (a PodPreview) PreviewDraft(ctx context.Context, channelID string, sel pod.Selection) (pod.Pod, error) {
 	ch, err := a.store.GetChannel(ctx, channelID)
 	if err != nil {
 		return pod.Pod{}, err

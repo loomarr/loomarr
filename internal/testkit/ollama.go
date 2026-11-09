@@ -12,7 +12,7 @@ import (
 // service). It serves exactly the endpoints the llm.Prober calls for the §8.1
 // model picker — GET /api/version, GET /api/tags, POST /api/pull (NDJSON stream)
 // — so the picker probe/select/pull flow can be driven end to end through the
-// real systemLLMService. It intentionally does NOT implement /api/chat: the
+// real picker service. It intentionally does NOT implement /api/chat: the
 // suggester runs on the injected in-process testkit.LLM; only the picker probes
 // this host.
 type Ollama struct {

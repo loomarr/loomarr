@@ -84,6 +84,9 @@ const makeWrapper = () => {
   );
 };
 
+// Every test but the first-play ones is past the session's first play (the sound is on).
+beforeEach(() => sessionStorage.setItem("loomarr.player.first-play", "1"));
+
 // The tuner's wash: up while a channel is tuning in, under the chrome.
 const wash = () => document.querySelector<HTMLElement>("[data-wash]");
 const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull());
@@ -938,7 +941,8 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
   });
 });
 
-// A portrait phone (#1785, native mock 5e): nothing drawn on the picture, the controls under it.
+// A portrait phone (§9.7, #2775, pick A): the picture pinned under the top row, the band and keys
+// below it in the black space, nothing over the picture.
 describe("ChannelWatch at phone width", () => {
   beforeEach(() => {
     hls.status = "playing";
@@ -953,11 +957,10 @@ describe("ChannelWatch at phone width", () => {
     return () => vi.unstubAllGlobals();
   });
 
-  const renderPhone = (favourites: string[] = []) => {
+  const renderPhone = () => {
     stubTracks();
     const step = vi.fn();
     const tune = vi.fn();
-    const onFavourite = vi.fn();
     render(
       <ChannelWatch
         channel={live}
@@ -965,46 +968,81 @@ describe("ChannelWatch at phone width", () => {
         onLeave={vi.fn()}
         player={{ step, tune }}
         channels={{
-          drawer: { channels: [], favourites, recent: [], nowPercent: 0, onFavourite },
+          drawer: { channels: [], favourites: [], recent: [], nowPercent: 0, onFavourite: vi.fn() },
           phone: { favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" },
           onTuneSettled: vi.fn(),
         }}
       />,
       { wrapper: makeWrapper() },
     );
-    return { onFavourite, step, tune };
+    return { step, tune };
   };
 
-  // The drawer's star is not on a phone, so the panel's is the only way to fill Favorites there.
-  it("pins and unpins the tuned channel from the star in the channel line", async () => {
-    const { onFavourite } = renderPhone();
-    await userEvent.click(await screen.findByRole("button", { name: "Add to Favorites" }));
-    expect(onFavourite).toHaveBeenCalledWith("ch-1", true);
-  });
-
-  it("shows the tuned channel as pinned when it is a favourite", async () => {
-    const { onFavourite } = renderPhone(["ch-1"]);
-    await userEvent.click(await screen.findByRole("button", { name: "Remove from Favorites" }));
-    expect(onFavourite).toHaveBeenCalledWith("ch-1", false);
-  });
-
-  it("mounts no overlay controls on the picture, and the four controls under it", async () => {
+  it("pins the picture under the top row, with the band and keys below it", async () => {
     renderPhone();
-    expect(await screen.findByRole("button", { name: "Pause" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Playback controls" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Channels" })).not.toBeInTheDocument();
-    for (const name of ["Previous", "Channel −", "Channel +"])
+    expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
+    const video = document.querySelector("video") as HTMLVideoElement;
+    expect(video.style.position).toBe("absolute");
+    expect(video.style.top).toBe("80px");
+    expect(video.style.objectPosition).toBe("center top");
+    for (const name of ["Channel up", "Channel down", /^(Play|Pause)$/, "More", "Audio"])
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
   });
 
-  it("steps and returns through the tuner, and pauses through the live transport", async () => {
+  it("never hides the controls: nothing covers the picture, so there is nothing to uncover", async () => {
+    renderPhone();
+    await screen.findByRole("button", { name: "More" });
+    expect(screen.getByRole("button", { name: "More" }).closest("[aria-hidden=true]")).toBeNull();
+  });
+
+  it("steps through the tuner, pauses through the player, and returns from More", async () => {
     const { step, tune } = renderPhone();
-    await userEvent.click(await screen.findByRole("button", { name: "Channel +" }));
-    await userEvent.click(screen.getByRole("button", { name: "Channel −" }));
-    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
-    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Channel up" }));
+    await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
     expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
-    expect(tune).toHaveBeenCalledWith("ch-9");
-    expect(hls.liveTransport.pause).toHaveBeenCalledOnce();
+    expect(tune).not.toHaveBeenCalled();
+  });
+});
+
+// The session's first play is muted, with a pill to undo it (§9.3).
+describe("ChannelWatch first play of the session", () => {
+  beforeEach(() => {
+    hls.status = "playing";
+    sessionStorage.removeItem("loomarr.player.first-play");
+  });
+
+  it("starts muted with a Tap to unmute pill, and one tap turns the sound on", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+
+    const pill = await screen.findByRole("button", { name: "Tap to unmute" });
+    expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(true);
+    await userEvent.click(pill);
+    expect(screen.queryByRole("button", { name: "Tap to unmute" })).not.toBeInTheDocument();
+    expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
+  });
+
+  it("is only the first play: a second Watch in the session starts with the sound on", async () => {
+    stubTracks();
+    const first = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
+      wrapper: makeWrapper(),
+    });
+    await screen.findByRole("button", { name: "Tap to unmute" });
+    first.unmount();
+
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "More" });
+    expect(screen.queryByRole("button", { name: "Tap to unmute" })).not.toBeInTheDocument();
+    expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
+  });
+
+  it("drops the pill when the sound comes on by the Mute key too", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "Tap to unmute" });
+    await userEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Tap to unmute" })).not.toBeInTheDocument(),
+    );
   });
 });
