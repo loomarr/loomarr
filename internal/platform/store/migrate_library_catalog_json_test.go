@@ -20,8 +20,8 @@ func TestLibraryCatalogJSONMigration(t *testing.T) {
 	testLibraryCatalogJSONMigration(t, db, DialectSQLite, "migrations/sqlite")
 }
 
-// testLibraryCatalogJSONMigration proves the migration keeps every fetched record, turns the ”
-// of an unfetched or unknown title into NULL, and that afterwards a record must be JSON.
+// testLibraryCatalogJSONMigration proves the migration keeps every fetched record, turns the empty
+// record of an unfetched or unknown title into NULL, and that afterwards a record must be JSON.
 func testLibraryCatalogJSONMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
 	t.Helper()
 	ctx := context.Background()
