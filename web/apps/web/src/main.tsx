@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { createQueryClient } from "@/lib/query-client";
+import { installRouteTiming } from "@/lib/route-timing";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
 import "@fontsource-variable/geist";
@@ -59,6 +60,9 @@ const router = createRouter({
     </Suspense>
   ),
 });
+
+// Every navigation leaves User Timing entries saying how long its page took to show (#3399).
+installRouteTiming(router);
 
 declare module "@tanstack/react-router" {
   interface Register {
