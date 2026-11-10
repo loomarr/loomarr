@@ -64,7 +64,7 @@ const tickLabelHitsNow = (tickPx: number, nowPx: number): boolean => {
   return labelLeft < nowLeft + NOW_LABEL_PX && labelLeft + TICK_LABEL_PX > nowLeft;
 };
 
-const arrowDirection:Record<string, GuideNavigationDirection> = {
+const arrowDirection: Record<string, GuideNavigationDirection> = {
   ArrowDown: "down",
   ArrowLeft: "left",
   ArrowRight: "right",
