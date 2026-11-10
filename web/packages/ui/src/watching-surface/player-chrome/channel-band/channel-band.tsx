@@ -428,7 +428,7 @@ const ChannelBand = ({
                 <Text
                   density={density}
                   numberOfLines={1}
-                  style={{ flexShrink: 0, ...webOnly({ whiteSpace: "nowrap" }) }}
+                  style={{ flexShrink: 0 }}
                   testID="band-next-time"
                   textRole="time"
                   tone="secondary"
