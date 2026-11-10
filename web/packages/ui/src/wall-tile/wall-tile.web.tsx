@@ -149,6 +149,9 @@ const WallTile = ({
       {hasArt && (
         <Surface
           backgroundColor="transparent"
+          // Square: a Surface's own rounded corners cut two notches into the scrim's lower edge,
+          // inside the tile. The tile clips its corners.
+          borderRadius={0}
           borderWidth={0}
           data-testid="wall-tile-top-scrim"
           // An absolute layer with no content has no height of its own, and a scrim with no height
