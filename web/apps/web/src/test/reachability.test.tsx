@@ -673,6 +673,17 @@ describe("feature-gated panels mount when their flag is on", () => {
     expect(scroller.scrollTop).toBe(0);
   });
 
+  // #3404: jsdom cannot measure scrollHeight, so this pins the structural cause. Visually-hidden
+  // text is absolutely positioned and, without a positioned scroller, stretches the document.
+  it("/channels/ch-1 section scroller is the containing block, and the tab strip cannot widen the page", async () => {
+    stubReachable();
+    renderAt("/channels/ch-1/programming");
+    await screen.findByRole("navigation", { name: /channel sections/i });
+    expect(screen.getByTestId("channel-section-scroller").style.position).toBe("relative");
+    const strip = screen.getByTestId("channel-tab-strip");
+    expect(strip).toHaveClass("min-w-0", "overflow-x-auto");
+  });
+
   // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only
   // proves a URL works for someone who already knows it. This is the V1/V17a/V23 failure in tab
   // form — a panel that exists at an address nobody can navigate to.

@@ -75,7 +75,7 @@ describe("settingsProblems", () => {
     const problems = settingsProblems({
       health: health([
         check("media_server", "skipped", "/settings/connections"),
-        check("llm", "skipped", "/settings/ai"),
+        check("tmdb", "skipped", "/settings/connections"),
       ]),
     });
     expect(problems).toEqual([
@@ -86,6 +86,14 @@ describe("settingsProblems", () => {
         text: "No media server is connected yet.",
       },
     ]);
+  });
+
+  // #3403: the AI card must not read OK while no provider is configured.
+  it("calls an unconfigured AI provider not set up, so the AI card is neutral rather than OK", () => {
+    const input = { health: health([check("llm", "skipped", "/settings/ai")]) };
+    const [problem] = settingsProblems(input);
+    expect(problem).toMatchObject({ card: "ai", kind: "notSetUp", text: "No AI provider is set up yet." });
+    expect(cardStatus("ai", settingsProblems(input), new Set(["health"])).status).toBe("notSetUp");
   });
 
   it("counts overdue tasks from the task list, not the health check", () => {

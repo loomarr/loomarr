@@ -106,6 +106,15 @@ func TestSystemServices_FailingRowRoutesToItsSettings(t *testing.T) {
 	if failing.SettingsGroup == "" {
 		t.Error(`no settingsGroup — "Fix →" would have nowhere to send the operator`)
 	}
+	// A configured service that fails is a real failure, never "not set up" (#3403).
+	if failing.NotSetUp {
+		t.Error("a configured requester that fails reports notSetUp")
+	}
+	for _, row := range view.Rows {
+		if row.Name == "tmdb" && !row.NotSetUp {
+			t.Errorf("tmdb row = %+v, want notSetUp passed through from the checklist", row)
+		}
+	}
 }
 
 // #2781: on a fresh install an optional service nobody set up is "not set up", not failing. The

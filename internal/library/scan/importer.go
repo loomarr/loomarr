@@ -99,6 +99,9 @@ type Importer struct {
 	Log    *slog.Logger
 	// Poll is the wait between busy checks; zero means 5 s.
 	Poll time.Duration
+	// HeaderStall is how long one header read may take before the stage gives up on it; zero means
+	// headerStall.
+	HeaderStall time.Duration
 	// WalkStall is how long a walk may make no progress before the pass gives up on it; zero
 	// means walkStall.
 	WalkStall time.Duration
@@ -142,7 +145,8 @@ type Importer struct {
 	// asks for every arr to be listed again. Guarded by mu.
 	arrChanged []ArrItem
 	relist     bool
-	// stalledWalks are roots whose walk was given up on, until it ends. Guarded by mu.
+	// stalledWalks are roots with a walk or a header read that was given up on, until each ends.
+	// Guarded by mu.
 	stalledWalks map[string]<-chan struct{}
 	// confirmed are roots whose held removal the maintainer confirmed, applied by their next pass.
 	confirmed map[string]bool

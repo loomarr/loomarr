@@ -59,9 +59,13 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
             key={row.name}
             meta={
               <>
-                <StatusWord kind={row.ok ? "ok" : !row.target && !row.hint ? "notSetUp" : "attention"} />
+                {/* The server's own verdict (#2781, the one Connections uses): "not OK only because
+                    nothing about this service is set yet". Never guessed from target or hint —
+                    an unset optional service carries a hint too (#3403). */}
+                <StatusWord kind={row.ok ? "ok" : row.notSetUp ? "notSetUp" : "attention"} />
                 {/* ⚠ Only a FAILING row offers Fix — and only when the server said where its
-                  settings live. Offering it on a healthy row would train the eye past it. */}
+                  settings live. Offering it on a healthy row would train the eye past it. A
+                  not-set-up row keeps it: that is the page that sets the service up. */}
                 {!row.ok && row.settingsGroup ? (
                   <Action
                     accessibilityLabel={`Fix ${serviceLabel(row.name)}`}
@@ -71,7 +75,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
                     Fix →
                   </Action>
                 ) : null}
-                {!row.ok && onDiagnose ? (
+                {!row.ok && !row.notSetUp && onDiagnose ? (
                   <Action
                     accessibilityLabel={`View ${serviceLabel(row.name)} diagnostics`}
                     onPress={() => onDiagnose(row.name)}

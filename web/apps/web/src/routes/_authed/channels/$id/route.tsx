@@ -342,7 +342,9 @@ const ChannelDetailLayout = () => {
         // ⚠ No fallback tab. An admin's bar lights only the section the path names; lighting Channel
         // info for any other path (the old `?? "info"`) said they were on a page they weren't (#1987).
         return (
-          <div className="px-4 pt-2 sm:px-6">
+          // min-w-0 + overflow-x-auto: on a phone the four tabs scroll sideways inside this row
+          // instead of widening the page past the viewport (#3404).
+          <div className="min-w-0 overflow-x-auto px-4 pt-2 sm:px-6" data-testid="channel-tab-strip">
             <NavTabs
               label="Channel sections"
               linkComponent={Link}
@@ -355,7 +357,17 @@ const ChannelDetailLayout = () => {
 
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}
-      <div className="flex-1 overflow-auto" data-testid="channel-section-scroller" ref={sectionScroller}>
+      {/* ⚠ `position: relative` is load-bearing. Visually-hidden text (`sr-only`) is absolutely
+          positioned; with no positioned ancestor it is laid out against <body> at its natural
+          flow position and stretches the document's scroll height, giving a second scrollbar
+          behind this one. Making the scroller the containing block keeps it inside (#3404, the
+          same bug as #2724 for Settings). Inline style, not a class: the legacy ledger. */}
+      <div
+        className="flex-1 overflow-auto"
+        data-testid="channel-section-scroller"
+        ref={sectionScroller}
+        style={{ position: "relative" }}
+      >
         <div className="max-w-detail mx-auto flex w-full flex-col gap-4 p-6">
           <ChannelDetailProvider
             value={{
