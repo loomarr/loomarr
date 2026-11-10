@@ -82,7 +82,14 @@ const DiagnosticsPage = ({
           </button>
         ))}
       </nav>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+      {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
+          positioned, and without a positioned scroller it stretches the document instead of
+          scrolling in here (#3404, #2724). */}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+        data-testid="diagnostics-scroller"
+        style={{ position: "relative" }}
+      >
         {search.view === "logs" && (
           <ApplicationDiagnostics
             filters={search}
