@@ -1,11 +1,11 @@
-package library_test
+package mediaserver_test
 
 import (
 	"context"
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -13,7 +13,7 @@ import (
 // libraries (no CollectionType) are kept, music and collections are not.
 func TestMediaFolders_ListsVideoLibraryFolders(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
-	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	c := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev-1")
 
 	got, err := c.MediaFolders(context.Background())
 	if err != nil {

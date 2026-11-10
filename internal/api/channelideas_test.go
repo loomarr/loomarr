@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -112,7 +112,7 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mediaServer := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
@@ -363,7 +363,7 @@ func newManualChannelHarness(
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mediaServer := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)

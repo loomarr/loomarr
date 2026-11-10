@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // The household's metadata language is its setting, else the media server's, asked once an hour.
@@ -18,7 +18,7 @@ func TestMetadataLocaleDefaultsToTheMediaServers(t *testing.T) {
 		_, _ = w.Write([]byte(`{"PreferredMetadataLanguage":"fr","MetadataCountryCode":"CA"}`))
 	}))
 	t.Cleanup(srv.Close)
-	lib := library.New(library.Emby, srv.URL, "test-token", "dev-1")
+	lib := mediaserver.New(mediaserver.Emby, srv.URL, "test-token", "dev-1")
 
 	locale := metadataLocale(visionSet(t, nil), lib)
 	for range 3 {

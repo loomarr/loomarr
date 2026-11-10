@@ -7,7 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/protectedsettings"
@@ -152,16 +152,16 @@ func (r resolved) freeze(keys ...string) (resolved, map[string]string) {
 // and token are coupled security inputs: reading them independently could send a
 // credential to the wrong server or select the wrong authentication header while
 // an admin saves a replacement connection.
-func (r resolved) libraryConnection() library.Connection {
+func (r resolved) libraryConnection() mediaserver.Connection {
 	if r.svc == nil {
-		return library.Connection{}
+		return mediaserver.Connection{}
 	}
 	return r.svc.LibraryConnection()
 }
 
 // libraryConn is the dynamic provider shared by every always-wired library
 // adapter. The library module invokes it once at the start of an operation.
-func (r resolved) libraryConn() library.ConnectionSource {
+func (r resolved) libraryConn() mediaserver.ConnectionSource {
 	return r.libraryConnection
 }
 

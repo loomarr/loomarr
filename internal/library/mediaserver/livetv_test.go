@@ -1,4 +1,4 @@
-package library_test
+package mediaserver_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -22,8 +22,8 @@ import (
 // speaks the shapes the real media server accepted — enumerate, add, and the
 // guide-refresh task-id-by-Key resolution (finding 4).
 
-func newLiveTVClient(url string) *library.Client {
-	return library.New(library.Emby, url, "test-token", "dev-1")
+func newLiveTVClient(url string) *mediaserver.Client {
+	return mediaserver.New(mediaserver.Emby, url, "test-token", "dev-1")
 }
 
 // The enumerate-first read goes through GET /System/Configuration/livetv, which is the
@@ -35,7 +35,7 @@ func newLiveTVClient(url string) *library.Client {
 // This asserts the PATH as well as the parse: a regression back to the lineage endpoint
 // would still pass a body-shape-only test while being broken against half the supported
 // media servers.
-func serveLiveTVConfig(t *testing.T) (*httptest.Server, *library.Client) {
+func serveLiveTVConfig(t *testing.T) (*httptest.Server, *mediaserver.Client) {
 	t.Helper()
 	cfg := testkit.Fixture(t, "livetv/livetv_config_jellyfin.json")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +47,7 @@ func serveLiveTVConfig(t *testing.T) (*httptest.Server, *library.Client) {
 		_, _ = w.Write(cfg)
 	}))
 	t.Cleanup(srv.Close)
-	return srv, library.New(library.Emby, srv.URL, "test-token", "dev-1")
+	return srv, mediaserver.New(mediaserver.Emby, srv.URL, "test-token", "dev-1")
 }
 
 func TestTunerRegistered_MatchesByURL(t *testing.T) {
@@ -329,14 +329,14 @@ func TestRefreshGuide_ErrorsWhenTaskAbsent(t *testing.T) {
 // serveSyntheticLiveTV serves a hand-built config so a test can express provider shapes
 // the Phase-0 capture doesn't contain. The capture stays the source of truth for the
 // Emby/Jellyfin WIRE shape; this only varies which providers are present.
-func serveSyntheticLiveTV(t *testing.T, providersJSON string) *library.Client {
+func serveSyntheticLiveTV(t *testing.T, providersJSON string) *mediaserver.Client {
 	t.Helper()
 	body := `{"TunerHosts":[],"ListingProviders":[` + providersJSON + `]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
-	return library.New(library.Emby, srv.URL, "test-token", "dev-1")
+	return mediaserver.New(mediaserver.Emby, srv.URL, "test-token", "dev-1")
 }
 
 // T2, the migration that used to break silently: an install moving from Tunarr to
@@ -415,24 +415,24 @@ func TestTransientClass(t *testing.T) {
 	if err == nil || err.Error() != "POST /LiveTv/TunerHosts: status 500: ServiceUnavailable" {
 		t.Fatalf("err = %v, want the unchanged status-500 message", err)
 	}
-	if got := library.TransientClass(err); got != "server-error" {
+	if got := mediaserver.TransientClass(err); got != "server-error" {
 		t.Errorf("500 class = %q, want server-error", got)
 	}
 	wrapped := fmt.Errorf("rescan tuner: %w", err)
-	if got := library.TransientClass(wrapped); got != "server-error" {
+	if got := mediaserver.TransientClass(wrapped); got != "server-error" {
 		t.Errorf("wrapped 500 class = %q, want server-error", got)
 	}
 
 	timeout := fmt.Errorf("POST /x: %w", &url.Error{Op: "Post", URL: "http://emby", Err: context.DeadlineExceeded})
-	if got := library.TransientClass(timeout); got != "timeout" {
+	if got := mediaserver.TransientClass(timeout); got != "timeout" {
 		t.Errorf("client timeout class = %q, want timeout", got)
 	}
 	refused := &url.Error{Op: "Post", URL: "http://emby", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}
-	if got := library.TransientClass(refused); got != "connection" {
+	if got := mediaserver.TransientClass(refused); got != "connection" {
 		t.Errorf("dial failure class = %q, want connection", got)
 	}
 	for _, e := range []error{errors.New("boom"), context.Canceled, fmt.Errorf("POST /x: status 401: no")} {
-		if got := library.TransientClass(e); got != "" {
+		if got := mediaserver.TransientClass(e); got != "" {
 			t.Errorf("%v class = %q, want not transient", e, got)
 		}
 	}
@@ -463,7 +463,7 @@ func TestNon2xxIsAnHTTPXStatusError(t *testing.T) {
 		if got := httpx.Classify(err); got != tc.wantClass {
 			t.Errorf("status %d: Classify = %v, want %v", tc.status, got, tc.wantClass)
 		}
-		if got := library.TransientClass(err); got != tc.wantLabel {
+		if got := mediaserver.TransientClass(err); got != tc.wantLabel {
 			t.Errorf("status %d: TransientClass = %q, want %q", tc.status, got, tc.wantLabel)
 		}
 	}

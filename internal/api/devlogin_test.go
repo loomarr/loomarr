@@ -12,7 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	peopleapi "github.com/loomarr/loomarr/internal/api/people"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -32,7 +32,7 @@ func newDevAccessHarness(t *testing.T, config devAccessHarnessConfig) *apiHarnes
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		if config.Seed != nil {
 			config.Seed(defaults.Store)

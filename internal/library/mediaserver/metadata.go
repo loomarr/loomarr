@@ -1,4 +1,4 @@
-package library
+package mediaserver
 
 // ItemMetadata is the display metadata for one Library item: what the guide's listing (§9.1), a
 // lineup's durations and a proposal's outlook read. Since #2151 step 16 it is filled from the

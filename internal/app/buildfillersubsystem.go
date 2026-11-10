@@ -34,7 +34,7 @@ import (
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -77,7 +77,7 @@ func buildFillerSubsystem(
 	set resolved,
 	layout cliplibrary.Layout,
 	log *slog.Logger,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,

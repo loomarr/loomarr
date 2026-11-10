@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 // loomarr instance at it, and destroys the container afterwards. That teardown IS the
 // revert: POST /v1/setup/livetv-connect writes to the media server (registering Tunarr
 // as an M3U tuner + XMLTV guide source) and there is no product code path to undo it —
-// internal/library/livetv.go only ever adds. Against a real media server that would
+// internal/library/mediaserver/livetv.go only ever adds. Against a real media server that would
 // leave a tuner pointing at a Tunarr which no longer exists.
 //
 // The assertions read JELLYFIN's own API, not Loomarr's. Loomarr reporting that it wired

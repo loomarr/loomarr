@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -80,7 +80,7 @@ func TestDisableRevokesSessions(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 
@@ -124,7 +124,7 @@ func TestLoginRacingADisableIssuesNoSession(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	clock := func() time.Time { return now }
 	importOne(t, st, "u-bob", "bob", false)
 
@@ -240,7 +240,7 @@ func TestEveryDisablePathRevokesPairedDevicesForGood(t *testing.T) {
 				ms := testkit.NewMediaServer(t)
 				t.Cleanup(ms.Close)
 				ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
-				lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+				lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 				clock := func() time.Time { return now }
 				svc := NewLoginService(lib, st, NewManager(st, time.Hour, clock), nil, clock)
 				p := &pairing{devices: NewDeviceManager(st, clock)}
@@ -284,7 +284,7 @@ func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {
 		"boss": {Password: "pw", ID: "u-boss", IsAdmin: true},
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 
@@ -315,7 +315,7 @@ func TestImport_RoleAssignment(t *testing.T) {
 	ctx := context.Background()
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	prov := NewProvisioner(st, lib, seqID(), func() time.Time { return now })
 
 	n, err := prov.Import(ctx, []string{adminID, memberID})
@@ -403,7 +403,7 @@ func TestImportedLogin_OnlineCaptureRefreshAndOfflineFallback(t *testing.T) {
 	ms.Accounts = map[string]testkit.Account{
 		"bob": {Password: "first-password", ID: "u-bob"},
 	}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 	importOne(t, st, "u-bob", "bob", false)
@@ -457,7 +457,7 @@ func TestImportedLogin_OfflineMissingVerifierAndUnimportedFail(t *testing.T) {
 	ctx := context.Background()
 	ms := testkit.NewMediaServer(t)
 	ms.Close()
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 	importOne(t, st, "u-bob", "bob", false)
@@ -479,7 +479,7 @@ func TestImportedLogin_ProviderDisablePersistsAndRevokes(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{"bob": {Password: "password", ID: "u-bob"}}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 	importOne(t, st, "u-bob", "bob", false)
@@ -513,7 +513,7 @@ func TestLoginBadPassword(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{"bob": {Password: "right", ID: "u-bob"}}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 
@@ -591,7 +591,7 @@ func TestLoginRateLimited(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, NewRateLimiter(0, 0), func() time.Time { return now }) // 0 burst
 

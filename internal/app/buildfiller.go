@@ -31,7 +31,7 @@ import (
 	archiveprovider "github.com/loomarr/loomarr/internal/filler/source/archive"
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -85,7 +85,7 @@ func offerCuratedSources(ctx context.Context, st records.Store, log *slog.Logger
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
 func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log *slog.Logger,
-	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
+	fillerProg tunarr.Adapter, lib *mediaserver.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := cliplibrary.DirSource{
 		Layout: layout,
 		Probe:  cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),

@@ -1,4 +1,4 @@
-package library_test
+package mediaserver_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // The media server's metadata language and country are read from its server-wide configuration,
@@ -21,7 +21,7 @@ func TestMetadataLocaleReadsTheServerConfiguration(t *testing.T) {
 		_, _ = w.Write([]byte(`{"PreferredMetadataLanguage":" pt-BR ","MetadataCountryCode":"br","UICulture":"en-us"}`))
 	}))
 	t.Cleanup(srv.Close)
-	language, country, err := library.New(library.Emby, srv.URL, "test-token", "dev-1").MetadataLocale(context.Background())
+	language, country, err := mediaserver.New(mediaserver.Emby, srv.URL, "test-token", "dev-1").MetadataLocale(context.Background())
 	if err != nil || language != "pt-BR" || country != "BR" {
 		t.Fatalf("locale = %q, %q, %v; want pt-BR, BR", language, country, err)
 	}

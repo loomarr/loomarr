@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -57,7 +57,7 @@ type Roots struct {
 	Store   librarystore.LibraryRootStore
 	Sources func() []Source
 	// PathMap is the `library.path_map` setting, tried before a mount search.
-	PathMap func() library.PathMap
+	PathMap func() mediaserver.PathMap
 	Disk    Disk
 	Now     func() time.Time
 

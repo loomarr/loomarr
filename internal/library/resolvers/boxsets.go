@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -78,13 +78,13 @@ func (a *BoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, 
 
 // ownMember reads a household collection's title as a search result, so its keys come from the
 // one derivation every title uses.
-func ownMember(m librarystore.LibraryCollectionMember) library.SearchResult {
-	r := library.SearchResult{MediaType: library.Movie}
+func ownMember(m librarystore.LibraryCollectionMember) mediaserver.SearchResult {
+	r := mediaserver.SearchResult{MediaType: mediaserver.Movie}
 	if m.Kind == "series" {
-		r.MediaType = library.Series
+		r.MediaType = mediaserver.Series
 	}
 	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
-	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(library.TMDB)))
-	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(library.TVDB)))
+	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(mediaserver.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(m.IDs, string(mediaserver.TVDB)))
 	return r
 }

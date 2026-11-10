@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/ideas"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
@@ -18,7 +18,7 @@ import (
 const ideaLibraryTTL = 5 * time.Minute
 
 type libraryLister interface {
-	AllItems(ctx context.Context) ([]library.SearchResult, error)
+	AllItems(ctx context.Context) ([]mediaserver.SearchResult, error)
 }
 
 // libraryIdeaTitles lists what channel ideas draw from: the Library's movies and series with a
@@ -28,7 +28,7 @@ type libraryIdeaTitles struct {
 	facts  librarystore.LibraryItemFactsReader
 }
 
-func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult, error) {
+func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]mediaserver.SearchResult, error) {
 	titles, err := l.titles.LibraryTitles(ctx, time.Time{})
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func (l libraryIdeaTitles) AllItems(ctx context.Context) ([]library.SearchResult
 	if err != nil {
 		return nil, err
 	}
-	out := make([]library.SearchResult, 0, len(titles))
+	out := make([]mediaserver.SearchResult, 0, len(titles))
 	for _, t := range titles {
 		r := titlesearch.LibrarySearchResult(t)
 		r.Year, r.Genres = facts[t.ID].Year, facts[t.ID].Genres
@@ -78,7 +78,7 @@ func (a *libraryIdeaItems) IdeaItems(ctx context.Context) ([]ideas.Item, error) 
 			continue // no provider id: nothing a lineup could name
 		}
 		mt := provision.Movie
-		if r.MediaType == library.Series {
+		if r.MediaType == mediaserver.Series {
 			mt = provision.Series
 		}
 		items = append(items, ideas.Item{Keys: keys, MediaType: mt, Name: r.Name, Year: r.Year, Genres: r.Genres})

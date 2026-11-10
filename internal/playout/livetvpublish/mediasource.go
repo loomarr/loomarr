@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // MediaSourceProgrammer is Tunarr's media-source surface (§6) — satisfied by
@@ -20,14 +20,14 @@ type MediaSourceProgrammer interface {
 // UserLister resolves the media server's users (to find the admin id whose token
 // Tunarr uses for the source). Satisfied by *library.Client.
 type UserLister interface {
-	ListUsers(ctx context.Context) ([]library.User, error)
+	ListUsers(ctx context.Context) ([]mediaserver.User, error)
 }
 
 // MediaSourceLibrary is one bound library connection used by a media-source
 // operation. Connection and ListUsers must describe the same immutable snapshot.
 type MediaSourceLibrary interface {
 	UserLister
-	Connection() library.Connection
+	Connection() mediaserver.Connection
 }
 
 // MediaSourceLibrarySource starts one media-source operation. Production returns
@@ -45,7 +45,7 @@ type MediaSourceConnector struct {
 	mu sync.Mutex
 	// wired is the library connection this process last pushed to Tunarr successfully;
 	// nil before the first success and after any failed Connect.
-	wired *library.ConnectionGeneration
+	wired *mediaserver.ConnectionGeneration
 }
 
 // NewMediaSourceConnector builds a live connector. library starts one immutable
@@ -106,8 +106,8 @@ func (c *MediaSourceConnector) connect(ctx context.Context, operation MediaSourc
 }
 
 // record notes the outcome of one connect: the connection on success, nothing on failure.
-func (c *MediaSourceConnector) record(connection library.Connection, err error) {
-	var wired *library.ConnectionGeneration
+func (c *MediaSourceConnector) record(connection mediaserver.Connection, err error) {
+	var wired *mediaserver.ConnectionGeneration
 	if err == nil {
 		if generation, genErr := connection.Generation(); genErr == nil {
 			wired = &generation

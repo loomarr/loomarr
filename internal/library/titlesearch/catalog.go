@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
@@ -116,7 +116,7 @@ func (c Candidate) Key() (provision.Key, error) {
 
 // LibrarySearcher is the library-scope corpus (implemented by library.Client).
 type LibrarySearcher interface {
-	Search(ctx context.Context, term string, limit int) ([]library.SearchResult, error)
+	Search(ctx context.Context, term string, limit int) ([]mediaserver.SearchResult, error)
 }
 
 // TMDBSearcher is the TMDB-scope corpus (implemented by tmdb.Client).
@@ -754,7 +754,7 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 }
 
 // fromLibrary converts a library search result into a Candidate (in_library=true).
-func fromLibrary(r library.SearchResult) Candidate {
+func fromLibrary(r mediaserver.SearchResult) Candidate {
 	return Candidate{
 		MediaType:      mediaType(r.MediaType),
 		TMDBID:         r.TMDBID,
@@ -773,8 +773,8 @@ func fromLibrary(r library.SearchResult) Candidate {
 }
 
 // mediaType maps a library.MediaType (Emby "Movie"/"Series") to provision's.
-func mediaType(m library.MediaType) provision.MediaType {
-	if m == library.Series {
+func mediaType(m mediaserver.MediaType) provision.MediaType {
+	if m == mediaserver.Series {
 		return provision.Series
 	}
 	return provision.Movie
