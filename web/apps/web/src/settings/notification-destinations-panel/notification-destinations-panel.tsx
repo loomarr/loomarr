@@ -6,12 +6,12 @@ import type { NotificationProviderTypeDTO } from "@loomarr/api/models/notificati
 import { notificationProviderFormSchema } from "@loomarr/core/schemas";
 import {
   Action,
-  Badge,
   Card,
   CompactSelect,
   Field,
   Icon,
   icons,
+  StatusLabel,
   Surface,
   Text,
   Toggle,
@@ -601,12 +601,12 @@ const ProviderRow = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-medium">{provider.label}</h3>
-              <Badge shape="square" tone={provider.enabled ? "signal" : "neutral"}>
+              <StatusLabel tone={provider.enabled ? "ok" : "off"}>
                 {provider.enabled ? "Enabled" : "Disabled"}
-              </Badge>
-              <Badge shape="square" tone="neutral">
+              </StatusLabel>
+              <Text textRole="compact" tone="secondary">
                 {definition?.name ?? words(provider.type)}
-              </Badge>
+              </Text>
             </div>
             <p className="text-muted-foreground mt-1 text-sm">{provider.events.map(words).join(", ")}</p>
             {provider.health ? (
@@ -669,7 +669,8 @@ const ProviderRow = ({
               <Action
                 disabled={deleteConfirmation !== provider.label || remove.isPending}
                 onPress={() => void deleteProvider().catch(() => undefined)}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 Delete provider
               </Action>

@@ -9,7 +9,13 @@ import { AA_SMALL, accents, compositeTint, contrast, onTintVar } from "../web-th
 // break every PR's baseline render (#2953).
 describe.each(["dark", "light"] as const)("%s theme monogram ident", (mode) => {
   const theme = semanticThemes[mode];
-  const surfaces = { canvas: theme.surface.canvas, raised: theme.surface.raised };
+  // focus: a selected guide row puts the tile on the focus surface, where magenta's plain text
+  // stop failed the gallery's axe sweep (Guide Surface stories).
+  const surfaces = {
+    canvas: theme.surface.canvas,
+    raised: theme.surface.raised,
+    focus: theme.surface.focus,
+  };
 
   it.each(Object.entries(channelIdentColors(mode)))(
     "%s letters clear AA on their own wash",
@@ -28,7 +34,10 @@ describe("web monogram ident", () => {
   it("draws each hue's letters in its on-tint stop", () => {
     for (const [hue, colors] of Object.entries(channelIdentColors("dark"))) {
       const accent = hue as keyof typeof accents;
-      expect(accents[accent].on, hue).toBe(colors.text);
+      // Native magenta and red letters take a lighter step than the web's on-tint stops (#3011,
+      // 2026-11-09) to clear 4.5:1 on the focus surface; the web ident's letters are large text,
+      // which its stops clear.
+      if (hue !== "suggest" && hue !== "onair") expect(accents[accent].on, hue).toBe(colors.text);
       expect(accents[accent].base, hue).toBe(colors.wash);
     }
     expect(onTintVar("suggest")).toBe("var(--color-suggest-300)");

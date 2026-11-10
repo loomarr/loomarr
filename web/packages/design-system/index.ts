@@ -151,6 +151,8 @@ export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
+export type { StatusLabelProps } from "./src/status-label";
+export { StatusLabel } from "./src/status-label";
 export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
 export type { ToggleProps } from "./src/toggle";

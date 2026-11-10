@@ -8,12 +8,15 @@ import {
   PlayerAudio,
   PlayerChrome,
   PlayerCover,
+  PlayerDetails,
+  PlayerDetailsPanel,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PORTRAIT_PICTURE_TOP,
   playbarFromTimeline,
-  WatchingPanel,
+  rungFor,
   watermarkOf,
 } from "@loomarr/ui";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -24,9 +27,10 @@ import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import { TunerOSD } from "../tuner-osd";
+import { usePlaybackDetails } from "../use-playback-details";
 import { useSwitchSound } from "../use-switch-sound";
+import { useTunePhase } from "../use-tune-phase";
 import type { WatchChannels } from "../use-watch-channels";
 import type { WatchPlayer } from "../use-watch-player";
 import { useWatchShortcuts } from "../use-watch-shortcuts";
@@ -89,6 +93,48 @@ const HoldWhile = ({ hold, on }: { hold: VideoPlayerChrome["hold"]; on: boolean 
   return null;
 };
 
+// The session's first play starts muted (§9.3), so a channel never blasts at someone who just opened
+// the player; a pill takes one tap to undo it. Only the session's first play: later channels, and
+// reopening Watch, keep the sound as the viewer left it.
+const FIRST_PLAY_KEY = "loomarr.player.first-play";
+const firstPlayOfSession = () => {
+  try {
+    if (sessionStorage.getItem(FIRST_PLAY_KEY)) return false;
+    sessionStorage.setItem(FIRST_PLAY_KEY, "1");
+  } catch {
+    // No session storage (a private window): treat it as a first play only once per mount.
+  }
+  return true;
+};
+
+// FirstPlayMuted mutes the player once, on the session's first play, and tells the screen to show the
+// pill until the sound comes on by any means (the pill, the key, M).
+const FirstPlayMuted = ({
+  chrome,
+  onUnmuted,
+  onStart,
+}: {
+  chrome: VideoPlayerChrome;
+  onStart: () => void;
+  onUnmuted: () => void;
+}) => {
+  const { setMuted } = chrome;
+  const seenMuted = useRef(false);
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    if (!firstPlayOfSession()) return;
+    setMuted(true);
+    onStart();
+  }, [setMuted, onStart]);
+  useEffect(() => {
+    if (chrome.muted) seenMuted.current = true;
+    else if (seenMuted.current) onUnmuted();
+  }, [chrome.muted, onUnmuted]);
+  return null;
+};
+
 // HideForIdent clears the controls as the station-ID card arrives, so the card stands alone as the
 // mock draws it; moving the pointer brings the controls back in its place.
 const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident: boolean }) => {
@@ -98,14 +144,16 @@ const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident:
   return null;
 };
 
+// Picture in picture is the browser's: offered only where it is.
+const pipSupported = typeof document !== "undefined" && document.pictureInPictureEnabled === true;
+
 const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWatchProps) => {
   const drawer = channels?.drawer;
   const phone = channels?.phone;
   const onTuneSettled = channels?.onTuneSettled;
-  // A portrait phone (#1785, native mock 5e, decision N5): the picture edge to edge with nothing
-  // drawn on it, and the controls, what's next and the favourites under it. Wider draws the §9
-  // chrome over the picture; its portrait form comes with the phone step (#2088 step 10).
-  const onPhone = usePhoneWidth() && phone !== undefined;
+  // A portrait phone (§9.7, #2775): the picture pinned under the top row, the band and keys below it
+  // in the black space, nothing over the picture. Wider draws the chrome over the picture.
+  const onPhone = usePhoneWidth();
   // A finger gets the chrome's touch form: larger targets, no hover card, no tooltips (§9.5).
   const touch = useCoarsePointer();
   const density = touch ? "touch" : "pointer";
@@ -148,6 +196,11 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     settledRef.current = channel.id;
     onTuneSettled?.(channel.id);
   }, [player.status, channel.id, onTuneSettled]);
+
+  // The first play of the session is muted, with a pill to undo it (§9.3).
+  const [startedMuted, setStartedMuted] = useState(false);
+  const onFirstPlayStart = useCallback(() => setStartedMuted(true), []);
+  const onFirstPlayUnmuted = useCallback(() => setStartedMuted(false), []);
 
   const paused = channel.status === "paused" || channel.status === "detached";
 
@@ -210,6 +263,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // The channel on the OSD is the one asked for, from the moment the controller starts its tune.
   const osdChannel = channel;
   const tuning = player.status === "loading";
+  // The tune only dresses the wait (§9.4): a quiet flip first, the full signature only when the picture
+  // is slow (960 ms), and its length is playback readiness, never a timer.
+  const tunePhase = useTunePhase(tuning, channel.id);
+  const signature = tuning && tunePhase !== "flip";
   const channelLabel = `CH ${osdChannel.number} · ${osdChannel.name}`;
 
   // The lower third and the playbar, read from the timeline the way every client reads it (§9). The
@@ -230,6 +287,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     playheadMs: viewerTimeMs,
   });
   const { info, startOverMs } = chromeData;
+  // The hold (a wait of 1.5 s or more): the programme's fanart, from the rung this screen will draw.
+  const holdArt = chromeData.band.backdrop;
+  const holdBackdrop =
+    tunePhase === "hold" && holdArt
+      ? rungFor(holdArt, window.innerWidth, window.devicePixelRatio)
+      : undefined;
 
   // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
   // hidden. A retune drops it until the new channel settles, then shows it afresh.
@@ -258,14 +321,26 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const last = previous ? { id: previous.id, number: String(previous.number) } : undefined;
   const goLast = last ? () => player.tune(last.id) : undefined;
 
+  // Playback details (§9.5): a panel at the upper left on a pointer, a sheet on a phone. I toggles it.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
-    hasInfo: info !== undefined,
     channels: drawer?.channels,
+    detailsAsSheet: touch,
+    onDetails: () => setDetailsOpen((open) => !open),
     onLast: goLast,
-    onLeave,
+    // Esc closes the top layer, then leaves: the details panel is a layer too.
+    onLeave: () => (detailsOpen ? setDetailsOpen(false) : onLeave()),
     onTune: player.tune,
     viewerPaused: player.liveTransport.state.mode === "paused",
   });
+
+  const detailRows = usePlaybackDetails(detailsOpen || sheet === "details", videoRef, {
+    lagSeconds: player.liveTransport.state.lagSeconds,
+    level: player.ladder.onAir,
+    sessionId: player.playbackSessionId,
+  });
+  const copyDetails = (text: string) => void navigator.clipboard?.writeText(text);
 
   // The number readout, top right of the frame, drawn by the chrome (it keeps it clear of the
   // watermark): the digits so far, dashed out to the longest channel number, over "Enter channel" or,
@@ -323,6 +398,25 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               : { detail: formatGuideTime(serverNowMs ?? Date.now()), onPress: chrome.goLive }
           }
           info={info ? { onPress: () => toggleSheet("info") } : undefined}
+          pictureInPicture={
+            pipSupported
+              ? {
+                  onPress: () => {
+                    closeSheet();
+                    void videoRef.current?.requestPictureInPicture().catch(() => undefined);
+                  },
+                }
+              : undefined
+          }
+          playbackDetails={{
+            onPress: () => {
+              if (touch) toggleSheet("details");
+              else {
+                closeSheet();
+                setDetailsOpen(true);
+              }
+            },
+          }}
           last={touch && last && goLast ? { number: last.number, onPress: goLast } : undefined}
           picture={
             qualityOptions
@@ -349,6 +443,8 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           }
         />,
       )
+    ) : sheet === "details" ? (
+      sheetOf("Playback details", <PlayerDetails density={density} onCopy={copyDetails} rows={detailRows} />)
     ) : sheet === "info" && info ? (
       sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
     ) : sheet === "channels" && drawer ? (
@@ -367,7 +463,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     ) : undefined;
 
   // A stream that stopped has nothing for the playbar to stand on, so Retry and the way out take the
-  // frame in the chrome's place — and on a portrait phone, which draws no chrome, over the picture.
+  // frame in the chrome's place.
   const errorCover =
     player.status === "error" ? (
       <ThemeScope theme="dark">
@@ -387,6 +483,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const renderChrome = (chrome: VideoPlayerChrome) => (
     <>
       <HoldWhile hold={chrome.hold} on={sheet !== undefined} />
+      <FirstPlayMuted chrome={chrome} onStart={onFirstPlayStart} onUnmuted={onFirstPlayUnmuted} />
       <HideForIdent hide={chrome.hide} ident={ident} />
       {errorCover ?? (
         <PlayerChrome
@@ -394,6 +491,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           density={density}
           formatTime={formatGuideTime}
           ident={ident}
+          layout={onPhone ? "portrait" : "overlay"}
           keys={{
             density,
             last: !touch && last && goLast ? { number: last.number, onPress: goLast } : undefined,
@@ -411,6 +509,16 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           live={live}
           onGoLive={chrome.goLive}
           readout={readout}
+          panel={
+            detailsOpen && !touch ? (
+              <PlayerDetailsPanel
+                density={density}
+                onClose={() => setDetailsOpen(false)}
+                onCopy={copyDetails}
+                rows={detailRows}
+              />
+            ) : undefined
+          }
           sheet={openSheetFor(chrome)}
           top={{
             audioOpen: sheet === "audio",
@@ -421,8 +529,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             onLeave,
             pointer: !touch,
           }}
-          visible={chrome.controlsShown && !tuning}
-          watermark={watermark}
+          unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
+          // The quiet flip keeps the band up (§9.4); only the full signature hides it.
+          visible={onPhone || (chrome.controlsShown && !signature)}
+          watermark={onPhone ? undefined : watermark}
         />
       )}
     </>
@@ -434,7 +544,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     <VideoPlayer
       live
       liveTransport={player.liveTransport}
-      renderChrome={onPhone ? undefined : renderChrome}
+      renderChrome={renderChrome}
       // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
       // not cut yet) so the viewer sees a channel tuning in, not a black frame. Only while loading —
       // an error draws its own cover, and a playing stream needs no overlay.
@@ -443,50 +553,24 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
       // lands later arrives already under the snow, so the readout never sits on a picture.
       overlay={
-        tuning ? (
+        signature ? (
           <>
             {player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
+            <TunerLoader backdrop={holdBackdrop} channel={osdChannel} heldFrame={heldFrame} />
           </>
         ) : undefined
       }
       onShortcut={onShortcut}
       attach={attach}
       onChannelStep={player.step}
-      // Wider than a portrait phone, the picture fills the window (letterboxed by the <video>); a
-      // portrait phone keeps its 16:9 picture over the panel.
-      fill={!onPhone}
+      // The picture fills the window (letterboxed by the <video>). A portrait phone pins it under the
+      // top row, with the band and keys below it (§9.7, #2775).
+      fill
+      pictureTop={onPhone ? PORTRAIT_PICTURE_TOP : undefined}
     />
   );
-
-  // The star in the panel's channel line pins the tuned channel, as the drawer's star does on wider
-  // screens and the iPhone's does (#1816). Without it a phone had no way to fill Favorites.
-  const isFavourite = drawer?.favourites.includes(osdChannel.id) ?? false;
-  const phonePanel =
-    onPhone && phone ? (
-      <WatchingPanel
-        density="touch"
-        channel={{ name: osdChannel.name, number: String(osdChannel.number) }}
-        schedule={phone.schedule}
-        clockLabel={phone.clockLabel}
-        live={player.liveTransport.state}
-        canPrevious={phone.previousId !== undefined}
-        canSurf={player.canSurf}
-        onPrevious={() => phone.previousId && player.tune(phone.previousId)}
-        onChannelDown={() => player.step(-1)}
-        onChannelUp={() => player.step(1)}
-        onPause={() => player.liveTransport.pause()}
-        onPlay={() => void player.liveTransport.play()}
-        onGoLive={() => void player.liveTransport.goLive()}
-        onLeave={onLeave}
-        favourites={phone.favourites}
-        isFavourite={isFavourite}
-        onToggleFavourite={drawer ? () => drawer.onFavourite(osdChannel.id, !isFavourite) : undefined}
-        onTune={player.tune}
-      />
-    ) : undefined;
 
   if (paused) {
     return (
@@ -512,9 +596,8 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className={cn("relative", !onPhone && "min-h-0 flex-1")}>
+      <div className="relative min-h-0 flex-1">
         {playerEl}
-        {onPhone && errorCover}
         {/* While the wash is up, its centred channel line is the visible readout, so the OSD card
             would only repeat it; it stays as the screen-reader announcement. */}
         {tuning && (
@@ -526,7 +609,6 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           />
         )}
       </div>
-      {phonePanel}
     </section>
   );
 };

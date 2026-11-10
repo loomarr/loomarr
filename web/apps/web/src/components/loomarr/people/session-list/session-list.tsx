@@ -1,5 +1,5 @@
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
-import { Action, Badge } from "@loomarr/design-system";
+import { Action, StatusLabel } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ const SessionList = ({
           {`${pluralize(sessions.length, "active session")} for ${userName}`}
         </p>
         {onRevokeAll && confirming !== ALL && (
-          <Action onPress={() => setConfirming(ALL)} variant="destructive">
+          <Action onPress={() => setConfirming(ALL)} tone="danger" variant="outline">
             Sign out everywhere
           </Action>
         )}
@@ -89,11 +89,7 @@ const SessionList = ({
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-sm">
                   {`Signed in ${formatRelative(s.createdAt, now)}`}
-                  {s.current && (
-                    <Badge shape="square" tone="tune">
-                      This device
-                    </Badge>
-                  )}
+                  {s.current && <StatusLabel tone="notice">This device</StatusLabel>}
                 </p>
                 <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
               </div>
@@ -101,7 +97,8 @@ const SessionList = ({
                 disabled={revoking === s.id}
                 icon={revoking === s.id ? "loading" : undefined}
                 onPress={() => setConfirming(s.id)}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 {s.current ? "Sign out (this device)" : "Sign out"}
               </Action>

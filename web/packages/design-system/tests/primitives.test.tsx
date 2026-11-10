@@ -289,7 +289,7 @@ describe("Text", () => {
   it("keeps a caller's own textTransform when not shouting", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <Text textRole="guideLabel" textTransform="uppercase">
+        <Text textRole="label" textTransform="uppercase">
           hi
         </Text>
       </LoomarrProvider>,

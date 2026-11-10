@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 7 imports — the diagnostics process manager every ffmpeg run goes through, the image jobs and their schedules, the outbound HTTP client for fetched artwork, and start-up configuration
+- **platform** · 9 imports — the diagnostics process manager every ffmpeg run goes through, the image jobs and their schedules, the outbound HTTP client for fetched artwork, and start-up configuration
 - **library** · 2 imports — the `library/inventory` stream, keyframe and break values that header reads and measurements fill in
 
 ## Packages
@@ -23,10 +23,12 @@ One area of the [package map](../package-map.md#start-here).
   Hardware-encode vocabulary every ffmpeg caller shares (#2121): which video encoders exist, which hardware engine and pipeline family each belongs to, what this host's GPU decodes, the device and decode arguments that must precede `-i`, each family's encoder flags and rate control, and the parser for ffmpeg's `-progress` stream.
 - **`media/header`** · 3 importers · → `library/inventory`
   Reads what a media file's container header says about it — duration, its streams and their codecs, geometry, colour, languages, chapters, and the keyframe index — without decoding a frame (decision 0046, #2151 step 3).
-- **`media/images`** · 8 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
+- **`media/images`** · 9 importers · → `media/images/rustgen`, `platform/httpx`, `platform/jobs`, `platform/logchange`, `platform/settings`, `platform/store/activitystore`
   One pipeline every image in Loomarr travels (§22).
 - **`media/images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
+- **`media/images/storeadapter`** · 1 importer · → `media/images`, `platform/store`, `platform/store/clipstore`
+  Image service's store bridge (§22, V52): a type-for-type translation between the store's image rows and `internal/media/images`' own types.
 - **`media/measure`** · 4 importers · → `library/inventory`, `media/bgexec`, `media/header`, `media/tools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 - **`media/proctree`** · 2 importers

@@ -166,8 +166,10 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 	return due, next
 }
 
-// Trigger asks for a pass soon. It never blocks.
+// Trigger asks for a pass soon. It never blocks. The pass is asked for, so it shows its progress
+// in full however little it finds.
 func (s *Scanner) Trigger() {
+	s.Importer.Tracker.Ask()
 	select {
 	case s.trigger <- struct{}{}:
 	default:
@@ -181,6 +183,10 @@ func (s *Scanner) Run(ctx context.Context) {
 	defer folders.Wait()
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
+	// The first pass of a library with no files yet is its first import, as good as asked for.
+	if counts, err := s.Importer.Store.LibraryFileCounts(ctx); err == nil && counts.Files == 0 {
+		s.Importer.Tracker.Ask()
+	}
 	for {
 		if err := s.Importer.Run(ctx); err != nil && ctx.Err() == nil {
 			s.Importer.log().Warn("library scan: pass failed", "err", err)
@@ -217,12 +223,20 @@ type Library struct {
 	Now      func() time.Time
 }
 
-// Progress is the scanner's current state; the zero Progress when no scanner runs.
+// Progress is how the scanner's last passes ended; the zero Progress when no scanner runs.
 func (l *Library) Progress() Progress {
 	if l.Scanner == nil {
-		return Progress{Stage: StageIdle}
+		return Progress{}
 	}
 	return l.Scanner.Importer.Progress()
+}
+
+// Importing is how far a running import is now; the zero snapshot when none runs.
+func (l *Library) Importing() ProgressSnapshot {
+	if l.Scanner == nil {
+		return ProgressSnapshot{}
+	}
+	return l.Scanner.Importer.Tracker.Snapshot(l.now())
 }
 
 // Enabled reports whether the kill switch lets the scanner run.
@@ -245,10 +259,48 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 // ErrScannerOff is a request the scanner cannot serve because it is not running.
 var ErrScannerOff = errors.New("scan: the scanner is off")
 
-// Rescan asks for a pass now ("Check again").
+// Rescan asks for a pass now ("Scan now", and "Check again" on a held removal).
 func (l *Library) Rescan() error {
 	if !l.Enabled() {
 		return ErrScannerOff
+	}
+	l.Scanner.Trigger()
+	return nil
+}
+
+// SetInUse confirms or releases a root. Confirming one ("Use this folder") asks for a pass, so
+// its media starts arriving now rather than at the next hourly pass.
+func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
+	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
+		return err
+	}
+	if inUse && l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// Add records a folder typed by hand, in use at once, and asks for a pass.
+func (l *Library) Add(ctx context.Context, path string) error {
+	if err := l.Roots.Add(ctx, path); err != nil {
+		return err
+	}
+	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// RefreshEverything is "Refresh everything", Update details for the whole library: every file is
+// written again on a pass asked for now, so what the files, sidecars and arrs say now is read, and
+// the enricher fetches every catalog record again. Headers are kept: a file's bytes are read
+// again only when they change, so no title stops playing while it runs.
+func (l *Library) RefreshEverything(ctx context.Context) error {
+	if !l.Enabled() {
+		return ErrScannerOff
+	}
+	if err := l.ItemStore.RefreshLibrary(ctx); err != nil {
+		return err
 	}
 	l.Scanner.Trigger()
 	return nil

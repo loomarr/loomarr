@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Badge, Card, Field, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, StatusLabel, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { cn } from "@/lib/utils";
@@ -65,23 +65,17 @@ const PullCard = ({
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge shape="square" tone="lock">
-              Filler pull
-            </Badge>
+            <StatusLabel tone="ok">Filler pull</StatusLabel>
             <span id={titleId} className="text-sm font-semibold">
               {pull.title}
             </span>
-            {edited && (
-              <Badge shape="square" tone="suggest">
-                Edited
-              </Badge>
-            )}
+            {edited && <StatusLabel tone="attention">Edited</StatusLabel>}
           </div>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
               must never reach the screen. */}
           {pull.proposedByName && (
-            <Text as="span" textRole="captionMono">
+            <Text as="span" textRole="mono">
               proposed by {pull.proposedByName}
             </Text>
           )}
@@ -124,7 +118,7 @@ const PullCard = ({
               <div className="min-w-0 flex-1">
                 <p className={cn("truncate text-sm", isDropped && "line-through")}>{row.name}</p>
                 {row.why && (
-                  <Text as="span" textRole="captionMono">
+                  <Text as="span" textRole="mono">
                     {row.why}
                   </Text>
                 )}
@@ -133,7 +127,7 @@ const PullCard = ({
                   there, what deduplicates, and what the splitter makes of a compilation — a
                   number presented as exact becomes "Loomarr said 40 and downloaded 12". */}
               {row.estimateClips > 0 && (
-                <Text as="span" className="tabular-nums" textRole="captionMono">
+                <Text as="span" className="tabular-nums" textRole="mono">
                   ~{row.estimateClips} clips
                 </Text>
               )}
@@ -159,7 +153,7 @@ const PullCard = ({
             {(pull.rejected ?? []).map((candidate) => (
               <li key={candidate.candidateId} className="flex flex-wrap gap-2">
                 <span>{candidate.name}</span>
-                <Text as="span" textRole="captionMono">
+                <Text as="span" textRole="mono">
                   {candidate.disposition.replaceAll("_", " ")}: {candidate.detail}
                 </Text>
               </li>
@@ -177,7 +171,7 @@ const PullCard = ({
             {skippedSources.map((source) => (
               <li key={source.sourceId} className="flex flex-wrap gap-2">
                 <span>{source.label || source.sourceId}</span>
-                <Text as="span" textRole="captionMono">
+                <Text as="span" textRole="mono">
                   {source.disposition.replaceAll("_", " ")}: {source.detail}
                 </Text>
               </li>
@@ -194,11 +188,11 @@ const PullCard = ({
         value={note}
       />
 
-      <Text as="span" textRole="captionMono">
+      <Text as="span" textRole="mono">
         Optional annotation for your records. This does not change what is downloaded.
       </Text>
 
-      <Text as="span" textRole="captionMono">
+      <Text as="span" textRole="mono">
         {kept.length === 0
           ? "Every candidate is left out, so there's nothing to fetch. Dismiss it instead."
           : `${pluralize(kept.length, "candidate")} will be fetched. Nothing downloads until you approve.`}

@@ -63,7 +63,8 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                 icon="refresh"
                 onPress={() => setConfirming(secret.name)}
                 style={{ alignSelf: "flex-start" }}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 Regenerate
               </Action>

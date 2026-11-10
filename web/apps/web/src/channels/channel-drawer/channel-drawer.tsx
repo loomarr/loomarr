@@ -62,8 +62,10 @@ const ChannelDrawer = ({
   }
 
   return (
+    // A sheet like the player's others (role=dialog), so the player's ↑/↓ leave its list alone.
     <section
       aria-labelledby="channel-drawer-title"
+      role="dialog"
       className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l backdrop-blur-md"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;

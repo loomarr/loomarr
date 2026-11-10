@@ -2,12 +2,15 @@ package testkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -154,7 +157,7 @@ var (
 	templateErr  error
 )
 
-// buildTemplate creates and fully migrates a SQLite database in a directory that
+// buildTemplate (through migrateTemplate) creates and fully migrates a SQLite database in a directory that
 // outlives any single test's t.TempDir() (a process-lifetime directory under
 // os.MkdirTemp, cleaned up via TestMain-independent os semantics — it simply
 // lives for the process and the OS reclaims /tmp on its own schedule, same as
@@ -167,7 +170,61 @@ var (
 // active can hand a reader a torn, incomplete view. Building the template with
 // a normal store.Open(..., true) and then Close()-ing it before any copy is
 // taken is what makes copying safe here.
+//
+// The template is also shared ACROSS test processes. Under -race, migrating the 200-odd SQLite
+// migrations costs about 36 CPU-seconds, and every package that opens a store paid it once: the
+// race lanes' cost model nearly doubled as the schema grew, and lanes crossed their 15-minute
+// timeout (#2716). sharedTemplate keys a finished template on the migrations' digest, so one build
+// serves every later test binary on the machine with the same schema.
 func buildTemplate() (string, error) {
+	digest, err := store.SQLiteMigrationDigest()
+	if err != nil {
+		return "", fmt.Errorf("digest SQLite migrations: %w", err)
+	}
+	cacheDir := filepath.Join(os.TempDir(), "loomarr-testkit-template")
+	shared := filepath.Join(cacheDir, digest+".db")
+	// Never touch a reused template: go test's result cache keys on the mtime of every file a test
+	// opens, so rewriting it would invalidate every cached store-backed package.
+	if info, err := os.Stat(shared); err == nil && info.Mode().IsRegular() && info.Size() > 0 {
+		return shared, nil
+	}
+	built, err := migrateTemplate()
+	if err != nil {
+		return "", err
+	}
+	// Publish by rename, which is atomic within one filesystem: another process sees no file or a
+	// whole, closed one. Racing builders each rename an identical file; the last one wins.
+	// The cache is an optimisation: when it cannot be written, this process's own copy is valid.
+	if err := os.MkdirAll(cacheDir, 0o750); err != nil {
+		return built, nil
+	}
+	if err := os.Rename(built, shared); err != nil {
+		return built, nil
+	}
+	pruneStaleTemplates(cacheDir, shared)
+	return shared, nil
+}
+
+// pruneStaleTemplates removes templates for other schemas that are more than a week old, so a
+// machine that runs tests across many branches does not keep one file per migration change. A
+// process still copying a pruned template rebuilds it (MigratedSQLiteDSN).
+func pruneStaleTemplates(cacheDir, keep string) {
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		p := filepath.Join(cacheDir, e.Name())
+		info, err := e.Info()
+		if p == keep || err != nil || time.Since(info.ModTime()) < 7*24*time.Hour {
+			continue
+		}
+		_ = os.Remove(p)
+	}
+}
+
+// migrateTemplate migrates a fresh database to HEAD in a private directory and closes it.
+func migrateTemplate() (string, error) {
 	dir, err := os.MkdirTemp("", "loomarr-testkit-template-*")
 	if err != nil {
 		return "", fmt.Errorf("create template dir: %w", err)
@@ -221,10 +278,32 @@ func MigratedSQLiteDSN(t testing.TB) string {
 	}
 
 	dest := filepath.Join(t.TempDir(), "loomarr.db")
-	if err := copyFile(templatePath, dest); err != nil {
+	err := copyFile(templatePath, dest)
+	if errors.Is(err, fs.ErrNotExist) {
+		// Another schema's run pruned the shared template after this process found it.
+		err = rebuildTemplate(templatePath, dest)
+	}
+	if err != nil {
 		t.Fatalf("copy migrated SQLite template: %v", err)
 	}
 	return "sqlite://" + dest
+}
+
+var rebuildMu sync.Mutex
+
+// rebuildTemplate rebuilds a pruned shared template once and copies it to dest. Under rebuildMu,
+// so this process's tests rebuild it one at a time and every later one finds it back in place.
+func rebuildTemplate(missing, dest string) error {
+	rebuildMu.Lock()
+	defer rebuildMu.Unlock()
+	if err := copyFile(missing, dest); err == nil {
+		return nil
+	}
+	rebuilt, err := buildTemplate()
+	if err != nil {
+		return err
+	}
+	return copyFile(rebuilt, dest)
 }
 
 // copyFile duplicates src's bytes into dst. The template file is closed and

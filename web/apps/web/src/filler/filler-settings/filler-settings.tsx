@@ -83,7 +83,7 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       {allowanceFull ? (
         <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} marginTop={12}>
           <Action
-            variant="secondary"
+            variant="outline"
             onPress={() =>
               document.getElementById(`setting-${SettingKey.FillerStorageLibraryBudgetGb}`)?.focus()
             }

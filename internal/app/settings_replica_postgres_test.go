@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/protectedsettings"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -21,7 +22,7 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 	defer cancel()
 	// The token is sealed on the way in, as every write path stores a protected setting.
 	protection := testSecretProtection(t, stores[1])
-	if err := (storePersister{st: stores[0], protection: protection}).Apply(ctx, settings.PersistenceBatch{
+	if err := (protectedsettings.NewPersister(stores[0], protection)).Apply(ctx, settings.PersistenceBatch{
 		Upserts: []settings.PersistedSetting{
 			{Key: "library.flavor", Value: "emby"},
 			{Key: "library.url", Value: "http://old:8096"},
@@ -48,7 +49,7 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 	}
 
 	batchAt := time.Unix(1_700_000_000, 0).UTC()
-	if err := (storePersister{st: stores[0], protection: protection}).Apply(ctx, settings.PersistenceBatch{
+	if err := (protectedsettings.NewPersister(stores[0], protection)).Apply(ctx, settings.PersistenceBatch{
 		Upserts: []settings.PersistedSetting{
 			{Key: "library.flavor", Value: "jellyfin"},
 			{Key: "library.url", Value: "http://new:8096"},

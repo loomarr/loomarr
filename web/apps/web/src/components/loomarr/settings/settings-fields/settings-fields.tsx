@@ -88,7 +88,7 @@ const SettingsFields = ({
             layout="text"
             onPress={() => setShowAdvanced((v) => !v)}
             style={{ alignSelf: "flex-start" }}
-            variant="link"
+            variant="ghost"
           >
             {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
           </Action>

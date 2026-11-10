@@ -36,7 +36,13 @@ const HALO = `0 1px 2px ${shade(90)}, 0 0 18px ${shade(85)}`;
 const READOUT_HALO = `0 1px 2px ${shade(90)}, 0 0 14px ${shade(85)}, 0 0 8px color-mix(in srgb, var(--color-signal) 35%, transparent)`;
 const BARS_HALO = `drop-shadow(0 0 10px ${shade(90)})`;
 
-const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, className }: TunerLoaderProps) => (
+const TunerLoader = ({
+  label = "TUNING IN",
+  channel,
+  heldFrame = false,
+  backdrop,
+  className,
+}: TunerLoaderProps) => (
   <div className={cn("pointer-events-none absolute inset-0", className)} aria-hidden>
     {/* The wash over the picture beneath. Its resting style IS the drained frame of `held-drain`:
         the picture greyed, flattened and left at 12% under static-950. */}
@@ -47,6 +53,23 @@ const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, classNam
         heldFrame && "motion-safe:animate-held-drain",
       )}
     />
+
+    {/* The hold (a wait of 1.5 s or more): the programme's fanart, dimmed, contained at 16:9 under the
+        snow. Inline style, not classes: the legacy ledger only goes down. */}
+    {backdrop ? (
+      <img
+        alt=""
+        src={backdrop}
+        style={{
+          height: "100%",
+          inset: 0,
+          objectFit: "contain",
+          opacity: 0.5,
+          position: "absolute",
+          width: "100%",
+        }}
+      />
+    ) : null}
 
     {/* The CRT ground: analog snow under a dark layer + scanlines; still (not absent) under reduced
         motion. On a switch it thickens in over the draining frame. */}

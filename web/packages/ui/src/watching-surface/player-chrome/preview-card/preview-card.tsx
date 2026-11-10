@@ -141,12 +141,12 @@ const BreakCard = ({
               {spot.name}
             </Text>
             {spot.detail ? (
-              <Text density={density} numberOfLines={1} textRole="guideMeta" tone="secondary">
+              <Text density={density} numberOfLines={1} textRole="mono" tone="secondary">
                 {spot.detail}
               </Text>
             ) : null}
           </View>
-          <Text density={density} textRole="guideMeta" tone={i === onNowSpot ? "info" : "secondary"}>
+          <Text density={density} textRole="mono" tone={i === onNowSpot ? "info" : "secondary"}>
             {i === onNowSpot ? "ON NOW" : spot.durationLabel}
           </Text>
         </View>

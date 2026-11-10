@@ -13,6 +13,15 @@ import { ADMIN, MEMBER, proposal, renderAt, stub } from "@/test/requests-harness
 
 afterEach(() => vi.restoreAllMocks());
 
+// A programme far enough ahead to still be "next" after the fake clock runs five hours on.
+const PILOT = {
+  kind: "program",
+  scheduleBlockId: "b1",
+  startMs: Date.now() + 24 * 60 * 60_000,
+  stopMs: Date.now() + 25 * 60 * 60_000,
+  title: "The pilot",
+} as const;
+
 describe("HomePage (#1659)", () => {
   it("on an empty install, says nothing is on and offers the first channel", async () => {
     stub({ me: ADMIN });
@@ -32,7 +41,14 @@ describe("HomePage (#1659)", () => {
     server.use(
       getChannelGuideMockHandler({
         channels: [
-          { airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" },
+          {
+            airings: [{ ...PILOT, series: "A sci-fi anthology", season: 4 }],
+            channelId: "c1",
+            name: "Test",
+            number: 7,
+            pendingCount: 0,
+            status: "live",
+          },
         ],
         fromMs: 0,
         toMs: 0,
@@ -42,15 +58,7 @@ describe("HomePage (#1659)", () => {
         toMs: 0,
         highlights: [
           {
-            airing: {
-              kind: "program",
-              scheduleBlockId: "b1",
-              series: "A sci-fi anthology",
-              season: 4,
-              startMs: 0,
-              stopMs: 1,
-              title: "The pilot",
-            },
+            airing: { ...PILOT, series: "A sci-fi anthology", season: 4 },
             channelId: "c1",
             channelName: "Test",
             channelNumber: 7,
@@ -77,7 +85,9 @@ describe("HomePage (#1659)", () => {
       releaseSlide = resolve;
     });
     const body = {
-      channels: [{ airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" }],
+      channels: [
+        { airings: [PILOT], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" },
+      ],
       fromMs: 0,
       toMs: 0,
     };
@@ -93,7 +103,7 @@ describe("HomePage (#1659)", () => {
         toMs: 0,
         highlights: [
           {
-            airing: { kind: "program", scheduleBlockId: "b1", startMs: 0, stopMs: 1, title: "The pilot" },
+            airing: PILOT,
             channelId: "c1",
             channelName: "Test",
             channelNumber: 7,

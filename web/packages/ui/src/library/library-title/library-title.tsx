@@ -2,7 +2,7 @@ import { formatBytes } from "@loomarr/core/format";
 import { Action, Badge, Disclosure, StatusDot, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
 import { ChannelIdentity } from "../../identity";
-import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
+import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { PickTitle } from "../pick-title";
 import { lengthPhrase, TechnicalDetails } from "../technical-details";
 import type {
@@ -80,9 +80,12 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
               ) : null}
             </Stack>
             {episode.ready ? null : (
-              <Text textRole="compact" tone="secondary">
-                Getting ready
-              </Text>
+              <Line alignSelf="center" flexWrap="nowrap">
+                <Twirl />
+                <Text textRole="compact" tone="secondary">
+                  Getting ready
+                </Text>
+              </Line>
             )}
           </Line>
         ))}
@@ -109,7 +112,7 @@ const WrongTitle = ({
         <Text textRole="body">{`${app} decides what this is. Change it in ${app}.`}</Text>
         {onOpenApp ? (
           <Line>
-            <Action onPress={onOpenApp} variant="secondary">
+            <Action onPress={onOpenApp} variant="outline">
               {`Open ${app}`}
             </Action>
           </Line>
@@ -195,10 +198,10 @@ const TitleActions = (props: Omit<LibraryTitleProps, "onBack">) => {
   return (
     <Stack gap="control">
       <Line>
-        <Action onPress={() => run("update", onUpdateDetails)} variant="secondary">
+        <Action onPress={() => run("update", onUpdateDetails)} variant="outline">
           {busy === "update" ? "Updating…" : "Update details"}
         </Action>
-        <Action onPress={() => run("check", onCheckFiles)} variant="secondary">
+        <Action onPress={() => run("check", onCheckFiles)} variant="outline">
           {busy === "check" ? "Checking…" : checked ? "Checked just now" : "Check files again"}
         </Action>
         <Action onPress={() => setWrong(!wrong)} variant="ghost">
@@ -388,7 +391,7 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
               <StatusDot label="Needs you" tone="warn" />
               <Text textRole="compact">We're not sure which order these episodes are in.</Text>
             </Line>
-            <Action onPress={actions.onChooseOrder} variant="secondary">
+            <Action onPress={actions.onChooseOrder} variant="outline">
               Choose
             </Action>
           </Line>

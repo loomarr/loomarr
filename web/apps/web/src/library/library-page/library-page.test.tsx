@@ -5,10 +5,12 @@ import {
   getListLibraryNeedsMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LoomarrEventsProvider } from "@/events/events-provider";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { libraryStatus } from "@/test/fixtures/library";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -66,6 +68,75 @@ describe("LibraryPage", () => {
     expect(await screen.findByRole("button", { name: /^Getting ready\s*Bravo/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/library/$id", params: { id: "90000001" } });
+  });
+
+  it("fills the grid and moves the status from the event stream, polling nothing", async () => {
+    let listed = 0;
+    let items: (typeof alpha | typeof bravo)[] = [alpha];
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", () => {
+        listed++;
+        return HttpResponse.json({ items, total: items.length });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LoomarrEventsProvider>
+          <LibraryPage filter="all" search="" />
+        </LoomarrEventsProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("button", { name: /^Alpha/ })).toBeInTheDocument();
+    const stream = FakeEventSource.instances.at(-1);
+    if (!stream) throw new Error("no event stream");
+
+    // A scan frame is written into the status line; nothing is refetched for it.
+    const before = listed;
+    act(() =>
+      stream.emit("library_scan", {
+        step: "walking",
+        stepNumber: 1,
+        done: 112,
+        total: 533,
+        etaSeconds: 540,
+        paused: false,
+        quiet: false,
+      }),
+    );
+    expect(
+      await screen.findByText("Adding your media · Step 1 of 3 · 21% · about 9 min left"),
+    ).toBeInTheDocument();
+    expect(listed).toBe(before);
+
+    // A titles frame refetches the grid, and the new title shows up.
+    items = [alpha, bravo];
+    act(() => stream.emit("library_titles", {}));
+    expect(await screen.findByRole("button", { name: /^Getting ready\s*Bravo/ })).toBeInTheDocument();
+  });
+
+  it("loads the next page when the grid reaches its last rows, and stops at the total", async () => {
+    const offsets: string[] = [];
+    const page = (from: number, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        ...alpha,
+        id: String(90200000 + from + i),
+        name: `T${from + i}`,
+      }));
+    server.use(
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/items", ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get("offset") ?? 0);
+        offsets.push(String(offset));
+        return HttpResponse.json({ items: page(offset, offset === 0 ? 12 : 6), total: 18 });
+      }),
+    );
+    renderPage();
+
+    // A first page short enough to show its last rows asks for the next one, and no more.
+    expect(await screen.findByRole("button", { name: /^T17/ })).toBeInTheDocument();
+    expect(offsets).toEqual(["0", "12"]);
   });
 
   it("asks for the URL's filter, then the typed search, and keeps the search in the URL", async () => {

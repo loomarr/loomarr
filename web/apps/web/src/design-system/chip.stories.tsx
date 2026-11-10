@@ -13,7 +13,7 @@ const SpanPicker = () => {
       flexDirection="row"
       gap="inline"
     >
-      <Text shout textRole="captionMono">
+      <Text shout textRole="mono">
         Span
       </Text>
       {["1H", "2H", "4H", "8H"].map((label) => (

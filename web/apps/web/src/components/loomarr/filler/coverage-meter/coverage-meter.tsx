@@ -136,7 +136,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                   />
                 </span>
                 {/* tabular-nums so the counts do not jitter as the catalog changes. */}
-                <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="captionMono">
+                <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="mono">
                   {rung.clips}
                 </Text>
               </li>
@@ -154,7 +154,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
         <div className="border-border/60 flex flex-col gap-1.5 border-t pt-3">
-          <Text as="span" textRole="captionMono">
+          <Text as="span" textRole="mono">
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"
               : "These settings are ruling out every commercial:"}
@@ -172,7 +172,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                   // numbers. A tone and `strong`, not `text-*`/`font-*` classes: the colour and
                   // weight are inline style, which a class cannot override (#1956).
                   strong={c.clips === 0}
-                  textRole="captionMono"
+                  textRole="mono"
                   {...(c.clips === 0 ? { tone: "danger" as const } : {})}
                 >
                   {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
@@ -184,7 +184,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Text as="span" textRole="captionMono">
+        <Text as="span" textRole="mono">
           {widest === 0
             ? "No eligible commercials for this channel."
             : `${widest} eligible ${widest === 1 ? "commercial" : "commercials"}`}

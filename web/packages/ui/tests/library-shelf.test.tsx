@@ -28,7 +28,25 @@ const doc = (
   }
 ).document;
 
-const IDLE: LibraryScan = { enabled: true, stage: "idle", headersDone: 0, headersTotal: 0, paused: false };
+const IDLE: LibraryScan = {
+  enabled: true,
+  step: "idle",
+  stepNumber: 0,
+  done: 0,
+  total: 0,
+  paused: false,
+  quiet: false,
+};
+const WALKING: LibraryScan = {
+  ...IDLE,
+  step: "walking",
+  stepNumber: 1,
+  done: 112,
+  total: 533,
+  etaSeconds: 540,
+};
+const twirls = (node: { querySelectorAll(s: string): ArrayLike<unknown> }) =>
+  node.querySelectorAll('[data-testid="library-twirl"]').length;
 const TITLES: LibraryShelfTitle[] = [
   { id: "90000801", kind: "series", name: "Harbour Lights", year: 1999, ready: true },
   { id: "90000802", kind: "movie", name: "Paper Kites", year: 1996, ready: false },
@@ -49,6 +67,7 @@ const render = (overrides: Partial<LibraryShelfProps>) => {
     titles: TITLES,
     loading: false,
     onOpenTitle: vi.fn(),
+    onEndReached: vi.fn(),
     ...overrides,
   };
   const host = doc.createElement("div");
@@ -174,18 +193,85 @@ describe("LibraryShelf", () => {
     loading.cleanup();
   });
 
-  it("shows the import's progress while new files are read", () => {
+  it("shows the import's step, share and time left on one line, twirling", () => {
     const { host, cleanup } = render({
+      status: { health: "ok", scan: WALKING, held: [], offline: [] },
+      titles: [],
+    });
+    expect(host.textContent).toContain("Adding your media · Step 1 of 3 · 21% · about 9 min left");
+    expect(host.textContent).toContain("Library settings");
+    expect(twirls(host)).toBe(1);
+    cleanup();
+
+    const early = render({
+      status: { health: "ok", scan: { ...WALKING, etaSeconds: undefined }, held: [], offline: [] },
+      titles: [],
+    });
+    expect(early.host.textContent).toContain("Adding your media · Step 1 of 3 · 21%");
+    expect(early.host.textContent).not.toContain("left");
+    early.cleanup();
+  });
+
+  it("keeps a still dot while paused, and says only that it's checking on a quiet pass", () => {
+    const paused = render({
       status: {
         health: "ok",
-        scan: { enabled: true, stage: "reading", headersDone: 25, headersTotal: 100, paused: false },
+        scan: { ...WALKING, step: "reading", stepNumber: 2, paused: true },
         held: [],
         offline: [],
       },
+      titles: [],
     });
-    expect(host.textContent).toContain("Adding your media");
-    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
+    expect(paused.host.textContent).toContain("Paused while someone is watching · Step 2 of 3 · 21%");
+    expect(paused.host.textContent).not.toContain("left");
+    expect(twirls(paused.host)).toBe(0);
+    paused.cleanup();
+
+    const quiet = render({
+      status: { health: "ok", scan: { ...WALKING, quiet: true }, held: [], offline: [] },
+      titles: [],
+    });
+    expect(quiet.host.textContent).toContain("Checking your folders…");
+    expect(quiet.host.textContent).not.toContain("Step 1");
+    expect(twirls(quiet.host)).toBe(1);
+    quiet.cleanup();
+  });
+
+  it("twirls on a title still getting ready, and not on a ready one", () => {
+    const { host, cleanup } = render({});
+    const tiles = Array.from(host.querySelectorAll('[role="listitem"]')) as unknown as Host[];
+    const tile = (name: string) => tiles.find((t) => t.textContent?.includes(name));
+    const getting = tile("Paper Kites");
+    const ready = tile("Harbour Lights");
+    if (!getting || !ready) throw new Error("missing tiles");
+    expect(getting.textContent).toContain("Getting ready");
+    expect(twirls(getting)).toBe(1);
+    expect(twirls(ready)).toBe(0);
     cleanup();
+  });
+
+  // A household's library is thousands of titles: only the rows near the screen are mounted, and
+  // the next page is asked for once the last rows are.
+  it("mounts only a window of a large library's rows, and asks for more only near the end", () => {
+    const many: LibraryShelfTitle[] = Array.from({ length: 2000 }, (_, i) => ({
+      id: String(90100000 + i),
+      kind: "movie",
+      name: `Title ${i}`,
+      ready: true,
+    }));
+    const big = render({ titles: many });
+    const mounted = big.host.querySelectorAll('[role="listitem"]').length;
+    expect(mounted).toBeGreaterThan(0);
+    expect(mounted).toBeLessThan(120);
+    expect(big.host.textContent).toContain("Title 0");
+    expect(big.host.textContent).not.toContain("Title 1999");
+    expect(big.props.onEndReached).not.toHaveBeenCalled();
+    big.cleanup();
+
+    const short = render({ titles: many.slice(0, 30) });
+    expect(short.host.querySelectorAll('[role="listitem"]').length).toBe(30);
+    expect(short.props.onEndReached).toHaveBeenCalled();
+    short.cleanup();
   });
 
   it("puts a held removal first, with Check again", () => {

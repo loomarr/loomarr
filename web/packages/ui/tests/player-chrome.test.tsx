@@ -56,10 +56,17 @@ const button = (host: Host, name: string) =>
     (el) => el.getAttribute("aria-label") === name || el.textContent === name,
   );
 
-// Whether the band sits under an aria-hidden ancestor (the hidden scrim).
+// Whether the band sits under a transparent ancestor (the hidden scrim). On the web the hidden layer
+// is not aria-hidden: its keys stay focusable, and focusing one brings the controls back.
 const bandHidden = (host: Host) =>
-  Array.from(host.querySelectorAll('[aria-hidden="true"]')).some((el) =>
-    el.textContent?.includes("Coast 90s"),
+  Array.from(host.querySelectorAll("[style]")).some(
+    (el) => /opacity:\s*0(;|$)/.test(el.getAttribute("style") ?? "") && el.textContent?.includes("Coast 90s"),
+  );
+
+// A More row with a detail is named by what it shows, so it is found by its leading words.
+const row = (host: Host, name: string) =>
+  Array.from(host.querySelectorAll('[role="button"]')).find(
+    (el) => el.getAttribute("aria-label") === name || el.textContent?.startsWith(name),
   );
 
 const keys = (overrides: Partial<PlayerKeysProps> = {}): PlayerKeysProps => ({
@@ -253,9 +260,34 @@ describe("PlayerChrome", () => {
     expect(block(plain)).toBe(rgb(playerChrome.signal));
   });
 
-  it("leaves the picture bare when hidden, out of reach of the pointer and assistive tech", () => {
+  it("flips to the next channel quietly: the band stays up and names it, the sweep and dip add nothing to the tree", () => {
+    const host = doc.createElement("div");
+    doc.body.append(host);
+    const root = createRoot(host);
+    const draw = (channelNumber: string, channelName: string) =>
+      act(() =>
+        root.render(
+          <LoomarrProvider theme="dark">
+            {chrome({ band: { ...band, channelName, channelNumber } })}
+          </LoomarrProvider>,
+        ),
+      );
+    draw("7", "Coast 90s");
+    draw("9", "Movie Matinee");
+    expect(host.textContent).toContain("Movie Matinee");
+    expect(host.textContent).toContain("CH9");
+    expect(bandHidden(host)).toBe(false);
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("leaves the picture bare when hidden, with its keys still reachable by focus", () => {
     expect(bandHidden(mount(chrome()))).toBe(false);
-    expect(bandHidden(mount(chrome({ visible: false })))).toBe(true);
+    const hidden = mount(chrome({ visible: false }));
+    expect(bandHidden(hidden)).toBe(true);
+    // Not aria-hidden over focusable keys (axe aria-hidden-focus): Tab reaches a key, which reveals.
+    expect(hidden.querySelector('[aria-hidden="true"] [role="button"]')).toBeNull();
+    expect(button(hidden, "Pause")).toBeDefined();
   });
 
   it("keeps the keys with a sheet open, over a dimmed picture", () => {
@@ -336,8 +368,8 @@ describe("PlayerMore", () => {
   it("lists only the rows it has somewhere to go", () => {
     const onStartOver = vi.fn();
     const bare = mount(<PlayerMore density="pointer" formatTime={String} />);
-    expect(button(bare, "Start over")).toBeUndefined();
-    expect(button(bare, "Channels")).toBeUndefined();
+    expect(row(bare, "Start over")).toBeUndefined();
+    expect(row(bare, "Channels")).toBeUndefined();
 
     const host = mount(
       <PlayerMore
@@ -352,8 +384,11 @@ describe("PlayerMore", () => {
       />,
     );
     for (const name of ["Start over", "Go live", "Last channel", "Picture", "Channels", "Info"])
-      expect(button(host, name), name).toBeDefined();
-    act(() => button(host, "Start over")?.click());
+      expect(row(host, name), name).toBeDefined();
+    // A detail joins the name; a row without one keeps its label.
+    expect(row(host, "Start over")?.getAttribute("aria-label")).toBeNull();
+    expect(row(host, "Info")?.getAttribute("aria-label")).toBe("Info");
+    act(() => row(host, "Start over")?.click());
     expect(onStartOver).toHaveBeenCalledOnce();
   });
 });

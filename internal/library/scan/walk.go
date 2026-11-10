@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unicode/utf8"
 
@@ -86,9 +87,11 @@ type Walk struct {
 // .ignore file, lists disc images as problems, and follows a symlink only when its target is
 // inside the root.
 // steps, when not nil, counts each folder listed and file read, so a caller can tell a walk that
-// is slow from one that is stuck.
-func walkRoot(ctx context.Context, root string, steps *atomic.Int64) (Walk, error) {
+// is slow from one that is stuck. report, when not nil, hears each folder listed and each
+// top-level entry finished.
+func walkRoot(ctx context.Context, root string, steps *atomic.Int64, report *walkReport) (Walk, error) {
 	w := newWalker(root, steps)
+	w.report = report
 	real, err := filepath.EvalSymlinks(w.root)
 	if err != nil {
 		return Walk{}, err
@@ -154,7 +157,9 @@ type walker struct {
 	videos map[string]int
 	// steps counts folders listed and files read.
 	steps *atomic.Int64
-	out   Walk
+	// report hears a whole root's walk go, for the import's progress; nil hears nothing.
+	report *walkReport
+	out    Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
 }
@@ -185,6 +190,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		return nil
 	}
 	w.visited[real] = true
+	w.report.listing(w.rel(dir))
 	entries, err := os.ReadDir(dir)
 	w.steps.Add(1)
 	if err != nil {
@@ -221,7 +227,12 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	defer delete(w.nfo, dir)
 	defer delete(w.videos, dir)
 
-	for _, e := range entries {
+	top := dir == w.root
+	for i, e := range entries {
+		if top {
+			// The entries before this one are finished.
+			w.report.finished(i)
+		}
 		path := filepath.Join(dir, e.Name())
 		if !utf8.ValidString(e.Name()) {
 			// The store keeps paths as text; a name that is not UTF-8 cannot be one.
@@ -266,6 +277,84 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 	}
 	return nil
+}
+
+// walkReport tells the Tracker how one root's walk goes, as step 1 of an import: the folder it
+// lists, named from the root's own folder name down ("TV / Night Ferry / Season 2"), and how many
+// of the root's top-level entries are finished. The walk runs on its own goroutine, which a walk
+// given up on outlives, so it is locked, and close ends it.
+type walkReport struct {
+	tracker *Tracker
+	// name is the root's folder name; entries is how many top-level entries the import counted.
+	name    string
+	entries int
+
+	mu sync.Mutex
+	// reported is how many entries the Tracker was told are finished.
+	reported int
+	closed   bool
+}
+
+// listing names the folder the walk lists, by its path relative to the root.
+func (r *walkReport) listing(rel string) {
+	if r == nil {
+		return
+	}
+	current := r.name
+	if rel != "." {
+		current += " / " + strings.ReplaceAll(rel, "/", " / ")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.closed {
+		r.tracker.Current(StepWalking, current)
+	}
+}
+
+// finished reports n of the root's top-level entries finished, never more than were counted.
+func (r *walkReport) finished(n int) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return
+	}
+	if n = min(n, r.entries); n > r.reported {
+		r.tracker.Advance(StepWalking, n-r.reported)
+		r.reported = n
+	}
+}
+
+// close finishes every counted entry, however the walk ended, and stops hearing it.
+func (r *walkReport) close() {
+	if r == nil {
+		return
+	}
+	r.finished(r.entries)
+	r.mu.Lock()
+	r.closed = true
+	r.mu.Unlock()
+}
+
+// topEntries counts root's top-level entries within readableTimeout; 0 when it cannot be listed
+// in time. A mount whose server went away can block a listing for good, so one that is late is
+// left to end on its own.
+func topEntries(ctx context.Context, root string) int {
+	ctx, cancel := context.WithTimeout(ctx, readableTimeout)
+	defer cancel()
+	n := make(chan int, 1)
+	go func() {
+		entries, _ := os.ReadDir(root)
+		n <- len(entries)
+	}()
+	select {
+	case c := <-n:
+		return c
+	case <-ctx.Done():
+		return 0
+	}
 }
 
 // inside resolves a symlink, reporting its target only when the target stays inside the root.

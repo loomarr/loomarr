@@ -37,7 +37,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "library/arrhook", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
+			"library", "library/arrhook", "library/resolvers", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
 			"provision", "library/provisionbackstop", "library/requester",
 			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
 			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
@@ -59,7 +59,7 @@ var areas = []area{
 			"the GPU encoder, and the one pipeline every image goes through. It also holds the checks " +
 			"that judge a clip's picture, sound and level, and whether two adverts are the same one.",
 		Packages: []string{
-			"media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen",
+			"media/header", "media/measure", "media/tools", "media/images", "media/images/rustgen", "media/images/storeadapter",
 			"media/encode", "media/bgexec", "media/proctree", "media/creative",
 			"media/defects",
 		},
@@ -175,7 +175,7 @@ var areas = []area{
 			"Loomarr keeps in its database.",
 		Packages: []string{
 			"people/auth", "people/access", "people/contact",
-			"people/secretprotection", "people/notifications",
+			"people/secretprotection", "people/protectedsettings", "people/keyrotation", "people/notifications", "people/accountdelivery",
 		},
 		MayImport: map[string]string{
 			"platform": "the identity store accounts and sessions live in, the outbound HTTP client " +
@@ -195,7 +195,8 @@ var areas = []area{
 		Packages: []string{
 			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
-			"platform/activity", "platform/diagnostics", "platform/metrics", "platform/httpx",
+			"platform/backup", "platform/databasemigration",
+			"platform/activity", "platform/diagnostics", "platform/currenthealth", "platform/metrics", "platform/httpx",
 			"platform/events", "platform/storagegovernor", "platform/logchange",
 			"platform/releaseverify", "platform/buildinfo", "platform/web",
 			"platform/llm", "platform/llm/picker", "platform/llm/selection", "platform/openroutercatalog", "platform/openroutermedia",
@@ -222,7 +223,7 @@ var areas = []area{
 			"request ids, roles and the route-role marker. " +
 			"`app/playoutresolve` is the composition root's playout wiring: it reads the stores and " +
 			"settings that `playout` must not know about.",
-		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/playoutresolve"},
+		Packages:       []string{"api", "api/catalog", "api/channels", "api/filler", "api/guide", "api/httpcore", "api/images", "api/library", "api/ops", "api/people", "api/playout", "api/proposals", "api/setup", "api/system", "app", "app/connectiontest", "app/nownext", "app/playoutresolve"},
 		ImportsAnyArea: true,
 	},
 	{

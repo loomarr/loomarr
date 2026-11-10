@@ -29,6 +29,10 @@ interface PlayerMoreProps {
   last?: { number: string; onPress: () => void };
   /** Picture: the quality on air ("Auto · 1080p"). */
   picture?: { detail: string; onPress: () => void };
+  /** Playback details: the technical panel (§9.5). */
+  playbackDetails?: { onPress: () => void };
+  /** Picture in picture, where the browser offers it. */
+  pictureInPicture?: { onPress: () => void };
   /** The schedule's blocks and window; omitted while it hasn't loaded. */
   schedule?: {
     onSeek?: (wallClockMs: number) => void;
@@ -57,7 +61,9 @@ const MoreRow = ({
   const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
-      accessibilityLabel={label}
+      // A row with a detail is named by what it shows ("Start over 8:00 PM"): a name that leaves
+      // the detail out does not match the visible label (WCAG 2.5.3).
+      accessibilityLabel={detail ? undefined : label}
       accessibilityRole="button"
       {...focusHandlers}
       onHoverIn={() => setHovered(true)}
@@ -100,6 +106,8 @@ const PlayerMore = ({
   info,
   last,
   picture,
+  pictureInPicture,
+  playbackDetails,
   schedule,
   startOver,
 }: PlayerMoreProps) => (
@@ -155,6 +163,17 @@ const PlayerMore = ({
           icon="settings"
           label="Picture"
           onPress={picture.onPress}
+        />
+      ) : null}
+      {playbackDetails ? (
+        <MoreRow density={density} icon="info" label="Playback details" onPress={playbackDetails.onPress} />
+      ) : null}
+      {pictureInPicture ? (
+        <MoreRow
+          density={density}
+          icon="external"
+          label="Picture in picture"
+          onPress={pictureInPicture.onPress}
         />
       ) : null}
       {channels ? (

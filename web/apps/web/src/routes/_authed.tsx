@@ -17,6 +17,7 @@ import { DemoTour, useDemoTour } from "@/demo/demo-tour";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { HealthNotice } from "@/diagnostics/startup-notice";
 import { LoomarrEventsProvider } from "@/events/events-provider";
+import { serverVersionLabel } from "@/lib/server-version";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
 import { useNeedsYouCount } from "@/queue/use-requests";
@@ -60,9 +61,7 @@ const AuthedLayout = () => {
   // Failure is deliberately quiet: version visibility must never hold the application shell.
   const version = systemApi.useSystemVersion({ query: { retry: false } });
   const versionBody = version.data?.status === 200 ? version.data.data : undefined;
-  const serverVersion = versionBody
-    ? `${versionBody.version}${versionBody.dirty ? " (modified)" : ""}`
-    : undefined;
+  const serverVersion = versionBody ? serverVersionLabel(versionBody) : undefined;
   useEffect(() => clientDiagnostics.setVersion(versionBody?.version), [versionBody?.version]);
   useEffect(() => {
     clientDiagnostics.setAuthenticated(true);

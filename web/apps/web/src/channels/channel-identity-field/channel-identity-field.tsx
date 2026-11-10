@@ -124,7 +124,7 @@ const ChannelIdentityField = ({
               icon="success"
               layout="icon"
               onPress={() => void save()}
-              variant="suggest"
+              tone="suggest"
             >
               {`Save ${label}`}
             </Action>

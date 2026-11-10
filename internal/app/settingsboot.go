@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/protectedsettings"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
@@ -257,7 +258,7 @@ func (r resolved) tunarrConfig() func() tunarr.Config {
 func bootSettings(ctx context.Context, st store.Store, protection *secretprotection.Manager, baseLog *slog.Logger, dataDir string) (resolved, *settings.Secrets, *settings.Redactor, *slog.Logger, error) {
 	reg := settings.NewRegistry()
 	loader := settings.StoreLoader{List: func(ctx context.Context) ([]settings.SettingRow, error) {
-		rows, err := openProtectedSettings(ctx, st, reg, protection)
+		rows, err := protectedsettings.OpenAll(ctx, st, reg, protection)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +322,7 @@ func (a secretStoreAdapter) Get(ctx context.Context, k string) (string, bool, er
 	if !secretprotection.IsEnvelope(v) {
 		return "", false, fmt.Errorf("generated secret %q is not protected", k)
 	}
-	plain, err := a.protection.OpenLatest(ctx, settingRecord(k), v)
+	plain, err := a.protection.OpenLatest(ctx, protectedsettings.Record(k), v)
 	if err != nil {
 		return "", false, err
 	}
@@ -331,7 +332,7 @@ func (a secretStoreAdapter) Set(ctx context.Context, k, v string) error {
 	if err := a.protection.Refresh(ctx); err != nil {
 		return err
 	}
-	envelope, err := a.protection.Seal(settingRecord(k), []byte(v))
+	envelope, err := a.protection.Seal(protectedsettings.Record(k), []byte(v))
 	if err != nil {
 		return err
 	}

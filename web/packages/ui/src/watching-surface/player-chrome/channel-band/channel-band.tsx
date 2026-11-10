@@ -5,9 +5,10 @@ import {
   playerChrome,
   Text,
   useFocusLook,
+  useReducedMotionPreference,
 } from "@loomarr/design-system";
-import { type ReactNode, useState } from "react";
-import { Image, PixelRatio, Pressable, View } from "react-native";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Animated, Image, PixelRatio, Pressable, View } from "react-native";
 
 import { logoSize, type PlayerArt, rungFor } from "../art";
 import { webOnly } from "../flat";
@@ -29,18 +30,54 @@ interface ChannelBandProps {
   onGoLive: () => void;
 }
 
-/** The seven brand bars as an edge: the band's top, and each sheet's top. */
-const BarsEdge = ({ height }: { height: number }) => (
-  <View
-    accessibilityElementsHidden
-    importantForAccessibility="no-hide-descendants"
-    style={{ flexDirection: "row", height }}
-  >
-    {brandChroma.map((color) => (
-      <View key={color} style={{ backgroundColor: color, flex: 1 }} />
-    ))}
-  </View>
-);
+// The warm flip's sweep (§9.4): the seven bars run once along the band's edge, in 340 ms, and nowhere
+// else. A cover the colour of the plate uncovers them left to right; no transform, no full-screen bars.
+const SWEEP_MS = 340;
+
+/**
+ * The seven brand bars as an edge: the band's top, and each sheet's top. With `sweepKey` the bars run
+ * once along the edge whenever the key changes (a channel flip); the first draw and reduced motion
+ * (a plain crossfade is the picture's own) leave them still.
+ */
+const BarsEdge = ({ height, sweepKey }: { height: number; sweepKey?: string }) => {
+  const reduced = useReducedMotionPreference();
+  const cover = useRef(new Animated.Value(0)).current;
+  const first = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key is the trigger
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (sweepKey === undefined || reduced) return;
+    cover.setValue(1);
+    Animated.timing(cover, { duration: SWEEP_MS, toValue: 0, useNativeDriver: false }).start();
+  }, [sweepKey]);
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ flexDirection: "row", height }}
+    >
+      {brandChroma.map((color) => (
+        <View key={color} style={{ backgroundColor: color, flex: 1 }} />
+      ))}
+      {sweepKey === undefined ? null : (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            backgroundColor: playerChrome.surface,
+            bottom: 0,
+            position: "absolute",
+            right: 0,
+            top: 0,
+            width: cover.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
+          }}
+        />
+      )}
+    </View>
+  );
+};
 
 /**
  * The channel block: `CH` over the number, in the channel's decade colour (amber without one). It is
@@ -70,7 +107,7 @@ const ChannelBlock = ({
         width,
       }}
     >
-      <Text density={density} shout textRole="guideIdent" tone={tone} tracking={0.2}>
+      <Text density={density} shout textRole="label" tone={tone} tracking={0.2}>
         CH
       </Text>
       <Text density={density} textRole="channelNumber" tone={tone}>
@@ -93,13 +130,7 @@ const Chip = ({ children, density, solid }: { children: string; density: Density
       paddingVertical: 4,
     }}
   >
-    <Text
-      density={density}
-      shout
-      textRole="guideIdent"
-      tone={solid ? "inverse" : "secondary"}
-      tracking={0.16}
-    >
+    <Text density={density} shout textRole="label" tone={solid ? "inverse" : "secondary"} tracking={0.16}>
       {children}
     </Text>
   </View>
@@ -259,7 +290,7 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
         width={compact ? 72 : 144}
       />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <BarsEdge height={compact ? 8 : 10} />
+        <BarsEdge height={compact ? 8 : 10} sweepKey={band.channelNumber} />
         <View
           style={{
             backgroundColor: playerChrome.surface,

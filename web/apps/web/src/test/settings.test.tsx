@@ -317,7 +317,7 @@ describe("Settings", () => {
     // into one long wall of controls. Its collapsed header still says it needs attention.
     const tunarr = screen.getByRole("button", { name: /tunarr/i });
     expect(tunarr).toHaveAttribute("aria-expanded", "false");
-    expect(tunarr).toHaveTextContent("needs attention");
+    expect(tunarr).toHaveTextContent("Needs attention");
     // Exploring the next service stays focused: connection forms behave as an accordion.
     await userEvent.click(tunarr);
     expect(tunarr).toHaveAttribute("aria-expanded", "true");

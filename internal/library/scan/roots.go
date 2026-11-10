@@ -231,19 +231,21 @@ func (r *Roots) SetMapping(ctx context.Context, authority, authorityPath, local 
 	}, at)
 }
 
-// derive finds the local folder for an authority's folder: the same path when Loomarr can read it,
-// else the `library.path_map` translation, else the one mount that holds the folder's trailing
+// derive finds the local folder for an authority's folder: the `library.path_map` translation when
+// Loomarr can read it, else the same path, else the one mount that holds the folder's trailing
 // names. "" when nothing, or more than one folder, fits.
 //
 // A root is always absolute: a relative name would resolve against wherever Loomarr happens to run.
 func (r *Roots) derive(ctx context.Context, folder string, mounts []string) string {
-	if filepath.IsAbs(folder) && r.Disk.Readable(ctx, folder) {
-		return folder
-	}
+	// The path map first: the maintainer wrote it for this folder. In Docker the media server's
+	// own name (/data/tv) can also exist here as something else (Loomarr's data folder is /data).
 	if r.PathMap != nil {
 		if local, ok := r.PathMap().Apply(folder); ok && filepath.IsAbs(local) && r.Disk.Readable(ctx, filepath.Clean(local)) {
 			return filepath.Clean(local)
 		}
+	}
+	if filepath.IsAbs(folder) && r.Disk.Readable(ctx, folder) {
+		return folder
 	}
 	names := strings.Split(strings.Trim(folder, "/"), "/")
 	// The longest matching tail is the most specific; a tie at that length is ambiguous.

@@ -44,7 +44,12 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
   const fresh = freshChannels(channels, since);
   if (titles.length === 0 && fresh.length === 0) return null;
   const meta = [
-    titles.length > 0 ? plural(titles.length, "title", "titles") : undefined,
+    // Only five posters fit (#1822 geometry), so a longer list says how many of them are shown (#2763).
+    titles.length > POSTERS
+      ? `${POSTERS} of ${titles.length} titles`
+      : titles.length > 0
+        ? plural(titles.length, "title", "titles")
+        : undefined,
     fresh.length > 0 ? plural(fresh.length, "new channel", "new channels") : undefined,
   ]
     .filter(Boolean)

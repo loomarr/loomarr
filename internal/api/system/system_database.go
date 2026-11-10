@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/platform/databasemigration"
 )
 
 // /v1/system/database* — the SQLite → PostgreSQL migration stepper (§18, V11).
@@ -22,25 +23,9 @@ import (
 // unless the service can see a backup written for THIS migration, which is why
 // `WriteBackup` had to write a real file instead of streaming one to the browser.
 
-// Sentinels the DatabaseService returns; handlers map them to HTTP status.
-var (
-	// ErrNoBackup: Migrate was called before a backup was taken (→ 409).
-	ErrNoBackup = errors.New("a backup is required before migrating")
-	// ErrPreflightFailed: Migrate was called with a target that has not passed
-	// preflight (→ 409).
-	ErrPreflightFailed = errors.New("target has not passed preflight")
-	// ErrNotSQLite: the install is already on Postgres, so there is nothing to
-	// migrate (→ 409).
-	ErrNotSQLite = errors.New("this install is not on SQLite")
-	// ErrMigrationRunning: a migration is already in flight (→ 409).
-	ErrMigrationRunning = errors.New("a migration is already running")
-	// ErrDatabaseURLPinned: an environment pin would override the migrated target on
-	// restart, so the atomic operation is refused before it is queued (→ 409).
-	ErrDatabaseURLPinned = errors.New("DATABASE_URL is pinned by the environment")
-	// ErrMigrationUnavailable: this handler has no process-level migration callback
-	// behind it, so accepting the request would be a lie (→ 501).
-	ErrMigrationUnavailable = errors.New("atomic database migration is unavailable")
-)
+// The DatabaseService returns the databasemigration sentinels; handlers map them to HTTP status
+// (ErrNoBackup, ErrPreflightFailed, ErrNotSQLite, ErrMigrationRunning and ErrDatabaseURLPinned
+// are 409, ErrMigrationUnavailable is 501).
 
 // DatabaseService backs /v1/system/database*. Implemented in the composition root over
 // the store's migration engine plus the settings/bootstrap writers; the API layer speaks
@@ -170,7 +155,7 @@ func (s *Handlers) databasePreflight(ctx context.Context, in *databaseTargetInpu
 	}
 	checks, err := s.database.Preflight(ctx, in.Body.DSN)
 	if err != nil {
-		if errors.Is(err, ErrNotSQLite) {
+		if errors.Is(err, databasemigration.ErrNotSQLite) {
 			return nil, huma.Error409Conflict("this install is not on SQLite")
 		}
 		return nil, huma.Error422UnprocessableEntity("preflight", err)
@@ -196,7 +181,7 @@ func (s *Handlers) databaseBackup(ctx context.Context, _ *struct{}) (*databaseBa
 	}
 	bk, err := s.database.Backup(ctx)
 	if err != nil {
-		if errors.Is(err, ErrNotSQLite) {
+		if errors.Is(err, databasemigration.ErrNotSQLite) {
 			return nil, huma.Error409Conflict("this install is not on SQLite — use your PostgreSQL backup tooling")
 		}
 		return nil, huma.Error500InternalServerError("write backup", err)
@@ -214,19 +199,19 @@ func (s *Handlers) databaseMigrate(ctx context.Context, in *databaseTargetInput)
 	}
 	if err := s.database.Migrate(ctx, in.Body.DSN); err != nil {
 		switch {
-		case errors.Is(err, ErrNoBackup):
+		case errors.Is(err, databasemigration.ErrNoBackup):
 			// 409, not 403: the request is well-formed and the caller is allowed — the
 			// instance is simply not in a state where it can be honored yet.
 			return nil, huma.Error409Conflict("a backup is required before migrating — it is the only thing that makes this reversible")
-		case errors.Is(err, ErrPreflightFailed):
+		case errors.Is(err, databasemigration.ErrPreflightFailed):
 			return nil, huma.Error409Conflict("run preflight against the target first")
-		case errors.Is(err, ErrNotSQLite):
+		case errors.Is(err, databasemigration.ErrNotSQLite):
 			return nil, huma.Error409Conflict("this install is not on SQLite")
-		case errors.Is(err, ErrMigrationRunning):
+		case errors.Is(err, databasemigration.ErrMigrationRunning):
 			return nil, huma.Error409Conflict("a migration is already running")
-		case errors.Is(err, ErrDatabaseURLPinned):
+		case errors.Is(err, databasemigration.ErrDatabaseURLPinned):
 			return nil, huma.Error409Conflict("DATABASE_URL is pinned by the environment — change it where Loomarr is launched, then restart before migrating")
-		case errors.Is(err, ErrMigrationUnavailable):
+		case errors.Is(err, databasemigration.ErrMigrationUnavailable):
 			return nil, huma.Error501NotImplemented("atomic database migration is not available on this build")
 		}
 		return nil, huma.Error409Conflict("migration request was not accepted; Loomarr is still running on SQLite: " + err.Error())

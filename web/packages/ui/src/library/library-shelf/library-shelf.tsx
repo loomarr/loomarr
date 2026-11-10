@@ -1,19 +1,10 @@
-import {
-  Action,
-  Badge,
-  Field,
-  ProgressTrack,
-  StatusDot,
-  Surface,
-  Tabs,
-  Text,
-  useWindowWidth,
-} from "@loomarr/design-system";
+import { Action, Badge, Field, StatusDot, Surface, Tabs, Text, useWindowWidth } from "@loomarr/design-system";
 import { type ComponentProps, useState } from "react";
 import { Pressable } from "react-native";
 
 import { StatePanel } from "../../state-panel";
-import { LibraryPoster, Line, PAGE_GUTTER, Stack } from "../library-poster";
+import { LibraryGrid } from "../library-grid";
+import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
 import { folderName, heldTitle, scanHeadline } from "../library-words";
 import type { LibraryFilter, LibraryShelfProps, LibraryShelfTitle } from "./library-shelf.type";
 
@@ -35,31 +26,27 @@ const StatusLine = ({
   const scan = scanHeadline(status.scan, status.needsYou);
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
-  const [tone, text]: [ComponentProps<typeof StatusDot>["tone"], string] =
+  // What needs the maintainer comes first; the import's own words show only when nothing does.
+  const alert: [ComponentProps<typeof StatusDot>["tone"], string] | undefined =
     status.health === "needs_folders"
       ? ["off", "Tell Loomarr where your media is"]
       : held
         ? ["warn", heldTitle(held)]
         : offline
           ? ["warn", `Can't reach your ${folderName(offline)} folder`]
-          : [scan.tone, scan.text];
+          : undefined;
+  const importing = alert === undefined;
+  const [tone, text] = alert ?? [scan.tone, scan.text];
   return (
     <Line columnGap="control" paddingVertical="inline" rowGap="inline">
       <Line>
-        <StatusDot label={text} tone={tone} />
-        <Text textRole="label">{text}</Text>
+        {/* A step moving twirls; paused, done or off keeps the still dot. */}
+        {importing && scan.moving ? <Twirl /> : <StatusDot label={text} tone={tone} />}
+        <Text textRole="label">
+          {/* "Adding your media · Step 1 of 3 · 21% · about 9 min left". */}
+          {importing && scan.shortLine ? `${text} · ${scan.shortLine}` : text}
+        </Text>
       </Line>
-      {scan.reading ? (
-        <Stack flexBasis={120} flexGrow={1} minWidth={96}>
-          {/* Adding media is preparation (`tune`); paused drops to the neutral fill. */}
-          <ProgressTrack
-            height={6}
-            label={`Adding your media, ${scan.percent} percent`}
-            percent={scan.percent}
-            tone={status.scan.paused ? "elapsed" : "tune"}
-          />
-        </Stack>
-      ) : null}
       {held ? (
         <Action onPress={onRescan} tone="primary">
           Check again
@@ -128,9 +115,10 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
         >
           <LibraryPoster art={title.poster} dim={!title.ready} name={title.name}>
             {title.ready ? null : (
-              <Stack left={8} position="absolute" top={8}>
+              <Line flexWrap="nowrap" left={8} position="absolute" top={8}>
                 <Badge tone="neutral">Getting ready</Badge>
-              </Stack>
+                <Twirl />
+              </Line>
             )}
             {title.ready && title.attention ? (
               // A dot, not a badge: a three-across phone grid has no room for a word on the poster.
@@ -162,17 +150,35 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
   );
 };
 
+// A row's first guess before it is measured: a poster's 2:3 box (the content width less the
+// control gaps, per column) over the inline gap, the caption's 56 px floor and the section gap.
+const estimateRowHeight = (width: number, columns: number) => {
+  const gutter = width >= 768 ? PAGE_GUTTER.wide : PAGE_GUTTER.phone;
+  const content = Math.min(1152, width - 2 * gutter);
+  const poster = (content - (columns - 1) * 12) / columns;
+  return Math.round(poster * 1.5 + 8 + 56 + 24);
+};
+
 // The grid as rows, each filled out with empty cells so the last row's posters keep their width.
-const Grid = ({ titles, onOpenTitle }: Pick<LibraryShelfProps, "titles" | "onOpenTitle">) => {
-  const columns = columnsFor(useWindowWidth());
+// LibraryGrid mounts only the rows near the screen.
+const Grid = ({
+  titles,
+  onOpenTitle,
+  onEndReached,
+}: Pick<LibraryShelfProps, "titles" | "onOpenTitle" | "onEndReached">) => {
+  const width = useWindowWidth();
+  const columns = columnsFor(width);
   const rows: LibraryShelfTitle[][] = [];
   for (let i = 0; i < titles.length; i += columns) rows.push(titles.slice(i, i + columns));
   const slots = Array.from({ length: columns }, (_, i) => `slot-${i}`);
   return (
-    <Stack aria-label="Titles" gap="section" role="list">
-      {rows.map((row) => (
+    <LibraryGrid
+      estimateRowHeight={estimateRowHeight(width, columns)}
+      label="Titles"
+      onEndReached={onEndReached}
+      renderRow={(row) => (
         // A row is layout only; the titles are the list's items.
-        <Line alignItems="flex-start" flexWrap="nowrap" gap="control" key={row[0]?.id} role="none">
+        <Line alignItems="flex-start" flexWrap="nowrap" gap="control" paddingBottom="section" role="none">
           {row.map((title) => (
             <Stack flexBasis={0} flexGrow={1} key={title.id} minWidth={0} role="listitem">
               <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
@@ -182,8 +188,10 @@ const Grid = ({ titles, onOpenTitle }: Pick<LibraryShelfProps, "titles" | "onOpe
             <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
           ))}
         </Line>
-      ))}
-    </Stack>
+      )}
+      rowKey={(row, index) => row[0]?.id ?? `row-${index}`}
+      rows={rows}
+    />
   );
 };
 
@@ -207,6 +215,7 @@ const LibraryShelf = ({
   titles,
   loading,
   onOpenTitle,
+  onEndReached,
   needs,
   showTitles: showGrid = true,
   collections,
@@ -262,7 +271,7 @@ const LibraryShelf = ({
           ) : titles.length === 0 && (filter === "movie" || filter === "series") ? (
             <EmptyTab kind={filter} onShowEverything={() => onFilterChange("all")} />
           ) : (
-            <Grid onOpenTitle={onOpenTitle} titles={titles} />
+            <Grid onEndReached={onEndReached} onOpenTitle={onOpenTitle} titles={titles} />
           )}
         </>
       )}

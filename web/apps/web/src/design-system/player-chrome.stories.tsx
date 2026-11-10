@@ -6,10 +6,13 @@ import {
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
+  PlayerDetails,
+  PlayerDetailsPanel,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PORTRAIT_PICTURE_TOP,
   pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
@@ -188,12 +191,16 @@ const moreData = (state: { lagSeconds: number; mode: "behind" | "live" | "paused
 
 const sheetChannel = { name: "Coast 90s", number: "7" };
 
-// The picture the chrome sits on: a dark stand-in filling the frame.
-const Picture = ({ children }: { children: ReactNode }) => (
+// The picture the chrome sits on: a dark stand-in filling the frame. The overlay layout is never
+// drawn narrower than 48rem (the app switches to the portrait layout below it, usePhoneWidth), so
+// an overlay story keeps that width on the gallery's phone-sized viewport rather than piling its
+// keys onto the band.
+const Picture = ({ children, portrait = false }: { children: ReactNode; portrait?: boolean }) => (
   <div
     style={{
       background: "radial-gradient(ellipse at 40% 35%, #3a4150, #101216 70%)",
       height: "100vh",
+      minWidth: portrait ? undefined : 768,
       overflow: "hidden",
       position: "relative",
       width: "100%",
@@ -207,8 +214,8 @@ const meta = {
   title: "Loomarr Components/Player Chrome",
   component: PlayerChrome,
   decorators: [
-    (Story) => (
-      <Picture>
+    (Story, { args }) => (
+      <Picture portrait={args.layout === "portrait"}>
         <Story />
       </Picture>
     ),
@@ -344,6 +351,56 @@ const PictureSheet: Story = {
   },
 };
 
+// Playback details (§9.5): mono values for what the player really knows, and Copy details.
+const detailRows = [
+  { label: "Resolution", value: "1920×1080 · 29.97 fps" },
+  { label: "Video", value: "avc1.640029,mp4a.40.2" },
+  { label: "HDR", value: "None (SDR)" },
+  { label: "Bitrate", value: "4.6 Mbps" },
+  { label: "Buffer ahead", value: "6.2 s" },
+  { label: "Dropped frames", value: "3 of 12,418" },
+  { label: "Behind live", value: "2.3 s" },
+  { label: "Server", value: "loomarr.lan" },
+  { label: "Session", value: "4f2a9c1d" },
+];
+
+// On a pointer it is a panel at the upper left, over the picture.
+const PlaybackDetails: Story = {
+  args: {
+    panel: <PlayerDetailsPanel density="pointer" onClose={fn()} onCopy={fn()} rows={detailRows} />,
+  },
+};
+
+// A native player has no level to read: only the rows that are true are left.
+const PlaybackDetailsBare: Story = {
+  args: {
+    panel: (
+      <PlayerDetailsPanel
+        density="pointer"
+        onClose={fn()}
+        rows={[
+          { label: "Behind live", value: "0.0 s" },
+          { label: "Server", value: "loomarr.lan" },
+        ]}
+      />
+    ),
+  },
+};
+
+// On a phone it is a sheet.
+const PlaybackDetailsSheet: Story = {
+  args: {
+    density: "touch",
+    keys: { ...keys, density: "touch", pointer: false },
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="Playback details">
+        <PlayerDetails density="touch" onCopy={fn()} rows={detailRows} />
+      </PlayerSheet>
+    ),
+    top: { ...top, density: "touch", pointer: false },
+  },
+};
+
 const MoreSheet: Story = {
   args: {
     keys: { ...keys, moreOpen: true },
@@ -355,6 +412,8 @@ const MoreSheet: Story = {
           formatTime={formatTime}
           info={{ onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          pictureInPicture={{ onPress: fn() }}
+          playbackDetails={{ onPress: fn() }}
           {...moreData(live)}
         />
       </PlayerSheet>
@@ -382,6 +441,69 @@ const MoreBehind: Story = {
       </PlayerSheet>
     ),
   },
+};
+
+// The first play of the session starts muted: a pill under the controls takes one tap to undo it.
+const UnmutePill: Story = { args: { unmute: fn() } };
+
+// A portrait phone (pick A, #2775): the picture pinned under the top row, the band and keys below it in
+// the black space, nothing over the picture. A stand-in strip marks where the player draws the video.
+const PHONE = { height: 844, width: 390 } as const;
+const PhoneFrame = (args: PlayerChromeProps) => (
+  <div style={{ ...PHONE, background: "#000", margin: "0 auto", position: "relative" }}>
+    <div
+      style={{
+        aspectRatio: "16 / 9",
+        background: "radial-gradient(ellipse at 40% 35%, #3a4150, #101216 70%)",
+        position: "absolute",
+        top: PORTRAIT_PICTURE_TOP,
+        width: "100%",
+      }}
+    />
+    <PlayerChrome {...args} />
+  </div>
+);
+const portraitArgs = {
+  density: "touch" as const,
+  keys: { ...keys, density: "touch" as const, last: undefined, pointer: false },
+  layout: "portrait" as const,
+  top: { ...top, density: "touch" as const, pointer: false },
+};
+const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
+const PortraitBehind: Story = {
+  args: {
+    ...portraitArgs,
+    ...chromeArgs({ lagSeconds: 134, mode: "paused" }),
+    keys: { ...portraitArgs.keys, playing: false },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitCommercials: Story = {
+  args: { ...portraitArgs, ...chromeArgs({ lagSeconds: 75, mode: "behind" }), keys: portraitArgs.keys },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitUnmute: Story = {
+  args: { ...portraitArgs, unmute: fn() },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitMore: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: (
+      <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="touch"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+          last={{ number: "3", onPress: fn() }}
+          picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          {...moreData(live)}
+        />
+      </PlayerSheet>
+    ),
+  },
+  render: (args) => <PhoneFrame {...args} />,
 };
 
 // Title art, drawn as shapes (no real titles in a public repo): a wide wordmark, a nearly square emblem
@@ -488,13 +610,22 @@ export {
   NoSuchChannel,
   OffAir,
   PictureSheet,
+  PlaybackDetails,
+  PlaybackDetailsBare,
+  PlaybackDetailsSheet,
   Playing,
+  Portrait,
+  PortraitBehind,
+  PortraitCommercials,
+  PortraitMore,
+  PortraitUnmute,
   StationId,
   StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
   Touch,
   TypingChannel,
+  UnmutePill,
   WatermarkBottomLeft,
   WatermarkBottomRight,
   WatermarkTopLeft,

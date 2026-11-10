@@ -53,7 +53,7 @@ func TestWalkRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w, err := walkRoot(context.Background(), root, nil)
+	w, err := walkRoot(context.Background(), root, nil, nil)
 	if err != nil || !w.Complete {
 		t.Fatalf("walk: %v complete=%v", err, w.Complete)
 	}
@@ -101,7 +101,7 @@ func TestWalkUnreadableFolderIsIncomplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "Papa"), 0o755) })
-	w, err := walkRoot(context.Background(), root, nil)
+	w, err := walkRoot(context.Background(), root, nil, nil)
 	if err != nil || w.Complete {
 		t.Fatalf("walk: %v complete=%v", err, w.Complete)
 	}

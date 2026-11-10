@@ -1,4 +1,4 @@
-import { ArtworkFrame, Surface, Text } from "@loomarr/design-system";
+import { ActivityIndicator, ArtworkFrame, Surface, Text } from "@loomarr/design-system";
 import type { ComponentProps, ReactNode } from "react";
 
 // Transparent layout boxes: Surface without its card look.
@@ -67,4 +67,13 @@ const LibraryPoster = ({
   </Stack>
 );
 
-export { LibraryPoster, Line, PAGE_GUTTER, Stack };
+// The design system's compact twirl, beside words that already say what is getting ready, so it is
+// decorative. Its tone is the info hue a preparation ProgressTrack (`tune`) fills with. The testID
+// is how a test finds it: a decorative indicator has no role or name.
+const Twirl = () => (
+  <Stack testID="library-twirl">
+    <ActivityIndicator decorative size="compact" tone="info" />
+  </Stack>
+);
+
+export { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl };

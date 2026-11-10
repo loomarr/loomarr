@@ -21,7 +21,9 @@ playback.
   hidden player, `MediaSource` or decoder. The contract is platform-neutral: each platform adapter
   binds its native player behind the same catalog, attempt and telemetry vocabulary.
 - **Controls.** Channel Up/Down are visible controls; `ArrowUp`/`ArrowDown`, `PageUp`/`PageDown` and
-  `ChannelUp`/`ChannelDown` invoke them when focus is not in a control that owns those keys. The OSD
+  `ChannelUp`/`ChannelDown` invoke them from anywhere on the page, a button included, unless focus
+  is in a control that owns those keys (text entry, a slider, a menu, a list of options, radios,
+  tabs, a grid) or a sheet or dialog is open. The OSD
   switches at once to the target and `Tuning…` and stays over the held frame until the replacement
   decodes. A failed tune keeps the target visible with a retry, which takes focus on a TV. A start
   the server refuses (a 5xx answer to the master, the request that starts the stream) shows the

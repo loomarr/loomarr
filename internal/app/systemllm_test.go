@@ -59,11 +59,17 @@ func TestModelPull_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 	go func() { shutdown <- application.Shutdown(t.Context()) }()
 	select {
 	case err := <-shutdown:
-		t.Fatalf("Shutdown returned before model pull stopped: %v", err)
-	case <-cancelled:
+		if err != nil {
+			t.Fatalf("Shutdown: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Shutdown did not return while a model pull was running")
 	}
-	if err := <-shutdown; err != nil {
-		t.Fatalf("Shutdown: %v", err)
+	// The server sees the client's cancellation asynchronously, so it may follow Shutdown's return.
+	select {
+	case <-cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("generation shutdown never cancelled the accepted model pull")
 	}
 	operation, err := st.GetInteractiveOperation(t.Context(), "pull-owned")
 	if err != nil {

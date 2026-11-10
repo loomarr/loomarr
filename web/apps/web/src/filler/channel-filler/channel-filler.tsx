@@ -496,7 +496,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
         <div className="border-border bg-background/95 sticky bottom-0 flex items-center gap-2 rounded-lg border p-3 shadow-lg backdrop-blur">
-          <Action disabled={isApplying} onPress={apply} variant="suggest">
+          <Action disabled={isApplying} onPress={apply} tone="suggest">
             {isApplying ? "Applying…" : "Apply filler"}
           </Action>
           <Action disabled={isApplying} onPress={discard} variant="ghost">

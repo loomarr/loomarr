@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/people/keyrotation"
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/people/protectedsettings"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -71,7 +73,7 @@ func TestBootSettingsRedactsSMTPPasswordFromApplicationLogs(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	const password = "smtp-password-that-must-stay-secret"
 	protection := testSecretProtection(t, st)
-	if err := writeProtectedSetting(context.Background(), st, protection, "notifications.smtp.password", password); err != nil {
+	if err := protectedsettings.Write(context.Background(), st, protection, "notifications.smtp.password", password); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +107,7 @@ func TestBootSettingsOpensNamespacedLLMKeys(t *testing.T) {
 	const key = "llm.api_key.openrouter"
 	const value = "namespaced-provider-key"
 	protection := testSecretProtection(t, st)
-	if err := writeProtectedSetting(context.Background(), st, protection, key, value); err != nil {
+	if err := protectedsettings.Write(context.Background(), st, protection, key, value); err != nil {
 		t.Fatal(err)
 	}
 	set, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler), "")
@@ -124,7 +126,7 @@ func TestBootSettingsOpensNamespacedLLMKeys(t *testing.T) {
 func TestStorePersisterEncryptsOnlySecretSettings(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	protection := testSecretProtection(t, st)
-	persister := storePersister{st: st, protection: protection}
+	persister := protectedsettings.NewPersister(st, protection)
 	if err := persister.Apply(context.Background(), settings.PersistenceBatch{Upserts: []settings.PersistedSetting{
 		{Key: "notifications.smtp.password", Value: "smtp-secret"},
 		{Key: "notifications.smtp.host", Value: "mail.example.com"},
@@ -189,7 +191,7 @@ func TestBootSettingsFailsClosedOnPlaintextProtectedSettings(t *testing.T) {
 func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	protection := testSecretProtection(t, st)
-	persister := storePersister{st: st, protection: protection}
+	persister := protectedsettings.NewPersister(st, protection)
 	if err := persister.Apply(context.Background(), settings.PersistenceBatch{Upserts: []settings.PersistedSetting{
 		{Key: "notifications.smtp.password", Value: "smtp-before-rotation"},
 	}}); err != nil {
@@ -214,7 +216,7 @@ func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := encryptionService{manager: protection, store: st}
+	service := keyrotation.New(protection, st, destinations)
 	if err := service.RotateDataKey(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +228,7 @@ func TestEncryptionServiceRotatesAndReencryptsStoredSettings(t *testing.T) {
 	if len(beforeParts) < 4 || len(afterParts) < 4 || beforeParts[2] == afterParts[2] {
 		t.Fatalf("setting did not move to rotated key: before=%q after=%q", before, after)
 	}
-	plain, err := protection.Open(settingRecord("notifications.smtp.password"), after)
+	plain, err := protection.Open(protectedsettings.Record("notifications.smtp.password"), after)
 	if err != nil || string(plain) != "smtp-before-rotation" {
 		t.Fatalf("rotated setting = (%q, %v)", plain, err)
 	}
@@ -261,7 +263,7 @@ func TestBuildSecretProtectionRewrapsFromOneBootPreviousKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := settingRecord("library.token")
+	record := protectedsettings.Record("library.token")
 	envelope, err := first.Seal(record, []byte("survives-installation-key-replacement"))
 	if err != nil {
 		t.Fatal(err)

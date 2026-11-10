@@ -78,7 +78,7 @@ const Key = ({
 
 const Legend = ({ children, density, pointer }: { children: string; density: Density; pointer: boolean }) =>
   pointer ? (
-    <Text density={density} strong textRole="guideLabel" tone="primary">
+    <Text density={density} strong textRole="label" tone="primary">
       {children}
     </Text>
   ) : null;
@@ -124,7 +124,7 @@ const PlayerKeys = ({
           >
             <View style={{ alignItems: "center", gap: 4 }}>
               <Icon color={playerChrome.text} decorative glyph={icons.swap} size="compact" />
-              <Text density={density} strong textRole="guideIdent" tone="primary">
+              <Text density={density} strong textRole="label" tone="primary">
                 {last.number}
               </Text>
             </View>

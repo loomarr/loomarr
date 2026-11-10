@@ -160,7 +160,7 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: Chan
   return (
     <section aria-labelledby="home-wall">
       <SectionHeader id="home-wall" title="On now" meta={headerMeta}>
-        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="link">
+        <Action accessibilityRole="link" render={<Link to="/guide" />} variant="ghost">
           Full guide
         </Action>
       </SectionHeader>

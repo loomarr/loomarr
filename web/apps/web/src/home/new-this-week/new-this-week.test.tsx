@@ -95,6 +95,13 @@ describe("New this week — rendering (#1822 evidence)", () => {
   it("caps many recent titles at five posters", async () => {
     await renderNewThisWeek({ titles: Array.from({ length: 14 }, (_, i) => title(`t${i}`)) });
     expect(screen.getAllByText(/^t\d+$/)).toHaveLength(5);
+    // The header counts what is shown (#2763).
+    expect(screen.getByText("5 of 14 titles")).toBeInTheDocument();
+  });
+
+  it("counts a short list plainly", async () => {
+    await renderNewThisWeek({ titles: [title("t1"), title("t2")] });
+    expect(screen.getByText("2 titles")).toBeInTheDocument();
   });
 
   it("gives a title with no artwork the line-motif fallback, with its channel's monogram when known", async () => {

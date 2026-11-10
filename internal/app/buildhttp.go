@@ -22,6 +22,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/config"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
+	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 )
 
@@ -74,9 +75,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
 	var proposalOutlook proposalsapi.ProposalOutlook
 	if preview, ok := channelSvc.(outlook.Preview); ok && chBinder != nil {
-		additionResolver := approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence {
+		additionResolver := accept.NewAdditionResolver(func() titlesearch.LibraryPresence {
 			return titlesearch.LibraryOwnership{Titles: st}
-		}}
+		})
 		proposalOutlook = outlook.New(outlook.Config{
 			Titles: st, Library: playoutresolve.ItemMetadata{Facts: st}, Episodes: channels.LibraryEpisodeResolver(st),
 			Planner: chBinder, Preview: preview, Additions: additionResolver, Holidays: deps.foundation.holidays,
@@ -167,7 +168,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		StartupReports:       deps.foundation.startupReports,
 		// The baseline for "has a restart-scoped setting changed?" is what THIS
 		// generation booted with, captured here rather than per call (config-design §3).
-		RestartDrift:             restartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+		RestartDrift:             config.RestartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
 		Jobs:                     jobsSvc,
 		Settings:                 settingsSvc,
 		NotificationDestinations: deps.notificationDestinations,

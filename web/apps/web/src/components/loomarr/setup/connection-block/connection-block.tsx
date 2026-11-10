@@ -48,7 +48,7 @@ const ConnectionBlock = ({
         ? "OK"
         : notSetUp
           ? "Not set up"
-          : "needs attention";
+          : "Needs attention";
   const status: StatusTone = testing
     ? "progress"
     : verdict === undefined || notSetUp

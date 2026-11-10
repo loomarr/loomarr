@@ -221,7 +221,7 @@ const Block = ({
                     paddingHorizontal={3}
                   >
                     {entry.name && px * share > CLIP_LABEL_MIN ? (
-                      <Text numberOfLines={1} textAlign="left" textRole="guideClip">
+                      <Text numberOfLines={1} textAlign="left" textRole="mono">
                         {entry.name}
                       </Text>
                     ) : null}
@@ -234,7 +234,7 @@ const Block = ({
             // flush left.
             <>
               {hasSeries ? (
-                <Text numberOfLines={1} textAlign="left" textRole="guideLabel" textTransform="uppercase">
+                <Text numberOfLines={1} textAlign="left" textRole="label" textTransform="uppercase">
                   {a.series}
                   {/* A trailing space, collapsed on screen: axe (4.14, WCAG 2.5.3) joins sibling text
                       with nothing between, so "series" + "title" reads as one word against this
@@ -245,12 +245,14 @@ const Block = ({
                 numberOfLines={1}
                 textAlign="left"
                 textRole="cardLabel"
-                tone={pending || kind === "flex" ? "muted" : "primary"}
+                // Secondary, not muted: light muted is 4.1:1 on the pending and elevated fills (axe
+                // needs 4.5); dark's two tones are the same grey, so dark doesn't change.
+                tone={pending || kind === "flex" ? "secondary" : "primary"}
               >
                 {hasSeries ? a.title : formatProgrammeTitle(a)}{" "}
               </Text>
               {!hasSeries && px >= META_MIN ? (
-                <Text numberOfLines={1} textAlign="left" textRole="guideMeta">
+                <Text numberOfLines={1} textAlign="left" textRole="mono">
                   {when}
                 </Text>
               ) : null}
@@ -432,7 +434,7 @@ const Row = memo(
                 <Text
                   marginTop={2}
                   numberOfLines={1}
-                  textRole="guideLabel"
+                  textRole="label"
                   textTransform="uppercase"
                   tone={chip.tone}
                 >
@@ -548,7 +550,7 @@ const GuideGrid = ({
             key={t}
           >
             {i % stride === 0 ? (
-              <Text numberOfLines={1} textRole="guideMeta">
+              <Text numberOfLines={1} textRole="mono">
                 {formatGuideTime(t, layout.timezone)}
               </Text>
             ) : null}
@@ -569,7 +571,9 @@ const GuideGrid = ({
                 transform: [{ translateX: -20 }],
               }}
             >
-              <Text textRole="guideNow" tone="inverse">
+              {/* The brand chroma's ink in both themes, as on a decade fill: the light theme's
+                  inverse (white) is 3.9:1 on this red. */}
+              <Text textRole="mono" tone="onDecade">
                 {formatGuideTime(nowMs, layout.timezone)}
               </Text>
             </View>

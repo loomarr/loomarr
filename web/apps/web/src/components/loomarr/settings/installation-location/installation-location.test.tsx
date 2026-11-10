@@ -94,7 +94,7 @@ describe("InstallationLocation", () => {
     expect(screen.queryByRole("textbox", { name: "Country" })).not.toBeInTheDocument();
     await userEvent.type(screen.getByRole("combobox", { name: "Location" }), "New York");
     const option = screen.getByRole("option", { name: "New York City, United States" });
-    await waitFor(() => expect(option).toBeEnabled());
+    await waitFor(() => expect(option).not.toHaveAttribute("aria-disabled", "true"));
     expect(option).toHaveTextContent("New York City, United States");
     await userEvent.click(option);
 

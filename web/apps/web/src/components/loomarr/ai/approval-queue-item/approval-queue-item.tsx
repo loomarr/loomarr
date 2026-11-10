@@ -164,7 +164,13 @@ const ApprovalQueueItem = ({
             <Action disabled={busy} icon="close" onPress={() => setDenying(true)} variant="outline">
               Deny
             </Action>
-            <Action aria-busy={busy} disabled={busy} icon={busy ? "loading" : "success"} onPress={onApprove}>
+            <Action
+              aria-busy={busy}
+              disabled={busy}
+              icon={busy ? "loading" : "success"}
+              onPress={onApprove}
+              variant="outline"
+            >
               Approve
             </Action>
           </div>

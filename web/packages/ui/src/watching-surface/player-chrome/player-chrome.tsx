@@ -1,6 +1,6 @@
 import { playerChrome, ThemeScope } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
-import { type LayoutChangeEvent, View } from "react-native";
+import { type LayoutChangeEvent, Platform, View } from "react-native";
 
 import { ChannelBand } from "./channel-band";
 import { gradientOr, webOnly } from "./flat";
@@ -9,10 +9,20 @@ import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
 import { PlayerReadout } from "./player-readout";
 import { PlayerTopRow } from "./player-top-row";
+import { PortraitChrome } from "./portrait-chrome";
+import { TuneDip } from "./tune-dip";
+import { UnmutePill } from "./unmute-pill";
 import { clearOfWatermark, type Frame } from "./watermark-clearance";
 
 // The height of a top-row key.
 const KEY = 48;
+
+// Hidden chrome on the web stays in the tab order and the accessibility tree: focusing a key is how
+// a keyboard brings the controls back (the player reveals on focus), so the layer must not be
+// aria-hidden over focusable keys (WCAG 4.1.2, axe aria-hidden-focus). Natively, a hidden layer is
+// hidden from the reader as before.
+const hiddenFromReaders = (hidden: boolean): true | undefined =>
+  hidden && Platform.OS !== "web" ? true : undefined;
 
 // PlayerChrome — the chrome every Loomarr player wears (frontend-design §9; the mock of record is
 // design/watch-player, variant H). Drawn over the picture, back to front: one bottom scrim, the band
@@ -27,11 +37,14 @@ const ChromeBody = memo(
     formatTime,
     ident = false,
     keys,
+    layout = "overlay",
     live,
     onGoLive,
     readout,
+    panel,
     sheet,
     top,
+    unmute,
     visible,
     watermark,
   }: PlayerChromeProps) => {
@@ -55,6 +68,39 @@ const ChromeBody = memo(
       frame,
       watermark,
     });
+    // The open sheet, over a dimmed picture, above either layout.
+    const sheetLayer = sheet ? (
+      <>
+        <View
+          pointerEvents="none"
+          style={{
+            backgroundColor: playerChrome.dim,
+            bottom: 0,
+            left: 0,
+            position: "absolute",
+            right: 0,
+            top: 0,
+            zIndex: 39,
+          }}
+        />
+        {sheet}
+      </>
+    ) : null;
+    if (layout === "portrait")
+      return (
+        <ThemeScope theme="dark">
+          <PortraitChrome
+            band={band}
+            formatTime={formatTime}
+            keys={keys}
+            live={live}
+            onGoLive={onGoLive}
+            top={top}
+            unmute={unmute}
+          />
+          {sheetLayer}
+        </ThemeScope>
+      );
     return (
       <ThemeScope theme="dark">
         <View
@@ -62,11 +108,12 @@ const ChromeBody = memo(
           pointerEvents="none"
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
+        <TuneDip tuneKey={band.channelNumber} />
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
         <View
-          aria-hidden={!shown || undefined}
+          aria-hidden={hiddenFromReaders(!shown)}
           pointerEvents="none"
           style={{
             bottom: 0,
@@ -108,7 +155,7 @@ const ChromeBody = memo(
           </View>
         </View>
         <View
-          aria-hidden={!controls || undefined}
+          aria-hidden={hiddenFromReaders(!controls)}
           pointerEvents={controls ? "box-none" : "none"}
           style={{
             opacity: controls ? 1 : 0,
@@ -121,6 +168,11 @@ const ChromeBody = memo(
         >
           <PlayerTopRow {...top} />
         </View>
+        {unmute ? (
+          <View style={{ left: edge, position: "absolute", top: topBase, zIndex: 40 }}>
+            <UnmutePill onPress={unmute} />
+          </View>
+        ) : null}
         {readout ? (
           <PlayerReadout
             density={density}
@@ -130,23 +182,8 @@ const ChromeBody = memo(
             top={controls ? topRowAt + KEY + (touch ? 16 : 24) : topRowAt}
           />
         ) : null}
-        {sheet ? (
-          <>
-            <View
-              pointerEvents="none"
-              style={{
-                backgroundColor: playerChrome.dim,
-                bottom: 0,
-                left: 0,
-                position: "absolute",
-                right: 0,
-                top: 0,
-                zIndex: 39,
-              }}
-            />
-            {sheet}
-          </>
-        ) : null}
+        {panel}
+        {sheetLayer}
       </ThemeScope>
     );
   },

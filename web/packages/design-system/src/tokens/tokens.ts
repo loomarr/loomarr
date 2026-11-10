@@ -55,6 +55,16 @@ const semanticThemes = {
     accent: {
       suggest: "#DC5BAC",
     },
+    // The monogram ident's letters, one per hue (#3011): each clears 4.5:1 on its own 14% wash over
+    // the canvas, a raised card and the focus surface a selected guide row puts it on. Where the
+    // hue's text stop missed on focus, the letters take the nearest lighter step (maintainer,
+    // 2026-11-09): magenta #DC5BAC 3.6:1, red #E85A5F 3.5:1.
+    identLetter: {
+      tune: "#4CC9E8",
+      suggest: "#E37CBD",
+      signal: "#FFB020",
+      onair: "#ED7B7F",
+    },
     artwork: {
       placeholder: "#1B1E24",
       scrim: "rgba(11, 12, 14, 0.66)",
@@ -141,6 +151,14 @@ const semanticThemes = {
     // the suggest badge's 15% wash). Amber's light text stop is `action.primary` (#795000, 7.1:1).
     accent: {
       suggest: "#A8246F",
+    },
+    // As in dark, the nearest darker step where the hue's text stop missed 4.5:1 on the focus
+    // surface: magenta #A8246F 3.9:1, teal #08657A 4.3:1, red #A5272C 4.2:1.
+    identLetter: {
+      tune: "#086276",
+      suggest: "#8F1F5E",
+      signal: "#795000",
+      onair: "#9E252A",
     },
     artwork: {
       placeholder: "#E7EAF0",
@@ -279,13 +297,19 @@ const typography = {
   // `--leading-body` 1.5; #1909 Q9), and shared components match the Tailwind page around them.
   // `data` is body in mono, as at every density.
   pointer: {
-    display: { size: 40, lineHeight: 44, weight: "700" },
+    // The five type roles (#2788): Display, Heading, Body, Label and Mono, sized per density. Pointer
+    // takes the design review's 32/600, 18/600, 14/400 and 12/500; Mono (channel numbers and clocks
+    // only) is Label's size. Touch and TV have no decided sizes yet, so each keeps its current value
+    // and the remaining roles fold into these five.
+    display: { size: 32, lineHeight: 36, weight: "600" },
+    heading: { size: 18, lineHeight: 24, weight: "600" },
+    mono: { size: 12, lineHeight: 16, weight: "400" },
     title: { size: 24, lineHeight: 30, weight: "650" },
     body: { size: 14, lineHeight: 21, weight: "400" },
     compact: { size: 13, lineHeight: 20, weight: "400" },
     caption: { size: 13, lineHeight: 18, weight: "400" },
     headline: { size: 20, lineHeight: 30, weight: "400" },
-    label: { size: 14, lineHeight: 20, weight: "600" },
+    label: { size: 12, lineHeight: 16, weight: "500" },
     section: { size: 14, lineHeight: 20, weight: "400" },
     metadata: { size: 12, lineHeight: 18, weight: "500" },
     // A form field's help or validation line (FieldHint, #970 step 45): the Web forms' existing
@@ -305,26 +329,17 @@ const typography = {
     cardMeta: { size: 12, lineHeight: 16, weight: "400" },
     cardChannelNumber: { size: 12, lineHeight: 16, weight: "600" },
     cardTime: { size: 12, lineHeight: 16, weight: "400" },
-    cardInitials: { size: 11, lineHeight: 14, weight: "500" },
-    // Machine metadata beside content: a duration, a clock time, an id (the web Caption, §2.2).
-    // Touch and TV take guideMeta's sizes, its nearest role.
-    captionMono: { size: 11, lineHeight: 14, weight: "400" },
-    // The web mock's time grid (#1659). Touch and TV take the nearest existing role's size
-    // (meta, label and clip → metadata; number → headline), as the card roles do.
-    guideMeta: { size: 11, lineHeight: 14, weight: "400" },
-    guideLabel: { size: 11, lineHeight: 14, weight: "400" },
+    // The web mock's time grid (#1659): the channel number. Touch and TV take headline's size.
     guideNumber: { size: 20, lineHeight: 20, weight: "600" },
-    guideClip: { size: 11, lineHeight: 14, weight: "400" },
-    guideIdent: { size: 11, lineHeight: 14, weight: "600" },
-    // The now-line's time pill sets its text solid (line-height 1), as the mock does.
-    guideNow: { size: 11, lineHeight: 11, weight: "400" },
     // A phone tab's large title and a phone Guide cell's title (#1659 native mock 5d). Neither has a
-    // pointer mock, so pointer takes the nearest existing role (title, guideLabel).
+    // pointer mock, so pointer takes the nearest existing role (title, label).
     screenTitle: { size: 24, lineHeight: 30, weight: "650" },
     guideCell: { size: 11, lineHeight: 14, weight: "400" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
+    heading: { size: 24, lineHeight: 30, weight: "650" },
+    mono: { size: 13, lineHeight: 18, weight: "400" },
     title: { size: 24, lineHeight: 30, weight: "650" },
     body: { size: 17, lineHeight: 25, weight: "400" },
     compact: { size: 14, lineHeight: 21, weight: "400" },
@@ -344,20 +359,15 @@ const typography = {
     cardMeta: { size: 13, lineHeight: 18, weight: "400" },
     cardChannelNumber: { size: 13, lineHeight: 18, weight: "600" },
     cardTime: { size: 13, lineHeight: 18, weight: "400" },
-    cardInitials: { size: 13, lineHeight: 18, weight: "500" },
-    captionMono: { size: 13, lineHeight: 18, weight: "400" },
-    guideMeta: { size: 13, lineHeight: 18, weight: "400" },
-    guideLabel: { size: 13, lineHeight: 18, weight: "400" },
     guideNumber: { size: 22, lineHeight: 22, weight: "600" },
-    guideClip: { size: 13, lineHeight: 18, weight: "400" },
-    guideIdent: { size: 13, lineHeight: 18, weight: "600" },
-    guideNow: { size: 13, lineHeight: 13, weight: "400" },
     // 5d: the "Guide" title at 30/700 (-0.02em), and the grid's programme titles in Geist 13/500.
     screenTitle: { size: 30, lineHeight: 36, weight: "700" },
     guideCell: { size: 13, lineHeight: 18, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
+    heading: { size: 32, lineHeight: 39, weight: "650" },
+    mono: { size: 16, lineHeight: 22, weight: "400" },
     title: { size: 32, lineHeight: 39, weight: "650" },
     body: { size: 22, lineHeight: 31, weight: "400" },
     compact: { size: 20, lineHeight: 30, weight: "400" },
@@ -377,15 +387,8 @@ const typography = {
     cardMeta: { size: 16, lineHeight: 22, weight: "400" },
     cardChannelNumber: { size: 16, lineHeight: 22, weight: "600" },
     cardTime: { size: 16, lineHeight: 22, weight: "400" },
-    cardInitials: { size: 16, lineHeight: 22, weight: "500" },
-    captionMono: { size: 16, lineHeight: 22, weight: "400" },
-    guideMeta: { size: 16, lineHeight: 22, weight: "400" },
-    guideLabel: { size: 16, lineHeight: 22, weight: "400" },
     guideNumber: { size: 30, lineHeight: 30, weight: "600" },
-    guideClip: { size: 16, lineHeight: 22, weight: "400" },
-    guideIdent: { size: 16, lineHeight: 22, weight: "600" },
-    guideNow: { size: 16, lineHeight: 16, weight: "400" },
-    // 5b's TV Guide title is 30/600; the TV grid has no cell-title role of its own, so guideLabel's.
+    // 5b's TV Guide title is 30/600; the TV grid has no cell-title role of its own.
     screenTitle: { size: 30, lineHeight: 36, weight: "600" },
     guideCell: { size: 16, lineHeight: 22, weight: "400" },
   },

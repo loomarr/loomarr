@@ -1,6 +1,6 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
-import { useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +32,7 @@ const healthSignature = (health: HealthReport) => {
 // stable across ordinary refresh timestamps, so a persistent incident never flickers or repeats.
 const HealthNotice = ({ enabled }: { enabled: boolean }) => {
   const navigate = useNavigate();
+  const onHome = useLocation({ select: (location) => location.pathname === "/" });
   const healthQuery = diagnosticsApi.useGetCurrentHealth({
     query: { enabled, retry: false, refetchInterval: 10_000 },
   });
@@ -55,6 +56,9 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
     const incident = `${generationID}:${sequence}:${signature}`;
     const key = acknowledgedKey(incident);
     if (localStorage.getItem(key)) return;
+    // Home's status strip already shows the incident (#2750); the toast would only sit over its
+    // cards. It stays unacknowledged, so it still shows once the viewer goes to another page.
+    if (onHome && !(state === "healthy" && !lastSignature)) return;
 
     const acknowledge = () => localStorage.setItem(key, "1");
     // Healthy is the normal state, not an interruption. Remember the initial observation
@@ -95,7 +99,7 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
     return () => {
       toast.dismiss?.(id);
     };
-  }, [affected, generationID, navigate, signature, state, version]);
+  }, [affected, generationID, navigate, onHome, signature, state, version]);
 
   return null;
 };

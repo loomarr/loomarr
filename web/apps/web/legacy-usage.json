@@ -124,7 +124,7 @@
       "tailwindClasses": 40
     },
     "src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
-      "tailwindClasses": 47
+      "tailwindClasses": 36
     },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 22
@@ -220,12 +220,10 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "tailwindClasses": 54,
-      "rawButton": 1
+      "tailwindClasses": 44
     },
     "src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
-      "tailwindClasses": 92,
-      "rawButton": 1
+      "tailwindClasses": 78
     },
     "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
       "tailwindClasses": 28
@@ -319,7 +317,7 @@
       "tailwindClasses": 5
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "tailwindClasses": 82
+      "tailwindClasses": 77
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
       "tailwindClasses": 112
@@ -374,7 +372,7 @@
       "tailwindClasses": 20
     },
     "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 63
+      "tailwindClasses": 62
     },
     "src/filler/filler-page/filler-page.tsx": {
       "tailwindClasses": 44
@@ -398,8 +396,7 @@
       "tailwindClasses": 10
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
-      "tailwindClasses": 76,
-      "rawButton": 1
+      "tailwindClasses": 67
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "tailwindClasses": 38

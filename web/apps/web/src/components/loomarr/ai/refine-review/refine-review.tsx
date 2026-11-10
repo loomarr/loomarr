@@ -290,7 +290,7 @@ const RefineReview = ({
           Discard
         </Action>
         {!noChanges && (
-          <Action disabled={busy} icon="download" onPress={onApply} variant="suggest">
+          <Action disabled={busy} icon="download" onPress={onApply} tone="suggest">
             Apply changes
           </Action>
         )}

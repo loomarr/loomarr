@@ -58,7 +58,8 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
                 accessibilityLabel={`Remove ${source.target}`}
                 disabled={actions.removing}
                 onPress={() => setConfirmingRemove(true)}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
               </Action>

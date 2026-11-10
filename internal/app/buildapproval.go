@@ -57,9 +57,9 @@ func buildApproval(
 		WithProposalNotifier(notifier).
 		WithDecisionQuality(decisionQuality).
 		WithHolidays(holidays)
-	approver = approver.WithApprovalAdditionResolver(approvalAdditionAdapter{presence: func() titlesearch.LibraryPresence {
+	approver = approver.WithApprovalAdditionResolver(accept.NewAdditionResolver(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
-	}})
+	}))
 	return approvalBuild{
 		binder:          channelBinder,
 		approver:        approver,

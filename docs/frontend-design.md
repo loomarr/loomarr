@@ -624,7 +624,7 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 
 | | Pointer (web) | Touch, landscape | Touch, portrait (phone) | TV (D-pad) |
 | --- | --- | --- | --- | --- |
-| Chrome | Band and keys side by side, overlay | Compact band and keys, overlay, 48 px keys | Band above the keys, 56 px keys; picture-aware layout is open (#2775) | Overlay, TV focus rules |
+| Chrome | Band and keys side by side, overlay | Compact band and keys, overlay, 48 px keys | Picture pinned under the top row; band, then keys (56 px), in the black space below it, always shown, nothing over the picture (#2775) | Overlay, TV focus rules |
 | Top row | Subtitles, Audio, Fullscreen, Leave | Subtitles, Audio, More, Leave | Subtitles & audio, Leave | Remote keys |
 | Last channel | A key, with the number | In More | In More | Remote key |
 | Shortcuts | Tooltips and keys | — | — | Remote keys (below) |

@@ -1,6 +1,5 @@
 import {
   Action,
-  Badge,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -9,6 +8,7 @@ import {
   DialogTitle,
   Icon,
   icons,
+  StatusLabel,
   Toggle,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
@@ -106,7 +106,9 @@ const ImportDialog = ({
   // the Dialog returns focus to it on close all the same.
   return (
     <>
-      <Action onPress={() => setOpen(true)}>Import from Emby/Jellyfin</Action>
+      <Action onPress={() => setOpen(true)} variant="outline">
+        Import from Emby/Jellyfin
+      </Action>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent layout="sectioned" portalContainer={portalContainer} size="reading">
           <DialogHeader>
@@ -208,21 +210,11 @@ const ImportDialog = ({
                             >
                               <span className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium">{candidate.name}</span>
-                                {candidate.imported && (
-                                  <Badge shape="square" tone="lock">
-                                    Already imported
-                                  </Badge>
-                                )}
+                                {candidate.imported && <StatusLabel tone="ok">Already imported</StatusLabel>}
                                 {candidate.disabled && (
-                                  <Badge shape="square" tone="onair">
-                                    Disabled on server
-                                  </Badge>
+                                  <StatusLabel tone="error">Disabled on server</StatusLabel>
                                 )}
-                                {candidate.isAdmin && (
-                                  <Badge shape="square" tone="tune">
-                                    Server admin
-                                  </Badge>
-                                )}
+                                {candidate.isAdmin && <StatusLabel tone="notice">Server admin</StatusLabel>}
                               </span>
                               <span className="text-static-400 mt-1 block text-xs">
                                 Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}

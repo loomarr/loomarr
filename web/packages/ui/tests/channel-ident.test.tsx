@@ -22,7 +22,7 @@ describe("ChannelIdent", () => {
   it("scales the tile and its monogram together", () => {
     const markup = render(<ChannelIdent name={NAME} number={7} size={48} />);
     expect(markup).toContain("48px");
-    // 11 px type at 30 px, so 17.6 px at 48.
-    expect(markup).toContain("17.6px");
+    // 12 px type (the Label role) at 30 px, so 19.2 px at 48.
+    expect(markup).toContain("font-size:19.2");
   });
 });

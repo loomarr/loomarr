@@ -148,6 +148,10 @@ type TextTone =
   | "secondary"
   | "signal"
   | "success"
+  | "identOnair"
+  | "identSignal"
+  | "identSuggest"
+  | "identTune"
   | "suggest"
   | "warning";
 type TextProps = Omit<
@@ -206,13 +210,8 @@ const dataRoles = new Set<TextRole>([
   "code",
   "cardChannelNumber",
   "cardTime",
-  "cardInitials",
-  "captionMono",
-  "guideMeta",
-  "guideLabel",
+  "mono",
   "guideNumber",
-  "guideIdent",
-  "guideNow",
 ]);
 const mutedRoles = new Set<TextRole>([
   "label",
@@ -221,9 +220,7 @@ const mutedRoles = new Set<TextRole>([
   "time",
   "cardMeta",
   "cardTime",
-  "captionMono",
-  "guideMeta",
-  "guideLabel",
+  "mono",
 ]);
 // No role defaults to amber: amber means focus or the primary action (#1909), so a number is
 // foreground at rest, and a display numeral (direct-tune digits, a pairing code) opts in with
@@ -241,6 +238,11 @@ const textTones = {
   signal: "actionPrimary",
   success: "stateSuccess",
   suggest: "accentSuggest",
+  // The monogram ident's letters on their own wash (#3011).
+  identOnair: "identLetterOnair",
+  identSignal: "identLetterSignal",
+  identSuggest: "identLetterSuggest",
+  identTune: "identLetterTune",
   warning: "stateWarning",
 } as const;
 
@@ -250,10 +252,10 @@ const textTones = {
 // each theme resolves its own stop. The keys are `@loomarr/core/guide`'s ident hues.
 const CHANNEL_IDENT_WASH_PERCENT = 14;
 const channelIdentHues = {
-  tune: { wash: brandChroma[3], tone: "info" },
-  suggest: { wash: brandChroma[4], tone: "suggest" },
-  signal: { wash: brandChroma[0], tone: "signal" },
-  onair: { wash: brandChroma[5], tone: "live" },
+  tune: { wash: brandChroma[3], tone: "identTune" },
+  suggest: { wash: brandChroma[4], tone: "identSuggest" },
+  signal: { wash: brandChroma[0], tone: "identSignal" },
+  onair: { wash: brandChroma[5], tone: "identOnair" },
 } as const satisfies Record<string, { wash: string; tone: TextTone }>;
 
 type ChannelIdentColorHue = keyof typeof channelIdentHues;
@@ -278,9 +280,7 @@ const roleTracking = (textRole: TextRole, size: number) =>
         ? size * -0.02
         : textRole === "section"
           ? 2
-          : textRole === "guideLabel"
-            ? size * 0.04
-            : 0;
+          : 0;
 
 // Tamagui's web Text hands `accessibilityLiveRegion` to the DOM verbatim, where React rejects it and
 // no screen reader hears it; the web spelling is `aria-live` (RN's "none" is the web's "off").

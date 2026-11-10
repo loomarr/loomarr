@@ -1,7 +1,7 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Field, FieldHint, Icon, icons, Toggle } from "@loomarr/design-system";
+import { Action, Field, FieldHint, Icon, icons, StatusLabel, Toggle } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -100,16 +100,8 @@ const PersonDetail = ({
           Identity
         </h3>
         <div className="flex flex-wrap items-center gap-2">
-          {isSelf && (
-            <Badge shape="square" tone="tune">
-              You
-            </Badge>
-          )}
-          {user.disabled && (
-            <Badge shape="square" tone="onair">
-              Disabled
-            </Badge>
-          )}
+          {isSelf && <StatusLabel tone="notice">You</StatusLabel>}
+          {user.disabled && <StatusLabel tone="error">Disabled</StatusLabel>}
         </div>
         <p className="text-muted-foreground flex items-center gap-2 text-sm">
           {user.local ? (
@@ -143,9 +135,9 @@ const PersonDetail = ({
             <div className="flex flex-wrap items-center gap-2">
               <Icon decorative glyph={icons.mail} size="compact" tone="muted" />
               <span className="text-sm break-all">{user.contactAddress.email}</span>
-              <Badge shape="square" tone={user.contactAddress.status === "verified" ? "lock" : "neutral"}>
+              <StatusLabel tone={user.contactAddress.status === "verified" ? "ok" : "off"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
-              </Badge>
+              </StatusLabel>
             </div>
             <p className="text-muted-foreground text-xs">
               {user.contactAddress.status === "verified"
@@ -163,9 +155,7 @@ const PersonDetail = ({
           <div className="border-suggest-700/50 bg-suggest-950/20 flex flex-col gap-2 rounded-md border p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm break-all">{user.contactReplacement.email}</span>
-              <Badge shape="square" tone="suggest">
-                Pending replacement
-              </Badge>
+              <StatusLabel tone="pending">Pending replacement</StatusLabel>
             </div>
             <p className="text-muted-foreground text-xs">
               The verified address above remains recovery-capable until this replacement is verified.
@@ -403,7 +393,8 @@ const PersonDetail = ({
           disabled={busy || isSelf}
           onPress={() => onToggleDisabled?.(!user.disabled)}
           style={{ alignSelf: "flex-start" }}
-          variant={user.disabled ? "outline" : "destructive"}
+          tone={user.disabled ? undefined : "danger"}
+          variant="outline"
         >
           {user.disabled ? "Enable account" : "Disable account"}
         </Action>

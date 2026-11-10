@@ -1,7 +1,9 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthCheck } from "@loomarr/api/models/healthCheck";
+import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { HealthReportState } from "@loomarr/api/models/healthReportState";
+import { StatusWord, type StatusWordKind } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 
@@ -12,24 +14,23 @@ const dateTime = (millis?: number) => {
   );
 };
 
-const statusTone = (status: string): StatusTone => {
-  if (status === "passed" || status === "ready" || status === "healthy") return "ok";
-  if (status === "warning" || status === "degraded") return "warn";
-  if (status === "failed" || status === "blocked" || status === "unhealthy" || status === "stale")
-    return "error";
-  if (status === "pending" || status === "starting") return "pending";
-  return "off";
+// Health speaks the same five words as the rest of Settings. A check still in flight has no
+// verdict yet, so it keeps a plain "Checking" instead of borrowing one.
+const checkWord = (status: HealthCheck["status"]): StatusWordKind | undefined => {
+  if (status === HealthCheckStatus.passed) return "ok";
+  if (status === HealthCheckStatus.skipped) return "notSetUp";
+  if (status === HealthCheckStatus.pending) return undefined;
+  return "attention";
 };
 
-const healthStateCopy = (state: HealthReport["state"]) => {
-  if (state === "healthy") return "Healthy";
-  if (state === "degraded") return "Needs attention";
-  if (state === "unhealthy") return "Unhealthy";
-  return "Checking";
+const stateWord = (state: HealthReport["state"]): StatusWordKind | undefined => {
+  if (state === HealthReportState.healthy) return "ok";
+  if (state === HealthReportState.starting) return undefined;
+  return "attention";
 };
 
-const readableStatus = (status: string) =>
-  status === "skipped" ? "Not configured" : `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+const Verdict = ({ word }: { word: StatusWordKind | undefined }) =>
+  word ? <StatusWord kind={word} /> : <span className="text-muted-foreground">Checking</span>;
 
 const CheckIdentity = ({ check }: { check: HealthCheck }) => (
   <>
@@ -48,10 +49,7 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
       </span>
     </th>
     <td className="px-4 py-3">
-      <span className="inline-flex items-center gap-2">
-        <StatusDot tone={statusTone(check.status)} label={readableStatus(check.status)} />
-        {readableStatus(check.status)}
-      </span>
+      <Verdict word={checkWord(check.status)} />
     </td>
     <td className="text-muted-foreground px-4 py-3 text-xs">
       <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
@@ -81,9 +79,8 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
         <div className="min-w-0 flex-1">
-          <p className="inline-flex items-center gap-2 text-lg font-medium">
-            <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
-            {healthStateCopy(report.state)}
+          <p className="text-lg font-medium">
+            <Verdict word={stateWord(report.state)} />
           </p>
           <p className="text-muted-foreground text-xs">Continuously monitored</p>
         </div>

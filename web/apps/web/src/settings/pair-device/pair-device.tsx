@@ -180,7 +180,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
                   Couldn't reach Loomarr. Check your connection and try again.
                 </p>
                 <div className="mt-3 flex justify-center">
-                  <Action onPress={retry} variant="secondary">
+                  <Action onPress={retry} variant="outline">
                     Try again
                   </Action>
                 </div>
