@@ -58,3 +58,56 @@ func TestTunarrLibraryCheck_WithAddressFailureIsNotSoftened(t *testing.T) {
 		t.Errorf("check = %+v, want a real failure", check)
 	}
 }
+
+type fakeLiveTV struct {
+	wired bool
+	err   error
+	calls int
+}
+
+func (f *fakeLiveTV) Wired(context.Context) (bool, error) {
+	f.calls++
+	return f.wired, f.err
+}
+
+func liveTVCheck(t *testing.T, s *Handlers) httpcore.SetupCheck {
+	t.Helper()
+	for _, c := range s.runConnectionChecks(context.Background()) {
+		if c.Name == "livetv" {
+			return c
+		}
+	}
+	t.Fatal("no livetv check")
+	return httpcore.SetupCheck{}
+}
+
+// #3403: with no media server set up, Live TV is not set up either, and is never probed.
+func TestLiveTVCheck_NoMediaServerIsNotSetUpAndNeverProbed(t *testing.T) {
+	live := &fakeLiveTV{err: errors.New("no media server")}
+	s := &Handlers{livetv: live, liveSettings: mapSettings{}}
+
+	check := liveTVCheck(t, s)
+
+	if live.calls != 0 {
+		t.Errorf("Live TV was probed %d times with no media server", live.calls)
+	}
+	if check.OK || !check.NotSetUp || check.Hint != "Set up a media server first." {
+		t.Errorf("check = %+v, want not ok, not set up, plain hint", check)
+	}
+}
+
+// With a media server set up, an unregistered or unreachable tuner stays a failure.
+func TestLiveTVCheck_WithMediaServerFailureIsNotSoftened(t *testing.T) {
+	set := mapSettings{"library.url": "http://media.invalid:8096"}
+	for name, live := range map[string]*fakeLiveTV{
+		"unregistered": {wired: false},
+		"unreachable":  {err: errors.New("down")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			check := liveTVCheck(t, &Handlers{livetv: live, liveSettings: set})
+			if check.OK || check.NotSetUp || check.Hint == "" {
+				t.Errorf("check = %+v, want a real failure with a hint", check)
+			}
+		})
+	}
+}

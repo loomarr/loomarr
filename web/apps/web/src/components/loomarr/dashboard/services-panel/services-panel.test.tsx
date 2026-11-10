@@ -115,13 +115,14 @@ describe("ServicesPanel", () => {
             },
             { name: "tunarr_library", ok: false, hint: "set the Tunarr URL", notSetUp: true },
             { name: "llm", ok: false, hint: "set the Ollama URL", notSetUp: true, settingsGroup: "ai" },
+            { name: "livetv", ok: false, hint: "Set up a media server first.", notSetUp: true },
           ],
         }}
         onFix={() => {}}
         onDiagnose={() => {}}
       />,
     );
-    expect(screen.getAllByText("Not set up")).toHaveLength(4);
+    expect(screen.getAllByText("Not set up")).toHaveLength(5);
     expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
     expect(screen.getByText("set the Seerr URL")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /diagnostics/i })).not.toBeInTheDocument();

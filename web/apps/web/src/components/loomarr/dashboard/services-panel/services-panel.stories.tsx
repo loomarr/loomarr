@@ -63,7 +63,13 @@ const FreshInstall: Story = {
     view: {
       loomarr,
       rows: [
-        { name: "media_server", ok: true, target: "http://emby.lan:8096" },
+        {
+          name: "media_server",
+          ok: false,
+          hint: "set the media server URL",
+          notSetUp: true,
+          settingsGroup: "media_server",
+        },
         {
           name: "requester",
           ok: false,
@@ -85,6 +91,12 @@ const FreshInstall: Story = {
           hint: "set the Tunarr URL",
           notSetUp: true,
           settingsGroup: "tunarr",
+        },
+        {
+          name: "livetv",
+          ok: false,
+          hint: "Set up a media server first.",
+          notSetUp: true,
         },
         { name: "tmdb", ok: true },
       ],

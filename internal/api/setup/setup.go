@@ -55,13 +55,14 @@ func (s *Handlers) registerSetup(api huma.API) {
 // constant dressed up as diagnostics.
 // configuredBy lists the settings whose being set means the operator has started connecting this
 // service; none set is "not set up" (#2781).
+var mediaServerConfiguredBy = []settings.StringKey{settings.LibraryURL, settings.LibraryToken}
+
 var connectionChecklist = []struct {
 	name, docHref string
 	target        *settings.StringKey
 	configuredBy  []settings.StringKey
 }{
-	{"media_server", "troubleshooting#media-server", &settings.LibraryURL,
-		[]settings.StringKey{settings.LibraryURL, settings.LibraryToken}},
+	{"media_server", "troubleshooting#media-server", &settings.LibraryURL, mediaServerConfiguredBy},
 	{"requester", "troubleshooting#seerr", &settings.SeerrURL,
 		[]settings.StringKey{settings.SeerrURL, settings.SonarrURL, settings.RadarrURL}},
 	{"sonarr", "troubleshooting#sonarr-radarr", &settings.SonarrURL, []settings.StringKey{settings.SonarrURL}},
@@ -129,7 +130,14 @@ func (s *Handlers) runConnectionChecks(ctx context.Context) []httpcore.SetupChec
 	}
 
 	// Live TV publication check (§6), followed by Tunarr's independent media-source scan.
-	if s.livetv != nil {
+	if s.livetv != nil && !s.anyConfigured(mediaServerConfiguredBy) {
+		// Live TV is published into the media server; with none set up there is nothing to probe
+		// and nothing broken (#3403). Same condition that makes the media_server row notSetUp.
+		checks = append(checks, httpcore.SetupCheck{
+			Name: "livetv", OK: false, NotSetUp: true, Hint: "Set up a media server first.",
+			DocHref: "troubleshooting#livetv",
+		})
+	} else if s.livetv != nil {
 		wired, err := s.livetv.Wired(ctx)
 		check := httpcore.SetupCheck{Name: "livetv", OK: wired, DocHref: "troubleshooting#livetv"}
 		if err != nil {
