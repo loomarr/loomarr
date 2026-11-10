@@ -168,4 +168,21 @@ const tvGuideRowWindow = (
   };
 };
 
-export { moveTvGuideFocus, tvGuideFavouriteChannel, tvGuideRowWindow, tvGuideTimeEdge };
+/** How many Guide rows the TV renders around the focused one. */
+const TV_GUIDE_VISIBLE_ROWS = 8;
+
+/**
+ * The bounded set of channel rows the TV Guide mounts for a selection: the viewport around the
+ * selected channel's row (the first row when the selection's channel is not in the layout).
+ */
+const tvGuideChannelWindow = (layout: GuideLayout, selection: { channelId: string }): TvGuideRowWindow =>
+  tvGuideRowWindow(
+    layout.channels.length,
+    Math.max(
+      0,
+      layout.channels.findIndex((channel) => channel.source.channelId === selection.channelId),
+    ),
+    TV_GUIDE_VISIBLE_ROWS,
+  );
+
+export { moveTvGuideFocus, tvGuideChannelWindow, tvGuideFavouriteChannel, tvGuideRowWindow, tvGuideTimeEdge };
