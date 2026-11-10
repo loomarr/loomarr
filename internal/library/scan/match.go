@@ -23,6 +23,9 @@ const (
 	MatchInterval = time.Minute
 	// matchBatch caps the titles searched in one tick.
 	matchBatch = 20
+	// matchFailLimit is how many searches in a row may fail before a tick stops: one title the
+	// catalog refuses is that title's problem, a run of them is the catalog out of reach.
+	matchFailLimit = 3
 	// matchSearched is how many search results are looked at closely; matchKept, how many are kept.
 	matchSearched = 5
 	matchKept     = 3
@@ -163,7 +166,8 @@ func (m *Matcher) Tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	done := 0
+	// failed counts the searches in a row that failed.
+	done, failed := 0, 0
 	for _, need := range needs {
 		title, year := searchQuery(need.Name, need.Year)
 		ev := evidence{year: year, length: m.length(ctx, need), episodes: m.episodes(ctx, need)}
@@ -183,9 +187,17 @@ func (m *Matcher) Tick(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			// Not marked searched, so the next tick searches it again. One title whose search
+			// fails holds back no other; matchFailLimit in a row is the catalog not answering.
+			failed++
+			if failed == matchFailLimit {
+				m.log().Warn("library match: the catalog is not answering, searching again next tick", "err", err)
+				return nil
+			}
 			m.log().Debug("library match: search failed", "item", need.ID, "err", err)
-			return nil
+			continue
 		}
+		failed = 0
 		if settled.Value != "" && m.Match != nil {
 			if err := m.Match(ctx, need.ID, settled); err != nil {
 				// Not marked searched: the next tick searches and settles it again.

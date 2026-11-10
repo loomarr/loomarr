@@ -37,6 +37,12 @@ const StatusLine = ({
           : undefined;
   const importing = alert === undefined;
   const [tone, text] = alert ?? [scan.tone, scan.text];
+  // An import still running for the other folders stays on the line after a held removal or an
+  // offline folder: "Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%".
+  const alongside =
+    alert !== undefined && status.health !== "needs_folders" && scan.shortLine
+      ? `${scan.text} · ${scan.shortLine}`
+      : "";
   return (
     <Line columnGap="control" paddingVertical="inline" rowGap="inline">
       <Line>
@@ -44,7 +50,11 @@ const StatusLine = ({
         {importing && scan.moving ? <Twirl /> : <StatusDot label={text} tone={tone} />}
         <Text textRole="label">
           {/* "Adding your media · Step 1 of 3 · 21% · about 9 min left". */}
-          {importing && scan.shortLine ? `${text} · ${scan.shortLine}` : text}
+          {importing && scan.shortLine
+            ? `${text} · ${scan.shortLine}`
+            : alongside
+              ? `${text} · ${alongside}`
+              : text}
         </Text>
       </Line>
       {held ? (
