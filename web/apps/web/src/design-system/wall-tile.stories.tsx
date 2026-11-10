@@ -17,7 +17,9 @@ const meta = {
   // column of the two-column wall at 390px (165px). Height follows from the tile's 16:9 ratio.
   decorators: [
     (Story, { args }) => (
-      <div style={{ padding: 24, width: args.compact ? 165 : 400 }}>
+      // content-box, so the padding is outside the tile's width (the app's reset is border-box, which
+      // made the first render's phone tile 117px wide and overlapped its own lines).
+      <div style={{ boxSizing: "content-box", padding: 24, width: args.compact ? 165 : 400 }}>
         <Story />
       </div>
     ),

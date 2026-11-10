@@ -166,7 +166,11 @@ describe("WallTile over a picture (#3407)", () => {
 
   it("draws a top scrim behind the number and name whenever it has a picture", async () => {
     await mount(<WallTile art={<Still />} channelName="Coast 90s" number="7" title="Coastline" />);
-    expect(doc.body.querySelector('[data-testid="wall-tile-top-scrim"]')).not.toBeNull();
+    const scrim = doc.body.querySelector('[data-testid="wall-tile-top-scrim"]');
+    expect(scrim).not.toBeNull();
+    // It needs a height of its own: an absolute layer with none draws nothing, which is how the
+    // first version of this scrim shipped invisible.
+    expect(scrim?.getAttribute("class")).toMatch(/\b_h-/);
     doc.body.replaceChildren();
     await mount(<WallTile art={null} channelName="Coast 90s" number="7" title="Coastline" />);
     expect(doc.body.querySelector('[data-testid="wall-tile-top-scrim"]')).toBeNull();

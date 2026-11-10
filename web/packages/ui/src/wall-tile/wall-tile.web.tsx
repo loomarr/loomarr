@@ -151,6 +151,9 @@ const WallTile = ({
           backgroundColor="transparent"
           borderWidth={0}
           data-testid="wall-tile-top-scrim"
+          // An absolute layer with no content has no height of its own, and a scrim with no height
+          // draws nothing: the first render of this tile over a white picture showed no name.
+          height={pad * 2 + 48}
           left={0}
           pointerEvents="none"
           position="absolute"
