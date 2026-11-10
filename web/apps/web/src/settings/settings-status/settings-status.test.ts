@@ -102,6 +102,14 @@ describe("settingsProblems", () => {
     ]);
   });
 
+  it("counts a task late past twice its interval, not one seconds late on its tick", () => {
+    const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    expect(settingsProblems({ jobs: [job({ nextRun: secondsAgo(5), overdue: false })] })).toEqual([]);
+    expect(settingsProblems({ jobs: [job({ nextRun: secondsAgo(3 * 86_400), overdue: true })] })).toEqual([
+      { destinationId: "tasks", card: "server", kind: "overdue", text: "1 background task is overdue." },
+    ]);
+  });
+
   it("reports missed backup nights", () => {
     const [problem] = settingsProblems({
       backups: {

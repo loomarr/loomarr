@@ -6,6 +6,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import type { NeedsLineItem } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { usePendingApprovals } from "@/queue/pending-approvals";
+import { overdueTaskCount } from "@/settings/tasks-page/overdue-tasks";
 
 // Where each count leads: today's pages, no new routes.
 type NeedTo = "/requests/needs-you" | "/filler/manage" | "/settings/system/tasks" | "/filler/settings";
@@ -34,7 +35,7 @@ const count = (id: NeedsYouItem["id"], n: number, one: string, many: string, sho
 // The counts above zero, in the mock's order. Filler space is a warning, not a to-do: it shows only
 // once space runs short, as the share of the allowance in use.
 const needsYouItems = ({ approvals, fillerChoices, jobs, fillerStorage }: NeedsYouInput): NeedsYouItem[] => {
-  const overdue = jobs.filter((job) => job.overdue && !job.running).length;
+  const overdue = overdueTaskCount(jobs);
   const short =
     (fillerStorage?.state === "approaching" || fillerStorage?.state === "paused") &&
     fillerStorage.softBudgetBytes > 0;
