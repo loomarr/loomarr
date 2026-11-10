@@ -96,14 +96,14 @@ func (s *sqlStore) LibraryReferences(ctx context.Context) (LibraryReferences, er
 		}
 	}
 	keys := map[string]provision.Key{}
-	airings, err := s.distinctStrings(ctx, s.db, `SELECT DISTINCT library_item_id FROM airings WHERE library_item_id <> ''`)
+	airings, err := s.distinctStrings(ctx, s.db, `SELECT DISTINCT library_item_id FROM airings`)
 	if err != nil {
 		return LibraryReferences{}, fmt.Errorf("library references: %w", err)
 	}
 	for _, id := range airings {
 		items[id] = true
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT library_id, key FROM titles WHERE library_id <> ''`)
+	rows, err := s.db.QueryContext(ctx, `SELECT library_id, key FROM titles WHERE library_id IS NOT NULL`)
 	if err != nil {
 		return LibraryReferences{}, fmt.Errorf("library references: %w", err)
 	}

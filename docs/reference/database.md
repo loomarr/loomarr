@@ -352,7 +352,7 @@ What a channel actually broadcast: one row each time an episode or film started 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
-| `library_item_id` | The library item id of the episode or film that aired. | `TEXT` · key |
+| `library_item_id` | The episode or film that aired, pointing at library_items. | `TEXT` · key · → `library_items.id` |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
@@ -366,7 +366,7 @@ What a channel's schedule put on air: one row each time an episode or film start
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
-| `library_item_id` | The library item id of the episode or film. | `TEXT` · key |
+| `library_item_id` | The episode or film, pointing at library_items. | `TEXT` · key · → `library_items.id` |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
@@ -993,7 +993,6 @@ One row per movie or show a channel wants that has gone through Seerr or the arr
 | `key` | Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or series:tmdb:id. | `TEXT` · key |
 | `title_json` | The title as JSON, with its media type (movie or series), TMDB and TVDB ids, name, year and, for a show, the seasons wanted (none listed means all). | `TEXT` |
 | `state` | Where it is. One of pending (on a lineup, but nothing has asked for it; read as no record), wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release), downloading (a release was grabbed), available (in the library), or unavailable (given up on). | `TEXT` |
-| `library_id` | The media server's id for the title once it is in the library; empty before. | `TEXT` |
 | `requested_at` | When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet. | `BIGINT` |
 | `deadline` | When a requested or downloading title is given up on, in Unix seconds; it is also pushed forward briefly while a check is working on the title. 0 for none. | `BIGINT` |
 | `attempts` | How many times sending the request has failed. | `INTEGER` |
@@ -1005,6 +1004,7 @@ One row per movie or show a channel wants that has gone through Seerr or the arr
 | `arrived_at` | When the title arrived in the library after being requested, in Unix seconds. 0 when it never arrived or was already in the library when picked. | `BIGINT` |
 | `episodes_have` | For a downloading show, how many wanted episodes are on disk; 0 otherwise. | `INTEGER` |
 | `episodes_wanted` | For a downloading show, how many episodes are wanted; 0 otherwise. | `INTEGER` |
+| `library_id` | The title's library item once it is in the library, pointing at library_items. NULL before it arrives. | `TEXT` · may be empty · → `library_items.id` |
 
 ### images
 

@@ -128,7 +128,7 @@ func (s *sqlStore) UpsertTitle(ctx context.Context, rec provision.Record) error 
 		   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
 		   last_error=excluded.last_error, updated_at=excluded.updated_at,
 		   arrived_at=CASE WHEN excluded.arrived_at > 0 THEN excluded.arrived_at ELSE titles.arrived_at END`),
-		string(rec.Key), string(blob), string(rec.State), rec.LibraryID,
+		string(rec.Key), string(blob), string(rec.State), storedb.OptionalID(rec.LibraryID),
 		epoch(rec.RequestedAt), epoch(rec.Deadline), rec.Attempts, rec.LastError, epoch(rec.UpdatedAt),
 		epoch(rec.AvailableAt))
 	if err != nil {
@@ -486,9 +486,10 @@ func scanTitle(sc scannable) (provision.Record, error) {
 	var (
 		rec                                     provision.Record
 		blob                                    string
+		libraryID                               storedb.OptionalID
 		reqAt, deadline, updatedAt, availableAt int64
 	)
-	err := sc.Scan(&rec.Key, &blob, &rec.State, &rec.LibraryID,
+	err := sc.Scan(&rec.Key, &blob, &rec.State, &libraryID,
 		&reqAt, &deadline, &rec.Attempts, &rec.LastError, &updatedAt,
 		&rec.Progress, &rec.ETAText, &rec.DownloadStatus, &availableAt, &rec.EpisodesHave, &rec.EpisodesWanted)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -500,6 +501,7 @@ func scanTitle(sc scannable) (provision.Record, error) {
 	if err := json.Unmarshal([]byte(blob), &rec.Title); err != nil {
 		return provision.Record{}, fmt.Errorf("unmarshal title %s: %w", rec.Key, err)
 	}
+	rec.LibraryID = string(libraryID)
 	rec.RequestedAt = fromEpoch(reqAt)
 	rec.Deadline = fromEpoch(deadline)
 	rec.UpdatedAt = fromEpoch(updatedAt)

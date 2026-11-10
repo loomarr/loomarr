@@ -37,7 +37,10 @@ type CatalogRetentionStore interface {
 //     membership left and that no stored record names, with their candidates and image refs;
 //   - catalog records no library row names, fetched (or failing) longer than LibraryItemRetention.
 //
-// "Names" is LibraryReferences: titles, airings, channels' slots and open proposals' picks.
+// "Names" is LibraryReferences: titles, airings, channels' slots and open proposals' picks. The
+// rows that name an item through a foreign key (titles, airings, scheduled_airings) are also
+// checked inside the transaction, so one written after LibraryReferences read keeps its item
+// instead of failing the purge.
 func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, error) {
 	refs, err := s.LibraryReferences(ctx)
 	if err != nil {
@@ -87,7 +90,10 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		AND NOT EXISTS (SELECT 1 FROM inventory_items v WHERE v.id = i.id)
 		AND NOT EXISTS (SELECT 1 FROM library_files f WHERE f.inventory_item_id = i.id OR f.inventory_series_id = i.id)
 		AND NOT EXISTS (SELECT 1 FROM library_items e WHERE e.series_id = i.id)
-		AND NOT EXISTS (SELECT 1 FROM library_collection_members m WHERE m.inventory_item_id = i.id)`, itemCutoffMs)
+		AND NOT EXISTS (SELECT 1 FROM library_collection_members m WHERE m.inventory_item_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM titles t WHERE t.library_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM airings a WHERE a.library_item_id = i.id)
+		AND NOT EXISTS (SELECT 1 FROM scheduled_airings a WHERE a.library_item_id = i.id)`, itemCutoffMs)
 	if err != nil {
 		return 0, fmt.Errorf("purge spent library items: %w", err)
 	}

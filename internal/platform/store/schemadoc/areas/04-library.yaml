@@ -512,7 +512,9 @@ tables:
         Where it is. One of pending (on a lineup, but nothing has asked for it; read as no record),
         wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release),
         downloading (a release was grabbed), available (in the library), or unavailable (given up on).
-      library_id: The media server's id for the title once it is in the library; empty before.
+      library_id: >
+        The title's library item once it is in the library, pointing at library_items. NULL before it
+        arrives.
       requested_at: When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet.
       deadline: >
         When a requested or downloading title is given up on, in Unix seconds; it is also pushed
