@@ -105,6 +105,9 @@ const ChannelBlock = ({
 }) => {
   const fill = decadeFillColor(decade);
   const tone = fill ? "onDecade" : "inverse";
+  // The portrait block is 56px: three digits at the full size (about 50px) fill it edge to edge, so
+  // a long number steps down to the guide's number size and keeps a margin.
+  const numberRole = width === BLOCK_WIDTH.portrait && number.length > 2 ? "guideNumber" : "channelNumber";
   return (
     <View
       accessibilityElementsHidden
@@ -119,7 +122,7 @@ const ChannelBlock = ({
       <Text density={density} shout textRole="label" tone={tone} tracking={0.2}>
         CH
       </Text>
-      <Text density={density} textRole="channelNumber" tone={tone}>
+      <Text density={density} testID="band-channel-number" textRole={numberRole} tone={tone}>
         {number}
       </Text>
     </View>
@@ -127,15 +130,30 @@ const ChannelBlock = ({
 };
 
 /** The small NOW / NEXT chips: the one place for letter-spaced mono capitals. */
-const Chip = ({ children, density, solid }: { children: string; density: Density; solid: boolean }) => (
+const Chip = ({
+  children,
+  density,
+  solid,
+  tight = false,
+}: {
+  children: string;
+  density: Density;
+  solid: boolean;
+  /**
+   * Portrait: less side padding. The touch NEXT chip is 67px at full padding and sat in the 56px
+   * column against the next time; widening the column instead takes the room from the title.
+   */
+  tight?: boolean;
+}) => (
   <View
+    testID="band-chip"
     style={{
       alignSelf: "flex-start",
       backgroundColor: solid ? playerChrome.text : "transparent",
       borderColor: solid ? playerChrome.text : "rgba(255, 255, 255, 0.4)",
       borderRadius: 2,
       borderWidth: 1,
-      paddingHorizontal: 8,
+      paddingHorizontal: tight ? 4 : 8,
       paddingVertical: 4,
     }}
   >
@@ -283,22 +301,9 @@ const Progress = ({ liveProgress, progress }: { liveProgress?: number | undefine
   </View>
 );
 
-const Row = ({
-  children,
-  chip,
-  chipWidth = 56,
-  gap = 16,
-}: {
-  children: ReactNode;
-  chip: ReactNode;
-  /** The chip column's width; it has to fit the widest chip, or the chip runs into the text. */
-  chipWidth?: number;
-  gap?: number;
-}) => (
+const Row = ({ children, chip, gap = 16 }: { children: ReactNode; chip: ReactNode; gap?: number }) => (
   <View style={{ alignItems: "center", flexDirection: "row", gap }}>
-    <View style={{ width: chipWidth }} testID="band-chip-column">
-      {chip}
-    </View>
+    <View style={{ width: 56 }}>{chip}</View>
     <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
   </View>
 );
@@ -314,9 +319,6 @@ const ChannelBand = ({
 }: ChannelBandProps) => {
   const compact = density === "touch";
   const rowGap = portrait ? 12 : 16;
-  // Portrait: the touch NEXT chip is 67px wide, so a 56px column put it against the next time. The
-  // column fits the chip and the gap after it comes down, which costs the title 8px.
-  const chipRow = portrait ? { chipWidth: 68, gap: 8 } : { gap: rowGap };
   const behind = live.mode !== "live";
   const hasSlot = band.startMs !== undefined && band.stopMs !== undefined;
   const station = ident && band.station ? ` · ${band.station}` : "";
@@ -375,11 +377,11 @@ const ChannelBand = ({
           {band.title ? (
             <Row
               chip={
-                <Chip density={density} solid>
+                <Chip density={density} solid tight={portrait}>
                   NOW
                 </Chip>
               }
-              {...chipRow}
+              gap={rowGap}
             >
               <View style={{ gap: 4 }}>
                 <BandTitle density={density} lines={portrait ? 2 : 1} logo={band.logo} title={band.title} />
@@ -433,11 +435,11 @@ const ChannelBand = ({
           {ident || !band.next ? null : (
             <Row
               chip={
-                <Chip density={density} solid={false}>
+                <Chip density={density} solid={false} tight={portrait}>
                   NEXT
                 </Chip>
               }
-              {...chipRow}
+              gap={rowGap}
             >
               <View style={{ alignItems: "baseline", flexDirection: "row", gap: rowGap }}>
                 {/* One unbroken token: the time keeps its width, the title takes the rest. */}

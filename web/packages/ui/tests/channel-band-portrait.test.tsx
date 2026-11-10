@@ -104,6 +104,13 @@ describe("the portrait band", () => {
     expect(computed(block(mount(chrome("overlay", "touch")))).width).toBe("72px");
   });
 
+  it("steps a three-digit number down a size, so it keeps a margin in the narrow block", () => {
+    // The fixture's channel is 101: about 50px wide at the full size, in a 56px block.
+    const size = (host: Host) => computed(byId(host, "band-channel-number")).fontSize;
+    expect(size(mount(chrome("portrait", "touch")))).toBe("22px");
+    expect(size(mount(chrome("overlay", "touch")))).toBe("30px");
+  });
+
   it("lets the title take two lines, and the episode line one", () => {
     const portrait = mount(chrome("portrait", "touch"));
     const clamp = (el: El) => computed(el).webkitLineClamp;
@@ -135,11 +142,11 @@ describe("the portrait band", () => {
     expect(style.flexShrink).toBe("0");
   });
 
-  it("gives the Now and Next chips a column that fits them, so a chip never touches its text", () => {
-    // The touch NEXT chip is 67px wide: in the 56px column it ran into the next time.
-    const column = (host: Host) => computed(byId(host, "band-chip-column")).width;
-    expect(column(mount(chrome("portrait", "touch")))).toBe("68px");
-    expect(column(mount(chrome("overlay", "pointer")))).toBe("56px");
+  it("tightens the Now and Next chips, so a chip never touches its text and the title keeps its width", () => {
+    // The touch NEXT chip is 67px at full padding: in the 56px column it ran into the next time.
+    const padding = (host: Host) => computed(byId(host, "band-chip")).paddingLeft;
+    expect(padding(mount(chrome("portrait", "touch")))).toBe("4px");
+    expect(padding(mount(chrome("overlay", "touch")))).toBe("8px");
   });
 
   it("leaves the desktop band as it was: the progress line between its two clocks in one row", () => {

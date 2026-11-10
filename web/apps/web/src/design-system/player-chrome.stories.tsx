@@ -496,7 +496,11 @@ const PortraitLongTitle: Story = {
   render: (args) => <PhoneFrame {...args} />,
 };
 const PortraitLongChannel: Story = {
-  args: { ...portraitArgs, band: { ...liveData.band, channelName: "Saturday Morning Cartoons" } },
+  // A three-digit number too: the common case in a real library, and the narrow block's tightest fit.
+  args: {
+    ...portraitArgs,
+    band: { ...liveData.band, channelName: "Saturday Morning Cartoons", channelNumber: "101" },
+  },
   render: (args) => <PhoneFrame {...args} />,
 };
 const PortraitUnmute: Story = {
