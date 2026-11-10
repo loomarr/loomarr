@@ -451,7 +451,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
-  answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
+  answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the
+  next tick and holds back no other; three failures in a row are the catalog out of reach, and end
+  the tick. It searches by the name up to the release
   words (quality, source, codec) and the last year-like word after the first, or the year a
   sidecar gave. It looks at the first five results of the title's kind, fetching each one's
   details, and keeps three in `library_candidates`, best first, each by its catalog's own id
