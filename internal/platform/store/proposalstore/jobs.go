@@ -348,9 +348,6 @@ func (s *Store) ClaimDueJobs(ctx context.Context, now time.Time, lease time.Dura
 		}
 
 		nextAttempt := job.Attempts + 1
-		if job.WorkflowVersion == 0 {
-			nextAttempt = 1
-		}
 		result, err := tx.ExecContext(ctx, s.h.Rebind(
 			`UPDATE proposal_jobs
 			    SET status='running', workflow_version=?, attempts=?, deadline=?, updated_at=?
