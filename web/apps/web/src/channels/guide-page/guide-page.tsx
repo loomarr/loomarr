@@ -32,6 +32,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { usePhoneWidth } from "@/lib/use-phone-width";
+import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelRowMenu } from "../channel-row-menu";
 import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
 
@@ -242,6 +243,9 @@ const GuidePage = () => {
   // and often return the pre-backfill lineup.
 
   const body = unwrap(guide.data);
+  // Rows count as content from any window, the previous one included: that is what stays on
+  // screen while the next window loads.
+  useRouteContent(body !== undefined);
   const channels = useMemo(() => body?.channels ?? [], [body]);
   // "Known empty", not "nothing loaded yet": during the first fetch `channels` is also [],
   // and treating that as empty would flash the empty state (and hide the header button)

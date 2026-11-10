@@ -17,6 +17,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
+import { useRouteContent } from "@/lib/use-route-content";
 import { useLibraryCollections } from "../use-library-collections";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
@@ -121,6 +122,8 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
     () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],
     [items.data],
   );
+  // The library's content is its status line and the first page of titles under it.
+  useRouteContent(current !== undefined && !items.isPending);
 
   // The next page loads once the grid's last rows are on screen.
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = items;
