@@ -509,10 +509,10 @@ Daily totals of suggestion-quality receipts, one row per day, stage, outcome and
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `day` | The UTC day, as YYYY-MM-DD. | `TEXT` · key |
-| `stage` | The pipeline step, with the same values as quality_receipts.stage. | `TEXT` · key |
-| `outcome` | How the steps went, with the same values as quality_receipts.outcome. | `TEXT` · key |
-| `run_snapshot_id` | The evaluation run (quality_run_snapshots.id), or empty for ordinary use. | `TEXT` · key |
+| `day` | The UTC day, as YYYY-MM-DD. | `TEXT` |
+| `stage` | The pipeline step, with the same values as quality_receipts.stage. | `TEXT` |
+| `outcome` | How the steps went, with the same values as quality_receipts.outcome. | `TEXT` |
+| `run_snapshot_id` | The evaluation run (quality_run_snapshots.id), or NULL for ordinary use. A row is unique by day, stage, outcome and this run, with ordinary use counted as one run. | `TEXT` · may be empty · → `quality_run_snapshots.id` |
 | `observation_count` | How many receipts were rolled into the row. | `BIGINT` |
 | `duration_ms` | Total time of those steps, in milliseconds. | `BIGINT` |
 | `tool_calls` | Total tool calls. | `BIGINT` |

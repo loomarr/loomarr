@@ -112,13 +112,13 @@ func (s *sqlStore) MaintainQualityLedger(ctx context.Context, now time.Time) err
 		_, err := tx.ExecContext(ctx, s.ph(`INSERT INTO quality_daily_aggregates
 			(day, stage, outcome, run_snapshot_id, observation_count, duration_ms,
 			 tool_calls, candidate_count, cost_nanos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (day, stage, outcome, run_snapshot_id) DO UPDATE SET
+			ON CONFLICT (day, stage, outcome, COALESCE(run_snapshot_id, '')) DO UPDATE SET
 			observation_count = quality_daily_aggregates.observation_count + excluded.observation_count,
 			duration_ms = quality_daily_aggregates.duration_ms + excluded.duration_ms,
 			tool_calls = quality_daily_aggregates.tool_calls + excluded.tool_calls,
 			candidate_count = quality_daily_aggregates.candidate_count + excluded.candidate_count,
 			cost_nanos = quality_daily_aggregates.cost_nanos + excluded.cost_nanos`),
-			key.day, key.stage, key.outcome, key.snapshotID, aggregate.Count, aggregate.DurationMillis,
+			key.day, key.stage, key.outcome, nullableQualitySnapshotID(key.snapshotID), aggregate.Count, aggregate.DurationMillis,
 			aggregate.ToolCalls, aggregate.CandidateCount, aggregate.CostNanos)
 		if err != nil {
 			return fmt.Errorf("maintain quality ledger: upsert aggregate: %w", err)
@@ -187,18 +187,20 @@ func (s *sqlStore) ExportQualityLedger(ctx context.Context, now time.Time) (qual
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT day, stage, outcome, run_snapshot_id,
 		observation_count, duration_ms, tool_calls, candidate_count, cost_nanos
-		FROM quality_daily_aggregates ORDER BY day, stage, outcome, run_snapshot_id`)
+		FROM quality_daily_aggregates ORDER BY day, stage, outcome, COALESCE(run_snapshot_id, '')`)
 	if err != nil {
 		return quality.Export{}, fmt.Errorf("export quality ledger: list aggregates: %w", err)
 	}
 	for rows.Next() {
 		var aggregate quality.Aggregate
-		if err := rows.Scan(&aggregate.Day, &aggregate.Stage, &aggregate.Outcome, &aggregate.RunSnapshotID,
+		var snapshotID sql.NullString
+		if err := rows.Scan(&aggregate.Day, &aggregate.Stage, &aggregate.Outcome, &snapshotID,
 			&aggregate.Count, &aggregate.DurationMillis, &aggregate.ToolCalls, &aggregate.CandidateCount,
 			&aggregate.CostNanos); err != nil {
 			_ = rows.Close()
 			return quality.Export{}, fmt.Errorf("export quality ledger: scan aggregate: %w", err)
 		}
+		aggregate.RunSnapshotID = snapshotID.String
 		out.Aggregates = append(out.Aggregates, aggregate)
 	}
 	if err := rows.Close(); err != nil {
