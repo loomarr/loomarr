@@ -101,8 +101,9 @@ func TestMigrationProviderScopesEmbeddedMigrations(t *testing.T) {
 }
 
 func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-linkage.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 74, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,8 +145,9 @@ func TestUserMediaServerLinkedMigrationBackfillsOldImportedRows(t *testing.T) {
 }
 
 func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-contacts.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 75, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,8 +181,9 @@ func TestUserContactAddressMigrationLeavesExistingUsersContactless(t *testing.T)
 }
 
 func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "notifications.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 76, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,8 +228,9 @@ func TestNotificationMigrationAddsEmptyDurableQueueWithoutChangingUsers(t *testi
 }
 
 func TestNotificationProductVocabularyMigrationPreservesAccountDelivery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "notification-product-vocabulary.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 80, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,8 +310,9 @@ func TestFillerAdmissionDecisionTablesAreRetired(t *testing.T) {
 }
 
 func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "intent-ref.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 54, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,8 +390,9 @@ func TestUniqueChannelIntentRefMigrationPreservesDuplicateChannels(t *testing.T)
 }
 
 func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-revision.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 55, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,8 +426,9 @@ func TestChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
 }
 
 func TestChannelPlayoutAnchorMigrationSeedsExistingRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-anchor.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 61, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

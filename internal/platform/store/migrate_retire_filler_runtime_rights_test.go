@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 func TestRetireFillerRuntimeRightsMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "retire-runtime-rights.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 105, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

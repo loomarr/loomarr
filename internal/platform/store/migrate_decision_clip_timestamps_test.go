@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "decision-timestamps.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 130, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

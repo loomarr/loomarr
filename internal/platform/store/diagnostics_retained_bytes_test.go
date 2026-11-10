@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -230,7 +229,7 @@ func sqliteIndexes(t *testing.T, st Store) map[string]string {
 func TestDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "diag.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 120, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}
