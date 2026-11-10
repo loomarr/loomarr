@@ -1,6 +1,6 @@
 import { playerChrome, ThemeScope } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
-import { type LayoutChangeEvent, View } from "react-native";
+import { type LayoutChangeEvent, Platform, View } from "react-native";
 
 import { ChannelBand } from "./channel-band";
 import { gradientOr, webOnly } from "./flat";
@@ -16,6 +16,13 @@ import { clearOfWatermark, type Frame } from "./watermark-clearance";
 
 // The height of a top-row key.
 const KEY = 48;
+
+// Hidden chrome on the web stays in the tab order and the accessibility tree: focusing a key is how
+// a keyboard brings the controls back (the player reveals on focus), so the layer must not be
+// aria-hidden over focusable keys (WCAG 4.1.2, axe aria-hidden-focus). Natively, a hidden layer is
+// hidden from the reader as before.
+const hiddenFromReaders = (hidden: boolean): true | undefined =>
+  hidden && Platform.OS !== "web" ? true : undefined;
 
 // PlayerChrome — the chrome every Loomarr player wears (frontend-design §9; the mock of record is
 // design/watch-player, variant H). Drawn over the picture, back to front: one bottom scrim, the band
@@ -106,7 +113,7 @@ const ChromeBody = memo(
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
         <View
-          aria-hidden={!shown || undefined}
+          aria-hidden={hiddenFromReaders(!shown)}
           pointerEvents="none"
           style={{
             bottom: 0,
@@ -148,7 +155,7 @@ const ChromeBody = memo(
           </View>
         </View>
         <View
-          aria-hidden={!controls || undefined}
+          aria-hidden={hiddenFromReaders(!controls)}
           pointerEvents={controls ? "box-none" : "none"}
           style={{
             opacity: controls ? 1 : 0,

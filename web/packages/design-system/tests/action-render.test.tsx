@@ -47,6 +47,18 @@ describe("Action variants", () => {
     expect(markup).toContain("color:var(--contentInverse)");
   });
 
+  // The light theme's label is white, 4.1:1 on the brand magenta, so its fill is the light suggest
+  // accent (#A8246F, 6.6:1 with white).
+  it("fills the suggest tone with the light accent in the light theme", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider theme="light">
+        <Action tone="suggest">Suggest a lineup</Action>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("background-color:rgba(168,36,111,1.00)");
+    expect(markup).not.toContain("background-color:rgba(214,64,159,1.00)");
+  });
+
   // The pager's "Older ›": the row reverses rather than the markup, so the decorative icon stays
   // first in the source and the label alone still names the button.
   it("draws an inline icon after the label when asked, without renaming the button", () => {

@@ -571,7 +571,9 @@ const GuideGrid = ({
                 transform: [{ translateX: -20 }],
               }}
             >
-              <Text textRole="mono" tone="inverse">
+              {/* The brand chroma's ink in both themes, as on a decade fill: the light theme's
+                  inverse (white) is 3.9:1 on this red. */}
+              <Text textRole="mono" tone="onDecade">
                 {formatGuideTime(nowMs, layout.timezone)}
               </Text>
             </View>

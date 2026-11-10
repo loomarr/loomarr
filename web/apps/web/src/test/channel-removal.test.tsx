@@ -16,6 +16,7 @@ import { channel } from "@/test/fixtures/channels";
 import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
+import { settleOnTeardown } from "@/test/settle-router";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -39,11 +40,13 @@ const renderDanger = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const router = createRouter({
-    routeTree,
-    context: { queryClient },
-    history: createMemoryHistory({ initialEntries: ["/channels/ch-1/danger"] }),
-  });
+  const router = settleOnTeardown(
+    createRouter({
+      routeTree,
+      context: { queryClient },
+      history: createMemoryHistory({ initialEntries: ["/channels/ch-1/danger"] }),
+    }),
+  );
   // LoomarrProvider as main.tsx mounts it: the channel header's ident is a design-system view.
   render(
     <LoomarrProvider theme="dark">

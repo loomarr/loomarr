@@ -1,4 +1,4 @@
-import { isWeb, useTheme, View } from "@tamagui/core";
+import { isWeb, useTheme, useThemeName, View } from "@tamagui/core";
 import type {
   ComponentProps,
   ComponentRef,
@@ -173,6 +173,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
     ref,
   ) => {
     const theme = useTheme();
+    const lightTheme = useThemeName().startsWith("light");
     const focusLook = useFocusLook({ onBlur, onFocus });
     const focused = focusLook.focused;
     const render: ReactElement<Record<string, unknown>> | undefined =
@@ -215,10 +216,13 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
             outlineWidth: 3,
           }
         : undefined;
+    // The suggest fill: brandChroma[4] under the dark theme's dark label. The light theme's label is
+    // white, 4.1:1 on that magenta, so the light fill is its suggest accent (#A8246F, 6.6:1).
+    const suggestFill = lightTheme ? theme.accentSuggest.val : brandChroma[4];
     const backgroundColor = look
       ? look.background
       : tone === "suggest"
-        ? brandChroma[4]
+        ? suggestFill
         : tone === "primary"
           ? theme.actionPrimary.val
           : selected
@@ -235,7 +239,7 @@ const Action: ForwardRefExoticComponent<ActionProps & RefAttributes<ActionRef>> 
       : focused && !filled
         ? theme.actionFocus.val
         : tone === "suggest"
-          ? brandChroma[4]
+          ? suggestFill
           : tone === "primary"
             ? theme.actionPrimary.val
             : pressed
