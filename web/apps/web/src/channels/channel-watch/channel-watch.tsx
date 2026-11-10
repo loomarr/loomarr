@@ -600,14 +600,13 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
         {playerEl}
-        {/* While the wash is up, its centred channel line is the visible readout, so the OSD card
-            would only repeat it; it stays as the screen-reader announcement. */}
+        {/* The wash's centred channel line is the visible readout; this is the same line for a
+            screen reader. */}
         {tuning && (
           <TunerOSD
             number={osdChannel.number}
             name={osdChannel.name}
             currentTitle={player.currentTitle}
-            className="sr-only"
           />
         )}
       </div>
