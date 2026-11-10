@@ -105,9 +105,12 @@ const openMore = async () => {
 };
 
 // A sheet reached through More: its row, then the sheet it opens.
+// A More row with a detail ("Picture  Auto · 1080p") is named by what it shows, so the row is found by
+// its leading words; the sheet it opens is titled with the row's label alone.
 const openFromMore = async (row: string) => {
   const more = await openMore();
-  await userEvent.click(within(more).getByRole("button", { name: row }));
+  const named = new RegExp(`^${row}(?! in picture)`);
+  await userEvent.click(within(more).getByRole("button", { name: named }));
   return screen.getByRole("dialog", { name: row });
 };
 
@@ -287,7 +290,8 @@ describe("ChannelWatch pickers", () => {
 
       await screen.findByText("Airing Programme");
       const more = await openMore();
-      await userEvent.click(within(more).getByRole("button", { name: "Start over" }));
+      // A row with a detail is named by what it shows: "Start over" and the programme.
+      await userEvent.click(within(more).getByRole("button", { name: /^Start over/ }));
       expect(hls.liveTransport.seek).toHaveBeenCalledWith(500_000);
     });
 
@@ -299,7 +303,7 @@ describe("ChannelWatch pickers", () => {
 
       expect(await screen.findByText("Airing Programme")).toBeInTheDocument();
       const more = await openMore();
-      expect(within(more).queryByRole("button", { name: "Start over" })).not.toBeInTheDocument();
+      expect(within(more).queryByRole("button", { name: /^Start over/ })).not.toBeInTheDocument();
     });
   });
 
@@ -311,7 +315,7 @@ describe("ChannelWatch pickers", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Go live" }));
     expect(hls.liveTransport.goLive).toHaveBeenCalledOnce();
     const more = await openMore();
-    await userEvent.click(within(more).getByRole("button", { name: "Go live" }));
+    await userEvent.click(within(more).getByRole("button", { name: /^Go live/ }));
     expect(hls.liveTransport.goLive).toHaveBeenCalledTimes(2);
   });
 
@@ -528,7 +532,8 @@ describe("ChannelWatch — full-bleed route", () => {
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       const more = await openMore();
-      expect(within(more).queryByRole("button", { name: "Picture" })).not.toBeInTheDocument();
+      // "Picture" and its detail, not "Picture in picture".
+      expect(within(more).queryByRole("button", { name: /^Picture(?! in picture)/ })).not.toBeInTheDocument();
     });
   });
 
@@ -777,12 +782,23 @@ describe("ChannelWatch switch readout", () => {
   const next = channel({ id: "ch-2", name: "Saturday Cartoons", number: 12, status: "live" });
   // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD, not
   // the chrome while it is hidden under the wash.
+  const isTransparent = (el: Element) => {
+    for (let node: Element | null = el; node; node = node.parentElement)
+      if (node instanceof HTMLElement && node.style.opacity === "0") return true;
+    return false;
+  };
   const visibleNames = (name: string) =>
     screen
       .queryAllByText(
         (_, el) => el?.childNodes[0]?.nodeType === Node.TEXT_NODE && (el.textContent ?? "").includes(name),
       )
-      .filter((el) => !el.closest("[aria-hidden='true']") && !el.closest("[role='status']"));
+      .filter(
+        (el) =>
+          !el.closest("[aria-hidden='true']") &&
+          !el.closest("[role='status']") &&
+          // Hidden chrome is transparent on the web, not aria-hidden (its keys stay focusable).
+          !isTransparent(el),
+      );
   const switchTo = async (target: typeof next) => {
     hls.status = "playing";
     const view = render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, {
