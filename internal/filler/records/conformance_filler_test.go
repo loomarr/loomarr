@@ -3608,6 +3608,7 @@ func testFillerPulls(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+	saveMembers(t, s, "admin-2")
 	created := time.Now().UTC().Truncate(time.Second)
 
 	p := acquisition.Pull{

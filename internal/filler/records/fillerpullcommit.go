@@ -25,7 +25,7 @@ func (s *sqlStore) CommitPullApproval(ctx context.Context, p acquisition.Pull, r
 	}
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_pulls
-		SET status = ?, note = ?, plan_json = ?, decided_at = ?, decided_by = ?
+		SET status = ?, note = ?, plan_json = ?, decided_at = ?, decided_by = `+pullDecider+`
 		WHERE id = ? AND status = ? AND NOT EXISTS
 		(SELECT 1 FROM filler_acquisition_runs WHERE pull_id = ?)`),
 		string(p.Status), p.Note, string(plan), epoch(p.DecidedAt), p.DecidedBy,
@@ -58,7 +58,7 @@ func (s *sqlStore) DismissPull(ctx context.Context, p acquisition.Pull) error {
 		return fmt.Errorf("invalid filler pull dismissal")
 	}
 	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_pulls
-		SET status = ?, decided_at = ?, decided_by = ? WHERE id = ? AND status = ?`),
+		SET status = ?, decided_at = ?, decided_by = `+pullDecider+` WHERE id = ? AND status = ?`),
 		string(p.Status), epoch(p.DecidedAt), p.DecidedBy, p.ID, string(acquisition.PullPending))
 	if err != nil {
 		return fmt.Errorf("dismiss filler pull: %w", err)

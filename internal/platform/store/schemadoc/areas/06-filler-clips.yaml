@@ -286,7 +286,9 @@ tables:
         candidates turned down and why, and how each source was treated.
       created_at: When the pull was proposed, in Unix seconds.
       decided_at: When it was approved or dismissed, in Unix seconds; 0 while pending.
-      decided_by: Who approved or dismissed it. Empty while pending.
+      decided_by: >
+        The admin who approved or dismissed it (users.id). Null while pending, and once that admin is
+        deleted.
 
   - name: filler_pull_commits
     about: >

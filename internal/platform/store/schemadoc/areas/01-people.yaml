@@ -123,7 +123,9 @@ tables:
       expires_at: When it stops working, in Unix seconds (always 7 days after created_at).
       terminal_at: >
         When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending.
-      redeemed_by: The id of the account created from it, in users. Empty unless redeemed.
+      redeemed_by: >
+        The id of the account created from it, in users. Null unless redeemed, and once that account
+        is deleted.
 
   - name: invitation_grants
     about: >

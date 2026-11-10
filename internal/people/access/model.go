@@ -126,8 +126,9 @@ func (i Invitation) Validate() error {
 			return fmt.Errorf("expired invitation terminates at expiry")
 		}
 	case StatusRedeemed:
-		if i.TerminalAt.IsZero() || i.RedeemedBy == "" {
-			return fmt.Errorf("redeemed invitation requires its user and terminal time")
+		// RedeemedBy names the member it made, and is "" once that member is deleted.
+		if i.TerminalAt.IsZero() {
+			return fmt.Errorf("redeemed invitation requires its terminal time")
 		}
 	case StatusRevoked:
 		if i.TerminalAt.IsZero() || i.RedeemedBy != "" {

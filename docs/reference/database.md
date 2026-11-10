@@ -177,7 +177,7 @@ One row per invitation an admin sends to let a new person in. It reserves a user
 | `created_at` | When the admin made the invitation, in Unix seconds. | `BIGINT` |
 | `expires_at` | When it stops working, in Unix seconds (always 7 days after created_at). | `BIGINT` |
 | `terminal_at` | When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending. | `BIGINT` |
-| `redeemed_by` | The id of the account created from it, in users. Empty unless redeemed. | `TEXT` |
+| `redeemed_by` | The id of the account created from it, in users. Null unless redeemed, and once that account is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### invitation_grants
 
@@ -1425,7 +1425,7 @@ A proposed batch of clips to download, which an operator approves or dismisses. 
 | `plan_json` | JSON document of the plan: what was asked for, the items selected (each with its source, address, estimate and why it was chosen, including any the operator dropped), the candidates turned down and why, and how each source was treated. | `TEXT` |
 | `created_at` | When the pull was proposed, in Unix seconds. | `INTEGER` |
 | `decided_at` | When it was approved or dismissed, in Unix seconds; 0 while pending. | `INTEGER` |
-| `decided_by` | Who approved or dismissed it. Empty while pending. | `TEXT` |
+| `decided_by` | The admin who approved or dismissed it (users.id). Null while pending, and once that admin is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### filler_pull_commits
 
@@ -1908,7 +1908,7 @@ One row per place notifications can be sent, such as a Discord webhook, an ntfy 
 | `means` | The kind of service it sends through. One of email, webhook, discord, ntfy, gotify, apprise, pushover, telegram, mattermost, matrix, web_push (Browser Push), mqtt or slack. | `TEXT` |
 | `label` | The name shown for the destination, also shown in delivery history in place of its address. | `TEXT` |
 | `scope` | installation for a destination an admin set up for the whole household; person for one that belongs to a single person. | `TEXT` |
-| `owner_id` | The person a person-scoped destination belongs to, from users. Empty for installation scope. | `TEXT` |
+| `owner_id` | The person a person-scoped destination belongs to, from users; it goes with them. Null for installation scope. | `TEXT` · may be empty · → `users.id` |
 | `audience` | Who the destination is for. person means its owner's own notifications; approvers means the admins who review requests; operators means the admins who look after the server and library. | `TEXT` |
 | `topics_json` | A JSON list of the notification topics the destination receives (the same values as notification_intents.topic). Topics not in the list are never sent here. | `TEXT` |
 | `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `BOOLEAN` |
@@ -2003,8 +2003,8 @@ One saved setting value. Every setting resolves environment variable, then this 
 | `key` | The setting's name, such as activity.retention, as listed in the configuration reference. A few keys hold Loomarr's own state, such as instance_id. | `TEXT` · key |
 | `value` | The stored value as text. Secret settings (API keys, tokens) are stored encrypted, beginning with loomarr-secret:v1:, and can only be read with the installation key. | `TEXT` |
 | `updated_at` | When the value was last written, in Unix seconds. 0 means unknown (written before this was tracked). | `BIGINT` |
-| `updated_by` | The id of the person who last changed it, pointing at users. Empty for values Loomarr wrote itself. | `TEXT` · may be empty |
 | `env_override` | 1 when an admin has taken the setting back from its environment variable, so the saved value wins even while the variable is still set. 0 means a set environment variable wins. | `BOOLEAN` |
+| `updated_by` | The id of the person who last changed it, pointing at users. Null for values Loomarr wrote itself, for a change sent with the API token, and once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### secret_protection_metadata
 

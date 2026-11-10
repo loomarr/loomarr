@@ -395,10 +395,6 @@ func (s *sqlStore) RewriteSettingValues(ctx context.Context, rows []SettingMutat
 func (s *sqlStore) upsertSetting(
 	ctx context.Context, tx *sql.Tx, row SettingMutation, updatedAt time.Time, updatedBy string,
 ) error {
-	var by any
-	if updatedBy != "" {
-		by = updatedBy
-	}
 	at := updatedAt
 	if at.IsZero() {
 		at = time.Now()
@@ -410,9 +406,9 @@ func (s *sqlStore) upsertSetting(
 	// is the only writer. On INSERT it takes the column default (false), so a first-time
 	// value write never claims the key either.
 	_, err := tx.ExecContext(ctx, s.ph(
-		`INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)
+		`INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, `+settingAuthor+`)
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by`),
-		row.Key, row.Value, at.Unix(), by)
+		row.Key, row.Value, at.Unix(), updatedBy)
 	if err != nil {
 		return fmt.Errorf("upsert setting %q: %w", row.Key, err)
 	}
@@ -449,16 +445,16 @@ func validateSettingBatch(batch SettingBatch) error {
 // env-pinned with nothing stored, and unlocking it is exactly the case where that happens.
 // Handing a key back leaves the stored value intact, so re-locking is reversible.
 func (s *sqlStore) SetSettingEnvOverride(ctx context.Context, key string, on bool, seed string, by string) error {
-	var author any
-	if by != "" {
-		author = by
-	}
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO settings (key, value, updated_at, updated_by, env_override) VALUES (?, ?, ?, ?, ?)
+		`INSERT INTO settings (key, value, updated_at, updated_by, env_override) VALUES (?, ?, ?, `+settingAuthor+`, ?)
 		 ON CONFLICT(key) DO UPDATE SET env_override=excluded.env_override, updated_at=excluded.updated_at, updated_by=excluded.updated_by`),
-		key, seed, time.Now().Unix(), author, on)
+		key, seed, time.Now().Unix(), by, on)
 	return err
 }
+
+// settingAuthor writes a setting's updated_by: the admin, or NULL for a system write ("") and for an
+// admin deleted since they made it. updated_by is a foreign key to users (SET NULL, #2793).
+const settingAuthor = `(SELECT id FROM users WHERE id = ?)`
 
 func (s *sqlStore) DeleteSetting(ctx context.Context, key string) error {
 	return s.ApplySettingBatch(ctx, SettingBatch{Deletes: []string{key}})
