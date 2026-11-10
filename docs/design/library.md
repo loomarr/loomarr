@@ -273,9 +273,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   layout is handled, because it is the one seen in a real library. The `trickplay/` folder skip
   stays until another server's layout turns up.
 - **Progress.** One `scan.Tracker` records an import as three steps, each with its own count:
-  1 *Looking through your folders* (the walk; its total is the top-level entries of every walked
-  root, listed once at the start of the pass, and it names the folder it lists, "TV / Night Ferry /
-  Season 2"), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
+  1 *Looking through your folders* (the walk and the writes that follow it; its total is the
+  top-level entries of every walked root, listed once at the start of the pass, and it names the
+  folder it is on, "TV / Night Ferry / Season 2". An entry is done in two halves, once the walk has
+  listed it and once its files are written, because over a share either half can take minutes; the
+  time left is worked out afresh from when a root's writes begin), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
   fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status

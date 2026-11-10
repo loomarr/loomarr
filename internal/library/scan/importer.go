@@ -633,7 +633,16 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			ids[i] = b.identify(file)
 		}
 	}
+	// The walk is over; the writes below are the other half of step 1, and can take as long.
+	report.writing()
+	writingDir := ""
 	for i, file := range walk.Files {
+		// The entries before this file's are written, and the step names the folder it is on.
+		report.wrote(file.Top)
+		if dir := relDir(file.Rel); dir != writingDir {
+			writingDir = dir
+			report.listing(dir)
+		}
 		old, known := prev[file.Path]
 		// A held file the walk finds again is back.
 		old.Held = false
