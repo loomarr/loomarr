@@ -83,17 +83,14 @@ test("lets every build browse the local network for a server", async () => {
   }
 });
 
-test("autolinks LAN discovery into the iPhone app and browses only in the foreground", async () => {
+// Browsing only while the app is in the foreground is useAppForeground's behaviour, pinned in
+// packages/native-app/tests/native-app.test.tsx.
+test("autolinks LAN discovery into the iPhone app only", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.dependencies["@loomarr/lan-discovery-native"], "workspace:*");
   assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/lan-discovery-native"));
   // Android's Bonjour path still reports a resolved LAN address, which would not work off Wi-Fi.
   assert.equal((await autolinkedNativeModules("android")).has("@loomarr/lan-discovery-native"), false);
-
-  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
-  assert.match(shell, /Platform\.OS === "ios" \? createNativeServerDiscovery\(\) : undefined/);
-  assert.match(shell, /setAppForeground\(state === "active"\)/);
-  assert.match(shell, /discovery=\{discovery\}\s*discoveryForeground=\{appForeground\}/);
 });
 
 test("resolves the TestFlight channel to the permanent iPhone identity", async () => {
@@ -154,7 +151,10 @@ test("fails closed when a TestFlight build has an invalid channel or version met
   );
 });
 
-test("captures crashes for the paired server, with MetricKit linked into the iPhone app only", async () => {
+// What the app does with crash capture (install at module load, the layout's root, the shell's upload
+// and breadcrumbs, the bundle-time gate on the test trigger) is pinned in
+// packages/native-app/tests/native-app.test.tsx; this checks the native side that cannot run there.
+test("links MetricKit into the iPhone app only, at the SDK's file-system version", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.dependencies["@loomarr/crash-reports-native"], "workspace:*");
   // The synchronous file API the fatal handler writes with; first-party Expo, at the version the SDK bundles.
@@ -164,21 +164,6 @@ test("captures crashes for the paired server, with MetricKit linked into the iPh
   );
   assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/crash-reports-native"));
   assert.equal((await autolinkedNativeModules("android")).has("@loomarr/crash-reports-native"), false);
-
-  // The shared bootstrap installs capture at module load, before the layout's first render.
-  const bootstrap = await readFile(new URL("../src/native-app.ts", import.meta.url), "utf8");
-  assert.match(bootstrap, /^const nativeApp = createNativeApp\(\);$/m);
-  const layout = await readFile(new URL("../app/_layout.tsx", import.meta.url), "utf8");
-  assert.match(layout, /<NativeAppRoot app=\{nativeApp\}>/);
-  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
-  assert.match(shell, /useCrashReportUpload\(credential, session\)/);
-  assert.match(shell, /diagnostics: nativeApp\.diagnostics/);
-  // The test trigger is gated on a bundle-time variable, never on a runtime value.
-  const capture = await readFile(
-    new URL("../../../packages/native-app/src/crash-reporting/crash-reporting.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(capture, /if \(process\.env\.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1" && /);
 });
 
 test("keeps unused animation modules out of Android without breaking Apple pods", async () => {
@@ -197,18 +182,6 @@ test("keeps unused animation modules out of Android without breaking Apple pods"
   const appleModules = await autolinkedNativeModules("ios");
   assert.equal(appleModules.has("react-native-reanimated"), false);
   assert.equal(appleModules.has("react-native-worklets"), true);
-});
-
-test("opens on the Guide without tuning a channel", async () => {
-  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
-  assert.match(shell, /usePairedClient\(\{[^}]*initialTune: "none"[^}]*\}\)/);
-  assert.match(shell, /useState<ClientDestination>\("guide"\)/);
-});
-
-test("pauses the picture off Watching and forgets the pause before tuning from the Guide", async () => {
-  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
-  assert.match(shell, /useShellPause\(controller, active === "watching"\)/);
-  assert.match(shell, /forgetShellPause\(channelId\);\s*void controller\.tuneChannel\(channelId\)/);
 });
 
 test("builds the Expo modules core from source on iOS, against react-native-tvos", async () => {

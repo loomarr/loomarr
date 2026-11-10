@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useRouteContent } from "@/lib/use-route-content";
 import { RequestRow } from "@/queue/request-row";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
@@ -148,7 +149,8 @@ const pullRowFor = (pull: PullDTO) => {
 
 const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
   const { isAdmin } = useAuth();
-  const { inTab, error, refetch } = useRequests();
+  const { inTab, isLoading, error, refetch } = useRequests();
+  useRouteContent(!isLoading && error == null);
   const entries = inTab(tab);
 
   // Filler pulls are an admin-only list server-side (§10 V35), so a member's Done tab asks for
@@ -196,7 +198,8 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
 // (§342).
 const NeedsYouList = () => {
   const { isAdmin } = useAuth();
-  const { inTab, pendingApprovals, error, refetch } = useRequests();
+  const { inTab, pendingApprovals, isLoading, error, refetch } = useRequests();
+  useRouteContent(!isLoading && error == null);
   // ⚠ Kept true while a bulk review is open: approving the last pending items drops the count to
   // zero, and unmounting the queue then would discard the result the operator is about to read.
   const [reviewing, setReviewing] = useState(false);

@@ -11,11 +11,11 @@ One area of the [package map](../package-map.md#start-here).
 - **platform** · 8 imports — the diagnostics process manager that runs every encoder, the store behind a backend transition, start-up configuration, Tunarr's HTTP client and metrics, the address check that keeps LAN discovery answering only the household's network, and the language codes an audio track is chosen by
 - **media** · 5 imports — the encoder choice, loudness, media facts and process-tree control the stream is built from
 - **channels** · 5 imports — the `channels/schedule` programming a backend plays
-- **library** · 2 imports — the media server's Live TV API that channels are published to, and `provision` keys naming what a slot plays
+- **library** · 2 imports — the media server's Live TV API that channels are published to, and `library/provision` keys naming what a slot plays
 
 ## Packages
 
-- **`playout`** · 13 importers · → `channels/schedule`, `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/packager`, `provision`
+- **`playout`** · 13 importers · → `channels/schedule`, `library/provision`, `media/encode`, `media/measure`, `media/proctree`, `platform/diagnostics`, `platform/langcode`, `playout/packager`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`playout/backendtransition`** · 1 importer · → `channels/schedule`, `platform/store`
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
@@ -25,7 +25,7 @@ One area of the [package map](../package-map.md#start-here).
   Turns a channel's watermark policy into the bug its programmes air with: it picks the look, colour and holiday version, renders through playout/watermark, caches the files, and runs the per-encoder GPU overlay self-check that gates the bug.
 - **`playout/landiscovery`** · → `platform/httpx`
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
-- **`playout/livetvpublish`** · 1 importer · → `library`, `playout/tunarr`
+- **`playout/livetvpublish`** · 1 importer · → `library/mediaserver`, `playout/tunarr`
   Publishes Loomarr's channels to the media server's Live TV (§6, §9.1): it registers, verifies, refreshes and retires the one tuner + guide pair Loomarr owns, and wires the media server as Tunarr's media source.
 - **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.

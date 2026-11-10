@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/images/rustgen"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 type changingStoreCounts struct {

@@ -39,13 +39,18 @@ Where a Record sits on its way into the library: `wanted` → `requested` → `d
 _Avoid_: status (reserved for Proposals and Jobs), download state
 
 **Library**:
-The operator's media server (Emby or Jellyfin) — the upstream authority on what is currently
-available and the first importer into Loomarr's Media Inventory. Loomarr reads it and never writes
-to it; the Library is not the database of record for Loomarr's accumulated metadata. Loomarr's own
-scanner (#2151, decision 0046) is replacing it as the catalog: its `library_*` tables key titles by
-inventory item id (`inventory_item_id`), while a media-server id keeps the name `item_id` or
-`library_id`.
-_Avoid_: media server (acceptable in prose, but `library` is the term in code), Emby, Jellyfin
+Loomarr's own record of what the household owns, built by its scanner from the media folders
+(#2151, decision 0046). Presence, search, episodes and item metadata are read from the `library_*`
+tables, which key titles by inventory item id (`inventory_item_id`). In code it is the
+`internal/library` area.
+_Avoid_: catalog (a metadata provider's capability), media server (a different thing, below)
+
+**Media server**:
+The operator's Emby or Jellyfin. Loomarr reads no catalog from it: it signs members in and lists
+accounts for import, names the media folders and the metadata language, and hosts the Live TV that
+channels are published to. In code it is `internal/library/mediaserver`; its settings keep their
+`library.*` keys, and a media-server id keeps the name `item_id` or `library_id`.
+_Avoid_: Library (for the server), Emby or Jellyfin except where the two differ
 
 **Media Inventory**:
 Loomarr's durable, provider-neutral knowledge of Media Items, Media Sources, Origins, and current

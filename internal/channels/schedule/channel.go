@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Strategy is how a channel's available programs are ordered onto the timeline

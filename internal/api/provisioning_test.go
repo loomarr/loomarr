@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	peopleapi "github.com/loomarr/loomarr/internal/api/people"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -44,7 +44,7 @@ func newProvisioningHarness(t *testing.T, configs ...provisioningHarnessConfig) 
 	ms.Users = config.Users
 	t.Cleanup(ms.Close)
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		n := 0
 		newID := func() string { n++; return "local-" + string(rune('a'+n-1)) }

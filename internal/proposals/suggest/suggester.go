@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // catalogToolName is the single tool the model may call. The grounding guarantee

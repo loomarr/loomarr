@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // timelineThumbResolver is the slow half of programme artwork: it turns a programme identity into

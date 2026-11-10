@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Scanner answers the availability scan from the Library's own titles, so a title confirms with
@@ -25,20 +25,20 @@ type Scanner struct {
 // NewScanner returns the availability scan's title source over the Library's titles.
 func NewScanner(titles librarystore.LibraryTitleReader) Scanner { return Scanner{titles: titles} }
 
-func (s Scanner) RecentlyAdded(ctx context.Context, since time.Time) ([]library.SearchResult, error) {
+func (s Scanner) RecentlyAdded(ctx context.Context, since time.Time) ([]mediaserver.SearchResult, error) {
 	return s.scan(ctx, since)
 }
 
-func (s Scanner) AllItems(ctx context.Context) ([]library.SearchResult, error) {
+func (s Scanner) AllItems(ctx context.Context) ([]mediaserver.SearchResult, error) {
 	return s.scan(ctx, time.Time{})
 }
 
-func (s Scanner) scan(ctx context.Context, since time.Time) ([]library.SearchResult, error) {
+func (s Scanner) scan(ctx context.Context, since time.Time) ([]mediaserver.SearchResult, error) {
 	titles, err := s.titles.LibraryTitles(ctx, since)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]library.SearchResult, 0, len(titles))
+	out := make([]mediaserver.SearchResult, 0, len(titles))
 	for _, t := range titles {
 		out = append(out, titlesearch.LibrarySearchResult(t))
 	}
@@ -58,7 +58,7 @@ func NewOwnedLookup(titles librarystore.LibraryTitleReader) OwnedLookup {
 }
 
 func (l OwnedLookup) Lookup(
-	ctx context.Context, kind library.ProviderKind, id string, mt library.MediaType,
+	ctx context.Context, kind mediaserver.ProviderKind, id string, mt mediaserver.MediaType,
 ) (string, bool, error) {
 	t, ok, err := titlesearch.OwnedTitle(ctx, l.titles, kind, id, mt)
 	return t.ID, ok, err
@@ -79,13 +79,13 @@ func (a Ratings) Rating(ctx context.Context, key provision.Key) (string, bool, e
 	if !ok {
 		return "", false, nil // an unparseable key can't be looked up; leave it unrated
 	}
-	kind := library.TMDB
+	kind := mediaserver.TMDB
 	if provider == "tvdb" {
-		kind = library.TVDB
+		kind = mediaserver.TVDB
 	}
-	lmt := library.Movie
+	lmt := mediaserver.Movie
 	if mt == provision.Series {
-		lmt = library.Series
+		lmt = mediaserver.Series
 	}
 	t, ok, err := titlesearch.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
 	if err != nil || !ok {

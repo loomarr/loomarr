@@ -1,0 +1,65 @@
+// Package mediaserver is the Library port (design §6, §2 boundaries): a shared
+// Emby/Jellyfin adapter. Both flavors share every endpoint and response shape;
+// they differ ONLY in how auth rides on the request, so flavor-specific code is
+// isolated to header construction (§6, §11) and everything else is one impl.
+package mediaserver
+
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+// Flavor selects the media-server dialect (§15 LIBRARY_FLAVOR).
+type Flavor string
+
+const (
+	Emby     Flavor = "emby"
+	Jellyfin Flavor = "jellyfin"
+)
+
+// ParseFlavor validates the configured flavor.
+func ParseFlavor(s string) (Flavor, error) {
+	switch Flavor(s) {
+	case Emby:
+		return Emby, nil
+	case Jellyfin:
+		return Jellyfin, nil
+	default:
+		return "", fmt.Errorf("unknown LIBRARY_FLAVOR %q (want emby|jellyfin)", s)
+	}
+}
+
+// User is a media-server account as needed for import/sync and roles (§11).
+type User struct {
+	ID       string // media-server user id — the local key (§11)
+	Name     string
+	IsAdmin  bool
+	Disabled bool
+}
+
+// LibraryScanner is the narrow port the poll-based availability scan depends on (§4, §18.1):
+// bulk reads of the library with provider ids, so the scan job confirms every in-flight title
+// in one call instead of an N-lookup storm. The Library's titles satisfy it (#2151 step 16).
+// RecentlyAdded is the incremental path; AllItems the periodic full sweep.
+// Items read before a failure may ride with the error; the scan confirms them.
+type LibraryScanner interface {
+	RecentlyAdded(ctx context.Context, since time.Time) ([]SearchResult, error)
+	AllItems(ctx context.Context) ([]SearchResult, error)
+}
+
+// ProviderKind is the external id namespace used in a Lookup (§6).
+type ProviderKind string
+
+const (
+	TMDB ProviderKind = "tmdb"
+	TVDB ProviderKind = "tvdb"
+)
+
+// MediaType maps to the media server's IncludeItemTypes (§6).
+type MediaType string
+
+const (
+	Movie  MediaType = "Movie"
+	Series MediaType = "Series"
+)

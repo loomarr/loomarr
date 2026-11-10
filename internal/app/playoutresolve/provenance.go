@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Provenance answers "why is this here, and is it real yet?" in one line, for the guide's

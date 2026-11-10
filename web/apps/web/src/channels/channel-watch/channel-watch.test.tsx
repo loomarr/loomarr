@@ -1092,6 +1092,14 @@ describe("ChannelWatch at phone width", () => {
     return { step, tune };
   };
 
+  // A mouse at phone width (a narrow desktop window, the tuner e2e's browsers) gets the phone's keys:
+  // the pointer form's legends and Volume key are wider than 390 px and clipped More.
+  it("draws the phone's keys at phone width even with a fine pointer", async () => {
+    renderPhone();
+    expect(await screen.findByRole("button", { name: "More" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(Mute|Unmute)$/ })).not.toBeInTheDocument();
+  });
+
   it("pins the picture under the top row, with the band and keys below it", async () => {
     renderPhone();
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();

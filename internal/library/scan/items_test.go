@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/media/header"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 )
 
 // A title's page says where its details came from and what its file holds: the picture, the sound

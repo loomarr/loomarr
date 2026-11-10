@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 func touch(t *testing.T, root, rel string) {

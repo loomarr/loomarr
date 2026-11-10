@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The store re-exports the storedb kernel by alias so importers keep one import. Aliases are only

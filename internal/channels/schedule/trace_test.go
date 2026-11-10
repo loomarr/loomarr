@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 func traceHas(facts []schedule.ScheduleFact, stage schedule.ScheduleStage, reason schedule.ScheduleReason, key provision.Key) bool {

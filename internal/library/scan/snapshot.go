@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/media/header"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 

@@ -13,13 +13,9 @@ const bundledNativeModules = async () =>
     await readFile(createRequire(import.meta.url).resolve("expo/bundledNativeModules.json"), "utf8"),
   );
 
-// The paired runtime (catalog, guide, diagnostics, event stream, lifecycle) is shared with the phone, so it
-// lives in the paired-client package's usePairedClient; the TV supplies its identity and tune marks.
-const readPairedClient = () =>
-  readFile(
-    new URL("../../../packages/paired-client/src/paired-client/paired-client.ts", import.meta.url),
-    "utf8",
-  );
+// This file checks the app's configuration and native modules. What the shell does (its hooks, the
+// paired runtime it shares with the phone, crash reporting, the launch identity) is pinned by vitest
+// in packages/ui-tv, packages/paired-client, packages/native-app and packages/ui.
 
 test("keeps the TV proof isolated from the shipping application", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
@@ -240,19 +236,9 @@ test("boots through the shared native app and reports its crashes to the paired 
   for (const name of ["expo-constants", "expo-file-system"]) {
     assert.equal(`~${manifest.dependencies[name]}`, bundled[name]);
   }
-
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-  assert.match(appSource, /createNativeApp\(\{/);
-  assert.match(appSource, /useCrashReportUpload\(credential, session\)/);
-  assert.match(appSource, /<NativeAppRoot app=\{nativeApp\}>/);
-  assert.doesNotMatch(appSource, /SafeAreaProvider|LoomarrProvider/);
 });
 
 test("starts from SecureStore without the abandoned Compose credential bridge", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /createPairingCredentialStore/);
-  assert.doesNotMatch(appSource, /createMigratingPairingCredentialStore|legacyPairingSource/);
   await assert.rejects(access(new URL("../src/legacy-pairing.ts", import.meta.url)), {
     code: "ENOENT",
   });
@@ -261,32 +247,9 @@ test("starts from SecureStore without the abandoned Compose credential bridge", 
   });
 });
 
-test("composes the production TV root around shared dark pairing and paired API transport", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  // The shared root draws the safe-area and Loomarr providers (the provider's default theme is dark).
-  assert.match(appSource, /<NativeAppRoot app=\{nativeApp\}>\s+<TvClient \/>\s+<\/NativeAppRoot>/);
-  assert.match(appSource, /<PairingShell/);
-  assert.match(appSource, /allowServerEntry/);
-  assert.match(appSource, /discovery=\{discovery\}/);
-  assert.doesNotMatch(appSource, /Set EXPO_PUBLIC_LOOMARR_URL/);
-  assert.match(appSource, /createPairingTransport/);
-  assert.match(appSource, /validatePairingCredential/);
-  assert.match(appSource, /usePairedClient\(\{/);
-  assert.match(
-    appSource,
-    /<TvShell credential=\{credential\} key=\{credential\.token\} session=\{session\} \/>/,
-  );
-  assert.match(
-    await readPairedClient(),
-    /createAuthenticatedFetch\(credential, \(\) => session\.revoked\(\)\)/,
-  );
-});
-
 test("hands the native splash to the shared Loomarr launch identity", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
   const splashPlugin = config.expo.plugins.find(
     (plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen",
   );
@@ -297,30 +260,10 @@ test("hands the native splash to the shared Loomarr launch identity", async () =
   );
   assert.equal(splashPlugin?.[1].backgroundColor, "#0B0C0E");
   assert.equal(splashPlugin?.[1].dark.backgroundColor, "#0B0C0E");
-  assert.match(appSource, /SplashScreen\.preventAutoHideAsync\(\)/);
-  assert.match(appSource, /<View onLayout=\{hideNativeSplash\} style=\{\{ flex: 1 \}\}>/);
-  assert.match(appSource, /SplashScreen\.hide\(\)/);
-  assert.match(
-    appSource,
-    /<BrandLaunch density="tv" onFinished=\{\(\) => setLaunchAnimationFinished\(true\)\} \/>/,
-  );
-  assert.match(appSource, /const launchMinimumMs = 1_200/);
-  assert.match(appSource, /return \(\) => clearTimeout\(timer\)/);
-  assert.ok(
-    appSource.indexOf("<PairingShell") < appSource.indexOf("<BrandLaunch"),
-    "pairing must initialize beneath the launch identity instead of waiting for its animation",
-  );
 });
 
 test("ships DNS-SD plus bounded broadcast and unicast LAN discovery without restoring Kotlin", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  const adapter = await readFile(
-    new URL(
-      "../../../packages/lan-discovery-native/src/lan-discovery-native/lan-discovery-native.ts",
-      import.meta.url,
-    ),
-    "utf8",
-  );
   const nativeModule = await readFile(
     new URL(
       "../../../packages/lan-discovery-native/android/src/main/java/media/loomarr/tv/discovery/LoomarrLanDiscoveryModule.java",
@@ -340,7 +283,6 @@ test("ships DNS-SD plus bounded broadcast and unicast LAN discovery without rest
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
   assert.deepEqual(config.expo.ios.infoPlist.NSBonjourServices, ["_loomarr._tcp"]);
   assert.ok(config.expo.ios.infoPlist.NSLocalNetworkUsageDescription);
-  assert.match(adapter, /NativeModules\.LoomarrLanDiscovery/);
   assert.match(nativeModule, /NsdManager/);
   assert.match(nativeModule, /_loomarr\._tcp\./);
   assert.match(nativeModule, /DatagramSocket/);
@@ -362,183 +304,4 @@ test("publishes the container-safe discovery port from the Loomarr container", a
   const compose = await readFile(new URL("../../../../docker/compose.yaml", import.meta.url), "utf8");
 
   assert.match(compose, /loomarr:[\s\S]*ports:\s*\["51029:51029\/udp"\]/);
-});
-
-test("keeps the Watching inactivity callback stable across playback renders", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /const dismissControls = useCallback\(\(\) => setControlsVisible\(false\), \[\]\)/);
-  assert.match(appSource, /onDismissControls=\{dismissControls\}/);
-  assert.doesNotMatch(appSource, /onDismissControls=\{\(\) => setControlsVisible\(false\)\}/);
-});
-
-test("keeps the native player and Watching mounted beneath Guide and Surf", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  const watching = appSource.indexOf("<WatchingSurface");
-  const overlay = appSource.indexOf('{active === "watching" ? null : (');
-  assert.ok(watching >= 0, "the paired root must render the shared Watching surface");
-  assert.ok(overlay > watching, "transient destinations must render after the mounted Watching surface");
-  assert.match(appSource, /chromeVisible=\{active === "watching"\}/);
-  assert.match(appSource, /player=\{<NativePlayerView style=\{\{ flex: 1 \}\} transport=\{transport\} \/>\}/);
-  assert.match(appSource, /position: "absolute"/);
-});
-
-test("drives every Watching state from the generated catalog and authoritative Guide", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  const pairedClient = await readPairedClient();
-
-  assert.match(pairedClient, /createChannelCatalogPort\(request\)/);
-  assert.match(pairedClient, /createGuideSourcePort\(request\)/);
-  assert.match(
-    pairedClient,
-    /createCatalogRefresher\(\{ controller, list: createChannelCatalogPort\(request\)\.list \}\)/,
-  );
-  assert.match(pairedClient, /await catalogRefresher\.refresh\(\)/);
-  assert.match(appSource, /watchingScheduleFromGuide\(/);
-  assert.match(appSource, /loading=\{catalogState\.loading\}/);
-  assert.match(appSource, /loadError=\{catalogState\.error\}/);
-  assert.match(appSource, /if \(catalogState\.error\) refresh\(\)/);
-  assert.match(appSource, /else void controller\.retry\(\)/);
-  assert.match(appSource, /onChangeServer=\{\(\) => session\.chooseServer\(\)\}/);
-});
-
-test("mounts the bounded authoritative Guide and returns tune intent to Watching", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /active === "guide"/);
-  assert.match(appSource, /<GuideJourney/);
-  assert.match(appSource, /tvGuideRowWindow\(/);
-  assert.match(appSource, /controller=\{guide\}/);
-  assert.match(appSource, /void controller\.tuneChannel\(channelId\)/);
-  assert.match(appSource, /setActive\("watching"\)/);
-});
-
-test("mounts authoritative grouped Surf data with previous-Channel history", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /<SurfJourney/);
-  assert.match(appSource, /controller=\{guide\}/);
-  assert.match(appSource, /currentChannelId=\{snapshot\.channel\?\.id\}/);
-  assert.match(appSource, /playableChannelIds=\{snapshot\.catalog\.map/);
-  assert.match(appSource, /recentChannelIds=\{snapshot\.recentChannelIds\}/);
-  assert.match(appSource, /void controller\.tuneChannel\(channelId\)/);
-});
-
-test("routes the native remote through TV adapters and preserves platform-home Back", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  // The remote itself (digit entry and its timer, OK versus a long press letting go) is
-  // createTvRemote, whose behaviour packages/ui-tv/tests/tv-remote.test.ts pins.
-  assert.match(appSource, /useTVEventHandler/);
-  // The per-device auto-tune duration (#1659 decision N4) is read from the device's secure store.
-  assert.match(appSource, /createTvAutoTuneSetting\(\{\s*getItem: SecureStore\.getItemAsync/);
-  // The Guide's time edges page through the shared reducer (#1659 decision N4).
-  assert.match(
-    appSource,
-    /onTimeEdge=\{\(side\) => void tvGuideTimeEdge\(guide, guideFocusRegistry, side, Date\.now\(\)\)\}/,
-  );
-  assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
-  assert.match(appSource, /if \(!destination\) return false/);
-  // tvOS routes Menu to BackHandler only while the menu key is enabled: on wherever Back has a
-  // destination, off at the roots so Menu goes Home there (#1500 audit #1).
-  assert.match(
-    appSource,
-    /TVEventControl\.enableTVMenuKey\(\);\s*return \(\) => TVEventControl\.disableTVMenuKey\(\)/,
-  );
-  assert.match(appSource, /useTvMenuKey\(clientBackDestination\(active\) !== null\)/);
-  assert.match(appSource, /useTvMenuKey\(pairingBackAvailable\(pairingState\)\)/);
-});
-
-test("offers digit entry only on a remote with number keys", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  // The Siri Remote has no digits (#1500 audit #3): no "0–9 jump" hint, no channel-number wait.
-  assert.match(appSource, /const isTvOS = Platform\.OS === "ios" && Platform\.isTV;/);
-  assert.match(appSource, /const remoteHasDigits = !isTvOS/);
-  assert.match(appSource, /channelDigits=\{remoteHasDigits\}/);
-  assert.match(appSource, /autoTune=\{\s*remoteHasDigits\s*\?/);
-});
-
-test("restarts Watching inactivity only for handled remote and tune activity", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /controlsActivityKey=\{controlsActivityKey\}/);
-  assert.match(appSource, /if \(handled\) showControlsForActivity\(\);/);
-
-  // Guide and Surf share tuneFromList, which skips only the press tvOS sends when a long-press Select lifts.
-  assert.match(
-    appSource,
-    /const tuneFromList = \(channelId: string\) => \{[\s\S]*?void controller\.tuneChannel\(channelId\);\s*showControlsForActivity\(\);\s*setActive\("watching"\);\s*\};/,
-  );
-  const tuneHandlers = appSource.match(/onTune=\{tuneFromList\}/g);
-  assert.equal(tuneHandlers?.length, 2, "Guide and Surf tune paths must restart Watching inactivity");
-});
-
-test("restores Guide and Surf focus by identity through the TV registries", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /createTvGuideFocusRegistry/);
-  assert.match(appSource, /createTvSurfFocusRegistry/);
-  assert.match(appSource, /focusRegistry=\{guideFocusRegistry\}/);
-  assert.match(appSource, /focusRegistry=\{surfFocusRegistry\}/);
-  assert.match(appSource, /restoreSelection=\{restoreTvSurfSelection\}/);
-});
-
-test("wires authenticated artwork, channel invalidation, identity, versions, and disconnect", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  const pairedClient = await readPairedClient();
-
-  assert.match(pairedClient, /createNativeEventStreamFactory/);
-  assert.match(pairedClient, /openEventStream\(/);
-  assert.match(pairedClient, /Authorization: `Bearer \$\{credential\.token\}`/);
-  assert.match(pairedClient, /onChannel: \(\) => \{\s+refresh\(\);\s+void guide\.refresh\(\);\s+\}/);
-  assert.match(appSource, /<PairedNativeImage/);
-  assert.match(appSource, /onDisconnect=\{\(\) => session\.disconnect\(\)\}/);
-  assert.match(appSource, /onForget=\{\(\) => session\.forgetServer\(\)\}/);
-  assert.match(appSource, /appConfig\.expo\.version/);
-  assert.match(appSource, /serverVersion=\{serverVersion\}/);
-});
-
-test("reports playback diagnostics to the paired server and recovers player errors", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  const pairedClient = await readPairedClient();
-
-  // Who the TV is follows the platform it runs on (Apple TV is not android_tv), so the shared bootstrap derives it.
-  assert.doesNotMatch(appSource, /android_tv/);
-  assert.match(appSource, /diagnostics: nativeApp\.diagnostics/);
-  assert.match(pairedClient, /createAuthenticatedBatchSender\(request,/);
-  assert.match(pairedClient, /onPlayerError: reporting\?\.playback\.playerError/);
-  assert.match(pairedClient, /transport\.subscribe\(reporting\.playback\.transportEvent\)/);
-  assert.match(pairedClient, /reporting\?\.playback\.channelChanged\(channelId\)/);
-  assert.match(pairedClient, /reporting\.playback\.dispose\(\);\s+reporting\.reporter\.dispose\(\)/);
-});
-
-test("releases playback and invalidation resources in the background before authoritative retune", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /usePairedClient\(\{/);
-  const pairedClient = await readPairedClient();
-
-  assert.match(pairedClient, /createNativePlayerLifecycle\(\{ controller, refresh: reload, transport \}\)/);
-  assert.match(pairedClient, /AppState\.addEventListener\("change", \(state\) =>/);
-  assert.match(
-    pairedClient,
-    /catalogRefresher\.abort\(\);\s+versionRequest\.current\?\.abort\(\);\s+lifecycle\.enterBackground\(\)/,
-  );
-  assert.match(pairedClient, /void lifecycle\.enterForeground\(\)\.catch/);
-  assert.match(pairedClient, /if \(closeStream\) return/);
-  assert.match(pairedClient, /else closeActiveStream\(\)/);
-  assert.match(pairedClient, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
-});
-
-test("bounds LAN discovery to the foreground TV connection screen", async () => {
-  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
-
-  assert.match(appSource, /useState\(AppState\.currentState === "active"\)/);
-  assert.match(appSource, /setAppForeground\(state === "active"\)/);
-  assert.match(appSource, /discoveryForeground=\{appForeground\}/);
 });

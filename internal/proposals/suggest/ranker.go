@@ -6,9 +6,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // FeedbackSignal is the ranker's store-independent view of one effective

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // AdditionResolver re-reads a proposed title's library presence at the approval gate, so what an

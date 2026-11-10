@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelIdeas } from "../channel-ideas";
 import { ChannelWall } from "../channel-wall";
 import { HomeStrip } from "../home-strip";
@@ -49,6 +50,8 @@ const HomePage = () => {
   );
   const loading = guide.isLoading;
   const errored = guide.isError && !loading;
+  // Home's content is what is on now, which is the guide's answer.
+  useRouteContent(!loading && !errored);
   const hasLife = !loading && !errored && channels.length > 0;
   const stripState = loading ? "loading" : errored ? "error" : channels.length === 0 ? "empty" : "ok";
 

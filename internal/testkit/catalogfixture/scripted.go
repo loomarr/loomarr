@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // SearchStub is one in-library title a ScriptedLibrary returns. Terms are the query substrings it
@@ -34,9 +34,9 @@ func (s SearchStub) matches(term string) bool {
 	return false
 }
 
-func (s SearchStub) result() library.SearchResult {
-	return library.SearchResult{
-		LibraryItemID: s.LibraryItemID, Name: s.Name, Year: s.Year, MediaType: library.MediaType(s.Type),
+func (s SearchStub) result() mediaserver.SearchResult {
+	return mediaserver.SearchResult{
+		LibraryItemID: s.LibraryItemID, Name: s.Name, Year: s.Year, MediaType: mediaserver.MediaType(s.Type),
 		TMDBID: s.TMDBID, TVDBID: s.TVDBID, Genres: s.Genres, OfficialRating: s.OfficialRating,
 		RuntimeMinutes: int(s.RunTimeTicks / 600_000_000),
 	}
@@ -63,14 +63,14 @@ func (l *ScriptedLibrary) SetSearchItems(items ...SearchStub) {
 	l.items = items
 }
 
-func (l *ScriptedLibrary) Search(_ context.Context, term string, limit int) ([]library.SearchResult, error) {
+func (l *ScriptedLibrary) Search(_ context.Context, term string, limit int) ([]mediaserver.SearchResult, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.searches = append(l.searches, term)
 	if l.Err != nil {
 		return nil, l.Err
 	}
-	var out []library.SearchResult
+	var out []mediaserver.SearchResult
 	for _, s := range l.items {
 		if limit > 0 && len(out) == limit {
 			break
