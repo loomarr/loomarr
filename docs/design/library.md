@@ -486,7 +486,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
   ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
   quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
-  is chosen. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
+  is chosen. An import still running for the other folders stays on the line after a held removal
+  or an offline folder ("Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%"),
+  and Settings → Library keeps its bar, step, file and time left below the callout; neither says
+  "All caught up" beside one. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
   window width. The filter and search live in the URL (`?kind=&q=`); the grid loads 60 titles at a
   time as it scrolls, and the `library_scan` and `library_titles` frames keep the line and the
   loaded titles current, so new titles appear and "Getting ready" clears on its own (decision
