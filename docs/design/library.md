@@ -13,10 +13,9 @@ metadata come from the Library's own tables.
 
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Collections** (BoxSets) are read only by the cutover's one-time import: `Collections()` lists
-  them, and `CollectionMembers(id)` returns members through `ParentId`. Its hand-made ones become
-  the household's collections, which back `scope.collections`; its TMDB ones are the Library's
-  ready-made sets.
+- **Collections are not read from the media server.** The household's collections live in the
+  Library ("Your collections" under [Scanner](#scanner)) and back `scope.collections`; the
+  adapter has no collection call.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
   `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`
@@ -553,11 +552,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   place. `/v1/collections` (admin) lists, reads, makes, changes (name, description and titles
   whole) and deletes them; each says which channels use it: a channel's scope or any rule's
   `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
-  over from the media server at cutover (step 15). These are not the media server's collections
-  at `/v1/library/collections`, which channel scopes name until then. A channel's collection
-  scope matches either: the reconcile's membership index holds the household's collections under
-  their own ids beside the media server's (`LibraryCollectionMemberIDs`, keyed by each title's
-  TMDB and TVDB ids), and with no media server configured, the household's alone.
+  over from the media server at cutover (step 15). `/v1/library/collections` lists the same
+  collections for a different reader: it is member-readable and returns names and sizes only,
+  for the channel scope picker, where a member choosing a collection still goes through
+  submit and approve. The two stay separate routes because merging them would either open the
+  titles and the edits to members or close the picker to them. A channel's collection scope
+  matches through the reconcile's membership index, which holds the household's collections
+  under their own ids (`LibraryCollectionMemberIDs`, keyed by each title's TMDB and TVDB ids).
 - **Ready-made sets** (step 12b, decision 28). A movie's TMDB record names the TMDB collection it
   belongs to; the scanner keeps that as `library_items.set_key` and asks the catalog cache for the
   set's own record (`tmdb_collection`), which lists every movie in it in release order. The
