@@ -28,7 +28,16 @@ interface ChannelBandProps {
   ident?: boolean;
   live: PlayerLiveState;
   onGoLive: () => void;
+  /**
+   * The phone held upright (§9.7): a narrower channel block and tighter padding, the title on up to two
+   * lines, the progress line on a row of its own, and the next time never wrapping. The portrait
+   * chrome sets it; the desktop and landscape band are unchanged.
+   */
+  portrait?: boolean;
 }
+
+/** The channel block's width, in px: the phone's, the portrait phone's, the desktop's. */
+const BLOCK_WIDTH = { compact: 72, portrait: 56, wide: 144 } as const;
 
 // The warm flip's sweep (§9.4): the seven bars run once along the band's edge, in 340 ms, and nowhere
 // else. A cover the colour of the plate uncovers them left to right; no transform, no full-screen bars.
@@ -190,10 +199,13 @@ const GoLive = ({ density, onPress }: { density: Density; onPress: () => void })
  */
 const BandTitle = ({
   density,
+  lines = 1,
   logo,
   title,
 }: {
   density: Density;
+  /** How many lines the text title may take before the ellipsis. */
+  lines?: number;
   logo: PlayerArt | undefined;
   title: string;
 }) => {
@@ -214,8 +226,9 @@ const BandTitle = ({
   return (
     <Text
       density={density}
-      numberOfLines={1}
+      numberOfLines={lines}
       strong
+      testID="band-title"
       textRole={density === "touch" ? "title" : "display"}
       tone="primary"
     >
@@ -227,6 +240,7 @@ const BandTitle = ({
 /** The programme's time slot: white on a faint track; behind live, a red tick marks live. */
 const Progress = ({ liveProgress, progress }: { liveProgress?: number | undefined; progress: number }) => (
   <View
+    testID="band-progress"
     style={{
       backgroundColor: playerChrome.track,
       borderRadius: 2,
@@ -269,15 +283,24 @@ const Progress = ({ liveProgress, progress }: { liveProgress?: number | undefine
   </View>
 );
 
-const Row = ({ children, chip }: { children: ReactNode; chip: ReactNode }) => (
-  <View style={{ alignItems: "center", flexDirection: "row", gap: 16 }}>
+const Row = ({ children, chip, gap = 16 }: { children: ReactNode; chip: ReactNode; gap?: number }) => (
+  <View style={{ alignItems: "center", flexDirection: "row", gap }}>
     <View style={{ width: 56 }}>{chip}</View>
     <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
   </View>
 );
 
-const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive }: ChannelBandProps) => {
+const ChannelBand = ({
+  band,
+  density,
+  formatTime,
+  ident = false,
+  live,
+  onGoLive,
+  portrait = false,
+}: ChannelBandProps) => {
   const compact = density === "touch";
+  const rowGap = portrait ? 12 : 16;
   const behind = live.mode !== "live";
   const hasSlot = band.startMs !== undefined && band.stopMs !== undefined;
   const station = ident && band.station ? ` · ${band.station}` : "";
@@ -287,7 +310,7 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
         decade={band.decade}
         density={density}
         number={band.channelNumber}
-        width={compact ? 72 : 144}
+        width={portrait ? BLOCK_WIDTH.portrait : compact ? BLOCK_WIDTH.compact : BLOCK_WIDTH.wide}
       />
       <View style={{ flex: 1, minWidth: 0 }}>
         <BarsEdge height={compact ? 8 : 10} sweepKey={band.channelNumber} />
@@ -300,16 +323,22 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
             flex: 1,
             gap: compact ? 8 : 16,
             padding: compact ? 16 : 24,
-            paddingHorizontal: compact ? 16 : 32,
+            paddingHorizontal: portrait ? 12 : compact ? 16 : 32,
           }}
         >
+          {/* Portrait: the name takes the text column's whole width, Live and the clock under it. */}
           <View
-            style={{ alignItems: "center", flexDirection: "row", gap: 16, justifyContent: "space-between" }}
+            style={
+              portrait
+                ? { alignItems: "stretch", flexDirection: "column", gap: 8 }
+                : { alignItems: "center", flexDirection: "row", gap: 16, justifyContent: "space-between" }
+            }
           >
             <Text
               density={density}
               numberOfLines={1}
               style={{ flexShrink: 1 }}
+              testID="band-channel-name"
               textRole="label"
               tone="secondary"
             >
@@ -334,9 +363,10 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
                   NOW
                 </Chip>
               }
+              gap={rowGap}
             >
               <View style={{ gap: 4 }}>
-                <BandTitle density={density} logo={band.logo} title={band.title} />
+                <BandTitle density={density} lines={portrait ? 2 : 1} logo={band.logo} title={band.title} />
                 {band.inBreak && band.breakMinutesLeft !== undefined ? (
                   <Text density={density} numberOfLines={1} strong textRole="compact" tone="info">
                     {`Back in ${band.breakMinutesLeft} min`}
@@ -350,7 +380,22 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
             </Row>
           ) : null}
 
-          {ident || !hasSlot ? null : (
+          {ident || !hasSlot ? null : portrait ? (
+            // Its own row, the text column's full width: the line, then the two clocks at its ends.
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: "row" }}>
+                <Progress liveProgress={band.liveProgress} progress={band.progress ?? 0} />
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text density={density} textRole="time" tone="secondary">
+                  {formatTime(band.startMs ?? 0)}
+                </Text>
+                <Text density={density} textRole="time" tone="secondary">
+                  {formatTime(band.stopMs ?? 0)}
+                </Text>
+              </View>
+            </View>
+          ) : (
             <Row chip={null}>
               <View style={{ alignItems: "center", flexDirection: "row", gap: 16 }}>
                 <Text density={density} textRole="time" tone="secondary">
@@ -376,9 +421,18 @@ const ChannelBand = ({ band, density, formatTime, ident = false, live, onGoLive 
                   NEXT
                 </Chip>
               }
+              gap={rowGap}
             >
-              <View style={{ alignItems: "baseline", flexDirection: "row", gap: 16 }}>
-                <Text density={density} textRole="time" tone="secondary">
+              <View style={{ alignItems: "baseline", flexDirection: "row", gap: rowGap }}>
+                {/* One unbroken token: the time keeps its width, the title takes the rest. */}
+                <Text
+                  density={density}
+                  numberOfLines={1}
+                  style={{ flexShrink: 0, ...webOnly({ whiteSpace: "nowrap" }) }}
+                  testID="band-next-time"
+                  textRole="time"
+                  tone="secondary"
+                >
                   {formatTime(band.next.startMs)}
                 </Text>
                 <Text

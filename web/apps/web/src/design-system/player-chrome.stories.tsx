@@ -482,6 +482,23 @@ const PortraitCommercials: Story = {
   args: { ...portraitArgs, ...chromeArgs({ lagSeconds: 75, mode: "behind" }), keys: portraitArgs.keys },
   render: (args) => <PhoneFrame {...args} />,
 };
+// The band's text column at its tightest (#3408): a 30-character title that takes two lines under a
+// long episode name, and a 25-character channel name on its own line.
+const PortraitLongTitle: Story = {
+  args: {
+    ...portraitArgs,
+    band: {
+      ...liveData.band,
+      line: "S01E02 “The Upside-Down Garden Party”",
+      title: "The Lantern Keeper's Menagerie",
+    },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitLongChannel: Story = {
+  args: { ...portraitArgs, band: { ...liveData.band, channelName: "Saturday Morning Cartoons" } },
+  render: (args) => <PhoneFrame {...args} />,
+};
 const PortraitUnmute: Story = {
   args: { ...portraitArgs, unmute: fn() },
   render: (args) => <PhoneFrame {...args} />,
@@ -617,6 +634,8 @@ export {
   Portrait,
   PortraitBehind,
   PortraitCommercials,
+  PortraitLongChannel,
+  PortraitLongTitle,
   PortraitMore,
   PortraitUnmute,
   StationId,
