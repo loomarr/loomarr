@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelRowMenu } from "../channel-row-menu";
@@ -131,6 +132,8 @@ const dayLabel = (offset: number, now: number): string => {
 };
 
 const GuidePage = () => {
+  // The tab is named for the nav item that opens it, as every other page's is.
+  useDocumentTitle("Guide");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();

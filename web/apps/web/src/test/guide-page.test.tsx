@@ -264,6 +264,14 @@ describe("Guide", () => {
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
+  // #3411: the tab read a bare "Loomarr" here while every other page named itself.
+  it("names its browser tab", async () => {
+    stubGuide();
+    renderAt(GRID);
+    await screen.findByRole("heading", { name: "Channels", level: 1 });
+    expect(document.title).toBe("Guide | Loomarr");
+  });
+
   // #2727: a channel with no programme yet filled its row with unlabelled pod slivers. It is one
   // labelled block that says what it is waiting for.
   it("draws a channel still downloading its titles as one labelled block", async () => {
