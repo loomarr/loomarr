@@ -444,11 +444,13 @@ const Row = memo(
               {/* Two lines so a long name reads in full (#3410). Two 18-point lines and the chip's
                   16 points plus its 2-point gap are 54, inside the row's fixed 56, so the rail
                   never changes the row geometry the cells share. */}
-              <Text numberOfLines={2} textRole="cardLabel">
+              {/* Left-aligned by hand: the name sits inside a button, and a button centres its text
+                  by default, which a two-line name makes plain. */}
+              <Text numberOfLines={2} textAlign="left" textRole="cardLabel">
                 {channel.source.name}
               </Text>
               {chip ? (
-                <Text marginTop={2} numberOfLines={1} textRole="label" tone={chip.tone}>
+                <Text marginTop={2} numberOfLines={1} textAlign="left" textRole="label" tone={chip.tone}>
                   {chip.label}
                 </Text>
               ) : null}
