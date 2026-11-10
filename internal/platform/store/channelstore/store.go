@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ErrChannelConflict reports that a channel write lost a uniqueness race (normally

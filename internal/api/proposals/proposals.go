@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -22,7 +23,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // registerProposals mounts /v1/proposals* (§7/§8). Submit is open to any

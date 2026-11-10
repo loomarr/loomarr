@@ -10,8 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // --- DTOs (schemas are generated from these — §7.1) ---

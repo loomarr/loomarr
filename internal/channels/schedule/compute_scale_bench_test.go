@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Scale benchmarks for ComputeDesiredAt — the function that dominates GET /v1/guide.

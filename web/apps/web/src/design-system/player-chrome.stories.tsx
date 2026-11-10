@@ -191,12 +191,16 @@ const moreData = (state: { lagSeconds: number; mode: "behind" | "live" | "paused
 
 const sheetChannel = { name: "Coast 90s", number: "7" };
 
-// The picture the chrome sits on: a dark stand-in filling the frame.
-const Picture = ({ children }: { children: ReactNode }) => (
+// The picture the chrome sits on: a dark stand-in filling the frame. The overlay layout is never
+// drawn narrower than 48rem (the app switches to the portrait layout below it, usePhoneWidth), so
+// an overlay story keeps that width on the gallery's phone-sized viewport rather than piling its
+// keys onto the band.
+const Picture = ({ children, portrait = false }: { children: ReactNode; portrait?: boolean }) => (
   <div
     style={{
       background: "radial-gradient(ellipse at 40% 35%, #3a4150, #101216 70%)",
       height: "100vh",
+      minWidth: portrait ? undefined : 768,
       overflow: "hidden",
       position: "relative",
       width: "100%",
@@ -210,8 +214,8 @@ const meta = {
   title: "Loomarr Components/Player Chrome",
   component: PlayerChrome,
   decorators: [
-    (Story) => (
-      <Picture>
+    (Story, { args }) => (
+      <Picture portrait={args.layout === "portrait"}>
         <Story />
       </Picture>
     ),

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/config"
 )
 
@@ -322,17 +322,17 @@ func (s *Service) refreshOn(ctx context.Context, ticks <-chan time.Time, after f
 
 // LibraryConnection projects one coherent settings snapshot into the canonical
 // media-library connection used by runtime adapters and feature gating.
-func (s *Service) LibraryConnection() library.Connection {
+func (s *Service) LibraryConnection() mediaserver.Connection {
 	values := s.ResolveMany("library.flavor", "library.url", "library.token")
 	stringValue := func(key string) string {
 		value, _ := values[key].Value.(string)
 		return strings.TrimSpace(value)
 	}
-	flavor, err := library.ParseFlavor(stringValue("library.flavor"))
+	flavor, err := mediaserver.ParseFlavor(stringValue("library.flavor"))
 	if err != nil {
-		return library.Connection{}
+		return mediaserver.Connection{}
 	}
-	return library.Connection{
+	return mediaserver.Connection{
 		Flavor: flavor, BaseURL: stringValue("library.url"), Token: stringValue("library.token"),
 	}
 }

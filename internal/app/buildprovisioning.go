@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/platform/activity"
@@ -22,7 +22,7 @@ import (
 func buildProvisioning(
 	st records.Store,
 	set resolved,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
 	activityRecorder *activity.Recorder,

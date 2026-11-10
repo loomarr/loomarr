@@ -14,6 +14,7 @@ import {
 } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
+import { useRouteContent } from "@/lib/use-route-content";
 import {
   cardDestinations,
   destinationById,
@@ -51,6 +52,8 @@ DestinationAnchor.displayName = "DestinationAnchor";
 
 const SettingsHome = () => {
   const { isAdmin } = useAuth();
+  // Settings opens on its list of destinations, which needs no data: it is content at once.
+  useRouteContent(true);
   const entries = useSettingsEntries();
   const statusOf = useSettingsStatus(isAdmin);
   const [query, setQuery] = useState("");

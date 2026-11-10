@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // editionTag matches the edition a file names, "{edition-Director's Cut}" (decision 54).

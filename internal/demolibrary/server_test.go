@@ -8,19 +8,19 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/demolibrary"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // The stand-in is only useful if Loomarr's REAL media-server client reads it correctly, so every
 // test here drives internal/library against it rather than asserting on raw JSON. Loomarr scans
 // the demo's files itself (#2151); it reads the media server only for its folders, users and Live
 // TV, so those are what these tests drive.
-func demoClient(t *testing.T, lib *demolibrary.Library) (*library.Client, demolibrary.Layout) {
+func demoClient(t *testing.T, lib *demolibrary.Library) (*mediaserver.Client, demolibrary.Layout) {
 	t.Helper()
 	l := demolibrary.Layout{Dir: t.TempDir()}
 	srv := httptest.NewServer(demolibrary.Server{Layout: l, Library: lib, Token: "demo-token"})
 	t.Cleanup(srv.Close)
-	return library.New(library.Emby, srv.URL, "demo-token", "demo-test"), l
+	return mediaserver.New(mediaserver.Emby, srv.URL, "demo-token", "demo-test"), l
 }
 
 // Scan-root discovery finds the folders the demo's films and shows sit in.
@@ -70,7 +70,7 @@ func TestStandInRefusesAWrongToken(t *testing.T) {
 	l := demolibrary.Layout{Dir: t.TempDir()}
 	srv := httptest.NewServer(demolibrary.Server{Layout: l, Library: demolibrary.Invented(), Token: "demo-token"})
 	t.Cleanup(srv.Close)
-	c := library.New(library.Emby, srv.URL, "wrong", "demo-test")
+	c := mediaserver.New(mediaserver.Emby, srv.URL, "wrong", "demo-test")
 	if _, err := c.ListUsers(context.Background()); err == nil {
 		t.Fatal("a wrong token listed the users")
 	}

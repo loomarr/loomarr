@@ -6,13 +6,13 @@ import (
 	"maps"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // OutlookLibrary supplies read-only metadata and episodes for proposal observation
 // tests. Its recorded requests make accidental extra resolution visible.
 type OutlookLibrary struct {
-	Metadata      map[string]library.ItemMetadata
+	Metadata      map[string]mediaserver.ItemMetadata
 	MetadataError error
 	Episodes      map[string][]schedule.ResolvedProgram
 	EpisodeError  error
@@ -20,7 +20,7 @@ type OutlookLibrary struct {
 	EpisodeReads  []string
 }
 
-func (l *OutlookLibrary) ItemMetadataByID(_ context.Context, ids []string) (map[string]library.ItemMetadata, error) {
+func (l *OutlookLibrary) ItemMetadataByID(_ context.Context, ids []string) (map[string]mediaserver.ItemMetadata, error) {
 	l.MetadataReads = append(l.MetadataReads, append([]string(nil), ids...))
 	return maps.Clone(l.Metadata), l.MetadataError
 }

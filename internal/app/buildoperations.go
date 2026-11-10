@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/nownext"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/accountdelivery"
@@ -95,7 +95,7 @@ func buildOperations(
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	refreshSecretRedactor func(),
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
@@ -321,7 +321,7 @@ func buildAuth(
 	set resolved,
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	log *slog.Logger,
 ) authBuild {
 	var result authBuild
@@ -407,7 +407,7 @@ func buildSettings(
 	set resolved,
 	desiredSet resolved,
 	secrets *settings.Secrets,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	refreshRedactor func(),
 	readSecret func(context.Context, settings.GeneratedSecret) (string, error),

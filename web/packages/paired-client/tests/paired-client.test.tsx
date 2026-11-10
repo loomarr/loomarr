@@ -5,7 +5,8 @@ import type { LastChannelStore } from "@loomarr/paired-client";
 import type { PlayerChannel, PlayerTransport, PlayerTransportEvent } from "@loomarr/player";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { AppState } from "react-native";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,16 +15,23 @@ const channels: PlayerChannel[] = [
   { id: "twenty", inAppPlayable: true, name: "Twenty", number: 20 },
 ];
 
+type Request = (input: string, init?: RequestInit) => Promise<Response>;
+
 const fakes = vi.hoisted(() => {
   const emptySnapshot = {};
   return {
+    batchSenders: [] as unknown[],
+    catalogHeld: false,
+    catalogLists: [] as AbortSignal[],
     emptySnapshot,
     guide: {
-      dispose: () => undefined,
+      dispose: vi.fn(),
       getSnapshot: () => emptySnapshot,
-      refresh: async () => undefined,
+      refresh: vi.fn(async () => undefined),
       subscribe: () => () => undefined,
     },
+    guideOptions: [] as { resolveWindow?: (at: Date) => unknown }[],
+    guideWindow: vi.fn((window: unknown) => window),
     myChannels: {
       dispose: () => undefined,
       getSnapshot: () => emptySnapshot,
@@ -31,19 +39,44 @@ const fakes = vi.hoisted(() => {
       refresh: async () => undefined,
       subscribe: () => () => undefined,
     },
+    playback: {
+      channelChanged: vi.fn(),
+      dispose: vi.fn(),
+      playerError: vi.fn(),
+      transportEvent: vi.fn(),
+    },
     playbackSessionIds: [] as string[],
     playbackTransports: [] as string[],
-    transport: undefined as unknown as PlayerTransport & { emit: (event: PlayerTransportEvent) => void },
+    reporterDisposed: vi.fn(),
+    requests: [] as unknown[],
+    streamOptions: [] as { headers: Record<string, string>; onUnauthorized: () => unknown }[],
+    streams: [] as { closed: boolean; handlers: { onChannel: () => void }; url: string }[],
+    transport: undefined as unknown as PlayerTransport & {
+      emit: (event: PlayerTransportEvent) => void;
+      resume: ReturnType<typeof vi.fn>;
+      suspend: ReturnType<typeof vi.fn>;
+    },
   };
 });
 
 vi.mock("expo-crypto", () => ({ randomUUID: () => "11111111-2222-4333-8444-555555555555" }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
-vi.mock("@loomarr/core/events", () => ({ openEventStream: () => () => undefined }));
+vi.mock("@loomarr/core/events", () => ({
+  openEventStream: (handlers: { onChannel: () => void }, url: string) => {
+    const stream = { closed: false, handlers, url };
+    fakes.streams.push(stream);
+    return () => {
+      stream.closed = true;
+    };
+  },
+}));
 vi.mock("@loomarr/core/guide", () => ({
-  createGuideController: () => fakes.guide,
+  createGuideController: (options: { resolveWindow?: (at: Date) => unknown }) => {
+    fakes.guideOptions.push(options);
+    return fakes.guide;
+  },
   createGuideSourcePort: () => ({}),
-  guideWindow: vi.fn(),
+  guideWindow: fakes.guideWindow,
 }));
 vi.mock("@loomarr/core/my-channels", () => ({
   createMyChannelsController: () => fakes.myChannels,
@@ -51,40 +84,69 @@ vi.mock("@loomarr/core/my-channels", () => ({
 }));
 vi.mock("@loomarr/core/client-diagnostics", () => ({
   ClientDiagnosticsReporter: class {
-    dispose = () => undefined;
+    dispose = fakes.reporterDisposed;
     wireBatch = () => ({});
   },
-  createAuthenticatedBatchSender: () => ({}),
+  createAuthenticatedBatchSender: (request: unknown) => {
+    fakes.batchSenders.push(request);
+    return {};
+  },
 }));
 vi.mock("@loomarr/player/native", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@loomarr/player/native")>()),
   createExpoVideoTransport: () => fakes.transport,
-  createNativeEventStreamFactory: () => vi.fn(),
+  createNativeEventStreamFactory: (options: {
+    headers: Record<string, string>;
+    onUnauthorized: () => unknown;
+  }) => {
+    fakes.streamOptions.push(options);
+    return vi.fn();
+  },
   createNativePlaybackDiagnostics: (_reporter: unknown, sessionId: string, transport: string) => {
     fakes.playbackSessionIds.push(sessionId);
     fakes.playbackTransports.push(transport);
-    return {
-      channelChanged: () => undefined,
-      dispose: () => undefined,
-      playerError: () => undefined,
-      transportEvent: () => undefined,
-    };
+    return fakes.playback;
   },
 }));
 vi.mock("@loomarr/player/server", () => ({
-  createChannelCatalogPort: () => ({ list: async () => channels }),
+  createChannelCatalogPort: (request: unknown) => {
+    fakes.requests.push(request);
+    return {
+      list: (signal: AbortSignal) => {
+        fakes.catalogLists.push(signal);
+        // A held load stays pending until it is cancelled, as a request on a dead connection does.
+        return fakes.catalogHeld
+          ? new Promise<never>((_, reject) =>
+              signal.addEventListener("abort", () => reject(new Error("cancelled"))),
+            )
+          : Promise.resolve(channels);
+      },
+    };
+  },
   createPlayUrlSourcePort: () => ({
     mint: async (channel: PlayerChannel) => ({ uri: `${channel.id}.m3u8` }),
   }),
 }));
 
-const { usePairedClient } = await import("@loomarr/paired-client");
+const { phoneClientOptions, retryPairedClient, usePairedClient } = await import("@loomarr/paired-client");
 type PairedClient = ReturnType<typeof usePairedClient>;
 
 const credential = { deviceName: "Test", serverUrl: "https://loomarr.test", token: "t" } as PairingCredential;
-const session = { revoked: () => undefined } as unknown as PairingSession;
+const revoked = vi.fn();
+const session = { revoked } as unknown as PairingSession;
 
-const mountClient = async (diagnostics?: { platform: string }, lastChannel?: LastChannelStore) => {
+// The app's foreground/background changes, delivered to whoever listens, as the system would.
+const appListeners = new Set<(state: string) => void>();
+const sendAppState = (state: string) =>
+  act(async () => {
+    for (const listener of [...appListeners]) listener(state);
+  });
+
+const mountClient = async (
+  diagnostics?: { platform: string },
+  lastChannel?: LastChannelStore,
+  extra: Partial<Parameters<typeof usePairedClient>[0]> = {},
+) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   fakes.transport = {
     dispose: vi.fn(),
@@ -95,10 +157,12 @@ const mountClient = async (diagnostics?: { platform: string }, lastChannel?: Las
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
+    resume: vi.fn(),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    suspend: vi.fn(),
   };
   const recordTune = vi.fn().mockResolvedValue(undefined);
   fakes.myChannels.recordTune = recordTune;
@@ -110,6 +174,7 @@ const mountClient = async (diagnostics?: { platform: string }, lastChannel?: Las
       initialTune: "first",
       lastChannel,
       session,
+      ...extra,
     });
     return null;
   };
@@ -128,9 +193,41 @@ const mountClient = async (diagnostics?: { platform: string }, lastChannel?: Las
   return { client: () => client, recordTune, root, settle };
 };
 
+beforeEach(() => {
+  vi.spyOn(AppState, "addEventListener").mockImplementation(((
+    _type: string,
+    listener: (state: string) => void,
+  ) => {
+    appListeners.add(listener);
+    return { remove: () => appListeners.delete(listener) };
+  }) as never);
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  appListeners.clear();
+  fakes.batchSenders.length = 0;
+  fakes.catalogHeld = false;
+  fakes.catalogLists.length = 0;
+  fakes.guideOptions.length = 0;
   fakes.playbackSessionIds.length = 0;
   fakes.playbackTransports.length = 0;
+  fakes.requests.length = 0;
+  fakes.streamOptions.length = 0;
+  fakes.streams.length = 0;
+  for (const spy of [
+    fakes.guide.dispose,
+    fakes.guide.refresh,
+    fakes.guideWindow,
+    fakes.playback.channelChanged,
+    fakes.playback.dispose,
+    fakes.playback.playerError,
+    fakes.playback.transportEvent,
+    fakes.reporterDisposed,
+    revoked,
+  ])
+    spy.mockClear();
 });
 
 describe("paired client", () => {
@@ -181,5 +278,210 @@ describe("paired client", () => {
     const android = await mountClient({ platform: "android" });
     await act(async () => android.root.unmount());
     expect(fakes.playbackTransports).toEqual(["native_hls", "media3"]);
+  });
+
+  describe("requests", () => {
+    it("carry the device's token, and a 401 ends the pairing", async () => {
+      // The request takes the platform's fetch when the client is built.
+      let status = 200;
+      const send = vi.fn(async (_input: string, _init?: RequestInit) => new Response("{}", { status }));
+      vi.stubGlobal("fetch", send);
+      const { root } = await mountClient();
+      send.mockClear();
+      revoked.mockClear();
+      status = 401;
+
+      await (fakes.requests[0] as Request)("https://loomarr.test/v1/channels");
+
+      const headers = send.mock.calls[0]?.[1]?.headers as Headers;
+      expect(headers.get("Authorization")).toBe("Bearer t");
+      expect(revoked).toHaveBeenCalledTimes(1);
+      await act(async () => root.unmount());
+    });
+
+    it("never leave the paired server", async () => {
+      const send = vi.fn(async () => new Response("{}", { status: 200 }));
+      vi.stubGlobal("fetch", send);
+      const { root } = await mountClient();
+      send.mockClear();
+
+      await expect((fakes.requests[0] as Request)("https://elsewhere.test/v1/channels")).rejects.toThrow(
+        /cannot leave the paired server origin/,
+      );
+      expect(send).not.toHaveBeenCalled();
+      await act(async () => root.unmount());
+    });
+  });
+
+  describe("the live event stream", () => {
+    it("opens on the server's events endpoint with the device's token, and a 401 ends the pairing", async () => {
+      const { root } = await mountClient();
+
+      expect(fakes.streams.map(({ url }) => url)).toEqual(["https://loomarr.test/v1/events"]);
+      expect(fakes.streamOptions[0]?.headers).toEqual({ Authorization: "Bearer t" });
+      fakes.streamOptions[0]?.onUnauthorized();
+      expect(revoked).toHaveBeenCalledTimes(1);
+      await act(async () => root.unmount());
+    });
+
+    it("reloads the catalog and the guide when the server announces a channel change", async () => {
+      const { root } = await mountClient();
+      expect(fakes.catalogLists).toHaveLength(1);
+      fakes.guide.refresh.mockClear();
+
+      await act(async () => fakes.streams[0]?.handlers.onChannel());
+
+      expect(fakes.catalogLists).toHaveLength(2);
+      expect(fakes.guide.refresh).toHaveBeenCalledWith();
+      await act(async () => root.unmount());
+    });
+
+    it("stays open only while the app is in the foreground, and never opens twice", async () => {
+      const { root } = await mountClient();
+      expect(fakes.streams.map(({ closed }) => closed)).toEqual([false]);
+
+      await sendAppState("background");
+      expect(fakes.streams.map(({ closed }) => closed)).toEqual([true]);
+
+      await sendAppState("active");
+      await sendAppState("active");
+      expect(fakes.streams.map(({ closed }) => closed)).toEqual([true, false]);
+
+      await act(async () => root.unmount());
+      expect(fakes.streams.map(({ closed }) => closed)).toEqual([true, true]);
+      expect(appListeners.size).toBe(0);
+    });
+  });
+
+  describe("the app's foreground and background", () => {
+    it("releases playback and cancels the catalog load in the background, then reloads and resumes on return", async () => {
+      fakes.catalogHeld = true;
+      const { root } = await mountClient();
+      expect(fakes.catalogLists).toHaveLength(1);
+      expect(fakes.catalogLists[0]?.aborted).toBe(false);
+
+      await sendAppState("background");
+      expect(fakes.catalogLists[0]?.aborted).toBe(true);
+      expect(fakes.transport.suspend).toHaveBeenCalledTimes(1);
+      expect(fakes.transport.resume).not.toHaveBeenCalled();
+
+      await sendAppState("active");
+      expect(fakes.transport.resume).toHaveBeenCalledTimes(1);
+      // The return asks the server for the catalog again before it retunes anything.
+      expect(fakes.catalogLists).toHaveLength(2);
+      await act(async () => root.unmount());
+    });
+
+    it("stops listening, and disposes what it built, when the shell goes away", async () => {
+      const { root } = await mountClient();
+      expect(appListeners.size).toBeGreaterThan(0);
+
+      await act(async () => root.unmount());
+
+      expect(appListeners.size).toBe(0);
+      expect(fakes.guide.dispose).toHaveBeenCalledTimes(1);
+      expect(fakes.transport.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("diagnostics", () => {
+    it("sends batches through the paired, authenticated request", async () => {
+      const { root } = await mountClient({ platform: "ios" });
+      expect(fakes.batchSenders).toEqual([fakes.requests[0]]);
+      await act(async () => root.unmount());
+    });
+
+    it("reports a player error, every transport event and each channel change, then disposes with the shell", async () => {
+      const { client, root, settle } = await mountClient({ platform: "ios" });
+      expect(fakes.playback.channelChanged).toHaveBeenLastCalledWith("ten");
+
+      await settle("first-frame");
+      expect(fakes.playback.transportEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "first-frame" }),
+      );
+
+      await act(async () => {
+        fakes.transport.emit({
+          attemptId: client().controller.getSnapshot().attemptId as number,
+          error: "decoder died",
+          type: "error",
+        });
+      });
+      expect(fakes.playback.playerError).toHaveBeenCalledWith(
+        expect.objectContaining({ channelId: "ten", error: "decoder died" }),
+      );
+
+      await act(async () => client().controller.tuneChannel("twenty"));
+      expect(fakes.playback.channelChanged).toHaveBeenLastCalledWith("twenty");
+
+      await act(async () => root.unmount());
+      expect(fakes.playback.dispose).toHaveBeenCalledTimes(1);
+      expect(fakes.reporterDisposed).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports nothing when the app names no identity", async () => {
+      const { root, settle } = await mountClient();
+      await settle("first-frame");
+      expect(fakes.playback.transportEvent).not.toHaveBeenCalled();
+      expect(fakes.batchSenders).toEqual([]);
+      await act(async () => root.unmount());
+    });
+  });
+
+  describe("the phone's options", () => {
+    it("open on the Guide with no picture: a loaded catalog tunes nothing until the viewer picks", async () => {
+      const { client, root } = await mountClient(undefined, undefined, phoneClientOptions);
+
+      expect(client().snapshot.catalog.map(({ id }) => id)).toEqual(["ten", "twenty"]);
+      expect(client().snapshot.channel).toBeUndefined();
+      expect(fakes.transport.replace).not.toHaveBeenCalled();
+
+      await act(async () => client().controller.tuneChannel("twenty"));
+      expect(client().snapshot.channel?.id).toBe("twenty");
+      await act(async () => root.unmount());
+    });
+
+    it("load the next 2 hours of the Guide, where the TV loads the server's default window", async () => {
+      const phone = await mountClient(undefined, undefined, phoneClientOptions);
+      const at = new Date("2026-11-09T20:00:00Z");
+      fakes.guideOptions[0]?.resolveWindow?.(at);
+      expect(fakes.guideWindow).toHaveBeenCalledWith({
+        at,
+        dayOffset: 0,
+        hourShift: 0,
+        startHour: null,
+        windowMinutes: 120,
+      });
+      await act(async () => phone.root.unmount());
+
+      const tv = await mountClient();
+      expect(fakes.guideOptions[1]?.resolveWindow).toBeUndefined();
+      await act(async () => tv.root.unmount());
+    });
+  });
+
+  describe("retrying a failed playback", () => {
+    const retryWith = (error?: string) => {
+      const refresh = vi.fn();
+      const retry = vi.fn();
+      retryPairedClient({
+        catalogState: { error, loading: false },
+        controller: { retry } as never,
+        refresh,
+      });
+      return { refresh, retry };
+    };
+
+    it("loads the catalog again when it never loaded", () => {
+      const { refresh, retry } = retryWith("Couldn't load channels.");
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(retry).not.toHaveBeenCalled();
+    });
+
+    it("re-tunes the channel when the catalog is fine", () => {
+      const { refresh, retry } = retryWith();
+      expect(retry).toHaveBeenCalledTimes(1);
+      expect(refresh).not.toHaveBeenCalled();
+    });
   });
 });

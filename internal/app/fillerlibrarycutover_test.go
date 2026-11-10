@@ -8,7 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -21,7 +21,7 @@ func TestFillerLibraryCutoverRewritesANamedLibraryToItsFolder(t *testing.T) {
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	ms := testkit.NewMediaServer(t)
-	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev-1")
 	at := time.Unix(1_800_000_000, 0)
 
 	// The captured fixture's mixed library, as a hand-made commercials library usually is.

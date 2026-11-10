@@ -10,11 +10,11 @@ import (
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // eventEmitter is the composition-root fan-out for provisioning domain events

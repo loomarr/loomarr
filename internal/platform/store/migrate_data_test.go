@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/people/notifications"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The V11 gate: an established SQLite install migrates to Postgres with row-count

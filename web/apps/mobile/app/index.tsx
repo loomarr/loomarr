@@ -1,4 +1,3 @@
-import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -10,25 +9,27 @@ import type { RequestsController } from "@loomarr/core/requests";
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
 import { type HapticFeedback, useHaptic } from "@loomarr/design-system/haptics";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
-import { useCrashReportUpload } from "@loomarr/native-app";
+import { useAppForeground, usePairingBreadcrumbs, useShellCrashReporting } from "@loomarr/native-app";
 import {
   createLastChannelStore,
   type PairedClient,
+  phoneClientOptions,
+  retryPairedClient,
   usePairedAccount,
   usePairedClient,
   usePairedRequests,
 } from "@loomarr/paired-client";
-import { NativePlayerView, PairedNativeImage, useShellPause } from "@loomarr/player/native";
-import type { ApprovalBrowser, ClientDestination } from "@loomarr/ui";
+import { NativePlayerView, PairedNativeImage, useShellTune } from "@loomarr/player/native";
+import type { ApprovalBrowser } from "@loomarr/ui";
 import {
   ClientShell,
-  clientBackDestination,
   DeviceSheet,
   GuideJourney,
   PairingShell,
   RequestsJourney,
   ScreenHeader,
   StatePanel,
+  useClientDestination,
   WatchingPanel,
   watchingPanelFromGuide,
 } from "@loomarr/ui";
@@ -37,7 +38,7 @@ import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
-import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
+import { Platform, ScrollView, View } from "react-native";
 import { nativeApp } from "../src/native-app";
 
 const credentialStore = createPairingCredentialStore({
@@ -128,7 +129,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
         <StatePanel
           action={{
             label: "Try again",
-            onPress: () => (catalogState.error ? refresh() : void controller.retry()),
+            onPress: () => retryPairedClient({ catalogState, controller, refresh }),
           }}
           density="touch"
           description={failure}
@@ -172,7 +173,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
 };
 
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
-  const [active, setActive] = useState<ClientDestination>("guide");
+  const [active, setActive] = useClientDestination("guide");
   // The Device sheet: opened from the Guide's and Requests' header buttons, docked above the tab bar.
   const [deviceOpen, setDeviceOpen] = useState(false);
   const account = usePairedAccount({ credential, session });
@@ -186,10 +187,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   } as const;
   // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
   const client = usePairedClient({
+    ...phoneClientOptions,
     credential,
     diagnostics: nativeApp.diagnostics,
-    guideWindowMinutes: 120,
-    initialTune: "none",
     lastChannel,
     session,
   });
@@ -208,31 +208,15 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   );
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused, at live, when they come back.
-  const forgetShellPause = useShellPause(controller, active === "watching");
+  const tuneFromShell = useShellTune(controller, active === "watching");
   // Pending crash reports (last launch's included) go to this server once paired.
-  useCrashReportUpload(credential, session);
-  useEffect(
-    () => nativeApp.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.navigation, active),
-    [active],
-  );
+  useShellCrashReporting(credential, session, active);
   // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
   const watchChannel = (channelId: string) => {
     haptic.selection();
-    // Another channel replaces the stream the shell paused, so resuming it would only blip its
-    // audio; the paused channel itself is not re-tuned, so Watching resumes it.
-    forgetShellPause(channelId);
-    void controller.tuneChannel(channelId);
+    tuneFromShell(channelId);
     setActive("watching");
   };
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      const destination = clientBackDestination(active);
-      if (!destination) return false;
-      setActive(destination);
-      return true;
-    });
-    return () => subscription.remove();
-  }, [active]);
   return (
     <ClientShell
       active={active}
@@ -299,14 +283,8 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
 const Index = () => {
   // Discovery browses only while the connect screen is in the foreground (design "Finding a server").
   // Android phones keep manual entry until their Bonjour path pairs to the public URL as well.
-  const [appForeground, setAppForeground] = useState(AppState.currentState === "active");
+  const appForeground = useAppForeground();
   const discovery = useMemo(() => (Platform.OS === "ios" ? createNativeServerDiscovery() : undefined), []);
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => {
-      setAppForeground(state === "active");
-    });
-    return () => subscription.remove();
-  }, []);
   const session = useMemo(
     () =>
       new PairingSession({
@@ -328,12 +306,7 @@ const Index = () => {
     });
     return () => void unsubscribe();
   }, [haptic, session]);
-  useEffect(() => {
-    const unsubscribe = session.subscribe(({ status }) =>
-      nativeApp.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.lifecycle, `pairing ${status}`),
-    );
-    return () => void unsubscribe();
-  }, [session]);
+  usePairingBreadcrumbs(session);
   return (
     <>
       <PairingShell

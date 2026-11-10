@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ProposalApproval is the complete durable consequence of one approval decision.

@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -115,7 +115,7 @@ type concurrentTitleLibrary struct {
 	ready   chan struct{}
 }
 
-func (l *concurrentTitleLibrary) Search(ctx context.Context, term string, _ int) ([]library.SearchResult, error) {
+func (l *concurrentTitleLibrary) Search(ctx context.Context, term string, _ int) ([]mediaserver.SearchResult, error) {
 	if l.started.Add(1) == 2 {
 		close(l.ready)
 	}
@@ -124,21 +124,21 @@ func (l *concurrentTitleLibrary) Search(ctx context.Context, term string, _ int)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	items := map[string]library.SearchResult{
+	items := map[string]mediaserver.SearchResult{
 		"Grand Oak Hotel": {
 			LibraryItemID: "lib-grand-oak-hotel", Name: "Grand Oak Hotel", Year: 1987,
-			MediaType: library.Series, TVDBID: 90000762,
+			MediaType: mediaserver.Series, TVDBID: 90000762,
 		},
 		"Crumb Street Bakery": {
 			LibraryItemID: "lib-crumb-street-bakery", Name: "Crumb Street Bakery", Year: 1989,
-			MediaType: library.Series, TVDBID: 90000767,
+			MediaType: mediaserver.Series, TVDBID: 90000767,
 		},
 	}
 	item, ok := items[term]
 	if !ok {
 		return nil, nil
 	}
-	return []library.SearchResult{item}, nil
+	return []mediaserver.SearchResult{item}, nil
 }
 
 func (m *emptyThenGroundedLLM) Name() string { return "empty-then-grounded" }

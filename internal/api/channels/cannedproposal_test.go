@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/ideas"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 type fixedLibrary []ideas.Item

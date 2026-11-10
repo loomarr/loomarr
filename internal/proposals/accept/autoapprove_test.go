@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // quotaStore is an in-memory stand-in for the slices AutoApprover needs. It is a fake,

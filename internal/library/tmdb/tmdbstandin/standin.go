@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Title is one movie or series the stand-in knows. Ids absent from the catalogue 404 on the

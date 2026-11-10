@@ -1,3 +1,4 @@
+import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
 import type { PairingCredential, PairingSession } from "@loomarr/core/pairing";
 import { LoomarrProvider } from "@loomarr/design-system";
 import Constants from "expo-constants";
@@ -45,6 +46,35 @@ const useCrashReportUpload = (credential: PairingCredential, session: PairingSes
 };
 
 /**
+ * What the paired shell reports about itself: it uploads pending crash reports (see
+ * `useCrashReportUpload`) and records each screen the viewer opens as a navigation breadcrumb.
+ * Call it once from the paired shell, under `NativeAppRoot`, with the screen now showing.
+ */
+const useShellCrashReporting = (
+  credential: PairingCredential,
+  session: PairingSession,
+  destination: string,
+) => {
+  const app = useContext(NativeAppContext);
+  useCrashReportUpload(credential, session);
+  useEffect(
+    () => app?.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.navigation, destination),
+    [app, destination],
+  );
+};
+
+/** Records every change of pairing status ("pairing paired") as a lifecycle breadcrumb, under `NativeAppRoot`. */
+const usePairingBreadcrumbs = (session: PairingSession) => {
+  const app = useContext(NativeAppContext);
+  useEffect(() => {
+    const unsubscribe = session.subscribe(({ status }) =>
+      app?.crashReports.recordBreadcrumb(ClientCrashBreadcrumbCategory.lifecycle, `pairing ${status}`),
+    );
+    return () => void unsubscribe();
+  }, [app, session]);
+};
+
+/**
  * The bootstrap every native app calls once, at module load and before the first render, so a crash
  * while the app starts is captured too: it installs crash reporting and names the app for playback
  * diagnostics from the platform it runs on.
@@ -61,4 +91,10 @@ const createNativeApp = ({ clientVersion }: NativeAppOptions = {}): NativeApp =>
 };
 
 export type { NativeApp, NativeAppOptions };
-export { createNativeApp, NativeAppRoot, useCrashReportUpload };
+export {
+  createNativeApp,
+  NativeAppRoot,
+  useCrashReportUpload,
+  usePairingBreadcrumbs,
+  useShellCrashReporting,
+};

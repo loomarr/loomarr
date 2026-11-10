@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 

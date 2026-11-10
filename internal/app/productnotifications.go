@@ -11,11 +11,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 type productNotificationCoordinator struct {

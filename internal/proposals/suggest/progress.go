@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Phase names a stage of grounded generation (§8), surfaced to the UI as SSE

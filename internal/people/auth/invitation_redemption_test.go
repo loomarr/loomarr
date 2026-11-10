@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -89,7 +89,7 @@ func TestInvitationRedemption_LibraryFailuresNeverFallbackOrConsumeInvitation(t 
 	mediaServer.Accounts = map[string]testkit.Account{
 		"Selected": {Password: "provider-password", ID: "different-id"},
 	}
-	provider := library.New(library.Emby, mediaServer.URL, mediaServer.AdminToken, "invitation-device")
+	provider := mediaserver.New(mediaserver.Emby, mediaServer.URL, mediaServer.AdminToken, "invitation-device")
 	mgr := NewManager(st, time.Hour, func() time.Time { return at.Add(time.Minute) })
 	svc := NewInvitationRedemptionService(st, provider, mgr, func() string { return "unused" }, func() time.Time {
 		return at.Add(time.Minute)
@@ -141,7 +141,7 @@ func TestInvitationRedemption_LibraryProvesPinnedIdentityAndStoresOfflineVerifie
 	mediaServer.Accounts = map[string]testkit.Account{
 		"Grace": {Password: "provider-password", ID: "emby-grace", IsAdmin: true},
 	}
-	provider := library.New(library.Emby, mediaServer.URL, mediaServer.AdminToken, "invitation-device")
+	provider := mediaserver.New(mediaserver.Emby, mediaServer.URL, mediaServer.AdminToken, "invitation-device")
 	mgr := NewManager(st, time.Hour, func() time.Time { return at.Add(time.Minute) })
 	svc := NewInvitationRedemptionService(st, provider, mgr, func() string { return "must-not-be-used" }, func() time.Time {
 		return at.Add(time.Minute)

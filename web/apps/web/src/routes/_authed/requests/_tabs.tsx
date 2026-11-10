@@ -8,6 +8,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ChannelIdeas } from "@/home/channel-ideas";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRouteContent } from "@/lib/use-route-content";
 import { useRequests } from "@/queue/use-requests";
 
 // Requests — what you've asked for, and anything that needs you (#1405; this was "Queue"). Three
@@ -27,6 +28,9 @@ const RequestsLayout = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { entries, inTab, needsYouCount, pendingApprovals, isLoading, error, refetch } = useRequests();
+  // The layout answers for the page when there is nothing to list; each tab's list answers for
+  // itself when the viewer switches tabs and this layout stays mounted.
+  useRouteContent(!isLoading && error == null);
 
   const { isAdmin } = useAuth();
   const [nowMs] = useState(() => Date.now());

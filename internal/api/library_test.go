@@ -11,11 +11,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	mptmdb "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/library/scan"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 )
 
 type libraryRootsBody struct {
@@ -80,7 +80,7 @@ func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *sc
 				{Authority: "radarr", Folders: func(context.Context) ([]string, error) { return nil, scan.ErrSkipped }},
 			}
 		},
-		PathMap: func() library.PathMap { return nil },
+		PathMap: func() mediaserver.PathMap { return nil },
 		Disk:    scan.OSDisk{MountInfo: filepath.Join(t.TempDir(), "no-mounts")},
 		Now:     time.Now,
 	}

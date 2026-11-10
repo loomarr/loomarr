@@ -11,7 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/approval"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -19,7 +20,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -34,7 +34,7 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)

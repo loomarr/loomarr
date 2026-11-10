@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 func TestCompileMoodReviewAuthorityPreservesFrozenV1Evidence(t *testing.T) {

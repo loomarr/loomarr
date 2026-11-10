@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
@@ -61,7 +61,7 @@ func TestBackendPublisherSnapshotsTargetURLsAcrossPhases(t *testing.T) {
 	primary := testkit.NewLiveTV()
 	rotated := testkit.NewLiveTV()
 	librarySnapshots := 0
-	connector := livetvpublish.NewLiveTVConnector(func() library.LiveTV {
+	connector := livetvpublish.NewLiveTVConnector(func() mediaserver.LiveTV {
 		librarySnapshots++
 		if librarySnapshots == 1 {
 			return primary

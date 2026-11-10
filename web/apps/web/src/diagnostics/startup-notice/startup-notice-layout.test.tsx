@@ -18,7 +18,8 @@ vi.mock("@tanstack/react-query", () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@tanstack/react-router", () => ({
-  createRouter: vi.fn(() => ({})),
+  // The entry subscribes route timing to the router, so the stand-in can be subscribed to.
+  createRouter: vi.fn(() => ({ subscribe: () => () => {} })),
   RouterProvider: () => null,
 }));
 vi.mock("react-dom/client", () => ({ createRoot: () => ({ render: mocks.render }) }));
