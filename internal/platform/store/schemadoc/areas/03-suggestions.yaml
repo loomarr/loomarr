@@ -26,7 +26,9 @@ tables:
       intent_hash: >
         A fingerprint of the normalised request. A new identical request can reuse a recent `done`
         job's result instead of running again.
-      created_by: The person who submitted the request (users.id). Empty when no person did.
+      created_by: >
+        The person who submitted the request (users.id). Null when no person did (the API token or a
+        re-curation), or once that person is deleted.
       last_error: The detailed error from the last failure, for the logs. Not shown to the requester.
       deadline: >
         When a queued job is due to run, or when a running job's hold expires and another worker may
@@ -82,8 +84,15 @@ tables:
       status: >
         `submitted` (waiting for a decision), `approved`, `denied`, or `superseded` (replaced by a
         newer proposal from the same job before anyone decided).
-      created_by: The person who asked for it (users.id).
-      decided_by: The admin who approved or denied it (users.id). Empty until decided.
+      created_by: >
+        The person who asked for it (users.id). Null for the API token, or once that person is
+        deleted.
+      decided_by: >
+        The admin who approved or denied it (users.id). Null until decided, when an automatic rule
+        decided (see decided_via), for the API token, or once that admin is deleted.
+      decided_via: >
+        How it was approved or denied. `person` (an admin, or the API token), `auto` (the requester's
+        automatic approval), or `auto-curate` (a channel's scheduled re-curation). Null until decided.
       deny_reason: The reason given for a denial. Empty otherwise.
       proposal_json: >
         The suggestion itself. The request, the proposed channel name, the lineup of titles already
@@ -108,7 +117,9 @@ tables:
       replaces it, and a clear once nothing is left under it. A channel's rows go with the channel.
     columns:
       id: Identifies the choice.
-      actor_id: The person who made it (users.id), or `api-token` for a choice sent with the API token.
+      actor_id: >
+        The person who made it (users.id). Null for a choice sent with the API token, or once that
+        person is deleted.
       scope: >
         Where it applies. `household` for every channel, or `channel` for one channel.
       scope_id: The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`.

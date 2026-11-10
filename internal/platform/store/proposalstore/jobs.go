@@ -118,7 +118,10 @@ type ProposalJob struct {
 
 // Proposal is a persisted suggester output (§8). Status drives the approval queue
 // (submitted → approved/denied); CreatedBy powers My proposals (§12); ApprovedBy
-// records whoever decided it, approver or denier, in the `decided_by` column (§8 audit). Body is the proposals.Proposal, persisted as one JSON column.
+// records whoever decided it, approver or denier (§8 audit): a member, AutoApprovedBy or
+// AutoCuratedBy, stored as `decided_by` and `decided_via` (people.go). CreatedBy and a member
+// ApprovedBy read "" for the API token and once that member is deleted. Body is the
+// proposals.Proposal, persisted as one JSON column.
 type Proposal struct {
 	ID         string
 	JobID      string
@@ -151,7 +154,7 @@ func (s *Store) CreateJob(ctx context.Context, j Job) error {
 	_, err := s.h.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 			workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json, channel_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		 VALUES (?, ?, ?, ?, ?, `+MemberValue+`, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
 		j.ID, j.Kind, j.Status, jobIntent(j.IntentJSON), j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, storedb.Epoch(j.Deadline), j.Attempts,
@@ -184,8 +187,9 @@ func (s *Store) listProposalJobIDs(ctx context.Context, createdBy string, scoped
 	query := `SELECT id FROM proposal_jobs WHERE kind = 'suggest'`
 	args := []any{}
 	if scoped {
-		query += ` AND created_by = ?`
-		args = append(args, createdBy)
+		creator, creatorArgs := CreatorMatch("created_by", createdBy)
+		query += ` AND ` + creator
+		args = append(args, creatorArgs...)
 	}
 	query += ` ORDER BY updated_at DESC, id DESC LIMIT ?`
 	args = append(args, limit)
@@ -219,15 +223,15 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 		`SELECT j.id, j.kind, j.status, j.intent_json, j.intent_hash, j.created_by, j.last_error, j.failure_code,
 		        j.workflow_version, j.reached_live, j.deadline, j.attempts, j.created_at, j.updated_at, j.failure_trace_json,
 		        j.channel_id,
-		        p.id, p.job_id, p.status, p.created_by, p.decided_by, p.deny_reason,
+		        p.id, p.job_id, p.status, p.created_by, p.decided_by, p.decided_via, p.deny_reason,
 		        p.mod_summary, p.note, p.proposal_json, p.approved_at, p.created_at, p.updated_at
 		   FROM proposal_jobs j
 		   LEFT JOIN proposals p
 		     ON (j.status = 'done' OR p.status = 'submitted')
-		    AND p.created_by = j.created_by
+		    AND p.created_by IS NOT DISTINCT FROM j.created_by
 		    AND p.id = (
 		        SELECT p2.id FROM proposals p2
-		         WHERE p2.job_id = j.id AND p2.created_by = j.created_by
+		         WHERE p2.job_id = j.id AND p2.created_by IS NOT DISTINCT FROM j.created_by
 		         ORDER BY p2.created_at DESC, p2.id DESC
 		         LIMIT 1
 		    )
@@ -238,17 +242,18 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 	var (
 		out                                   ProposalJob
 		deadline, jobCreatedAt, jobUpdatedAt  int64
-		pID, pJobID, pStatus, pCreatedBy      sql.NullString
-		pApprovedBy, pDenyReason, pModSummary sql.NullString
+		pID, pJobID, pStatus                  sql.NullString
+		pCreatedBy, pDecidedBy                storedb.OptionalID
+		pDecidedVia, pDenyReason, pModSummary sql.NullString
 		pNote, pJSON                          sql.NullString
 		pApprovedAt, pCreatedAt, pUpdatedAt   sql.NullInt64
 	)
 	err = row.Scan(
 		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
-		&out.Job.CreatedBy, &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
+		(*storedb.OptionalID)(&out.Job.CreatedBy), &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
 		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt, (*storedb.OptionalJSON)(&out.Job.FailureTraceJSON),
 		(*storedb.OptionalID)(&out.Job.ChannelID),
-		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
+		&pID, &pJobID, &pStatus, &pCreatedBy, &pDecidedBy, &pDecidedVia, &pDenyReason,
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -266,8 +271,8 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 			return ProposalJob{}, fmt.Errorf("get proposal job %s: %w", id, err)
 		}
 		out.Proposal = &Proposal{
-			ID: pID.String, JobID: pJobID.String, Status: pStatus.String, CreatedBy: pCreatedBy.String,
-			ApprovedBy: pApprovedBy.String, DenyReason: pDenyReason.String, ModSummary: pModSummary.String,
+			ID: pID.String, JobID: pJobID.String, Status: pStatus.String, CreatedBy: string(pCreatedBy),
+			ApprovedBy: approvedBy(pDecidedBy, pDecidedVia), DenyReason: pDenyReason.String, ModSummary: pModSummary.String,
 			Note: pNote.String, Body: body,
 			ApprovedAt: storedb.FromEpoch(pApprovedAt.Int64), CreatedAt: storedb.FromEpoch(pCreatedAt.Int64),
 			UpdatedAt: storedb.FromEpoch(pUpdatedAt.Int64),
@@ -291,7 +296,7 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 
 func (s *Store) UpdateJob(ctx context.Context, j Job) error {
 	_, err := s.h.ExecContext(ctx, s.h.Rebind(
-		`UPDATE proposal_jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=?,
+		`UPDATE proposal_jobs SET kind=?, status=?, intent_json=?, intent_hash=?, created_by=`+MemberValue+`,
 		   last_error=?, failure_code=?, workflow_version=?, reached_live=?, deadline=?, attempts=?, updated_at=?, failure_trace_json=? WHERE id=?`),
 
 		j.Kind, j.Status, jobIntent(j.IntentJSON), j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
@@ -439,7 +444,7 @@ func scanJob(sc storedb.Scannable) (Job, error) {
 		j                              Job
 		deadline, createdAt, updatedAt int64
 	)
-	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
+	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, (*storedb.OptionalID)(&j.CreatedBy),
 		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, (*storedb.OptionalJSON)(&j.FailureTraceJSON), (*storedb.OptionalID)(&j.ChannelID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, storedb.ErrNotFound
@@ -475,20 +480,7 @@ func scanJobs(rows *sql.Rows) ([]Job, error) {
 // --- proposals ---
 
 func (s *Store) CreateProposal(ctx context.Context, p Proposal) error {
-	body, err := EncodeProposalBody(p)
-	if err != nil {
-		return err
-	}
-	_, err = s.h.ExecContext(ctx, s.h.Rebind(
-		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-
-		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
-		body, storedb.Epoch(p.ApprovedAt), storedb.Epoch(p.CreatedAt), storedb.Epoch(p.UpdatedAt))
-	if err != nil {
-		return fmt.Errorf("create proposal %s: %w", p.ID, err)
-	}
-	return nil
+	return insertProposalTx(ctx, s.h, s, p)
 }
 
 // jobIntent is the intent_json a job stores: its intent, or the column's default when it has none.
@@ -520,7 +512,7 @@ func decodeProposalBody(id, raw string) (proposals.Proposal, error) {
 	return body, nil
 }
 
-const ProposalSelect = `SELECT id, job_id, status, created_by, decided_by, deny_reason,
+const ProposalSelect = `SELECT id, job_id, status, created_by, decided_by, decided_via, deny_reason,
 	mod_summary, note, proposal_json, approved_at, created_at, updated_at FROM proposals`
 
 func (s *Store) GetProposal(ctx context.Context, id string) (Proposal, error) {
@@ -557,7 +549,8 @@ func (s *Store) NewestProposalByStatusForJob(ctx context.Context, jobID, status 
 }
 
 func (s *Store) ListProposalsByCreator(ctx context.Context, userID string) ([]Proposal, error) {
-	rows, err := s.h.QueryContext(ctx, s.h.Rebind(ProposalSelect+` WHERE created_by = ? ORDER BY created_at DESC`), userID)
+	creator, args := CreatorMatch("created_by", userID)
+	rows, err := s.h.QueryContext(ctx, s.h.Rebind(ProposalSelect+` WHERE `+creator+` ORDER BY created_at DESC`), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -569,9 +562,11 @@ func scanProposal(sc storedb.Scannable) (Proposal, error) {
 	var (
 		p                                Proposal
 		bodyJSON                         string
+		decidedBy                        storedb.OptionalID
+		decidedVia                       sql.NullString
 		approvedAt, createdAt, updatedAt int64
 	)
-	err := sc.Scan(&p.ID, &p.JobID, &p.Status, &p.CreatedBy, &p.ApprovedBy, &p.DenyReason,
+	err := sc.Scan(&p.ID, &p.JobID, &p.Status, (*storedb.OptionalID)(&p.CreatedBy), &decidedBy, &decidedVia, &p.DenyReason,
 		&p.ModSummary, &p.Note, &bodyJSON, &approvedAt, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, storedb.ErrNotFound
@@ -582,6 +577,7 @@ func scanProposal(sc storedb.Scannable) (Proposal, error) {
 	if p.Body, err = decodeProposalBody(p.ID, bodyJSON); err != nil {
 		return Proposal{}, err
 	}
+	p.ApprovedBy = approvedBy(decidedBy, decidedVia)
 	p.ApprovedAt = storedb.FromEpoch(approvedAt)
 	p.CreatedAt = storedb.FromEpoch(createdAt)
 	p.UpdatedAt = storedb.FromEpoch(updatedAt)

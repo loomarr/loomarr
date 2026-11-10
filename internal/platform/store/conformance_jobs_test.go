@@ -21,6 +21,27 @@ import (
 // ⚠ The three scheduled-job tests sit TOGETHER here, so the pause flag is read beside the upsert
 // it must survive.
 
+// jobMembers are the people the job and proposal cases name. A job's and a proposal's people are
+// foreign keys to users (#2793), so a name that is no member reads back as no one.
+var jobMembers = []string{
+	"user-1", "alice", "bob", "member", "admin", "admin-a", "admin-b", "approver", "denier",
+	"other-user", "someone-else",
+}
+
+// withJobMembers opens each store with jobMembers already saved.
+func withJobMembers(newStore NewStoreFunc) NewStoreFunc {
+	return func(t *testing.T) Store {
+		t.Helper()
+		s := newStore(t)
+		for _, id := range jobMembers {
+			if err := s.UpsertUser(context.Background(), User{ID: id, Name: id, Role: RoleMember}); err != nil {
+				t.Fatalf("save member %s: %v", id, err)
+			}
+		}
+		return s
+	}
+}
+
 func sampleJob(id, hash string, deadline, createdAt time.Time) Job {
 	return Job{
 		ID: id, Kind: "suggest", Status: "queued",

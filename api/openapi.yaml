@@ -3511,6 +3511,7 @@ components:
         action:
           type: string
         actorId:
+          description: The member who gave it; empty for the API token or a member since deleted.
           type: string
         createdAt:
           format: date-time

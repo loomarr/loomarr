@@ -27,7 +27,9 @@ const (
 )
 
 type DiscoveryFeedback struct {
-	ID        string
+	ID string
+	// ActorID is the member who gave the feedback: "" for the API token, which is no member, and
+	// once that member is deleted (actor_id is a foreign key to users, SET NULL, #2793).
 	ActorID   string
 	Scope     FeedbackScope
 	ScopeID   string
@@ -106,8 +108,8 @@ func EffectiveDiscoveryFeedback(household, channel []DiscoveryFeedback) []Discov
 }
 
 func (s *Store) AppendDiscoveryFeedback(ctx context.Context, feedback DiscoveryFeedback) error {
-	if feedback.ID == "" || feedback.ActorID == "" || feedback.Target == "" {
-		return fmt.Errorf("append discovery feedback: id, actor, and target are required")
+	if feedback.ID == "" || feedback.Target == "" {
+		return fmt.Errorf("append discovery feedback: id and target are required")
 	}
 	if !validFeedbackScope(feedback.Scope, feedback.ScopeID) || !validFeedbackAction(feedback.Action) {
 		return fmt.Errorf("append discovery feedback: invalid scope or action")
@@ -139,7 +141,7 @@ func (s *Store) AppendDiscoveryFeedback(ctx context.Context, feedback DiscoveryF
 	}
 	_, err = tx.ExecContext(ctx, s.h.Rebind(`INSERT INTO discovery_feedback
 		(id, actor_id, scope, scope_id, target_key, action, reason, created_at_ns)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+		VALUES (?, (SELECT id FROM users WHERE id = ?), ?, ?, ?, ?, ?, ?)`),
 
 		feedback.ID, feedback.ActorID, feedback.Scope,
 		storedb.OptionalID(feedback.ScopeID), feedback.Target, feedback.Action, feedback.Reason, feedback.CreatedAt.UnixNano())
@@ -169,7 +171,7 @@ func (s *Store) ListDiscoveryFeedback(ctx context.Context, filter FeedbackFilter
 	for rows.Next() {
 		var feedback DiscoveryFeedback
 		var createdAt int64
-		if err := rows.Scan(&feedback.ID, &feedback.ActorID, &feedback.Scope, (*storedb.OptionalID)(&feedback.ScopeID),
+		if err := rows.Scan(&feedback.ID, (*storedb.OptionalID)(&feedback.ActorID), &feedback.Scope, (*storedb.OptionalID)(&feedback.ScopeID),
 			&feedback.Target, &feedback.Action, &feedback.Reason, &createdAt); err != nil {
 			return nil, fmt.Errorf("list discovery feedback: %w", err)
 		}

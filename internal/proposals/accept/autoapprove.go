@@ -10,16 +10,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
-// AutoApprovedBy is the audit value recorded when the grant, not a human, approved a
-// proposal (§11: approvals are audited). Deliberately not a user id: the trail must be
-// able to answer "did a person decide this?" without inferring it.
-const AutoApprovedBy = "auto"
-
-// AutoCuratedBy is the audit value recorded when the §8.2 scheduled re-curation, authorized
-// by a channel's AutoCurate opt-in, approved a proposal. Distinct from AutoApprovedBy so the
-// trail separates "a user's auto-approve grant" from "the channel's auto-curate loop".
-const AutoCuratedBy = "auto-curate"
-
 // guardedApprovalStore is the transaction-bound seam for one requester's
 // unattended-spend decision. The store supplies quota reads from the same
 // transaction/connection that performs the durable approval commit.
@@ -113,7 +103,7 @@ func (a *AutoApprover) Consider(ctx context.Context, p proposalstore.Proposal) (
 	// no approver to make a judgement, which is the point of the grant — and it runs the SAME
 	// durable approval planner as the manual path (§8). Only the commit adapter differs: it adds
 	// the transaction-bound quota guard.
-	result, err := a.approver.approveDurably(ctx, p, nil, AutoApprovedBy,
+	result, err := a.approver.approveDurably(ctx, p, nil, proposalstore.AutoApprovedBy,
 		func(commitCtx context.Context, commit store.ProposalApproval) (int, error) {
 			return a.store.CommitProposalApprovalGuarded(commitCtx, commit, guard)
 		})

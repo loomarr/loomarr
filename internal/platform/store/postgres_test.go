@@ -54,7 +54,7 @@ func TestPostgresConformance(t *testing.T) {
 	RunConformance(t, newStore)
 
 	t.Run("ApprovalQuotaAcrossIndependentPools", func(t *testing.T) {
-		primary := newStore(t)
+		primary := withJobMembers(newStore)(t)
 		secondary, err := openPostgres(context.Background(), primary.(*sqlStore).dsn)
 		if err != nil {
 			t.Fatalf("open independent postgres pool: %v", err)
