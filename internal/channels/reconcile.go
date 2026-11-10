@@ -313,8 +313,15 @@ func (e *Engine) planReconcile(
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now(), accepted, ch.PlayoutAnchor)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
-	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	avail, readFailed := e.reconcileAvailability(ctx)
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, avail, e.policy, ch.Policy, e.now())
 	if err != nil {
+		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
+	}
+	// A lineup computed while a read was failing has titles missing that the library holds.
+	// Committing it would take them off the air, so the reconcile stops here and the channel
+	// keeps what it had.
+	if err := readFailed(); err != nil {
 		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
 	}
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
