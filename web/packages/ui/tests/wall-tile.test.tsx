@@ -221,6 +221,8 @@ describe("WallTile compact (#3407)", () => {
     );
     expect(caption).toHaveLength(1);
     expect(caption[0]?.getAttribute("class") ?? "").toMatch(oneLine);
+    // The caption is the name and the time left only: no episode code (the wall hands the phone just the time).
+    expect(text).not.toMatch(/S\d+ ?E\d+/);
     expect(text.split("Nature Hour").length - 1).toBe(1);
     expect(text.indexOf("Heron Country")).toBeLessThan(text.indexOf("Nature Hour"));
     // WallTile never draws a monogram itself: the picture slot is the only thing behind the words.

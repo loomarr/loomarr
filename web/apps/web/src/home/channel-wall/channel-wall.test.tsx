@@ -113,6 +113,38 @@ describe("ChannelWall — every channel as a live tile (#2764)", () => {
     }
   });
 
+  it("keeps the episode code on desktop and drops it on the phone caption, which is the name and time left", async () => {
+    const episodic = (): GuideChannelTimeline =>
+      live("c1", 3, {
+        airings: [
+          {
+            episode: 8,
+            kind: "program",
+            scheduleBlockId: "b-c1",
+            season: 10,
+            startMs: 0,
+            stopMs: 22 * MIN,
+            title: "Programme c1",
+          },
+        ],
+      });
+    await renderWall([episodic()]);
+    expect(tiles()[0]).toHaveTextContent("S10E08 · 22 min left");
+    document.body.replaceChildren();
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      await renderWall([episodic()]);
+      expect(tiles()[0]).toHaveTextContent("Channel c1 · 22 min left");
+      expect(tiles()[0]).not.toHaveTextContent(/S10/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("marks nothing when the viewer has not tuned anything", async () => {
     await renderWall([live("c1", 3), live("c2", 5)]);
     expect(screen.queryByText("You were here")).not.toBeInTheDocument();

@@ -66,6 +66,8 @@ type WallEntry = {
   airing?: GuideAiring;
   title: string;
   detail?: string;
+  /** The phone tile's caption: the time left alone, the mock's "name · n min left" with no episode code. */
+  compactDetail?: string;
   /** How far through the programme on air the channel is. */
   progressPercent?: number;
   /** The channel has nothing to air yet, so its tile is dimmed. */
@@ -116,13 +118,13 @@ const wallEntry = (channel: GuideChannelLayout, nowMs: number, timezone?: string
       waiting: false,
     };
   }
+  const timeLeft = `${minutesLeft(airing.stopMs, nowMs)} min left`;
   return {
     ...identity,
     airing,
     title: data.now.seriesTitle ?? data.now.title,
-    detail: [data.now.episodeLabel, `${minutesLeft(airing.stopMs, nowMs)} min left`]
-      .filter(Boolean)
-      .join(" · "),
+    detail: [data.now.episodeLabel, timeLeft].filter(Boolean).join(" · "),
+    compactDetail: timeLeft,
     progressPercent: ((nowMs - airing.startMs) / (airing.stopMs - airing.startMs)) * 100,
     dim: false,
     waiting: false,
@@ -207,7 +209,11 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: Chan
               title={entry.title}
               {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}
               {...(viewers ? { watchers: watchersOn(viewers, channel.source.channelId) } : {})}
-              {...(entry.detail ? { detail: entry.detail } : {})}
+              {...(phone && entry.compactDetail
+                ? { detail: entry.compactDetail }
+                : entry.detail
+                  ? { detail: entry.detail }
+                  : {})}
               {...(entry.progressPercent === undefined ? {} : { progressPercent: entry.progressPercent })}
             />
           );

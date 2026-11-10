@@ -12,9 +12,12 @@ const meta = {
     number: "07",
     title: "Coastline Mysteries",
   },
+  // One frame for every story, sized as the wall sizes a tile: a tile has no width of its own, it takes
+  // its grid column's. Desktop: a column of the three-column wall at about 1280px (400px). Phone: a
+  // column of the two-column wall at 390px (165px). Height follows from the tile's 16:9 ratio.
   decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 420, padding: 24 }}>
+    (Story, { args }) => (
+      <div style={{ padding: 24, width: args.compact ? 165 : 400 }}>
         <Story />
       </div>
     ),
@@ -55,13 +58,6 @@ const WatchedCompact: Story = {
     number: "12",
     watchers: ["Sam", "Jo"],
   },
-  decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 180 }}>
-        <Story />
-      </div>
-    ),
-  ],
 };
 const LightWatched: Story = { ...Watched, globals: { theme: "light" } };
 
@@ -86,18 +82,10 @@ const Compact: Story = {
     detail: "41m left",
     number: "12",
   },
-  decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 180 }}>
-        <Story />
-      </div>
-    ),
-  ],
 };
 
 const CompactLast: Story = {
   args: { ...Compact.args, last: true },
-  decorators: Compact.decorators ?? [],
 };
 
 // The number block in the channel's decade colour (#2767), the only place the tile shows it. OnAir is
@@ -139,13 +127,6 @@ const LastWatchedLongName: Story = {
 
 // A phone's tile, 165px wide (the mock): the number alone on top, the title on one line, then one
 // caption line, channel name first.
-const phoneWidth: Story["decorators"] = [
-  (Story) => (
-    <div style={{ maxWidth: 165 }}>
-      <Story />
-    </div>
-  ),
-];
 const CompactWithArt: Story = {
   args: {
     art: <BusyPicture />,
@@ -155,12 +136,10 @@ const CompactWithArt: Story = {
     number: "12",
     title: "Heron Country: A Long Season on the Marsh",
   },
-  decorators: phoneWidth,
 };
-const CompactNoArt: Story = { args: { ...CompactWithArt.args, art: null }, decorators: phoneWidth };
+const CompactNoArt: Story = { args: { ...CompactWithArt.args, art: null } };
 const CompactLastLongName: Story = {
   args: { ...CompactWithArt.args, channelName: "Late Night Coastal Mysteries", last: true },
-  decorators: phoneWidth,
 };
 
 const Decade1970: Story = { args: { ...OnAir.args, decade: 1970 } };
