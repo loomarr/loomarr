@@ -14,6 +14,10 @@ mocks are the authority on layout.
   a compile error. `@loomarr/api` re-exports DTOs type-only and only the enum objects the UI uses at
   run time.
 - Live updates come from SSE `/v1/events`, which only invalidates queries; the API stays authoritative.
+  Frames sent while the stream is down are gone, so when it opens again every read a frame feeds
+  refetches. The browser retries a dropped connection itself, but a refused response (a proxy's 502
+  while the server restarts) closes an `EventSource` for good, so the web client opens a new one
+  after 3 seconds.
 - The UI hides admin-only actions from members. Loomarr is not meant to be exposed publicly.
 
 ## Navigation
