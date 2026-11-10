@@ -13,11 +13,22 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // headerBatch is how many read results are saved per write.
 const headerBatch = 50
+
+// headerStall is how long one header read may take before the stage gives up on it. A read is one
+// seek or one ffprobe run, seconds at the worst; a mount whose server went away can block it for
+// good.
+const headerStall = 2 * time.Minute
+
+// headerFaultLimit is how many files in a row the share may fail to give back before the stage
+// stops. One file gone between the walk and its read, or one unreadable sector, is that file's
+// problem; a run of them with no read between is the share's.
+const headerFaultLimit = 2 * headerConcurrency
 
 // readHeaders reads the header of each queued file, wanted items first, headerConcurrency at a
 // time. Reads wait while live playout runs, since each is a disk seek a viewer's stream would
@@ -99,6 +110,8 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		mu    sync.Mutex
 		batch []pending
 		first error
+		// faults counts the files in a row the share could not give back.
+		faults int
 	)
 	flush := func(force bool) {
 		if len(batch) == 0 || (!force && len(batch) < headerBatch) {
@@ -119,9 +132,18 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 				row, err := im.readOne(ctx, job)
 				mu.Lock()
 				switch {
-				case err != nil && first == nil:
-					first = err
-				case err == nil:
+				case errors.Is(err, errFileFault):
+					// The file stays pending, and the stage goes on to the next.
+					faults++
+					if faults >= headerFaultLimit && first == nil {
+						first = fmt.Errorf("%w: %d files in a row, the last: %w", errShareFault, faults, err)
+					}
+				case err != nil:
+					if first == nil {
+						first = err
+					}
+				default:
+					faults = 0
 					job.row = row
 					batch = append(batch, job)
 					flush(false)
@@ -147,6 +169,12 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		if (im.Enabled != nil && !im.Enabled()) || failed() {
 			break
 		}
+		if im.stalled(job.root()) {
+			// A read under this root was given up on and has still not returned: the file stays
+			// pending rather than blocking another reader on the same mount.
+			im.Tracker.Grow(StepReading, -1)
+			continue
+		}
 		work <- job
 	}
 	close(work)
@@ -167,22 +195,26 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 
 // readOne reads one file's header and writes the file's item with it. A file whose header does not
 // parse is recorded as failed and not tried again until its bytes change. A file the share could
-// not give back (gone, an I/O error, a timeout) stays pending and ends the stage: the share, not
-// the file, is the problem, and the next pass tries again.
+// not give back (gone, an I/O error, a timeout) stays pending for the next pass and returns
+// errFileFault: the stage goes on, and stops only after headerFaultLimit of them in a row. A read
+// that does not return within the stall returns errShareFault, which ends the stage.
 func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.LibraryFile, error) {
 	row := job.row
 	if im.stale(job) {
 		return row, nil // checked again before the write, which a later import may still beat
 	}
-	h, err := im.Header(ctx, job.file.Path)
+	h, err := im.readHeader(ctx, job)
 	if err != nil {
 		if ctx.Err() != nil {
 			return row, ctx.Err()
 		}
-		if shareFault(err) {
-			return row, fmt.Errorf("%w: %w", errShareFault, err)
+		if errors.Is(err, errShareFault) {
+			return row, err
 		}
-		im.log().Debug("library scan: header not read", "err", err)
+		if shareFault(err) {
+			return row, fmt.Errorf("%w: %w", errFileFault, err)
+		}
+		im.log().Info("library scan: header not read", "path", job.file.Path, "err", err)
 		row.Header = librarystore.LibraryHeaderFailed
 		return row, nil
 	}
@@ -253,6 +285,45 @@ func (im *Importer) stale(job pending) bool {
 
 // errShareFault ends a header stage whose share stopped answering.
 var errShareFault = errors.New("library scan: the share stopped answering")
+
+// errFileFault is one file the share could not give back. The file stays pending.
+var errFileFault = errors.New("library scan: the share could not give the file back")
+
+// readHeader reads job's header, giving up once the read has taken the stall. A read blocked on a
+// dead mount cannot be cancelled, so one given up on is left to end on its own, and its root reads
+// as stalled until it does: nothing more under it is read or walked meanwhile.
+func (im *Importer) readHeader(ctx context.Context, job pending) (header.Header, error) {
+	type result struct {
+		h   header.Header
+		err error
+	}
+	out := make(chan result, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h, err := im.Header(ctx, job.file.Path)
+		out <- result{h, err}
+	}()
+	stall := time.NewTimer(orDuration(im.HeaderStall, headerStall))
+	defer stall.Stop()
+	select {
+	case r := <-out:
+		return r.h, r.err
+	case <-ctx.Done():
+		return header.Header{}, ctx.Err()
+	case <-stall.C:
+		im.markStalled(job.root(), done)
+		return header.Header{}, fmt.Errorf("%w: no answer reading %s", errShareFault, job.file.Path)
+	}
+}
+
+// root is the media folder the file was found under; "" when it is not known.
+func (job pending) root() string {
+	if job.b == nil {
+		return ""
+	}
+	return job.b.root
+}
 
 // shareFault reports whether a header read failed because of the share rather than the file.
 func shareFault(err error) bool {
