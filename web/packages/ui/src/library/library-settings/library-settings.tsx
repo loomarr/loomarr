@@ -322,9 +322,13 @@ const LibraryStatus = ({
 >) => {
   const inUse = folders.filter((f) => f.inUse);
   const offline = inUse.filter((f) => !f.readable);
+  // What needs the maintainer leads. An import still running for the other folders keeps its bar,
+  // step, file and time left below it; "All caught up" is never said beside something that isn't.
+  const alerted = health !== "ok" || held.length > 0;
+  const importing = health !== "needs_folders" && scan.step !== "idle";
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
-      {health === "ok" && held.length === 0 ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
+      {alerted ? null : <Headline readySoFar={readySoFar} scan={scan} />}
       {held.map((removal) => (
         <Callout
           actions={
@@ -361,6 +365,7 @@ const LibraryStatus = ({
             : "Loomarr didn't find any folders yet. Add the folder that holds your shows and movies."}
         </Callout>
       ) : null}
+      {alerted && importing ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
       {health === "needs_folders" ? null : <KeepingUp hooks={hooks} offline={offline} />}
       {health === "needs_folders" ? null : (
         <ScanActions onRefreshEverything={onRefreshEverything} onRescan={onRescan} scan={scan} />

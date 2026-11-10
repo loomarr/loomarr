@@ -187,6 +187,44 @@ const DownloadingChannel: Story = {
   },
 };
 
+// A 24-character channel name wraps to two lines in the rail, under a "Still downloading" chip
+// and beside a series name in sentence case (#3410).
+const LongName: Story = {
+  args: {
+    layout: layoutGuide(
+      {
+        ...evening,
+        channels: [
+          channel(
+            41,
+            "Cozy Autumn Horror Night",
+            "live",
+            [
+              program(at(19, 30), at(21), "An invented anthology", "The first night"),
+              pending(at(21), at(23), "Finding more episodes"),
+            ],
+            4,
+          ),
+          evening.channels[0] as GuideChannelTimeline,
+        ],
+      },
+      now,
+    ),
+  },
+};
+
+// Five minutes to the hour: the 9:00 PM tick keeps its line but gives up its label, so the red
+// now label never sits on it (#3410).
+const beforeTheHour = at(20, 55);
+const FiveToTheHour: Story = {
+  args: { layout: layoutGuide(evening, beforeTheHour), nowMs: beforeTheHour },
+  play: async ({ canvas }) => {
+    await canvas.findByText("8:55 PM");
+    expect(canvas.queryByText("9:00 PM")).toBeNull();
+    expect(canvas.getByText("10:00 PM")).toBeVisible();
+  },
+};
+
 // The rail's 4px bar in each channel's decade colour (#2767, the mock's `tint=era`): the 1980s,
 // 1990s and 1970s, and a channel with no single-decade era, whose bar stays clear. The number
 // stays neutral.
@@ -261,4 +299,14 @@ const JumpToAFarChannel: Story = {
 };
 
 export default meta;
-export { Decades, DecadesLight, DownloadingChannel, Evening, HundredChannels, JumpToAFarChannel, Keyboard };
+export {
+  Decades,
+  DecadesLight,
+  DownloadingChannel,
+  Evening,
+  FiveToTheHour,
+  HundredChannels,
+  JumpToAFarChannel,
+  Keyboard,
+  LongName,
+};

@@ -158,6 +158,29 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  it("keeps the import's bar, step and time left on screen beside an offline folder", () => {
+    const { host, cleanup } = render({
+      health: "folder_offline",
+      folders: [MOVIES, TV_IN_USE],
+      scan: WALKING,
+    });
+    expect(host.textContent).toContain("Can't reach your Movies folder");
+    expect(host.textContent).toContain("Step 1 of 3 · Looking through your folders · 112 of 533");
+    expect(host.textContent).toContain("About 9 minutes left in this step");
+    expect(host.textContent).toContain("TV / Night Ferry / Season 2");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("21");
+    expect(host.textContent).not.toContain("All caught up");
+    cleanup();
+  });
+
+  it("says nothing of being caught up beside an offline folder while no import runs", () => {
+    const { host, cleanup } = render({ health: "folder_offline", folders: [MOVIES, TV_IN_USE] });
+    expect(host.textContent).toContain("Can't reach your Movies folder");
+    expect(host.textContent).not.toContain("All caught up");
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    cleanup();
+  });
+
   it("shows step 1: the folders looked through, the time left and the folder it's in", () => {
     const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: WALKING });
     expect(host.textContent).toContain("Adding your media");

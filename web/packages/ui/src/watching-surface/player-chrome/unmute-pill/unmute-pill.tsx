@@ -8,6 +8,9 @@ import { raised, webOnly } from "../flat";
 // opened it. This pill says so and takes one tap to undo it. It is the player's only chrome that
 // stays up while the controls are hidden, and it goes when the sound is on.
 
+/** The pill's height: the chrome uses it to keep the pill clear of a top-left watermark. */
+const UNMUTE_PILL_HEIGHT = 40;
+
 const UnmutePill = ({ onPress }: { onPress: () => void }) => {
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
@@ -24,7 +27,7 @@ const UnmutePill = ({ onPress }: { onPress: () => void }) => {
         borderRadius: 6,
         flexDirection: "row",
         gap: 8,
-        height: 40,
+        height: UNMUTE_PILL_HEIGHT,
         paddingHorizontal: 12,
         ...raised(),
         ...(hovered ? { backgroundColor: playerChrome.surfaceHover } : null),
@@ -45,4 +48,4 @@ const UnmutePill = ({ onPress }: { onPress: () => void }) => {
   );
 };
 
-export { UnmutePill };
+export { UNMUTE_PILL_HEIGHT, UnmutePill };
