@@ -154,8 +154,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // A portrait phone (§9.7, #2775): the picture pinned under the top row, the band and keys below it
   // in the black space, nothing over the picture. Wider draws the chrome over the picture.
   const onPhone = usePhoneWidth();
-  // A finger gets the chrome's touch form: larger targets, no hover card, no tooltips (§9.5).
-  const touch = useCoarsePointer();
+  // A finger gets the chrome's touch form: larger targets, no hover card, no tooltips (§9.5). So
+  // does the portrait layout, which is a phone's: its band is already touch-sized, and the pointer
+  // keys (legends, a Volume key) are wider than a 390 px frame and clipped More.
+  const touch = useCoarsePointer() || onPhone;
   const density = touch ? "touch" : "pointer";
   // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
   // player's volume and mute without VideoPlayer knowing about it.
