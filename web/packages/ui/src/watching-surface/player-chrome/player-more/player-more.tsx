@@ -61,7 +61,9 @@ const MoreRow = ({
   const { focused, ...focusHandlers } = useFocusLook();
   return (
     <Pressable
-      accessibilityLabel={label}
+      // A row with a detail is named by what it shows ("Start over 8:00 PM"): a name that leaves
+      // the detail out does not match the visible label (WCAG 2.5.3).
+      accessibilityLabel={detail ? undefined : label}
       accessibilityRole="button"
       {...focusHandlers}
       onHoverIn={() => setHovered(true)}
