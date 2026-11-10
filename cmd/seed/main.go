@@ -42,6 +42,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
@@ -187,6 +188,12 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		acqItem("demo-film-08"),
 		acqItem("demo-film-26"),
 		acqItem("demo-film-29"),
+	}
+	// The library holds the in-library picks, and demo-film-26, which arrives below. A title
+	// names its library item by a foreign key (#2793), and offline there is no scan to write
+	// them.
+	if err := stockLibrary(ctx, st, now, "demo-film-10", "demo-film-14", "demo-film-22", "demo-film-27", "demo-film-26"); err != nil {
+		return err
 	}
 
 	jobID := newID("job")()
@@ -455,6 +462,20 @@ func demoFilm(id string) demolibrary.Title {
 		panic("seed: unknown demo film " + id)
 	}
 	return t
+}
+
+// stockLibrary writes the demo films as library items, as the scan of `make demo-library`'s
+// folders would, under the same ids libPick gives them.
+func stockLibrary(ctx context.Context, st store.Store, at time.Time, ids ...string) error {
+	rows := make([]librarystore.LibraryItem, 0, len(ids))
+	for _, id := range ids {
+		t := demoFilm(id)
+		rows = append(rows, librarystore.LibraryItem{ID: t.ID(), Kind: "movie", Name: t.Name, SortName: t.Name, Year: t.Year})
+	}
+	if err := st.SaveLibraryItems(ctx, rows, at); err != nil {
+		return fmt.Errorf("stock the demo library: %w", err)
+	}
+	return nil
 }
 
 func libPick(id string, durMs int64) pick {

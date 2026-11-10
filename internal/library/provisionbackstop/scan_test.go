@@ -9,25 +9,34 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // scannerFake is the Library as the scan reads it: items is "what's in the library", err rides
-// with them, and calls counts the reads.
+// with them, and calls counts the reads. Each item it reports is stored in st first, as the
+// library's own rows are, so a title it confirms names a real library item.
 type scannerFake struct {
+	st    store.Store
 	items []library.SearchResult
 	err   error
 	calls int
 }
 
-func (s *scannerFake) RecentlyAdded(context.Context, time.Time) ([]library.SearchResult, error) {
-	s.calls++
-	return s.items, s.err
+func (s *scannerFake) RecentlyAdded(ctx context.Context, _ time.Time) ([]library.SearchResult, error) {
+	return s.AllItems(ctx)
 }
-func (s *scannerFake) AllItems(context.Context) ([]library.SearchResult, error) {
+func (s *scannerFake) AllItems(ctx context.Context) ([]library.SearchResult, error) {
 	s.calls++
+	var rows []librarystore.LibraryItem
+	for _, it := range s.items {
+		rows = append(rows, librarystore.LibraryItem{ID: it.LibraryItemID, Kind: "movie", Name: it.Name, SortName: it.Name})
+	}
+	if err := s.st.SaveLibraryItems(ctx, rows, now); err != nil {
+		return nil, err
+	}
 	return s.items, s.err
 }
 
@@ -36,7 +45,7 @@ func (s *scannerFake) AllItems(context.Context) ([]library.SearchResult, error) 
 func setupScan(t *testing.T) (*LibraryScan, store.Store, *scannerFake, *captureEmitter) {
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
-	lib := &scannerFake{}
+	lib := &scannerFake{st: st}
 	emit := &captureEmitter{}
 	ls := NewLibraryScan(st, lib, emit, time.Hour, func() time.Time { return now }, slog.New(slog.DiscardHandler))
 	return ls, st, lib, emit
@@ -98,6 +107,7 @@ func TestLibraryScan_ConfirmsAPartialAnswer(t *testing.T) {
 	}, err: down}
 	for _, full := range []bool{false, true} {
 		st := testkit.MigratedSQLiteStore(t)
+		scanner.st = st
 		key := provision.Key("movie:tmdb:90000603")
 		put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
 		ls := NewLibraryScan(st, scanner, &captureEmitter{}, time.Hour, func() time.Time { return now }, slog.New(slog.DiscardHandler))

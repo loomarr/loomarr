@@ -17,6 +17,7 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
 	at := time.Unix(1_800_000_000, 0).UTC()
+	saveLibraryItems(t, st, "emby-film", "emby-show", "lib-home", "emby-film-alt", "emby-ep")
 
 	film := sampleRecord("movie:tmdb:90000001", provision.Available, time.Time{})
 	film.LibraryID = "emby-film"

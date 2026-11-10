@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // lineupEntry is film n's lineup entry, keyed like acqItem(n).
@@ -365,7 +366,9 @@ func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
 func recordAiring(t *testing.T, st store.Store, channelID string, n int, ago time.Duration) {
 	t.Helper()
 	at := time.Now().Add(-ago)
-	if err := st.RecordAiring(context.Background(), channelID, movieKey(n), "lib-"+string(movieKey(n)), at, at); err != nil {
+	item := "lib-" + string(movieKey(n))
+	testkit.SaveLibraryItems(t, st, item)
+	if err := st.RecordAiring(context.Background(), channelID, movieKey(n), item, at, at); err != nil {
 		t.Fatal(err)
 	}
 }

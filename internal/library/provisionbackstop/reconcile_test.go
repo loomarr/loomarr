@@ -16,11 +16,14 @@ import (
 
 var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
 
-// presentIn makes the Library hold exactly the titles with these TMDB ids.
-func presentIn(lib *libraryfixture.Lookup, tmdbIDs ...string) {
+// presentIn makes the Library hold exactly the titles with these TMDB ids, each with its library
+// item stored.
+func presentIn(t *testing.T, st store.Store, lib *libraryfixture.Lookup, tmdbIDs ...string) {
+	t.Helper()
 	lib.Results = map[string]libraryfixture.LookupResult{}
 	for _, id := range tmdbIDs {
 		lib.Results[id] = libraryfixture.LookupResult{ItemID: "lib-" + id, Present: true}
+		testkit.SaveLibraryItems(t, st, "lib-"+id)
 	}
 }
 
@@ -110,7 +113,7 @@ func TestRetryWantedFailureStaysWanted(t *testing.T) {
 // available (even though no Import webhook arrived).
 func TestMissedWebhookRecheckToAvailable(t *testing.T) {
 	rc, st, _, ms := setup(t)
-	presentIn(ms, "90016153") // library confirms this title
+	presentIn(t, st, ms, "90016153") // library confirms this title
 	put(t, st, "movie:tmdb:90016153", provision.Requested, 90016153, now.Add(-time.Hour))
 
 	if _, err := rc.Tick(context.Background()); err != nil {
@@ -156,7 +159,7 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 	if err := st.UpsertTitle(t.Context(), available); err != nil {
 		t.Fatal(err)
 	}
-	presentIn(ms, "90016153")
+	presentIn(t, st, ms, "90016153")
 	if _, err := rc.Tick(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +171,7 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 	if err := st.UpsertTitle(t.Context(), failed); err != nil {
 		t.Fatal(err)
 	}
-	presentIn(ms)
+	presentIn(t, st, ms)
 	if _, err := rc.Tick(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +192,7 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 
 func TestTickSnapshotsLibraryOnceAcrossClaimedBatch(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
+	testkit.SaveLibraryItems(t, st, "item-101", "item-202")
 	primary := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{
 		"101": {ItemID: "item-101", Present: true},
 		"202": {ItemID: "item-202", Present: true},
@@ -237,7 +241,7 @@ func TestReconcilerEmitsTerminalEvents(t *testing.T) {
 	}
 
 	// Missed-webhook re-check confirms the library → available (terminal → event).
-	presentIn(ms, "90016153")
+	presentIn(t, st, ms, "90016153")
 	put(t, st, "movie:tmdb:90016153", provision.Requested, 90016153, now.Add(-time.Hour))
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)

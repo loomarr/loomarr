@@ -36,6 +36,7 @@ func seedAvailable(t *testing.T, st store.Store, key provision.Key, libraryID st
 		Title:     provision.Title{Name: "Seeded"},
 		UpdatedAt: time.Now(),
 	}
+	testkit.SaveLibraryItems(t, st, libraryID)
 	if err := st.UpsertTitle(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}

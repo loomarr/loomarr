@@ -41,6 +41,7 @@ func putAvailable(t *testing.T, st store.Store, n int, name string) {
 		State:     provision.Available,
 		LibraryID: "lib-" + name,
 	}
+	testkit.SaveLibraryItems(t, st, rec.LibraryID)
 	if err := st.UpsertTitle(context.Background(), rec); err != nil {
 		t.Fatal(err)
 	}

@@ -564,6 +564,11 @@ func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	show := provision.Key("series:tvdb:90071663")
 	record := func(ch string, recordedAt time.Time, airings ...ScheduledAiring) {
 		t.Helper()
+		for _, a := range airings {
+			if a.LibraryItemID != "" {
+				saveLibraryItems(t, st, a.LibraryItemID)
+			}
+		}
 		if err := st.RecordScheduledAirings(ctx, ch, airings, recordedAt); err != nil {
 			t.Fatalf("record %s: %v", ch, err)
 		}
@@ -639,6 +644,9 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	opened := time.Now().Truncate(time.Second)
 	record := func(ch string, key provision.Key, item string, airedAt, recordedAt time.Time) {
 		t.Helper()
+		if item != "" {
+			saveLibraryItems(t, st, item)
+		}
 		if err := st.RecordAiring(ctx, ch, key, item, airedAt, recordedAt); err != nil {
 			t.Fatalf("record %s/%s: %v", ch, item, err)
 		}

@@ -203,6 +203,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 				}
 			}
 			requester := &testkit.Requester{}
+			testkit.SaveLibraryItems(t, st, "signal") // the library item the arrival reports
 			lookup := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{"90091001": {ItemID: "signal", Present: arrives}})
 			rc := provisionbackstop.New(st, requester, lookup, nil, provisionbackstop.Config{RequestTTL: time.Hour}, func() time.Time { return now }, log)
 			if count, err := rc.Tick(ctx); err != nil || count != 1 {
