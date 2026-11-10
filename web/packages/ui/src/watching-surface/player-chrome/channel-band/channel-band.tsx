@@ -283,9 +283,22 @@ const Progress = ({ liveProgress, progress }: { liveProgress?: number | undefine
   </View>
 );
 
-const Row = ({ children, chip, gap = 16 }: { children: ReactNode; chip: ReactNode; gap?: number }) => (
+const Row = ({
+  children,
+  chip,
+  chipWidth = 56,
+  gap = 16,
+}: {
+  children: ReactNode;
+  chip: ReactNode;
+  /** The chip column's width; it has to fit the widest chip, or the chip runs into the text. */
+  chipWidth?: number;
+  gap?: number;
+}) => (
   <View style={{ alignItems: "center", flexDirection: "row", gap }}>
-    <View style={{ width: 56 }}>{chip}</View>
+    <View style={{ width: chipWidth }} testID="band-chip-column">
+      {chip}
+    </View>
     <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
   </View>
 );
@@ -301,6 +314,9 @@ const ChannelBand = ({
 }: ChannelBandProps) => {
   const compact = density === "touch";
   const rowGap = portrait ? 12 : 16;
+  // Portrait: the touch NEXT chip is 67px wide, so a 56px column put it against the next time. The
+  // column fits the chip and the gap after it comes down, which costs the title 8px.
+  const chipRow = portrait ? { chipWidth: 68, gap: 8 } : { gap: rowGap };
   const behind = live.mode !== "live";
   const hasSlot = band.startMs !== undefined && band.stopMs !== undefined;
   const station = ident && band.station ? ` · ${band.station}` : "";
@@ -363,7 +379,7 @@ const ChannelBand = ({
                   NOW
                 </Chip>
               }
-              gap={rowGap}
+              {...chipRow}
             >
               <View style={{ gap: 4 }}>
                 <BandTitle density={density} lines={portrait ? 2 : 1} logo={band.logo} title={band.title} />
@@ -421,7 +437,7 @@ const ChannelBand = ({
                   NEXT
                 </Chip>
               }
-              gap={rowGap}
+              {...chipRow}
             >
               <View style={{ alignItems: "baseline", flexDirection: "row", gap: rowGap }}>
                 {/* One unbroken token: the time keeps its width, the title takes the rest. */}

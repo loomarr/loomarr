@@ -135,6 +135,13 @@ describe("the portrait band", () => {
     expect(style.flexShrink).toBe("0");
   });
 
+  it("gives the Now and Next chips a column that fits them, so a chip never touches its text", () => {
+    // The touch NEXT chip is 67px wide: in the 56px column it ran into the next time.
+    const column = (host: Host) => computed(byId(host, "band-chip-column")).width;
+    expect(column(mount(chrome("portrait", "touch")))).toBe("68px");
+    expect(column(mount(chrome("overlay", "pointer")))).toBe("56px");
+  });
+
   it("leaves the desktop band as it was: the progress line between its two clocks in one row", () => {
     const host = mount(chrome("overlay", "pointer"));
     const row = byId(host, "band-progress").parentElement as El;
