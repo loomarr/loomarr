@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Titles and provisioning (§4, §5): the record round-trip, the state machine's list

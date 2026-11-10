@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/playout/packager"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // "What is airing right now?" — the question the channel packager asks at each item boundary (§9.1).

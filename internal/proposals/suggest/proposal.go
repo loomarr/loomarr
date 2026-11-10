@@ -21,11 +21,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Intent is one suggester run's view of a request: the persisted proposals.Intent plus the

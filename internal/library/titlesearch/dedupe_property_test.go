@@ -16,7 +16,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // propSeed pins the corpus generation. Change it only to widen coverage; a

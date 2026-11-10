@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Corpus is a deterministic search/discovery corpus.

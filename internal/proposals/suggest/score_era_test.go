@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestScore_NamedMembershipAndRetiredComposite(t *testing.T) {

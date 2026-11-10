@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // LibrarySearch is title search's library half (LibrarySearcher): the movies and series the

@@ -1,5 +1,5 @@
 # Question: what happens to a title the channel wants but the library doesn't have?
-# A state diagram (internal/provision/state.go). Reads top to bottom: the happy path runs down the
+# A state diagram (internal/library/provision/state.go). Reads top to bottom: the happy path runs down the
 # middle in amber; every waiting state gives up at the title's deadline. Available and
 # Unavailable are final (no event moves a title back), so they sit at the bottom with no exit.
 ...@system/theme

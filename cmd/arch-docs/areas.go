@@ -7,9 +7,8 @@ import "sort"
 //
 // The table below is the single source of truth for which area a package belongs to, and
 // TestArchDocs_AreasCoverEveryPackage keeps it exact. It is temporary: once the packages move
-// into one directory per area, the directory is the area and this table goes. Most areas already
-// have their directory (media, channels, proposals, playout, filler, people, platform); still
-// directly under internal/ are the library area's provision and library itself,
+// into one directory per area, the directory is the area and this table goes. Eight areas have
+// their directory (library, media, channels, proposals, playout, filler, people, platform);
 // the edge area is the two directories api and app, and the test area's demolibrary, eval,
 // integration, testkit, library/tmdb/tmdbstandin and platform/store/storetest sit outside any
 // single directory.
@@ -38,7 +37,7 @@ var areas = []area{
 			"decide which source's facts about a file win.",
 		Packages: []string{
 			"library", "library/arrhook", "library/resolvers", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
-			"provision", "library/provisionbackstop", "library/requester",
+			"library/provision", "library/provisionbackstop", "library/requester",
 			"library/metadataprovider", "library/metadataprovider/arr", "library/metadataprovider/localart",
 			"library/metadataprovider/nfo", "library/metadataprovider/precedence", "library/metadataprovider/providertest",
 			"library/metadataprovider/tmdb",
@@ -85,7 +84,7 @@ var areas = []area{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
 				"reconcile and re-curation, the activity feed, the language model for recommendations, and " +
 				"the holiday, language and audience-rating vocabularies",
-			"library": "the titles a channel plays: `provision` keys and states, `library/inventory` break" +
+			"library": "the titles a channel plays: `library/provision` keys and states, `library/inventory` break" +
 				"analysis, and `library/titlesearch` candidates for re-curation",
 			"proposals": "binding an approved proposal into a channel, and re-curating a self-updating " +
 				"channel through the suggester",
@@ -112,7 +111,7 @@ var areas = []area{
 				"suggester checks titles with, the audience rating ladder its ceilings are drawn from, and " +
 				"the storage governor's size confidence",
 			"library": "grounding each suggested title in the real library, catalog, TMDB and collections, " +
-				"and the `provision` records for titles the household lacks",
+				"and the `library/provision` records for titles the household lacks",
 			"channels": "the `channels/schedule` values a proposal describes, and the reconcile engine the outlook " +
 				"runs to preview a proposal before approval",
 		},
@@ -136,7 +135,7 @@ var areas = []area{
 				"address check that keeps LAN discovery answering only the household's network, and the " +
 				"language codes an audio track is chosen by",
 			"channels": "the `channels/schedule` programming a backend plays",
-			"library": "the media server's Live TV API that channels are published to, and `provision` keys " +
+			"library": "the media server's Live TV API that channels are published to, and `library/provision` keys " +
 				"naming what a slot plays",
 			"media": "the encoder choice, loudness, media facts and process-tree control the stream is built " +
 				"from",
@@ -261,7 +260,7 @@ var flows = []flow{
 			"(the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from " +
 			"`platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the " +
 			"channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a " +
-			"`provision` record that `library/provisionbackstop` hands to `library/requester` for Sonarr or Radarr. " +
+			"`library/provision` record that `library/provisionbackstop` hands to `library/requester` for Sonarr or Radarr. " +
 			"`channels/schedule` turns " +
 			"the approved lineup and what is actually available into ordered programming, and the " +
 			"`channels` reconcile engine keeps that current for the channel's backend: either Loomarr's " +

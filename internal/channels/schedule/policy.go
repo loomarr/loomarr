@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/langcode"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ChannelPolicy is the per-channel programming contract (programming-design.md §2):

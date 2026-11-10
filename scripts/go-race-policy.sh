@@ -49,7 +49,7 @@ RACE_OFF=(
 	internal/library/titlesearch
 	internal/platform/config
 	internal/filler/taxonomy
-	internal/provision
+	internal/library/provision
 	internal/platform/activity
 	cmd/dev-docs
 	cmd/arch-docs

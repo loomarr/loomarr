@@ -33,17 +33,17 @@ One area of the [package map](../package-map.md#start-here).
   Conformance suite every metadata provider runs.
 - **`library/metadataprovider/tmdb`** · 1 importer · → `library/metadataprovider`, `library/tmdb`, `platform/httpx`, `platform/rating`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
-- **`library/provisionbackstop`** · 2 importers · → `library`, `library/requester`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`, `provision`
+- **`library/provision`** · 37 importers
+  Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
+- **`library/provisionbackstop`** · 2 importers · → `library`, `library/provision`, `library/requester`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`
   Provisioning backstop (design §4, §7, §18).
-- **`library/requester`** · 3 importers · → `platform/httpx`, `platform/metrics`, `provision`
+- **`library/requester`** · 3 importers · → `library/provision`, `platform/httpx`, `platform/metrics`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`library/resolvers`** · 1 importer · → `library`, `library/provisionbackstop`, `library/titlesearch`, `library/tmdb`, `platform/store/librarystore`, `provision`
+- **`library/resolvers`** · 1 importer · → `library`, `library/provision`, `library/provisionbackstop`, `library/titlesearch`, `library/tmdb`, `platform/store/librarystore`
   Answers the questions other areas ask about what the household owns, from the Library's own records (#2151 step 16): which titles exist, a title's library item id, its content rating, the collections it is in, and its TMDB franchise.
 - **`library/scan`** · 2 importers · → `library`, `library/arrhook`, `library/inventory`, `library/metadataprovider`, `library/metadataprovider/localart`, `library/metadataprovider/precedence`, `library/tmdb`, `media/header`, `platform/store`, `platform/store/librarystore`
   Finds and walks the folders Loomarr reads media from (#2151): it discovers scan roots from the media server and the arrs, maps each authority's folder names onto local paths, and checks that Loomarr can open them.
-- **`library/titlesearch`** · 8 importers · → `library`, `platform/store/librarystore`, `provision`
+- **`library/titlesearch`** · 8 importers · → `library`, `library/provision`, `platform/store/librarystore`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`library/tmdb`** · 9 importers · → `library/titlesearch`, `platform/httpx`, `platform/metrics`, `provision`
+- **`library/tmdb`** · 9 importers · → `library/provision`, `library/titlesearch`, `platform/httpx`, `platform/metrics`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
-- **`provision`** · 37 importers
-  Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.

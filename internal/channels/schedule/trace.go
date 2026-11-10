@@ -1,6 +1,6 @@
 package schedule
 
-import "github.com/loomarr/loomarr/internal/provision"
+import "github.com/loomarr/loomarr/internal/library/provision"
 
 // ScheduleTrace is bounded current-cycle evidence emitted by ComputeDesiredAt (§8.4).
 // Unlike a Proposal's immutable DecisionTrace, this describes one scheduling computation over

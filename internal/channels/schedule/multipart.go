@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // franchiseTag is a movie entry's franchise-group assignment (§5): the shared PartGroup id

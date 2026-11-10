@@ -1,5 +1,5 @@
 // The provisioning-key derivation, mirroring `provision.Title.Key()` in Go
-// (internal/provision/title.go:52). ONE title has ONE key regardless of which endpoint
+// (internal/library/provision/title.go:52). ONE title has ONE key regardless of which endpoint
 // described it, which is what lets a search result, a proposal item, and a stored lineup entry
 // all refer to the same thing.
 //

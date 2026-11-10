@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestFranchises_UnconfiguredIsUnavailableNotReconcileFailure(t *testing.T) {

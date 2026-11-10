@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Emitter receives domain events for terminal transitions (§4 inv. 2); the

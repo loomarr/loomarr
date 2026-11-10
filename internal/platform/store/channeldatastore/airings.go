@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ScheduledAiring is one programme a channel's schedule put on air (#1677).

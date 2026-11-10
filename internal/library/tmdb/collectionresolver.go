@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // CollectionSource is the internal seam over TMDB's movie-detail and collection-detail

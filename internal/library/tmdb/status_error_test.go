@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // A non-2xx TMDB answer is an httpx.StatusError (status machine-readable through
