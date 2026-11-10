@@ -151,9 +151,6 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
   ],
   [/^\/v1\/channels\/[^/]+\/pods$/, (): PodPoolDTO => pods],
   [/^\/v1\/channels\/[^/]+\/upcoming$/, (): UpcomingOutputBody => ({ upcoming: [] })],
-  // The page header names what is on now from the channel's timeline (#2859); `airings` is
-  // required, so the catch-all `{}` crashed every channel page.
-  [/^\/v1\/channels\/[^/]+\/timeline$/, (): TimelineOutputBody => ({ airings: [], serverNowMs: Date.now() })],
   [/^\/v1\/channels\/[^/]+\/icon-suggestions$/, (): IconSuggestionsOutputBody => ({ suggestions: [] })],
   [
     /^\/v1\/channels\/[^/]+\/filler\/coverage$/,
@@ -991,6 +988,12 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     // catch-all `{}` would crash it.
     if (path === "/v1/channels/now-next" && method === "GET") {
       return json(route, { channels: [] });
+    }
+    // It names what is on now from the channel's timeline too (#2859): `airings` is required, so
+    // the catch-all `{}` crashed every channel page, with or without `channelDetail`.
+    if (/^\/v1\/channels\/[^/]+\/timeline$/.test(path) && method === "GET") {
+      const body: TimelineOutputBody = { airings: [], serverNowMs: Date.now() };
+      return json(route, body);
     }
     if (path === "/v1/discovery/feedback" && method === "GET") {
       return json(route, []);
