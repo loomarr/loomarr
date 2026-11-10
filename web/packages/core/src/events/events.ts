@@ -28,6 +28,10 @@ const EVENTS_URL = "/v1/events";
 // How long the browser stream waits before opening a new EventSource in place of a closed one.
 const STREAM_REOPEN_MS = 3000;
 
+// EventSource.CLOSED, by value: a stand-in source in a test may not carry the constant, and an
+// undefined one would make every error look like a source closed for good.
+const SOURCE_CLOSED = 2;
+
 // The browser retries a dropped connection by itself, but a refused response closes an
 // EventSource for good: a proxy's 502 while the server restarts for an update is enough. This
 // stream opens a new one in its place, with the same listeners, so it outlives a restart. Each
@@ -44,7 +48,7 @@ const browserEventStreamFactory: EventStreamFactory = (url) => {
     for (const [type, listener] of listeners) attach(type, listener);
     const current = source;
     current.addEventListener("error", () => {
-      if (closed || current.readyState !== EventSource.CLOSED) return;
+      if (closed || current.readyState !== SOURCE_CLOSED) return;
       reopen = setTimeout(connect, STREAM_REOPEN_MS);
     });
   };
