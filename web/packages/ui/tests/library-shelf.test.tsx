@@ -299,6 +299,23 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("keeps the import's step and share on the line after an offline folder", () => {
+    const { host, button, cleanup } = render({
+      status: { health: "folder_offline", scan: WALKING, held: [], offline: ["/media/movies"] },
+    });
+    expect(host.textContent).toContain(
+      "Can't reach your Movies folder · Adding your media · Step 1 of 3 · 21% · about 9 min left",
+    );
+    expect(button("Check again")).toBeTruthy();
+    cleanup();
+
+    const idle = render({
+      status: { health: "folder_offline", scan: IDLE, held: [], offline: ["/media/movies"] },
+    });
+    expect(idle.host.textContent).not.toContain("caught up");
+    idle.cleanup();
+  });
+
   it("is dead air until a folder is chosen, and points at Settings", () => {
     const { host, props, button, cleanup } = render({
       status: { health: "needs_folders", scan: IDLE, held: [], offline: [] },
