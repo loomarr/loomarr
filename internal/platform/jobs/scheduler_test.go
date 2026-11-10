@@ -89,8 +89,8 @@ func testLog() *slog.Logger { return slog.New(slog.DiscardHandler) }
 // simple recurring schedule whose next-tick is deterministic.
 const everyMinute = "0 * * * * *"
 
-// A registered job with no state row is seeded due-now; executing it records the outcome and
-// the next cron tick.
+// A registered job with no state row is seeded with its first cron tick; executing it records
+// the outcome and the next cron tick.
 func TestReconcileSeedsAndExecuteRecords(t *testing.T) {
 	st := newFakeStore()
 	clk := &fakeClock{t: time.Unix(1000, 0)}
@@ -101,9 +101,9 @@ func TestReconcileSeedsAndExecuteRecords(t *testing.T) {
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 
-	s.reconcileRegistry(ctx) // seeds "a" due-now
-	if j, _ := st.GetScheduledJob(ctx, "a"); j.NextRun != clk.now() {
-		t.Fatalf("seeded next_run = %v, want now", j.NextRun)
+	s.reconcileRegistry(ctx) // seeds "a" with the top of the next minute
+	if j, _ := st.GetScheduledJob(ctx, "a"); !j.NextRun.Equal(time.Unix(1020, 0)) {
+		t.Fatalf("seeded next_run = %v, want the first every-minute tick %v", j.NextRun, time.Unix(1020, 0))
 	}
 	s.execute(ctx, s.jobs["a"], false)
 	if ran.Load() != 1 {
@@ -309,6 +309,104 @@ func TestStarvedNamesJobsPastTwiceTheirInterval(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Name != "sweep" {
 		t.Fatalf("starved = %+v, want only sweep", got)
+	}
+
+	// List's Overdue is the same reading: the job one interval late is not flagged.
+	list, err := s.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range list {
+		if want := status.Name == "sweep"; status.Overdue != want {
+			t.Errorf("%s overdue = %v, want %v", status.Name, status.Overdue, want)
+		}
+	}
+}
+
+// A brand-new install reports nothing overdue (#3402). River fires a job only on its cron ticks,
+// so a daily or weekly job's first run is its first tick after boot: the seeded row says so, and
+// a job seconds late on its minute tick is ordinary queueing, not overdue.
+func TestFreshRegistryReportsNothingOverdue(t *testing.T) {
+	st := newFakeStore()
+	boot := time.Date(2026, 11, 10, 0, 45, 46, 0, time.UTC)
+	clk := &fakeClock{t: boot}
+	run := func(context.Context) error { return nil }
+	reg := NewRegistry().
+		Add(Job{Name: "housekeeping", Group: GroupSystem, Description: "test daily.", Title: "Daily", DefaultCron: "0 30 4 * * *", Run: run}).
+		Add(Job{Name: "recurate", Group: GroupChannels, Description: "test weekly.", Title: "Weekly", DefaultCron: "0 0 4 * * 0", Run: run}).
+		Add(Job{Name: "hourly", Group: GroupArtwork, Description: "test hourly.", Title: "Hourly", DefaultCron: "0 20 * * * *", Run: run}).
+		Add(Job{Name: "sweep", Group: GroupSystem, Description: "test sweep.", Title: "Sweep", DefaultCron: everyMinute, Run: run})
+	s := New(st, reg, nil, clk.now, testLog())
+	ctx := context.Background()
+	s.SeedRegistry(ctx)
+
+	want := map[string]time.Time{
+		"housekeeping": time.Date(2026, 11, 10, 4, 30, 0, 0, time.UTC),
+		"recurate":     time.Date(2026, 11, 15, 4, 0, 0, 0, time.UTC), // the next Sunday
+		"hourly":       time.Date(2026, 11, 10, 1, 20, 0, 0, time.UTC),
+		"sweep":        time.Date(2026, 11, 10, 0, 46, 0, 0, time.UTC),
+	}
+	assertNoneOverdue := func(at string) {
+		t.Helper()
+		list, err := s.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, status := range list {
+			if status.Overdue {
+				t.Errorf("%s: %s is overdue (next run %v)", at, status.Name, status.NextRun)
+			}
+		}
+		if starved, _ := s.Starved(ctx); len(starved) != 0 {
+			t.Errorf("%s: starved = %+v, want none", at, starved)
+		}
+	}
+
+	for name, tick := range want {
+		if row, _ := st.GetScheduledJob(ctx, name); !row.NextRun.Equal(tick) {
+			t.Errorf("seeded %s next_run = %v, want its first tick %v", name, row.NextRun, tick)
+		}
+	}
+	assertNoneOverdue("at boot")
+
+	// The minute sweep runs on its 00:59 tick; at 01:00:05 it has been due for five seconds and not
+	// yet claimed, while the daily, weekly and hourly jobs still have their first tick ahead.
+	setClock := func(t time.Time) {
+		clk.mu.Lock()
+		clk.t = t
+		clk.mu.Unlock()
+	}
+	setClock(time.Date(2026, 11, 10, 0, 59, 0, 0, time.UTC))
+	s.execute(ctx, s.jobs["sweep"], false)
+	setClock(time.Date(2026, 11, 10, 1, 0, 5, 0, time.UTC))
+	assertNoneOverdue("fourteen minutes after boot")
+	list, _ := s.List(ctx)
+	for _, status := range list {
+		if status.Name != "sweep" && !status.NextRun.After(clk.now()) {
+			t.Errorf("%s next run %v is not in the future", status.Name, status.NextRun)
+		}
+	}
+}
+
+// A never-run row seeded "due at boot" by an earlier build is presented as the first tick the
+// worker will fire on, so it does not read as late.
+func TestListPresentsANeverRunRowAsItsFirstTick(t *testing.T) {
+	st := newFakeStore()
+	boot := time.Date(2026, 11, 10, 0, 45, 46, 0, time.UTC)
+	clk := &fakeClock{t: boot.Add(3 * time.Hour)}
+	reg := NewRegistry().Add(Job{
+		Name: "backup", Group: GroupBackup, Description: "test daily.", Title: "Backup", DefaultCron: "0 30 3 * * *", Run: func(context.Context) error { return nil },
+	})
+	s := New(st, reg, nil, clk.now, testLog())
+	ctx := context.Background()
+	_ = st.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: "backup", NextRun: boot, UpdatedAt: boot})
+
+	list, err := s.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 11, 10, 3, 30, 0, 0, time.UTC); !list[0].NextRun.Equal(want) || list[0].Overdue {
+		t.Fatalf("never-run row = next %v overdue %v, want next %v and not overdue", list[0].NextRun, list[0].Overdue, want)
 	}
 }
 

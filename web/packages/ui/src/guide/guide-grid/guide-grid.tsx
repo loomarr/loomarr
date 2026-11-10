@@ -50,6 +50,20 @@ const labelStride = (timelineWidth: number, span: number): number => {
   return LABEL_STRIDES.find((stride) => stride * hourPx >= LABEL_MIN_PX) ?? 6;
 };
 
+// The now label sits centred-left on the now line (translateX NOW_LABEL_SHIFT) and an hour's label
+// starts just right of its tick. Both widths are generous estimates of a mono "12:00 PM" box, so
+// a label is hidden slightly early rather than drawn over the other (#3410). The tick mark stays.
+const NOW_LABEL_SHIFT = 20;
+const NOW_LABEL_PX = 64;
+const TICK_LABEL_INSET = 8;
+const TICK_LABEL_PX = 64;
+
+const tickLabelHitsNow = (tickPx: number, nowPx: number): boolean => {
+  const labelLeft = tickPx + TICK_LABEL_INSET;
+  const nowLeft = nowPx - NOW_LABEL_SHIFT;
+  return labelLeft < nowLeft + NOW_LABEL_PX && labelLeft + TICK_LABEL_PX > nowLeft;
+};
+
 const arrowDirection: Record<string, GuideNavigationDirection> = {
   ArrowDown: "down",
   ArrowLeft: "left",
@@ -234,7 +248,7 @@ const Block = ({
             // flush left.
             <>
               {hasSeries ? (
-                <Text numberOfLines={1} textAlign="left" textRole="label" textTransform="uppercase">
+                <Text numberOfLines={1} textAlign="left" textRole="label">
                   {a.series}
                   {/* A trailing space, collapsed on screen: axe (4.14, WCAG 2.5.3) joins sibling text
                       with nothing between, so "series" + "title" reads as one word against this
@@ -427,17 +441,16 @@ const Row = memo(
           >
             <Text textRole="guideNumber">{channel.source.number}</Text>
             <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} textRole="cardLabel">
+              {/* Two lines so a long name reads in full (#3410). Two 18-point lines and the chip's
+                  16 points plus its 2-point gap are 54, inside the row's fixed 56, so the rail
+                  never changes the row geometry the cells share. */}
+              {/* Left-aligned by hand: the name sits inside a button, and a button centres its text
+                  by default, which a two-line name makes plain. */}
+              <Text numberOfLines={2} textAlign="left" textRole="cardLabel">
                 {channel.source.name}
               </Text>
               {chip ? (
-                <Text
-                  marginTop={2}
-                  numberOfLines={1}
-                  textRole="label"
-                  textTransform="uppercase"
-                  tone={chip.tone}
-                >
+                <Text marginTop={2} numberOfLines={1} textAlign="left" textRole="label" tone={chip.tone}>
                   {chip.label}
                 </Text>
               ) : null}
@@ -505,7 +518,8 @@ const GuideGrid = ({
   renderPreview,
   selection,
 }: GuideGridProps) => {
-  const railWidth = guideRailWidth(useWindowWidth());
+  const windowWidth = useWindowWidth();
+  const railWidth = guideRailWidth(windowWidth);
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
   const typed = useRef({ at: 0, query: "" });
@@ -515,6 +529,9 @@ const GuideGrid = ({
   const ticks: number[] = [];
   for (let t = firstHour; t < layout.toMs; t += hourMs) ticks.push(t);
   const stride = labelStride(timelineWidth, span);
+  // Before the first layout the timeline's width is unknown; the window less the rail stands in.
+  const rulerPx = timelineWidth || Math.max(0, windowWidth - railWidth);
+  const nowPx = nowRatio === undefined ? undefined : nowRatio * rulerPx;
 
   const ruler = (
     <Surface
@@ -549,7 +566,8 @@ const GuideGrid = ({
             top={0}
             key={t}
           >
-            {i % stride === 0 ? (
+            {i % stride === 0 &&
+            !(nowPx !== undefined && tickLabelHitsNow(((t - layout.fromMs) / span) * rulerPx, nowPx)) ? (
               <Text numberOfLines={1} textRole="mono">
                 {formatGuideTime(t, layout.timezone)}
               </Text>

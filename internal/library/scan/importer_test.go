@@ -840,6 +840,110 @@ func TestImportShareFaultKeepsHeaderPending(t *testing.T) {
 	}
 }
 
+// A file the share cannot give back, gone between the walk and its read, stays pending and holds
+// back no other: every other file of the stage is read, however many readers there are.
+func TestHeaderStageReadsOnPastAFileItCannotOpen(t *testing.T) {
+	h := newHarness(t)
+	const files = 3 * headerConcurrency
+	gone := map[string]bool{}
+	for i := range files {
+		p := h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+		gone[p] = i%headerConcurrency == 0
+	}
+	read := h.im.Header
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if gone[path] {
+			return header.Header{}, &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != files {
+		t.Fatalf("%d rows, %v; want %d", len(rows), err, files)
+	}
+	for _, row := range rows {
+		want := librarystore.LibraryHeaderRead
+		if gone[row.Path] {
+			want = librarystore.LibraryHeaderPending
+		}
+		if row.Header != want {
+			t.Errorf("%s header = %q, want %q", filepath.Base(row.Path), row.Header, want)
+		}
+	}
+}
+
+// A share that gives no file back stops the stage after headerFaultLimit files in a row, so a
+// share that went away is not asked for every file of a library. Every file stays pending.
+func TestHeaderStageStopsWhenTheShareGivesNothingBack(t *testing.T) {
+	h := newHarness(t)
+	const files = 3 * headerFaultLimit
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	var tried atomic.Int64
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		tried.Add(1)
+		return header.Header{}, &fs.PathError{Op: "read", Path: path, Err: syscall.EIO}
+	}
+	h.run()
+	// Readers already holding a file when the limit is reached still try theirs.
+	if n := tried.Load(); n < headerFaultLimit || n > headerFaultLimit+headerConcurrency+1 {
+		t.Fatalf("tried %d of %d files, want the stage to stop at about %d", n, files, headerFaultLimit)
+	}
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != files {
+		t.Fatalf("%d rows, %v; want %d", len(rows), err, files)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderPending {
+			t.Errorf("%s header = %q, want pending", filepath.Base(row.Path), row.Header)
+		}
+	}
+}
+
+// A read that never returns is given up on after the stall: the pass ends, the file stays pending,
+// and its root reads as stalled until the read does return. The pass after that reads the file.
+func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
+	h := newHarness(t)
+	stuck := h.file("Victor (2004)/Victor.mkv", 10)
+	read := h.im.Header
+	release := make(chan struct{})
+	h.im.HeaderStall = 20 * time.Millisecond
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		<-release
+		return read(ctx, path)
+	}
+	pass := make(chan error, 1)
+	go func() { pass <- h.im.Run(context.Background()) }()
+	select {
+	case err := <-pass:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		close(release)
+		t.Fatal("the pass never gave up on the read")
+	}
+	if got := h.fileRow(stuck).Header; got != librarystore.LibraryHeaderPending {
+		t.Fatalf("header = %q after the read was given up on, want pending", got)
+	}
+	if !h.im.stalled(h.root) {
+		t.Fatal("the root does not read as stalled while the read is still out")
+	}
+
+	close(release)
+	for deadline := time.Now().Add(5 * time.Second); h.im.stalled(h.root); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the root still reads as stalled after the read returned")
+		}
+	}
+	h.run()
+	if got := h.fileRow(stuck).Header; got != librarystore.LibraryHeaderRead {
+		t.Fatalf("header = %q on the pass after, want read", got)
+	}
+}
+
 // Header reads wait while someone watches, but the walk never does (decision 11): a folder pass
 // made while the header stage waits writes its new file at once, and the waiting stage reads its
 // header once playback ends.

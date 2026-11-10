@@ -95,8 +95,11 @@ type JobStatus struct {
 	// DisabledReason is non-empty when this job cannot run in this environment. The UI
 	// renders it in place of the schedule and offers neither Run-now nor Modify.
 	DisabledReason string `json:"disabledReason,omitempty"`
-	// Overdue means this job's next run is in the PAST and it still has not run — it is waiting
-	// on a worker, not on its schedule (§18.1).
+	// Overdue means this job's next run is in the PAST by more than twice its own interval and it
+	// still has not run — it is waiting on a worker, not on its schedule (§18.1). It is the one
+	// reading every surface counts (Home, the Settings index, Tasks and Current Health), computed
+	// by `starved`: a job a few seconds or one interval late is ordinary queueing, and counting it
+	// makes the number flap with every minute's tick (#3402).
 	//
 	// ⚠ It exists because the alternative was worse than silence: the Tasks page ran the past
 	// timestamp through a duration formatter that answers "expired" for any past instant — a word
@@ -253,10 +256,23 @@ func (s *Scheduler) effectiveCron(j Job) string {
 	return cron
 }
 
-// nextRun computes the job's next fire time from its effective cron, after `from`. A
-// still-invalid default (a programming error) falls back to from+1h so the job isn't wedged.
-func (s *Scheduler) nextRun(j Job, from time.Time) time.Time {
-	next, err := gronx.NextTickAfter(s.effectiveCron(j), from, false)
+// nextRun computes the job's next fire time from its effective cron, strictly after `from`.
+func (s *Scheduler) nextRun(j Job, from time.Time) time.Time { return s.cronTick(j, from, false) }
+
+// firstRun is when a job that has never run will first fire: its effective cron's first tick
+// at or after `from`.
+//
+// ⚠ Nothing runs a job because its row says it is due. River's periodic jobs fire only on cron
+// ticks (`liveCronGate.due`) and RunOnStart is off (`periodicJobs`), so a daily job registered
+// at 00:45 first runs at its next daily tick. A never-run row that says "due at boot" is a
+// display value no worker consumes, and it reports every daily and weekly task as late on a
+// fresh install until that first tick (#3402).
+func (s *Scheduler) firstRun(j Job, from time.Time) time.Time { return s.cronTick(j, from, true) }
+
+// cronTick is the shared gronx call behind nextRun and firstRun. A still-invalid default (a
+// programming error) falls back to from+1h so the job isn't wedged.
+func (s *Scheduler) cronTick(j Job, from time.Time, inclusive bool) time.Time {
+	next, err := gronx.NextTickAfter(s.effectiveCron(j), from, inclusive)
 	if err != nil {
 		s.log.Error("scheduler: next tick", "job", j.Name, "err", err)
 		return from.Add(time.Hour)
@@ -269,12 +285,12 @@ func (s *Scheduler) nextRun(j Job, from time.Time) time.Time {
 // job's history is not something to silently destroy on boot.
 //
 // ⚠ Under River the seeded `next_run` is NOT what schedules the job (River's periodic jobs do
-// that); it is the value the page renders. The two agree because both derive from the same
-// effective cron.
+// that); it is the value the page renders. The two agree because the seed is the job's first
+// cron tick (`firstRun`), the same tick River's gate fires on.
 func (s *Scheduler) SeedRegistry(ctx context.Context) { s.reconcileRegistry(ctx) }
 
-// reconcileRegistry ensures every code-defined job has a state row (created due-now on first
-// sight). Rows for jobs no longer in code are ignored, not deleted.
+// reconcileRegistry ensures every code-defined job has a state row, created on first sight with
+// its first cron tick as the next run. Rows for jobs no longer in code are ignored, not deleted.
 func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 	existing := map[string]bool{}
 	if rows, err := s.store.ListScheduledJobs(ctx); err == nil {
@@ -287,13 +303,15 @@ func (s *Scheduler) reconcileRegistry(ctx context.Context) {
 		if existing[name] {
 			continue
 		}
-		// A disabled job gets no state row, so the Tasks page never shows it as due. This is the
-		// only point that would otherwise write a due-now row, and a job that is disabled
-		// today may have been seeded by an earlier boot that was not (the worker re-checks).
-		if s.jobs[name].Disabled() {
+		// A disabled job gets no state row, so the Tasks page never shows it as due. A job that
+		// is disabled today may have been seeded by an earlier boot that was not (the worker
+		// re-checks).
+		j := s.jobs[name]
+		if j.Disabled() {
 			continue
 		}
-		if err := s.store.UpsertScheduledJob(ctx, jobstore.ScheduledJob{Name: name, NextRun: now, UpdatedAt: now}); err != nil {
+		row := jobstore.ScheduledJob{Name: name, NextRun: s.firstRun(j, now), UpdatedAt: now}
+		if err := s.store.UpsertScheduledJob(ctx, row); err != nil {
 			s.log.Warn("scheduler: seed job state", "job", name, "err", err)
 		}
 	}
@@ -424,6 +442,7 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 	for _, r := range rows {
 		state[r.Name] = r
 	}
+	now := s.now()
 	out := make([]JobStatus, 0, len(s.order))
 	for _, name := range s.order {
 		j := s.jobs[name]
@@ -435,6 +454,13 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 			NextRun: st.NextRun, Running: s.isRunning(name),
 			Paused:         st.Paused,
 			DisabledReason: j.DisabledReason,
+		}
+		// A job that has never run fires first on its cron's first tick at or after the time its
+		// row was seeded (`firstRun`). The row already holds that tick when this build seeded it;
+		// a row seeded "due at boot" by an earlier build is presented as the tick the worker will
+		// actually fire on, so the read model cannot claim a run is late that nothing owes.
+		if st.LastRun.IsZero() && !st.NextRun.IsZero() {
+			status.NextRun = s.firstRun(j, st.NextRun)
 		}
 		// ⚠ A PAUSED job has no next run either, for the same reason a disabled one does not:
 		// the worker skips its scheduled runs, so any next_run in the row is a time that will not fire.
@@ -454,31 +480,36 @@ func (s *Scheduler) List(ctx context.Context) ([]JobStatus, error) {
 		// run has just been cleared precisely because it will not fire — is never called overdue.
 		// Overdue means "due and waiting on a worker", which is a different sentence from "not
 		// scheduled to run".
-		status.Overdue = !status.NextRun.IsZero() && status.NextRun.Before(s.now())
+		status.Overdue = s.starved(j, status.NextRun, now)
 		out = append(out, status)
 	}
 	return out, nil
 }
 
-// Starved returns the overdue jobs that have waited past their next run by more than twice their
-// own interval, in registration order. It is the Current Health reading of Overdue: one late
-// claim is ordinary queueing, two missed intervals means a worker is not getting to the job.
+// starved reports whether a job due at `due` has waited past it by more than twice its own
+// interval: one late claim is ordinary queueing, two missed intervals means a worker is not
+// getting to the job. A zero `due` (paused, disabled, no row) is never starved.
 //
 // ⚠ The interval is the job's OWN cadence (the gap from its due tick to the tick after), so an
 // every-minute sweep counts as starved after minutes while a weekly scan is given two weeks.
+func (s *Scheduler) starved(j Job, due, now time.Time) bool {
+	if due.IsZero() || !due.Before(now) {
+		return false
+	}
+	interval := s.nextRun(j, due).Sub(due)
+	return interval > 0 && now.Sub(due) > 2*interval
+}
+
+// Starved returns the overdue jobs, in registration order — the Current Health reading of the
+// same `Overdue` flag every other surface counts.
 func (s *Scheduler) Starved(ctx context.Context) ([]JobStatus, error) {
 	statuses, err := s.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
 	var out []JobStatus
 	for _, status := range statuses {
-		if !status.Overdue {
-			continue
-		}
-		interval := s.nextRun(s.jobs[status.Name], status.NextRun).Sub(status.NextRun)
-		if interval > 0 && now.Sub(status.NextRun) > 2*interval {
+		if status.Overdue {
 			out = append(out, status)
 		}
 	}

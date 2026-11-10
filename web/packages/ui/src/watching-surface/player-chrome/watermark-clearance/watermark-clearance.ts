@@ -56,24 +56,29 @@ const pictureIn = (frame: Frame) => {
 /**
  * Where chrome on the bug's edge must start, in px from that edge, to clear the bug: `base` when it
  * already does. `extent` is how far the chrome reaches from `base` (the top row's 48, or the band's
- * and keys' height). `edge` is the frame edge the chrome hangs from.
+ * and keys' height). `edge` is the frame edge the chrome hangs from, and `side` the half it occupies:
+ * only a bug on that edge AND side is in its way (#3397), so a top-left bug leaves the top-right row
+ * alone. Chrome spanning the frame (the band and keys) is `both`.
  */
 const clearOfWatermark = ({
   base,
   edge,
   extent,
   frame,
+  side,
   watermark,
 }: {
   base: number;
   edge: "bottom" | "top";
   extent: number;
   frame: Frame;
+  side: "both" | "left" | "right";
   watermark: PlayerWatermark | undefined;
 }): number => {
   if (!watermark || frame.width <= 0 || frame.height <= 0) return base;
   const onThisEdge = watermark.corner.startsWith(edge);
-  if (!onThisEdge) return base;
+  const onThisSide = side === "both" || watermark.corner.endsWith(side);
+  if (!onThisEdge || !onThisSide) return base;
   const picture = pictureIn(frame);
   const gapToFrame = edge === "top" ? picture.y : frame.height - (picture.y + picture.height);
   const near = gapToFrame + watermark.margin * picture.height;

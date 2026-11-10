@@ -78,6 +78,15 @@ describe("needsYouItems", () => {
     ]);
   });
 
+  it("counts a task late past twice its interval, not one seconds late on its tick", () => {
+    const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    const items = (jobs: JobView[]) => needsYouItems({ approvals: 0, fillerChoices: 0, jobs });
+    expect(items([job({ nextRun: secondsAgo(5), overdue: false })])).toEqual([]);
+    expect(items([job({ nextRun: secondsAgo(3 * 86_400), overdue: true })])).toMatchObject([
+      { id: "tasks", value: "1", label: "task overdue" },
+    ]);
+  });
+
   it("is empty when nothing needs the admin", () => {
     expect(needsYouItems({ approvals: 0, fillerChoices: 0, jobs: [job({})] })).toEqual([]);
   });

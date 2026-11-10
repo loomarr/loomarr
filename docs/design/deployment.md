@@ -109,7 +109,11 @@ named jobs, each with a user-editable schedule and a **Run now** trigger.
 - **Every job has a Group, Title and Description.** The Tasks page shows seven outcome groups
   (Acquisitions, Channels, Filler, Artwork, Playout, System, Backup). Progress comes from the `job` SSE
   frame and is indeterminate unless the job knows its denominator; a percentage is never synthesized
-  from elapsed time. A job past its next run is shown as `overdue`. `last_error` expands in full.
+  from elapsed time. A job past its next run by more than twice its own interval is `overdue`; that
+  one flag is what Home, the Settings index, Tasks and Current Health all count, and a run that has
+  only just come due reads "due now". A job that has never run shows its first cron tick as its next
+  run, because River fires jobs only on ticks and nothing runs a job at boot. `last_error` expands
+  in full.
 - **History is lazy:** `GET /v1/jobs/{name}/history` returns 24-hour aggregates and the five latest
   runs from River's finalized rows.
 - `GET /v1/jobs` and `POST /v1/jobs/{name}/run` are admin-only. The job list itself is the registry;
