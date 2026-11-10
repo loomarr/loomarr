@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
+import { isOverdueTask, overdueTaskCount } from "./overdue-tasks";
 
 const GROUPS: { id: JobView["group"]; label: string }[] = [
   { id: "acquisitions", label: "Acquisitions" },
@@ -34,7 +35,7 @@ const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
   if (job.running) return { tone: "pending", label: "Running" };
   if (job.lastResult === "error") return { tone: "error", label: "Failed last run" };
   // An overdue task is never green: its last run went fine, but it is waiting on a worker now.
-  if (job.overdue) return { tone: "warn", label: "Overdue" };
+  if (isOverdueTask(job)) return { tone: "warn", label: "Overdue" };
   if (job.lastResult === "ok") return { tone: "ok", label: "OK" };
   return { tone: "off", label: "Not run yet" };
 };
@@ -42,7 +43,7 @@ const statusDot = (job: JobView): { tone: StatusTone; label: string } => {
 const groupSummary = (jobs: JobView[]) => {
   const running = jobs.filter((job) => job.running).length;
   const failed = jobs.filter((job) => job.lastResult === "error").length;
-  const overdue = jobs.filter((job) => job.overdue && !job.running).length;
+  const overdue = overdueTaskCount(jobs);
   const paused = jobs.filter((job) => job.paused).length;
   const unavailable = jobs.filter((job) => job.disabledReason).length;
   const details = [
@@ -65,6 +66,9 @@ const COLUMNS = [
 
 const zero = "0001-01-01T00:00:00Z";
 const isZero = (t?: string) => !t || t.startsWith("0001-01-01");
+// A next run that has just passed is a task waiting for its claim, which is ordinary queueing;
+// only `overdue` (late by more than twice its interval) is worth a warning.
+const isPast = (t?: string) => !isZero(t) && Date.parse(t ?? zero) <= Date.now();
 
 const executionDuration = (ms: number) => (ms < 3_600_000 ? formatClipDuration(ms) : formatDuration(ms));
 
@@ -222,7 +226,11 @@ const TasksPage = () => {
                   tone="muted"
                 />
                 <span className="font-medium">{group.label}</span>
-                <span className="text-muted-foreground ml-auto text-xs">{groupSummary(groupedJobs)}</span>
+                <span className="text-muted-foreground ml-auto flex items-center gap-2 text-xs">
+                  {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
+                  {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
+                  {groupSummary(groupedJobs)}
+                </span>
               </button>
 
               {groupOpen && (
@@ -290,10 +298,12 @@ const TasksPage = () => {
                                   "running…"
                                 ) : isZero(job.nextRun) ? (
                                   "—"
-                                ) : job.overdue ? (
+                                ) : isOverdueTask(job) ? (
                                   <span title="Due, but waiting for a free worker">
                                     <StatusWord kind="overdue" />
                                   </span>
+                                ) : isPast(job.nextRun) ? (
+                                  "due now"
                                 ) : (
                                   formatUntil(job.nextRun ?? zero)
                                 )}

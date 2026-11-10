@@ -13,6 +13,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import type { StatusWordKind } from "@loomarr/design-system";
 import { missingNights } from "@/components/loomarr/settings/backup-panel/missing-nights";
 import { SETTINGS_DESTINATIONS, type SettingsCardId } from "../settings-destinations";
+import { overdueTaskCount } from "../tasks-page/overdue-tasks";
 
 type SettingsProblemKind = Exclude<StatusWordKind, "ok">;
 
@@ -88,7 +89,7 @@ const settingsProblems = (input: SettingsStatusInput): SettingsProblem[] => {
     if (p) found.push(p);
   }
 
-  const overdue = (input.jobs ?? []).filter((job) => job.overdue && !job.running).length;
+  const overdue = overdueTaskCount(input.jobs ?? []);
   if (overdue > 0) {
     found.push(
       problem(
