@@ -208,7 +208,11 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 				return language
 			},
 			Enabled: im.Enabled, Log: deps.log, Tracker: tracker,
+			// The titles looked up are written again by folder passes: step 3 ends once those have
+			// run, and the end of each round wakes the Enricher to see it.
+			Settled: scanner.FoldersSettled,
 		}
+		scanner.AfterFolders = enricher.Wake
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher
 		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
