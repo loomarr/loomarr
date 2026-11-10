@@ -25,7 +25,8 @@ interface GuidePhoneHeaderProps {
   /** The view switch, right of the title. */
   children?: ReactNode;
   subtitle: string;
-  title: string;
+  /** The view's own heading. Left out where the page heading already names the view. */
+  title?: string;
   /** The desktop page's wider gutter. */
   wide?: boolean;
 }

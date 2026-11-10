@@ -326,7 +326,7 @@ const GuidePage = () => {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title="Channels"
+        title="Guide"
         description="Every channel Loomarr manages, and what's on right now."
         actions={
           /* THE origination door (§12) — for both roles. It goes to the request page
@@ -356,7 +356,8 @@ const GuidePage = () => {
           much time is on screen. Precise planning controls live in the secondary View row. */}
       {channels.length > 0 && (
         <GuidePhoneHeader
-          title={nowNextView ? "What's on" : "Guide"}
+          // The page is headed "Guide" already; the grid's row says only which hours it shows.
+          title={nowNextView ? "What's on" : undefined}
           subtitle={
             nowNextView
               ? `${formatGuideTime(nowMs, body?.timezone)} · ${pluralize(channels.length, "channel")}`

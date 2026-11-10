@@ -4,7 +4,7 @@ import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
 import { legacyGuideOrigination } from "@/suggest/origination-flow";
 
-// The channels surface (§12) — headed "Channels", the cross-channel time grid. Readable by any
+// The channels surface (§12) — headed "Guide", the cross-channel time grid. Readable by any
 // authenticated user: the guide is viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
 // Channel origination used to live here, in this route's search params (`/guide?new=1`, `?job=`,
