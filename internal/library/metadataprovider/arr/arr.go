@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // Conn returns an app's base URL and API key. An empty URL means the app is not configured.

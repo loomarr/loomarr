@@ -35,7 +35,7 @@ var notACatalog = map[string]bool{"NamespaceFile": true}
 
 func TestTheLibraryNamesNoCatalog(t *testing.T) {
 	root, _ := moduleRoot(t)
-	values := namespaceValues(t, filepath.Join(root, "internal", "metadataprovider", idDeclFile))
+	values := namespaceValues(t, filepath.Join(root, "internal", "library", "metadataprovider", idDeclFile))
 	var files []string
 	for _, dir := range libraryNamespaceScope {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
@@ -93,7 +93,7 @@ func TestTheLibraryNamesNoCatalog(t *testing.T) {
 func TestLibraryGuardCatchesNamespaces(t *testing.T) {
 	const src = `package x
 
-import mp "example/internal/metadataprovider"
+import mp "example/internal/library/metadataprovider"
 
 func f(id mp.ExternalID) bool {
 	_ = "SELECT value FROM library_ids WHERE namespace = 'tvdb'"
@@ -159,7 +159,7 @@ func namespaceNames(fset *token.FileSet, f *ast.File, values []string) []string 
 	contract := map[string]bool{}
 	for _, spec := range f.Imports {
 		p, _ := strconv.Unquote(spec.Path.Value)
-		if !strings.HasSuffix(p, "/internal/metadataprovider") {
+		if !strings.HasSuffix(p, "/internal/library/metadataprovider") {
 			continue
 		}
 		name := "metadataprovider"

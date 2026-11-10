@@ -38,8 +38,8 @@ const idDeclFile = "metadataprovider.go"
 
 func TestNoCodeComparesProviderIDs(t *testing.T) {
 	root, module := moduleRoot(t)
-	contractPath := module + "/internal/metadataprovider"
-	contractDir := filepath.Join(root, "internal", "metadataprovider")
+	contractPath := module + "/internal/library/metadataprovider"
+	contractDir := filepath.Join(root, "internal", "library", "metadataprovider")
 
 	fset := token.NewFileSet()
 	contractFiles := parseDir(t, fset, contractDir)
@@ -99,8 +99,8 @@ type Source struct{ Provider ID; Basis string }
 import (
 	"slices"
 	"strings"
-	mp "example/internal/metadataprovider"
-	"example/internal/metadataprovider/arr"
+	mp "example/internal/library/metadataprovider"
+	"example/internal/library/metadataprovider/arr"
 )
 func f(p mp.Provider, s mp.Source, ids []mp.ID) {
 	if p.ID() == "sonarr" {}
@@ -136,7 +136,7 @@ func clean(p mp.Provider, m map[mp.ID]int, s mp.Source) {
 		}
 		return f
 	}
-	contract, _ := typeCheck(fset, "example/internal/metadataprovider", []*ast.File{parse("mp.go", contractSrc)}, stubImporter{})
+	contract, _ := typeCheck(fset, "example/internal/library/metadataprovider", []*ast.File{parse("mp.go", contractSrc)}, stubImporter{})
 	files := []*ast.File{parse("x.go", src)}
 	_, info := typeCheck(fset, "example/internal/x", files, stubImporter{known: map[string]*types.Package{contract.Path(): contract}})
 	got := violations(fset, files, info, contract)

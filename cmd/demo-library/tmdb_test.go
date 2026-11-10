@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/demolibrary"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	provider "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	provider "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 

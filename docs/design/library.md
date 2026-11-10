@@ -104,7 +104,7 @@ from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
 
 ## Metadata providers
 
-`internal/metadataprovider` is the registry of systems that already know what a media file is
+`internal/library/metadataprovider` is the registry of systems that already know what a media file is
 (#2151, decision [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It imports nothing from
 Loomarr. A provider declares capabilities: the item kinds it describes, the `(kind, namespace)` pairs it
 fetches by, the field families it supplies (technical, identity and numbering, descriptive,

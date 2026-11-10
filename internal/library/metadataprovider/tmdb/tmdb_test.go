@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/providertest"
+	provider "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/metadataprovider/providertest"
-	provider "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 

@@ -98,6 +98,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/taxonomy` | — |
 | `library` | `platform/httpx`, `platform/metrics` |
 | `library/inventory` | — |
+| `library/metadataprovider` | — |
 | `library/titlesearch` | `library`, `platform/store/librarystore`, `provision` |
 | `library/tmdb` | `library/titlesearch`, `platform/httpx`, `platform/metrics`, `provision` |
 | `media/bgexec` | — |
@@ -106,7 +107,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `media/encode` | `platform/config` |
 | `media/images` | `platform/httpx`, `platform/jobs`, `platform/settings`, `platform/store/activitystore` |
 | `media/tools` | `media/bgexec`, `media/creative`, `media/defects`, `media/encode`, `platform/diagnostics` |
-| `metadataprovider` | — |
 | `people/access` | `people/contact` |
 | `people/contact` | — |
 | `people/notifications` | `people/secretprotection`, `platform/httpx` |

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // Radarr is the Radarr metadata provider: movies.

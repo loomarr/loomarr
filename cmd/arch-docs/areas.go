@@ -9,7 +9,7 @@ import "sort"
 // TestArchDocs_AreasCoverEveryPackage keeps it exact. It is temporary: once the packages move
 // into one directory per area, the directory is the area and this table goes. Most areas already
 // have their directory (media, channels, proposals, playout, filler, people, platform); still
-// directly under internal/ are the library area's metadataprovider, provision and library itself,
+// directly under internal/ are the library area's provision and library itself,
 // the edge area is the two directories api and app, and the test area's demolibrary, eval,
 // integration, testkit, library/tmdb/tmdbstandin and platform/store/storetest sit outside any
 // single directory.
@@ -39,9 +39,9 @@ var areas = []area{
 		Packages: []string{
 			"library", "library/arrhook", "library/resolvers", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
 			"provision", "library/provisionbackstop", "library/requester",
-			"metadataprovider", "metadataprovider/arr", "metadataprovider/localart",
-			"metadataprovider/nfo", "metadataprovider/precedence", "metadataprovider/providertest",
-			"metadataprovider/tmdb",
+			"library/metadataprovider", "library/metadataprovider/arr", "library/metadataprovider/localart",
+			"library/metadataprovider/nfo", "library/metadataprovider/precedence", "library/metadataprovider/providertest",
+			"library/metadataprovider/tmdb",
 		},
 		MayImport: map[string]string{
 			"platform": "the store, settings and jobs behind the provision backstop, the outbound HTTP " +

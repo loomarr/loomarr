@@ -61,7 +61,7 @@ classify() {
       select_gate contracts
       ;;
     # inventedGoFixtures: Go test fixtures written as invented data.
-    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/metadataprovider/nfo/testdata/*)
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/library/metadataprovider/nfo/testdata/*)
       select_gate contracts
       ;;
     web/packages/fixtures/src/*)

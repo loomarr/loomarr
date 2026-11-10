@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
-	"github.com/loomarr/loomarr/internal/metadataprovider/providertest"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/nfo"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/providertest"
 )
 
 func testdata(t *testing.T, name string) []byte {

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 type fake struct {

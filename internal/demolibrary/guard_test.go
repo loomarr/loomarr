@@ -549,7 +549,7 @@ func fixtureFiles(t *testing.T, root string) []string {
 var inventedGoFixtures = []string{
 	"internal/testkit/fixtures/sonarr/",
 	"internal/testkit/fixtures/radarr/",
-	"internal/metadataprovider/nfo/testdata/",
+	"internal/library/metadataprovider/nfo/testdata/",
 }
 
 // inventedGoFixtureFiles lists inventedGoFixtures' files, repo-relative. A missing entry fails, so
