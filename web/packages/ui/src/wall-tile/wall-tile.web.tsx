@@ -6,6 +6,20 @@ import type { WallTileProps } from "./wall-tile.type";
 // The foot of the tile: dark enough under the words for any still.
 const SCRIM = `linear-gradient(0deg, ${semanticColors.artwork.scrimStrong}, rgba(11, 12, 14, 0.4) 55%, rgba(11, 12, 14, 0))`;
 
+// The head of the tile, behind the number and name: the foot's scrim mirrored. It stays dark through
+// the whole top row (`rowEnd`) so the name holds 4.5:1 over even a white picture, then fades out.
+const topScrim = (rowEnd: number) =>
+  `linear-gradient(180deg, ${semanticColors.artwork.scrimStrong}, rgba(11, 12, 14, 0.6) ${rowEnd}px, rgba(11, 12, 14, 0) ${rowEnd + 24}px)`;
+
+// The programme title on the phone tile: at most two lines, then an ellipsis.
+const TWO_LINES = {
+  display: "-webkit-box",
+  margin: 0,
+  overflow: "hidden",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: 2,
+} as const;
+
 // Visually hidden, still read by a screen reader.
 const SR_ONLY = {
   border: 0,
@@ -64,6 +78,7 @@ const WallTile = ({
   const host: ReactElement<Record<string, unknown>> = render ?? <button type="button" />;
   const own = host.props as { onClick?: (event: unknown) => void; style?: object };
   const pad = compact ? 8 : 12;
+  const hasArt = art !== null && art !== undefined && art !== false;
 
   return cloneElement(
     host,
@@ -130,6 +145,19 @@ const WallTile = ({
         style={{ backgroundImage: SCRIM }}
         top={0}
       />
+      {hasArt && (
+        <Surface
+          backgroundColor="transparent"
+          borderWidth={0}
+          data-testid="wall-tile-top-scrim"
+          left={0}
+          pointerEvents="none"
+          position="absolute"
+          right={0}
+          style={{ backgroundImage: topScrim(pad * 2 + 24) }}
+          top={0}
+        />
+      )}
       <Surface
         alignItems="center"
         backgroundColor="transparent"
@@ -143,17 +171,25 @@ const WallTile = ({
         top={0}
       >
         <NumberBlock decade={decade} number={number} />
-        {!compact && (
-          <Text as="span" numberOfLines={1} strong textRole="label">
-            {channelName}
-          </Text>
-        )}
+        {/* One line that ends in an ellipsis before the pill; light like the foot's words, never the muted tone. */}
+        <Text
+          flexBasis={0}
+          flexGrow={1}
+          flexShrink={1}
+          minWidth={0}
+          numberOfLines={1}
+          strong
+          textRole="label"
+          tone="primary"
+        >
+          {channelName}
+        </Text>
         {last && (
           <Surface
             backgroundColor="contentPrimary"
             borderRadius="round"
             borderWidth={0}
-            marginLeft="auto"
+            flexShrink={0}
             paddingHorizontal={8}
             paddingVertical={2}
           >
@@ -168,7 +204,7 @@ const WallTile = ({
             borderColor="borderDecorative"
             borderRadius="round"
             borderWidth={1}
-            marginLeft="auto"
+            flexShrink={0}
             paddingHorizontal={8}
             paddingVertical={2}
           >
@@ -181,7 +217,7 @@ const WallTile = ({
                 <span style={SR_ONLY}>{`${watchers.join(", ")} watching`}</span>
               </>
             ) : (
-              <Text as="span" numberOfLines={1} strong textRole="caption">
+              <Text numberOfLines={1} strong textRole="caption">
                 {`${watchers.join(", ")} watching`}
               </Text>
             )}
@@ -199,13 +235,21 @@ const WallTile = ({
         position="absolute"
         right={0}
       >
-        {/* Wraps rather than ellipsising (Home's wrap-not-truncate rule): the words grow up from the foot. */}
-        <Text as="h3" strong textRole={compact ? "label" : "cardTitle"}>
+        {/* Wraps rather than ellipsising (Home's wrap-not-truncate rule): the words grow up from the foot.
+            The phone tile holds two lines at most, so the title never reaches the top row. */}
+        <Text
+          as="h3"
+          strong
+          textRole={compact ? "label" : "cardTitle"}
+          {...(compact ? { style: TWO_LINES } : {})}
+        >
           {title}
         </Text>
-        <Text as="span" textRole="caption" tone="secondary">
-          {compact ? [channelName, detail].filter(Boolean).join(" · ") : detail}
-        </Text>
+        {detail ? (
+          <Text numberOfLines={1} textRole="caption" tone="secondary">
+            {detail}
+          </Text>
+        ) : null}
       </Surface>
       {progressPercent === undefined ? null : (
         <Surface

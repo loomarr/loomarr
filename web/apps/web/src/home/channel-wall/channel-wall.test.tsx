@@ -68,11 +68,18 @@ describe("ChannelWall — every channel as a live tile (#2764)", () => {
   it("shows the channel number, the programme and the time left on one tile", async () => {
     await renderWall([live("c1", 7)]);
     const tile = tiles()[0] as HTMLElement;
-    expect(tile).toHaveTextContent("07");
+    expect(tile).toHaveTextContent(/(?<!0)7Channel c1/);
     expect(tile).toHaveTextContent("Channel c1");
     expect(within(tile).getByRole("heading", { level: 3, name: "Programme c1" })).toBeInTheDocument();
     expect(tile).toHaveTextContent("30 min left");
     expect(tile).toHaveAttribute("href", "/watch/c1");
+  });
+
+  it("prints a channel numbered 5 as 5, as the guide and player do, never 05", async () => {
+    await renderWall([live("c1", 5)]);
+    const tile = tiles()[0] as HTMLElement;
+    expect(tile).toHaveTextContent(/(?<!0)5Channel c1/);
+    expect(tile).not.toHaveTextContent("05");
   });
 
   it("lists every channel, not just six, in number order", async () => {

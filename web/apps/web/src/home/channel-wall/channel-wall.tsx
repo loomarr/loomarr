@@ -11,16 +11,16 @@ import {
 import { Action, SectionHeader, Surface } from "@loomarr/design-system";
 import { NeedsLine, surfChannelData, WallTile } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import type { AiringArtworkProps, ChannelViewer, ChannelWallProps } from "./channel-wall.type";
 
 // A legacy thumbnail URL that 404s must not leave a blank box (#2762): it falls to the generated art.
-const ThumbUrl = ({ url, channel }: { url: string; channel: AiringArtworkProps["channel"] }) => {
+const ThumbUrl = ({ url, fallback }: { url: string; fallback: ReactNode }) => {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  if (failedUrl === url) return <ArtworkFallback channel={channel} />;
+  if (failedUrl === url) return fallback;
   return (
     <img
       src={url}
@@ -35,15 +35,17 @@ const ThumbUrl = ({ url, channel }: { url: string; channel: AiringArtworkProps["
 // backdrop, else the media server's still, else its legacy thumbnail URL, else generated channel
 // art (#2762). A card always has a picture, never a blank or hatched tile, and the generated art
 // also covers an image that fails to load.
-const AiringArtwork = ({ airing, channel, sizes }: AiringArtworkProps) => {
+const AiringArtwork = ({ airing, channel, sizes, wordless = false }: AiringArtworkProps) => {
+  // Without its monogram the fallback is the channel's hue wash alone (same hue: the number seeds it).
+  const fallback = wordless ? (
+    <ArtworkFallback seed={channel.number} />
+  ) : (
+    <ArtworkFallback channel={channel} />
+  );
   const image = airing.backdropImage ?? airing.thumbImage;
-  if (image) {
-    return (
-      <ServedImage image={image} alt="" sizes={sizes} fallback={<ArtworkFallback channel={channel} />} />
-    );
-  }
-  if (airing.thumbUrl) return <ThumbUrl url={airing.thumbUrl} channel={channel} />;
-  return <ArtworkFallback channel={channel} />;
+  if (image) return <ServedImage image={image} alt="" sizes={sizes} fallback={fallback} />;
+  if (airing.thumbUrl) return <ThumbUrl url={airing.thumbUrl} fallback={fallback} />;
+  return fallback;
 };
 
 // The actual, truthful lifecycle sentence for a channel with no current block, never a
@@ -185,7 +187,10 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: Chan
               airing={entry.airing}
               channel={{ name: channelName, number: channel.source.number }}
               sizes="(min-width: 1024px) 33vw, 50vw"
+              wordless={phone}
             />
+          ) : phone ? (
+            <ArtworkFallback seed={channel.source.number} />
           ) : (
             <ArtworkFallback channel={{ name: channelName, number: channel.source.number }} />
           );
@@ -197,7 +202,7 @@ const ChannelWall = ({ lastChannelId, layout, needs = [], nowMs, viewers }: Chan
               compact={phone}
               dim={entry.dim}
               last={channel.source.channelId === lastChannelId}
-              number={String(channel.source.number).padStart(2, "0")}
+              number={String(channel.source.number)}
               render={<Link to="/watch/$id" params={{ id: channel.source.channelId }} />}
               title={entry.title}
               {...(channel.source.decade === undefined ? {} : { decade: channel.source.decade })}

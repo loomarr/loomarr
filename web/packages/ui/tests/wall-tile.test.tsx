@@ -155,6 +155,73 @@ describe("WallTile", () => {
   });
 });
 
+const oneLine = /(?=.*\b_to-)(?=.*\b_ws-)/;
+
+describe("WallTile over a picture (#3407)", () => {
+  const Still = () => <div data-testid="still" />;
+  const nameOf = (text: string) =>
+    Array.from(doc.body.querySelectorAll("*")).find(
+      (n) => n.textContent === text && n.getAttribute("data-testid") === null && !n.querySelector("*"),
+    ) as Node;
+
+  it("draws a top scrim behind the number and name whenever it has a picture", async () => {
+    await mount(<WallTile art={<Still />} channelName="Coast 90s" number="7" title="Coastline" />);
+    expect(doc.body.querySelector('[data-testid="wall-tile-top-scrim"]')).not.toBeNull();
+    doc.body.replaceChildren();
+    await mount(<WallTile art={null} channelName="Coast 90s" number="7" title="Coastline" />);
+    expect(doc.body.querySelector('[data-testid="wall-tile-top-scrim"]')).toBeNull();
+  });
+
+  it("sets the channel name in the light over-picture tone, not the muted one", async () => {
+    await mount(<WallTile art={<Still />} channelName="Coast 90s" number="7" title="Coastline" />);
+    expect(computed(nameOf("Coast 90s")).color.toLowerCase()).toBe("var(--contentprimary)");
+  });
+
+  it("keeps the name on one truncating line so the last-watched pill never covers it", async () => {
+    await mount(
+      <WallTile art={<Still />} channelName="A very long channel name indeed" last number="7" title="T" />,
+    );
+    const name = nameOf("A very long channel name indeed");
+    // numberOfLines={1} is Tamagui's text-overflow ellipsis (`_to-`) on a no-wrap line (`_ws-`).
+    expect(name.getAttribute("class") ?? "").toMatch(oneLine);
+    // The pill is a sibling of the name in the same row, so a long name shrinks rather than runs under it.
+    expect((nameOf("You were here").parentElement as Node).parentElement).toBe(name.parentElement);
+  });
+});
+
+describe("WallTile compact (#3407)", () => {
+  it("puts number and name on the first row, then the title, then one detail line, with no monogram", async () => {
+    await mount(
+      <WallTile
+        art={<div data-testid="still" />}
+        channelName="Nature Hour"
+        compact
+        detail="S2 E4 · 13 min left"
+        number="12"
+        title="Heron Country"
+      />,
+    );
+    const tile = doc.body.querySelector("button") as Node;
+    const text = tile.textContent ?? "";
+    // Reading order: number, name, then title, then detail; the name is no longer folded into the detail.
+    expect(text.indexOf("12")).toBeLessThan(text.indexOf("Nature Hour"));
+    expect(text.indexOf("Nature Hour")).toBeLessThan(text.indexOf("Heron Country"));
+    expect(text.indexOf("Heron Country")).toBeLessThan(text.indexOf("S2 E4 · 13 min left"));
+    expect(text.split("Nature Hour").length - 1).toBe(1);
+    const number = Array.from(doc.body.querySelectorAll("span")).find((n) => n.textContent === "12") as Node;
+    const row = (number.parentElement as Node).parentElement as Node;
+    expect(row.textContent).toContain("Nature Hour");
+    expect(row.textContent).not.toContain("Heron Country");
+    const meta = Array.from(doc.body.querySelectorAll("*")).filter(
+      (n) => !n.querySelector("*") && n.textContent === "S2 E4 · 13 min left",
+    );
+    expect(meta).toHaveLength(1);
+    expect(meta[0]?.getAttribute("class") ?? "").toMatch(oneLine);
+    // WallTile never draws a monogram itself: the picture slot is the only thing behind the words.
+    expect(tile.textContent).not.toMatch(/\bNH\b/);
+  });
+});
+
 describe("WallTile in the light theme", () => {
   it("keeps its words in the dark scope, light on the scrim, as the player does", async () => {
     const container = doc.createElement("div");
