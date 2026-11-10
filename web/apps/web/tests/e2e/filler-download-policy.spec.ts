@@ -93,8 +93,8 @@ test("automatic downloads expose simple defaults with optional per-source contro
   await expect(page.getByText(/^Next automatic check /)).toHaveCount(0);
 
   await page.goto("/filler/settings/downloads");
-  await page.getByRole("combobox", { name: "Look for new clips" }).click();
-  await page.getByRole("option", { name: "Never" }).click();
+  // A native <select>: its options are picked, not clicked (they are never "visible" to click).
+  await page.getByRole("combobox", { name: "Look for new clips" }).selectOption({ label: "Never" });
   await expect(
     page.getByText(
       "Automatic downloads are off for sources using these defaults. No enabled sources are currently downloading automatically.",
