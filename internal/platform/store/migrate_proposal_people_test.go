@@ -22,7 +22,7 @@ func TestProposalPeopleMigration(t *testing.T) {
 }
 
 // testProposalPeopleMigration proves the migration keeps each person who is a member, turns the
-// API token's ” and 'api-token' and an id naming no user into NULL, records how each decided
+// API token's empty id and 'api-token' and an id naming no user into NULL, records how each decided
 // suggestion was decided, and that afterwards the people are enforced and a deleted member is
 // cleared from what they asked for, decided and said.
 func testProposalPeopleMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
