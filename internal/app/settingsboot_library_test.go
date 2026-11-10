@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 func TestResolvedLibraryConnectionReadsLiveSettingsTogether(t *testing.T) {
@@ -16,12 +16,12 @@ func TestResolvedLibraryConnectionReadsLiveSettingsTogether(t *testing.T) {
 	current := set.libraryConn()
 
 	first := current()
-	assertLibraryConnection(t, first, library.Emby, "http://emby-old:8096", "token-old")
+	assertLibraryConnection(t, first, mediaserver.Emby, "http://emby-old:8096", "token-old")
 	set.svc.SetDB(map[string]string{
 		"library.flavor": "jellyfin", "library.url": "http://jellyfin-new:8096", "library.token": "token-new",
 	})
-	assertLibraryConnection(t, current(), library.Jellyfin, "http://jellyfin-new:8096", "token-new")
-	assertLibraryConnection(t, first, library.Emby, "http://emby-old:8096", "token-old")
+	assertLibraryConnection(t, current(), mediaserver.Jellyfin, "http://jellyfin-new:8096", "token-new")
+	assertLibraryConnection(t, first, mediaserver.Emby, "http://emby-old:8096", "token-old")
 
 	oldValues := map[string]string{
 		"library.flavor": "emby", "library.url": "http://emby-old:8096", "library.token": "token-old",
@@ -44,12 +44,12 @@ func TestResolvedLibraryConnectionReadsLiveSettingsTogether(t *testing.T) {
 		}
 	}()
 
-	var mixed *library.Connection
+	var mixed *mediaserver.Connection
 	for range 50_000 {
 		connection := current()
-		oldConnection := connection.Flavor == library.Emby &&
+		oldConnection := connection.Flavor == mediaserver.Emby &&
 			connection.BaseURL == "http://emby-old:8096" && connection.Token == "token-old"
-		newConnection := connection.Flavor == library.Jellyfin &&
+		newConnection := connection.Flavor == mediaserver.Jellyfin &&
 			connection.BaseURL == "http://jellyfin-new:8096" && connection.Token == "token-new"
 		if !oldConnection && !newConnection {
 			mixed = &connection
@@ -121,7 +121,7 @@ func TestResolvedLibraryConfiguredUsesClientValidation(t *testing.T) {
 	}
 }
 
-func assertLibraryConnection(t *testing.T, got library.Connection, flavor library.Flavor, url, token string) {
+func assertLibraryConnection(t *testing.T, got mediaserver.Connection, flavor mediaserver.Flavor, url, token string) {
 	t.Helper()
 	if got.Flavor != flavor || got.BaseURL != url || got.Token != token {
 		t.Fatalf("connection = %+v, want {%s %s %s}", got, flavor, url, token)

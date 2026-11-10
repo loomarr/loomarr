@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -92,7 +92,7 @@ func TestLibraryTitleScannerListsTheLibrary(t *testing.T) {
 	if err != nil || len(got) != 2 {
 		t.Fatalf("all items = %+v, %v; want the Library's two titles", got, err)
 	}
-	if got[1].LibraryItemID != "lib-show" || got[1].MediaType != library.Series || got[1].TVDBID != 90000002 || got[1].TMDBID != 90000003 {
+	if got[1].LibraryItemID != "lib-show" || got[1].MediaType != mediaserver.Series || got[1].TVDBID != 90000002 || got[1].TMDBID != 90000003 {
 		t.Errorf("show = %+v", got[1])
 	}
 	if got, err := scanner.RecentlyAdded(context.Background(), time.Now().Add(-time.Hour)); err != nil || len(got) != 2 ||
@@ -106,13 +106,13 @@ func TestLibraryTitleScannerListsTheLibrary(t *testing.T) {
 func TestLibraryLookupReadsTheLibrary(t *testing.T) {
 	ctx := context.Background()
 	lookup := OwnedLookup{titles: testLibraryTitles}
-	if id, ok, err := lookup.Lookup(ctx, library.TMDB, "90000001", library.Movie); err != nil || !ok || id != "lib-film" {
+	if id, ok, err := lookup.Lookup(ctx, mediaserver.TMDB, "90000001", mediaserver.Movie); err != nil || !ok || id != "lib-film" {
 		t.Errorf("film = %q, %v, %v; want its library item id", id, ok, err)
 	}
-	if id, ok, err := lookup.Lookup(ctx, library.TVDB, "90000002", library.Series); err != nil || !ok || id != "lib-show" {
+	if id, ok, err := lookup.Lookup(ctx, mediaserver.TVDB, "90000002", mediaserver.Series); err != nil || !ok || id != "lib-show" {
 		t.Errorf("show by tvdb = %q, %v, %v", id, ok, err)
 	}
-	if _, ok, err := lookup.Lookup(ctx, library.TMDB, "90000009", library.Movie); err != nil || ok {
+	if _, ok, err := lookup.Lookup(ctx, mediaserver.TMDB, "90000009", mediaserver.Movie); err != nil || ok {
 		t.Errorf("a title the Library lacks: ok = %v, %v; want absent", ok, err)
 	}
 }

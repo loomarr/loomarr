@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -72,7 +72,7 @@ func TestLibrarySearchAnswersFromTheLibrary(t *testing.T) {
 		film.RuntimeMinutes != 95 || film.Overview != "A lighthouse." || film.OfficialRating != "PG" || film.SizeBytes != 4_000 {
 		t.Errorf("film = %+v; want it under its library item id with its facts", film)
 	}
-	if show := got[1]; show.LibraryItemID != "lib-show" || show.MediaType != library.Series || show.TVDBID != 90000002 {
+	if show := got[1]; show.LibraryItemID != "lib-show" || show.MediaType != mediaserver.Series || show.TVDBID != 90000002 {
 		t.Errorf("show = %+v", show)
 	}
 	if got, err := (titlesearch.LibrarySearch{Titles: libraryTitlesFake{}, Facts: facts}).Search(ctx, "nothing", 10); err != nil || len(got) != 0 {

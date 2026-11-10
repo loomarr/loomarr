@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -43,7 +43,7 @@ func newRoots(t *testing.T, disk fakeDisk, pathMap string, sources ...Source) *R
 	return &Roots{
 		Store:   openStore(t),
 		Sources: func() []Source { return sources },
-		PathMap: func() library.PathMap { return library.ParsePathMap(pathMap) },
+		PathMap: func() mediaserver.PathMap { return mediaserver.ParsePathMap(pathMap) },
 		Disk:    disk,
 		Now:     func() time.Time { return time.UnixMilli(1_800_000_000_000) },
 	}

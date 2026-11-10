@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -67,7 +67,7 @@ func refreshFixture(t *testing.T, statuses ...int) (*fakeEmby, *livetvpublish.Li
 	srv := httptest.NewServer(fake.handler())
 	t.Cleanup(srv.Close)
 	urls := tunarr.LiveTVURLs{M3U: "http://192.0.2.79:8001/api/channels.m3u", XMLTV: "http://192.0.2.79:8001/api/xmltv.xml"}
-	client := library.New(library.Emby, srv.URL, "test-token", "dev-1")
+	client := mediaserver.New(mediaserver.Emby, srv.URL, "test-token", "dev-1")
 	return fake, livetvpublish.NewLiveTVConnectorFixed(client, urls), urls
 }
 

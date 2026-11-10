@@ -160,8 +160,8 @@ type ProposalRepository interface {
 	// separate queued → running write. SQLite uses a guarded UPDATE; Postgres uses
 	// FOR UPDATE SKIP LOCKED (§18).
 	ClaimDueJobs(ctx context.Context, now time.Time, lease time.Duration, limit int) ([]Job, error)
-	// ListProposalJobAttempts returns exact post-versioning execution history in
-	// attempt order. Legacy version-0 jobs legitimately have no rows.
+	// ListProposalJobAttempts returns a job's execution history in attempt order. A job that
+	// was never claimed has no rows.
 	ListProposalJobAttempts(ctx context.Context, jobID string) ([]ProposalJobAttempt, error)
 	// FindJobByIntentHash returns the most recent successful job with the same
 	// intent hash (§8 proposal cache), or ErrNotFound. `since` bounds the cache

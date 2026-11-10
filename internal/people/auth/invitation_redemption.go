@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -117,7 +117,7 @@ func (s *InvitationRedemptionService) RedeemLibrary(
 	}
 	providerUser, err := s.lib.AuthenticateByName(ctx, username, password)
 	if err != nil {
-		if errors.Is(err, library.ErrProviderUnavailable) {
+		if errors.Is(err, mediaserver.ErrProviderUnavailable) {
 			return "", time.Time{}, identitystore.User{}, ErrInvitationProviderUnavailable
 		}
 		return "", time.Time{}, identitystore.User{}, ErrInvalidCredentials

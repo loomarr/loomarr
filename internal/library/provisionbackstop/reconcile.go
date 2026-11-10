@@ -15,7 +15,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -51,7 +51,7 @@ type AcquisitionQuality interface {
 
 // LibraryLookup is the narrow media-library seam used by one reconcile pass.
 type LibraryLookup interface {
-	Lookup(ctx context.Context, providerKind library.ProviderKind, providerID string, mediaType library.MediaType) (itemID string, present bool, err error)
+	Lookup(ctx context.Context, providerKind mediaserver.ProviderKind, providerID string, mediaType mediaserver.MediaType) (itemID string, present bool, err error)
 }
 
 // LibrarySource binds one immutable media-library operation. It is invoked once
@@ -176,13 +176,13 @@ func (r *Reconciler) giveUp(ctx context.Context, lib LibraryLookup, rec provisio
 }
 
 func lookup(ctx context.Context, lib LibraryLookup, t provision.Title) (string, bool, error) {
-	kind := library.TMDB
+	kind := mediaserver.TMDB
 	id := itoa(t.TMDBID)
-	mt := library.Movie
+	mt := mediaserver.Movie
 	if t.MediaType == provision.Series {
-		mt = library.Series
+		mt = mediaserver.Series
 		if t.TVDBID > 0 {
-			kind, id = library.TVDB, itoa(t.TVDBID)
+			kind, id = mediaserver.TVDB, itoa(t.TVDBID)
 		}
 	}
 	return lib.Lookup(ctx, kind, id, mt)

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
@@ -17,16 +17,16 @@ import (
 // scannerFake is the Library as the scan reads it: items is "what's in the library", err rides
 // with them, and calls counts the reads.
 type scannerFake struct {
-	items []library.SearchResult
+	items []mediaserver.SearchResult
 	err   error
 	calls int
 }
 
-func (s *scannerFake) RecentlyAdded(context.Context, time.Time) ([]library.SearchResult, error) {
+func (s *scannerFake) RecentlyAdded(context.Context, time.Time) ([]mediaserver.SearchResult, error) {
 	s.calls++
 	return s.items, s.err
 }
-func (s *scannerFake) AllItems(context.Context) ([]library.SearchResult, error) {
+func (s *scannerFake) AllItems(context.Context) ([]mediaserver.SearchResult, error) {
 	s.calls++
 	return s.items, s.err
 }
@@ -57,8 +57,8 @@ func TestLibraryScan_ConfirmsRequestedMovie(t *testing.T) {
 	ls, st, lib, emit := setupScan(t)
 	key := provision.Key("movie:tmdb:90000603")
 	put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: library.Movie, TMDBID: 90000603},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: mediaserver.Movie, TMDBID: 90000603},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -93,8 +93,8 @@ func TestLibraryScan_ConfirmsRequestedMovie(t *testing.T) {
 // error confirm, and the error still reaches the job.
 func TestLibraryScan_ConfirmsAPartialAnswer(t *testing.T) {
 	down := errors.New("media server down")
-	scanner := &scannerFake{items: []library.SearchResult{
-		{LibraryItemID: "lib-1", MediaType: library.Movie, TMDBID: 90000603},
+	scanner := &scannerFake{items: []mediaserver.SearchResult{
+		{LibraryItemID: "lib-1", MediaType: mediaserver.Movie, TMDBID: 90000603},
 	}, err: down}
 	for _, full := range []bool{false, true} {
 		st := testkit.MigratedSQLiteStore(t)
@@ -125,8 +125,8 @@ func TestLibraryScanRecordsPlayableQualityAfterCommittedConfirmation(t *testing.
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: library.Movie, TMDBID: 90000603},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: mediaserver.Movie, TMDBID: 90000603},
 	}
 
 	if n, err := ls.Incremental(t.Context()); err != nil || n != 1 {
@@ -150,8 +150,8 @@ func TestLibraryScan_ConfirmsSeriesByTVDB(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-2", Name: "Copperline Foundry", MediaType: library.Series, TVDBID: 90081189},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-2", Name: "Copperline Foundry", MediaType: mediaserver.Series, TVDBID: 90081189},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -182,8 +182,8 @@ func TestLibraryScan_ConfirmsTMDBSeriesWhenItemHasBothIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The library item carries BOTH ids (as Emby does) — Title.Key() would prefer tvdb:90353546.
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-snorkelsaurus", Name: "Snorkelsaurus", MediaType: library.Series, TMDBID: 90082728, TVDBID: 90353546},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-snorkelsaurus", Name: "Snorkelsaurus", MediaType: mediaserver.Series, TMDBID: 90082728, TVDBID: 90353546},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -205,8 +205,8 @@ func TestLibraryScan_IgnoresUntrackedItems(t *testing.T) {
 	// One requested title (90000603) awaiting; the library reports a DIFFERENT movie (90000550).
 	key := provision.Key("movie:tmdb:90000603")
 	put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-9", Name: "Lemon Tree Heist", MediaType: library.Movie, TMDBID: 90000550},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-9", Name: "Lemon Tree Heist", MediaType: mediaserver.Movie, TMDBID: 90000550},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -230,8 +230,8 @@ func TestLibraryScan_SkipsTerminalTitles(t *testing.T) {
 	ls, st, lib, emit := setupScan(t)
 	key := provision.Key("movie:tmdb:90000603")
 	put(t, st, key, provision.Available, 90000603, time.Time{})
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: library.Movie, TMDBID: 90000603},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: mediaserver.Movie, TMDBID: 90000603},
 	}
 
 	n, err := ls.Incremental(context.Background())
@@ -251,8 +251,8 @@ func TestLibraryScan_FullConfirms(t *testing.T) {
 	ls, st, lib, _ := setupScan(t)
 	key := provision.Key("movie:tmdb:90000603")
 	put(t, st, key, provision.Requested, 90000603, now.Add(24*time.Hour))
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: library.Movie, TMDBID: 90000603},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: mediaserver.Movie, TMDBID: 90000603},
 	}
 
 	n, err := ls.Full(context.Background())
@@ -271,8 +271,8 @@ func TestLibraryScan_FullConfirms(t *testing.T) {
 // items — the common steady-state case, and it avoids a needless correlation pass.
 func TestLibraryScan_NoInflightNoop(t *testing.T) {
 	ls, _, lib, emit := setupScan(t)
-	lib.items = []library.SearchResult{
-		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: library.Movie, TMDBID: 90000603},
+	lib.items = []mediaserver.SearchResult{
+		{LibraryItemID: "lib-1", Name: "Marigold Protocol", MediaType: mediaserver.Movie, TMDBID: 90000603},
 	}
 	n, err := ls.Incremental(context.Background())
 	if err != nil {

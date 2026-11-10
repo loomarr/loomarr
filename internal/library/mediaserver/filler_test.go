@@ -1,11 +1,11 @@
-package library_test
+package mediaserver_test
 
 import (
 	"context"
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -14,7 +14,7 @@ import (
 // `GET /Library/VirtualFolders` returns a bare array, not the `{"Items": […]}` envelope.
 func TestLibraryFolders_ResolvesTheNameAnOperatorTyped(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
-	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	c := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev-1")
 
 	for _, tc := range []struct{ name, want string }{
 		{"Movies", "/data/movies"},
@@ -34,7 +34,7 @@ func TestLibraryFolders_ResolvesTheNameAnOperatorTyped(t *testing.T) {
 // ⚠ An unknown name is (nil, nil) — "found nothing", never an error.
 func TestLibraryFolders_UnknownNameIsNotAnError(t *testing.T) {
 	ms := testkit.NewMediaServer(t)
-	c := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
+	c := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev-1")
 
 	for _, name := range []string{"Commercials", "", "   "} {
 		got, err := c.LibraryFolders(context.Background(), name)

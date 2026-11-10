@@ -61,7 +61,7 @@ Code that exists for tests and never ships in the server: the shared test double
 
 ### From a request to Live TV
 
-A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `library/titlesearch`(the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from `platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a `library/provision` record that `library/provisionbackstop` hands to `library/requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. `playout/livetvpublish` registers the playlist and guide with the media server's Live TV through `library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before publishing it to the media server.
+A member asks for a channel through `api`. `proposals/workflow` turns the request into a durable Proposal Job and runs `proposals/suggest`, which grounds each title through `library/titlesearch`(the library, `library/tmdb` and the clip catalog) and `proposals/webreference`, using a model from `platform/llm`, and returns the values in `proposals`. When a person approves it, `channels/approval` plans the channel and `channels/edit` writes it through `platform/store`; any title the household lacks becomes a `library/provision` record that `library/provisionbackstop` hands to `library/requester` for Sonarr or Radarr. `channels/schedule` turns the approved lineup and what is actually available into ordered programming, and the `channels` reconcile engine keeps that current for the channel's backend: either Loomarr's own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. `playout/livetvpublish` registers the playlist and guide with the media server's Live TV through `library/mediaserver`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before publishing it to the media server.
 
 ### From a filler source to a break
 
@@ -96,11 +96,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `filler/structure` | — |
 | `filler/structure/window` | `filler/structure` |
 | `filler/taxonomy` | — |
-| `library` | `platform/httpx`, `platform/metrics` |
 | `library/inventory` | — |
+| `library/mediaserver` | `platform/httpx`, `platform/metrics` |
 | `library/metadataprovider` | — |
 | `library/provision` | — |
-| `library/titlesearch` | `library`, `library/provision`, `platform/store/librarystore` |
+| `library/titlesearch` | `library/mediaserver`, `library/provision`, `platform/store/librarystore` |
 | `library/tmdb` | `library/provision`, `library/titlesearch`, `platform/httpx`, `platform/metrics` |
 | `media/bgexec` | — |
 | `media/creative` | — |
@@ -122,7 +122,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `library/provision` |
 | `platform/rating` | — |
-| `platform/settings` | `library`, `platform/buildinfo`, `platform/config` |
+| `platform/settings` | `library/mediaserver`, `platform/buildinfo`, `platform/config` |
 | `platform/storagegovernor` | — |
 | `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `library/provision`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality` |
 | `platform/store/activitystore` | `platform/store/storedb` |

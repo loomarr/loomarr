@@ -13,10 +13,9 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals"
 )
 
-const (
-	WorkflowVersionLegacy = 0
-	WorkflowVersion1      = 1
-)
+// WorkflowVersion1 is the only workflow version: every Job is written with it, and a Job
+// carrying any other is refused as invalid state.
+const WorkflowVersion1 = 1
 
 var (
 	ErrForbidden    = errors.New("proposal workflow: forbidden")
@@ -236,22 +235,12 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	if !viewer.Admin && (viewer.UserID == "" || viewer.UserID != record.OwnerID) {
 		return Journey{}, ErrForbidden
 	}
-	legacy := record.Version == WorkflowVersionLegacy
-	if legacy && len(record.Attempts) != 0 {
-		return Journey{}, fmt.Errorf("%w: legacy Job has versioned Attempt history", ErrInvalidState)
-	}
-	if !legacy && record.Version != WorkflowVersion1 {
+	if record.Version != WorkflowVersion1 {
 		return Journey{}, fmt.Errorf("%w: version=%d status=%q", ErrInvalidState, record.Version, record.Status)
 	}
-	if !legacy {
-		if err := validateAttempts(record); err != nil {
-			return Journey{}, err
-		}
+	if err := validateAttempts(record); err != nil {
+		return Journey{}, err
 	}
-	// Version 0 is the pre-history persisted form. Project it into the current
-	// Journey schema without fabricating Attempts; its first new claim performs
-	// the durable version transition.
-	record.Version = WorkflowVersion1
 
 	milestone := MilestoneGenerating
 	actions := []Action{ActionWait}

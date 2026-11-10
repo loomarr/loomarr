@@ -3,7 +3,7 @@ package playoutresolve
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -15,11 +15,11 @@ type ItemMetadata struct {
 
 // ItemMetadataByID keeps library.Client's contract: missing ids are absent, and a partial answer
 // rides with its error.
-func (m ItemMetadata) ItemMetadataByID(ctx context.Context, ids []string) (map[string]library.ItemMetadata, error) {
+func (m ItemMetadata) ItemMetadataByID(ctx context.Context, ids []string) (map[string]mediaserver.ItemMetadata, error) {
 	facts, err := m.Facts.LibraryItemFacts(ctx, ids)
-	out := make(map[string]library.ItemMetadata, len(facts))
+	out := make(map[string]mediaserver.ItemMetadata, len(facts))
 	for id, f := range facts {
-		out[id] = library.ItemMetadata{Overview: f.Overview, Genres: f.Genres, Year: f.Year,
+		out[id] = mediaserver.ItemMetadata{Overview: f.Overview, Genres: f.Genres, Year: f.Year,
 			OfficialRating: f.Rating, RuntimeMs: f.RuntimeMs}
 	}
 	return out, err

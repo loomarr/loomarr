@@ -10,9 +10,9 @@ import (
 
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/arr"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
@@ -51,7 +51,7 @@ type libraryStore interface {
 
 // libraryBuild is what Settings → Library needs beyond the store and settings.
 type libraryBuild struct {
-	lib *library.Client
+	lib *mediaserver.Client
 	// watched reports whether a viewer is fetching a channel; header reads wait while one is. Nil
 	// without internal playout, when nothing on this box needs the disks first.
 	watched func() bool
@@ -104,7 +104,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	// The Library's rows follow every inventory write from here on (#2151 decision 43).
 	st.ProjectLibraryWith(scan.ProjectLibraryItem)
-	pathMap := func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) }
+	pathMap := func() mediaserver.PathMap { return mediaserver.ParsePathMap(settings.LibraryPathMap.Get(set)) }
 	roots := &scan.Roots{
 		Store:   st,
 		Sources: func() []scan.Source { return libraryRootSources(set, deps.lib) },
@@ -265,7 +265,7 @@ func libraryHeader(probe playout.SourceProber) func(context.Context, string) (he
 
 // libraryRootSources is every authority that can name a library folder: the media server when
 // its connection is complete, then Sonarr and Radarr whatever requester is chosen (decision 2).
-func libraryRootSources(set resolved, lib *library.Client) []scan.Source {
+func libraryRootSources(set resolved, lib *mediaserver.Client) []scan.Source {
 	var sources []scan.Source
 	if lib != nil && set.libraryConfigured() {
 		if name, err := lib.FlavorName(); err == nil {
