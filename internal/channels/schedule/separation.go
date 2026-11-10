@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // This file holds the separation-aware slot placement (programming-design §3, §5):

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"unicode/utf8"
 
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
 )
 
 // Problems a pass records for a path it does not import.

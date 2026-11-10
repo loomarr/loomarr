@@ -21,10 +21,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Client is the TMDB v3 client. The api key rides as a bearer token (v4 auth) or

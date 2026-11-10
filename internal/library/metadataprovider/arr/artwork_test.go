@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // The arrs name art in their own words; library_art's CHECK holds only Loomarr's, so every kind

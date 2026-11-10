@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The catalog's retention (#2528) deletes what is long gone and nothing a reader can still reach:

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 

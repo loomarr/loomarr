@@ -15,9 +15,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // randWords is a small vocabulary the generators draw from so terms sometimes hit

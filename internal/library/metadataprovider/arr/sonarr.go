@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // Sonarr is the Sonarr metadata provider: series and their episodes.

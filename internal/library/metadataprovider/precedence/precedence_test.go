@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
 )
 
 // Sources as the rules see them. Only measured, header, embedded-id and link carry no provider:

@@ -3,7 +3,7 @@ package provision_test
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 func TestTitleKey(t *testing.T) {

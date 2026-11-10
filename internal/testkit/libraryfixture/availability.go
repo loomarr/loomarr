@@ -2,7 +2,7 @@ package libraryfixture
 
 import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Availability supplies explicit playable and editorial evidence to pure

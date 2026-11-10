@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // MaxSize is the largest NFO read. Real ones are a few kilobytes.

@@ -29,8 +29,8 @@ import (
 	"strings"
 	"time"
 
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	tmdbclient "github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 )

@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // Case is what a provider's test supplies: items its fixture holds, and items it does not.

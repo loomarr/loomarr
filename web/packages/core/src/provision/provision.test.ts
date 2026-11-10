@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { provisionKey } from "./provision";
 
-// Parity with Go's `provision.Title.Key()` (internal/provision/title.go:52). The cases below are
+// Parity with Go's `provision.Title.Key()` (internal/library/provision/title.go:52). The cases below are
 // the branches that function has, in its order — if it changes, this fails rather than the
 // mismatch surfacing as an approval edit that silently fails to drop a title.
 describe("provisionKey", () => {

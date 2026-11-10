@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // extensions are the image types a sidecar may use, in the order one is preferred.

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
-	"github.com/loomarr/loomarr/internal/metadataprovider/providertest"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/arr"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/providertest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 

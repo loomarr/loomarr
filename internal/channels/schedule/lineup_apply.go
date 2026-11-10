@@ -3,7 +3,7 @@ package schedule
 import (
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Lineup application (programming-design §9). Every write to a channel's approved lineup

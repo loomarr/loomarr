@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
-	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
+	mptmdb "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 

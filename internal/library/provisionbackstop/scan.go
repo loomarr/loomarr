@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // LibraryScan is the poll-based availability path (design §4, §18.1) — the PRIMARY way a

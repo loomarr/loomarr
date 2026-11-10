@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // arrStub is a fake Sonarr/Radarr: it answers lookup/qualityprofile/rootfolder/queue and
