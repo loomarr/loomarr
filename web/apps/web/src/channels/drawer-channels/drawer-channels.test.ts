@@ -45,7 +45,7 @@ describe("drawerChannels", () => {
       ],
       NOW,
     );
-    expect(first?.now).toBe("A sitcom — “The pilot”");
+    expect(first?.now).toBe("A sitcom · The pilot");
     expect(first?.minutesLeft).toBe(20);
     expect(first?.blocks.map((b) => [b.key, b.label, b.minutes, b.pod])).toEqual([
       ["now", "A sitcom", 44, false],
