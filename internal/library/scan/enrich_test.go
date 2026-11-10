@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -559,4 +560,92 @@ func TestRefreshEverythingWritesEveryFileAgain(t *testing.T) {
 	if err := lib.RefreshEverything(ctx); !errors.Is(err, ErrScannerOff) {
 		t.Fatalf("scanner off = %v, want ErrScannerOff", err)
 	}
+}
+
+// tickStore tells each time the Enricher counts what is still due as new: once as a tick's last
+// read of the store, and once more in a tick that begins step 3.
+type tickStore struct {
+	EnrichStore
+	counted chan struct{}
+}
+
+func (s tickStore) CountDueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) (int, error) {
+	n, err := s.EnrichStore.CountDueLibraryCatalog(ctx, due)
+	s.counted <- struct{}{}
+	return n, err
+}
+
+// Titles written between ticks are looked up when the Enricher is woken, not at the next tick: an
+// hour away here. A woken lookup fetches only what is new; records grown old wait for a tick.
+func TestEnricherLooksUpNewTitlesWhenWoken(t *testing.T) {
+	h := newHarness(t)
+	st := tickStore{EnrichStore: h.st, counted: make(chan struct{}, 16)}
+	counts := func(n int, what string) {
+		t.Helper()
+		for range n {
+			select {
+			case <-st.counted:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timed out waiting for %s", what)
+			}
+		}
+	}
+	base := time.Now()
+	var ahead atomic.Int64
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000201": {Kind: mp.KindMovie}, "90000202": {Kind: mp.KindMovie},
+	}}
+	e := &Enricher{
+		Store: st, Provider: catalog, Rewrite: func(string, ...string) {}, Tracker: NewTracker(nil, nil),
+		Interval: time.Hour, Now: func() time.Time { return base.Add(time.Duration(ahead.Load())) },
+		Sleep: func(context.Context, time.Duration) error { return nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		e.Run(ctx)
+	}()
+	counts(1, "the first tick, with nothing to look up")
+
+	keys := []librarystore.LibraryCatalogKey{
+		{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"},
+		{Provider: "tmdb", Kind: "movie", ExternalID: "90000202"},
+	}
+	if err := h.st.WantLibraryCatalog(ctx, keys); err != nil {
+		t.Fatal(err)
+	}
+	e.Wake()
+	counts(2, "the woken lookup of two new titles")
+	if len(catalog.fetched) != 2 {
+		t.Fatalf("woken, fetched %v; want both new titles", catalog.fetched)
+	}
+
+	// Both records are older than the refresh period now, and nothing is new.
+	ahead.Store(int64(EnrichRefresh + 24*time.Hour))
+	e.Wake()
+	counts(1, "the woken lookup with nothing new")
+	if len(catalog.fetched) != 2 {
+		t.Fatalf("woken with nothing new, fetched %v; want no old record refreshed", catalog.fetched)
+	}
+
+	cancel()
+	<-done
+	// A tick does refresh its share of them, so the records above were due as old.
+	if err := e.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.fetched) != 3 {
+		t.Fatalf("after a tick, fetched %v; want one old record refreshed", catalog.fetched)
+	}
+}
+
+// Wake never blocks, with no Run draining it and on a nil Enricher.
+func TestEnricherWakeNeverBlocks(t *testing.T) {
+	e := &Enricher{}
+	for range 3 {
+		e.Wake()
+	}
+	var none *Enricher
+	none.Wake()
 }
