@@ -54,6 +54,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = st.Close() })
 			now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+			testkit.SaveFillerSources(t, st, "classic")
 			p := acquisition.Pull{ID: "pull", Status: acquisition.PullPending, CreatedAt: now,
 				Plan: []acquisition.PullPlanRow{{SourceID: "classic", Name: "Reviewed item"}}}
 			if err := st.UpsertPull(t.Context(), p); err != nil {

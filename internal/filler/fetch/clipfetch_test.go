@@ -407,6 +407,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 	if err != nil {
 		t.Fatal(err)
 	}
+	testkit.SaveFillerSources(t, closed, source.ID)
 	if err := closed.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: source.AcquisitionID, SourceID: source.ID, Trigger: acquisition.TriggerPull, Status: acquisition.RunRunning, Requested: 1}); err != nil {
 		t.Fatal(err)
 	}

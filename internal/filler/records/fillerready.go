@@ -19,10 +19,11 @@ import (
 func (s *sqlStore) GetFillerReadyEvent(ctx context.Context, clipHash string) (filler.ReadyEvent, bool, error) {
 	var event filler.ReadyEvent
 	var enrollmentKind, placement string
+	var acquisitionID storedb.OptionalID
 	var createdAt int64
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT id, clip_hash, acquisition_id, enrollment_kind,
 		enrollment_ref, placement, created_at FROM filler_ready_events WHERE clip_hash = ?`), clipHash).
-		Scan(&event.ID, &event.ClipHash, &event.AcquisitionID, &enrollmentKind,
+		Scan(&event.ID, &event.ClipHash, &acquisitionID, &enrollmentKind,
 			&event.Enrollment.Reference, &placement, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return filler.ReadyEvent{}, false, nil
@@ -30,6 +31,7 @@ func (s *sqlStore) GetFillerReadyEvent(ctx context.Context, clipHash string) (fi
 	if err != nil {
 		return filler.ReadyEvent{}, false, fmt.Errorf("get filler ready event %s: %w", clipHash, err)
 	}
+	event.AcquisitionID = string(acquisitionID)
 	event.Enrollment.Kind = filler.EnrollmentKind(enrollmentKind)
 	event.Placement = clips.Placement(placement)
 	event.CreatedAt = time.Unix(createdAt, 0).UTC()
@@ -51,13 +53,14 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var existingClip, existingAcquisition, existingKind, existingRef, existingPlacement string
+	var existingClip, existingKind, existingRef, existingPlacement string
+	var existingAcquisition storedb.OptionalID
 	readyEventExists := false
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT clip_hash, acquisition_id, enrollment_kind,
 		enrollment_ref, placement FROM filler_ready_events WHERE id = ?`), e.ID).
 		Scan(&existingClip, &existingAcquisition, &existingKind, &existingRef, &existingPlacement)
 	if err == nil {
-		if existingClip == e.ClipHash && existingAcquisition == e.AcquisitionID &&
+		if existingClip == e.ClipHash && string(existingAcquisition) == e.AcquisitionID &&
 			existingKind == string(e.Enrollment.Kind) && existingRef == e.Enrollment.Reference &&
 			existingPlacement == string(e.Placement) {
 			readyEventExists = true
@@ -122,12 +125,12 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		attempts = ?, force_run = ?, next_run = ?, preparation_attempt = ?, preparation_started_at = ?,
 		preparation_start_reason = ?, preparation_progress = ?, stage_queued_at = ?, stage_started_at = ?,
 		stages_json = ?, updated_at = ?
-		WHERE clip_hash = ? AND acquisition_id = ? AND stage = ? AND status = ? AND disposition = ?`),
+		WHERE clip_hash = ? AND acquisition_id IS NOT DISTINCT FROM ? AND stage = ? AND status = ? AND disposition = ?`),
 		string(p.Stage), string(p.Status), p.Progress, string(p.Disposition), string(p.RejectReason),
 		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), p.PreparationAttempt,
 		epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
 		epoch(p.StageQueuedAt), epoch(p.StageStartedAt), string(raw), epoch(p.UpdatedAt),
-		p.ClipHash, current.AcquisitionID, string(current.Stage), string(current.Status), string(current.Disposition))
+		p.ClipHash, storedb.OptionalID(current.AcquisitionID), string(current.Stage), string(current.Status), string(current.Disposition))
 	if err != nil {
 		return fmt.Errorf("settle ready pipeline %s: %w", e.ClipHash, err)
 	}
@@ -141,7 +144,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	if !readyEventExists {
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_ready_events
 			(id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref, placement, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`), e.ID, e.ClipHash, e.AcquisitionID,
+			VALUES (?, ?, ?, ?, ?, ?, ?)`), e.ID, e.ClipHash, storedb.OptionalID(e.AcquisitionID),
 			string(e.Enrollment.Kind), e.Enrollment.Reference, string(e.Placement), epoch(e.CreatedAt)); err != nil {
 			return fmt.Errorf("record filler ready event %s: %w", e.ID, err)
 		}

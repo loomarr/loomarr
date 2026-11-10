@@ -257,7 +257,9 @@ tables:
       decision 180 days after it was made.
     columns:
       id: Identifies the decision, derived from its content.
-      proposal_id: The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed.
+      proposal_id: >
+        The split proposal it was made for (filler_split_proposals.id). Deliberately not a foreign
+        key: the decision is kept for 180 days after the proposal is removed.
       clip_hash: The compilation reel (clips.hash).
       source_sha256: SHA-256 of the reel's source file. Empty when not known.
       assessment_sha256: SHA-256 of the structure assessment the new rule used. Empty when there was none.

@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 const acquisitionRunSelect = `SELECT id, trigger, source_id, pull_id, status,
@@ -23,7 +24,7 @@ const acquisitionRunInsert = `INSERT INTO filler_acquisition_runs
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 func acquisitionRunArgs(run acquisition.AcquisitionRun) []any {
-	return []any{run.ID, string(run.Trigger), run.SourceID, run.PullID, string(run.Status), run.Requested, run.Fetched, run.Skipped, run.Failed, run.Empty, run.Error, epoch(run.StartedAt), epoch(run.CompletedAt), epoch(run.UpdatedAt)}
+	return []any{run.ID, string(run.Trigger), storedb.OptionalID(run.SourceID), storedb.OptionalID(run.PullID), string(run.Status), run.Requested, run.Fetched, run.Skipped, run.Failed, run.Empty, run.Error, epoch(run.StartedAt), epoch(run.CompletedAt), epoch(run.UpdatedAt)}
 }
 
 // UpsertAcquisitionRun persists one execution snapshot. The app adapter is the single writer and
@@ -47,8 +48,8 @@ func (s *sqlStore) UpsertAcquisitionRun(ctx context.Context, run acquisition.Acq
 		 error=excluded.error, started_at=excluded.started_at,
 		 completed_at=excluded.completed_at, updated_at=excluded.updated_at
   WHERE filler_acquisition_runs.trigger = excluded.trigger
-   AND filler_acquisition_runs.source_id = excluded.source_id
-   AND filler_acquisition_runs.pull_id = excluded.pull_id`),
+   AND filler_acquisition_runs.source_id IS NOT DISTINCT FROM excluded.source_id
+   AND filler_acquisition_runs.pull_id IS NOT DISTINCT FROM excluded.pull_id`),
 		acquisitionRunArgs(run)...)
 	if err != nil {
 		return fmt.Errorf("upsert filler acquisition %s: %w", run.ID, err)
@@ -84,12 +85,14 @@ func (s *sqlStore) RecoverInterruptedAcquisitionRuns(ctx context.Context, at tim
 func scanAcquisitionRun(sc scannable) (acquisition.AcquisitionRun, error) {
 	var run acquisition.AcquisitionRun
 	var trigger, status string
+	var sourceID, pullID storedb.OptionalID
 	var startedAt, completedAt, updatedAt int64
-	if err := sc.Scan(&run.ID, &trigger, &run.SourceID, &run.PullID, &status,
+	if err := sc.Scan(&run.ID, &trigger, &sourceID, &pullID, &status,
 		&run.Requested, &run.Fetched, &run.Skipped, &run.Failed, &run.Empty, &run.Error,
 		&startedAt, &completedAt, &updatedAt); err != nil {
 		return acquisition.AcquisitionRun{}, err
 	}
+	run.SourceID, run.PullID = string(sourceID), string(pullID)
 	run.Trigger = acquisition.Trigger(trigger)
 	run.Status = acquisition.RunStatus(status)
 	run.StartedAt = fromEpoch(startedAt)

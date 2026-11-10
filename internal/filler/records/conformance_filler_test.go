@@ -827,6 +827,7 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+	saveFillerSources(t, s, "youtube:ads")
 	run := acquisition.AcquisitionRun{
 		ID: "identity-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
 		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
@@ -969,6 +970,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
+	saveAcquisitionRun(t, s, "ready-acquisition")
 	pipeline := pipelinestate.ClipPipeline{
 		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
@@ -1081,6 +1083,7 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, source); err != nil {
 		t.Fatal(err)
 	}
+	saveFillerSources(t, s, "youtube:ads")
 	run := acquisition.AcquisitionRun{
 		ID: "conditioning-acquisition", Trigger: acquisition.TriggerSource, SourceID: "youtube:ads",
 		Status: acquisition.RunSuccess, Requested: 1, Fetched: 1,
@@ -1400,6 +1403,7 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "archive:classic", "archive:vault")
 	older := acquisition.AcquisitionRun{
 		ID: "acq-old", Trigger: acquisition.TriggerScheduled, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 3, StartedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
@@ -1527,6 +1531,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "archive:classic")
 	run := acquisition.AcquisitionRun{
 		ID: "acq-manifest", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
@@ -5261,6 +5266,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
+	saveAcquisitionRun(t, s, "acquisition-1")
 	current := pipelinestate.ClipPipeline{
 		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,

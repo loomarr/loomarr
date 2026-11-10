@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 func recoveryBoundaryArtifact(t *testing.T, root, id string, state acquisition.ArtifactState, at time.Time) acquisition.Artifact {
@@ -49,6 +50,7 @@ func repairReason(state acquisition.ArtifactState) string {
 
 func seedBoundaryRun(t *testing.T, db records.Store, at time.Time) {
 	t.Helper()
+	testkit.SaveFillerSources(t, db, "youtube:classic")
 	if err := db.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{ID: "acq-boundary", Trigger: acquisition.TriggerPull, SourceID: "youtube:classic", Status: acquisition.RunSuccess, Requested: 1, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}

@@ -100,7 +100,7 @@ func (s *sqlStore) PurgeSpentFillerRecords(ctx context.Context, now time.Time) (
 		{"pull commits", `DELETE FROM filler_pull_commits WHERE acquisition_id IN (
 			SELECT id FROM filler_acquisition_runs WHERE ` + doomedRun + `)`, []any{download}},
 		{"approved pulls", `DELETE FROM filler_pulls WHERE status = 'approved' AND id IN (
-			SELECT pull_id FROM filler_acquisition_runs WHERE pull_id <> '' AND ` + doomedRun + `)
+			SELECT pull_id FROM filler_acquisition_runs WHERE pull_id IS NOT NULL AND ` + doomedRun + `)
 			AND NOT EXISTS (SELECT 1 FROM filler_pull_commits c WHERE c.pull_id = filler_pulls.id)`, []any{download}},
 		{"download runs", `DELETE FROM filler_acquisition_runs WHERE ` + doomedRun, []any{download}},
 		{"dismissed pulls", `DELETE FROM filler_pulls WHERE status = 'dismissed' AND decided_at < ?`, []any{decision}},
