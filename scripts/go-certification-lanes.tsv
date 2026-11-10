@@ -7,22 +7,22 @@
 # names each lane as certification-<lane>/<count>.
 1	internal/app
 # internal/integration is here for balance. Its tests are serial, so it gains little from a runner
-# of its own and keeps the lanes balanced when measured at -p=1. Weighed from real runs (#2007),
-# app, api and playout came to 530s against store and integration's 369s, over the lane budget;
-# app with integration and the rest together are 459s and 440s.
+# of its own.
 1	internal/integration
+# internal/playout/watermark renders and compares frames on every core. In an ordinary -p=4 lane it
+# measured 445s to 619s beside three other packages, over the per-package cap (#2716).
+1	internal/playout/watermark
 # internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c).
 2	internal/api
-2	internal/playout
-# internal/platform/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel
-# (#1631), and beside three other packages in an ordinary -p=4 lane they only competed for the same
-# cores. Its migration tests replay every migration on purpose, and beside api and playout the lane
-# passed the 15-minute timeout (#2716), so it has a runner of its own.
-3	internal/platform/store
-# schedule and demolibrary run their own tests in parallel: schedule's seasonal walks are hundreds
-# of CPU-seconds of parallel subtests, demolibrary encodes filler and scans the tree. Sharing an
-# ordinary -p=4 lane they measured 767s and 712s and timed it out (#2716). Alone at -p=1, dispatch
-# run 42527652612 measured schedule at 251s with -race plus 179s without (it runs both), and
-# demolibrary at 229s, so demolibrary joins api and playout and schedule has a lane to itself.
+# internal/demolibrary encodes filler and scans the tree in parallel tests. Sharing an ordinary
+# -p=4 lane it measured 743s; at -p=1 it measures 138s to 235s (#2716).
 2	internal/demolibrary
+# internal/platform/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel
+# (#1631) and every statement runs through the race detector's view of a pure-Go SQLite. Beside api
+# and playout its lane passed the 15-minute timeout; alone it measures about 460s (#2716).
+3	internal/platform/store
+# internal/channels/schedule runs under -race and again without it (go-race-policy.sh), and its
+# seasonal walks are hundreds of CPU-seconds of parallel subtests. Sharing an ordinary -p=4 lane the
+# two runs measured 836s and 730s; at -p=1 they measure about 200s and 150s (#2716).
 4	internal/channels/schedule
+4	internal/playout

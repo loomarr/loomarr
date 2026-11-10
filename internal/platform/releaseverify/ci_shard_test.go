@@ -497,11 +497,12 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	want := []string{
 		"1 internal/app",
 		"1 internal/integration",
+		"1 internal/playout/watermark",
 		"2 internal/api",
-		"2 internal/playout",
-		"3 internal/platform/store",
 		"2 internal/demolibrary",
+		"3 internal/platform/store",
 		"4 internal/channels/schedule",
+		"4 internal/playout",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)
