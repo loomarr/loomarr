@@ -3,9 +3,9 @@ import type { ReactElement, ReactNode } from "react";
 interface WallTileProps {
   /** The picture: fills the tile and crops to 16:9. */
   art: ReactNode;
-  /** The channel's name: on the top row beside the number, one line that ends in an ellipsis before any pill. */
+  /** The channel's name: on the top row beside the number (one line, ellipsis before any pill); the compact tile puts it first on the caption line instead. */
   channelName: string;
-  /** The compact tile for a phone's two columns: smaller text, the title held to two lines, one detail line. */
+  /** The compact tile for a phone's two columns: smaller text, the number alone on the top row, the title on one line, then one "name · detail" caption line. */
   compact?: boolean;
   /** The channel's era decade from the API (1980 for the 1980s): it colours the number block. Absent is neutral. */
   decade?: number;

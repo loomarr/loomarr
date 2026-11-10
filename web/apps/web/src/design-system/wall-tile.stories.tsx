@@ -137,7 +137,8 @@ const LastWatchedLongName: Story = {
   },
 };
 
-// A phone's tile, 165px wide: number and name on one row, the title on up to two lines, one detail line.
+// A phone's tile, 165px wide (the mock): the number alone on top, the title on one line, then one
+// caption line, channel name first.
 const phoneWidth: Story["decorators"] = [
   (Story) => (
     <div style={{ maxWidth: 165 }}>
@@ -150,7 +151,7 @@ const CompactWithArt: Story = {
     art: <BusyPicture />,
     channelName: "Nature Hour",
     compact: true,
-    detail: "S2 E4 · 13 min left",
+    detail: "13 min left",
     number: "12",
     title: "Heron Country: A Long Season on the Marsh",
   },

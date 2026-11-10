@@ -190,35 +190,41 @@ describe("WallTile over a picture (#3407)", () => {
 });
 
 describe("WallTile compact (#3407)", () => {
-  it("puts number and name on the first row, then the title, then one detail line, with no monogram", async () => {
+  it("follows the mock: the number alone on the top row, the title on one line, one caption line with the name first", async () => {
     await mount(
       <WallTile
         art={<div data-testid="still" />}
         channelName="Nature Hour"
         compact
-        detail="S2 E4 · 13 min left"
+        detail="13 min left"
+        last
         number="12"
         title="Heron Country"
       />,
     );
     const tile = doc.body.querySelector("button") as Node;
     const text = tile.textContent ?? "";
-    // Reading order: number, name, then title, then detail; the name is no longer folded into the detail.
-    expect(text.indexOf("12")).toBeLessThan(text.indexOf("Nature Hour"));
-    expect(text.indexOf("Nature Hour")).toBeLessThan(text.indexOf("Heron Country"));
-    expect(text.indexOf("Heron Country")).toBeLessThan(text.indexOf("S2 E4 · 13 min left"));
-    expect(text.split("Nature Hour").length - 1).toBe(1);
     const number = Array.from(doc.body.querySelectorAll("span")).find((n) => n.textContent === "12") as Node;
     const row = (number.parentElement as Node).parentElement as Node;
-    expect(row.textContent).toContain("Nature Hour");
+    // The top row holds the number block and the "Last" pill, and no channel name or title.
+    expect(row.textContent).toContain("12");
+    expect(row.textContent).toContain("Last");
+    expect(row.textContent).not.toContain("Nature Hour");
     expect(row.textContent).not.toContain("Heron Country");
-    const meta = Array.from(doc.body.querySelectorAll("*")).filter(
-      (n) => !n.querySelector("*") && n.textContent === "S2 E4 · 13 min left",
+    // The title is one clipped line (an h3, so the clip is inline style).
+    const title = doc.body.querySelector("h3") as Node;
+    expect(title.getAttribute("style") ?? "").toMatch(/white-space:\s*nowrap/);
+    expect(title.getAttribute("style") ?? "").toMatch(/text-overflow:\s*ellipsis/);
+    // Exactly one caption line, truncating, carrying the name first and then the time left.
+    const caption = Array.from(doc.body.querySelectorAll("*")).filter(
+      (n) => !n.querySelector("*") && n.textContent === "Nature Hour · 13 min left",
     );
-    expect(meta).toHaveLength(1);
-    expect(meta[0]?.getAttribute("class") ?? "").toMatch(oneLine);
+    expect(caption).toHaveLength(1);
+    expect(caption[0]?.getAttribute("class") ?? "").toMatch(oneLine);
+    expect(text.split("Nature Hour").length - 1).toBe(1);
+    expect(text.indexOf("Heron Country")).toBeLessThan(text.indexOf("Nature Hour"));
     // WallTile never draws a monogram itself: the picture slot is the only thing behind the words.
-    expect(tile.textContent).not.toMatch(/\bNH\b/);
+    expect(text).not.toMatch(/\bNH\b/);
   });
 });
 

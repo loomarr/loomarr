@@ -11,13 +11,13 @@ const SCRIM = `linear-gradient(0deg, ${semanticColors.artwork.scrimStrong}, rgba
 const topScrim = (rowEnd: number) =>
   `linear-gradient(180deg, ${semanticColors.artwork.scrimStrong}, rgba(11, 12, 14, 0.6) ${rowEnd}px, rgba(11, 12, 14, 0) ${rowEnd + 24}px)`;
 
-// The programme title on the phone tile: at most two lines, then an ellipsis.
-const TWO_LINES = {
-  display: "-webkit-box",
+// The programme title on the phone tile (as the mock): one line, then an ellipsis. It is an `h3`, and
+// `numberOfLines` does nothing on a polymorphic host, so the clip is drawn here.
+const ONE_LINE = {
   margin: 0,
   overflow: "hidden",
-  WebkitBoxOrient: "vertical",
-  WebkitLineClamp: 2,
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 } as const;
 
 // Visually hidden, still read by a screen reader.
@@ -78,6 +78,7 @@ const WallTile = ({
   const host: ReactElement<Record<string, unknown>> = render ?? <button type="button" />;
   const own = host.props as { onClick?: (event: unknown) => void; style?: object };
   const pad = compact ? 8 : 12;
+  const caption = compact ? [channelName, detail].filter(Boolean).join(" · ") : detail;
   const hasArt = art !== null && art !== undefined && art !== false;
 
   return cloneElement(
@@ -171,25 +172,29 @@ const WallTile = ({
         top={0}
       >
         <NumberBlock decade={decade} number={number} />
-        {/* One line that ends in an ellipsis before the pill; light like the foot's words, never the muted tone. */}
-        <Text
-          flexBasis={0}
-          flexGrow={1}
-          flexShrink={1}
-          minWidth={0}
-          numberOfLines={1}
-          strong
-          textRole="label"
-          tone="primary"
-        >
-          {channelName}
-        </Text>
+        {/* The phone tile's top row is the number alone (the mock); its name rides the caption line below.
+            Otherwise one line that ends in an ellipsis before the pill, light like the foot's words. */}
+        {!compact && (
+          <Text
+            flexBasis={0}
+            flexGrow={1}
+            flexShrink={1}
+            minWidth={0}
+            numberOfLines={1}
+            strong
+            textRole="label"
+            tone="primary"
+          >
+            {channelName}
+          </Text>
+        )}
         {last && (
           <Surface
             backgroundColor="contentPrimary"
             borderRadius="round"
             borderWidth={0}
             flexShrink={0}
+            marginLeft="auto"
             paddingHorizontal={8}
             paddingVertical={2}
           >
@@ -205,6 +210,7 @@ const WallTile = ({
             borderRadius="round"
             borderWidth={1}
             flexShrink={0}
+            marginLeft="auto"
             paddingHorizontal={8}
             paddingVertical={2}
           >
@@ -235,19 +241,19 @@ const WallTile = ({
         position="absolute"
         right={0}
       >
-        {/* Wraps rather than ellipsising (Home's wrap-not-truncate rule): the words grow up from the foot.
-            The phone tile holds two lines at most, so the title never reaches the top row. */}
+        {/* Desktop wraps rather than ellipsising (Home's wrap-not-truncate rule): the words grow up from
+            the foot. The phone tile is the mock's: the title on one line, then one caption line, name first. */}
         <Text
           as="h3"
           strong
           textRole={compact ? "label" : "cardTitle"}
-          {...(compact ? { style: TWO_LINES } : {})}
+          {...(compact ? { style: ONE_LINE } : {})}
         >
           {title}
         </Text>
-        {detail ? (
+        {caption ? (
           <Text numberOfLines={1} textRole="caption" tone="secondary">
-            {detail}
+            {caption}
           </Text>
         ) : null}
       </Surface>
