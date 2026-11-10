@@ -897,11 +897,11 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 | `provider` | The catalog, tmdb for a movie or show, tmdb_collection for a collection. | `TEXT` · key |
 | `kind` | What the record is fetched as, one of movie, series or collection. | `TEXT` · key |
 | `external_id` | The id the catalog knows it by. | `TEXT` · key |
-| `record` | The catalog's record as JSON (names, description, ids, artwork and so on). Empty until fetched, and empty after the catalog said it has no such title. | `TEXT` |
 | `fetched_at_ms` | When the record was last fetched, in Unix milliseconds; 0 means never. | `INTEGER` |
 | `retry_at_ms` | After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
 | `version` | The shape of record it was fetched in. A record of an older shape than its kind is read in now is fetched again first, as if it had never been fetched. | `INTEGER` |
 | `language` | The language the record was fetched in, such as en-US; empty before languages were noted. A record in another language than the household's is fetched again first. | `TEXT` |
+| `record` | The catalog's record as JSON (names, description, ids, artwork and so on). Null until fetched, and null after the catalog said it has no such title; fetched_at_ms tells the two apart. | `TEXT` · may be empty |
 
 ### library_candidates
 

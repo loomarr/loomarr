@@ -399,8 +399,8 @@ tables:
       kind: What the record is fetched as, one of movie, series or collection.
       external_id: The id the catalog knows it by.
       record: >
-        The catalog's record as JSON (names, description, ids, artwork and so on). Empty until fetched,
-        and empty after the catalog said it has no such title.
+        The catalog's record as JSON (names, description, ids, artwork and so on). Null until fetched,
+        and null after the catalog said it has no such title; fetched_at_ms tells the two apart.
       fetched_at_ms: When the record was last fetched, in Unix milliseconds; 0 means never.
       retry_at_ms: After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none.
       version: >
