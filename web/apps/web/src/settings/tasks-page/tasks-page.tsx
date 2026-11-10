@@ -226,7 +226,10 @@ const TasksPage = () => {
                   tone="muted"
                 />
                 <span className="font-medium">{group.label}</span>
-                <span className="text-muted-foreground ml-auto flex items-center gap-2 text-xs">
+                <span
+                  className="text-muted-foreground ml-auto text-xs"
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
                   {groupSummary(groupedJobs)}
