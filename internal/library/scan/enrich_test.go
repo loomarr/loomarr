@@ -640,6 +640,40 @@ func TestEnricherLooksUpNewTitlesWhenWoken(t *testing.T) {
 	}
 }
 
+// The titles looked up are written again, with their details, by a folder pass. Until that pass
+// has run, step 3 stays, done and naming no title, so the import never reads as finished over
+// titles still showing their file names. The tick after the pass ends it.
+func TestEnricherKeepsTheStepUntilItsRewritesHaveRun(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	h.file("Golf (2013) {tmdb-90000201}/Golf (2013) {tmdb-90000201}.mkv", 10)
+	h.file("Hotel (2014) {tmdb-90000202}/Hotel (2014) {tmdb-90000202}.mkv", 10)
+	h.run()
+
+	settled := false
+	e := &Enricher{
+		Store: h.st, Provider: &fakeCatalog{}, Tracker: h.im.Tracker, Rewrite: func(string, ...string) {},
+		Settled: func() bool { return settled },
+		Sleep:   func(context.Context, time.Duration) error { return nil },
+	}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := h.im.Tracker.Snapshot(time.Now())
+	if got.Step != StepLookingUp || got.Done != 2 || got.Total != 2 || got.Current != "" {
+		t.Fatalf("with the rewrites still to run = %+v, want step 3 at 2 of 2 naming no title", got)
+	}
+
+	settled = true
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.im.Tracker.Active(StepLookingUp) {
+		t.Fatal("step 3 still runs after the rewrites have")
+	}
+}
+
 // Wake never blocks, with no Run draining it and on a nil Enricher.
 func TestEnricherWakeNeverBlocks(t *testing.T) {
 	e := &Enricher{}

@@ -60,6 +60,9 @@ type Enricher struct {
 	Provider mp.Provider
 	// Rewrite asks for a pass over folders under a root.
 	Rewrite func(root string, dirs ...string)
+	// Settled reports whether every pass Rewrite asked for has run; nil is always settled. Step 3
+	// ends only once it does, and whatever ends a pass must Wake the Enricher to see it.
+	Settled func() bool
 	// Language is the language records are read in now ("en-US"); a record cached in another is
 	// fetched again first (decision 21). Nil, or "", checks none.
 	Language func() string
@@ -229,7 +232,14 @@ func (e *Enricher) track(ctx context.Context, due librarystore.LibraryCatalogDue
 	case err != nil:
 		return err
 	case left == 0:
-		e.Tracker.End(StepLookingUp)
+		// Nothing is left to fetch, but the titles fetched are written again with their details
+		// by a folder pass. Until that has run the step stays, done, rather than the import
+		// reading as finished over titles still showing their file names.
+		if e.Settled == nil || e.Settled() {
+			e.Tracker.End(StepLookingUp)
+		} else {
+			e.Tracker.Current(StepLookingUp, "")
+		}
 	case e.Tracker.Active(StepLookingUp):
 		e.Tracker.Due(StepLookingUp, left)
 	}
