@@ -68,9 +68,11 @@ jobs:
       # the pinned toolchain but deliberately do not cache Cargo/target here: the old combined
       # cache reached 1.36GB and cost longer to restore/save than the focused build. Static Rust
       # checks and release certification still run once in `go-contracts`. GitHub-hosted images
-      # ship rustup on PATH.
+      # ship rustup on PATH. The components are rust-toolchain.toml's: without them each test
+      # process's first cargo call installs them, and two packages doing that at once fail with
+      # "failed to install component: 'clippy-preview…', detected conflict" (cmd/image-cert, #2716).
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.99.1 --profile minimal
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy --component rustfmt
       # Each test shard keeps only its Go module and compiler caches. Lint and static Rust checks
       # run in `go-contracts`, so restoring their caches here would spend time and storage on
       # inputs this job never reads.
