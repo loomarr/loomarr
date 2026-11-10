@@ -15,6 +15,7 @@ import type { PreviewProgrammingOutputBody } from "@loomarr/api/models/previewPr
 import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import type { SearchOutputBody } from "@loomarr/api/models/searchOutputBody";
+import type { TimelineOutputBody } from "@loomarr/api/models/timelineOutputBody";
 import type { UpcomingOutputBody } from "@loomarr/api/models/upcomingOutputBody";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 import { requestFixtures } from "@loomarr/fixtures";
@@ -150,6 +151,9 @@ const channelSectionBodies: [RegExp, () => unknown][] = [
   ],
   [/^\/v1\/channels\/[^/]+\/pods$/, (): PodPoolDTO => pods],
   [/^\/v1\/channels\/[^/]+\/upcoming$/, (): UpcomingOutputBody => ({ upcoming: [] })],
+  // The page header names what is on now from the channel's timeline (#2859); `airings` is
+  // required, so the catch-all `{}` crashed every channel page.
+  [/^\/v1\/channels\/[^/]+\/timeline$/, (): TimelineOutputBody => ({ airings: [], serverNowMs: Date.now() })],
   [/^\/v1\/channels\/[^/]+\/icon-suggestions$/, (): IconSuggestionsOutputBody => ({ suggestions: [] })],
   [
     /^\/v1\/channels\/[^/]+\/filler\/coverage$/,

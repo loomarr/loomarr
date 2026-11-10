@@ -139,8 +139,7 @@ test("automatic download controls stay usable on a narrow, zoomed screen and fro
   const sourceSettings = workspace.getByRole("button", { name: /^Source settings/, expanded: false });
   await sourceSettings.focus();
   await page.keyboard.press("Enter");
-  await expect(
-    workspace.getByRole("combobox", { name: "Automatic downloads for this source" }),
-  ).toBeVisible();
+  // The DS Select is a button that names its value: "Automatic downloads for this source, Use …".
+  await expect(workspace.getByRole("button", { name: /^Automatic downloads for this source/ })).toBeVisible();
   await expect(workspace.getByRole("button", { name: "Save automatic downloads" })).toBeVisible();
 });
