@@ -131,7 +131,7 @@ const UsersPage = () => {
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="People"
-        description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+        description="Who can sign in, and what they can ask for."
         actions={
           <div className="flex flex-wrap gap-2">
             <InvitationDialog

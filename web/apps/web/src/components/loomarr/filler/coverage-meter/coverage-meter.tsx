@@ -106,6 +106,31 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   // gets both cases backwards.
   const isThin = coverage.level !== "exact";
 
+  // An empty catalogue is not eight settings each ruling everything out (#3412). Every criterion
+  // is counted over the same base, the break commercials, so when none of them keeps a clip and no
+  // rung holds one there is nothing to rule out: say so in one line and point at Filler.
+  const noClips = widest === 0 && criteria.length > 0 && emptyCriteria.length === criteria.length;
+  if (noClips) {
+    return (
+      <section
+        className={cn(
+          "border-border flex flex-wrap items-center justify-between gap-2 rounded-lg border p-4",
+          className,
+        )}
+      >
+        <p className="text-sm">No clips yet. Breaks show the channel card until some arrive.</p>
+        <Link
+          to="/filler"
+          className="text-signal text-xs underline-offset-2 hover:underline"
+          data-testid="find-clips"
+          data-touch-target
+        >
+          Add filler →
+        </Link>
+      </section>
+    );
+  }
+
   return (
     <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
       <div className="flex items-start gap-2">
