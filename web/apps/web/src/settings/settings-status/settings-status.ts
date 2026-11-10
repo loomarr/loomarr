@@ -13,6 +13,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import type { StatusWordKind } from "@loomarr/design-system";
 import { missingNights } from "@/components/loomarr/settings/backup-panel/missing-nights";
 import { SETTINGS_DESTINATIONS, type SettingsCardId } from "../settings-destinations";
+import { overdueTaskCount } from "../tasks-page/overdue-tasks";
 
 type SettingsProblemKind = Exclude<StatusWordKind, "ok">;
 
@@ -67,6 +68,10 @@ const healthProblem = (check: HealthCheck): SettingsProblem | undefined => {
   if (check.status === "skipped" && check.key === "media_server") {
     return problem(destinationId, "notSetUp", "No media server is connected yet.");
   }
+  // The AI provider is optional: skipped means none is configured, which is not "OK" (#3403).
+  if (check.status === "skipped" && check.key === "llm") {
+    return problem(destinationId, "notSetUp", "No AI provider is set up yet.");
+  }
   if (check.status === "stale") {
     return problem(destinationId, "attention", `${check.label} hasn't been checked for a while.`);
   }
@@ -88,7 +93,7 @@ const settingsProblems = (input: SettingsStatusInput): SettingsProblem[] => {
     if (p) found.push(p);
   }
 
-  const overdue = (input.jobs ?? []).filter((job) => job.overdue && !job.running).length;
+  const overdue = overdueTaskCount(input.jobs ?? []);
   if (overdue > 0) {
     found.push(
       problem(

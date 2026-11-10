@@ -6483,7 +6483,7 @@ components:
           format: date-time
           type: string
         overdue:
-          description: True when the job is past due and waiting on a worker rather than on its schedule
+          description: True when the job is past due by more than twice its own interval and waiting on a worker rather than on its schedule
           type: boolean
         paused:
           description: True when the operator paused the schedule; the job stays listed but never runs when due
@@ -11067,6 +11067,9 @@ components:
         name:
           description: "Probe key: media_server, tunarr, llm, …"
           type: string
+        notSetUp:
+          description: True when not OK only because none of this service's connection settings are set yet
+          type: boolean
         ok:
           type: boolean
         settingsGroup:

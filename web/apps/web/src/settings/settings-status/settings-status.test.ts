@@ -75,7 +75,7 @@ describe("settingsProblems", () => {
     const problems = settingsProblems({
       health: health([
         check("media_server", "skipped", "/settings/connections"),
-        check("llm", "skipped", "/settings/ai"),
+        check("tmdb", "skipped", "/settings/connections"),
       ]),
     });
     expect(problems).toEqual([
@@ -86,6 +86,14 @@ describe("settingsProblems", () => {
         text: "No media server is connected yet.",
       },
     ]);
+  });
+
+  // #3403: the AI card must not read OK while no provider is configured.
+  it("calls an unconfigured AI provider not set up, so the AI card is neutral rather than OK", () => {
+    const input = { health: health([check("llm", "skipped", "/settings/ai")]) };
+    const [problem] = settingsProblems(input);
+    expect(problem).toMatchObject({ card: "ai", kind: "notSetUp", text: "No AI provider is set up yet." });
+    expect(cardStatus("ai", settingsProblems(input), new Set(["health"])).status).toBe("notSetUp");
   });
 
   it("counts overdue tasks from the task list, not the health check", () => {
@@ -99,6 +107,14 @@ describe("settingsProblems", () => {
     });
     expect(problems).toEqual([
       { destinationId: "tasks", card: "server", kind: "overdue", text: "2 background tasks are overdue." },
+    ]);
+  });
+
+  it("counts a task late past twice its interval, not one seconds late on its tick", () => {
+    const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    expect(settingsProblems({ jobs: [job({ nextRun: secondsAgo(5), overdue: false })] })).toEqual([]);
+    expect(settingsProblems({ jobs: [job({ nextRun: secondsAgo(3 * 86_400), overdue: true })] })).toEqual([
+      { destinationId: "tasks", card: "server", kind: "overdue", text: "1 background task is overdue." },
     ]);
   });
 

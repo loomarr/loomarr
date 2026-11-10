@@ -127,6 +127,17 @@ func (t *Tracker) Advance(step Step, n int) {
 	})
 }
 
+// Rebase restarts a running step's rate baseline at what is done now. The work ahead goes at a
+// different rate from the work behind, as when an import turns from listing folders to writing
+// what it found, so the time left is worked out from here.
+func (t *Tracker) Rebase(step Step) {
+	t.update(false, func() {
+		if s := &t.state[step.index()]; s.active {
+			s.since, s.sinceDone = t.now(), s.done
+		}
+	})
+}
+
 // Current names what a running step is on now.
 func (t *Tracker) Current(step Step, current string) {
 	t.update(false, func() {

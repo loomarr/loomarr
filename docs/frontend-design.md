@@ -441,6 +441,11 @@ These suites join **phase 13's gate** in the main doc's build plan.
   or one trailing action, inside a `ListGroup` (Requests' In progress and Done, Home's lists). A
   *panel* holds a form or a group of rows and is never a link. The same entity takes the same shape
   at the same density.
+- **Two card families for lists** (#2765; exceptions decided 2026-11-09, #3413). A list item with a
+  picture is a `PictureCard`; one without is a `RowCard` (a round lead, the title, one metadata line,
+  one action). The Home wall tile and the guide row are the two named exceptions: each is its own
+  layout, not a variant of either family. A row card keeps at least 180px for its title beside the
+  action; a row with less room puts the action on a line of its own, on the trailing edge (#3429).
 - **One navigation treatment per level.** `AppShell` owns primary navigation and `NavTabs` owns every route-level tab bar, including nested Settings pages. Pages do not hand-build a third active-state treatment.
 
 ---

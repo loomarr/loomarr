@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sync"
 	"time"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -59,6 +60,9 @@ type Enricher struct {
 	Provider mp.Provider
 	// Rewrite asks for a pass over folders under a root.
 	Rewrite func(root string, dirs ...string)
+	// Settled reports whether every pass Rewrite asked for has run; nil is always settled. Step 3
+	// ends only once it does, and whatever ends a pass must Wake the Enricher to see it.
+	Settled func() bool
 	// Language is the language records are read in now ("en-US"); a record cached in another is
 	// fetched again first (decision 21). Nil, or "", checks none.
 	Language func() string
@@ -72,22 +76,50 @@ type Enricher struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Tracker records the fetches of new titles, step 3 of an import; nil records none.
 	Tracker *Tracker
+
+	// woken holds one ask to look up new titles ahead of the next tick; wakeOnce makes it.
+	woken    chan struct{}
+	wakeOnce sync.Once
 }
 
-// Run fetches until ctx ends.
+// Run fetches until ctx ends: everything due at each tick, and the titles new to the cache as soon
+// as Wake asks.
 func (e *Enricher) Run(ctx context.Context) {
 	tick := time.NewTicker(orDuration(e.Interval, EnrichInterval))
 	defer tick.Stop()
+	refresh := true
 	for {
-		if err := e.Tick(ctx); err != nil && ctx.Err() == nil {
+		if err := e.tick(ctx, refresh); err != nil && ctx.Err() == nil {
 			e.log().Warn("library enrich: tick failed", "err", err)
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+			refresh = true
+		case <-e.wake():
+			refresh = false
 		}
 	}
+}
+
+// Wake asks Run to look up the titles new to the cache without waiting for the next tick: an
+// import wrote titles, and step 3 follows step 2 at once instead of up to a tick later. It never
+// blocks, and asks made while a lookup runs fold into one. Safe on a nil Enricher.
+func (e *Enricher) Wake() {
+	if e == nil {
+		return
+	}
+	select {
+	case e.wake() <- struct{}{}:
+	default:
+	}
+}
+
+// wake is the one-slot channel Wake fills and Run drains.
+func (e *Enricher) wake() chan struct{} {
+	e.wakeOnce.Do(func() { e.woken = make(chan struct{}, 1) })
+	return e.woken
 }
 
 // Tick fetches what is due now. It stops early when the catalog cannot be reached at all.
@@ -96,26 +128,33 @@ func (e *Enricher) Run(ctx context.Context) {
 // from the first one fetched until a tick finds none due as new or the catalog can't be reached,
 // and counts each fetched.
 // The share of old records refreshed each tick is not part of it.
-func (e *Enricher) Tick(ctx context.Context) error {
+func (e *Enricher) Tick(ctx context.Context) error { return e.tick(ctx, true) }
+
+// tick fetches the titles new to the cache and, when refresh is set, this tick's share of the
+// oldest records. A lookup Wake asked for refreshes none: the share is sized for one tick per
+// Interval, and every extra tick taking one would refresh the cache faster than Refresh says.
+func (e *Enricher) tick(ctx context.Context, refresh bool) error {
 	if e.Enabled != nil && !e.Enabled() {
 		e.Tracker.End(StepLookingUp)
 		return nil
 	}
 	now := e.now()
-	total, err := e.Store.CountLibraryCatalog(ctx)
-	if err != nil {
-		return err
-	}
 	due := e.due(now)
 	due.New = enrichNewBatch
 	fresh, err := e.Store.DueLibraryCatalog(ctx, due)
 	if err != nil {
 		return err
 	}
-	due.New, due.Stale = 0, e.staleShare(total)
-	stale, err := e.Store.DueLibraryCatalog(ctx, due)
-	if err != nil {
-		return err
+	var stale []librarystore.LibraryCatalogKey
+	if refresh {
+		total, err := e.Store.CountLibraryCatalog(ctx)
+		if err != nil {
+			return err
+		}
+		due.New, due.Stale = 0, e.staleShare(total)
+		if stale, err = e.Store.DueLibraryCatalog(ctx, due); err != nil {
+			return err
+		}
 	}
 	isNew := map[librarystore.LibraryCatalogKey]bool{}
 	for _, key := range fresh {
@@ -193,7 +232,14 @@ func (e *Enricher) track(ctx context.Context, due librarystore.LibraryCatalogDue
 	case err != nil:
 		return err
 	case left == 0:
-		e.Tracker.End(StepLookingUp)
+		// Nothing is left to fetch, but the titles fetched are written again with their details
+		// by a folder pass. Until that has run the step stays, done, rather than the import
+		// reading as finished over titles still showing their file names.
+		if e.Settled == nil || e.Settled() {
+			e.Tracker.End(StepLookingUp)
+		} else {
+			e.Tracker.Current(StepLookingUp, "")
+		}
 	case e.Tracker.Active(StepLookingUp):
 		e.Tracker.Due(StepLookingUp, left)
 	}

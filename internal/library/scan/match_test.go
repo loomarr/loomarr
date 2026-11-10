@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -328,6 +329,58 @@ func TestMatcherWaitsForTheCatalogKey(t *testing.T) {
 	}
 	if needs, _ := h.st.LibraryNeeds(ctx); needs[0].Searched != "Mystery Film|2002" {
 		t.Fatalf("searched = %q", needs[0].Searched)
+	}
+}
+
+// A title whose search fails holds back no other: the rest of the tick's titles are searched, and
+// the failed one is searched again next tick. A catalog that answers nothing is asked
+// matchFailLimit times a tick, not once for every title.
+func TestMatcherSearchesOnPastATitleItsCatalogRefuses(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	const titles = 2 * matchFailLimit
+	for i := range titles {
+		h.file(fmt.Sprintf("Mystery Film %d (2002)/Mystery Film %d (2002).mkv", i, i), 10)
+	}
+	h.run()
+	refused, down := "", false
+	var asked []string
+	m := &Matcher{Store: h.st, Search: func(_ context.Context, term string, _ int) ([]SearchHit, error) {
+		asked = append(asked, term)
+		if down || term == refused {
+			return nil, errors.New("search refused")
+		}
+		return nil, nil
+	}}
+
+	// The first title the tick searches is the one refused, so every other comes after it.
+	needs, err := h.st.LibraryNeeds(ctx)
+	if err != nil || len(needs) != titles {
+		t.Fatalf("%d needs, %v; want %d", len(needs), err, titles)
+	}
+	refused, _ = searchQuery(needs[0].Name, needs[0].Year)
+	if err := m.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	needs, _ = h.st.LibraryNeeds(ctx)
+	for _, need := range needs {
+		name, _ := searchQuery(need.Name, need.Year)
+		if searched := need.Searched != ""; searched == (name == refused) {
+			t.Errorf("%s: searched = %v after a tick that refused only %q", need.Name, searched, refused)
+		}
+	}
+
+	// Nothing answers: the tick stops after matchFailLimit, with the one title still to search.
+	h.file("Mystery Film 90 (2002)/Mystery Film 90 (2002).mkv", 10)
+	h.file("Mystery Film 91 (2002)/Mystery Film 91 (2002).mkv", 10)
+	h.file("Mystery Film 92 (2002)/Mystery Film 92 (2002).mkv", 10)
+	h.run()
+	down, asked = true, nil
+	if err := m.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != matchFailLimit {
+		t.Fatalf("a catalog answering nothing was asked %d times in a tick, want %d", len(asked), matchFailLimit)
 	}
 }
 

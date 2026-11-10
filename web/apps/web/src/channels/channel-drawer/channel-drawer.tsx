@@ -66,7 +66,7 @@ const ChannelDrawer = ({
     <section
       aria-labelledby="channel-drawer-title"
       role="dialog"
-      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l backdrop-blur-md"
+      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();

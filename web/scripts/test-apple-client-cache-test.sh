@@ -127,6 +127,14 @@ case "$1" in
         printf 'simulator_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
         ;;
       launch)
+        printf 'simulator_launch\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
+        # A simulator that shut down after the install: the first launch fails as CoreSimulator
+        # does (SimError 405 exits 149), and the next one finds it booted.
+        if [[ -n "${APPLE_CACHE_TEST_LAUNCH_SHUTDOWN_ONCE:-}" && ! -e "$APPLE_CACHE_TEST_ROOT/launch-attempted" ]]; then
+          : > "$APPLE_CACHE_TEST_ROOT/launch-attempted"
+          printf 'Unable to lookup in current state: Shutdown\n' >&2
+          exit 149
+        fi
         if [[ "${APPLE_CACHE_TEST_LAUNCH_EXIT:-0}" != 0 ]]; then
           printf 'fixture launch stdout\n'
           printf 'fixture launch failed\n' >&2
@@ -369,7 +377,7 @@ if [[ "$(cat "$test_root/artifacts/phase-timings.tsv")" != \
   exit 1
 fi
 if [[ "$(cat "$test_root/command-order")" != \
-  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run\nsimulator_ready\nsimulator_install' ]]; then
+  $'native_contract_hermes-download-test.rb\nnative_contract_native-release-selection-test.rb\nnative_contract_native-artifact-download-test.rb\nsimulator_list\nsimulator_boot\nclean_prebuild\npod_install\nsimulator_ready\nexpo_run\nsimulator_ready\nsimulator_install\nsimulator_launch' ]]; then
   printf 'test-apple-client-cache-test: overlap command order got:\n%s\n' \
     "$(cat "$test_root/command-order")" >&2
   exit 1
@@ -457,6 +465,50 @@ if [[ $status -ne 86 || ! -f "$test_root/diagnostics-attempted" ]] \
   || [[ "$(cat "$test_root/artifacts/launch-command.stderr.log")" != 'fixture launch failed' ]] \
   || [[ "$(cat "$test_root/artifacts/launch-command.stdout.log")" != 'fixture launch stdout' ]]; then
   printf 'test-apple-client-cache-test: launch evidence or original failure was lost (%s):\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+# A launch that keeps failing is tried twice, and each failure prints the command's own error.
+if [[ "$(grep -c 'fixture launch failed' <<<"$output")" != 2 ]]; then
+  printf 'test-apple-client-cache-test: a failed launch did not print its error on both attempts:\n%s\n' "$output" >&2
+  exit 1
+fi
+
+# The simulator shut down between install and launch (#3315): the first launch exits 149, the
+# verifier prints why, boots the device again and launches once more.
+find "$test_root/artifacts" -mindepth 1 -depth -delete
+unlink "$test_root/build-count"
+: > "$test_root/command-order"
+set +e
+output="$(
+  PATH="$test_root/bin:$PATH" \
+    APPLE_CACHE_TEST_ROOT="$test_root" \
+    APPLE_CACHE_TEST_LIVE_PID="$$" \
+    APPLE_CACHE_TEST_WARM_RESULT=pass \
+    APPLE_CACHE_TEST_LAUNCH_SHUTDOWN_ONCE=1 \
+    LOOMARR_APPLE_ARTIFACTS_DIR="$test_root/artifacts" \
+    LOOMARR_APPLE_BUILD_DIR="$test_root/build" \
+    LOOMARR_APPLE_CACHE_MODE=warm \
+    LOOMARR_APPLE_CACHE_STORE="$test_root/store" \
+    "$verifier" mobile 2>&1
+)"
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then
+  printf 'test-apple-client-cache-test: a launch on a shut-down simulator was not retried (%s):\n%s\n' "$status" "$output" >&2
+  exit 1
+fi
+for evidence in \
+  'apple-client: simctl launch exited 149; its error follows' \
+  'Unable to lookup in current state: Shutdown' \
+  'apple-client: mobile built, installed, launched, and remained alive on SIM-1'; do
+  if [[ "$output" != *"$evidence"* ]]; then
+    printf 'test-apple-client-cache-test: shut-down launch is missing evidence: %s\n%s\n' "$evidence" "$output" >&2
+    exit 1
+  fi
+done
+if [[ "$(tail -n 3 "$test_root/command-order")" != $'simulator_launch\nsimulator_ready\nsimulator_launch' ]]; then
+  printf 'test-apple-client-cache-test: the device was not booted again between launches:\n%s\n' \
+    "$(cat "$test_root/command-order")" >&2
   exit 1
 fi
 
