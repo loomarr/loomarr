@@ -405,7 +405,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   without it and its key noted as wanted, and `library_items.catalog` names the row each title's
   details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
   a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
-  out. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
+  out. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
+  write at once instead of up to a minute later, with the status reading caught up in between. A
+  woken lookup fetches only the titles never fetched: the share of the oldest is sized for one
+  tick a minute, so it stays with the tick. Wakes made while a lookup runs fold into one. It keeps
+  to the provider's rate hint. Each row notes the shape of record it was fetched in
   (`version`, per kind, `scan.catalogVersions`). When the scanner starts reading something older
   records lack, that kind's version goes up, and its older records are fetched again with the
   titles never fetched, not at the refresh. Series are at version 5, which lists their other
