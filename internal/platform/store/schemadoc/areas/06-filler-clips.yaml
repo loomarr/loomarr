@@ -277,7 +277,9 @@ tables:
       id: Identifies the pull.
       title: A short summary of what the pull is for.
       reason: Why Loomarr proposed it, such as the coverage gap it fills. Shown above the plan.
-      proposed_by: Who or what proposed it, such as a user id or a job name.
+      proposed_by: >
+        Who or what proposed it, such as a user id or a job name. Not a foreign key, since a schedule
+        that proposes a pull names itself, not a person.
       status: pending, approved or dismissed.
       note: The operator's note narrowing the pull, given at approval.
       plan_json: >
@@ -286,7 +288,9 @@ tables:
         candidates turned down and why, and how each source was treated.
       created_at: When the pull was proposed, in Unix seconds.
       decided_at: When it was approved or dismissed, in Unix seconds; 0 while pending.
-      decided_by: Who approved or dismissed it. Empty while pending.
+      decided_by: >
+        The admin who approved or dismissed it (users.id). NULL while pending, when the API token
+        decided, and once that admin is deleted; the decision stays.
 
   - name: filler_pull_commits
     about: >

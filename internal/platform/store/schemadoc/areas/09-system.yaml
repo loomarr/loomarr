@@ -139,7 +139,8 @@ tables:
       process_run_id: The process run it belongs to, pointing at diagnostic_process_runs, or empty.
       actor_id: >
         Who caused it, usually a user id. App events sent with an API token say api_token. Empty when
-        no one is involved.
+        no one is involved. Not a foreign key: diagnostics record what happened, so an event keeps
+        naming a person after they are deleted.
       instance_id: Which Loomarr server recorded it, when known.
       attributes_json: >
         Extra details as a JSON object of named values (secrets removed before storage), such as the

@@ -7,12 +7,25 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/platform/store"
 )
+
+// saveUsers saves a member for each id, for a test whose pulls name the admin who decided them:
+// filler_pulls.decided_by is a foreign key to users (#2793).
+func saveUsers(t *testing.T, s Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.UpsertUser(t.Context(), store.User{ID: id, Name: id, Role: store.RoleMember}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 	fixture := func(t *testing.T) (Store, acquisition.Pull, acquisition.AcquisitionRun) {
 		t.Helper()
 		s := newStore(t)
+		saveUsers(t, s, "admin-winner", "admin-one", "admin-two", "other-admin")
 		now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 		p := acquisition.Pull{ID: "atomic-pull", Title: "Reviewed clips", Status: acquisition.PullPending, CreatedAt: now,
 			Plan: []acquisition.PullPlanRow{{SourceID: "classic", Name: "Keep"}, {SourceID: "psa", Name: "Drop"}}}

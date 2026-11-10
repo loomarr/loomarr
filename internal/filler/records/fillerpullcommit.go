@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // CommitPullApproval owns the whole durable boundary. The first write takes the pending
@@ -28,7 +29,7 @@ func (s *sqlStore) CommitPullApproval(ctx context.Context, p acquisition.Pull, r
 		SET status = ?, note = ?, plan_json = ?, decided_at = ?, decided_by = ?
 		WHERE id = ? AND status = ? AND NOT EXISTS
 		(SELECT 1 FROM filler_acquisition_runs WHERE pull_id = ?)`),
-		string(p.Status), p.Note, string(plan), epoch(p.DecidedAt), p.DecidedBy,
+		string(p.Status), p.Note, string(plan), epoch(p.DecidedAt), storedb.OptionalID(p.DecidedBy),
 		p.ID, string(acquisition.PullPending), p.ID)
 	if err != nil {
 		return fmt.Errorf("claim pull approval: %w", err)
@@ -59,7 +60,7 @@ func (s *sqlStore) DismissPull(ctx context.Context, p acquisition.Pull) error {
 	}
 	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_pulls
 		SET status = ?, decided_at = ?, decided_by = ? WHERE id = ? AND status = ?`),
-		string(p.Status), epoch(p.DecidedAt), p.DecidedBy, p.ID, string(acquisition.PullPending))
+		string(p.Status), epoch(p.DecidedAt), storedb.OptionalID(p.DecidedBy), p.ID, string(acquisition.PullPending))
 	if err != nil {
 		return fmt.Errorf("dismiss filler pull: %w", err)
 	}

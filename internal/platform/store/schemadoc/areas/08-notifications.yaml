@@ -19,7 +19,9 @@ tables:
       scope: >
         installation for a destination an admin set up for the whole household; person for one that
         belongs to a single person.
-      owner_id: The person a person-scoped destination belongs to, from users. Empty for installation scope.
+      owner_id: >
+        The person a person-scoped destination belongs to (users.id); the destination goes with them.
+        NULL for installation scope.
       audience: >
         Who the destination is for. person means its owner's own notifications; approvers means the admins
         who review requests; operators means the admins who look after the server and library.
@@ -64,7 +66,8 @@ tables:
         approvers means the admins who review requests; operators means the admins who look after the server.
       recipient_id: >
         The invitation's id, the person's id, or the literal word approvers or operators. For a delivery
-        test, the destination's id.
+        test, the destination's id. Not a foreign key: recipient_kind says which table, if any, it names,
+        and an intent stays as delivery history after its recipient is gone.
       reference_kind: >
         The kind of thing it is about. One of invitation, recovery (a password-recovery request),
         proposal (a request), title, channel, destination or library (a media folder or arr).

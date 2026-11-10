@@ -9,6 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // Persisted filler pulls (§10 V35) — the approval gate for filler acquisition.
@@ -86,7 +87,7 @@ func (s *sqlStore) UpsertPull(ctx context.Context, p acquisition.Pull) error {
 		   status=excluded.status, note=excluded.note, plan_json=excluded.plan_json,
 		   decided_at=excluded.decided_at, decided_by=excluded.decided_by`),
 		p.ID, p.Title, p.Reason, p.ProposedBy, string(p.Status), p.Note, string(plan),
-		epoch(p.CreatedAt), epoch(p.DecidedAt), p.DecidedBy)
+		epoch(p.CreatedAt), epoch(p.DecidedAt), storedb.OptionalID(p.DecidedBy))
 	if err != nil {
 		return fmt.Errorf("upsert filler pull %s: %w", p.ID, err)
 	}
@@ -107,7 +108,7 @@ func scanPull(sc scannable) (acquisition.Pull, error) {
 		createdAt, decidedAt int64
 	)
 	if err := sc.Scan(&p.ID, &p.Title, &p.Reason, &p.ProposedBy, &status, &p.Note, &plan,
-		&createdAt, &decidedAt, &p.DecidedBy); err != nil {
+		&createdAt, &decidedAt, (*storedb.OptionalID)(&p.DecidedBy)); err != nil {
 		return acquisition.Pull{}, err
 	}
 	p.Status = acquisition.PullStatus(status)

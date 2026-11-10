@@ -182,6 +182,10 @@ func TestNotificationProviderTypesDriveTheAdminFormWithoutSecretValues(t *testin
 func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/member-web-push.db")
 	t.Cleanup(func() { _ = st.Close() })
+	// A person's destination names them by foreign key (#2793).
+	if err := st.UpsertUser(t.Context(), identitystore.User{ID: "member-1", Name: "Member", Role: identitystore.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
 	protection, err := secretprotection.NewManager(t.Context(), st, secretprotection.ManagerOptions{
 		InstallationKey: secretprotection.InstallationKey{0x52},
 	})

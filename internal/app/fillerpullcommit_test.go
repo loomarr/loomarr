@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/fetch"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -53,6 +54,10 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = st.Close() })
+			// The deciding admin is a foreign key to users (#2793).
+			if err := st.UpsertUser(t.Context(), store.User{ID: "admin", Name: "admin", Role: store.RoleAdmin}); err != nil {
+				t.Fatal(err)
+			}
 			now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 			p := acquisition.Pull{ID: "pull", Status: acquisition.PullPending, CreatedAt: now,
 				Plan: []acquisition.PullPlanRow{{SourceID: "classic", Name: "Reviewed item"}}}

@@ -177,7 +177,7 @@ One row per invitation an admin sends to let a new person in. It reserves a user
 | `created_at` | When the admin made the invitation, in Unix seconds. | `BIGINT` |
 | `expires_at` | When it stops working, in Unix seconds (always 7 days after created_at). | `BIGINT` |
 | `terminal_at` | When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending. | `BIGINT` |
-| `redeemed_by` | The id of the account created from it, in users. Empty unless redeemed. | `TEXT` |
+| `redeemed_by` | The account created from it (users.id). NULL unless redeemed, and once that account is deleted; the invitation stays as history. | `TEXT` · may be empty · → `users.id` |
 
 ### invitation_grants
 
@@ -235,7 +235,7 @@ Email addresses for people and pending invitations. A person has at most one ver
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `owner_kind` | Whose address it is. user for a person in users; invitation for a pending invitation. | `TEXT` · key |
-| `owner_id` | The person's id in users, or the invitation's id in invitations. | `TEXT` · key |
+| `owner_id` | The person's id in users, or the invitation's id in invitations, as owner_kind says. Not a foreign key, since it names a row in one of two tables; redeeming an invitation moves its address to the new person, and deleting an invitation deletes its address. | `TEXT` · key |
 | `email` | The address as entered, for display and sending. | `TEXT` |
 | `normalized` | The lowercased address. No two rows may share it, so one address belongs to one owner. | `TEXT` |
 | `status` | pending until the owner has shown they receive mail there; verified once they have. Only a verified address is used for password recovery. | `TEXT` · key |
@@ -1419,13 +1419,13 @@ A proposed batch of clips to download, which an operator approves or dismisses. 
 | `id` | Identifies the pull. | `TEXT` · key |
 | `title` | A short summary of what the pull is for. | `TEXT` |
 | `reason` | Why Loomarr proposed it, such as the coverage gap it fills. Shown above the plan. | `TEXT` |
-| `proposed_by` | Who or what proposed it, such as a user id or a job name. | `TEXT` |
+| `proposed_by` | Who or what proposed it, such as a user id or a job name. Not a foreign key, since a schedule that proposes a pull names itself, not a person. | `TEXT` |
 | `status` | pending, approved or dismissed. | `TEXT` |
 | `note` | The operator's note narrowing the pull, given at approval. | `TEXT` |
 | `plan_json` | JSON document of the plan: what was asked for, the items selected (each with its source, address, estimate and why it was chosen, including any the operator dropped), the candidates turned down and why, and how each source was treated. | `TEXT` |
 | `created_at` | When the pull was proposed, in Unix seconds. | `INTEGER` |
 | `decided_at` | When it was approved or dismissed, in Unix seconds; 0 while pending. | `INTEGER` |
-| `decided_by` | Who approved or dismissed it. Empty while pending. | `TEXT` |
+| `decided_by` | The admin who approved or dismissed it (users.id). NULL while pending, when the API token decided, and once that admin is deleted; the decision stays. | `TEXT` · may be empty · → `users.id` |
 
 ### filler_pull_commits
 
@@ -1908,7 +1908,7 @@ One row per place notifications can be sent, such as a Discord webhook, an ntfy 
 | `means` | The kind of service it sends through. One of email, webhook, discord, ntfy, gotify, apprise, pushover, telegram, mattermost, matrix, web_push (Browser Push), mqtt or slack. | `TEXT` |
 | `label` | The name shown for the destination, also shown in delivery history in place of its address. | `TEXT` |
 | `scope` | installation for a destination an admin set up for the whole household; person for one that belongs to a single person. | `TEXT` |
-| `owner_id` | The person a person-scoped destination belongs to, from users. Empty for installation scope. | `TEXT` |
+| `owner_id` | The person a person-scoped destination belongs to (users.id); the destination goes with them. NULL for installation scope. | `TEXT` · may be empty · → `users.id` |
 | `audience` | Who the destination is for. person means its owner's own notifications; approvers means the admins who review requests; operators means the admins who look after the server and library. | `TEXT` |
 | `topics_json` | A JSON list of the notification topics the destination receives (the same values as notification_intents.topic). Topics not in the list are never sent here. | `TEXT` |
 | `enabled` | 1 when the destination is switched on. A disabled destination receives nothing. | `BOOLEAN` |
@@ -1930,7 +1930,7 @@ One row per notification Loomarr decided to send, such as "your request was appr
 | `id` | Identifies the notification. notification_delivery_attempts point here. | `TEXT` · key |
 | `topic` | What happened. account_invitation (an invitation email); local_password_recovery (a password-reset email); proposal_submitted, proposal_approved, proposal_denied (a request was made, approved or denied); acquisition_available, acquisition_gave_up (a requested title arrived, or Loomarr stopped trying); channel_live, channel_degraded (a channel went on air or stopped playing properly); delivery_test (a test sent from a destination's settings); library_folder_offline, library_folder_back (a media folder stopped or started opening again); library_changes_degraded (an arr can no longer report new files); library_needs_you (titles in the library need a person's help). | `TEXT` |
 | `recipient_kind` | Who it is for. invitation means the address on a pending invitation; person means one person; approvers means the admins who review requests; operators means the admins who look after the server. | `TEXT` |
-| `recipient_id` | The invitation's id, the person's id, or the literal word approvers or operators. For a delivery test, the destination's id. | `TEXT` |
+| `recipient_id` | The invitation's id, the person's id, or the literal word approvers or operators. For a delivery test, the destination's id. Not a foreign key: recipient_kind says which table, if any, it names, and an intent stays as delivery history after its recipient is gone. | `TEXT` |
 | `reference_kind` | The kind of thing it is about. One of invitation, recovery (a password-recovery request), proposal (a request), title, channel, destination or library (a media folder or arr). | `TEXT` |
 | `reference_id` | The id of the thing it is about, in the table that reference_kind names. | `TEXT` |
 | `recipient_policy` | mandatory_account for account and security email that always goes out; configurable for everything else, which only reaches destinations that chose the topic. | `TEXT` |
@@ -2104,7 +2104,7 @@ One technical event recorded for Diagnostics, from the server's own logs or repo
 | `schedule_block_id` | The schedule block it concerns, or empty. | `TEXT` |
 | `job_id` | The background job it belongs to, or empty. | `TEXT` |
 | `process_run_id` | The process run it belongs to, pointing at diagnostic_process_runs, or empty. | `TEXT` |
-| `actor_id` | Who caused it, usually a user id. App events sent with an API token say api_token. Empty when no one is involved. | `TEXT` |
+| `actor_id` | Who caused it, usually a user id. App events sent with an API token say api_token. Empty when no one is involved. Not a foreign key: diagnostics record what happened, so an event keeps naming a person after they are deleted. | `TEXT` |
 | `instance_id` | Which Loomarr server recorded it, when known. | `TEXT` |
 | `attributes_json` | Extra details as a JSON object of named values (secrets removed before storage), such as the app version and platform for app events. | `TEXT` |
 | `size_bytes` | The event's estimated size, counted toward the Diagnostics storage budget. | `BIGINT` |

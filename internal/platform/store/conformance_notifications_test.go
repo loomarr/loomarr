@@ -249,6 +249,7 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(listed) != 1 || listed[0].ID != destination.ID {
 		t.Fatalf("listed destinations = %+v, %v", listed, err)
 	}
+	mustUsers(t, s, "person-1", "person-2") // a person's destination names them by foreign key
 	push := notifications.DestinationRecord{
 		ID: "destination-web-push", Means: notifications.MeansWebPush, Label: "Laptop",
 		Scope: notifications.ScopePerson, OwnerID: "person-1", Audience: notifications.RecipientPerson,

@@ -79,7 +79,7 @@ func (s *Store) createInvitation(
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		value.ID, string(value.Kind), value.Username, value.LibraryUserID, value.DisplayName,
 		value.IdentityKey, string(value.Role), string(value.Status), epoch(value.CreatedAt),
-		epoch(value.ExpiresAt), epoch(value.TerminalAt), value.RedeemedBy)
+		epoch(value.ExpiresAt), epoch(value.TerminalAt), storedb.OptionalID(value.RedeemedBy))
 	if isConstraintViolation(err) {
 		return ErrInvitationIdentityConflict
 	}
@@ -322,7 +322,7 @@ func (s *Store) RedeemInvitation(
 	err = tx.QueryRowContext(ctx, s.h.Rebind(query), grantHash, epoch(at), epoch(at)).Scan(
 		&value.ID, &kind, &value.Username, &value.LibraryUserID, &value.DisplayName,
 		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt,
-		&value.RedeemedBy, &conveyance)
+		(*storedb.OptionalID)(&value.RedeemedBy), &conveyance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return access.Invitation{}, ErrNotFound
 	}
@@ -337,10 +337,12 @@ func (s *Store) RedeemInvitation(
 		return access.Invitation{}, ErrNotFound
 	}
 
+	// The claim comes first, so a second redemption finds nothing to claim. It can't name the
+	// account yet: redeemed_by is a foreign key and the account is created below.
 	result, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations
-		SET status = 'redeemed', terminal_at = ?, redeemed_by = ?
+		SET status = 'redeemed', terminal_at = ?
 		WHERE id = ? AND status = 'pending' AND expires_at > ?`),
-		epoch(at), user.ID, value.ID, epoch(at))
+		epoch(at), value.ID, epoch(at))
 	if err != nil {
 		return access.Invitation{}, fmt.Errorf("redeem invitation: claim: %w", err)
 	}
@@ -372,6 +374,10 @@ func (s *Store) RedeemInvitation(
 			return access.Invitation{}, ErrInvitationIdentityConflict
 		}
 		return access.Invitation{}, fmt.Errorf("redeem invitation: create allowlist row: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitations SET redeemed_by = ? WHERE id = ?`),
+		user.ID, value.ID); err != nil {
+		return access.Invitation{}, fmt.Errorf("redeem invitation: record account: %w", err)
 	}
 
 	result, err = tx.ExecContext(ctx, s.h.Rebind(`UPDATE invitation_grants SET consumed_at = ?
@@ -475,7 +481,7 @@ func scanInvitation(sc scannable) (access.Invitation, error) {
 	var kind, role, status string
 	var createdAt, expiresAt, terminalAt int64
 	err := sc.Scan(&value.ID, &kind, &value.Username, &value.LibraryUserID, &value.DisplayName,
-		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt, &value.RedeemedBy)
+		&value.IdentityKey, &role, &status, &createdAt, &expiresAt, &terminalAt, (*storedb.OptionalID)(&value.RedeemedBy))
 	if errors.Is(err, sql.ErrNoRows) {
 		return access.Invitation{}, ErrNotFound
 	}

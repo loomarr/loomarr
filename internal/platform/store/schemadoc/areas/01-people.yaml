@@ -123,7 +123,9 @@ tables:
       expires_at: When it stops working, in Unix seconds (always 7 days after created_at).
       terminal_at: >
         When it was redeemed, revoked or expired, in Unix seconds. 0 while still pending.
-      redeemed_by: The id of the account created from it, in users. Empty unless redeemed.
+      redeemed_by: >
+        The account created from it (users.id). NULL unless redeemed, and once that account is
+        deleted; the invitation stays as history.
 
   - name: invitation_grants
     about: >
@@ -188,7 +190,10 @@ tables:
       is deleted with the invitation.
     columns:
       owner_kind: Whose address it is. user for a person in users; invitation for a pending invitation.
-      owner_id: The person's id in users, or the invitation's id in invitations.
+      owner_id: >
+        The person's id in users, or the invitation's id in invitations, as owner_kind says. Not a
+        foreign key, since it names a row in one of two tables; redeeming an invitation moves its
+        address to the new person, and deleting an invitation deletes its address.
       email: The address as entered, for display and sending.
       normalized: The lowercased address. No two rows may share it, so one address belongs to one owner.
       status: >
