@@ -11,7 +11,7 @@ import { PlayerReadout } from "./player-readout";
 import { PlayerTopRow } from "./player-top-row";
 import { PortraitChrome } from "./portrait-chrome";
 import { TuneDip } from "./tune-dip";
-import { UnmutePill } from "./unmute-pill";
+import { UNMUTE_PILL_HEIGHT, UnmutePill } from "./unmute-pill";
 import { clearOfWatermark, type Frame } from "./watermark-clearance";
 
 // The height of a top-row key.
@@ -55,17 +55,36 @@ const ChromeBody = memo(
     const shown = controls || card;
     const edge = touch ? 16 : 48;
     // The channel's watermark is part of the picture, so the chrome steps around it (§9.6): the top
-    // row and the readout start below a top bug; the band and keys lift clear of a bottom one.
+    // row and the readout (upper right) start below a top-right bug, the unmute pill (upper left)
+    // below a top-left one, and the band and keys, which span the frame, lift clear of either bottom
+    // bug. Only the chrome on the bug's corner moves (#3397); the two top corners may then sit at
+    // different heights, as the mock draws them.
     const [frame, setFrame] = useState<Frame>({ height: 0, width: 0 });
     const [rowHeight, setRowHeight] = useState(0);
     const topBase = touch ? 16 : 40;
-    const topRowAt = clearOfWatermark({ base: topBase, edge: "top", extent: KEY, frame, watermark });
+    const topRowAt = clearOfWatermark({
+      base: topBase,
+      edge: "top",
+      extent: KEY,
+      frame,
+      side: "right",
+      watermark,
+    });
+    const pillAt = clearOfWatermark({
+      base: topBase,
+      edge: "top",
+      extent: UNMUTE_PILL_HEIGHT,
+      frame,
+      side: "left",
+      watermark,
+    });
     const bottomBase = touch ? 16 : 48;
     const bottomAt = clearOfWatermark({
       base: bottomBase,
       edge: "bottom",
       extent: rowHeight,
       frame,
+      side: "both",
       watermark,
     });
     // The open sheet, over a dimmed picture, above either layout.
@@ -169,7 +188,7 @@ const ChromeBody = memo(
           <PlayerTopRow {...top} />
         </View>
         {unmute ? (
-          <View style={{ left: edge, position: "absolute", top: topBase, zIndex: 40 }}>
+          <View style={{ left: edge, position: "absolute", top: pillAt, zIndex: 40 }}>
             <UnmutePill onPress={unmute} />
           </View>
         ) : null}
