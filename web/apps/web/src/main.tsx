@@ -3,7 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type ErrorComponentProps, RouterProvider } from "@tanstack/react-router";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { Toaster } from "sonner";
+import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { createQueryClient } from "@/lib/query-client";
 import { installRouteTiming } from "@/lib/route-timing";
@@ -80,13 +80,7 @@ createRoot(document.getElementById("root")!, {
     <LoomarrProvider theme="dark">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster
-          theme="dark"
-          position="bottom-center"
-          offset={{ bottom: 84 }}
-          mobileOffset={{ bottom: 84 }}
-          richColors
-        />
+        <AppToaster />
       </QueryClientProvider>
     </LoomarrProvider>
   </StrictMode>,
