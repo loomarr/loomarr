@@ -140,7 +140,14 @@ func (s *Handlers) runConnectionChecks(ctx context.Context) []httpcore.SetupChec
 		}
 		checks = append(checks, check)
 	}
-	if s.tunarrConnect != nil {
+	if s.tunarrConnect != nil && !s.anyConfigured([]settings.StringKey{settings.TunarrURL}) {
+		// Tunarr has no address: there is nothing to probe, and probing would surface a
+		// transport error ("unsupported protocol scheme") instead of the plain fact (#3403).
+		checks = append(checks, httpcore.SetupCheck{
+			Name: "tunarr_library", OK: false, NotSetUp: true, Hint: "set the Tunarr URL",
+			DocHref: "troubleshooting#tunarr-library",
+		})
+	} else if s.tunarrConnect != nil {
 		ready, err := s.tunarrConnect.LibrariesReady(ctx)
 		// Its own anchor, not the general Tunarr one: this check fails for a specific and
 		// silent reason (Tunarr's media source isn't scanned, so every slot degrades to

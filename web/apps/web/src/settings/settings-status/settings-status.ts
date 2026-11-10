@@ -67,6 +67,10 @@ const healthProblem = (check: HealthCheck): SettingsProblem | undefined => {
   if (check.status === "skipped" && check.key === "media_server") {
     return problem(destinationId, "notSetUp", "No media server is connected yet.");
   }
+  // The AI provider is optional: skipped means none is configured, which is not "OK" (#3403).
+  if (check.status === "skipped" && check.key === "llm") {
+    return problem(destinationId, "notSetUp", "No AI provider is set up yet.");
+  }
   if (check.status === "stale") {
     return problem(destinationId, "attention", `${check.label} hasn't been checked for a while.`);
   }

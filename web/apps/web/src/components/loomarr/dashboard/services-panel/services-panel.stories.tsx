@@ -52,7 +52,43 @@ const OneFailing: Story = {
 // reads as a rendering bug rather than an answer.
 const Unconfigured: Story = {
   args: {
-    view: { loomarr, rows: [{ name: "filler", ok: false, settingsGroup: "filler" }] },
+    view: { loomarr, rows: [{ name: "filler", ok: false, notSetUp: true, settingsGroup: "filler" }] },
+  },
+};
+
+// A fresh install (#3403): the optional services nobody has set up read "Not set up" with their
+// plain hint, the same word Connections uses. Only required services would be red.
+const FreshInstall: Story = {
+  args: {
+    view: {
+      loomarr,
+      rows: [
+        { name: "media_server", ok: true, target: "http://emby.lan:8096" },
+        {
+          name: "requester",
+          ok: false,
+          hint: "set the Seerr URL",
+          notSetUp: true,
+          settingsGroup: "requester",
+        },
+        { name: "tunarr", ok: false, hint: "set the Tunarr URL", notSetUp: true, settingsGroup: "tunarr" },
+        {
+          name: "llm",
+          ok: false,
+          hint: "set the Ollama URL, or configure a hosted provider in AI settings",
+          notSetUp: true,
+          settingsGroup: "ai",
+        },
+        {
+          name: "tunarr_library",
+          ok: false,
+          hint: "set the Tunarr URL",
+          notSetUp: true,
+          settingsGroup: "tunarr",
+        },
+        { name: "tmdb", ok: true },
+      ],
+    },
   },
 };
 
@@ -61,4 +97,4 @@ const Refreshing: Story = {
 };
 
 export default meta;
-export { AllHealthy, OneFailing, Refreshing, Unconfigured };
+export { AllHealthy, FreshInstall, OneFailing, Refreshing, Unconfigured };

@@ -11067,6 +11067,9 @@ components:
         name:
           description: "Probe key: media_server, tunarr, llm, …"
           type: string
+        notSetUp:
+          description: True when not OK only because none of this service's connection settings are set yet
+          type: boolean
         ok:
           type: boolean
         settingsGroup:
