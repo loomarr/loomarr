@@ -36,7 +36,7 @@ var areas = []area{
 			"Sonarr or Radarr to fetch a title the household does not have yet. The metadata providers " +
 			"decide which source's facts about a file win.",
 		Packages: []string{
-			"library", "library/arrhook", "library/resolvers", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
+			"library/mediaserver", "library/arrhook", "library/resolvers", "library/scan", "library/inventory", "library/tmdb", "library/titlesearch",
 			"library/provision", "library/provisionbackstop", "library/requester",
 			"library/metadataprovider", "library/metadataprovider/arr", "library/metadataprovider/localart",
 			"library/metadataprovider/nfo", "library/metadataprovider/precedence", "library/metadataprovider/providertest",
@@ -266,7 +266,7 @@ var flows = []flow{
 			"`channels` reconcile engine keeps that current for the channel's backend: either Loomarr's " +
 			"own `playout` engine, whose `playout/packager` stitches one continuous stream, or `playout/tunarr`. " +
 			"`playout/livetvpublish` registers the playlist and guide with the media server's Live TV through " +
-			"`library`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before " +
+			"`library/mediaserver`, and when the household changes backend, `playout/backendtransition` prepares the new one fully before " +
 			"publishing it to the media server.",
 	},
 	{

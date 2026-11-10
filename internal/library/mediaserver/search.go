@@ -1,4 +1,4 @@
-package library
+package mediaserver
 
 // SearchResult is one Library title as the catalog, the availability scan and channel ideas read
 // it: its library item id, the external ids grounding and dedupe need, and the facts audience

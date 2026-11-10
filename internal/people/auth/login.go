@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -18,7 +18,7 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 
 // Authenticator verifies media-server credentials (the library adapter).
 type Authenticator interface {
-	AuthenticateByName(ctx context.Context, username, password string) (library.User, error)
+	AuthenticateByName(ctx context.Context, username, password string) (mediaserver.User, error)
 }
 
 // Limiter gates login attempts (per IP+username). Implemented over
@@ -175,7 +175,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 	}
 	msUser, err := s.lib.AuthenticateByName(ctx, username, password)
 	if err != nil {
-		if errors.Is(err, library.ErrProviderUnavailable) && lookupErr == nil &&
+		if errors.Is(err, mediaserver.ErrProviderUnavailable) && lookupErr == nil &&
 			existingByName.MediaServerLinked && verifyPassword(existingByName.PasswordHash, password) {
 			return existingByName, nil
 		}

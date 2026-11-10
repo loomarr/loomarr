@@ -18,7 +18,7 @@ One area of the [package map](../package-map.md#start-here).
   The value types of a channel proposal: the request that asked for a channel (Intent), the grounded lineup the suggester answered with (Proposal, ProposalItem) and the evidence that travels with it (Scores, DecisionTrace).
 - **`proposals/accept`** · 7 importers · → `library/provision`, `library/titlesearch`, `platform/holidayvocab`, `platform/rating`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`
   How a proposal becomes a channel: a person's approval (with optional edits), the per-user auto-approve grant, and the pending-acquisition quota that bounds the grant.
-- **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library`, `library/provision`, `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`
+- **`proposals/outlook`** · 2 importers · → `channels`, `channels/schedule`, `library/mediaserver`, `library/provision`, `platform/holidayvocab`, `platform/store`, `platform/store/channelstore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.
 - **`proposals/quality`** · 6 importers · → `library/provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.

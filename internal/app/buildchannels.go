@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
@@ -60,7 +60,7 @@ type channelBuild struct {
 func buildChannels(
 	rootCtx context.Context, st store.Store, set resolved, ov Overrides,
 	owner *generationLifecycle, capturePlayoutResolver func(*playoutresolve.Resolver),
-	libraryClient *library.Client, secrets *settings.Secrets,
+	libraryClient *mediaserver.Client, secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	eventBus *events.Bus, emitter *eventEmitter, activityRec *activity.Recorder,
 	jobReg *jobs.Registry, fillerLayout cliplibrary.Layout,
@@ -157,7 +157,7 @@ func buildChannels(
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
 		liveTVConnector = livetvpublish.NewLiveTVConnector(
-			func() library.LiveTV { return libraryClient.Snapshot() }, tunarr.LiveTVURLs{},
+			func() mediaserver.LiveTV { return libraryClient.Snapshot() }, tunarr.LiveTVURLs{},
 		).WithTunerPublishingDisabled(ov.TunerPublishingDisabled, log)
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,

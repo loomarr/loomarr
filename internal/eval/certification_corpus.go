@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -884,21 +884,21 @@ func (f *embeddedCatalogFixture) Present(_ context.Context, _ provision.MediaTyp
 
 type embeddedLibraryCatalog struct{ fixture *embeddedCatalogFixture }
 
-func (c embeddedLibraryCatalog) Search(context.Context, string, int) ([]library.SearchResult, error) {
+func (c embeddedLibraryCatalog) Search(context.Context, string, int) ([]mediaserver.SearchResult, error) {
 	candidates, err := c.fixture.response("title")
 	if err != nil {
 		return nil, err
 	}
-	results := make([]library.SearchResult, 0, len(candidates))
+	results := make([]mediaserver.SearchResult, 0, len(candidates))
 	for _, candidate := range candidates {
 		if !candidate.InLibrary {
 			continue
 		}
-		mediaType := library.Movie
+		mediaType := mediaserver.Movie
 		if candidate.MediaType == provision.Series {
-			mediaType = library.Series
+			mediaType = mediaserver.Series
 		}
-		results = append(results, library.SearchResult{
+		results = append(results, mediaserver.SearchResult{
 			LibraryItemID: candidate.LibraryItemID, Name: candidate.Name, Year: candidate.Year,
 			MediaType: mediaType, TMDBID: candidate.TMDBID, TVDBID: candidate.TVDBID,
 			Genres: candidate.Genres, Overview: candidate.Overview, OfficialRating: candidate.OfficialRating,

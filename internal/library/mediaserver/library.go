@@ -1,8 +1,8 @@
-// Package library is the Library port (design §6, §2 boundaries): a shared
+// Package mediaserver is the Library port (design §6, §2 boundaries): a shared
 // Emby/Jellyfin adapter. Both flavors share every endpoint and response shape;
 // they differ ONLY in how auth rides on the request, so flavor-specific code is
 // isolated to header construction (§6, §11) and everything else is one impl.
-package library
+package mediaserver
 
 import (
 	"context"

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -19,7 +19,7 @@ func TestSyncNeverClearsADisable(t *testing.T) {
 		st := newStore(t)
 		ms := testkit.NewMediaServer(t)
 		t.Cleanup(ms.Close)
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		importOne(t, st, "u-bob", "bob", false)
 		return ms, NewUserSync(lib, st, clock), NewLoginService(lib, st, NewManager(st, time.Hour, clock), nil, clock)
 	}
