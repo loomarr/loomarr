@@ -24,8 +24,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
-	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/project/evidence/curation-1670/kit"
 )
 
