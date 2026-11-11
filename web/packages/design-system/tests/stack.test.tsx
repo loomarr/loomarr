@@ -36,6 +36,22 @@ describe("Stack", () => {
     expect(markup).toContain("gap:var(--t-space-control)");
   });
 
+  it("keeps a caller's class, element and accessible name, so a call site can move over whole", () => {
+    const markup = render(
+      <Stack
+        aria-label="What can play now"
+        className="text-muted-foreground mt-2"
+        gap="inline"
+        render="section"
+      >
+        <span>x</span>
+      </Stack>,
+    );
+
+    expect(markup).toMatch(/<section[^>]*aria-label="What can play now"/);
+    expect(markup).toMatch(/<section[^>]*class="[^"]*text-muted-foreground mt-2/);
+  });
+
   it("maps end alignment to the flex keywords and passes the accessibility role through", () => {
     const markup = render(
       <Stack align="end" justify="end" role="group">
