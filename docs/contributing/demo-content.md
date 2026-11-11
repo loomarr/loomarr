@@ -11,8 +11,9 @@ non-commercial, no-derivatives or share-alike, and everything is suitable for al
 The pack is `internal/demolibrary/openpack.json`. It pins each file by URL, SHA-256 and byte size;
 no media is committed. On its first start the demo library downloads the files, checks each one
 against its hash and refuses to serve anything that doesn't match. The posters and backdrops are
-frames cut from the videos themselves. Each title's overview ends with its credit and licence, which
-is how the app attributes it.
+frames cut from the videos themselves. Each title's overview ends with its credit and its licence by
+name, which is how the app attributes it. The overview carries no URL, because Info shows it as plain
+text; on the demo site, Settings → About says the sources are listed on this page.
 
 The downloads come from a mirror first: the manifest's `mirror` is a `demo-pack-v<N>` release of
 this repository, which holds every file under its SHA-256. It is about five times faster than the

@@ -253,9 +253,12 @@ func (m PackMedia) problems() []string {
 	return out
 }
 
-// attribution is the credit line every overview ends with.
+// attribution is the credit line every overview ends with: the maker and the licence by name. It
+// carries no URL (#3409): Info shows an overview as plain text, where a link is noise that can't be
+// followed. Each source page and licence URL is listed in docs/contributing/demo-content.md, which
+// About points demo visitors to.
 func (m PackMedia) attribution() string {
-	return fmt.Sprintf("%s Licence: %s (%s). Source: %s", m.Credit, Licences[m.Licence], m.Licence, m.Source)
+	return fmt.Sprintf("%s Licence: %s.", m.Credit, Licences[m.Licence])
 }
 
 // format is the file's shape as the stand-in reports it. Whole seconds, rounded down, so a

@@ -28,7 +28,7 @@ const Row = ({ label, value }: AboutDetail) => (
   </Stack>
 );
 
-const AboutPage = ({ version, details, tmdbLogo }: AboutPageProps) => {
+const AboutPage = ({ version, details, tmdbLogo, demo }: AboutPageProps) => {
   const [open, setOpen] = useState(false);
   return (
     <Stack gap="section" maxWidth={720} width="100%">
@@ -56,6 +56,19 @@ const AboutPage = ({ version, details, tmdbLogo }: AboutPageProps) => {
             {TMDB_NOTICE}
           </Text>
         </Surface>
+        {demo ? (
+          // The demo pack's attribution (#3409): each title's Info names its maker and licence,
+          // and the source pages are listed once, in the docs, rather than as URLs in every Info.
+          <Surface borderRadius="card" gap="control" padding="section">
+            <Text textRole="body">
+              The demo's films, cartoons and ads are openly licensed. Each one's Info names who made it and
+              its licence.
+            </Text>
+            <Text textRole="caption" tone="secondary">
+              Every source is listed on the Demo content page of Loomarr's documentation.
+            </Text>
+          </Surface>
+        ) : null}
       </Stack>
 
       <Disclosure

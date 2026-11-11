@@ -61,6 +61,17 @@ func TestOpenPackItemsArePinnedLicensedAndAllAges(t *testing.T) {
 		if !strings.Contains(ti.Overview, "Licence: ") || !strings.HasPrefix(ti.ID(), "open-") {
 			t.Errorf("%s %q: overview must credit its licence and the id must be open-", ti.ID(), ti.Name)
 		}
+		// Info prints the overview as text: a URL there can't be followed (#3409).
+		if strings.Contains(ti.Overview, "://") {
+			t.Errorf("%s %q: overview carries a URL: %q", ti.ID(), ti.Name, ti.Overview)
+		}
+	}
+	for _, episodes := range lib.episodes {
+		for _, e := range episodes {
+			if strings.Contains(e.Overview, "://") || !strings.Contains(e.Overview, "Licence: ") {
+				t.Errorf("episode %q: overview must name its licence and carry no URL: %q", e.Name, e.Overview)
+			}
+		}
 	}
 }
 
