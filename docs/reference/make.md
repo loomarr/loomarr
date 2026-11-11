@@ -276,6 +276,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make tuner-quarantine` | ✅ | resolve the tuner tests the flake quarantine holds out (TUNER_QUARANTINE=exclude|only; needs gh) |
 | `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1); TUNER_PROJECT / TUNER_REPEAT_EACH narrow a manual rerun <br>*runs:* `fe-build` |
 | `make tuner-e2e-quarantine` | ✅ | only the tuner tests the flake quarantine holds out (after tuner-quarantine) <br>*runs:* `tuner-e2e-host` |
+| `make route-timing-e2e-host` | ✅ | route timing budgets (warm and cold, main nav) in host-installed Chromium (#3399) <br>*runs:* `fe-build` |
 | `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
 
 ## Maintainer smoke (NOT CI)
@@ -297,7 +298,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `rust-check` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients-bundles` · `clients-checks` · `clients-tests` · `compose-verify` · `config-docs-verify` · `db-docs-verify` · `dev-docs-verify` · `diagrams-verify` · `e2e` · `eval-contract` · `fe-api-codegen` · `fe-checks` · `fe-codegen` · `fe-install` · `fe-packages` · `fe-tokens-verify` · `fe-unit` · `fe-visual-update` · `fe-visual` · `fmt` · `go-cache-warm` · `go-race-verify` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `lint` · `observability-verify` · `openapi-verify` · `playout-bench` · `privacy-verify` · `release-verify` · `retired-verify` · `route-timing-e2e-host` · `rust-check` · `shellcheck` · `tags-verify` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine` · `vet-tags` · `vet` · `vuln`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository
