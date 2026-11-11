@@ -14,7 +14,6 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-  PORTRAIT_PICTURE_TOP,
   playbarFromTimeline,
   rungFor,
   watermarkOf,
@@ -419,7 +418,6 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               }
             },
           }}
-          last={touch && last && goLast ? { number: last.number, onPress: goLast } : undefined}
           picture={
             qualityOptions
               ? {
@@ -496,17 +494,19 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           layout={onPhone ? "portrait" : "overlay"}
           keys={{
             density,
-            last: !touch && last && goLast ? { number: last.number, onPress: goLast } : undefined,
+            // Last is a key everywhere (§9.7); a phone's More has no row for it.
+            last: last && goLast ? { number: last.number, onPress: goLast } : undefined,
             moreOpen: sheet === "more",
-            muted: chrome.muted,
             onChannelDown: player.canSurf ? () => player.step(-1) : undefined,
             onChannelUp: player.canSurf ? () => player.step(1) : undefined,
             onMore: () => toggleSheet("more"),
-            onToggleMute: () => chrome.setMuted(!chrome.muted),
             onTogglePlay: chrome.toggle,
             playing: chrome.playing,
             pointer: !touch,
-            volume: chrome.volume,
+            // Volume is desktop's: a phone's own buttons set it.
+            volume: touch
+              ? undefined
+              : { muted: chrome.muted, onToggleMute: () => chrome.setMuted(!chrome.muted) },
           }}
           live={live}
           onGoLive={chrome.goLive}
@@ -578,10 +578,9 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       onShortcut={onShortcut}
       attach={attach}
       onChannelStep={player.step}
-      // The picture fills the window (letterboxed by the <video>). A portrait phone pins it under the
-      // top row, with the band and keys below it (§9.7, #2775).
+      // The picture fills the window, letterboxed and centred by the <video>: on an upright phone a
+      // strip mid-screen, with the toolbar above it and the band and keys below (§9.7).
       fill
-      pictureTop={onPhone ? PORTRAIT_PICTURE_TOP : undefined}
     />
   );
 

@@ -25,8 +25,6 @@ interface PlayerMoreProps {
   /** Go live, behind live. */
   goLive?: { detail: string; onPress: () => void };
   info?: { onPress: () => void };
-  /** Last channel, on phones (a pointer has the key). */
-  last?: { number: string; onPress: () => void };
   /** Picture: the quality on air ("Auto · 1080p"). */
   picture?: { detail: string; onPress: () => void };
   /** Playback details: the technical panel (§9.5). */
@@ -104,7 +102,6 @@ const PlayerMore = ({
   formatTime,
   goLive,
   info,
-  last,
   picture,
   pictureInPicture,
   playbackDetails,
@@ -145,15 +142,6 @@ const PlayerMore = ({
           icon="play"
           label="Go live"
           onPress={goLive.onPress}
-        />
-      ) : null}
-      {last ? (
-        <MoreRow
-          density={density}
-          detail={`CH ${last.number}`}
-          icon="swap"
-          label="Last channel"
-          onPress={last.onPress}
         />
       ) : null}
       {picture ? (

@@ -1,6 +1,6 @@
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { formatGuideTime } from "@loomarr/core/guide";
-import { ThemeScope } from "@loomarr/design-system";
+import { LoomarrProvider, ThemeScope } from "@loomarr/design-system";
 import {
   PlayerAudio,
   PlayerChrome,
@@ -12,7 +12,6 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-  PORTRAIT_PICTURE_TOP,
   pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
@@ -148,15 +147,13 @@ const liveData = playbarFromTimeline({ airings, channel, live, nowMs: NOW, playh
 const keys = {
   density: "pointer" as const,
   moreOpen: false,
-  muted: false,
   onChannelDown: fn(),
   onChannelUp: fn(),
   onMore: fn(),
-  onToggleMute: fn(),
   onTogglePlay: fn(),
   playing: true,
   pointer: true,
-  volume: 0.8,
+  volume: { muted: false, onToggleMute: fn() },
 };
 
 const utilities = {
@@ -266,7 +263,7 @@ const WithLast: Story = {
 // Touch, the phone held sideways: 48 px keys, no legends, no Volume, the strip left to More.
 const touchArgs = {
   density: "touch" as const,
-  keys: { ...keys, density: "touch" as const, pointer: false },
+  keys: { ...keys, density: "touch" as const, pointer: false, volume: undefined },
   schedule: undefined,
   utilities: { ...utilities, density: "touch" as const, pointer: false },
 };
@@ -278,7 +275,7 @@ const TV = { height: 540, width: 960 } as const;
 const Television: Story = {
   args: {
     density: "tv",
-    keys: { ...keys, density: "tv", last: { number: "3", onPress: fn() }, pointer: false },
+    keys: { ...keys, density: "tv", last: { number: "3", onPress: fn() }, pointer: false, volume: undefined },
     layout: "tv",
     onLeave: undefined,
     utilities: { ...utilities, density: "tv", onSubtitles: fn(), pointer: false, subtitlesOn: false },
@@ -455,7 +452,6 @@ const MoreBehind: Story = {
           formatTime={formatTime}
           goLive={{ detail: formatTime(NOW), onPress: fn() }}
           info={{ onPress: fn() }}
-          last={{ number: "3", onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
           {...moreData({ lagSeconds: 134, mode: "paused" })}
         />
@@ -467,10 +463,12 @@ const MoreBehind: Story = {
 // The first play of the session starts muted: a pill under the controls takes one tap to undo it.
 const UnmutePill: Story = { args: { unmute: fn() } };
 
-// A portrait phone (pick A, #2775): the picture pinned under a toolbar (Leave and the rating, then the
-// utilities), the band and keys below it in the black space, nothing over the picture. A stand-in
-// strip marks where the player draws the video.
+// An upright iPhone (§9.7, variant J): the picture a strip mid-screen, a toolbar under the Dynamic
+// Island (Leave and the rating, then the utilities), the band and keys in the black below, grounded
+// above the home indicator, nothing over the picture. A stand-in strip marks where the player draws
+// the video; the insets are an iPhone's safe areas.
 const PHONE = { height: 844, width: 390 } as const;
+const IPHONE_INSETS = { bottom: 34, left: 0, right: 0, top: 59 } as const;
 const PhoneFrame = (args: PlayerChromeProps) => (
   <div style={{ ...PHONE, background: "#000", margin: "0 auto", position: "relative" }}>
     <div
@@ -478,16 +476,20 @@ const PhoneFrame = (args: PlayerChromeProps) => (
         aspectRatio: "16 / 9",
         background: "radial-gradient(ellipse at 40% 35%, #3a4150, #101216 70%)",
         position: "absolute",
-        top: PORTRAIT_PICTURE_TOP,
+        top: "50%",
+        transform: "translateY(-50%)",
         width: "100%",
       }}
     />
-    <PlayerChrome {...args} />
+    {/* The safe areas reach the chrome as the native app hands them down: through the provider. */}
+    <LoomarrProvider insets={IPHONE_INSETS} theme="dark">
+      <PlayerChrome {...args} />
+    </LoomarrProvider>
   </div>
 );
 const portraitArgs = {
   ...touchArgs,
-  keys: { ...touchArgs.keys, last: undefined },
+  keys: { ...touchArgs.keys, last: { number: "3", onPress: fn() } },
   layout: "portrait" as const,
 };
 const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
@@ -544,7 +546,6 @@ const PortraitMore: Story = {
           density="touch"
           formatTime={formatTime}
           info={{ onPress: fn() }}
-          last={{ number: "3", onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
           {...moreData(live)}
         />

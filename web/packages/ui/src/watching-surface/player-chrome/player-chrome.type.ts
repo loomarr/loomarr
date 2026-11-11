@@ -133,9 +133,9 @@ interface PlayerChromeProps {
   keys: PlayerKeysProps;
   /**
    * `overlay` draws over the picture and auto-hides (§9.1). `portrait` is the phone held upright
-   * (§9.7): a toolbar above the picture, the band and keys below it, nothing over the picture, and
-   * always shown. The app pins the picture at `PORTRAIT_PICTURE_TOP`. `tv` is the ten-foot overlay:
-   * 5% clear at every edge, four keys, no utilities row and no Leave (Back leaves).
+   * (§9.7): the player centres the picture as a strip mid-screen, with a toolbar above it and the band
+   * and keys below, nothing over the picture, and always shown. `tv` is the ten-foot overlay: 5% clear
+   * at every edge, four keys, no utilities row and no Leave (Back leaves).
    */
   layout?: "overlay" | "portrait" | "tv";
   /** Leave: the back arrow in the top left corner (§9.3). Omitted on a television, where Back leaves. */
@@ -168,7 +168,7 @@ interface PlayerChromeProps {
  */
 interface PlayerKeysProps {
   density: Density;
-  /** Pointer devices get Volume, and a legend under a key while it is pointed at or focused. */
+  /** Pointer devices get a legend under a key while it is pointed at or focused. */
   pointer: boolean;
   playing: boolean;
   onTogglePlay: () => void;
@@ -177,10 +177,11 @@ interface PlayerKeysProps {
   /** The Channel up / down rocker; omitted where the player cannot tune. */
   onChannelUp?: () => void;
   onChannelDown?: () => void;
-  muted: boolean;
-  /** 0–1. */
-  volume: number;
-  onToggleMute: () => void;
+  /**
+   * Volume, on desktop; omitted on a phone and a television, whose own buttons set it (the key is
+   * then not drawn).
+   */
+  volume?: { muted: boolean; onToggleMute: () => void };
   /** More: open or close the More sheet. */
   moreOpen: boolean;
   onMore: () => void;

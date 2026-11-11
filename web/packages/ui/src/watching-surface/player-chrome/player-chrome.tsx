@@ -1,4 +1,4 @@
-import { playerChrome, ThemeScope } from "@loomarr/design-system";
+import { playerChrome, ThemeScope, useViewportInsets } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
 import { type LayoutChangeEvent, Platform, View } from "react-native";
 
@@ -58,10 +58,12 @@ const ChromeBody = memo(
     const card = ident && !visible && !sheet;
     const controls = visible;
     const shown = controls || card;
-    // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540.
-    const side = tv ? 48 : touch ? 24 : 48;
-    const topBase = tv ? 28 : touch ? 16 : 40;
-    const bottomBase = tv ? 28 : touch ? 16 : 40;
+    // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540. A phone keeps clear
+    // of its safe areas: the Dynamic Island, the home indicator and, on its side, both ends (§9.7).
+    const insets = useViewportInsets();
+    const side = (tv ? 48 : touch ? 24 : 48) + Math.max(insets.left, insets.right);
+    const topBase = (tv ? 28 : touch ? 16 : 40) + insets.top;
+    const bottomBase = (tv ? 28 : touch ? 16 : 40) + insets.bottom / 2;
     // The channel's watermark is part of the picture, so only the chrome in its corner steps clear of
     // it (§9.6, #3397): top left, Leave and the rating; top right, the readout; bottom left, the band;
     // bottom right, the control cluster. Nothing else moves.
@@ -114,6 +116,7 @@ const ChromeBody = memo(
           <PortraitChrome
             band={band}
             formatTime={formatTime}
+            insets={insets}
             keys={keys}
             live={live}
             onGoLive={onGoLive}

@@ -128,14 +128,13 @@ const PlayerKeys = ({
   density,
   last,
   moreOpen,
-  muted,
   onChannelDown,
   onChannelUp,
   onMore,
-  onToggleMute,
   onTogglePlay,
   playing,
   pointer,
+  volume,
 }: PlayerKeysProps & {
   /** A television's Subtitles and Audio, which are main keys there (§9.3). */
   audio?: PlayerUtilitiesProps | undefined;
@@ -256,16 +255,16 @@ const PlayerKeys = ({
           <Glyph density={density} name="channelUp" />
         </Key>
       ) : null}
-      {pointer ? (
+      {volume ? (
         <Key
-          accessibilityLabel={muted ? "Unmute" : "Mute"}
+          accessibilityLabel={volume.muted ? "Unmute" : "Mute"}
           height={size}
-          legend={muted ? "Muted" : "Volume"}
+          legend={volume.muted ? "Muted" : "Volume"}
           legends={legends}
-          onPress={onToggleMute}
+          onPress={volume.onToggleMute}
           width={size}
         >
-          <Glyph density={density} name={muted ? "volumeMuted" : "volume"} />
+          <Glyph density={density} name={volume.muted ? "volumeMuted" : "volume"} />
         </Key>
       ) : null}
       {moreKey}

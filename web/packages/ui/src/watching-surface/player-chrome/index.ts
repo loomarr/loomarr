@@ -1,6 +1,6 @@
 export { logoSize, rungFor } from "./art";
 export { ClipChrome } from "./clip-chrome";
-export { playbarFromTimeline } from "./playbar-data";
+export { playbarFromTimeline, playerChromeFromGuide } from "./playbar-data";
 export type { PlayerAudioProps } from "./player-audio";
 export { PlayerAudio } from "./player-audio";
 export { PlayerChrome } from "./player-chrome";
@@ -32,6 +32,5 @@ export { PlayerMore } from "./player-more";
 export type { PlayerOption, PlayerOptionsProps } from "./player-options";
 export { PlayerOptions } from "./player-options";
 export { PlayerSheet } from "./player-sheet";
-export { PORTRAIT_PICTURE_TOP } from "./portrait-chrome";
 export type { PlayerWatermark, WatermarkPolicyLike } from "./watermark-clearance";
 export { clearOfWatermark, pictureIn, watermarkOf } from "./watermark-clearance";

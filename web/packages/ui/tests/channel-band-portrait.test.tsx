@@ -35,7 +35,14 @@ const mount = (node: ReactNode) => {
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
-  act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
+  // An iPhone's safe areas, as the native app's provider hands them down.
+  act(() =>
+    root.render(
+      <LoomarrProvider insets={IPHONE} theme="dark">
+        {node}
+      </LoomarrProvider>,
+    ),
+  );
   mounted.push({ host, unmount: () => act(() => root.unmount()) });
   return host;
 };
@@ -60,17 +67,17 @@ const band = {
 
 const keys = {
   density: "touch" as const,
+  last: { number: "3", onPress: vi.fn() },
   moreOpen: false,
-  muted: false,
   onChannelDown: vi.fn(),
   onChannelUp: vi.fn(),
   onMore: vi.fn(),
-  onToggleMute: vi.fn(),
   onTogglePlay: vi.fn(),
   playing: true,
   pointer: false,
-  volume: 0.8,
 };
+
+const IPHONE = { bottom: 34, left: 0, right: 0, top: 59 };
 
 const chrome = (layout: PlayerChromeProps["layout"], density: "pointer" | "touch") => (
   <PlayerChrome
@@ -119,6 +126,17 @@ describe("the portrait band", () => {
       (el) => (el as El & { getAttribute(n: string): string | null }).getAttribute("aria-label"),
     );
     expect(labels).toEqual(["Leave", "Audio", "Fullscreen"]);
+  });
+
+  it("keeps the toolbar under the Dynamic Island and the band and keys above the home indicator", () => {
+    const host = mount(chrome("portrait", "touch"));
+    // The toolbar starts 4px below the top inset.
+    expect(computed(byId(host, "player-toolbar")).top).toBe("63px");
+    // The band and keys are grounded 24px plus half the bottom inset up from the foot.
+    const bottomBlock = byId(host, "channel-band").parentElement as El;
+    expect(computed(bottomBlock).bottom).toBe("41px");
+    // Last is a key on a phone too (§9.7).
+    expect(host.querySelector('[aria-label="Last channel, 3"]')).not.toBeNull();
   });
 
   it("lets the title take two lines, and the episode line one", () => {
