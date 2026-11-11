@@ -253,7 +253,7 @@ func TestImportRecordsAnEmptyRoot(t *testing.T) {
 	if !empty() {
 		t.Fatal("a pass over an empty root did not record it as empty")
 	}
-	h.file("Movies/Heat (1995)/Heat (1995).mkv", 10)
+	h.file("Movies/Golf (2013)/Golf (2013).mkv", 10)
 	h.run()
 	if empty() {
 		t.Fatal("a pass over a root with a film in it still records it as empty")
