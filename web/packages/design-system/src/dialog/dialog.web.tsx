@@ -111,6 +111,16 @@ const commandSurface: CSSProperties = {
 
 const fullScreen: CSSProperties = { position: "fixed", inset: 0, zIndex: 50, outline: "none" };
 
+// A sheet docked to the bottom edge, the phone's "More": the content brings its own surface.
+const bottomDock: CSSProperties = {
+  position: "fixed",
+  right: 0,
+  bottom: 0,
+  left: 0,
+  zIndex: 50,
+  outline: "none",
+};
+
 const DialogContent = ({
   accessibilityLabel,
   children,
@@ -124,35 +134,38 @@ const DialogContent = ({
   const side = placement === "side";
   const top = placement === "top";
   const fill = placement === "fill";
+  const bottom = placement === "bottom";
   const resolvedLayout = layout ?? (side ? "sectioned" : "padded");
   const popup: CSSProperties = side
     ? sidePanel
     : fill
       ? fullScreen
-      : top
-        ? commandSurface
-        : {
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            zIndex: 50,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            boxSizing: "border-box",
-            width: wide ? "calc(100% - 2rem)" : "100%",
-            maxWidth: maxWidths[size],
-            maxHeight: "calc(100dvh - 2rem)",
-            overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
-            padding: resolvedLayout === "sectioned" ? 0 : 24,
-            transform: "translate(-50%, -50%)",
-            border: `1px solid ${semanticColors.border.decorative}`,
-            borderRadius: semanticRadius.cardCompact,
-            background: semanticColors.surface.raised,
-            color: semanticColors.content.primary,
-            boxShadow: shadow,
-            outline: "none",
-          };
+      : bottom
+        ? bottomDock
+        : top
+          ? commandSurface
+          : {
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              zIndex: 50,
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              boxSizing: "border-box",
+              width: wide ? "calc(100% - 2rem)" : "100%",
+              maxWidth: maxWidths[size],
+              maxHeight: "calc(100dvh - 2rem)",
+              overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
+              padding: resolvedLayout === "sectioned" ? 0 : 24,
+              transform: "translate(-50%, -50%)",
+              border: `1px solid ${semanticColors.border.decorative}`,
+              borderRadius: semanticRadius.cardCompact,
+              background: semanticColors.surface.raised,
+              color: semanticColors.content.primary,
+              boxShadow: shadow,
+              outline: "none",
+            };
   return (
     <DialogPrimitive.Portal container={portalContainer as HTMLElement | ShadowRoot | null | undefined}>
       <DialogPrimitive.Backdrop
@@ -164,7 +177,7 @@ const DialogContent = ({
         style={popup}
       >
         <LayoutContext.Provider value={resolvedLayout}>{children}</LayoutContext.Provider>
-        {top || fill ? null : <CornerClose />}
+        {top || fill || bottom ? null : <CornerClose />}
       </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   );
