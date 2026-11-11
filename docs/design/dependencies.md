@@ -102,6 +102,7 @@ replace local transcription and vision; those modalities stay operator choices.
 | Guide rows | `@tanstack/react-virtual` | windows the guide's rows |
 | Image placeholders | `thumbhash` | decodes the placeholder the server stores, without a canvas |
 | Forms | `@tanstack/react-form` | uses the zod schemas directly |
+| Web query-cache persistence | `@tanstack/react-query-persist-client` + `idb-keyval` | a cold open paints the last-known page from IndexedDB, then revalidates; the persister is an allowlist keyed by user and build and cleared on sign-out (#3399) |
 | Help | `react-markdown` + `remark-gfm` | renders the embedded help offline |
 | Component workshop | Storybook 10 with a11y and themes addons | the component contract; the visual gate runs Playwright over its static build |
 | Tests | Vitest, Testing Library, Playwright, `@axe-core/playwright` | units, visual, accessibility and e2e |

@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { createQueryClient } from "@/lib/query-client";
+import { startQueryPersistence } from "@/lib/query-persist";
 import { installRouteTiming } from "@/lib/route-timing";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
@@ -69,6 +70,11 @@ declare module "@tanstack/react-router" {
     router: typeof router;
   }
 }
+
+// The last-known pages come back from IndexedDB before the first render, so a cold open paints
+// them and then revalidates. The entry chunk's hashed URL names this build: a new build starts
+// from an empty cache. A browser that blocks IndexedDB just starts empty.
+await startQueryPersistence({ queryClient, buildId: import.meta.url }).catch(() => undefined);
 
 createRoot(document.getElementById("root")!, {
   onCaughtError: () =>
