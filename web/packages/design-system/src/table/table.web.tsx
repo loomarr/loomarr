@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
-import { createContext, useContext, useState } from "react";
+import { useState } from "react";
 
 import { Text } from "../primitives";
-import { type Density, semanticRadius, semanticSpace, typography } from "../tokens";
+import { semanticRadius, semanticSpace, typography } from "../tokens";
 import { isPlainText as isPlain } from "./plain-text";
 import type {
   TableCellProps,
@@ -11,12 +11,12 @@ import type {
   TableRowProps,
   TableSectionProps,
 } from "./table.type";
+import { TableContext, useTableContext } from "./table-context";
 
 // The web adapter: real <table> elements, so a screen reader gets rows, columns and header scopes
 // and the browser lays the columns out. The look is the Help doc table's in the web mock (a bordered
 // 8-radius box, a raised header row of small tracked mono labels, a quiet rule between rows), read
 // through the theme's CSS variables so light and dark both hold.
-const DensityContext = createContext<Density>("pointer");
 const framedRule = "1px solid var(--borderDecorative)";
 const rowRule = "1px solid var(--surfaceElevated)";
 
@@ -32,13 +32,23 @@ const visuallyHidden = {
   width: 1,
 } as const;
 
-const cellPadding = { paddingBlock: semanticSpace.control, paddingInline: semanticSpace.control };
+const cellPadding = (dense: boolean) => {
+  const space = dense ? semanticSpace.inline : semanticSpace.control;
+  return { paddingBlock: space, paddingInline: space };
+};
 
-const Table = ({ caption, children, density = "pointer", framed = true, minWidth }: TableProps) => {
+const Table = ({
+  caption,
+  children,
+  dense = false,
+  density = "pointer",
+  framed = true,
+  minWidth,
+}: TableProps) => {
   const [ringed, setRinged] = useState(false);
   const text = typography[density].body;
   return (
-    <DensityContext.Provider value={density}>
+    <TableContext.Provider value={{ dense, density }}>
       <div
         style={{
           border: framed ? framedRule : undefined,
@@ -77,7 +87,7 @@ const Table = ({ caption, children, density = "pointer", framed = true, minWidth
           </table>
         </section>
       </div>
-    </DensityContext.Provider>
+    </TableContext.Provider>
   );
 };
 
@@ -98,13 +108,13 @@ const TableRow = ({ children, dimmed = false, id, tone = "default" }: TableRowPr
 );
 
 const TableHeaderCell = ({ align = "start", children, colSpan, width }: TableHeaderCellProps) => {
-  const density = useContext(DensityContext);
+  const { dense, density } = useTableContext();
   return (
     <th
       colSpan={colSpan}
       scope="col"
       style={{
-        ...cellPadding,
+        ...cellPadding(dense),
         backgroundColor: "var(--surfaceRaised)",
         borderBottom: framedRule,
         fontWeight: "normal",
@@ -113,7 +123,14 @@ const TableHeaderCell = ({ align = "start", children, colSpan, width }: TableHea
       }}
     >
       {isPlain(children) ? (
-        <Text density={density} shout textRole="mono" tone="secondary" tracking={0.06}>
+        // Dense: the plain caption, which fits a narrow column better than tracked capitals.
+        <Text
+          density={density}
+          shout={!dense}
+          textRole={dense ? "caption" : "mono"}
+          tone="secondary"
+          tracking={dense ? undefined : 0.06}
+        >
           {children}
         </Text>
       ) : (
@@ -132,14 +149,14 @@ const TableCell = ({
   verticalAlign = "middle",
   width,
 }: TableCellProps) => {
-  const density = useContext(DensityContext);
+  const { dense, density } = useTableContext();
   const Element = rowHeader ? "th" : "td";
   return (
     <Element
       colSpan={colSpan}
       scope={rowHeader ? "row" : undefined}
       style={{
-        ...cellPadding,
+        ...cellPadding(dense),
         borderBottom: rowRule,
         fontWeight: "normal",
         textAlign: align === "end" ? "right" : "left",

@@ -1,8 +1,5 @@
 import { View } from "@tamagui/core";
-import { createContext, useContext } from "react";
-
 import { Text } from "../primitives";
-import type { Density } from "../tokens";
 import { isPlainText as isPlain } from "./plain-text";
 import type {
   TableCellProps,
@@ -11,14 +8,13 @@ import type {
   TableRowProps,
   TableSectionProps,
 } from "./table.type";
+import { TableContext, useTableContext } from "./table-context";
 
 // The native adapter: a phone, tablet or TV has no table layout, so a row is a flex row and a cell
 // takes a share of it by its `width` (the web adapter, table.web.tsx, is a real <table>). The look
 // is the same: a bordered box, a raised header row of small tracked mono labels, a quiet row rule.
-const DensityContext = createContext<Density>("pointer");
-
-const Table = ({ caption, children, density = "pointer", framed = true }: TableProps) => (
-  <DensityContext.Provider value={density}>
+const Table = ({ caption, children, dense = false, density = "pointer", framed = true }: TableProps) => (
+  <TableContext.Provider value={{ dense, density }}>
     <View
       aria-label={caption}
       borderColor="borderDecorative"
@@ -31,7 +27,7 @@ const Table = ({ caption, children, density = "pointer", framed = true }: TableP
       {/* The last row's rule is the frame's own bottom edge: pull it a px past the frame, which clips it. */}
       <View marginBottom={framed ? -1 : 0}>{children}</View>
     </View>
-  </DensityContext.Provider>
+  </TableContext.Provider>
 );
 
 const TableHeader = ({ children }: TableSectionProps) => <View role="rowgroup">{children}</View>;
@@ -51,28 +47,35 @@ const TableRow = ({ children, dimmed = false, id, tone = "default" }: TableRowPr
   </View>
 );
 
-const cellBox = (width: number | undefined, align: "start" | "end") =>
+const cellBox = (width: number | undefined, align: "start" | "end", dense: boolean) =>
   ({
     alignItems: align === "end" ? "flex-end" : "flex-start",
     flexBasis: width ?? 0,
     flexGrow: width === undefined ? 1 : 0,
     flexShrink: 1,
     minWidth: 0,
-    padding: "control",
+    padding: dense ? "inline" : "control",
   }) as const;
 
 const TableHeaderCell = ({ align = "start", children, width }: TableHeaderCellProps) => {
-  const density = useContext(DensityContext);
+  const { dense, density } = useTableContext();
   return (
     <View
-      {...cellBox(width, align)}
+      {...cellBox(width, align, dense)}
       backgroundColor="surfaceRaised"
       borderBottomColor="borderDecorative"
       borderBottomWidth={1}
       role="columnheader"
     >
       {isPlain(children) ? (
-        <Text density={density} shout textRole="mono" tone="secondary" tracking={0.06}>
+        // Dense: the plain caption, which fits a narrow column better than tracked capitals.
+        <Text
+          density={density}
+          shout={!dense}
+          textRole={dense ? "caption" : "mono"}
+          tone="secondary"
+          tracking={dense ? undefined : 0.06}
+        >
           {children}
         </Text>
       ) : (
@@ -90,10 +93,10 @@ const TableCell = ({
   verticalAlign = "middle",
   width,
 }: TableCellProps) => {
-  const density = useContext(DensityContext);
+  const { dense, density } = useTableContext();
   return (
     <View
-      {...cellBox(width, align)}
+      {...cellBox(width, align, dense)}
       borderBottomColor="surfaceElevated"
       borderBottomWidth={1}
       justifyContent={verticalAlign === "top" ? "flex-start" : "center"}
