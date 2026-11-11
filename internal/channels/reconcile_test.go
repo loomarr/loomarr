@@ -1213,33 +1213,79 @@ func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 	}
 }
 
-// ⚠ The re-fetch guard, which is the entire reason BoxSetsResolved exists as a separate flag.
-// A title in NO collection resolves to an empty slice, so a heal guarded on len(BoxSetIDs)==0
-// would re-ask the library for it on every reconcile, for every such entry, forever — the N+1
-// that stamping exists to prevent, reintroduced for the most common case. Verified by counting
-// calls across two passes rather than by reading the guard.
-func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
+// The stamp follows the household's collections: a title taken out of a collection leaves a
+// channel scoped to it on the next reconcile, and one added to it joins. Stamping it once and
+// never again kept a removed title on the channel forever (#2793).
+func TestReconcile_BoxSetMembershipFollowsCollectionEdits(t *testing.T) {
+	ctx := context.Background()
 	st := newStore(t)
-	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
-	res := &countingBoxSets{sets: map[provision.Key][]string{}} // in no collection at all
-	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
+	vale, err := st.CreateLibraryCollection(ctx, store.LibraryCollection{Name: "Juniper Vale"}, time.Unix(1_800_000_000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:90000001": {vale}}}
+	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithBoxSets(res)
 
-	seedChannel(t, st, "cbs2", 9, entry("movie:tmdb:90000001", "A"))
-	for i := range 2 {
-		if err := e.Reconcile(context.Background(), "cbs2"); err != nil {
-			t.Fatalf("pass %d: %v", i+1, err)
+	seedChannel(t, st, "cbs2", 9, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
+	ch, _ := st.GetChannel(ctx, "cbs2")
+	ch.Policy.Scope.Collections = []string{vale}
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+	airs := func() []string {
+		t.Helper()
+		if err := e.Reconcile(ctx, "cbs2"); err != nil {
+			t.Fatal(err)
 		}
+		got, _ := st.GetChannel(ctx, "cbs2")
+		var keys []string
+		for _, s := range got.Desired {
+			if s.Kind == schedule.SlotProgram && !slices.Contains(keys, string(s.Key)) {
+				keys = append(keys, string(s.Key))
+			}
+		}
+		slices.Sort(keys)
+		return keys
+	}
+	if got := airs(); !slices.Equal(got, []string{"movie:tmdb:90000001"}) {
+		t.Fatalf("before the edit the channel airs %v, want only the collection's title", got)
 	}
 
-	if res.calls != 1 {
-		t.Errorf("resolver called %d times across 2 reconciles, want 1 — a non-member is being "+
-			"re-fetched every pass (guard on BoxSetsResolved, not on len(BoxSetIDs))", res.calls)
+	// The household moves the collection from A to B.
+	res.sets = map[provision.Key][]string{"movie:tmdb:90000002": {vale}}
+	if got := airs(); !slices.Equal(got, []string{"movie:tmdb:90000002"}) {
+		t.Errorf("after the edit the channel airs %v, want only B", got)
 	}
-	got, _ := st.GetChannel(context.Background(), "cbs2")
-	if !got.Lineup[0].BoxSetsResolved {
-		t.Error("BoxSetsResolved = false for a resolved non-member — 'in no collection' must settle")
+}
+
+// A resolver that can't answer keeps the last stamp: an entry the collection admitted stays
+// admitted, rather than the lookup failure changing what the channel airs.
+func TestReconcile_BoxSetLookupFailureKeepsTheLastStamp(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
+	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:90000001": {"juniper-vale"}}}
+	e := newEngine(st, tunarrtest.NewTunarr(), avail, nil).WithBoxSets(res)
+	seedChannel(t, st, "cbs3", 10, entry("movie:tmdb:90000001", "A"))
+	if err := e.Reconcile(ctx, "cbs3"); err != nil {
+		t.Fatal(err)
 	}
+
+	e.WithBoxSets(failingBoxSets{})
+	if err := e.Reconcile(ctx, "cbs3"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetChannel(ctx, "cbs3")
+	if en := got.Lineup[0]; !en.BoxSetsResolved || !slices.Equal(en.BoxSetIDs, []string{"juniper-vale"}) {
+		t.Errorf("stamp after a failed lookup = %v resolved=%v, want the last answer kept", en.BoxSetIDs, en.BoxSetsResolved)
+	}
+}
+
+type failingBoxSets struct{}
+
+func (failingBoxSets) BoxSets(context.Context, provision.Key) ([]string, bool, error) {
+	return nil, false, errors.New("collections unreadable")
 }
 
 // Backfill: a pending slot is pod-filled, then the title lands and an availability

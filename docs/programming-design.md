@@ -147,15 +147,21 @@ dominated the guide-latency work (1910ms → 103ms; the first fix was removing e
 
 ⚠ **The `CollectionID` tri-state does not transfer, and the difference is a real trap.** `-1`
 works as "resolved, standalone" because the field is an `int`. `BoxSetIDs` is a `[]string`, where
-"not resolved yet" and "resolved, belongs to no collection" are **both empty** — so an entry in no
-BoxSet would be re-fetched on every reconcile forever, reintroducing the N+1 through the back
-door for the most common case. Resolution state is therefore carried by an explicit
-`BoxSetsResolved bool`, not by nil-vs-empty: the entry is JSON-persisted, and a nil/empty slice
-distinction does not survive a round trip through encoding/json, let alone a later refactor.
+"not resolved yet" and "resolved, belongs to no collection" are **both empty**. Resolution state
+is therefore carried by an explicit `BoxSetsResolved bool`, not by nil-vs-empty: the entry is
+JSON-persisted, and a nil/empty slice distinction does not survive a round trip through
+encoding/json, let alone a later refactor.
 
-**The consequence, stated plainly:** adding a title to a BoxSet in Emby takes effect on the
-channel's **next reconcile**, not instantly. That is the deliberate trade for keeping the
-scheduler I/O-free, and it matches how a rating change already propagates.
+**Re-stamped every reconcile, unlike the other two.** Membership now comes from the household's
+own collections (`library_collections`, #2151 step 16), not a media-server call. The resolver
+reads them into a reverse index once per TTL (15 minutes) and answers each entry from memory, so
+re-stamping every entry on every pass costs no I/O. A one-time stamp would be wrong: a title taken
+out of a collection would stay on every channel scoped to it forever (#2793). A failed lookup keeps
+the last stamp.
+
+**The consequence, stated plainly:** a collection edit takes effect on the channel's **next
+reconcile after the index refreshes**, not instantly. That is the deliberate trade for keeping
+the scheduler I/O-free.
 
 **Fail-OPEN, unlike audience.** An unresolved entry (`BoxSetsResolved == false`) is **not**
 filtered out — a media server that is down or slow must not silently empty a channel's lineup.
@@ -948,7 +954,7 @@ continue.
 ## 10. Tests (extends main doc §19 — these join the phase 10/11 gates)
 
 - **Binding:** "seasons 1–10" policy → zero slots outside the range across many seeded cycles; era and genre filters likewise.
-- **Collections bind, and fail OPEN (§2.2):** a `scope.collections` channel airs only stamped members; an entry whose membership is **unresolved** still airs (a down media server must not empty a lineup), while a *resolved* non-member is excluded. The heal is one-time — a fully-stamped channel makes ZERO library calls on the next pass.
+- **Collections bind, and fail OPEN (§2.2):** a `scope.collections` channel airs only stamped members; an entry whose membership is **unresolved** still airs (a down media server must not empty a lineup), while a *resolved* non-member is excluded. The stamp is refreshed every pass from the collections' cached index, so a collection edit reaches the channel and a pass still makes no per-entry library call.
 - **Fail-closed audience:** unrated item + `TV-Y7` ceiling → excluded, counted in the exclusion report; `TV-MA` never appears under any kids ceiling *including after full ladder relaxation*.
 - **Per-episode ceiling (§4):** one fixture must reach **three different outcomes** — an episode rated under the ceiling airs, one rated *above* it is dropped **even though its series cleared the entry gate**, and an *unrated* one airs by inheriting its parent. A test that cannot tell those apart proves nothing, and neither can one asserting on program *keys*: every episode of a series shares the series key, so assertions run on library item ids. Also pinned: a permissive parent never lifts a rated episode, and a series the ceiling empties yields **no slot at all** rather than a pending one.
 - **Separation with wrap:** property test — no episode twice inside the window, no series-gap violation across the cycle seam.
