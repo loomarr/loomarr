@@ -192,7 +192,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   (`M`, `−`/`=`) shows it for a moment. The first play's own mute does not; the unmute pill
   speaks for that. A phone or a television has no Volume key: its own buttons set the level.
 - **Phone.** On its side, the band and keys at phone size over the picture; tap shows or hides the
-  chrome. Upright, nothing covers the picture: a toolbar above it, the band and keys below (#2775).
+  chrome, and it leaves after 5 s untouched while playing. Upright, nothing covers the picture: a
+  toolbar above it, the band and keys below (#2775). On its side what a key opens is the right-hand
+  sheet; upright it rises from the bottom. The phone app turns with the phone only on Watching and
+  stays upright everywhere else (#1831).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
   `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
   remote focus starts on the film strip's on-air block (§9.7).

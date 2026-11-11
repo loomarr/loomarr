@@ -140,9 +140,11 @@ const ChromeBody = memo(
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
+        {/* The scrim passes touches through to the picture but not its keys: native's "none" would
+            silence every key under it whatever they say, where the web lets a child take them back. */}
         <View
           aria-hidden={hiddenFromReaders(!shown)}
-          pointerEvents="none"
+          pointerEvents="box-none"
           style={{
             bottom: 0,
             left: 0,
