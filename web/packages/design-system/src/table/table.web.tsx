@@ -128,16 +128,20 @@ const TableCell = ({
   children,
   colSpan,
   mono = false,
+  rowHeader = false,
   verticalAlign = "middle",
   width,
 }: TableCellProps) => {
   const density = useContext(DensityContext);
+  const Element = rowHeader ? "th" : "td";
   return (
-    <td
+    <Element
       colSpan={colSpan}
+      scope={rowHeader ? "row" : undefined}
       style={{
         ...cellPadding,
         borderBottom: rowRule,
+        fontWeight: "normal",
         textAlign: align === "end" ? "right" : "left",
         verticalAlign,
         width,
@@ -150,7 +154,7 @@ const TableCell = ({
       ) : (
         children
       )}
-    </td>
+    </Element>
   );
 };
 

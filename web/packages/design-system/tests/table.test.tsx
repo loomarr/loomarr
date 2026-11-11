@@ -33,7 +33,9 @@ const renderTable = (props: Partial<React.ComponentProps<typeof Table>> = {}) =>
         </TableHeader>
         <TableBody>
           <TableRow>
-            <TableCell mono>database</TableCell>
+            <TableCell mono rowHeader>
+              database
+            </TableCell>
             <TableCell align="end">Healthy</TableCell>
           </TableRow>
           <TableRow dimmed id="detail" tone="raised">
@@ -56,11 +58,8 @@ describe("Table (web)", () => {
     expect(headers.every((header) => header.getAttribute("scope") === "col")).toBe(true);
 
     const row = within(table).getByRole("row", { name: /database/ });
-    expect(
-      within(row)
-        .getAllByRole("cell")
-        .map((cell) => cell.textContent),
-    ).toEqual(["database", "Healthy"]);
+    expect(within(row).getByRole("rowheader").textContent).toBe("database");
+    expect(within(row).getByRole("cell").textContent).toBe("Healthy");
   });
 
   it("gives a header the header voice when its text arrives as several strings", () => {
