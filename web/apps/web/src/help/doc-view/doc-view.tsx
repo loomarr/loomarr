@@ -1,12 +1,5 @@
 import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "@loomarr/design-system";
+import { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";

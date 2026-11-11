@@ -306,23 +306,23 @@ const TasksPage = () => {
                               </TableCell>
                               <TableCell>
                                 <span className="text-muted-foreground">
-                                {job.disabledReason ? (
-                                  "—"
-                                ) : job.paused ? (
-                                  "Paused"
-                                ) : job.running ? (
-                                  "running…"
-                                ) : isZero(job.nextRun) ? (
-                                  "—"
-                                ) : isOverdueTask(job) ? (
-                                  <span title="Due, but waiting for a free worker">
-                                    <StatusWord kind="overdue" />
-                                  </span>
-                                ) : isPast(job.nextRun) ? (
-                                  "due now"
-                                ) : (
-                                  formatUntil(job.nextRun ?? zero)
-                                )}
+                                  {job.disabledReason ? (
+                                    "—"
+                                  ) : job.paused ? (
+                                    "Paused"
+                                  ) : job.running ? (
+                                    "running…"
+                                  ) : isZero(job.nextRun) ? (
+                                    "—"
+                                  ) : isOverdueTask(job) ? (
+                                    <span title="Due, but waiting for a free worker">
+                                      <StatusWord kind="overdue" />
+                                    </span>
+                                  ) : isPast(job.nextRun) ? (
+                                    "due now"
+                                  ) : (
+                                    formatUntil(job.nextRun ?? zero)
+                                  )}
                                 </span>
                               </TableCell>
                               <TableCell align="end">
