@@ -2,7 +2,7 @@ import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 
 import type { ProgrammeIdentityData } from "../identity";
-import type { PlaybarSegment, PlaybarWindow, PlayerBandData } from "./player-chrome";
+import type { PlaybarSegment, PlaybarWindow, PlayerBandData, PlayerOption } from "./player-chrome";
 
 interface ChannelNumberEntry {
   channelName?: string;
@@ -34,10 +34,18 @@ interface WatchingChromeData {
   startOverMs?: number | undefined;
 }
 
-/** What Watching has open over the chrome (§9.5): the More menu, or Info (the on-air card pinned). */
-type WatchingLayer = "info" | "more";
+/**
+ * What Watching has open over the chrome (§9.5): the Audio or More menu, or Info (the on-air card
+ * pinned).
+ */
+type WatchingLayer = "audio" | "info" | "more";
 
 interface WatchingSurfaceProps {
+  /**
+   * The Audio menu's rows (the channel's language, read-only), while it is open and they have been
+   * read. Omitted, the menu shows only the line that says who sets it.
+   */
+  audioOptions?: readonly PlayerOption[] | undefined;
   /** The tuned channel's band and film strip; omitted until a channel is tuned. */
   chrome?: WatchingChromeData;
   /** False while another transient journey is drawn over the still-mounted player. */

@@ -1,5 +1,5 @@
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
-import { languageLabel } from "@loomarr/core/format";
+import { languageLabel } from "../format";
 
 // AUTO_SENTINEL is the "follow the channel/global default" choice. Radix Select forbids an
 // empty-string item value, so the picker carries this named sentinel and lowers it back to "" on
@@ -40,4 +40,16 @@ const withSaved = (options: { value: string; label: string }[], value: string) =
     ? [...options, { value, label: value === UNTAGGED ? UNTAGGED_LABEL : value.toUpperCase() }]
     : options;
 
-export { AUTO_SENTINEL, audioOptions, withSaved };
+// audioChoices is the player's Audio menu on every client (§9.5): the airing tracks' languages,
+// with the channel's saved language (policy.playout.audioLanguage, "" for Auto) marked as the one
+// on air. A saved language this programme doesn't carry stays listed and marked (withSaved).
+const audioChoices = (tracks: TrackDTO[], saved: string | undefined) => {
+  const selected = saved || AUTO_SENTINEL;
+  return withSaved(audioOptions(tracks), selected).map((option) => ({
+    label: option.label,
+    selected: option.value === selected,
+    value: option.value,
+  }));
+};
+
+export { AUTO_SENTINEL, audioChoices, audioOptions, withSaved };

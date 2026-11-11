@@ -16,6 +16,7 @@ import {
   type PairedClient,
   phoneClientOptions,
   retryPairedClient,
+  useChannelAudio,
   usePairedAccount,
   usePairedClient,
   usePairedRequests,
@@ -27,6 +28,7 @@ import {
   DeviceSheet,
   GuideJourney,
   PairingShell,
+  PlayerAudio,
   PlayerBottomSheet,
   PlayerChrome,
   PlayerInfo,
@@ -107,6 +109,9 @@ lockUpright();
 // while playing and with nothing open (§9.1), as the television's does.
 const CHROME_IDLE_MS = 5_000;
 
+/** What a Watching key opens as a sheet: Audio (a utility), More, or Info (from More). */
+type WatchingSheet = "audio" | "info" | "more";
+
 // Watching turns with the phone while it is mounted, and puts the app upright again as it goes.
 const useTurnWithPhone = () => {
   useEffect(() => {
@@ -128,15 +133,17 @@ const WatchingScreen = ({
   onLeave: () => void;
   onOpenChannels: () => void;
 }) => {
-  const { catalogState, controller, guideSnapshot, refresh, snapshot, transport } = client;
+  const { catalogState, channelAudio, controller, guideSnapshot, refresh, snapshot, transport } = client;
   const haptic = useHaptic();
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
-  const [sheet, setSheet] = useState<"info" | "more" | undefined>(undefined);
+  const [sheet, setSheet] = useState<WatchingSheet | undefined>(undefined);
   const closeSheet = () => setSheet(undefined);
+  const toggleSheet = (name: WatchingSheet) => () => setSheet((open) => (open === name ? undefined : name));
+  const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, sheet === "audio");
   useTurnWithPhone();
   const { height, width } = useWindowDimensions();
   const onSide = width > height;
@@ -181,9 +188,12 @@ const WatchingScreen = ({
       </PlayerBottomSheet>
     );
 
-  const sheetFor = (name: "info" | "more") => {
+  const sheetFor = (name: WatchingSheet) => {
     if (!chrome || !snapshot.channel) return undefined;
     const { info, segments, startOverMs, window } = chrome;
+    // Audio: the channel's language, read-only (an admin sets it on the channel's page).
+    if (name === "audio")
+      return sheetOf("Audio", <PlayerAudio density="touch" options={audioOptions ?? []} />);
     if (name === "info")
       return info
         ? sheetOf("Info", <PlayerInfo density="touch" formatTime={formatTime} info={info} />)
@@ -290,7 +300,7 @@ const WatchingScreen = ({
               moreOpen: sheet === "more",
               onChannelDown: snapshot.catalog.length > 1 ? step(-1) : undefined,
               onChannelUp: snapshot.catalog.length > 1 ? step(1) : undefined,
-              onMore: () => setSheet((open) => (open === "more" ? undefined : "more")),
+              onMore: toggleSheet("more"),
               onTogglePlay: playing ? controller.pause : () => void controller.play(),
               playing,
               pointer: false,
@@ -300,7 +310,12 @@ const WatchingScreen = ({
             onGoLive={() => void controller.goLive()}
             onLeave={onLeave}
             sheet={sheet ? sheetFor(sheet) : undefined}
-            utilities={{ density: "touch", pointer: false }}
+            utilities={{
+              audioOpen: sheet === "audio",
+              density: "touch",
+              onAudio: toggleSheet("audio"),
+              pointer: false,
+            }}
             visible={visible}
           />
         </View>

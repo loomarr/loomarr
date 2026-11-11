@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTO_SENTINEL, audioOptions, withSaved } from "./audio-options";
+import { AUTO_SENTINEL, audioChoices, audioOptions, withSaved } from "./audio-options";
 
 describe("audioOptions", () => {
   it("leads with Auto, then one entry per distinct language the airing media carries", () => {
@@ -44,5 +44,33 @@ describe("withSaved", () => {
 
   it("adds nothing when the saved value is already offered", () => {
     expect(withSaved(opts, AUTO_SENTINEL)).toBe(opts);
+  });
+});
+
+describe("audioChoices", () => {
+  const tracks = [
+    { index: 0, language: "eng" },
+    { index: 1, language: "fra" },
+  ];
+
+  it("marks Auto when the channel has no language set", () => {
+    expect(audioChoices(tracks, "")).toEqual([
+      { label: "Auto (default)", selected: true, value: AUTO_SENTINEL },
+      { label: "English", selected: false, value: "eng" },
+      { label: "French", selected: false, value: "fra" },
+    ]);
+    expect(audioChoices(tracks, undefined).filter((c) => c.selected)).toHaveLength(1);
+  });
+
+  it("marks the channel's language among the airing tracks", () => {
+    expect(
+      audioChoices(tracks, "fra")
+        .filter((c) => c.selected)
+        .map((c) => c.value),
+    ).toEqual(["fra"]);
+  });
+
+  it("keeps a saved language this programme doesn't carry, marked", () => {
+    expect(audioChoices(tracks, "jpn").at(-1)).toEqual({ label: "JPN", selected: true, value: "jpn" });
   });
 });

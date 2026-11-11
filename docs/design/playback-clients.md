@@ -198,7 +198,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   stays upright everywhere else (#1831).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
   `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
-  remote focus starts on the film strip's on-air block (§9.7).
+  remote focus starts on the film strip's on-air block (§9.7). Their Audio reads the same two things
+  the web's does (the airing programme's tracks and the channel's language, both a member's reads,
+  `@loomarr/core/channel-audio`), each time it opens. Subtitles stays hidden on every client until
+  the master playlist carries renditions (#2088).
 
 ## Android TV
 
@@ -214,7 +217,9 @@ the user's home-screen ordering.
   controls are up, Left and Right move focus through them instead (frontend-design §9.7). The More
   key opens a menu over the keys (Channels, Info, and Start over and Go live when behind): every
   arrow moves through its rows, the controls stay up until a choice, and Menu or Back closes it, as
-  they close Info, the on-air card pinned open, before doing anything else (§9.5). Channel
+  they close Info, the on-air card pinned open, before doing anything else (§9.5). The Audio key
+  opens the channel's language in the same place, read-only, so focus stays on the key, whose OK
+  closes it as Menu or Back does. Channel
   identity and the programme bar appear together and clear after five seconds. During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
   never shown. The Guide supplies a clip title only when it is viewer copy. Each clip records where

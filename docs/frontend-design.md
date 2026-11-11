@@ -652,7 +652,8 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 - **Subtitles**: Off, then each language the airing has, a hearing-impaired track as "English, with
   sounds" (described as for the deaf and hard of hearing). **Audio**: the channel's languages with the
   airing one marked; read-only while a channel has one rendition, with the line "The channel's
-  language. An admin sets it on the channel's page."; then the Channel-change sound switch.
+  language. An admin sets it on the channel's page."; then, on web, the Channel-change sound switch
+  (the phone and TV apps have no channel-change sound, so their Audio ends at the line).
   **Picture**: Auto (with what it is playing, `Auto · 1080p`), then each quality. A track is named by
   its language, never by a raw title. The selected row has a check.
 - **Volume** (desktop): a level bar in the menu's place; it also shows for a moment when the level

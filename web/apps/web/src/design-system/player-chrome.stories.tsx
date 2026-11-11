@@ -301,7 +301,7 @@ const AudioMenu: Story = {
   args: {
     menu: (
       <PlayerMenu density="pointer" title="Audio">
-        <PlayerAudio density="pointer" onSwitchSound={fn()} options={audioOptions} switchSound />
+        <PlayerAudio density="pointer" options={audioOptions} switchSound={{ on: true, onChange: fn() }} />
       </PlayerMenu>
     ),
     utilities: { ...utilities, audioOpen: true },
@@ -609,7 +609,7 @@ const PortraitAudio: Story = {
     ...portraitArgs,
     sheet: (
       <PlayerBottomSheet onClose={fn()} title="Audio">
-        <PlayerAudio density="touch" onSwitchSound={fn()} options={audioOptions} switchSound />
+        <PlayerAudio density="touch" options={audioOptions} switchSound={{ on: true, onChange: fn() }} />
       </PlayerBottomSheet>
     ),
     utilities: { ...portraitArgs.utilities, audioOpen: true },
