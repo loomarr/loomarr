@@ -1,5 +1,5 @@
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
-import { languageLabel } from "../format";
+import { languageLabel } from "../../format";
 
 // AUTO_SENTINEL is the "follow the channel/global default" choice. Radix Select forbids an
 // empty-string item value, so the picker carries this named sentinel and lowers it back to "" on
