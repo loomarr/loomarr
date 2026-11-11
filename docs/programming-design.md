@@ -71,14 +71,12 @@ onwards"); set bounds are 1900–2099.
 
 An **era** is a shortcut for dates, not a second scope: era R is `scope.dates` with
 `movieRelease = seriesPremiere = seriesAiring = [R]` ("era-shaped"), which filters exactly as the
-retired `scope.era` field did, on a channel scope and on a rule's scope alike. The backend resolves
-the alias on decode, so a policy saved with `era` keeps its lineup without a migration, and it
-never writes `era`. Requests (channel PATCH, programming preview, AI refine input) still accept
-`era`; a request carrying both `era` and `dates` is rejected with 422 as ambiguous. A stored
-legacy scope carrying both decodes to their per-axis intersection, which is what the scheduler
-aired; where an axis's windows miss the era entirely the era wins, since an empty list means
-"unconstrained" and cannot express "nothing". A rule's era now also filters each episode's airing
-year, as the channel's always did.
+retired `scope.era` field did, on a channel scope and on a rule's scope alike. The `era` request
+alias was retired in #2147: migration 00230 folded every stored one into `dates`, and a request
+that sends `era` is refused with 422. A stored scope that carried both was folded to their
+per-axis intersection, which is what the scheduler aired; where an axis's windows missed the era
+entirely the era won, since an empty list means "unconstrained" and cannot express "nothing". A
+rule's era-shaped dates filter each episode's airing year, as the channel's always did.
 
 Explicit per-axis date windows are not widened to admit out-of-window model picks or by
 automatic relaxation; only an era-shaped scope widens on the §7 ladder. The whole nonempty scope

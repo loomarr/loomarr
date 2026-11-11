@@ -205,11 +205,7 @@ func lowerProgrammingDraft(lineup []channelsapi.LineupEntryDTO, policy *schedule
 		draftLineup = entries
 	}
 	// Draft policy: validate it the same way a policy write does (§4 safety). Nil ⇒ saved.
-	// A lone `era` was already folded into Dates on decode; `era` with `dates` is ambiguous.
 	if policy != nil {
-		if err := policy.DateAliasConflict(); err != nil {
-			return nil, nil, httpcore.AmbiguousDatesError(err)
-		}
 		if err := policy.Validate(); err != nil {
 			return nil, nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", err)

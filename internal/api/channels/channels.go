@@ -322,9 +322,6 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
 	// OperatorSet so a later refine can't silently revert it (§8.2 stickiness). Validate
 	// rejects an off-ladder audience ceiling / bad enum values (§4 safety).
 	if in.Body.Policy != nil {
-		if err := in.Body.Policy.DateAliasConflict(); err != nil {
-			return httpcore.AmbiguousDatesError(err)
-		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
 		if verr := next.Validate(); verr != nil {
 			return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
