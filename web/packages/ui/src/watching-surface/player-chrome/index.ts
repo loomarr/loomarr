@@ -17,8 +17,9 @@ export type {
   PlayerInfoData,
   PlayerKeysProps,
   PlayerLiveState,
+  PlayerSchedule,
   PlayerSheetProps,
-  PlayerTopRowProps,
+  PlayerUtilitiesProps,
 } from "./player-chrome.type";
 export type { PlayerCoverProps } from "./player-cover";
 export { PlayerCover } from "./player-cover";

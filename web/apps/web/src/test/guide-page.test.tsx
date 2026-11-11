@@ -254,14 +254,22 @@ describe("Guide's Now & next list", () => {
 });
 
 describe("Guide", () => {
-  it("is headed 'Channels' and shows what's on, from the guide endpoint", async () => {
+  it("is headed 'Guide' and shows what's on, from the guide endpoint", async () => {
     stubGuide();
     renderAt(GRID);
-    // The heading is "Channels", not "Guide": one surface, and the mock names it for the
-    // objects it lists rather than the view it uses (§12).
-    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    // The page is headed for its nav item (#3413), and the grid view adds no second "Guide" under it.
+    expect(await screen.findByRole("heading", { name: "Guide", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Guide" })).toHaveLength(1);
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+  });
+
+  // #3411: the tab read a bare "Loomarr" here while every other page named itself.
+  it("names its browser tab", async () => {
+    stubGuide();
+    renderAt(GRID);
+    await screen.findByRole("heading", { name: "Guide", level: 1 });
+    expect(document.title).toBe("Guide | Loomarr");
   });
 
   // #2727: a channel with no programme yet filled its row with unlabelled pod slivers. It is one
@@ -432,6 +440,26 @@ describe("Guide", () => {
       "aria-expanded",
       "false",
     );
+  });
+
+  // Home's Tonight rows link to a programme that hasn't started (#2763): the grid opens on its day
+  // and hour, flagged as a custom view.
+  it("opens on the day and hour a link's ?at= names", async () => {
+    stubGuide();
+    const today = new Date();
+    const tomorrowMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
+    const at = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 21, 30).getTime();
+    const froms: number[] = [];
+    server.use(
+      http.get("*/v1/guide", ({ request }) => {
+        froms.push(Number(new URL(request.url).searchParams.get("from")));
+        return undefined;
+      }),
+    );
+    const view = renderAt(`${GRID}&at=${at}&channel=ch-live`);
+
+    expect(await view.findByRole("button", { name: "View options, custom" })).toBeInTheDocument();
+    expect(froms).toContain(new Date(tomorrowMidnight).setHours(21));
   });
 
   it("opens the channel's page from its name, not the player (#2745)", async () => {
@@ -608,7 +636,7 @@ describe("Guide", () => {
     renderAt(GRID);
 
     expect(await screen.findByText("Dead air")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Guide", level: 1 })).toBeInTheDocument();
   });
 
   // The empty state's one door goes to the same page as the header's.
@@ -687,7 +715,7 @@ describe("old Guide origination URLs", () => {
     stubGuide();
     const view = renderAt("/guide");
 
-    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide", level: 1 })).toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/guide");
   });
 });

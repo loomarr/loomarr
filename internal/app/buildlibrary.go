@@ -137,13 +137,22 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	// One Tracker records the whole import: the walk and header reads here, the lookups below.
 	tracker, titlesChanged := libraryFramesFor(deps.frames)
+	// The Enricher is built below, once the scanner it rewrites through exists; it stays nil without
+	// a catalog. Every write that changes the titles wakes it, so a title's details are looked up as
+	// soon as the title is written instead of at the Enricher's next tick.
+	var enricher *scan.Enricher
 	im := &scan.Importer{
-		Tracker:       tracker,
-		TitlesChanged: titlesChanged,
-		Store:         st,
-		Inventory:     inv,
-		Disk:          scan.OSDisk{},
-		Managers:      func() []scan.Manager { return managers },
+		Tracker: tracker,
+		TitlesChanged: func() {
+			if titlesChanged != nil {
+				titlesChanged()
+			}
+			enricher.Wake()
+		},
+		Store:     st,
+		Inventory: inv,
+		Disk:      scan.OSDisk{},
+		Managers:  func() []scan.Manager { return managers },
 		Discover: func(ctx context.Context) error {
 			_, _, err := roots.Discover(ctx)
 			return err
@@ -161,6 +170,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Log:      deps.log,
 	}
 	im.Busy = deps.watched
+	if deps.frames != nil {
+		im.RootsChanged = deps.frames.LibraryRootsChanged
+	}
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
 	}
@@ -189,7 +201,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		Orders: st, CollectionStore: st, Records: st, Keys: keys}
 	if provider != nil {
-		enricher := &scan.Enricher{
+		enricher = &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Language: func() string {
 				language, err := provider.Language()
@@ -199,7 +211,11 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 				return language
 			},
 			Enabled: im.Enabled, Log: deps.log, Tracker: tracker,
+			// The titles looked up are written again by folder passes: step 3 ends once those have
+			// run, and the end of each round wakes the Enricher to see it.
+			Settled: scanner.FoldersSettled,
 		}
+		scanner.AfterFolders = enricher.Wake
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher
 		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}

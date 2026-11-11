@@ -202,7 +202,15 @@ catalog record again.
   longer reports, and only a folder that is neither in use, typed by hand nor named by any mapping
   disappears. Every folder is re-checked on each pass, within 5 s, so an offline NAS shows as
   "Loomarr can't open this folder" rather than hanging the page.
-- `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
+- **An empty folder is a warning, not health.** A share that isn't mounted leaves its mount point an
+  empty folder, which opens fine. The same check that tests readability records whether the folder
+  held anything (`library_roots.empty`). An empty folder can still be added; its card says "This
+  folder is empty — is the drive connected?" with Check again, and the headline says "Up to date",
+  never "All caught up". A pass that finds a folder's state changed (offline or back, emptied or
+  filled) publishes the empty `library_roots` frame, and Settings → Library reads its folders and
+  status again.
+- `GET /v1/library/status` reports `needs_folders`, `folder_offline`, `folder_empty` or `ok`, with
+  counts.
 
 ## Scanner
 
@@ -273,9 +281,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   layout is handled, because it is the one seen in a real library. The `trickplay/` folder skip
   stays until another server's layout turns up.
 - **Progress.** One `scan.Tracker` records an import as three steps, each with its own count:
-  1 *Looking through your folders* (the walk; its total is the top-level entries of every walked
-  root, listed once at the start of the pass, and it names the folder it lists, "TV / Night Ferry /
-  Season 2"), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
+  1 *Looking through your folders* (the walk and the writes that follow it; its total is the
+  top-level entries of every walked root, listed once at the start of the pass, and it names the
+  folder it is on, "TV / Night Ferry / Season 2". An entry is done in two halves, once the walk has
+  listed it and once its files are written, because over a share either half can take minutes; the
+  time left is worked out afresh from when a root's writes begin), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
   fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
@@ -340,6 +350,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
   minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
   blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
+  A header read gets the same 2 minutes: one that does not return ends the header stage and stalls
+  its root the same way, so no further reader is sent into the mount. One file the share cannot
+  give back (gone since the walk, an I/O error) stays pending for the next pass and the stage reads
+  on; eight such files in a row with no read between are the share's fault, and end the stage with
+  the rest still pending.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
@@ -405,7 +420,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   without it and its key noted as wanted, and `library_items.catalog` names the row each title's
   details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
   a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
-  out. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
+  out. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
+  write at once instead of up to a minute later, with the status reading caught up in between. A
+  woken lookup fetches only the titles never fetched: the share of the oldest is sized for one
+  tick a minute, so it stays with the tick. Wakes made while a lookup runs fold into one. The
+  titles looked up are written again, with their details, by folder passes through the scanner's
+  debounce. Step 3 stays, done and naming no title, until those have run (`Scanner.FoldersSettled`;
+  the end of each round of folder passes wakes the Enricher), so the status never reads caught up
+  over titles still showing their file names. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
   (`version`, per kind, `scan.catalogVersions`). When the scanner starts reading something older
   records lack, that kind's version goes up, and its older records are fetched again with the
   titles never fetched, not at the refresh. Series are at version 5, which lists their other
@@ -442,7 +464,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
-  answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
+  answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the
+  next tick and holds back no other; three failures in a row are the catalog out of reach, and end
+  the tick. It searches by the name up to the release
   words (quality, source, codec) and the last year-like word after the first, or the year a
   sidecar gave. It looks at the first five results of the title's kind, fetching each one's
   details, and keeps three in `library_candidates`, best first, each by its catalog's own id
@@ -477,7 +501,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
   ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
   quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
-  is chosen. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
+  is chosen. An import still running for the other folders stays on the line after a held removal
+  or an offline folder ("Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%"),
+  and Settings → Library keeps its bar, step, file and time left below the callout; neither says
+  "All caught up" beside one. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
   window width. The filter and search live in the URL (`?kind=&q=`); the grid loads 60 titles at a
   time as it scrolls, and the `library_scan` and `library_titles` frames keep the line and the
   loaded titles current, so new titles appear and "Getting ready" clears on its own (decision

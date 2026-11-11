@@ -10,6 +10,7 @@ vi.mock("@/diagnostics/client-reporter", () => ({
 vi.mock("@/routeTree.gen", () => ({ routeTree: {} }));
 vi.mock("@/components/loomarr/feedback/route-error", () => ({ RouteError: () => null }));
 vi.mock("@/components/loomarr/feedback/route-pending", () => ({ RoutePending: () => null }));
+vi.mock("@/components/loomarr/feedback/app-toaster", () => ({ AppToaster: mocks.toaster }));
 vi.mock("@loomarr/design-system", () => ({
   LoomarrProvider: ({ children }: { children: ReactNode }) => children,
 }));
@@ -23,15 +24,10 @@ vi.mock("@tanstack/react-router", () => ({
   RouterProvider: () => null,
 }));
 vi.mock("react-dom/client", () => ({ createRoot: () => ({ render: mocks.render }) }));
-vi.mock("sonner", () => ({ Toaster: mocks.toaster }));
 
-const findToaster = (
-  node: ReactNode,
-):
-  | ReactElement<{ position?: string; offset?: { bottom?: number }; mobileOffset?: { bottom?: number } }>
-  | undefined => {
+const findToaster = (node: ReactNode): ReactElement | undefined => {
   if (!node || typeof node !== "object") return undefined;
-  const element = node as ReactElement<{ children?: ReactNode; position?: string }>;
+  const element = node as ReactElement<{ children?: ReactNode }>;
   if (element.type === mocks.toaster) return element;
   const children = element.props?.children;
   return Array.isArray(children)
@@ -45,13 +41,11 @@ describe("startup notice layout", () => {
     mocks.render.mockReset();
   });
 
-  it("places notices below page headings and above persistent bottom actions", async () => {
+  // Where a notice sits on each width is AppToaster's own test; the entry mounts that one region.
+  it("mounts the app's toast region beside the routes", async () => {
     await import("@/main");
 
     const app = mocks.render.mock.calls[0]?.[0] as ReactNode;
-    const toaster = findToaster(app);
-    expect(toaster?.props.position).toBe("bottom-center");
-    expect(toaster?.props.offset?.bottom).toBe(84);
-    expect(toaster?.props.mobileOffset?.bottom).toBe(84);
+    expect(findToaster(app)).toBeDefined();
   });
 });

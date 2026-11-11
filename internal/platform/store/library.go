@@ -66,6 +66,7 @@ type (
 	LibraryRoot              = librarystore.LibraryRoot
 	LibraryRootCheck         = librarystore.LibraryRootCheck
 	LibraryRootDiscovery     = librarystore.LibraryRootDiscovery
+	LibraryRootFlip          = librarystore.LibraryRootFlip
 	LibraryRootPath          = librarystore.LibraryRootPath
 	LibraryRootStore         = librarystore.LibraryRootStore
 	LibraryRoots             = librarystore.LibraryRoots

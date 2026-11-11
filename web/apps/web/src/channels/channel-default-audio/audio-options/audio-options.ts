@@ -6,19 +6,27 @@ import { languageLabel } from "@loomarr/core/format";
 // the wire — the same shape channel-seasonal/ordering use for their "" defaults.
 const AUTO_SENTINEL = "auto";
 
+// UNTAGGED is how a track with no language is saved: ISO 639's "undetermined", which playout's
+// track picker reads as "the track with no language tag" (#3409). A positional "Track 2" would name
+// a different track on every programme, so it can't be a per-channel setting.
+const UNTAGGED = "und";
+const UNTAGGED_LABEL = "Unknown language";
+
 // audioOptions builds the Audio choices from the REAL audio tracks of what's airing (§9.1, V46) —
 // never a hardcoded list. Always leads with "Auto", then one entry per distinct track language the
 // airing media carries. Labels come from Intl (languageLabel), not a hand-written language table.
 // A track is named by its language and never by its raw title: an encoder's handler name ("root",
-// "SoundHandler") is not viewer copy (#2776).
+// "SoundHandler") is not viewer copy (#2776). A track with no language is listed once, as
+// "Unknown language".
 const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] => {
   const seen = new Set<string>();
   const opts: { value: string; label: string }[] = [{ value: AUTO_SENTINEL, label: "Auto (default)" }];
   for (const t of tracks) {
-    const lang = t.language ?? "";
-    if (!lang || seen.has(lang)) continue;
+    const tag = (t.language ?? "").trim();
+    const lang = !tag || tag.toLowerCase() === UNTAGGED ? UNTAGGED : tag;
+    if (seen.has(lang)) continue;
     seen.add(lang);
-    opts.push({ value: lang, label: languageLabel(lang) });
+    opts.push({ value: lang, label: lang === UNTAGGED ? UNTAGGED_LABEL : languageLabel(lang) });
   }
   return opts;
 };
@@ -29,7 +37,7 @@ const audioOptions = (tracks: TrackDTO[]): { value: string; label: string }[] =>
 // its raw code.
 const withSaved = (options: { value: string; label: string }[], value: string) =>
   value && !options.some((o) => o.value === value)
-    ? [...options, { value, label: value.toUpperCase() }]
+    ? [...options, { value, label: value === UNTAGGED ? UNTAGGED_LABEL : value.toUpperCase() }]
     : options;
 
 export { AUTO_SENTINEL, audioOptions, withSaved };

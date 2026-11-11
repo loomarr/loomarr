@@ -521,14 +521,25 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               />
             ) : undefined
           }
+          onLeave={onLeave}
+          // The film strip is the band's foot on a pointer device (§9.2); a phone's is in More.
+          schedule={
+            !touch && airings.length > 0
+              ? {
+                  onSeek: chrome.seekTo,
+                  playheadMs: viewerTimeMs,
+                  segments: chromeData.segments,
+                  window: chromeData.window,
+                }
+              : undefined
+          }
           sheet={openSheetFor(chrome)}
-          top={{
+          utilities={{
             audioOpen: sheet === "audio",
             density,
             fullscreen: chrome.fullscreen,
             onAudio: () => toggleSheet("audio"),
             onFullscreen: chrome.toggleFullscreen,
-            onLeave,
             pointer: !touch,
           }}
           unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
@@ -600,15 +611,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
         {playerEl}
-        {/* While the wash is up, its centred channel line is the visible readout, so the OSD card
-            would only repeat it; it stays as the screen-reader announcement. */}
+        {/* The wash's centred channel line is the visible readout; this is the same line for a
+            screen reader. */}
         {tuning && (
-          <TunerOSD
-            number={osdChannel.number}
-            name={osdChannel.name}
-            currentTitle={player.currentTitle}
-            className="sr-only"
-          />
+          <TunerOSD number={osdChannel.number} name={osdChannel.name} currentTitle={player.currentTitle} />
         )}
       </div>
     </section>

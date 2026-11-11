@@ -72,6 +72,9 @@ type File struct {
 	Sole bool
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
+	// Top is which of the root's top-level entries the file is under, counted as the walk lists
+	// them, so the import can tell how many entries' files it has written.
+	Top int
 }
 
 // Walk is one walk of one root.
@@ -159,7 +162,9 @@ type walker struct {
 	steps *atomic.Int64
 	// report hears a whole root's walk go, for the import's progress; nil hears nothing.
 	report *walkReport
-	out    Walk
+	// top is the root's top-level entry being walked.
+	top int
+	out Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
 }
@@ -230,8 +235,9 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	top := dir == w.root
 	for i, e := range entries {
 		if top {
-			// The entries before this one are finished.
-			w.report.finished(i)
+			// The entries before this one are listed.
+			w.report.listed(i)
+			w.top = i
 		}
 		path := filepath.Join(dir, e.Name())
 		if !utf8.ValidString(e.Name()) {
@@ -272,17 +278,19 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 			w.out.Files = append(w.out.Files, File{
 				Path: path, Rel: w.rel(path), Stat: st,
-				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1,
+				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Top: w.top,
 			})
 		}
 	}
 	return nil
 }
 
-// walkReport tells the Tracker how one root's walk goes, as step 1 of an import: the folder it
-// lists, named from the root's own folder name down ("TV / Night Ferry / Season 2"), and how many
-// of the root's top-level entries are finished. The walk runs on its own goroutine, which a walk
-// given up on outlives, so it is locked, and close ends it.
+// walkReport tells the Tracker how one root goes through step 1 of an import: the folder it is on,
+// named from the root's own folder name down ("TV / Night Ferry / Season 2"), and how many of the
+// root's top-level entries are finished. An entry is finished in two halves, once the walk has
+// listed it and once the import has written its files, so the count moves through both: over a
+// share either can take minutes. The walk runs on its own goroutine, which a walk given up on
+// outlives, so it is locked, and close ends it.
 type walkReport struct {
 	tracker *Tracker
 	// name is the root's folder name; entries is how many top-level entries the import counted.
@@ -290,7 +298,9 @@ type walkReport struct {
 	entries int
 
 	mu sync.Mutex
-	// reported is how many entries the Tracker was told are finished.
+	// walked and written are how many entries the walk has listed and the import has written.
+	walked, written int
+	// reported is how many entries the Tracker was told are finished: half of walked and written.
 	reported int
 	closed   bool
 }
@@ -311,31 +321,73 @@ func (r *walkReport) listing(rel string) {
 	}
 }
 
-// finished reports n of the root's top-level entries finished, never more than were counted.
-func (r *walkReport) finished(n int) {
+// relDir is the folder of a path relative to the root, "." for a file in the root itself.
+func relDir(rel string) string {
+	if i := strings.LastIndexByte(rel, '/'); i >= 0 {
+		return rel[:i]
+	}
+	return "."
+}
+
+// listed reports n of the root's top-level entries listed by the walk.
+func (r *walkReport) listed(n int) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.walked = max(r.walked, min(n, r.entries))
+	r.tell()
+}
+
+// writing begins the import's writes: the walk is over, and what is left goes at the writes' rate,
+// so the time left is worked out from here.
+func (r *walkReport) writing() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.closed {
+		r.walked = r.entries
+		r.tell()
+		r.tracker.Rebase(StepWalking)
+	}
+}
+
+// wrote reports the files of n of the root's top-level entries written.
+func (r *walkReport) wrote(n int) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.written = max(r.written, min(n, r.entries))
+	r.tell()
+}
+
+// tell reports to the Tracker the entries finished since it was last told: half of those listed
+// and those written, never more than were counted. Called with mu held.
+func (r *walkReport) tell() {
 	if r.closed {
 		return
 	}
-	if n = min(n, r.entries); n > r.reported {
+	if n := (r.walked + r.written) / 2; n > r.reported {
 		r.tracker.Advance(StepWalking, n-r.reported)
 		r.reported = n
 	}
 }
 
-// close finishes every counted entry, however the walk ended, and stops hearing it.
+// close finishes every counted entry, however the root's pass ended, and stops hearing it.
 func (r *walkReport) close() {
 	if r == nil {
 		return
 	}
-	r.finished(r.entries)
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.walked, r.written = r.entries, r.entries
+	r.tell()
 	r.closed = true
-	r.mu.Unlock()
 }
 
 // topEntries counts root's top-level entries within readableTimeout; 0 when it cannot be listed
@@ -383,7 +435,7 @@ func (w *walker) stat(path string, e fs.DirEntry) (Stat, bool) {
 }
 
 func (w *walker) problem(path string, st Stat, problem string) {
-	w.out.Files = append(w.out.Files, File{Path: path, Rel: w.rel(path), Stat: st, Problem: problem})
+	w.out.Files = append(w.out.Files, File{Path: path, Rel: w.rel(path), Stat: st, Problem: problem, Top: w.top})
 }
 
 func (w *walker) rel(path string) string {

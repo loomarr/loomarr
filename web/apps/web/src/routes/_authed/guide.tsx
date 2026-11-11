@@ -4,7 +4,7 @@ import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
 import { legacyGuideOrigination } from "@/suggest/origination-flow";
 
-// The channels surface (§12) — headed "Channels", the cross-channel time grid. Readable by any
+// The channels surface (§12) — headed "Guide", the cross-channel time grid. Readable by any
 // authenticated user: the guide is viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
 // Channel origination used to live here, in this route's search params (`/guide?new=1`, `?job=`,
@@ -14,13 +14,21 @@ const GuideScreen = () => <GuidePage />;
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads only `view`:
+  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads `view`:
   // `?view=grid` is the full grid, and anything else the Now/Next list it opens on (#2787), so the
-  // grid survives a reload and a link can open it.
-  validateSearch: (search: Record<string, unknown>): Record<string, unknown> & { view?: "grid" } => ({
-    ...search,
-    view: search.view === "grid" ? "grid" : undefined,
-  }),
+  // grid survives a reload and a link can open it. `at` (epoch ms) and `channel` open the grid on
+  // that day and hour with that channel's programme selected: Home's Tonight rows link here (#2763).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): Record<string, unknown> & { view?: "grid"; at?: number; channel?: string } => {
+    const at = Number(search.at);
+    return {
+      ...search,
+      view: search.view === "grid" ? "grid" : undefined,
+      at: search.at !== undefined && Number.isFinite(at) ? at : undefined,
+      channel: typeof search.channel === "string" && search.channel !== "" ? search.channel : undefined,
+    };
+  },
   beforeLoad: ({ search }) => {
     const origination = legacyGuideOrigination(search);
     if (origination) throw redirect({ to: "/requests/new", search: origination, replace: true });

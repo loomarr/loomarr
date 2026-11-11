@@ -85,9 +85,12 @@ const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
     id: airing.scheduleBlockId,
     kind: "programme",
     line: line || undefined,
+    ...(airing.logoImage ? { logo: airing.logoImage } : {}),
     name,
     startMs: airing.startMs,
-    stillUri: airing.thumbImage?.src ?? (airing.thumbUrl || undefined),
+    // The programme's fanart is what the strip and its card show (§9.2, variant J); a thumbnail when
+    // the Library holds none.
+    stillUri: airing.backdropImage?.src ?? airing.thumbImage?.src ?? (airing.thumbUrl || undefined),
     stopMs: airing.stopMs,
     synopsis: airing.description?.trim() || undefined,
   };
@@ -126,6 +129,8 @@ const programmeOf = (airing: TimelineAiring) => {
   const art = {
     ...(airing.logoImage ? { logo: airing.logoImage } : {}),
     ...(airing.backdropImage ? { backdrop: airing.backdropImage } : {}),
+    // The rating rides with the programme: Leave wears it while the controls are up (§9.3).
+    ...(airing.rating ? { rating: airing.rating } : {}),
   };
   return segment.kind === "programme"
     ? { ...art, line: segment.line, name: segment.name }
@@ -176,6 +181,7 @@ const bandOf = (
       title: shown.name,
       ...("logo" in shown ? { logo: shown.logo } : {}),
       ...("backdrop" in shown ? { backdrop: shown.backdrop } : {}),
+      ...("rating" in shown ? { rating: shown.rating } : {}),
     };
   }
   const { line, name, ...art } = programmeOf(airing);

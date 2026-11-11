@@ -37,9 +37,23 @@ type Scanner struct {
 	MaxWait  time.Duration
 	trigger  chan struct{}
 
+	// AfterFolders hears the end of each round of folder passes; nil hears nothing. It must not
+	// block.
+	AfterFolders func()
+
 	mu      sync.Mutex
 	folders map[string]map[string]folderWait // root → changed folders
+	// passing is whether a round of folder passes is running. Guarded by mu.
+	passing bool
 	changed chan struct{}
+}
+
+// FoldersSettled reports whether no folder waits for a pass and none is being passed over: every
+// pass asked for so far has written what it found.
+func (s *Scanner) FoldersSettled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.folders) == 0 && !s.passing
 }
 
 // folderWait is when a folder's waiting changes began, and its latest.
@@ -125,6 +139,14 @@ func (s *Scanner) passFolders(ctx context.Context) {
 				s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
 			}
 		}
+		if len(due) > 0 {
+			s.mu.Lock()
+			s.passing = false
+			s.mu.Unlock()
+			if s.AfterFolders != nil {
+				s.AfterFolders()
+			}
+		}
 		wake = nil
 		if next > 0 {
 			wake = time.After(next)
@@ -163,6 +185,8 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 	for root := range due {
 		slices.Sort(due[root])
 	}
+	// The folders taken are passed over next, so they count as unsettled until that round ends.
+	s.passing = len(due) > 0
 	return due, next
 }
 

@@ -3,8 +3,11 @@ import type { ReactNode } from "react";
 /** An app that names library folders: the media server, Sonarr or Radarr. */
 type LibraryAuthority = "emby" | "jellyfin" | "sonarr" | "radarr";
 
-/** Whether any folder is in use, and whether every folder in use opened at its last check. */
-type LibraryHealth = "needs_folders" | "folder_offline" | "ok";
+/**
+ * Whether any folder is in use, whether every folder in use opened at its last check, and whether
+ * one of them held nothing (folder_empty: usually a drive or share that isn't connected).
+ */
+type LibraryHealth = "needs_folders" | "folder_offline" | "folder_empty" | "ok";
 
 /** One media folder on this machine. */
 interface LibraryFolder {
@@ -13,6 +16,8 @@ interface LibraryFolder {
   inUse: boolean;
   /** Loomarr opened it at the last check. */
   readable: boolean;
+  /** Loomarr opened it and found nothing in it at the last check. */
+  empty?: boolean;
   /** The last check, ISO; absent when never checked. */
   checkedAt?: string;
   addedByHand: boolean;

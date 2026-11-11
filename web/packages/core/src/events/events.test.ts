@@ -1,6 +1,14 @@
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
-import { invalidateByPrefix, invalidateForFrame, invalidateSettings, openEventStream } from "./events";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  browserEventStreamFactory,
+  invalidateAfterReconnect,
+  invalidateByPrefix,
+  invalidateForFrame,
+  invalidateSettings,
+  openEventStream,
+  openFrameStream,
+} from "./events";
 import type { EventStreamMessage } from "./events.type";
 
 describe("invalidateByPrefix", () => {
@@ -70,5 +78,105 @@ describe("openEventStream", () => {
 
     stop();
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+describe("a stream that comes back", () => {
+  it("tells of a reconnect on every open after the first", () => {
+    const listeners = new Map<string, (event: EventStreamMessage) => void>();
+    const onReconnect = vi.fn();
+    const stop = openFrameStream(
+      () => {},
+      "http://loomarr.test/v1/events",
+      () => ({ addEventListener: (type, listener) => listeners.set(type, listener), close: () => {} }),
+      onReconnect,
+    );
+
+    listeners.get("open")?.({ data: "" });
+    expect(onReconnect).not.toHaveBeenCalled();
+    listeners.get("open")?.({ data: "" });
+    listeners.get("open")?.({ data: "" });
+    expect(onReconnect).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  it("refetches every read a frame feeds, whatever the frame would have said", async () => {
+    const qc = new QueryClient();
+    const fed = [
+      ["/v1/library/status"],
+      ["/v1/library/items", { limit: 60 }],
+      ["/v1/channels"],
+      ["/v1/jobs"],
+    ];
+    for (const key of fed) await qc.prefetchQuery({ queryKey: key, queryFn: () => "x" });
+    await qc.prefetchQuery({ queryKey: ["/v1/auth/me"], queryFn: () => "me" });
+
+    await invalidateAfterReconnect(qc);
+
+    // The library status is fed only by an idle scan frame; a reconnect refetches it regardless.
+    for (const key of fed) expect(qc.getQueryState(key)?.isInvalidated, String(key[0])).toBe(true);
+    expect(qc.getQueryState(["/v1/auth/me"])?.isInvalidated).toBe(false);
+  });
+});
+
+describe("the browser stream", () => {
+  class FakeSource {
+    static readonly CLOSED = 2;
+    static made: FakeSource[] = [];
+    readyState = 1;
+    private readonly listeners = new Map<string, ((event: unknown) => void)[]>();
+    constructor(readonly url: string) {
+      FakeSource.made.push(this);
+    }
+    addEventListener(type: string, listener: (event: unknown) => void) {
+      this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+    }
+    emit(type: string, event: unknown = {}) {
+      for (const listener of this.listeners.get(type) ?? []) listener(event);
+    }
+    close() {
+      this.readyState = FakeSource.CLOSED;
+    }
+  }
+
+  beforeEach(() => {
+    FakeSource.made = [];
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", FakeSource);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("opens a new source, with its listeners, in place of one a refused response closed", () => {
+    const onChannel = vi.fn();
+    const stream = browserEventStreamFactory("/v1/events");
+    stream.addEventListener("channel", onChannel);
+
+    // A dropped connection: the browser retries this one itself, so no second source is made.
+    FakeSource.made[0]?.emit("error");
+    vi.advanceTimersByTime(10_000);
+    expect(FakeSource.made).toHaveLength(1);
+
+    // A refused response: the source is closed for good.
+    const first = FakeSource.made[0];
+    if (first) first.readyState = FakeSource.CLOSED;
+    first?.emit("error");
+    vi.advanceTimersByTime(10_000);
+    expect(FakeSource.made).toHaveLength(2);
+    FakeSource.made[1]?.emit("channel", { data: "{}" });
+    expect(onChannel).toHaveBeenCalledOnce();
+    stream.close();
+  });
+
+  it("opens no new source once it is closed", () => {
+    const stream = browserEventStreamFactory("/v1/events");
+    const first = FakeSource.made[0];
+    if (first) first.readyState = FakeSource.CLOSED;
+    first?.emit("error");
+    stream.close();
+    vi.advanceTimersByTime(10_000);
+    expect(FakeSource.made).toHaveLength(1);
   });
 });

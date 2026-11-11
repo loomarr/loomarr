@@ -137,6 +137,7 @@ type libraryRootDTO struct {
 	Path        string                 `json:"path" doc:"The folder on this machine"`
 	InUse       bool                   `json:"inUse" doc:"The maintainer confirmed it for scanning"`
 	Readable    bool                   `json:"readable" doc:"Loomarr opened it at the last check"`
+	Empty       bool                   `json:"empty" doc:"Loomarr opened it and found nothing in it at the last check; usually a drive or share that isn't connected"`
 	CheckedAt   *time.Time             `json:"checkedAt,omitempty" doc:"The last check; absent when never checked"`
 	AddedByHand bool                   `json:"addedByHand"`
 	FoundIn     []libraryFolderNameDTO `json:"foundIn" doc:"Every app that names this folder, and what it calls it"`
@@ -180,7 +181,7 @@ func libraryRootsView(all librarystore.LibraryRoots, results []scan.SourceResult
 		}
 	}
 	for _, r := range all.Roots {
-		dto := libraryRootDTO{Path: r.Path, InUse: r.InUse, Readable: r.Readable, AddedByHand: r.ByHand, FoundIn: names[r.Path]}
+		dto := libraryRootDTO{Path: r.Path, InUse: r.InUse, Readable: r.Readable, Empty: r.Empty, AddedByHand: r.ByHand, FoundIn: names[r.Path]}
 		if dto.FoundIn == nil {
 			dto.FoundIn = []libraryFolderNameDTO{}
 		}
@@ -342,9 +343,10 @@ type libraryHeldDTO struct {
 
 type libraryStatusOutput struct {
 	Body struct {
-		Health    string `json:"health" enum:"needs_folders,folder_offline,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open"`
+		Health    string `json:"health" enum:"needs_folders,folder_offline,folder_empty,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open; folder_empty: they all opened, but one held nothing"`
 		InUse     int    `json:"inUse" doc:"Folders in use"`
 		Offline   int    `json:"offline" doc:"Folders in use that didn't open at their last check"`
+		Empty     int    `json:"empty" doc:"Folders in use that opened with nothing in them at their last check"`
 		ToConfirm int    `json:"toConfirm" doc:"Readable folders found but not yet in use"`
 
 		Scan           libraryScanDTO   `json:"scan"`
@@ -378,7 +380,7 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	out := &libraryStatusOutput{}
 	out.Body.NeedsYou = needsYou
 	b := &out.Body
-	b.Health, b.InUse, b.Offline, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
+	b.Health, b.InUse, b.Offline, b.Empty, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.Empty, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
 	b.Held = heldView(counts.Held)
 	b.Hooks = s.libraryHooksView()

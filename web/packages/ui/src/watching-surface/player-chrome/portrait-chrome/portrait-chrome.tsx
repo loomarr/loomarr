@@ -3,14 +3,15 @@ import { View } from "react-native";
 import { ChannelBand } from "../channel-band";
 import type { PlayerChromeProps } from "../player-chrome.type";
 import { PlayerKeys } from "../player-keys";
-import { PlayerTopRow } from "../player-top-row";
+import { PlayerLeave, PlayerUtilities } from "../player-utilities";
 import { UnmutePill } from "../unmute-pill";
 
-// The portrait phone's chrome (§9.7, #2775, the maintainer's pick A): the picture is pinned under the
-// top row, and the band and keys sit in the black space below it, so nothing covers the picture. The
+// The portrait phone's chrome (§9.7, #2775, the maintainer's pick A): the picture is pinned under a
+// toolbar, and the band and keys sit in the black space below it, so nothing covers the picture. The
+// toolbar holds Leave and the rating on the left and the utilities on the right (variant J). The
 // controls stay up (there is no picture to uncover), so there is no auto-hide here.
 
-/** Where the pinned picture starts, in px from the top of the frame: the top row, with room round it. */
+/** Where the pinned picture starts, in px from the top of the frame: the toolbar, with room round it. */
 const PORTRAIT_PICTURE_TOP = 80;
 
 const PortraitChrome = ({
@@ -19,9 +20,13 @@ const PortraitChrome = ({
   keys,
   live,
   onGoLive,
-  top,
+  onLeave,
   unmute,
-}: Pick<PlayerChromeProps, "band" | "formatTime" | "keys" | "live" | "onGoLive" | "top" | "unmute">) => (
+  utilities,
+}: Pick<
+  PlayerChromeProps,
+  "band" | "formatTime" | "keys" | "live" | "onGoLive" | "onLeave" | "unmute" | "utilities"
+>) => (
   <View
     pointerEvents="box-none"
     style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0, zIndex: 30 }}
@@ -32,11 +37,13 @@ const PortraitChrome = ({
         alignItems: "center",
         flexDirection: "row",
         height: PORTRAIT_PICTURE_TOP,
-        justifyContent: "flex-end",
+        justifyContent: "space-between",
         paddingHorizontal: 16,
       }}
+      testID="player-toolbar"
     >
-      <PlayerTopRow {...top} />
+      {onLeave ? <PlayerLeave onLeave={onLeave} pointer={false} rating={band.rating} /> : <View />}
+      <PlayerUtilities {...utilities} />
     </View>
     {/* The picture's place: the player draws the video here, 16:9 across the frame. */}
     <View pointerEvents="none" style={{ aspectRatio: 16 / 9, width: "100%" }} />
@@ -47,8 +54,15 @@ const PortraitChrome = ({
           <UnmutePill onPress={unmute} />
         </View>
       ) : null}
-      <View style={{ paddingHorizontal: 16 }}>
-        <ChannelBand band={band} density="touch" formatTime={formatTime} live={live} onGoLive={onGoLive} />
+      <View style={{ paddingHorizontal: 8 }}>
+        <ChannelBand
+          band={band}
+          density="touch"
+          formatTime={formatTime}
+          live={live}
+          onGoLive={onGoLive}
+          portrait
+        />
       </View>
       <View style={{ alignItems: "center" }}>
         <PlayerKeys {...keys} />

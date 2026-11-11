@@ -136,11 +136,14 @@ const ReadySoFar = ({ titles }: { titles: readonly LibraryReadyTitle[] }) => (
 const Headline = ({
   scan,
   readySoFar = [],
+  notAllThere = false,
 }: {
   scan: LibraryScan;
   readySoFar?: readonly LibraryReadyTitle[];
+  /** A folder in use held nothing, so idle says "Up to date", never "All caught up". */
+  notAllThere?: boolean;
 }) => {
-  const words = scanHeadline(scan);
+  const words = scanHeadline(scan, notAllThere);
   if (words.quiet) {
     // An hourly pass with nothing to add: one small line, not the block.
     return (
@@ -322,9 +325,16 @@ const LibraryStatus = ({
 >) => {
   const inUse = folders.filter((f) => f.inUse);
   const offline = inUse.filter((f) => !f.readable);
+  // What needs the maintainer leads. An import still running for the other folders keeps its bar,
+  // step, file and time left below it; "All caught up" is never said beside something that isn't.
+  // An empty folder is said on its own card; here it only keeps "All caught up" from being said.
+  const alerted = (health !== "ok" && health !== "folder_empty") || held.length > 0;
+  const importing = health !== "needs_folders" && scan.step !== "idle";
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
-      {health === "ok" && held.length === 0 ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
+      {alerted ? null : (
+        <Headline notAllThere={health === "folder_empty"} readySoFar={readySoFar} scan={scan} />
+      )}
       {held.map((removal) => (
         <Callout
           actions={
@@ -361,6 +371,7 @@ const LibraryStatus = ({
             : "Loomarr didn't find any folders yet. Add the folder that holds your shows and movies."}
         </Callout>
       ) : null}
+      {alerted && importing ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
       {health === "needs_folders" ? null : <KeepingUp hooks={hooks} offline={offline} />}
       {health === "needs_folders" ? null : (
         <ScanActions onRefreshEverything={onRefreshEverything} onRescan={onRescan} scan={scan} />
@@ -384,7 +395,7 @@ const LibraryFolderCard = ({
 }) => (
   <Surface
     aria-label={folderName(folder.path)}
-    borderColor={folder.readable ? "borderDecorative" : "stateWarning"}
+    borderColor={folder.readable && !folder.empty ? "borderDecorative" : "stateWarning"}
     borderRadius="control"
     gap="control"
     padding="section"
@@ -406,7 +417,14 @@ const LibraryFolderCard = ({
       ) : null}
     </Line>
     <Line flexWrap="nowrap" gap="inline">
-      {folder.readable ? (
+      {folder.readable && folder.empty ? (
+        <>
+          <StatusDot label="Empty" tone="warn" />
+          <Text textRole="body" tone="warning">
+            This folder is empty — is the drive connected?
+          </Text>
+        </>
+      ) : folder.readable ? (
         <>
           <Icon decorative glyph={icons.success} size="compact" tone="success" />
           <Text textRole="body" tone="success">
@@ -433,7 +451,8 @@ const LibraryFolderCard = ({
       </Text>
     )}
     <Line gap="control">
-      {folder.readable ? null : (
+      {/* Once the drive is back, Check again clears the warning without waiting for the next pass. */}
+      {folder.readable && !folder.empty ? null : (
         <Action disabled={checking} onPress={onCheckAgain} variant="outline">
           Check again
         </Action>
