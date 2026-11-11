@@ -289,6 +289,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  A file is recorded under one path: a folder reached through a link is listed under its real
+  place in the root, whichever path a walk or a folder pass took to reach it. A video link to a
+  file the walk records itself is skipped, unless its target lies in a folder walks skip (#3227).
   A video's trickplay file beside it (Emby's `<name>.bif`, decision 61) is referenced in
   `library_trickplay`, never read or imported. It joins the file's sidecars without a stat, so
   its appearing or going changes the identity digest at no cost to the walk. Only the `.bif`
