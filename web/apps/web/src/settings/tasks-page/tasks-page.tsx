@@ -4,7 +4,20 @@ import type { JobView } from "@loomarr/api/models/jobView";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, Icon, icons, StatusDot, type StatusTone, StatusWord } from "@loomarr/design-system";
+import {
+  Action,
+  Icon,
+  icons,
+  StatusDot,
+  type StatusTone,
+  StatusWord,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
@@ -57,11 +70,11 @@ const groupSummary = (jobs: JobView[]) => {
 };
 
 const COLUMNS = [
-  { key: "task", label: "Task", width: "auto" },
-  { key: "frequency", label: "Frequency", width: "10rem" },
-  { key: "lastRun", label: "Last run", width: "7rem" },
-  { key: "nextRun", label: "Next run", width: "7rem" },
-  { key: "details", label: "", width: "3rem" },
+  { key: "task", label: "Task", width: undefined },
+  { key: "frequency", label: "Frequency", width: 160 },
+  { key: "lastRun", label: "Last run", width: 112 },
+  { key: "nextRun", label: "Next run", width: 112 },
+  { key: "details", label: "", width: 48 },
 ] as const;
 
 const zero = "0001-01-01T00:00:00Z";
@@ -238,22 +251,17 @@ const TasksPage = () => {
 
               {groupOpen && (
                 <div id={`task-group-${group.id}`} className="border-border border-t">
-                  <table className="w-full text-sm">
-                    <colgroup>
-                      {COLUMNS.map((column) => (
-                        <col key={column.key} style={{ width: column.width }} />
-                      ))}
-                    </colgroup>
-                    <thead>
-                      <tr className="border-border text-muted-foreground border-b text-left text-xs">
+                  <Table caption={`${group.label} tasks`} framed={false}>
+                    <TableHeader>
+                      <TableRow>
                         {COLUMNS.map((column) => (
-                          <th key={column.key} className="px-4 py-2.5 font-medium">
+                          <TableHeaderCell key={column.key} width={column.width}>
                             {column.label}
-                          </th>
+                          </TableHeaderCell>
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {groupedJobs.map((job) => {
                         const dot = statusDot(job);
                         const busy = feedback.isBusy(job.name) || job.running;
@@ -261,8 +269,8 @@ const TasksPage = () => {
                         const jobOpen = openJobs.has(job.name);
                         return (
                           <Fragment key={job.name}>
-                            <tr className={cn("border-border border-b", job.paused && "opacity-60")}>
-                              <td className="px-4 py-3">
+                            <TableRow dimmed={Boolean(job.paused)}>
+                              <TableCell rowHeader>
                                 <button
                                   type="button"
                                   className="flex items-center gap-2 text-left"
@@ -280,19 +288,24 @@ const TasksPage = () => {
                                     </span>
                                   )}
                                 </button>
-                              </td>
-                              <td
-                                className="text-muted-foreground px-4 py-3"
-                                title={job.disabledReason ? undefined : job.schedule}
-                              >
-                                {job.disabledReason
-                                  ? "Not scheduled"
-                                  : describeCron(job.schedule, presetsFor(job))}
-                              </td>
-                              <td className="text-muted-foreground px-4 py-3">
-                                {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
-                              </td>
-                              <td className="text-muted-foreground px-4 py-3">
+                              </TableCell>
+                              <TableCell>
+                                <span
+                                  className="text-muted-foreground"
+                                  title={job.disabledReason ? undefined : job.schedule}
+                                >
+                                  {job.disabledReason
+                                    ? "Not scheduled"
+                                    : describeCron(job.schedule, presetsFor(job))}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-muted-foreground">
+                                  {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-muted-foreground">
                                 {job.disabledReason ? (
                                   "—"
                                 ) : job.paused ? (
@@ -310,8 +323,9 @@ const TasksPage = () => {
                                 ) : (
                                   formatUntil(job.nextRun ?? zero)
                                 )}
-                              </td>
-                              <td className="px-4 py-3 text-right">
+                                </span>
+                              </TableCell>
+                              <TableCell align="end">
                                 <Action
                                   icon={jobOpen ? "rowCollapse" : "rowExpand"}
                                   layout="icon"
@@ -320,11 +334,11 @@ const TasksPage = () => {
                                 >
                                   {`${jobOpen ? "Collapse" : "Expand"} ${job.title}`}
                                 </Action>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                             {jobOpen && (
-                              <tr id={`task-${job.name}`} className="border-border bg-muted/20 border-b">
-                                <td colSpan={5} className="px-4 py-3">
+                              <TableRow id={`task-${job.name}`} tone="raised">
+                                <TableCell colSpan={5} verticalAlign="top">
                                   <p className="text-muted-foreground max-w-prose text-sm">
                                     {job.description}
                                   </p>
@@ -356,14 +370,14 @@ const TasksPage = () => {
                                       <RunButton busy={busy} onRun={() => run.mutate({ name: job.name })} />
                                     </div>
                                   )}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             )}
                           </Fragment>
                         );
                       })}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </section>

@@ -1,4 +1,12 @@
 import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -131,15 +139,14 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
             <span className="text-muted-foreground">{alt}</span>
           );
         },
-        table: ({ children }) => (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">{children}</table>
-          </div>
-        ),
-        th: ({ children }) => (
-          <th className="border-border border-b p-2 text-left font-medium">{children}</th>
-        ),
-        td: ({ children }) => <td className="border-border/50 border-b p-2 align-top">{children}</td>,
+        // A page's table is the design system's, as the mock draws it. A Markdown table has no
+        // caption of its own, so it is named for what it is.
+        table: ({ children }) => <Table caption="Table">{children}</Table>,
+        thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+        tbody: ({ children }) => <TableBody>{children}</TableBody>,
+        tr: ({ children }) => <TableRow>{children}</TableRow>,
+        th: ({ children }) => <TableHeaderCell>{children}</TableHeaderCell>,
+        td: ({ children }) => <TableCell verticalAlign="top">{children}</TableCell>,
       }}
     >
       {markdown}
