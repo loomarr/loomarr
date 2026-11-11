@@ -10,7 +10,7 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Animated, type LayoutChangeEvent, Pressable, View } from "react-native";
 
-import { webOnly } from "../flat";
+import { nativeFocus, webOnly } from "../flat";
 import type { PlayerBandData, PlayerLiveState, PlayerSchedule } from "../player-chrome.type";
 import { PreviewPlaybar } from "../preview-playbar";
 
@@ -197,6 +197,7 @@ const GoLive = ({ density, onPress }: { density: Density; onPress: () => void })
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <View style={{ backgroundColor: playerChrome.live, borderRadius: 4, height: 8, width: 8 }} />
@@ -517,6 +518,7 @@ const ChannelBand = ({
             tv={tv}
             window={schedule.window}
             {...(schedule.onSeek ? { onSeek: schedule.onSeek } : {})}
+            {...(schedule.onSelect ? { onSelect: schedule.onSelect } : {})}
           />
         </View>
       ) : null}

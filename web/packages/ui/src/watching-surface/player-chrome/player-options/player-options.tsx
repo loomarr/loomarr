@@ -2,7 +2,7 @@ import { type Density, Icon, icons, playerChrome, Text, useFocusLook } from "@lo
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { webOnly } from "../flat";
+import { nativeFocus, webOnly } from "../flat";
 
 // The option list the Subtitles, Audio and Picture sheets share (§9.5): plain words, the selected
 // option white with a check, an optional second line in a quieter voice. A choice is a radio; a list
@@ -50,6 +50,7 @@ const OptionRow = ({
       outlineWidth: 2,
       transition: "background-color 120ms ease",
     }),
+    ...nativeFocus(focused),
   } as const;
   const body = (
     <>

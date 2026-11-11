@@ -2,7 +2,7 @@ import { Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-s
 import { useState } from "react";
 import { Pressable } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 
 // The first play in a session starts muted (§9.3), so a channel never blasts at someone who just
 // opened it. This pill says so and takes one tap to undo it. It is the player's only chrome that
@@ -38,6 +38,7 @@ const UnmutePill = ({ onPress }: { onPress: () => void }) => {
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons.volumeMuted} size="compact" />

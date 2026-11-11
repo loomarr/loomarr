@@ -151,8 +151,11 @@ interface PlayerChromeProps {
   panel?: ReactNode;
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
-  /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
-  readout?: { digits: string; missed?: boolean };
+  /**
+   * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
+   * the channel they reach and, on a remote, the auto-tune countdown.
+   */
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
   /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
   sheet?: ReactNode;
   /**
@@ -170,8 +173,9 @@ interface PlayerKeysProps {
   density: Density;
   /** Pointer devices get a legend under a key while it is pointed at or focused. */
   pointer: boolean;
-  playing: boolean;
-  onTogglePlay: () => void;
+  /** Play / Pause; omitted on a television, whose remote has the button (the key is then not drawn). */
+  playing?: boolean;
+  onTogglePlay?: () => void;
   /** The channel Last returns to; omitted until there is one (the key is then not drawn). */
   last?: { number: string; onPress: () => void };
   /** The Channel up / down rocker; omitted where the player cannot tune. */
@@ -182,9 +186,9 @@ interface PlayerKeysProps {
    * then not drawn).
    */
   volume?: { muted: boolean; onToggleMute: () => void };
-  /** More: open or close the More sheet. */
-  moreOpen: boolean;
-  onMore: () => void;
+  /** More: open or close the More sheet. Omitted where the player has nothing for More to open. */
+  moreOpen?: boolean;
+  onMore?: () => void;
 }
 
 /**
@@ -219,6 +223,11 @@ interface PlayerSchedule {
   playheadMs: number;
   /** Seek to an instant in the past; without it the strip only previews. */
   onSeek?: (wallClockMs: number) => void;
+  /**
+   * Pressing a block that does not seek. A television passes the Guide here: OK opens the Guide on
+   * Watching (playback-clients), and the strip is where focus rests while the controls are up.
+   */
+  onSelect?: () => void;
 }
 
 interface ClipTransportProps {

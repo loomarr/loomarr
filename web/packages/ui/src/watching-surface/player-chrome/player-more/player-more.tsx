@@ -10,7 +10,7 @@ import {
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { webOnly } from "../flat";
+import { nativeFocus, webOnly } from "../flat";
 import type { PlaybarSegment, PlaybarWindow } from "../player-chrome.type";
 import { PreviewPlaybar } from "../preview-playbar";
 
@@ -81,6 +81,7 @@ const MoreRow = ({
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons[icon]} size="default" />

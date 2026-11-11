@@ -237,9 +237,7 @@ const ChromeBody = memo(
             <UnmutePill onPress={unmute} />
           </View>
         ) : null}
-        {readout ? (
-          <PlayerReadout density={density} digits={readout.digits} missed={readout.missed} top={readoutAt} />
-        ) : null}
+        {readout ? <PlayerReadout density={density} top={readoutAt} {...readout} /> : null}
         {panel}
         {sheetLayer}
       </ThemeScope>

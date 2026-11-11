@@ -10,7 +10,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 import type { PlayerKeysProps, PlayerUtilitiesProps } from "../player-chrome.type";
 
 // The keys (§9.3, variant J): a small remote. Last channel (only when there is one to return to,
@@ -83,6 +83,7 @@ const Key = ({
             outlineWidth: 2,
             transition: "background-color 120ms ease, border-color 120ms ease, opacity 120ms ease",
           }),
+          ...nativeFocus(focused),
         })}
       >
         {children}
@@ -155,7 +156,7 @@ const PlayerKeys = ({
       <LastFace number={last.number} pointer={pointer || tv} />
     </Key>
   ) : null;
-  const moreKey = (
+  const moreKey = onMore ? (
     <Key
       accessibilityLabel="More"
       height={size}
@@ -167,7 +168,7 @@ const PlayerKeys = ({
     >
       <Glyph density={density} name="more" />
     </Key>
-  );
+  ) : null;
 
   if (tv)
     return (
@@ -232,17 +233,19 @@ const PlayerKeys = ({
           <Glyph density={density} name="channelDown" />
         </Key>
       ) : null}
-      <Key
-        accessibilityLabel={playing ? "Pause" : "Play"}
-        height={size}
-        legend={playing ? "Pause" : "Play"}
-        legends={legends}
-        ok
-        onPress={onTogglePlay}
-        width={okWidth}
-      >
-        <Glyph density={density} ink name={playing ? "pause" : "play"} />
-      </Key>
+      {onTogglePlay ? (
+        <Key
+          accessibilityLabel={playing ? "Pause" : "Play"}
+          height={size}
+          legend={playing ? "Pause" : "Play"}
+          legends={legends}
+          ok
+          onPress={onTogglePlay}
+          width={okWidth}
+        >
+          <Glyph density={density} ink name={playing ? "pause" : "play"} />
+        </Key>
+      ) : null}
       {onChannelUp ? (
         <Key
           accessibilityLabel="Channel up"
