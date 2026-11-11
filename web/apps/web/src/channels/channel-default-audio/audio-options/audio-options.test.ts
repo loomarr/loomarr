@@ -13,6 +13,15 @@ describe("audioOptions", () => {
       { value: AUTO_SENTINEL, label: "Auto (default)" },
       { value: "eng", label: "English" },
       { value: "fra", label: "French" },
+      { value: "und", label: "Unknown language" },
+    ]);
+  });
+
+  it("lists tracks with no language once, as Unknown language saved as und", () => {
+    const opts = audioOptions([{ index: 0 }, { index: 1, language: "und" }, { index: 2, language: " " }]);
+    expect(opts).toEqual([
+      { value: AUTO_SENTINEL, label: "Auto (default)" },
+      { value: "und", label: "Unknown language" },
     ]);
   });
 
@@ -27,6 +36,10 @@ describe("withSaved", () => {
 
   it("keeps a saved language the airing media doesn't carry, labelled by its code", () => {
     expect(withSaved(opts, "jpn")).toEqual([...opts, { value: "jpn", label: "JPN" }]);
+  });
+
+  it("names a saved und Unknown language, not UND", () => {
+    expect(withSaved(opts, "und")).toEqual([...opts, { value: "und", label: "Unknown language" }]);
   });
 
   it("adds nothing when the saved value is already offered", () => {
