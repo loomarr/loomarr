@@ -1,10 +1,9 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field, Icon, icons, LoadingStrip, PressableRow } from "@loomarr/design-system";
+import { Action, Combobox, type ComboboxOption, Icon, icons } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { LocationPickerProps } from "./location-picker.type";
 
 const countryName = (country: string) => {
@@ -45,8 +44,6 @@ const LocationPicker = ({
     : countryLabel;
   const [query, setQuery] = useState(selectedLabel);
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
   const [detecting, setDetecting] = useState(false);
   const [locationError, setLocationError] = useState<string>();
 
@@ -66,7 +63,7 @@ const LocationPicker = ({
     { q: debouncedQuery, limit: 8 },
     {
       query: {
-        enabled: !locked && open && debouncedQuery.length >= 2,
+        enabled: !locked && debouncedQuery.length >= 2,
         placeholderData: keepPreviousData,
         retry: false,
       },
@@ -77,17 +74,27 @@ const LocationPicker = ({
     ? found.filter((candidate) => candidate.country === restrictCountry)
     : found;
   const trimmedQuery = query.trim();
-  const showResults = !locked && open && trimmedQuery.length >= 2 && query !== selectedLabel;
+  const showResults = !locked && trimmedQuery.length >= 2 && query !== selectedLabel;
   const waitingForQuery = debouncedQuery !== trimmedQuery;
   const choicesReady = !waitingForQuery && !search.isPlaceholderData;
   const searching = waitingForQuery || search.isFetching;
   const resolve = settingsApi.useLocationsResolve();
+  // The city leads, and the region and country tell same-named cities apart.
+  const options: ComboboxOption[] = locations.map((candidate) => ({
+    description: candidate.city
+      ? [candidate.region, countryName(candidate.country)].filter(Boolean).join(", ")
+      : undefined,
+    label: candidate.city || candidate.label,
+    value: candidate.id,
+  }));
+  const chosen =
+    locations.find((candidate) => candidate.country === value.country && (candidate.place ?? "") === place)
+      ?.id ?? null;
 
   const choose = (picked: LocationDTO) => {
     setQuery(picked.label);
     setEvidence(picked);
     setLocationError(undefined);
-    setOpen(false);
     onChange(picked);
   };
 
@@ -149,104 +156,35 @@ const LocationPicker = ({
         )}
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="relative min-w-0 flex-1">
-          <Field
-            aria-activedescendant={open && locations[active] ? `${listID}-${active}` : undefined}
-            aria-autocomplete="list"
-            aria-controls={listID}
-            aria-expanded={showResults}
-            autoComplete="off"
-            autoCorrect={false}
+        <div className="min-w-0 flex-1">
+          <Combobox
+            autoHighlight
             disabled={locked}
+            emptyText={
+              showResults && !searching ? "No locations found. Try a nearby city or country." : undefined
+            }
+            errorText={
+              showResults && !searching && search.isError
+                ? "Location search is unavailable. Try again."
+                : undefined
+            }
             id={`${listID}-input`}
-            onBlur={() => setOpen(false)}
-            onChangeText={(text) => {
+            inputValue={query}
+            label="Location"
+            loading={showResults && searching}
+            onInputValueChange={(text) => {
               setQuery(text);
               setEvidence(undefined);
-              setOpen(true);
-              setActive(0);
             }}
-            onFocus={() => setOpen(true)}
-            onKeyPress={(event) => {
-              const key = event.nativeEvent.key;
-              if (!open || !choicesReady || locations.length === 0) return;
-              if (key === "ArrowDown") {
-                event.preventDefault();
-                setActive((current) => Math.min(current + 1, locations.length - 1));
-              } else if (key === "ArrowUp") {
-                event.preventDefault();
-                setActive((current) => Math.max(current - 1, 0));
-              } else if (key === "Enter" && locations[active]) {
-                event.preventDefault();
-                choose(locations[active]);
-              } else if (key === "Escape") {
-                setOpen(false);
-              }
+            onSelect={(option) => {
+              const picked = locations.find((candidate) => candidate.id === option.value);
+              if (picked) choose(picked);
             }}
+            options={showResults ? options : []}
             placeholder="Search for a city or country"
-            role="combobox"
-            value={query}
+            stale={!choicesReady}
+            value={chosen}
           />
-          {showResults && (
-            <div
-              id={listID}
-              className="border-border bg-popover text-popover-foreground relative z-20 mt-1 w-full overflow-hidden rounded-md border shadow-lg sm:absolute"
-            >
-              {locations.length > 0 && (
-                <div
-                  role="listbox"
-                  className={cn("max-h-64 overflow-auto p-1", !choicesReady && "opacity-50")}
-                >
-                  {locations.map((candidate, index) => (
-                    <PressableRow
-                      accessibilityLabel={candidate.label}
-                      accessibilityRole="option"
-                      disabled={!choicesReady}
-                      id={`${listID}-${index}`}
-                      key={candidate.id}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onPress={() => choose(candidate)}
-                      selected={index === active}
-                      tabIndex={-1}
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{candidate.city || candidate.label}</span>
-                        {candidate.city && (
-                          <span className="text-muted-foreground truncate text-xs">
-                            {[candidate.region, countryName(candidate.country)].filter(Boolean).join(", ")}
-                          </span>
-                        )}
-                      </span>
-                      {candidate.country === value.country && (candidate.place ?? "") === place && (
-                        <span className="ml-3 flex">
-                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
-                        </span>
-                      )}
-                    </PressableRow>
-                  ))}
-                </div>
-              )}
-              {searching && (
-                <div
-                  className="border-border text-muted-foreground flex items-center gap-2 border-t px-3 py-2 text-xs"
-                  role="status"
-                >
-                  <LoadingStrip decorative width={32} />
-                  Searching…
-                </div>
-              )}
-              {!searching && locations.length === 0 && !search.isError && (
-                <p className="text-muted-foreground px-3 py-3 text-sm">
-                  No locations found. Try a nearby city or country.
-                </p>
-              )}
-              {!searching && search.isError && (
-                <p className="text-destructive px-3 py-3 text-sm" role="alert">
-                  Location search is unavailable. Try again.
-                </p>
-              )}
-            </div>
-          )}
         </div>
         {allowDetection && (
           <Action
