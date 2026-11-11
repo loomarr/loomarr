@@ -889,6 +889,7 @@ func under(path string, dirs []string) bool {
 // root that is not: a folder deleted with everything in it is a change to the folder above.
 func existingFolders(root string, dirs []string) []string {
 	out := []string{}
+	realRoot, rootErr := filepath.EvalSymlinks(root)
 	for _, d := range dirs {
 		d = filepath.Clean(d)
 		for d != root && under(d, []string{root}) {
@@ -899,6 +900,13 @@ func existingFolders(root string, dirs []string) []string {
 		}
 		if !under(d, []string{root}) {
 			d = root
+		}
+		// A folder named through a symlink is scoped as the walk records it: its canonical path,
+		// so the pass's removals cover the files it lists (#3227).
+		if real, err := filepath.EvalSymlinks(d); err == nil && rootErr == nil {
+			if canonical, ok := canonicalPath(root, realRoot, real); ok {
+				d = canonical
+			}
 		}
 		out = append(out, d)
 	}

@@ -434,6 +434,52 @@ func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	}
 }
 
+// A folder reached through a symlink that sorts first is recorded under its real path (#3227): a
+// full walk, a folder pass naming the real folder, and another full walk leave one row per file,
+// never marked missing. A video link to a video inside the root is the target, not a second file.
+func TestImportSymlinkedFolderKeepsOnePath(t *testing.T) {
+	h := newHarness(t)
+	h.file("Z-Real/Zulu.mkv", 10)
+	h.file("Movie/Movie.mkv", 12)
+	if err := os.Symlink(filepath.Join(h.root, "Z-Real"), filepath.Join(h.root, "A-Link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(h.root, "Movie", "Movie.mkv"), filepath.Join(h.root, "Movie Link.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	check := func(step string) {
+		t.Helper()
+		rows, err := h.st.LibraryFiles(context.Background(), h.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, r := range rows {
+			if !r.MissingAt.IsZero() {
+				t.Errorf("%s: %s marked missing", step, r.Path)
+			}
+			paths = append(paths, r.Path)
+		}
+		slices.Sort(paths)
+		want := []string{filepath.Join(h.root, "Movie", "Movie.mkv"), filepath.Join(h.root, "Z-Real", "Zulu.mkv")}
+		if !slices.Equal(paths, want) {
+			t.Fatalf("%s: rows %v, want %v", step, paths, want)
+		}
+	}
+	h.run()
+	check("full walk")
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Join(h.root, "Z-Real")}); err != nil {
+		t.Fatal(err)
+	}
+	check("folder pass on the real folder")
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Join(h.root, "A-Link")}); err != nil {
+		t.Fatal(err)
+	}
+	check("folder pass on the link")
+	h.run()
+	check("second full walk")
+}
+
 // An arr connected after the folders were set up has none of its folders recorded: the next full
 // pass asks for them first, so its files meet its records without anyone pressing "Check again".
 // Once they are recorded it does not ask again, and an arr with no connection is never asked.
