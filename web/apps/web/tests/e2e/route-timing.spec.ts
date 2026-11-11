@@ -1,4 +1,6 @@
 import { appendFileSync } from "node:fs";
+import type { LibraryStatusOutputBody } from "@loomarr/api/models/libraryStatusOutputBody";
+import type { ListLibraryItemsOutputBody } from "@loomarr/api/models/listLibraryItemsOutputBody";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
@@ -63,6 +65,43 @@ const BUDGET_MS: Record<Pass, Record<string, number>> = {
   warm: { Home: 1000, Guide: 1000, Library: 1000, Requests: 1000, Settings: 1000, Channels: 1000 },
 };
 
+const LIBRARY_STATUS: LibraryStatusOutputBody = {
+  health: "ok",
+  inUse: 1,
+  offline: 0,
+  toConfirm: 0,
+  files: 48,
+  headersPending: 0,
+  problems: 0,
+  needsYou: 0,
+  held: [],
+  hooks: [],
+  scan: {
+    enabled: true,
+    step: "idle",
+    stepNumber: 0,
+    done: 0,
+    total: 0,
+    paused: false,
+    quiet: false,
+    arrIncomplete: false,
+  },
+};
+
+const LIBRARY_ITEMS: ListLibraryItemsOutputBody = {
+  total: 48,
+  items: Array.from({ length: 48 }, (_, i) => ({
+    id: `title-${i + 1}`,
+    kind: i % 3 === 0 ? "series" : "movie",
+    name: `Invented title ${i + 1}`,
+    year: 1970 + (i % 50),
+    files: 1,
+    extraCopies: 0,
+    unplayable: 0,
+    ready: true,
+  })),
+};
+
 interface Visit {
   to: string;
   revisit: boolean;
@@ -112,7 +151,7 @@ const visit = async (page: Page, destination: Destination): Promise<Visit> => {
   await expect
     .poll(async () => reached(await readVisits(page), destination).length, {
       message: `${destination.name} never reported its content`,
-      timeout: 15_000,
+      timeout: 8_000,
     })
     .toBe(before + 1);
   const last = reached(await readVisits(page), destination).at(-1);
@@ -128,6 +167,8 @@ const median = (values: number[]): number => {
 const samples: Record<Pass, Record<string, number[]>> = { cold: {}, warm: {} };
 const renderedSamples: Record<Pass, Record<string, number[]>> = { cold: {}, warm: {} };
 
+const problems: string[] = [];
+
 const record = (
   store: Record<Pass, Record<string, number[]>>,
   pass: Pass,
@@ -140,7 +181,7 @@ const record = (
 };
 
 test.describe.configure({ mode: "serial" });
-test.setTimeout(120_000);
+test.setTimeout(180_000);
 
 for (let run = 1; run <= RUNS; run++) {
   test(`main nav, fresh session ${run} of ${RUNS}`, async ({ page }) => {
@@ -150,6 +191,14 @@ for (let run = 1; run <= RUNS; run++) {
       guideChannels: 12,
       requests: true,
       channelDetail: true,
+    });
+    // The shared mock leaves the Library as a first run with no folders and serves no titles. This
+    // gate times the page a household actually opens, so it serves one that holds a page of titles.
+    await page.route(/\/v1\/library\/(status|items|needs)(\?.*)?$/, (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/status")) return route.fulfill({ json: LIBRARY_STATUS });
+      if (path.endsWith("/items")) return route.fulfill({ json: LIBRARY_ITEMS });
+      return route.fulfill({ json: { needs: [], orders: [], problems: [] } });
     });
     // Registered after the mock, so it runs first: hold every read for the fixed delay, then hand
     // it to the mock. The event stream is not a read and stays as the mock leaves it.
@@ -167,10 +216,18 @@ for (let run = 1; run <= RUNS; run++) {
 
     for (const pass of ["cold", "warm"] as const) {
       for (const destination of DESTINATIONS) {
-        const result = await visit(page, destination);
-        expect(result.revisit, `${destination.name} ${pass}: was it shown before?`).toBe(pass === "warm");
-        record(samples, pass, destination.name, result.content);
-        record(renderedSamples, pass, destination.name, result.rendered);
+        // A page that never reports content is recorded and the walk goes on, so one run names
+        // every broken route rather than only the first.
+        try {
+          const result = await visit(page, destination);
+          if (result.revisit !== (pass === "warm")) {
+            problems.push(`${destination.name} ${pass}: revisit was ${result.revisit}`);
+          }
+          record(samples, pass, destination.name, result.content);
+          record(renderedSamples, pass, destination.name, result.rendered);
+        } catch (error) {
+          problems.push(`${destination.name} ${pass} (session ${run}): ${String(error).split("\n")[0]}`);
+        }
       }
     }
   });
@@ -181,7 +238,7 @@ test("route content meets the budgets", () => {
     "| route | pass | content median | content runs | rendered median | budget |",
     "| --- | --- | --- | --- | --- | --- |",
   ];
-  const failures: string[] = [];
+  const failures: string[] = [...problems];
   for (const pass of ["cold", "warm"] as const) {
     for (const { name } of DESTINATIONS) {
       const content = samples[pass][name] ?? [];
