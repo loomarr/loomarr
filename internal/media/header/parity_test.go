@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -75,6 +76,19 @@ func parityCases(dir string) []parityCase {
 			name: "mp4 hevc faststart", file: "fast.mp4", mustRead: true,
 			args: append(src("2"), "-c:v", "libx265", "-preset", "ultrafast", "-x265-params", "log-level=error",
 				"-tag:v", "hvc1", "-c:a", "aac", "-movflags", "+faststart"),
+		},
+		{
+			// A track's rate and sample size (#3228): BPS tags in the head, 24-bit FLAC and PCM.
+			name: "matroska lossless audio and stated track rates", file: "lossless.mkv", mustRead: true,
+			args: append(src("2"), "-map", "0:v", "-map", "1:a", "-map", "1:a", "-map", "1:a",
+				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+				"-c:a:0", "flac", "-sample_fmt:a:0", "s32", "-c:a:1", "pcm_s24le", "-c:a:2", "aac",
+				"-metadata:s:v:0", "BPS=1500000", "-metadata:s:a:2", "BPS=128000"),
+		},
+		{
+			name: "mp4 alac and aac track rates", file: "alac.mp4", mustRead: true,
+			args: append(src("2"), "-map", "0:v", "-map", "1:a", "-map", "1:a",
+				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a:0", "aac", "-c:a:1", "alac"),
 		},
 		{
 			name: "mp4 e-ac-3", file: "eac3.mp4",
@@ -160,6 +174,7 @@ func TestHeaderFactsMatchFFprobe(t *testing.T) {
 			}
 			frameColour(t, path, &want)
 			compareHeader(t, got, want)
+			compareTrackRates(t, path, got)
 		})
 	}
 }
@@ -198,6 +213,61 @@ func frameColour(t *testing.T, path string, obs *playout.SourceObservation) {
 			s.ColorTransfer, s.ColorPrimaries, s.ColorSpace = known(f.Transfer), known(f.Primaries), known(f.Matrix)
 			s.HDR = s.ColorTransfer == "smpte2084" || s.ColorTransfer == "arib-std-b67"
 			return
+		}
+	}
+}
+
+// compareTrackRates holds each track's bitrate and bit depth to ffprobe's (#3228). A Matroska
+// track's rate is its BPS tag (ffprobe states no bit_rate for one); an MP4 track's is ffprobe's
+// bit_rate, from the sample table. A video's depth is its pixel format's; an audio track's is
+// ffprobe's bits_per_raw_sample, none for lossy audio.
+func compareTrackRates(t *testing.T, path string, got header.Header) {
+	t.Helper()
+	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries",
+		"stream=codec_type,pix_fmt,bit_rate,bits_per_raw_sample:stream_tags=BPS", "-of", "json", path).Output()
+	if err != nil {
+		t.Fatalf("track rates: %v", err)
+	}
+	var parsed struct {
+		Streams []struct {
+			Type    string            `json:"codec_type"`
+			PixFmt  string            `json:"pix_fmt"`
+			BitRate string            `json:"bit_rate"`
+			RawBits string            `json:"bits_per_raw_sample"`
+			Tags    map[string]string `json:"tags"`
+		} `json:"streams"`
+	}
+	if err := json.Unmarshal(out, &parsed); err != nil || len(parsed.Streams) != len(got.Streams) {
+		t.Fatalf("track rates: %d streams from ffprobe, %d read (%v)", len(parsed.Streams), len(got.Streams), err)
+	}
+	number := func(s string) int { n, _ := strconv.Atoi(s); return n }
+	matroska := strings.HasPrefix(got.Container, "matroska")
+	for i, g := range got.Streams {
+		w := parsed.Streams[i]
+		switch {
+		case matroska:
+			if want := number(w.Tags["BPS"]); g.BitRate != want {
+				t.Errorf("stream %d bitrate %d, BPS tag %d", i, g.BitRate, want)
+			}
+		case number(w.BitRate) > 0:
+			if want := number(w.BitRate); g.BitRate < want*995/1000 || g.BitRate > want*1005/1000 {
+				t.Errorf("stream %d bitrate %d, ffprobe %d", i, g.BitRate, want)
+			}
+		}
+		var want int
+		switch g.Kind {
+		case inventory.StreamVideo:
+			want = 8
+			for _, depth := range []string{"10", "12"} {
+				if strings.Contains(w.PixFmt, "p"+depth) {
+					want = number(depth)
+				}
+			}
+		case inventory.StreamAudio:
+			want = number(w.RawBits)
+		}
+		if g.BitDepth != want {
+			t.Errorf("stream %d (%s) bit depth %d, ffprobe %d", i, g.Kind, g.BitDepth, want)
 		}
 	}
 }

@@ -79,8 +79,19 @@ type Service interface {
 [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It reads a file's duration, streams
 (codec, size, frame rate, pixel format, colour and HDR, the Dolby Vision profile, field order,
 languages, default, forced, commentary, hearing-impaired and described flags, channels, sample
-rate) and chapters from the Matroska/WebM header or the MP4/MOV `moov`, plus the keyframe index
-from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
+rate, each track's bitrate and bit depth) and chapters from the Matroska/WebM header or the MP4/MOV
+`moov`, plus the keyframe index from Matroska Cues or the MP4 sample tables, which `media/measure`
+uses.
+
+- **A track's bitrate and bit depth** (#3228, decision 46; `library_streams.bitrate` and
+  `bit_depth`, 0 when the file says nothing) are ffprobe's. An MP4 track's rate is its sample
+  table's bytes over its `mdhd` duration, or the rate an AC-3 `dac3` or E-AC-3 `dec3` box states. A
+  Matroska track's rate is its `BPS` statistics tag when the `Tags` element lies in the first read,
+  as ffmpeg writes it. mkvmerge writes `Tags` at the end of the file, and a second seek per file is
+  not spent on it here: such a track reads 0, and taking its tag in the measure pass, which already
+  reads the end of the file for the Cues, is the rest of #3228. A video's depth is
+  its codec configuration's. An audio track has one only when it is lossless or PCM: Matroska's
+  `BitDepth`, FLAC's STREAMINFO or ALAC's configuration.
 
 - **A reader that learns more reads every file once more.** `header.Version` goes up with each new
   fact. The scanner records it with the facts it stores and folds it into each file's digest, so

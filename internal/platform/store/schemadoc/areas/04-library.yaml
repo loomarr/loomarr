@@ -324,6 +324,12 @@ tables:
       channels: An audio track's channel count; 0 otherwise.
       channel_layout: An audio track's channel layout, such as 5.1(side).
       sample_rate: An audio track's sample rate in Hz.
+      bitrate: >
+        The track's own bitrate in bits per second, as its container states it (a Matroska BPS tag) or
+        an MP4's sample table measures it; 0 when the file says nothing.
+      bit_depth: >
+        Bits per sample: a video track's depth (8, 10 or 12), or a lossless or PCM audio track's sample
+        size; 0 for lossy audio or when unknown.
       audio_format: An audio track's format in plain words, such as Dolby Digital Plus.
       width: A video track's width in pixels.
       height: A video track's height in pixels.

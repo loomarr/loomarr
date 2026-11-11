@@ -132,6 +132,12 @@ type Stream struct {
 	Channels       int         `json:"channels,omitempty"`
 	ChannelLayout  string      `json:"channelLayout,omitempty"`
 	SampleRate     int         `json:"sampleRate,omitempty"`
+	// BitRate is the track's own rate in bit/s as the container states it (Matroska BPS tag) or
+	// its sample table measures it (MP4); 0 when the container says nothing (#3228).
+	BitRate int `json:"bitRate,omitempty"`
+	// BitDepth is bits per sample: a video's luma depth, or a lossless or PCM audio track's
+	// sample size; 0 when the stream has none to state (lossy audio) or it is unknown (#3228).
+	BitDepth int `json:"bitDepth,omitempty"`
 	Width          int         `json:"width,omitempty"`
 	Height         int         `json:"height,omitempty"`
 	FrameRate      string      `json:"frameRate,omitempty"`

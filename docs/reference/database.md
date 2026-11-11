@@ -829,6 +829,8 @@ Each track of a title's files (video, audio, subtitles), one row each: those ins
 | `hearing_impaired` | True for a track for the deaf and hard of hearing, such as SDH subtitles. | `BOOLEAN` |
 | `descriptive` | True for an audio track that describes the picture. | `BOOLEAN` |
 | `external_ref` | For a track in its own file beside the title's file (such as Film.en.forced.srt), where that file is, as an absolute path; empty for a track inside the file. | `TEXT` |
+| `bitrate` | The track's own bitrate in bits per second, as its container states it (a Matroska BPS tag) or an MP4's sample table measures it; 0 when the file says nothing. | `INTEGER` |
+| `bit_depth` | Bits per sample: a video track's depth (8, 10 or 12), or a lossless or PCM audio track's sample size; 0 for lossy audio or when unknown. | `INTEGER` |
 
 ### library_chapters
 

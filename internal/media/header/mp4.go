@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
+	"math/big"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 )
@@ -212,7 +213,7 @@ func mp4Track(moov mp4Moov, trak mp4Box) (stream inventory.Stream, known bool) {
 	if !ok {
 		return stream, false
 	}
-	timescale, _, ok := fullBoxTiming(mdhd)
+	timescale, mdhdDuration, ok := fullBoxTiming(mdhd)
 	if !ok || timescale <= 0 {
 		return stream, false
 	}
@@ -242,6 +243,7 @@ func mp4Track(moov mp4Moov, trak mp4Box) (stream inventory.Stream, known bool) {
 		return stream, false
 	}
 
+	stream.BitRate = mp4TrackBitrate(moov, stbl, timescale, mdhdDuration)
 	switch string(hdlr[8:12]) {
 	case "vide":
 		stream.Kind = inventory.StreamVideo
@@ -364,6 +366,37 @@ func mp4Video(moov mp4Moov, stbl, entry mp4Box, timescale int64, stream inventor
 	return stream, true
 }
 
+// mp4TrackBitrate is ffmpeg's rate for a track (#3228): the bytes its sample table lists over the
+// track's whole duration in mdhd, priming an edit list hides included. 0 when the table or the
+// duration cannot be read.
+func mp4TrackBitrate(moov mp4Moov, stbl mp4Box, trackScale, duration int64) int {
+	stsz := moov.body(mustChild(moov, stbl, "stsz"))
+	if len(stsz) < 12 {
+		return 0
+	}
+	fixed, count := u32(stsz, 1), u32(stsz, 2)
+	bytes := fixed * count
+	if fixed == 0 {
+		if 12+4*count > int64(len(stsz)) {
+			return 0
+		}
+		for i := int64(0); i < count; i++ {
+			bytes += u32(stsz, 3+int(i))
+		}
+	}
+	if bytes <= 0 || duration <= 0 {
+		return 0
+	}
+	return int(rescale(bytes, 8*trackScale, duration))
+}
+
+// rescale is a×b/c rounded to nearest, as ffmpeg's av_rescale, without overflowing.
+func rescale(a, b, c int64) int64 {
+	r := new(big.Int).Mul(big.NewInt(a), big.NewInt(b))
+	r.Add(r, big.NewInt(c/2))
+	return r.Quo(r, big.NewInt(c)).Int64()
+}
+
 func mustChild(moov mp4Moov, parent mp4Box, kind string) mp4Box {
 	box, _ := moov.child(parent, kind)
 	return box
@@ -448,6 +481,10 @@ func mp4Audio(moov mp4Moov, entry mp4Box, stream inventory.Stream) (inventory.St
 		bits.u(2 + 5 + 3) // fscod, bsid, bsmod
 		acmod, lfe := bits.u(3), bits.u(1)
 		stream.Channels = ac3Channels[acmod] + int(lfe)
+		// The stated rate wins over the sample table's, as ffmpeg has it.
+		if code := bits.u(5); int(code) < len(ac3Rates) {
+			stream.BitRate = ac3Rates[code] * 1000
+		}
 	case "ec-3":
 		stream.Codec = "eac3"
 		dec3 := config("dec3")
@@ -455,7 +492,9 @@ func mp4Audio(moov mp4Moov, entry mp4Box, stream inventory.Stream) (inventory.St
 			return stream, false
 		}
 		bits := newBitReader(dec3)
-		bits.u(13)
+		if rate := int(bits.u(13)); rate > 0 { // data_rate, kbit/s
+			stream.BitRate = rate * 1000
+		}
 		if bits.u(3) != 0 { // more than one independent substream
 			return stream, false
 		}
@@ -475,8 +514,14 @@ func mp4Audio(moov mp4Moov, entry mp4Box, stream inventory.Stream) (inventory.St
 		stream.Channels, stream.SampleRate = int(dops[1]), 48000
 	case "fLaC":
 		stream.Codec = "flac"
+		if dfla := config("dfLa"); len(dfla) > 4 { // a full box: version and flags first
+			stream.BitDepth = flacDepth(dfla[4:])
+		}
 	case "alac":
 		stream.Codec = "alac"
+		if magic := config("alac"); len(magic) > 4 {
+			stream.BitDepth = alacDepth(magic[4:])
+		}
 	default:
 		return stream, false
 	}
@@ -487,6 +532,9 @@ func mp4Audio(moov mp4Moov, entry mp4Box, stream inventory.Stream) (inventory.St
 }
 
 var ac3Channels = [8]int{2, 1, 2, 3, 3, 4, 4, 5}
+
+// ac3Rates are AC-3's bit_rate_code values, in kbit/s (ATSC A/52 table 4.13).
+var ac3Rates = []int{32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640}
 
 // esdsDecoderInfo reads an esds body: the DecoderConfigDescriptor's objectTypeIndication and its
 // DecoderSpecificInfo (an AAC AudioSpecificConfig, an MPEG-4 VOL).

@@ -1,10 +1,39 @@
 package header
 
 import (
+	"bytes"
 	"strconv"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 )
+
+// statesDepth reports whether an audio codec has a sample size to state: lossless and PCM audio.
+// A lossy codec has none, and ffprobe reports none for it, whatever the container says.
+func statesDepth(codec string) bool {
+	return codec == "flac" || codec == "alac" || strings.HasPrefix(codec, "pcm_")
+}
+
+// flacDepth reads bits per sample from FLAC's STREAMINFO, the first metadata block: as Matroska's
+// CodecPrivate holds it ("fLaC", then the blocks) or MP4's dfLa after its full-box header. 0 when
+// the block is not there.
+func flacDepth(b []byte) int {
+	b = bytes.TrimPrefix(b, []byte("fLaC"))
+	if len(b) < 4+14 || b[0]&0x7F != 0 { // block type 0 is STREAMINFO
+		return 0
+	}
+	info := b[4:]
+	return int(info[12]&0x01)<<4 | int(info[13]>>4) + 1
+}
+
+// alacDepth reads bits per sample from an ALACSpecificConfig: frameLength (4), compatibleVersion
+// (1), then bitDepth. 0 when it is too short.
+func alacDepth(config []byte) int {
+	if len(config) < 6 {
+		return 0
+	}
+	return int(config[5])
+}
 
 // colourInfo is ISO/IEC 23091-2 colour description (H.273 code points). 0 means not signalled
 // (2, "unspecified", is treated the same).
@@ -96,7 +125,7 @@ func describeVideo(stream *inventory.Stream, bits videoBits, container colourInf
 	if !colour.signalled() && !bits.colourRead && bits.depth > 8 {
 		return false
 	}
-	stream.Profile, stream.Level = bits.profile, bits.level
+	stream.Profile, stream.Level, stream.BitDepth = bits.profile, bits.level, bits.depth
 	stream.PixelFormat = pixelFormat(bits.chroma, bits.depth, stream.Codec == "h264" && bits.fullRange)
 	if stream.PixelFormat == "" {
 		return false
