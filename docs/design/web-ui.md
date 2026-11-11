@@ -30,7 +30,7 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 | admin | Home · Guide · Requests · Filler · People · Settings · Help |
 | member | Home · Guide · Requests · Notifications · Help |
 
-- **Guide** (`/guide`, headed "Channels") is the single channels surface: a cross-channel time grid,
+- **Guide** (`/guide`, headed "Guide" like its nav item; #3413) is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest
   routes redirect to it.
   Desktop browsing uses the full content width. Programme and filler previews open beside the

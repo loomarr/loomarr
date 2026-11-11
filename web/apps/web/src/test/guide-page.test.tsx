@@ -254,12 +254,12 @@ describe("Guide's Now & next list", () => {
 });
 
 describe("Guide", () => {
-  it("is headed 'Channels' and shows what's on, from the guide endpoint", async () => {
+  it("is headed 'Guide' and shows what's on, from the guide endpoint", async () => {
     stubGuide();
     renderAt(GRID);
-    // The heading is "Channels", not "Guide": one surface, and the mock names it for the
-    // objects it lists rather than the view it uses (§12).
-    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    // The page is headed for its nav item (#3413), and the grid view adds no second "Guide" under it.
+    expect(await screen.findByRole("heading", { name: "Guide", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Guide" })).toHaveLength(1);
     expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
@@ -268,7 +268,7 @@ describe("Guide", () => {
   it("names its browser tab", async () => {
     stubGuide();
     renderAt(GRID);
-    await screen.findByRole("heading", { name: "Channels", level: 1 });
+    await screen.findByRole("heading", { name: "Guide", level: 1 });
     expect(document.title).toBe("Guide | Loomarr");
   });
 
@@ -616,7 +616,7 @@ describe("Guide", () => {
     renderAt(GRID);
 
     expect(await screen.findByText("Dead air")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Guide", level: 1 })).toBeInTheDocument();
   });
 
   // The empty state's one door goes to the same page as the header's.
@@ -695,7 +695,7 @@ describe("old Guide origination URLs", () => {
     stubGuide();
     const view = renderAt("/guide");
 
-    expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide", level: 1 })).toBeInTheDocument();
     expect(view.router.state.location.pathname).toBe("/guide");
   });
 });
