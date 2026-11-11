@@ -187,6 +187,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
   shortcuts · `Esc` closes the top layer, then leaves `/watch`.
+- **Volume** (desktop). The Volume key opens the volume level in the menu's place: a glyph, a
+  slider and the level, or "Off" when muted. Dragging to zero mutes. Any change of level or mute
+  (`M`, `−`/`=`) shows it for a moment. The first play's own mute does not; the unmute pill
+  speaks for that. A phone or a television has no Volume key: its own buttons set the level.
 - **Phone.** On its side, the band and keys at phone size over the picture; tap shows or hides the
   chrome. Upright, nothing covers the picture: a toolbar above it, the band and keys below (#2775).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from

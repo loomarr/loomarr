@@ -247,9 +247,9 @@ describe("ChannelWatch pickers", () => {
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
 
-    const mute = screen.getByRole("button", { name: "Mute" });
-    await userEvent.click(mute);
-    expect(screen.getByRole("button", { name: "Unmute" })).toHaveFocus();
+    const volume = screen.getByRole("button", { name: "Volume" });
+    await userEvent.click(volume);
+    expect(volume).toHaveFocus();
     await userEvent.keyboard("{ArrowUp}");
     // One press, one step.
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1]);
@@ -1123,7 +1123,7 @@ describe("ChannelWatch at phone width", () => {
   it("draws the phone's keys at phone width even with a fine pointer", async () => {
     renderPhone();
     expect(await screen.findByRole("button", { name: "More" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^(Mute|Unmute)$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Volume" })).not.toBeInTheDocument();
   });
 
   // Variant J (§9.7): the picture fills the frame, letterboxed and centred by the <video> — a strip
@@ -1195,13 +1195,73 @@ describe("ChannelWatch first play of the session", () => {
     expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
   });
 
-  it("drops the pill when the sound comes on by the Mute key too", async () => {
+  it("drops the pill when the sound comes on by M too", async () => {
     stubTracks();
     render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await screen.findByRole("button", { name: "Tap to unmute" });
-    await userEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await userEvent.keyboard("m");
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Tap to unmute" })).not.toBeInTheDocument(),
     );
+  });
+
+  // The first play's own mute is the pill's to say; the level stays away until someone changes it.
+  it("does not flash the volume level for the first play's own mute", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "Tap to unmute" });
+    expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument();
+  });
+});
+
+// The volume level (§9.5, desktop): the Volume key opens it in the menu's place; M and the slider
+// flash it for a moment.
+describe("ChannelWatch volume level", () => {
+  beforeEach(() => {
+    hls.status = "playing";
+    // Not the session's first play: the sound starts on, as the viewer left it.
+    sessionStorage.setItem("loomarr.player.first-play", "1");
+  });
+
+  const watch = async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    expect(await screen.findByRole("button", { name: "More" })).toBeInTheDocument();
+  };
+
+  it("opens from the Volume key, sets the level, and closes on Esc", async () => {
+    await watch();
+    const key = screen.getByRole("button", { name: "Volume" });
+    await userEvent.click(key);
+    const level = await screen.findByTestId("player-volume");
+    expect(key).toHaveAttribute("aria-expanded", "true");
+    expect(within(level).getByText("100")).toBeInTheDocument();
+
+    within(level).getByRole("slider", { name: "Volume" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect((document.querySelector("video") as HTMLVideoElement).volume).toBeLessThan(1);
+
+    key.focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument();
+  });
+
+  it("gives the menu's place back to More", async () => {
+    await watch();
+    await userEvent.click(screen.getByRole("button", { name: "Volume" }));
+    expect(await screen.findByTestId("player-volume")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument();
+    expect(screen.getByTestId("player-menu")).toBeInTheDocument();
+  });
+
+  it("shows for a moment when M mutes, saying Off", async () => {
+    await watch();
+    await userEvent.keyboard("m");
+    const level = await screen.findByTestId("player-volume");
+    expect(within(level).getByText("Off")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument(), {
+      timeout: 3_000,
+    });
   });
 });

@@ -34,5 +34,6 @@ export { PlayerMore } from "./player-more";
 export type { PlayerOption, PlayerOptionsProps } from "./player-options";
 export { PlayerOptions } from "./player-options";
 export { PlayerSheet } from "./player-sheet";
+export { PlayerVolume } from "./player-volume";
 export type { PlayerWatermark, WatermarkPolicyLike } from "./watermark-clearance";
 export { clearOfWatermark, pictureIn, watermarkOf } from "./watermark-clearance";

@@ -16,6 +16,7 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PlayerVolume,
   playbarFromTimeline,
   rungFor,
   watermarkOf,
@@ -138,6 +139,31 @@ const FirstPlayMuted = ({
 
 // HideForIdent clears the controls as the station-ID card arrives, so the card stands alone as the
 // mock draws it; moving the pointer brings the controls back in its place.
+// How long a change of level or mute shows the volume level (§9.5).
+const VOLUME_FLASH_MS = 1_500;
+
+// FlashOnVolume shows the volume level for a moment when the level or mute changes after mount.
+// The session's first play mutes itself (quiet): the unmute pill says so, and the level stays away.
+const FlashOnVolume = ({
+  muted,
+  onChange,
+  quiet,
+  volume,
+}: {
+  muted: boolean;
+  onChange: () => void;
+  quiet: boolean;
+  volume: number;
+}) => {
+  const seen = useRef({ muted, volume });
+  useEffect(() => {
+    if (seen.current.muted === muted && seen.current.volume === volume) return;
+    seen.current = { muted, volume };
+    if (!quiet) onChange();
+  }, [muted, volume, onChange, quiet]);
+  return null;
+};
+
 const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident: boolean }) => {
   useEffect(() => {
     if (ident) hide();
@@ -326,6 +352,21 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   // Playback details (§9.5): a panel at the upper left on a pointer, a sheet on a phone. I toggles it.
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // The volume level (§9.5, desktop): opened by the Volume key in the menu's place, and shown for a
+  // moment when the level or mute changes.
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  // A count of changes, not a flag: each change restarts the moment; zero is hidden.
+  const [volumeFlash, setVolumeFlash] = useState(0);
+  const flashVolume = useCallback(() => setVolumeFlash((n) => n + 1), []);
+  useEffect(() => {
+    if (volumeFlash === 0) return;
+    const timer = window.setTimeout(() => setVolumeFlash(0), VOLUME_FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [volumeFlash]);
+  const closeVolume = () => {
+    setVolumeOpen(false);
+    setVolumeFlash(0);
+  };
 
   const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
     channels: drawer?.channels,
@@ -333,11 +374,17 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     infoAsCard: !touch,
     onDetails: () => setDetailsOpen((open) => !open),
     onLast: goLast,
-    // Esc closes the top layer, then leaves: the details panel is a layer too.
-    onLeave: () => (detailsOpen ? setDetailsOpen(false) : onLeave()),
+    // Esc closes the top layer, then leaves: the details panel and the volume level are layers too.
+    onLeave: () =>
+      detailsOpen ? setDetailsOpen(false) : volumeOpen || volumeFlash > 0 ? closeVolume() : onLeave(),
     onTune: player.tune,
     viewerPaused: player.liveTransport.state.mode === "paused",
   });
+  // One thing in the menu's place at a time: opening a menu or sheet closes the level.
+  useEffect(() => {
+    if (sheet) setVolumeOpen(false);
+  }, [sheet]);
+  const volumeShown = !touch && !sheet && (volumeOpen || volumeFlash > 0);
 
   const detailRows = usePlaybackDetails(detailsOpen || sheet === "details", videoRef, {
     lagSeconds: player.liveTransport.state.lagSeconds,
@@ -510,8 +557,14 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     const opened = openSheetFor(chrome);
     return (
       <>
-        <HoldWhile hold={chrome.hold} on={sheet !== undefined} />
+        <HoldWhile hold={chrome.hold} on={sheet !== undefined || volumeShown} />
         <FirstPlayMuted chrome={chrome} onStart={onFirstPlayStart} onUnmuted={onFirstPlayUnmuted} />
+        <FlashOnVolume
+          muted={chrome.muted}
+          onChange={flashVolume}
+          quiet={startedMuted}
+          volume={chrome.volume}
+        />
         <HideForIdent hide={chrome.hide} ident={ident} />
         {errorCover ?? (
           <PlayerChrome
@@ -534,10 +587,31 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               // Volume is desktop's: a phone's own buttons set it.
               volume: touch
                 ? undefined
-                : { muted: chrome.muted, onToggleMute: () => chrome.setMuted(!chrome.muted) },
+                : {
+                    muted: chrome.muted,
+                    onPress: () => {
+                      closeSheet();
+                      setVolumeFlash(0);
+                      setVolumeOpen((open) => !open);
+                    },
+                    open: volumeOpen,
+                  },
             }}
             live={live}
-            menu={inMenu ? opened : undefined}
+            menu={
+              volumeShown ? (
+                <PlayerVolume
+                  muted={chrome.muted}
+                  onVolume={(level) => {
+                    chrome.setVolume(level);
+                    chrome.setMuted(level === 0);
+                  }}
+                  volume={chrome.volume}
+                />
+              ) : inMenu ? (
+                opened
+              ) : undefined
+            }
             onGoLive={chrome.goLive}
             readout={readout}
             panel={

@@ -191,10 +191,10 @@ interface PlayerKeysProps {
   onChannelUp?: () => void;
   onChannelDown?: () => void;
   /**
-   * Volume, on desktop; omitted on a phone and a television, whose own buttons set it (the key is
-   * then not drawn).
+   * Volume, on desktop: it opens the level in the menu's place (§9.5). Omitted on a phone and a
+   * television, whose own buttons set it (the key is then not drawn).
    */
-  volume?: { muted: boolean; onToggleMute: () => void };
+  volume?: { muted: boolean; onPress: () => void; open: boolean };
   /** More: open or close the More sheet. Omitted where the player has nothing for More to open. */
   moreOpen?: boolean;
   onMore?: () => void;

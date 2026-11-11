@@ -273,6 +273,7 @@ export {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PlayerVolume,
   pictureIn,
   playbarFromTimeline,
   playerChromeFromGuide,

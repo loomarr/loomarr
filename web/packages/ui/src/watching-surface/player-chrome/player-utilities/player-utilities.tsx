@@ -22,7 +22,7 @@ interface UtilityKeyProps {
   label: string;
   onPress: () => void;
   pointer: boolean;
-  /** What it opens is open: a tone lighter, and it says it is expanded. */
+  /** What it opens is open: a tone lighter, and it says it is expanded. Left out on a key that opens nothing. */
   pressed?: boolean | undefined;
   /** The tooltip opens downward (Leave, at the top of the screen); otherwise upward. */
   tipBelow?: boolean;
@@ -35,7 +35,7 @@ const UtilityKey = ({
   label,
   onPress,
   pointer,
-  pressed = false,
+  pressed,
   tipBelow = false,
 }: UtilityKeyProps) => {
   const [hovered, setHovered] = useState(false);
@@ -46,7 +46,8 @@ const UtilityKey = ({
       <Pressable
         accessibilityLabel={label}
         accessibilityRole="button"
-        accessibilityState={{ expanded: pressed || undefined }}
+        // aria-expanded, not accessibilityState: React Native for Web 0.21 drops the latter.
+        aria-expanded={pressed}
         {...focusHandlers}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}

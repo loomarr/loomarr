@@ -14,6 +14,7 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PlayerVolume,
   pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
@@ -155,7 +156,7 @@ const keys = {
   onTogglePlay: fn(),
   playing: true,
   pointer: true,
-  volume: { muted: false, onToggleMute: fn() },
+  volume: { muted: false, onPress: fn(), open: false },
 };
 
 const utilities = {
@@ -304,6 +305,15 @@ const AudioMenu: Story = {
       </PlayerMenu>
     ),
     utilities: { ...utilities, audioOpen: true },
+  },
+};
+
+// The volume level (§9.5, desktop): the Volume key opens it in the menu's place; M and the slider show
+// it for a moment.
+const VolumeLevel: Story = {
+  args: {
+    keys: { ...keys, volume: { muted: false, onPress: fn(), open: true } },
+    menu: <PlayerVolume muted={false} onVolume={fn()} volume={0.6} />,
   },
 };
 
@@ -734,6 +744,7 @@ export {
   Touch,
   TypingChannel,
   UnmutePill,
+  VolumeLevel,
   WatermarkBottomLeft,
   WatermarkBottomRight,
   WatermarkTopLeft,
