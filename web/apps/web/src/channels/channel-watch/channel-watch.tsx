@@ -603,11 +603,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         {/* The wash's centred channel line is the visible readout; this is the same line for a
             screen reader. */}
         {tuning && (
-          <TunerOSD
-            number={osdChannel.number}
-            name={osdChannel.name}
-            currentTitle={player.currentTitle}
-          />
+          <TunerOSD number={osdChannel.number} name={osdChannel.name} currentTitle={player.currentTitle} />
         )}
       </div>
     </section>
