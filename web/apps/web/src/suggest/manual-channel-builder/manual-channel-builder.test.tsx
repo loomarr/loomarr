@@ -63,19 +63,20 @@ const stubIdeas = (ideas: ChannelIdeaDTO[]) => {
   server.use(getListChannelIdeasMockHandler({ ideas }));
 };
 
-// The manual/AI-off builder (#1817, G2): starter templates fill name/description only, library
-// facets (the existing channel-ideas data) and search feed one lineup, and "Continue to review"
-// is the one write — a new proposal, re-grounded server-side, never a second creation route.
+// The manual/AI-off builder (#1817, G2): library facets (the existing channel-ideas data) and
+// search feed one lineup, and "Continue to review" is the one write — a new proposal, re-grounded
+// server-side, never a second creation route.
 describe("ManualChannelBuilder", () => {
-  it("fills the name and description from a starter template, without touching the lineup", async () => {
-    stubIdeas([]);
-    const user = userEvent.setup();
+  // The AI path's example chips are not repeated here as templates (#2746, #3411).
+  it("doesn't offer the AI path's example chips as starter templates", async () => {
+    stubIdeas([comedyIdea]);
     render(<ManualChannelBuilder isAdmin onCancel={vi.fn()} onSubmitted={vi.fn()} />);
 
-    await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
-
-    expect(screen.getByLabelText("Channel name")).toHaveValue("Cozy Mystery Nights");
-    expect(screen.getByText(/no titles yet/i)).toBeInTheDocument();
+    expect(await screen.findByText("Build from your library")).toBeInTheDocument();
+    expect(screen.queryByText("Starter templates")).not.toBeInTheDocument();
+    for (const template of CHANNEL_TEMPLATES) {
+      expect(screen.queryByRole("button", { name: new RegExp(template.label, "i") })).not.toBeInTheDocument();
+    }
   });
 
   it("adds a facet's titles one at a time and keeps already-added titles out of the list", async () => {
@@ -138,7 +139,7 @@ describe("ManualChannelBuilder", () => {
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith("job-manual-1"));
   });
 
-  it("starting from an idea ('Edit first') hides templates and facets and preloads the lineup", async () => {
+  it("starting from an idea ('Edit first') hides the facets and preloads the lineup", async () => {
     render(
       <ManualChannelBuilder
         isAdmin={false}
@@ -252,15 +253,14 @@ describe("ManualChannelBuilder resume banner", () => {
         onDescribeWithAi={onDescribeWithAi}
       />,
     );
-    await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
+    await user.type(await screen.findByLabelText("Channel name"), "Cozy Mystery Nights");
 
     await reconnect(features);
     expect(screen.getByText(/Your manual lineup \(0 titles\) is still here/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try AI suggestions" }));
 
-    expect(onDescribeWithAi).toHaveBeenCalledWith(
-      CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
-    );
+    // With no description from an idea, the name is the brief that carries over.
+    expect(onDescribeWithAi).toHaveBeenCalledWith("Cozy Mystery Nights");
     expect(onAiSubmitted).not.toHaveBeenCalled();
   });
 
