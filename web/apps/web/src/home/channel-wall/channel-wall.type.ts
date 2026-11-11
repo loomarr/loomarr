@@ -29,6 +29,8 @@ interface AiringArtworkProps {
   channel: { name: string; number: number };
   // The `<ServedImage>` `sizes` hint for the slot this fills.
   sizes: string;
+  // Leave the code-drawn fallback without its monogram (the phone tile, where words sit over all of it).
+  wordless?: boolean;
 }
 
 export type { AiringArtworkProps, ChannelViewer, ChannelWallProps };
