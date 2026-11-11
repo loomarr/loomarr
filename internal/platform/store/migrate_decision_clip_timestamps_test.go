@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -49,25 +50,29 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Through to the current schema, so the rows read back through the current GetClip.
-	if _, err := provider.Up(ctx); err != nil {
+	// Only through 00131: replaying every later migration under -race costs the store lane minutes
+	// (#2716), and TestSQLiteStoreCloneMatchesFreshReplay already covers the tail. The rows are read
+	// back as raw Unix seconds, the 00131 schema's own representation.
+	if _, err := provider.UpTo(ctx, 131); err != nil {
 		t.Fatalf("apply decision timestamp repair: %v", err)
 	}
-	for hash, want := range map[string]struct{ updated, removed time.Time }{
-		"decided":   {decidedAt, decidedAt},
-		"untouched": {untouchedAt, time.Time{}},
+	for hash, want := range map[string]struct{ updated, removed int64 }{
+		"decided":   {decidedAt.Unix(), decidedAt.Unix()},
+		"untouched": {untouchedAt.Unix(), 0},
 	} {
-		clip, err := s.GetClip(ctx, hash)
-		if err != nil {
+		var clipUpdated, pipelineUpdated int64
+		var clipRemoved sql.NullInt64
+		if err := s.db.QueryRowContext(ctx, `SELECT updated_at, removed_at FROM clips WHERE hash = ?`, hash).
+			Scan(&clipUpdated, &clipRemoved); err != nil {
 			t.Fatal(err)
 		}
-		pipeline, _, err := readClipPipelineRow(ctx, s, hash)
-		if err != nil {
+		if err := s.db.QueryRowContext(ctx, `SELECT updated_at FROM filler_clip_pipeline WHERE clip_hash = ?`, hash).
+			Scan(&pipelineUpdated); err != nil {
 			t.Fatal(err)
 		}
-		if !clip.UpdatedAt.Equal(want.updated) || !clip.RemovedAt.Equal(want.removed) || !pipeline.UpdatedAt.Equal(want.updated) {
-			t.Fatalf("%s after repair: clip updated %v removed %v, pipeline updated %v; want %v, %v",
-				hash, clip.UpdatedAt, clip.RemovedAt, pipeline.UpdatedAt, want.updated, want.removed)
+		if clipUpdated != want.updated || clipRemoved.Int64 != want.removed || pipelineUpdated != want.updated {
+			t.Fatalf("%s after repair: clip updated %d removed %v, pipeline updated %d; want %d, %d",
+				hash, clipUpdated, clipRemoved, pipelineUpdated, want.updated, want.removed)
 		}
 	}
 }

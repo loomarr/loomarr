@@ -75,24 +75,34 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 		t.Fatal(err)
 	}
 
-	if _, err := provider.Up(ctx); err != nil {
+	// Only through 00106: replaying every later migration under -race costs the store lane minutes
+	// (#2716), and TestSQLiteStoreCloneMatchesFreshReplay already covers the tail.
+	if _, err := provider.UpTo(ctx, 106); err != nil {
 		t.Fatalf("apply runtime-rights retirement: %v", err)
 	}
 
-	clip, err := s.GetClip(ctx, hash)
-	if err != nil || !clip.Held {
-		t.Fatalf("affected clip = %+v, err = %v; want held", clip, err)
+	var held bool
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT held FROM clips WHERE hash = ?`), hash).Scan(&held); err != nil || !held {
+		t.Fatalf("affected clip held = %t, err = %v; want held", held, err)
 	}
-	if _, found, err := readClipPipelineRow(ctx, s, hash); err != nil || found {
-		t.Fatalf("affected pipeline found = %t, err = %v; want re-enrolment", found, err)
+	var pipelines int
+	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).
+		Scan(&pipelines); err != nil || pipelines != 0 {
+		t.Fatalf("affected pipeline rows = %d, err = %v; want re-enrolment", pipelines, err)
 	}
-	for _, table := range []string{
-		"filler_rights_heads", "filler_rights_grants",
-		"filler_admission_decisions", "filler_admission_actions", "filler_diagnostic_recovery_actions",
-	} {
+	for _, table := range []string{"filler_rights_heads", "filler_rights_grants"} {
 		var count int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&count); err == nil || err == sql.ErrNoRows {
 			t.Fatalf("retired table %s remains queryable", table)
+		}
+	}
+	// 00106 empties the superseded admission history; a later migration drops its tables.
+	for _, table := range []string{
+		"filler_admission_decisions", "filler_admission_actions", "filler_diagnostic_recovery_actions",
+	} {
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("superseded %s rows = %d, err = %v; want none", table, count, err)
 		}
 	}
 }
