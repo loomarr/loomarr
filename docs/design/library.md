@@ -242,7 +242,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   Needs you link splits the copy out again; the founding origin never leaves.
 - **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
   its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
-  either changed, and reads its header only when its bytes changed.
+  either changed, and reads its header only when its bytes changed. An episode's inputs include
+  its series folder's own `tvshow.nfo` and folder art (`poster.jpg`, `season01-poster.jpg` and the
+  like). The pass stats those from the series folder itself, so a full walk and a folder pass over
+  one season digest the same. Editing `tvshow.nfo` or replacing the show's poster rewrites the
+  episodes, and through them the show, with no episode file touched (#3226).
 - **While an arr fails to list:**
   - new and changed files in the roots it manages wait, rather than being written with what its
     absence would leave;

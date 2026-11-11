@@ -434,6 +434,41 @@ func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	}
 }
 
+// A show's own tvshow.nfo is part of each episode's identity (#3226): giving it a TMDB id grounds
+// the show on the next pass, a full walk or a folder pass over one season, with no episode file
+// touched and no header read again.
+func TestImportSeriesNFOChangeRewritesTheShow(t *testing.T) {
+	for _, pass := range []string{"full", "season folder"} {
+		t.Run(pass, func(t *testing.T) {
+			h := newHarness(t)
+			h.file("Example Show (2001)/Season 1/Example Show S01E01.mkv", 10)
+			h.run()
+			origin := seriesOrigin(h.root, "Example Show (2001)")
+			if ids := h.item(origin).ExternalIDs; len(ids) != 0 {
+				t.Fatalf("show ids before tvshow.nfo = %+v", ids)
+			}
+
+			doc := `<tvshow><title>Example Show</title><uniqueid type="tmdb" default="true">90000621</uniqueid></tvshow>`
+			if err := os.WriteFile(filepath.Join(h.root, "Example Show (2001)", "tvshow.nfo"), []byte(doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			h.reads.Store(0)
+			if pass == "full" {
+				h.run()
+			} else if err := h.im.RunFolders(context.Background(), h.root,
+				[]string{filepath.Join(h.root, "Example Show (2001)", "Season 1")}); err != nil {
+				t.Fatal(err)
+			}
+			if item := h.item(origin); !hasID(item.ExternalIDs, "tmdb", "90000621") {
+				t.Fatalf("show after tvshow.nfo = %+v", item)
+			}
+			if h.reads.Load() != 0 {
+				t.Errorf("a tvshow.nfo change read %d headers", h.reads.Load())
+			}
+		})
+	}
+}
+
 // An arr connected after the folders were set up has none of its folders recorded: the next full
 // pass asks for them first, so its files meet its records without anyone pressing "Check again".
 // Once they are recorded it does not ask again, and an arr with no connection is never asked.
