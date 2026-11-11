@@ -15,7 +15,7 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-  type PlayerTopRowProps,
+  type PlayerUtilitiesProps,
 } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -84,9 +84,8 @@ const keys = (overrides: Partial<PlayerKeysProps> = {}): PlayerKeysProps => ({
   ...overrides,
 });
 
-const top = (overrides: Partial<PlayerTopRowProps> = {}): PlayerTopRowProps => ({
+const utilities = (overrides: Partial<PlayerUtilitiesProps> = {}): PlayerUtilitiesProps => ({
   density: "pointer",
-  onLeave: vi.fn(),
   pointer: true,
   ...overrides,
 });
@@ -111,20 +110,49 @@ const chrome = (overrides: Partial<PlayerChromeProps> = {}) => (
     keys={keys()}
     live={{ lagSeconds: 0, mode: "live" }}
     onGoLive={vi.fn()}
-    top={top()}
+    onLeave={vi.fn()}
+    utilities={utilities()}
     visible
     {...overrides}
   />
 );
 
+// A schedule for the film strip: the programme on air, a break, and the next programme.
+const schedule = {
+  playheadMs: 30 * 60_000,
+  segments: [
+    {
+      chips: ["S2 E4", "TV-PG"],
+      id: "a",
+      kind: "programme" as const,
+      name: "An ensemble comedy",
+      startMs: 0,
+      stopMs: 40 * 60_000,
+    },
+    { id: "b", kind: "break" as const, spots: [], startMs: 40 * 60_000, stopMs: 43 * 60_000 },
+    {
+      chips: [],
+      id: "c",
+      kind: "programme" as const,
+      name: "A detective film",
+      startMs: 43 * 60_000,
+      stopMs: 150 * 60_000,
+    },
+  ],
+  window: { endMs: 150 * 60_000, nowMs: 30 * 60_000, startMs: 15 * 60_000 },
+};
+
 describe("PlayerChrome", () => {
-  it("names the channel once, and carries NOW, the progress clocks and NEXT", () => {
+  it("names the channel once, and carries Now, the progress clocks and Next", () => {
     const host = mount(chrome());
 
     // The band names the channel once; the block beside it carries only the number.
     expect(host.textContent?.match(/Coast 90s/g)).toHaveLength(1);
-    for (const text of ["NOW", "An ensemble comedy", "S2 E4 “Opening Night”", "t0", "t10", "NEXT", "t4"])
+    for (const text of ["Now", "An ensemble comedy", "S2 E4 “Opening Night”", "t0", "t10", "Next", "t4"])
       expect(host.textContent, text).toContain(text);
+    // Now and Next are plain labels in a gutter, not shouted chips (§9.6).
+    expect(host.textContent).not.toContain("NOW");
+    expect(host.textContent).not.toContain("NEXT");
     expect(host.textContent).toContain("A detective film");
     // Live reads Live with the clock; there is no Go live to offer.
     expect(host.textContent).toContain("Live");
@@ -132,8 +160,10 @@ describe("PlayerChrome", () => {
     expect(button(host, "Go live")).toBeUndefined();
   });
 
-  it("draws the keys and the top row, each named", () => {
-    const host = mount(chrome({ top: top({ fullscreen: false, onAudio: vi.fn(), onFullscreen: vi.fn() }) }));
+  it("draws the keys, the utilities over them and Leave, each named", () => {
+    const host = mount(
+      chrome({ utilities: utilities({ fullscreen: false, onAudio: vi.fn(), onFullscreen: vi.fn() }) }),
+    );
 
     for (const name of [
       "Channel up",
@@ -149,6 +179,51 @@ describe("PlayerChrome", () => {
     // No channel to return to yet: Last is not drawn. Subtitles are not drawn until the player has any.
     expect(host.textContent).not.toContain("Last");
     expect(button(host, "Subtitles")).toBeUndefined();
+    // The utilities sit in the control cluster with the keys, not in a row of their own up top.
+    expect(
+      Array.from(host.querySelectorAll('[data-testid="player-cluster"] [role="button"]')).map((el) =>
+        el.getAttribute("aria-label"),
+      ),
+    ).toEqual(expect.arrayContaining(["Audio", "Fullscreen", "Pause", "More"]));
+  });
+
+  it("sets the programme's rating beside Leave, and leaves", () => {
+    const onLeave = vi.fn();
+    const host = mount(chrome({ band: { ...band, rating: "TV-PG" }, onLeave }));
+    expect(host.querySelector('[data-testid="player-rating"]')?.textContent).toBe("TV-PG");
+    act(() => button(host, "Leave")?.click());
+    expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("runs the film strip as the band's foot on a pointer device, in place of the progress line and Next", () => {
+    const host = mount(chrome({ band: { ...band, clockMs: 30 * 60_000, stopMs: 40 * 60_000 }, schedule }));
+    expect(host.querySelector('[role="group"][aria-label="Schedule"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="band-progress"]')).toBeNull();
+    expect(host.textContent).not.toContain("Next");
+    expect(host.textContent).toContain("10 min left");
+    // jsdom lays nothing out, so the strip draws no blocks here; the white playhead is always drawn.
+    expect(host.querySelector('[data-testid="strip-playhead"]')).not.toBeNull();
+  });
+
+  it("says Nothing scheduled, with no Now or Next, when the channel has nothing on", () => {
+    const host = mount(chrome({ band: { channelName: "Coast 90s", channelNumber: "7", clockMs: 1 } }));
+    expect(host.textContent).toContain("Nothing scheduled");
+    expect(host.textContent).not.toContain("Now");
+    expect(host.textContent).not.toContain("Next");
+  });
+
+  it("gives a television four keys, no utilities row and no Leave: Back leaves", () => {
+    const host = mount(
+      chrome({
+        density: "tv",
+        keys: keys({ density: "tv", pointer: false }),
+        layout: "tv",
+        utilities: utilities({ density: "tv", onAudio: vi.fn(), onSubtitles: vi.fn(), pointer: false }),
+      }),
+    );
+    for (const name of ["Subtitles", "Audio", "More"]) expect(button(host, name), name).toBeDefined();
+    for (const name of ["Leave", "Channel up", "Pause", "Mute", "Fullscreen"])
+      expect(button(host, name), name).toBeUndefined();
   });
 
   it("offers Last with the channel's number once there is one to return to", () => {
@@ -199,14 +274,11 @@ describe("PlayerChrome", () => {
     expect(onGoLive).toHaveBeenCalledOnce();
   });
 
-  it("sets the title as the logo's accessible name when there is a logo, and as text when there is none", () => {
+  it("always types the title: a title's logo never stands in for it in the band (§9.2)", () => {
     const logo = { height: 100, src: "data:image/png;base64,AAAA", srcSetWebp: "", width: 600 };
-    const withLogo = mount(chrome({ band: { ...band, logo } }));
-    expect(withLogo.querySelector('[role="img"][aria-label="An ensemble comedy"]')).not.toBeNull();
-    expect(withLogo.textContent).not.toContain("An ensemble comedy");
-    const without = mount(chrome());
-    expect(without.querySelector('[role="img"]')).toBeNull();
-    expect(without.textContent).toContain("An ensemble comedy");
+    const host = mount(chrome({ band: { ...band, logo } }));
+    expect(host.querySelector('[role="img"]')).toBeNull();
+    expect(host.querySelector('[data-testid="band-title"]')?.textContent).toBe("An ensemble comedy");
   });
 
   it("reads a break as the programme's title with Back in n min, and no badge", () => {

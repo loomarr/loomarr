@@ -159,16 +159,16 @@ const keys = {
   volume: 0.8,
 };
 
-const top = {
+const utilities = {
   audioOpen: false,
   density: "pointer" as const,
   fullscreen: false,
   onAudio: fn(),
   onFullscreen: fn(),
-  onLeave: fn(),
   pointer: true,
 };
 
+// The band, keys and film strip for a playhead. A phone's strip is in More, so its stories drop it.
 const chromeArgs = (state: { lagSeconds: number; mode: "behind" | "live" | "paused" }, playheadAt = NOW) => {
   const playheadMs = playheadAt - state.lagSeconds * 1000;
   const data = playbarFromTimeline({ airings, channel, live: state, nowMs: NOW, playheadMs });
@@ -176,6 +176,7 @@ const chromeArgs = (state: { lagSeconds: number; mode: "behind" | "live" | "paus
     band: data.band,
     keys: { ...keys, playing: state.mode !== "paused" },
     live: state,
+    schedule: { onSeek: fn(), playheadMs, segments: data.segments, window: data.window },
   };
 };
 
@@ -226,7 +227,8 @@ const meta = {
     density: "pointer",
     formatTime,
     onGoLive: fn(),
-    top,
+    onLeave: fn(),
+    utilities,
     visible: true,
   },
 } satisfies Meta<typeof PlayerChrome>;
@@ -248,23 +250,44 @@ const Behind: Story = { args: chromeArgs({ lagSeconds: 134, mode: "paused" }) };
 // A break airing at the playhead: the programme's title, `Back in n min` in the break colour.
 const Commercials: Story = { args: chromeArgs({ lagSeconds: 75, mode: "behind" }) };
 
-// The schedule not read yet: the band names the channel and nothing else.
+// Nothing scheduled: the band names the channel and says so, with no Now, Next or strip.
 const NoSchedule: Story = {
-  args: { band: { channelName: channel.name, channelNumber: channel.number } },
+  args: { band: { channelName: channel.name, channelNumber: channel.number }, schedule: undefined },
 };
+
+// Without the schedule's window the band draws the progress line and Next, as a phone's does.
+const NoStrip: Story = { args: { schedule: undefined } };
 
 // Last is hidden until there is a channel to return to; this one has it, as does the player after a flip.
 const WithLast: Story = {
   args: { keys: { ...keys, last: { number: "3", onPress: fn() } } },
 };
 
-// Touch: 56 px keys, no legends, no Volume, no tooltips.
-const Touch: Story = {
+// Touch, the phone held sideways: 48 px keys, no legends, no Volume, the strip left to More.
+const touchArgs = {
+  density: "touch" as const,
+  keys: { ...keys, density: "touch" as const, pointer: false },
+  schedule: undefined,
+  utilities: { ...utilities, density: "touch" as const, pointer: false },
+};
+const Touch: Story = { args: touchArgs };
+
+// A television (§9.7): the 960 × 540 frame with 5% clear at every edge, four keys (Last, Subtitles,
+// Audio, More), no utilities row and no Leave; the strip's blocks take the remote's focus.
+const TV = { height: 540, width: 960 } as const;
+const Television: Story = {
   args: {
-    density: "touch",
-    keys: { ...keys, density: "touch", pointer: false },
-    top: { ...top, density: "touch", pointer: false },
+    density: "tv",
+    keys: { ...keys, density: "tv", last: { number: "3", onPress: fn() }, pointer: false },
+    layout: "tv",
+    onLeave: undefined,
+    utilities: { ...utilities, density: "tv", onSubtitles: fn(), pointer: false, subtitlesOn: false },
   },
+  render: (args) => (
+    <div style={{ ...TV, margin: "0 auto", overflow: "hidden", position: "relative" }}>
+      <PlayerChrome {...(args as PlayerChromeProps)} />
+    </div>
+  ),
 };
 
 const AudioSheet: Story = {
@@ -283,11 +306,11 @@ const AudioSheet: Story = {
         />
       </PlayerSheet>
     ),
-    top: { ...top, audioOpen: true },
+    utilities: { ...utilities, audioOpen: true },
   },
 };
 
-// Digits being typed with the controls up: the readout on a solid ink backing, white, under the top row.
+// Digits being typed with the controls up: the readout on a solid ink backing, white, top right.
 const TypingChannel: Story = { args: { readout: { digits: "1–" } } };
 
 const NoSuchChannel: Story = { args: { readout: { digits: "99", missed: true } } };
@@ -390,14 +413,12 @@ const PlaybackDetailsBare: Story = {
 // On a phone it is a sheet.
 const PlaybackDetailsSheet: Story = {
   args: {
-    density: "touch",
-    keys: { ...keys, density: "touch", pointer: false },
+    ...touchArgs,
     sheet: (
       <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="Playback details">
         <PlayerDetails density="touch" onCopy={fn()} rows={detailRows} />
       </PlayerSheet>
     ),
-    top: { ...top, density: "touch", pointer: false },
   },
 };
 
@@ -446,8 +467,9 @@ const MoreBehind: Story = {
 // The first play of the session starts muted: a pill under the controls takes one tap to undo it.
 const UnmutePill: Story = { args: { unmute: fn() } };
 
-// A portrait phone (pick A, #2775): the picture pinned under the top row, the band and keys below it in
-// the black space, nothing over the picture. A stand-in strip marks where the player draws the video.
+// A portrait phone (pick A, #2775): the picture pinned under a toolbar (Leave and the rating, then the
+// utilities), the band and keys below it in the black space, nothing over the picture. A stand-in
+// strip marks where the player draws the video.
 const PHONE = { height: 844, width: 390 } as const;
 const PhoneFrame = (args: PlayerChromeProps) => (
   <div style={{ ...PHONE, background: "#000", margin: "0 auto", position: "relative" }}>
@@ -464,10 +486,9 @@ const PhoneFrame = (args: PlayerChromeProps) => (
   </div>
 );
 const portraitArgs = {
-  density: "touch" as const,
-  keys: { ...keys, density: "touch" as const, last: undefined, pointer: false },
+  ...touchArgs,
+  keys: { ...touchArgs.keys, last: undefined },
   layout: "portrait" as const,
-  top: { ...top, density: "touch" as const, pointer: false },
 };
 const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
 const PortraitBehind: Story = {
@@ -475,11 +496,17 @@ const PortraitBehind: Story = {
     ...portraitArgs,
     ...chromeArgs({ lagSeconds: 134, mode: "paused" }),
     keys: { ...portraitArgs.keys, playing: false },
+    schedule: undefined,
   },
   render: (args) => <PhoneFrame {...args} />,
 };
 const PortraitCommercials: Story = {
-  args: { ...portraitArgs, ...chromeArgs({ lagSeconds: 75, mode: "behind" }), keys: portraitArgs.keys },
+  args: {
+    ...portraitArgs,
+    ...chromeArgs({ lagSeconds: 75, mode: "behind" }),
+    keys: portraitArgs.keys,
+    schedule: undefined,
+  },
   render: (args) => <PhoneFrame {...args} />,
 };
 // The band's text column at its tightest (#3408): a 30-character title that takes two lines under a
@@ -527,8 +554,7 @@ const PortraitMore: Story = {
   render: (args) => <PhoneFrame {...args} />,
 };
 
-// Title art, drawn as shapes (no real titles in a public repo): a wide wordmark, a nearly square emblem
-// and a 16:9 fanart. The band sizes each logo by area, so a wide and a square one carry the same weight.
+// Title art, drawn as shapes (no real titles in a public repo): a wide wordmark and a 16:9 fanart.
 const svgArt = (width: number, height: number, body: string) => ({
   height,
   src: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${body}</svg>`)}`,
@@ -540,19 +566,14 @@ const wordmark = svgArt(
   100,
   '<rect width="600" height="100" rx="12" fill="#F4F6FA"/><rect x="24" y="30" width="552" height="40" rx="8" fill="#0B0C0E"/>',
 );
-const emblem = svgArt(
-  420,
-  400,
-  '<circle cx="210" cy="200" r="196" fill="#F4F6FA"/><circle cx="210" cy="200" r="120" fill="#0B0C0E"/><circle cx="210" cy="200" r="48" fill="#F4F6FA"/>',
-);
 const fanart = svgArt(
   1280,
   720,
   '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(20 60% 50%)"/><stop offset="1" stop-color="hsl(280 45% 18%)"/></linearGradient></defs><rect width="1280" height="720" fill="url(#g)"/>',
 );
 
+// A title with a logo: the band still types it. A logo is set on the strip's preview card (§9.2).
 const LogoWide: Story = { args: { band: { ...liveData.band, logo: wordmark } } };
-const LogoSquare: Story = { args: { band: { ...liveData.band, logo: emblem } } };
 
 // The station-ID card: a settled tune, the controls hidden — the band alone, with the station's era
 // and place.
@@ -623,11 +644,11 @@ export {
   Idle,
   Info,
   LightPlaying,
-  LogoSquare,
   LogoWide,
   MoreBehind,
   MoreSheet,
   NoSchedule,
+  NoStrip,
   NoSuchChannel,
   OffAir,
   PictureSheet,
@@ -646,6 +667,7 @@ export {
   StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
+  Television,
   Touch,
   TypingChannel,
   UnmutePill,

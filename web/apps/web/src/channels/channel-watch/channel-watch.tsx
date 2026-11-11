@@ -521,14 +521,25 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               />
             ) : undefined
           }
+          onLeave={onLeave}
+          // The film strip is the band's foot on a pointer device (§9.2); a phone's is in More.
+          schedule={
+            !touch && airings.length > 0
+              ? {
+                  onSeek: chrome.seekTo,
+                  playheadMs: viewerTimeMs,
+                  segments: chromeData.segments,
+                  window: chromeData.window,
+                }
+              : undefined
+          }
           sheet={openSheetFor(chrome)}
-          top={{
+          utilities={{
             audioOpen: sheet === "audio",
             density,
             fullscreen: chrome.fullscreen,
             onAudio: () => toggleSheet("audio"),
             onFullscreen: chrome.toggleFullscreen,
-            onLeave,
             pointer: !touch,
           }}
           unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
