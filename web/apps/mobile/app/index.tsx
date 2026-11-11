@@ -31,6 +31,7 @@ import {
   PlayerChrome,
   PlayerInfo,
   PlayerMore,
+  PlayerSheet,
   playerChromeFromGuide,
   RequestsJourney,
   ScreenHeader,
@@ -39,11 +40,12 @@ import {
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import Constants from "expo-constants";
+import * as ScreenOrientation from "expo-screen-orientation";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useMemo, useState } from "react";
-import { Platform, View } from "react-native";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { nativeApp } from "../src/native-app";
 
 const credentialStore = createPairingCredentialStore({
@@ -95,9 +97,27 @@ const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
 
 const LIVE = { lagSeconds: 0, mode: "live" } as const;
 
-// Watching (§9, variant J, the phone held upright): full screen, the picture a strip mid-screen, a
-// toolbar above it (Leave and the rating, then the utilities) and the band and keys below it, the
-// same chrome the web draws. Leave goes back to the Guide; More opens the schedule, Go live, Start
+// The app is upright everywhere but Watching. iOS launches upright from Info.plist (the plugin's
+// initialOrientation); Android has no such key, so the lock is also taken as the bundle loads.
+const lockUpright = () =>
+  void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => undefined);
+lockUpright();
+
+// On its side, the chrome is over the picture and leaves it bare after this long without a touch,
+// while playing and with nothing open (§9.1), as the television's does.
+const CHROME_IDLE_MS = 5_000;
+
+// Watching turns with the phone while it is mounted, and puts the app upright again as it goes.
+const useTurnWithPhone = () => {
+  useEffect(() => {
+    void ScreenOrientation.unlockAsync().catch(() => undefined);
+    return lockUpright;
+  }, []);
+};
+
+// Watching (§9, variant J): full screen, the same chrome the web draws. Held upright, the picture is
+// a strip mid-screen, with a toolbar above it (Leave and the rating, then the utilities) and the band
+// and keys below it. On its side, the picture fills the screen and the chrome comes and goes over it. Leave goes back to the Guide; More opens the schedule, Go live, Start
 // over, Info and Channels (the Guide, where the favourites are).
 const WatchingScreen = ({
   client,
@@ -117,6 +137,14 @@ const WatchingScreen = ({
   }, []);
   const [sheet, setSheet] = useState<"info" | "more" | undefined>(undefined);
   const closeSheet = () => setSheet(undefined);
+  useTurnWithPhone();
+  const { height, width } = useWindowDimensions();
+  const onSide = width > height;
+  // On its side the chrome comes and goes: a tap on the picture toggles it, and it leaves after a
+  // while untouched. Upright it is always there, as nothing covers the picture.
+  const [shown, setShown] = useState(true);
+  const [touches, setTouches] = useState(0);
+  const touched = () => setTouches((n) => n + 1);
   const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs, snapshot });
   const formatTime = (ms: number) => formatGuideTime(ms, guideSnapshot.layout?.timezone);
   const live = snapshot.livePlayback ?? LIVE;
@@ -127,73 +155,107 @@ const WatchingScreen = ({
     haptic.selection();
     void controller.step(direction);
   };
+  // `touches` is read so each touch restarts the wait.
+  useEffect(() => {
+    if (!onSide || !shown || sheet || !playing || touches < 0) return;
+    const timer = setTimeout(() => setShown(false), CHROME_IDLE_MS);
+    return () => clearTimeout(timer);
+  }, [onSide, shown, sheet, playing, touches]);
+  const visible = !onSide || shown || sheet !== undefined;
 
-  // Held upright, what a key opens rises from the bottom (§9.5, variant J), over the picture undimmed.
+  // What a key opens (§9.5, variant J): held upright, a sheet rising from the bottom over the picture
+  // undimmed; on its side, the right-hand sheet, as a touch screen's web player has it.
+  const sheetOf = (title: string, body: ReactNode) =>
+    onSide && snapshot.channel ? (
+      <PlayerSheet
+        channel={{ name: snapshot.channel.name, number: String(snapshot.channel.number) }}
+        density="touch"
+        onClose={closeSheet}
+        title={title}
+      >
+        {body}
+      </PlayerSheet>
+    ) : (
+      <PlayerBottomSheet onClose={closeSheet} title={title}>
+        {body}
+      </PlayerBottomSheet>
+    );
+
   const sheetFor = (name: "info" | "more") => {
     if (!chrome || !snapshot.channel) return undefined;
     const { info, segments, startOverMs, window } = chrome;
     if (name === "info")
-      return info ? (
-        <PlayerBottomSheet onClose={closeSheet} title="Info">
-          <PlayerInfo density="touch" formatTime={formatTime} info={info} />
-        </PlayerBottomSheet>
-      ) : undefined;
-    return (
-      <PlayerBottomSheet onClose={closeSheet} title="More">
-        <PlayerMore
-          channels={{
-            onPress: () => {
-              closeSheet();
-              onOpenChannels();
-            },
-          }}
-          density="touch"
-          formatTime={formatTime}
-          goLive={
-            live.mode === "live"
-              ? undefined
-              : {
-                  detail: formatTime(nowMs),
-                  onPress: () => {
-                    closeSheet();
-                    void controller.goLive();
-                  },
-                }
-          }
-          info={info ? { onPress: () => setSheet("info") } : undefined}
-          schedule={
-            segments.length > 0
-              ? {
-                  onSeek: (wallClockMs) => void controller.seek(wallClockMs),
-                  playheadMs: watchingScheduleTimeMs(snapshot, nowMs),
-                  segments,
-                  window,
-                }
-              : undefined
-          }
-          startOver={
-            startOverMs === undefined || !info
-              ? undefined
-              : {
-                  detail: info.title,
-                  onPress: () => {
-                    closeSheet();
-                    void controller.seek(startOverMs);
-                  },
-                }
-          }
-        />
-      </PlayerBottomSheet>
+      return info
+        ? sheetOf("Info", <PlayerInfo density="touch" formatTime={formatTime} info={info} />)
+        : undefined;
+    return sheetOf(
+      "More",
+      <PlayerMore
+        channels={{
+          onPress: () => {
+            closeSheet();
+            onOpenChannels();
+          },
+        }}
+        density="touch"
+        formatTime={formatTime}
+        goLive={
+          live.mode === "live"
+            ? undefined
+            : {
+                detail: formatTime(nowMs),
+                onPress: () => {
+                  closeSheet();
+                  void controller.goLive();
+                },
+              }
+        }
+        info={info ? { onPress: () => setSheet("info") } : undefined}
+        schedule={
+          segments.length > 0
+            ? {
+                onSeek: (wallClockMs) => void controller.seek(wallClockMs),
+                playheadMs: watchingScheduleTimeMs(snapshot, nowMs),
+                segments,
+                window,
+              }
+            : undefined
+        }
+        startOver={
+          startOverMs === undefined || !info
+            ? undefined
+            : {
+                detail: info.title,
+                onPress: () => {
+                  closeSheet();
+                  void controller.seek(startOverMs);
+                },
+              }
+        }
+      />,
     );
   };
 
   return (
     <View style={{ backgroundColor: "black", flex: 1 }}>
-      {/* The picture, letterboxed and centred: a strip mid-screen. */}
+      {/* The picture, letterboxed and centred: a strip mid-screen upright, the whole screen on its side. */}
       <NativePlayerView
         style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         transport={transport}
       />
+      {/* On its side: no status bar over the picture, and a tap on the picture shows or hides the chrome. */}
+      <StatusBar hidden={onSide} style="light" />
+      {onSide && !failure ? (
+        <Pressable
+          accessibilityLabel={visible ? "Hide controls" : "Show controls"}
+          accessibilityRole="button"
+          onPress={() => {
+            setShown(!visible);
+            touched();
+          }}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {failure ? (
         <View style={{ flex: 1, justifyContent: "center" }}>
           <StatePanel
@@ -208,37 +270,40 @@ const WatchingScreen = ({
           />
         </View>
       ) : chrome ? (
-        <PlayerChrome
-          band={chrome.band}
-          density="touch"
-          formatTime={formatTime}
-          keys={{
-            density: "touch",
-            last: previous
-              ? {
-                  number: String(previous.number),
-                  onPress: () => {
-                    haptic.selection();
-                    void controller.tuneChannel(previous.id);
-                  },
-                }
-              : undefined,
-            moreOpen: sheet === "more",
-            onChannelDown: snapshot.catalog.length > 1 ? step(-1) : undefined,
-            onChannelUp: snapshot.catalog.length > 1 ? step(1) : undefined,
-            onMore: () => setSheet((open) => (open === "more" ? undefined : "more")),
-            onTogglePlay: playing ? controller.pause : () => void controller.play(),
-            playing,
-            pointer: false,
-          }}
-          layout="portrait"
-          live={live}
-          onGoLive={() => void controller.goLive()}
-          onLeave={onLeave}
-          sheet={sheet ? sheetFor(sheet) : undefined}
-          utilities={{ density: "touch", pointer: false }}
-          visible
-        />
+        // Any touch in the chrome (a key, a sheet's row) restarts the wait before it leaves.
+        <View onTouchStart={touched} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <PlayerChrome
+            band={chrome.band}
+            density="touch"
+            formatTime={formatTime}
+            keys={{
+              density: "touch",
+              last: previous
+                ? {
+                    number: String(previous.number),
+                    onPress: () => {
+                      haptic.selection();
+                      void controller.tuneChannel(previous.id);
+                    },
+                  }
+                : undefined,
+              moreOpen: sheet === "more",
+              onChannelDown: snapshot.catalog.length > 1 ? step(-1) : undefined,
+              onChannelUp: snapshot.catalog.length > 1 ? step(1) : undefined,
+              onMore: () => setSheet((open) => (open === "more" ? undefined : "more")),
+              onTogglePlay: playing ? controller.pause : () => void controller.play(),
+              playing,
+              pointer: false,
+            }}
+            layout={onSide ? "overlay" : "portrait"}
+            live={live}
+            onGoLive={() => void controller.goLive()}
+            onLeave={onLeave}
+            sheet={sheet ? sheetFor(sheet) : undefined}
+            utilities={{ density: "touch", pointer: false }}
+            visible={visible}
+          />
+        </View>
       ) : catalogState.loading ? (
         <View style={{ flex: 1, justifyContent: "center" }}>
           <StatePanel density="touch" kind="loading" title="Loading channels" />
