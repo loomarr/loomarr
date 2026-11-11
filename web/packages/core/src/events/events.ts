@@ -68,19 +68,37 @@ const browserEventStreamFactory: EventStreamFactory = (url) => {
 
 // What a frame invalidates: every query whose first key element (the URL, per orval's fetch
 // client) starts with one of `prefixes`, optionally only when `when` accepts the payload.
+//
+// `fed` names the reads this frame alone keeps current: a query whose URL matches one is trusted
+// (staleTime Infinity) and refetched only when its frame, a reconnect, or its own mutation
+// invalidates it. It is an allowlist of exact URLs: a read that also moves with the clock (now and
+// next, a timeline) or carries a signed URL never belongs here, and stays stale-while-revalidate.
 interface Invalidation<T extends EventType> {
   prefixes: readonly string[];
   when?: (payload: EventPayloads[T]) => boolean;
+  fed?: readonly RegExp[];
 }
+
+// A collection URL and its one-segment detail ("/v1/titles", "/v1/titles/{key}"), nothing deeper.
+// `except` names sibling segments that are a different read ("/v1/channels/now-next").
+const listAndDetail = (url: string, except: readonly string[] = []): RegExp => {
+  const notExcepted = except.length > 0 ? `(?!(?:${except.join("|")})$)` : "";
+  return new RegExp(`^${url}(?:/${notExcepted}[^/]+)?$`);
+};
 
 // Invalidating is the whole job: a frame carries a count or a few ids, and the GETs own the
 // shapes the screens render (§8 — SSE is the latency path, the GET is truth). A frame with no
 // prefixes is a pure hand-off to listeners.
 const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
-  title: { prefixes: ["/v1/titles", "/v1/proposals"] },
+  title: {
+    prefixes: ["/v1/titles", "/v1/proposals"],
+    fed: [listAndDetail("/v1/titles"), listAndDetail("/v1/proposals")],
+  },
   // `/v1/channels` covers the list, now/next, and each channel's detail, pods, upcoming and
   // cycle reads; `/v1/guide` covers every cached guide window, prefetched neighbours included.
-  channel: { prefixes: ["/v1/channels", "/v1/guide"] },
+  // Only the list and a channel's detail are fed: now/next, the timeline and upcoming also move
+  // as the clock passes a programme's end, and a guide window is a view over that same clock.
+  channel: { prefixes: ["/v1/channels", "/v1/guide"], fed: [listAndDetail("/v1/channels", ["now-next"])] },
   // A frame also fires as a running request's stage or picks change, and the journey read
   // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail catch
   // up on the frame instead of waiting for their poll.
@@ -103,30 +121,47 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // CATALOG, and nothing mounted may be listening, so the bus invalidates rather than a panel.
   filler_clip: { prefixes: ["/v1/filler"], when: (e) => e.disposition !== "running" },
   // A scheduled job changed state (§18.1); BE is the single timing source.
-  job: { prefixes: ["/v1/jobs"] },
+  job: { prefixes: ["/v1/jobs"], fed: [listAndDetail("/v1/jobs")] },
   // The migration page reads progress from the frame itself and refetches its status through
   // its own listener, so the bus has nothing to invalidate.
   database: { prefixes: [] },
   // A Dashboard feed row was written (§12, V32). The frame is empty on purpose — refetch the
   // list rather than appending, because this bus drops frames for a slow subscriber and a
   // locally-assembled list would be missing rows.
-  activity: { prefixes: ["/v1/activity"] },
-  health: { prefixes: ["/v1/diagnostics/health"] },
+  activity: { prefixes: ["/v1/activity"], fed: [listAndDetail("/v1/activity")] },
+  health: { prefixes: ["/v1/diagnostics/health"], fed: [/^\/v1\/diagnostics\/health$/] },
   // A committed settings write, from any tab or writer. Every read a setting can change
   // refetches here, so no save path lists queries itself: `/v1/setup` is the checklist and wizard
   // state, `/v1/system/llm` the AI provider status, catalog and pull progress, and
   // `/v1/filler/readiness` the storage summary derived from the filler allowances.
   settings: {
     prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness"],
+    fed: [listAndDetail("/v1/settings"), /^\/v1\/setup$/],
   },
   // How far a library import is, whole and latest-wins: the screens showing it write each frame
   // into their status read (applyLibraryScanFrame) rather than refetch it a second. Once
   // everything is idle the status refetches once, for the last scan's time and the counts.
-  library_scan: { prefixes: ["/v1/library/status"], when: (e) => e.step === "idle" },
+  library_scan: {
+    prefixes: ["/v1/library/status"],
+    when: (e) => e.step === "idle",
+    fed: [/^\/v1\/library\/status$/],
+  },
   // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
   // the grid, a title's page, Ready so far and Needs you refetch, because a list assembled from
   // frames would lose rows this bus drops.
-  library_titles: { prefixes: ["/v1/library/items", "/v1/library/needs"] },
+  library_titles: {
+    prefixes: ["/v1/library/items", "/v1/library/needs"],
+    fed: [listAndDetail("/v1/library/items"), /^\/v1\/library\/needs$/],
+  },
+};
+
+// isFrameFed: does an SSE frame keep this query current? The client gives such a read
+// staleTime Infinity, so it never refetches on mount or focus; its frame, a reconnect or a
+// mutation does. Keys are orval's `[url, params?]`; anything else is not fed.
+const isFrameFed = (queryKey: readonly unknown[]): boolean => {
+  const url = queryKey[0];
+  if (typeof url !== "string") return false;
+  return Object.values(EVENT_INVALIDATIONS).some((row) => row.fed?.some((pattern) => pattern.test(url)));
 };
 
 // The frame types the stream subscribes to: every event the spec declares.
@@ -254,6 +289,7 @@ export {
   invalidateByPrefix,
   invalidateForFrame,
   invalidateSettings,
+  isFrameFed,
   openEventStream,
   openFrameStream,
   useLoomarrEvents,
