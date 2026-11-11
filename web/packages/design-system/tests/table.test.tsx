@@ -78,6 +78,17 @@ describe("Table (web)", () => {
     expect(screen.getByRole("columnheader").querySelector("span")?.textContent).toBe("Symptom or cause");
   });
 
+  it("tightens its cells when dense", () => {
+    const paddingOf = () => screen.getByRole("cell", { name: "Healthy" }).style.paddingBlock;
+
+    renderTable();
+    expect(paddingOf()).toBe("12px");
+    cleanup();
+
+    renderTable({ dense: true });
+    expect(paddingOf()).toBe("8px");
+  });
+
   it("carries a row's id, dimming and a cell's span for a detail row", () => {
     const { container } = renderTable();
     const detail = container.querySelector<HTMLTableRowElement>("#detail");

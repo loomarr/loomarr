@@ -125,6 +125,30 @@ const Workshop = () => {
       </Surface>
 
       <Surface gap="control" padding="section">
+        <Text textRole="title">Dense, for five short columns on a phone</Text>
+        <Table caption="Scores against your labels" dense>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell width={32}>Era</TableHeaderCell>
+              <TableHeaderCell width={52}>Labelled</TableHeaderCell>
+              <TableHeaderCell width={58}>Precision</TableHeaderCell>
+              <TableHeaderCell width={46}>Caught</TableHeaderCell>
+              <TableHeaderCell width={40}>Judge</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell width={32}>Tape</TableCell>
+              <TableCell width={52}>12</TableCell>
+              <TableCell width={58}>83%</TableCell>
+              <TableCell width={46}>3 of 4</TableCell>
+              <TableCell width={40}>Agrees</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Surface>
+
+      <Surface gap="control" padding="section">
         <Text textRole="title">No header, no frame</Text>
         <Table caption="Spacing tokens" framed={false}>
           <TableBody>
