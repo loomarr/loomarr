@@ -180,7 +180,12 @@ longer listed has their filmography dropped and is fetched first if one of those
 (#3229).
 The household's metadata language
 (`metadata.language`, decision 21) defaults to the media server's; changing it fetches every
-catalog record again.
+catalog record again. Outside English, an overview or tagline TMDB has no translation for is filled
+from its US English text: a movie, series or collection takes the `translations` on its detail
+call, and a season, episode order or episode with an empty overview is read once more in `en-US`.
+The record marks that text `en-US` (`OverviewLanguage`, `TaglineLanguage`), so any source's text in
+the household's language wins over it, and a refresh after TMDB gains a translation replaces it
+(#3231).
 
 ## Media folders
 
