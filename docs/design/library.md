@@ -138,7 +138,8 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   `vote_average` is the episode's community rating. Language and country are the installation's
   `metadata.language` and `metadata.country`; a country other than the US is refused. The change
   feed reads `/movie/changes` and `/tv/changes` and answers within TMDB's 14-day window; an older
-  cursor is `ErrUnsupported` and the caller refetches. Keywords per item are capped at 40.
+  cursor is `ErrUnsupported`, and `scan.ChangeFollower` leaves it to the refresh (see Catalog
+  details). Keywords per item are capped at 40.
 - **Local artwork** (`metadataprovider/localart`) is a sidecar too, found by one listing of the media's
   folder in Kodi's naming: a movie's `<file>-poster.jpg` (and `-fanart`, `-clearlogo`, `-banner`,
   `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
@@ -432,8 +433,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   kind and id, and the importer reads it when it writes a title. A title not cached yet is written
   without it and its key noted as wanted, and `library_items.catalog` names the row each title's
   details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
-  a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
-  out. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
+  a tick), then the records TMDB changed (up to 200 a tick), then a share of the oldest, so the
+  whole cache is fetched again within 90 days, spread out. `scan.ChangeFollower` reads TMDB's change
+  feed nightly from where it last read through (`library_catalog_feeds`, so a restart picks up
+  there) and marks the cached records it names `changed`, so a corrected poster, overview or
+  rating arrives within a day instead of at the refresh; saving a record clears the mark. Its first
+  read only starts the cursor. A cursor older than the feed's 14-day window moves on to now without
+  marking anything, and the 90-day refresh catches up; a failed read keeps it, and the next hour
+  asks again (#3225). Changed records are not new titles, so they are no part of step 3. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
   write at once instead of up to a minute later, with the status reading caught up in between. A
   woken lookup fetches only the titles never fetched: the share of the oldest is sized for one
   tick a minute, so it stays with the tick. Wakes made while a lookup runs fold into one. The
