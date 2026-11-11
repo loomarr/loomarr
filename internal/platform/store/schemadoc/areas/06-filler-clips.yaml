@@ -311,9 +311,12 @@ tables:
         What started it: source (a registered source's check), pull (an approved pull) or manual
         (URLs typed by an admin). scheduled is also allowed.
       source_id: >
-        The registered source every item came from (filler_sources.id). Empty when items came from
-        several sources or none.
-      pull_id: The approved pull that started it (filler_pulls.id). Empty for other triggers.
+        The registered source every item came from (a filler_sources id). Empty when items came
+        from several sources or none. Not a link: it records where a download came from, so it
+        outlives the source, and deleting a source never fails a download still running.
+      pull_id: >
+        The approved pull that started it (filler_pulls.id). Null for other triggers, and once the
+        pull is purged.
       status: queued, running, success or error.
       requested: How many items were asked for.
       fetched: How many files were downloaded.
@@ -338,7 +341,9 @@ tables:
     columns:
       id: Identifies the downloaded file.
       acquisition_id: The download run that produced it (filler_acquisition_runs.id).
-      source_id: The registered source it came from (filler_sources.id). Empty for a typed URL.
+      source_id: >
+        The registered source it came from (a filler_sources id). Empty for a typed URL. Not a
+        link, like the run's: it outlives the source.
       provider: The provider that downloaded it, such as archive or youtube.
       source_url: The address that was downloaded.
       staging_path: >
@@ -401,8 +406,8 @@ tables:
         1 when a person asked to re-run the current step, so it runs even if it would normally be
         skipped. Cleared once the step runs.
       acquisition_id: >
-        The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips
-        dropped into the folder by hand.
+        The download run that brought the clip in (filler_acquisition_runs.id), which is kept while
+        the conveyor names it. Null for clips dropped into the folder by hand.
       preparation_attempt: >
         Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before
         this was tracked.
@@ -494,8 +499,8 @@ tables:
       id: Identifies the event, as ready:<clip hash>.
       clip_hash: The clip that became ready (clips.hash).
       acquisition_id: >
-        The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips from
-        a folder.
+        The download run that brought the clip in (filler_acquisition_runs.id), which is kept while
+        the event names it. Null for clips from a folder.
       enrollment_kind: >
         What let the clip into filler: acquisition (a download run) or source (a clip folder or
         source the operator chose).

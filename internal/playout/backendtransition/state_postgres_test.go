@@ -63,6 +63,10 @@ func TestPostgresControllersSerializePublisherAndRefreshDesiredInsideLock(t *tes
 	stores := testkit.PostgresStores(t, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// The patches are authored by "test", and a setting's author is a foreign key to users.
+	if err := stores[0].UpsertUser(ctx, store.User{ID: "test", Name: "test", Role: store.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("opposing target queued behind transition observes newer durable desired", func(t *testing.T) {
 		resetPostgresTransition(t, stores[0], BackendTunarr, BackendInternal)

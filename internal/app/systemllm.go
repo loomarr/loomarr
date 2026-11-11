@@ -91,10 +91,11 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 }
 
 // llmSettingsSaver persists the picker's llm.* edits through the settings service and announces a
-// committed write on the live-update stream, so other tabs refetch settings-derived reads.
+// committed write on the live-update stream, so other tabs refetch settings-derived reads. The
+// writes name no author: updated_by names a person (users.id), and these are Loomarr's own.
 func llmSettingsSaver(set resolved, st store.Store, bus *events.Bus) func(context.Context, map[string]string) error {
 	return func(ctx context.Context, edits map[string]string) error {
-		results, err := set.svc.Patch(ctx, protectedsettings.NewPersister(st, set.protection), edits, "system")
+		results, err := set.svc.Patch(ctx, protectedsettings.NewPersister(st, set.protection), edits, "")
 		saved := false
 		for _, r := range results {
 			saved = saved || r.Status == settings.PatchSaved

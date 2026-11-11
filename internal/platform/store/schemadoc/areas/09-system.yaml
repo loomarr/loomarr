@@ -19,8 +19,8 @@ tables:
         with loomarr-secret:v1:, and can only be read with the installation key.
       updated_at: When the value was last written, in Unix seconds. 0 means unknown (written before this was tracked).
       updated_by: >
-        The id of the person who last changed it, pointing at users. Empty for values Loomarr wrote
-        itself.
+        The person who last changed it (users.id). Null for values Loomarr wrote itself, and once
+        that person is deleted.
       env_override: >
         1 when an admin has taken the setting back from its environment variable, so the saved value
         wins even while the variable is still set. 0 means a set environment variable wins.

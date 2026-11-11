@@ -944,6 +944,18 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 // A Ready clip has been screened, enriched and researched. When its bytes are re-encoded, that
 // history is about the same content and moves with it, including the web-research ledger, whose
 // foreign key to clips(hash) has no ON UPDATE and used to make the re-key fail outright (#2121).
+// mustAcquisitionRun saves a finished download run, for a fixture whose conveyor or ready event
+// names the download a clip came from: that is a foreign key to filler_acquisition_runs (#2793).
+func mustAcquisitionRun(t *testing.T, s Store, id string, at time.Time) {
+	t.Helper()
+	if err := s.UpsertAcquisitionRun(context.Background(), acquisition.AcquisitionRun{
+		ID: id, Trigger: acquisition.TriggerSource, Status: acquisition.RunSuccess,
+		StartedAt: at, CompletedAt: at, UpdatedAt: at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)
@@ -969,6 +981,7 @@ func testReadyClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
+	mustAcquisitionRun(t, s, "ready-acquisition", at)
 	pipeline := pipelinestate.ClipPipeline{
 		ClipHash: old.Hash, AcquisitionID: "ready-acquisition", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,
@@ -5261,6 +5274,7 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 	}, UpdatedAt: at}); err != nil {
 		t.Fatal(err)
 	}
+	mustAcquisitionRun(t, s, "acquisition-1", at)
 	current := pipelinestate.ClipPipeline{
 		ClipHash: hash, AcquisitionID: "acquisition-1", Stage: pipelinestate.StageFinish,
 		Status: pipelinestate.StatusRunning, Progress: 100, Disposition: pipelinestate.DispositionRunning,

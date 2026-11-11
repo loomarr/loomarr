@@ -20,6 +20,10 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 	stores := testkit.PostgresStores(t, 2)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// The batches are authored by "replica-a", and a setting's author is a foreign key to users.
+	if err := stores[0].UpsertUser(ctx, store.User{ID: "replica-a", Name: "replica-a", Role: store.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
 	// The token is sealed on the way in, as every write path stores a protected setting.
 	protection := testSecretProtection(t, stores[1])
 	if err := (protectedsettings.NewPersister(stores[0], protection)).Apply(ctx, settings.PersistenceBatch{

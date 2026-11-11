@@ -225,11 +225,13 @@ func insertLegacyClipPipeline(ctx context.Context, st Store, p pipelinestate.Cli
 		}
 		raw = string(encoded)
 	}
+	// acquisition_id is left to its column default: '' before 00226, NULL (no download) after it,
+	// when it became a foreign key to filler_acquisition_runs.
 	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO filler_clip_pipeline
-		(clip_hash, acquisition_id, stage, status, progress, disposition, reject_reason,
+		(clip_hash, stage, status, progress, disposition, reject_reason,
 		 reject_detail, attempts, force_run, next_run, stages_json, enrolled_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		p.ClipHash, string(p.Stage), string(p.Status), p.Progress,
 		string(p.Disposition), string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun,
 		epoch(p.NextRun), raw, epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	return err

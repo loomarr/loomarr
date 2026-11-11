@@ -75,6 +75,7 @@ func testRewriteSettingValuesPreservesAudit(t *testing.T, newStore NewStoreFunc)
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+	mustUsers(t, s, "admin")
 	if err := s.UpsertSetting(ctx, SettingRow{
 		Key: "library.token", Value: "plaintext", UpdatedAt: time.Unix(1234, 0).UTC(), UpdatedBy: "admin",
 	}); err != nil {

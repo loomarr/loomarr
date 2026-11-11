@@ -58,7 +58,8 @@ func (s *sqlStore) PurgeSpentFillerRecords(ctx context.Context, now time.Time) (
 	clipGone := func(table string) string { return gone(table + `.clip_hash`) }
 	doomedRun := `status IN ('success', 'error') AND completed_at < ?
 		AND NOT EXISTS (SELECT 1 FROM filler_acquisition_artifacts a WHERE a.acquisition_id = filler_acquisition_runs.id)
-		AND NOT EXISTS (SELECT 1 FROM filler_clip_pipeline p WHERE p.acquisition_id = filler_acquisition_runs.id)`
+		AND NOT EXISTS (SELECT 1 FROM filler_clip_pipeline p WHERE p.acquisition_id = filler_acquisition_runs.id)
+		AND NOT EXISTS (SELECT 1 FROM filler_ready_events e WHERE e.acquisition_id = filler_acquisition_runs.id)`
 	steps := []struct {
 		what string
 		sql  string
@@ -100,7 +101,7 @@ func (s *sqlStore) PurgeSpentFillerRecords(ctx context.Context, now time.Time) (
 		{"pull commits", `DELETE FROM filler_pull_commits WHERE acquisition_id IN (
 			SELECT id FROM filler_acquisition_runs WHERE ` + doomedRun + `)`, []any{download}},
 		{"approved pulls", `DELETE FROM filler_pulls WHERE status = 'approved' AND id IN (
-			SELECT pull_id FROM filler_acquisition_runs WHERE pull_id <> '' AND ` + doomedRun + `)
+			SELECT pull_id FROM filler_acquisition_runs WHERE pull_id IS NOT NULL AND ` + doomedRun + `)
 			AND NOT EXISTS (SELECT 1 FROM filler_pull_commits c WHERE c.pull_id = filler_pulls.id)`, []any{download}},
 		{"download runs", `DELETE FROM filler_acquisition_runs WHERE ` + doomedRun, []any{download}},
 		{"dismissed pulls", `DELETE FROM filler_pulls WHERE status = 'dismissed' AND decided_at < ?`, []any{decision}},

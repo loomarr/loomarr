@@ -1448,8 +1448,7 @@ One row per download run: a source check, an approved pull or URLs an admin type
 | --- | --- | --- |
 | `id` | Identifies the run. Downloaded files and prepared clips point here. | `TEXT` · key |
 | `trigger` | What started it: source (a registered source's check), pull (an approved pull) or manual (URLs typed by an admin). scheduled is also allowed. | `TEXT` |
-| `source_id` | The registered source every item came from (filler_sources.id). Empty when items came from several sources or none. | `TEXT` |
-| `pull_id` | The approved pull that started it (filler_pulls.id). Empty for other triggers. | `TEXT` |
+| `source_id` | The registered source every item came from (a filler_sources id). Empty when items came from several sources or none. Not a link: it records where a download came from, so it outlives the source, and deleting a source never fails a download still running. | `TEXT` |
 | `status` | queued, running, success or error. | `TEXT` |
 | `requested` | How many items were asked for. | `INTEGER` |
 | `fetched` | How many files were downloaded. | `INTEGER` |
@@ -1460,6 +1459,7 @@ One row per download run: a source check, an approved pull or URLs an admin type
 | `started_at` | When the run started, in Unix seconds. | `INTEGER` |
 | `completed_at` | When the run finished, in Unix seconds; 0 while still going. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
+| `pull_id` | The approved pull that started it (filler_pulls.id). Null for other triggers, and once the pull is purged. | `TEXT` · may be empty · → `filler_pulls.id` |
 
 ### filler_acquisition_artifacts
 
@@ -1471,7 +1471,7 @@ One row per file a download produced, tracking it from download to the clip fold
 | --- | --- | --- |
 | `id` | Identifies the downloaded file. | `TEXT` · key |
 | `acquisition_id` | The download run that produced it (filler_acquisition_runs.id). | `TEXT` · → `filler_acquisition_runs.id` |
-| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `source_id` | The registered source it came from (a filler_sources id). Empty for a typed URL. Not a link, like the run's: it outlives the source. | `TEXT` |
 | `provider` | The provider that downloaded it, such as archive or youtube. | `TEXT` |
 | `source_url` | The address that was downloaded. | `TEXT` |
 | `staging_path` | Where the file was put while it was being checked, relative to the clip folder. Empty when not staged. | `TEXT` |
@@ -1510,13 +1510,13 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `enrolled_at` | When the clip entered preparation, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `BOOLEAN` |
-| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips dropped into the folder by hand. | `TEXT` |
 | `preparation_attempt` | Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before this was tracked. | `INTEGER` |
 | `preparation_started_at` | When the current preparation attempt began, in Unix seconds. | `INTEGER` |
 | `preparation_start_reason` | Why the current attempt began: enrollment (the clip was new) or restart. | `TEXT` |
 | `preparation_progress` | Percent done across the whole preparation attempt; -1 means unknown. | `INTEGER` |
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
+| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id), which is kept while the conveyor names it. Null for clips dropped into the folder by hand. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_clip_variants
 
@@ -1588,11 +1588,11 @@ A record written when a clip becomes ready to air, at the same moment it joins t
 | --- | --- | --- |
 | `id` | Identifies the event, as ready:<clip hash>. | `TEXT` · key |
 | `clip_hash` | The clip that became ready (clips.hash). | `TEXT` |
-| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips from a folder. | `TEXT` |
 | `enrollment_kind` | What let the clip into filler: acquisition (a download run) or source (a clip folder or source the operator chose). | `TEXT` |
 | `enrollment_ref` | The download run id or source id behind enrollment_kind. | `TEXT` |
 | `placement` | Where it may be scheduled, break_body or bookend. | `TEXT` |
 | `created_at` | When the clip became ready, in Unix seconds. | `INTEGER` |
+| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id), which is kept while the event names it. Null for clips from a folder. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_curated_offers
 
@@ -2003,8 +2003,8 @@ One saved setting value. Every setting resolves environment variable, then this 
 | `key` | The setting's name, such as activity.retention, as listed in the configuration reference. A few keys hold Loomarr's own state, such as instance_id. | `TEXT` · key |
 | `value` | The stored value as text. Secret settings (API keys, tokens) are stored encrypted, beginning with loomarr-secret:v1:, and can only be read with the installation key. | `TEXT` |
 | `updated_at` | When the value was last written, in Unix seconds. 0 means unknown (written before this was tracked). | `BIGINT` |
-| `updated_by` | The id of the person who last changed it, pointing at users. Empty for values Loomarr wrote itself. | `TEXT` · may be empty |
 | `env_override` | 1 when an admin has taken the setting back from its environment variable, so the saved value wins even while the variable is still set. 0 means a set environment variable wins. | `BOOLEAN` |
+| `updated_by` | The person who last changed it (users.id). Null for values Loomarr wrote itself, and once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### secret_protection_metadata
 

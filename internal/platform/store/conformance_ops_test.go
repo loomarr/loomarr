@@ -163,6 +163,7 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 	// --- audited overrides (config-design §3): ListSettings + UpsertSetting +
 	// DeleteSetting round-trip with audit metadata, one suite both backends. ---
 	when := time.Unix(1_700_000_000, 0).UTC()
+	mustUsers(t, s, "matt", "ana", "grace") // updated_by is a foreign key to users (#2793)
 	if err := s.UpsertSetting(ctx, SettingRow{Key: "library.url", Value: "http://emby:8096", UpdatedAt: when, UpdatedBy: "matt"}); err != nil {
 		t.Fatal(err)
 	}

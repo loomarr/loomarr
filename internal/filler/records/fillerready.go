@@ -22,7 +22,7 @@ func (s *sqlStore) GetFillerReadyEvent(ctx context.Context, clipHash string) (fi
 	var createdAt int64
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT id, clip_hash, acquisition_id, enrollment_kind,
 		enrollment_ref, placement, created_at FROM filler_ready_events WHERE clip_hash = ?`), clipHash).
-		Scan(&event.ID, &event.ClipHash, &event.AcquisitionID, &enrollmentKind,
+		Scan(&event.ID, &event.ClipHash, (*storedb.OptionalID)(&event.AcquisitionID), &enrollmentKind,
 			&event.Enrollment.Reference, &placement, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return filler.ReadyEvent{}, false, nil
@@ -55,7 +55,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	readyEventExists := false
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT clip_hash, acquisition_id, enrollment_kind,
 		enrollment_ref, placement FROM filler_ready_events WHERE id = ?`), e.ID).
-		Scan(&existingClip, &existingAcquisition, &existingKind, &existingRef, &existingPlacement)
+		Scan(&existingClip, (*storedb.OptionalID)(&existingAcquisition), &existingKind, &existingRef, &existingPlacement)
 	if err == nil {
 		if existingClip == e.ClipHash && existingAcquisition == e.AcquisitionID &&
 			existingKind == string(e.Enrollment.Kind) && existingRef == e.Enrollment.Reference &&
@@ -122,7 +122,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		attempts = ?, force_run = ?, next_run = ?, preparation_attempt = ?, preparation_started_at = ?,
 		preparation_start_reason = ?, preparation_progress = ?, stage_queued_at = ?, stage_started_at = ?,
 		stages_json = ?, updated_at = ?
-		WHERE clip_hash = ? AND acquisition_id = ? AND stage = ? AND status = ? AND disposition = ?`),
+		WHERE clip_hash = ? AND COALESCE(acquisition_id, '') = ? AND stage = ? AND status = ? AND disposition = ?`),
 		string(p.Stage), string(p.Status), p.Progress, string(p.Disposition), string(p.RejectReason),
 		p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun), p.PreparationAttempt,
 		epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
@@ -141,7 +141,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	if !readyEventExists {
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_ready_events
 			(id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref, placement, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`), e.ID, e.ClipHash, e.AcquisitionID,
+			VALUES (?, ?, ?, ?, ?, ?, ?)`), e.ID, e.ClipHash, storedb.OptionalID(e.AcquisitionID),
 			string(e.Enrollment.Kind), e.Enrollment.Reference, string(e.Placement), epoch(e.CreatedAt)); err != nil {
 			return fmt.Errorf("record filler ready event %s: %w", e.ID, err)
 		}

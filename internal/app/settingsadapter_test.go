@@ -6,6 +6,7 @@ import (
 
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/platform/events"
+	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -18,7 +19,12 @@ func settingsEventAdapter(t *testing.T) (settingsAdapter, <-chan events.Event) {
 	t.Cleanup(unsubscribe)
 	emit := &eventEmitter{bus: bus}
 	set := visionSet(t, nil)
-	return settingsAdapter{svc: set.svc, store: testkit.MigratedSQLiteStore(t), changed: emit.SettingsChanged}, frames
+	st := testkit.MigratedSQLiteStore(t)
+	// The tests patch as "admin", and a setting's author is a foreign key to users (#2793).
+	if err := st.UpsertUser(context.Background(), store.User{ID: "admin", Name: "admin", Role: store.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	return settingsAdapter{svc: set.svc, store: st, changed: emit.SettingsChanged}, frames
 }
 
 func requireSettingsFrame(t *testing.T, frames <-chan events.Event) {
