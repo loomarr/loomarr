@@ -47,8 +47,15 @@ const PortraitChrome = ({
           <UnmutePill onPress={unmute} />
         </View>
       ) : null}
-      <View style={{ paddingHorizontal: 16 }}>
-        <ChannelBand band={band} density="touch" formatTime={formatTime} live={live} onGoLive={onGoLive} />
+      <View style={{ paddingHorizontal: 8 }}>
+        <ChannelBand
+          band={band}
+          density="touch"
+          formatTime={formatTime}
+          live={live}
+          onGoLive={onGoLive}
+          portrait
+        />
       </View>
       <View style={{ alignItems: "center" }}>
         <PlayerKeys {...keys} />
