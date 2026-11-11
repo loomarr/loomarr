@@ -23,6 +23,7 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 		Lineup:      []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Round Trip Movie", InLibrary: true}},
 		Retired:     []provision.Key{"movie:tmdb:90000002"},
 	}
+	mustOriginJobs(t, s, "j")
 	if err := s.CreateProposal(ctx, Proposal{ID: "p-typed", JobID: "j", Status: "submitted", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +48,7 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 func TestProposalBodyThatIsNotAProposalIsAnError(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := context.Background()
+	mustOriginJobs(t, s, "j")
 	insert := func(id, body string) error {
 		_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
 			VALUES (?, 'j', 'approved', NULL, NULL, '', '', '', ?, 0, 0, 0)`), id, body)

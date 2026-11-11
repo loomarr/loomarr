@@ -46,7 +46,9 @@ func testProposalPeopleMigration(t *testing.T, db *sql.DB, dialect Dialect, dir 
 			('p-denied', 'job-kid', 'denied', 'u-kid', 'u-parent'),
 			('p-token', 'job-token', 'approved', '', ''),
 			('p-gone', 'job-gone', 'denied', 'u-gone', 'u-gone'),
-			('p-waiting', 'job-kid', 'submitted', 'u-kid', '')`,
+			('p-waiting', 'job-kid', 'submitted', 'u-kid', ''),
+			('p-no-job', '', 'denied', 'u-kid', 'u-parent'),
+			('p-job-purged', 'job-purged', 'approved', 'u-kid', 'u-parent')`,
 		`INSERT INTO discovery_feedback (id, actor_id, scope, target_key, action, created_at_ns) VALUES
 			('f-kid', 'u-kid', 'household', 'movie:tmdb:90000001', 'keep', 1),
 			('f-token', 'api-token', 'household', 'movie:tmdb:90000002', 'never', 1)`,
@@ -97,8 +99,19 @@ func testProposalPeopleMigration(t *testing.T, db *sql.DB, dialect Dialect, dir 
 		`SELECT decided_by FROM proposals WHERE id = 'p-waiting'`:                                           "NULL",
 		`SELECT actor_id FROM discovery_feedback WHERE id = 'f-kid'`:                                        "u-kid",
 		`SELECT actor_id FROM discovery_feedback WHERE id = 'f-token'`:                                      "NULL",
-		`SELECT count(*) FROM proposals`:                                                                    "7",
+		`SELECT job_id FROM proposals WHERE id = 'p-person'`:                                                "job-kid",
+		`SELECT job_id FROM proposals WHERE id = 'p-no-job'`:                                                "NULL",
+		`SELECT job_id FROM proposals WHERE id = 'p-job-purged'`:                                            "NULL",
+		`SELECT count(*) FROM proposals`:                                                                    "9",
 	})
+	if _, err := db.ExecContext(ctx, `UPDATE proposals SET job_id = 'job-none' WHERE id = 'p-no-job'`); err == nil {
+		t.Error("accepted a suggestion naming a job that does not exist")
+	}
+	// The purge of a finished job leaves its decided suggestions with no job named.
+	if _, err := db.ExecContext(ctx, `DELETE FROM proposal_jobs WHERE id = 'job-token'`); err != nil {
+		t.Fatalf("purge a finished job: %v", err)
+	}
+	check(map[string]string{`SELECT job_id FROM proposals WHERE id = 'p-token'`: "NULL"})
 
 	for _, stmt := range []string{
 		`INSERT INTO proposal_jobs (id, status, created_by) VALUES ('job-nobody', 'done', 'u-none')`,
@@ -121,6 +134,6 @@ func testProposalPeopleMigration(t *testing.T, db *sql.DB, dialect Dialect, dir 
 		`SELECT count(*) FROM proposals WHERE created_by IS NOT NULL OR decided_by IS NOT NULL`: "0",
 		`SELECT decided_via FROM proposals WHERE id = 'p-person'`:                               "person",
 		`SELECT actor_id FROM discovery_feedback WHERE id = 'f-kid'`:                            "NULL",
-		`SELECT count(*) FROM proposals`:                                                        "7",
+		`SELECT count(*) FROM proposals`:                                                        "9",
 	})
 }

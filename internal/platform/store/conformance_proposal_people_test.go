@@ -21,6 +21,11 @@ func testProposalPeople(t *testing.T, newStore NewStoreFunc) {
 	if err := s.CreateJob(ctx, tokenJob); err != nil {
 		t.Fatal(err)
 	}
+	memberJob := sampleJob("job-1", "hash-1", now, now)
+	memberJob.CreatedBy = "alice"
+	if err := s.CreateJob(ctx, memberJob); err != nil {
+		t.Fatal(err)
+	}
 	for _, p := range []Proposal{
 		{ID: "p-person", JobID: "job-1", Status: "approved", CreatedBy: "alice", ApprovedBy: "admin"},
 		{ID: "p-auto", JobID: "job-1", Status: "approved", CreatedBy: "alice", ApprovedBy: proposalstore.AutoApprovedBy},

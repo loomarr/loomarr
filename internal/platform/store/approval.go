@@ -134,11 +134,11 @@ func (s *sqlStore) commitProposalApproval(
 	}
 	decidedBy, decidedVia := proposalstore.DecisionArgs(p)
 	result, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE proposals SET job_id=?, status=?, created_by=`+proposalstore.MemberValue+`,
+		`UPDATE proposals SET status=?, created_by=`+proposalstore.MemberValue+`,
 		   decided_by=`+proposalstore.MemberValue+`, decided_via=?, deny_reason=?,
 		   mod_summary=?, note=?, proposal_json=?, approved_at=?, updated_at=?
 		 WHERE id=? AND status='submitted'`),
-		p.JobID, p.Status, p.CreatedBy, decidedBy, decidedVia, p.DenyReason, p.ModSummary, p.Note,
+		p.Status, p.CreatedBy, decidedBy, decidedVia, p.DenyReason, p.ModSummary, p.Note,
 		body, epoch(p.ApprovedAt), epoch(p.UpdatedAt), p.ID)
 	if err != nil {
 		return 0, fmt.Errorf("approve proposal %s: %w", p.ID, err)

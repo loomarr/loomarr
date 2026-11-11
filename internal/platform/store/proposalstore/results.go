@@ -376,7 +376,7 @@ func insertProposalTx(ctx context.Context, tx storedb.Querier, s *Store, p Propo
 		                        proposal_json, approved_at, created_at, updated_at)
 		 VALUES (?, ?, ?, `+MemberValue+`, `+MemberValue+`, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
-		p.ID, p.JobID, p.Status, p.CreatedBy, decidedBy, decidedVia, p.DenyReason, p.ModSummary, p.Note,
+		p.ID, storedb.OptionalID(p.JobID), p.Status, p.CreatedBy, decidedBy, decidedVia, p.DenyReason, p.ModSummary, p.Note,
 		body, storedb.Epoch(p.ApprovedAt), storedb.Epoch(p.CreatedAt), storedb.Epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)

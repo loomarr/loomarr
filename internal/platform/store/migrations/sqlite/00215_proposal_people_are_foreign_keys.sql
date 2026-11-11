@@ -14,6 +14,11 @@
 -- new proposals.decided_via ('person' | 'auto' | 'auto-curate'), which says how every approved or
 -- denied suggestion was decided; decided_by then names only a member.
 --
+-- proposals.job_id, the request a suggestion answered, is a foreign key to proposal_jobs too, and
+-- is cleared when the nightly purge removes that finished job (SET NULL). The purge already keeps a
+-- job while a suggestion from it is still open, so only a decided suggestion forgets its job. ''
+-- (no job) and the id of a job already purged become NULL.
+--
 -- SQLite adds a foreign key to an existing column by adding a keyed column, copying the values
 -- across, and dropping the old one under its name (the 00211 pattern).
 
@@ -26,15 +31,21 @@ END;
 
 ALTER TABLE proposals ADD COLUMN creator TEXT REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE proposals ADD COLUMN decider TEXT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE proposals ADD COLUMN job TEXT REFERENCES proposal_jobs(id) ON DELETE SET NULL;
 UPDATE proposals SET
     creator = (SELECT u.id FROM users u WHERE u.id = proposals.created_by),
-    decider = (SELECT u.id FROM users u WHERE u.id = proposals.decided_by);
+    decider = (SELECT u.id FROM users u WHERE u.id = proposals.decided_by),
+    job = (SELECT j.id FROM proposal_jobs j WHERE j.id = proposals.job_id);
 DROP INDEX idx_proposals_created_by;
+DROP INDEX idx_proposals_job_id;
 ALTER TABLE proposals DROP COLUMN created_by;
 ALTER TABLE proposals DROP COLUMN decided_by;
+ALTER TABLE proposals DROP COLUMN job_id;
 ALTER TABLE proposals RENAME COLUMN creator TO created_by;
 ALTER TABLE proposals RENAME COLUMN decider TO decided_by;
+ALTER TABLE proposals RENAME COLUMN job TO job_id;
 CREATE INDEX idx_proposals_created_by ON proposals (created_by);
+CREATE INDEX idx_proposals_job_id ON proposals (job_id);
 CREATE INDEX idx_proposals_decided_by ON proposals (decided_by);
 
 -- proposal_jobs -----------------------------------------------------------------------------------

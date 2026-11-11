@@ -158,7 +158,10 @@ func (b *Binder) PlanSubmittedChannel(ctx context.Context, p proposalstore.Propo
 func (b *Binder) planChannel(ctx context.Context, p proposalstore.Proposal) (channelstore.Channel, error) {
 	intentRef := p.JobID
 	if intentRef == "" {
-		return channelstore.Channel{}, fmt.Errorf("proposal %s has no job id to bind a channel to", p.ID)
+		// The nightly purge clears a finished job from its decided suggestions (#2793); one still
+		// waiting with no job lost it before the purge kept such jobs.
+		return channelstore.Channel{}, fmt.Errorf("%w: proposal %s names no job, so no channel can be created from it",
+			accept.ErrProposalJobGone, p.ID)
 	}
 	existing, err := b.channelForJob(ctx, intentRef)
 	if err != nil {

@@ -563,7 +563,7 @@ func scanProposal(sc storedb.Scannable) (Proposal, error) {
 		decidedVia                       sql.NullString
 		approvedAt, createdAt, updatedAt int64
 	)
-	err := sc.Scan(&p.ID, &p.JobID, &p.Status, (*storedb.OptionalID)(&p.CreatedBy), &decidedBy, &decidedVia, &p.DenyReason,
+	err := sc.Scan(&p.ID, (*storedb.OptionalID)(&p.JobID), &p.Status, (*storedb.OptionalID)(&p.CreatedBy), &decidedBy, &decidedVia, &p.DenyReason,
 		&p.ModSummary, &p.Note, &bodyJSON, &approvedAt, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Proposal{}, storedb.ErrNotFound

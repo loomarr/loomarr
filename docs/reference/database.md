@@ -454,7 +454,6 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the proposal. | `TEXT` · key |
-| `job_id` | The job that produced it (proposal_jobs.id). | `TEXT` |
 | `status` | `submitted` (waiting for a decision), `approved`, `denied`, or `superseded` (replaced by a newer proposal from the same job before anyone decided). | `TEXT` |
 | `deny_reason` | The reason given for a denial. Empty otherwise. | `TEXT` |
 | `proposal_json` | The suggestion itself. The request, the proposed channel name, the lineup of titles already in the library, titles to acquire, ranked backups, scores, the rationale and the channel rules. | `TEXT` |
@@ -466,6 +465,7 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 | `decided_via` | How it was approved or denied. `person` (an admin, or the API token), `auto` (the requester's automatic approval), or `auto-curate` (a channel's scheduled re-curation). Null until decided. | `TEXT` · may be empty |
 | `created_by` | The person who asked for it (users.id). Null for the API token, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 | `decided_by` | The admin who approved or denied it (users.id). Null until decided, when an automatic rule decided (see decided_via), for the API token, or once that admin is deleted. | `TEXT` · may be empty · → `users.id` |
+| `job_id` | The job that produced it (proposal_jobs.id). The job is kept while the proposal is submitted; null once the finished job is purged. | `TEXT` · may be empty · → `proposal_jobs.id` |
 
 ### discovery_feedback
 

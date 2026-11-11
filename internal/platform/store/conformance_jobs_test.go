@@ -977,6 +977,7 @@ func testProposalQueues(t *testing.T, newStore NewStoreFunc) {
 		return Proposal{ID: id, JobID: "job-" + id, Status: status, CreatedBy: creator,
 			Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now, UpdatedAt: now}
 	}
+	mustOriginJobs(t, s, "job-p1", "job-p2", "job-p3")
 	p1Seed := mk("p1", "submitted", "alice")
 	p1Seed.Body.Trace = proposals.DecisionTrace{Version: 1, Candidates: []proposals.DecisionCandidate{}}
 	_ = s.CreateProposal(ctx, p1Seed)
@@ -1024,7 +1025,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertUser(ctx, User{ID: "member", Name: "Member", Role: RoleMember, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	mustOriginJobs(t, s, "job-approval")
+	mustOriginJobs(t, s, "job-approval", "job-denied", "job-invalid", "job-invalid-channel")
 	proposal := Proposal{
 		ID: "approval", JobID: "job-approval", Status: "submitted", CreatedBy: "member",
 		Body: proposals.Proposal{Lineup: []proposals.ProposalItem{}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour),
@@ -1281,6 +1282,7 @@ func testProposalApprovalStaleChannel(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	const jobID = "job-stale-channel"
+	mustOriginJobs(t, s, jobID)
 
 	planned := approvalChannel("ch-stale-approval", jobID, 145)
 	planned = mustSaveChannel(t, s, planned)
@@ -1328,6 +1330,7 @@ func testProposalApprovalSuperseded(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
 	const jobID = "job-superseded-approval"
+	mustOriginJobs(t, s, jobID)
 
 	older := Proposal{
 		ID: "proposal-older", JobID: jobID, Status: "submitted",
@@ -1497,6 +1500,7 @@ func testProposalApprovalOverlappingTitles(t *testing.T, newStore NewStoreFunc) 
 	s := newStore(t)
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	mustOriginJobs(t, s, "overlap-a", "overlap-b")
 	for _, id := range []string{"overlap-a", "overlap-b"} {
 		if err := s.CreateProposal(ctx, Proposal{ID: id, JobID: id, Status: "submitted", CreatedAt: now, UpdatedAt: now}); err != nil {
 			t.Fatal(err)

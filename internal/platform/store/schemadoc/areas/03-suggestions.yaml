@@ -80,7 +80,9 @@ tables:
       submitted ones wait for an answer.
     columns:
       id: Identifies the proposal.
-      job_id: The job that produced it (proposal_jobs.id).
+      job_id: >
+        The job that produced it (proposal_jobs.id). The job is kept while the proposal is
+        submitted; null once the finished job is purged.
       status: >
         `submitted` (waiting for a decision), `approved`, `denied`, or `superseded` (replaced by a
         newer proposal from the same job before anyone decided).

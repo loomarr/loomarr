@@ -13,6 +13,11 @@
 -- decided_by also held 'auto' and 'auto-curate' for a decision no person made. Those move to the
 -- new proposals.decided_via ('person' | 'auto' | 'auto-curate'), which says how every approved or
 -- denied suggestion was decided; decided_by then names only a member.
+--
+-- proposals.job_id, the request a suggestion answered, is a foreign key to proposal_jobs too, and
+-- is cleared when the nightly purge removes that finished job (SET NULL). The purge already keeps a
+-- job while a suggestion from it is still open, so only a decided suggestion forgets its job. ''
+-- (no job) and the id of a job already purged become NULL.
 
 -- proposals ---------------------------------------------------------------------------------------
 ALTER TABLE proposals ADD COLUMN decided_via TEXT CHECK (decided_via IN ('person', 'auto', 'auto-curate'));
@@ -23,13 +28,16 @@ END;
 
 ALTER TABLE proposals
     ALTER COLUMN created_by DROP NOT NULL, ALTER COLUMN created_by DROP DEFAULT,
-    ALTER COLUMN decided_by DROP NOT NULL, ALTER COLUMN decided_by DROP DEFAULT;
+    ALTER COLUMN decided_by DROP NOT NULL, ALTER COLUMN decided_by DROP DEFAULT,
+    ALTER COLUMN job_id DROP NOT NULL, ALTER COLUMN job_id DROP DEFAULT;
 UPDATE proposals p SET
     created_by = (SELECT u.id FROM users u WHERE u.id = p.created_by),
-    decided_by = (SELECT u.id FROM users u WHERE u.id = p.decided_by);
+    decided_by = (SELECT u.id FROM users u WHERE u.id = p.decided_by),
+    job_id = (SELECT j.id FROM proposal_jobs j WHERE j.id = p.job_id);
 ALTER TABLE proposals
     ADD CONSTRAINT proposals_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    ADD CONSTRAINT proposals_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL;
+    ADD CONSTRAINT proposals_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL,
+    ADD CONSTRAINT proposals_job_id_fkey FOREIGN KEY (job_id) REFERENCES proposal_jobs(id) ON DELETE SET NULL;
 CREATE INDEX idx_proposals_decided_by ON proposals (decided_by);
 
 -- proposal_jobs -----------------------------------------------------------------------------------
