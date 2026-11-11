@@ -172,8 +172,12 @@ are credited. A person an NFO or the media server names without an id is kept by
 An episode's cast is its show's. `scan.Filmographer` keeps a filmography (`library_filmography`,
 decision 50) from the catalog provider for each person linked in its namespace who directed or
 created a title, is
-among a title's ten top-billed actors, or is credited on three or more titles. It is fetched when
-they first qualify and monthly after, and people no title credits any more are removed each hour.
+among a title's ten top-billed actors, or is credited on three or more titles. Only listed titles
+count: one with a present file. A removed title keeps its credits through the retention window, but
+qualifies nobody. A filmography is fetched when its person first qualifies, and monthly after.
+Each hour, people no title credits any more are removed. A person credited only on titles no
+longer listed has their filmography dropped and is fetched first if one of those titles returns
+(#3229).
 The household's metadata language
 (`metadata.language`, decision 21) defaults to the media server's; changing it fetches every
 catalog record again.
