@@ -19,6 +19,7 @@ import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRouteContent } from "@/lib/use-route-content";
 import { cn } from "@/lib/utils";
 import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
@@ -138,6 +139,9 @@ const ChannelDetailLayout = () => {
   }, [pathname]);
 
   const channel = channelsApi.useGetChannel(id);
+  // A channel's page has its content once the channel itself has arrived; the header's "On now"
+  // line and the section bodies fill in beside it (#3399).
+  useRouteContent(channel.data !== undefined);
   // The "Open in …" hand-off names and opens the configured media server. `library.flavor` gives the
   // name (Emby/Jellyfin) and `library.url` its front door, both non-secret settings. An unset URL
   // hides the link rather than leaving it doing nothing. The settings list is admin-only, so a
