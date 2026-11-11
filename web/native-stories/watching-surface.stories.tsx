@@ -73,6 +73,7 @@ const formatTime = (ms: number) => {
 const Preview = ({
   chromeData = chrome,
   controlsVisible = true,
+  layer,
   loading,
   loadError,
   numberEntry,
@@ -80,6 +81,7 @@ const Preview = ({
 }: {
   chromeData?: WatchingSurfaceProps["chrome"];
   controlsVisible?: boolean;
+  layer?: WatchingSurfaceProps["layer"];
   loading?: boolean;
   loadError?: string;
   numberEntry?: WatchingSurfaceProps["numberEntry"];
@@ -91,14 +93,18 @@ const Preview = ({
         chrome={chromeData}
         controlsVisible={controlsVisible}
         formatTime={formatTime}
+        layer={layer}
         loading={loading}
         loadError={loadError}
         numberEntry={numberEntry}
         onChangeServer={() => undefined}
         onDismissControls={() => undefined}
         onGoLive={() => undefined}
+        onLayer={() => undefined}
         onOpenGuide={() => undefined}
+        onOpenSurf={() => undefined}
         onRetry={() => undefined}
+        onSeek={() => undefined}
         onTuneChannel={() => undefined}
         playheadMs={state.livePlayback?.viewerTimeMs ?? NOW}
         player={<View style={{ backgroundColor: "#1B1E24", flex: 1 }} />}
@@ -172,6 +178,14 @@ const BehindLive: Story = {
     },
   },
 };
+// More (§9.5): a menu in the cluster over the keys, its first row holding the remote's ring; behind
+// live it adds Start over and Go live.
+const MoreOpen: Story = { args: { layer: "more" } };
+const MoreBehindLive: Story = {
+  args: { ...BehindLive.args, chromeData: { ...chrome, startOverMs: chrome.window.startMs }, layer: "more" },
+};
+// Info: the on-air block's own card on the strip, pinned open in full.
+const InfoOpen: Story = { args: { layer: "info" } };
 const EmptyChannel: Story = {
   args: { chromeData: undefined, state: { catalog: [], recentChannelIds: [], status: "empty" } },
 };
@@ -183,9 +197,12 @@ export {
   ControlsHidden,
   CurrentAndNext,
   EmptyChannel,
+  InfoOpen,
   Light,
   LoadError,
   Loading,
+  MoreBehindLive,
+  MoreOpen,
   NothingScheduled,
   NumberEntry,
   Paused,

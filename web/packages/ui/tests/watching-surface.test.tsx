@@ -90,8 +90,11 @@ const surface = (overrides: Partial<WatchingSurfaceProps> = {}) => (
     formatTime={(ms) => `t${ms}`}
     onDismissControls={vi.fn()}
     onGoLive={vi.fn()}
+    onLayer={vi.fn()}
     onOpenGuide={vi.fn()}
+    onOpenSurf={vi.fn()}
     onRetry={vi.fn()}
+    onSeek={vi.fn()}
     onTuneChannel={vi.fn()}
     playheadMs={30 * 60_000}
     player={<div data-player="one-native-player" />}
@@ -117,6 +120,74 @@ describe("WatchingSurface", () => {
     const { host } = mount(() => surface({ onTuneChannel }));
     act(() => button(host, "Last channel, 6")?.click());
     expect(onTuneChannel).toHaveBeenCalledWith("six");
+  });
+
+  // More (§9.5, variant J): a menu in the cluster, over the keys; the app owns the open layer.
+  it("opens More from its key, and closes it from the same key", () => {
+    const onLayer = vi.fn();
+    const { host, render } = mount(() => surface({ onLayer }));
+    act(() => button(host, "More")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith("more");
+    render(() => surface({ layer: "more", onLayer }));
+    expect(host.querySelector('[role="dialog"][aria-label="More"]')).not.toBeNull();
+    act(() => button(host, "More")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("lists Channels and Info in More, live; Start over and Go live join when behind", () => {
+    const onLayer = vi.fn();
+    const onOpenSurf = vi.fn();
+    const onSeek = vi.fn();
+    const { host, render } = mount(() => surface({ layer: "more", onLayer, onOpenSurf }));
+    expect(button(host, "Start over")).toBeUndefined();
+    act(() => button(host, "Channels")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith(undefined);
+    expect(onOpenSurf).toHaveBeenCalledOnce();
+    act(() => button(host, "Info")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith("info");
+
+    render(() =>
+      surface({
+        chrome: { ...chrome, startOverMs: 0 },
+        layer: "more",
+        onLayer,
+        onSeek,
+        snapshot: {
+          ...playing,
+          livePlayback: { lagSeconds: 90, mode: "behind", noticeRevision: 0, viewerTimeMs: 28 * 60_000 },
+        },
+      }),
+    );
+    expect(host.textContent).toContain("Go live");
+    // Named by what it shows: "Start over" and the programme.
+    const startOver = Array.from(host.querySelectorAll('[role="button"]')).find((el) =>
+      el.textContent?.startsWith("Start over"),
+    );
+    act(() => startOver?.click());
+    expect(onSeek).toHaveBeenCalledWith(0);
+  });
+
+  it("keeps the controls up while More waits for a choice", () => {
+    vi.useFakeTimers();
+    const dismiss = vi.fn();
+    mount(() => surface({ layer: "more", onDismissControls: dismiss }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it("opens the opened Info as the on-air block's card, in full", () => {
+    const { host } = mount(() =>
+      surface({
+        chrome: {
+          ...chrome,
+          segments: chrome.segments.map((s) =>
+            s.id === "a" ? { ...s, synopsis: "A crew far from home." } : s,
+          ),
+        },
+        layer: "info",
+      }),
+    );
+    expect(host.textContent).toContain("A crew far from home.");
   });
 
   it("opens the Guide from the bare picture, which holds focus only while the controls are hidden", () => {

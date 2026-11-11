@@ -251,6 +251,7 @@ export type {
   PlayerUtilitiesProps,
   PlayerWatermark,
   WatchFrameProps,
+  WatchingLayer,
   WatchingPanelData,
   WatchingPanelDataArgs,
   WatchingProgrammeData,

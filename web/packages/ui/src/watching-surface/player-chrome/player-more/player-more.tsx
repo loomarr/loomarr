@@ -50,6 +50,7 @@ const MoreRow = ({
   label,
   onPress,
   opens = false,
+  preferFocus = false,
 }: {
   density: Density;
   detail?: string;
@@ -58,6 +59,8 @@ const MoreRow = ({
   onPress: () => void;
   /** It opens another page or panel (a chevron); otherwise it just does the thing. */
   opens?: boolean;
+  /** A television: this row takes the remote's focus as it mounts. */
+  preferFocus?: boolean;
 }) => {
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
@@ -67,6 +70,7 @@ const MoreRow = ({
       // the detail out does not match the visible label (WCAG 2.5.3).
       accessibilityLabel={detail ? undefined : label}
       accessibilityRole="button"
+      hasTVPreferredFocus={preferFocus}
       {...focusHandlers}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
@@ -130,58 +134,57 @@ const PlayerMore = ({
       </View>
     ) : null}
     <View style={{ gap: 2 }}>
-      {startOver ? (
-        <MoreRow
-          density={density}
-          detail={startOver.detail}
-          icon="startOver"
-          label="Start over"
-          onPress={startOver.onPress}
-        />
-      ) : null}
-      {goLive ? (
-        <MoreRow
-          density={density}
-          detail={goLive.detail}
-          icon="play"
-          label="Go live"
-          onPress={goLive.onPress}
-        />
-      ) : null}
-      {channels ? (
-        <MoreRow density={density} icon="list" label="Channels" onPress={channels.onPress} opens />
-      ) : null}
-      {info ? <MoreRow density={density} icon="info" label="Info" onPress={info.onPress} opens /> : null}
-      {picture ? (
-        <MoreRow
-          density={density}
-          detail={picture.detail}
-          icon="settings"
-          label="Picture"
-          onPress={picture.onPress}
-          opens
-        />
-      ) : null}
-      {playbackDetails ? (
-        <MoreRow
-          density={density}
-          icon="activity"
-          label="Playback details"
-          onPress={playbackDetails.onPress}
-          opens
-        />
-      ) : null}
-      {pictureInPicture ? (
-        <MoreRow
-          density={density}
-          icon="pictureInPicture"
-          label="Picture in picture"
-          onPress={pictureInPicture.onPress}
-        />
-      ) : null}
+      {rowsOf({ channels, goLive, info, picture, pictureInPicture, playbackDetails, startOver }).map(
+        (row, index) => (
+          // A television's remote lands on the first row as the menu opens.
+          <MoreRow density={density} key={row.label} preferFocus={density === "tv" && index === 0} {...row} />
+        ),
+      )}
     </View>
   </View>
 );
+
+type MoreRowSpec = { detail?: string; icon: IconName; label: string; onPress: () => void; opens?: boolean };
+
+/** The rows in J's order, each only where the caller offers it. */
+const rowsOf = ({
+  channels,
+  goLive,
+  info,
+  picture,
+  pictureInPicture,
+  playbackDetails,
+  startOver,
+}: Omit<PlayerMoreProps, "density" | "formatTime" | "schedule">): MoreRowSpec[] =>
+  [
+    startOver && {
+      detail: startOver.detail,
+      icon: "startOver",
+      label: "Start over",
+      onPress: startOver.onPress,
+    },
+    goLive && { detail: goLive.detail, icon: "play", label: "Go live", onPress: goLive.onPress },
+    channels && { icon: "list", label: "Channels", onPress: channels.onPress, opens: true },
+    info && { icon: "info", label: "Info", onPress: info.onPress, opens: true },
+    picture && {
+      detail: picture.detail,
+      icon: "settings",
+      label: "Picture",
+      onPress: picture.onPress,
+      opens: true,
+    },
+    playbackDetails && {
+      icon: "activity",
+      label: "Playback details",
+      onPress: playbackDetails.onPress,
+      opens: true,
+    },
+    pictureInPicture && {
+      icon: "pictureInPicture",
+      label: "Picture in picture",
+      onPress: pictureInPicture.onPress,
+    },
+  ].filter((row): row is MoreRowSpec => Boolean(row));
 
 export type { PlayerMoreProps };
 export { PlayerMore };

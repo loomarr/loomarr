@@ -1,4 +1,5 @@
 import type {
+  TvWatchingFocus,
   TvWatchingRemoteEvent,
   TvWatchingRemoteIntent,
   TvWatchingRemoteState,
@@ -27,13 +28,14 @@ type TvRemote = {
   leaveWatching(): void;
   /**
    * A react-native-tvos key event; only Watching (`watching`) acts on it, but any screen arms a long
-   * press. While Watching's controls are up (`controlsShown`), Left and Right move focus through them.
+   * press. `focus` is where Watching is: with the controls up Left and Right move focus through
+   * them, in the More menu every arrow does, and Menu closes an open layer.
    */
   nativeKey(
     eventType: string,
     eventKeyAction: number | undefined,
     watching: boolean,
-    controlsShown?: boolean,
+    focus?: TvWatchingFocus,
   ): void;
   /** OK on Watching, unless it is a long press letting go. */
   select(): void;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { ChannelSwitchOverlay } from "../channel-switch-overlay";
-import { PlayerChrome, PlayerCover, type PlayerLiveState } from "./player-chrome";
+import { PlayerChrome, PlayerCover, type PlayerLiveState, PlayerMenu, PlayerMore } from "./player-chrome";
 import { PlayerReadout } from "./player-chrome/player-readout";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
 
@@ -85,14 +85,18 @@ const WatchingSurface = ({
   controlsActivityKey = 0,
   controlsVisible = true,
   formatTime,
+  layer,
   loading = false,
   loadError,
   numberEntry,
   onChangeServer,
   onDismissControls,
   onGoLive,
+  onLayer,
   onOpenGuide,
+  onOpenSurf,
   onRetry,
+  onSeek,
   onSwitchShown,
   onTuneChannel,
   playheadMs,
@@ -108,6 +112,8 @@ const WatchingSurface = ({
   const countdown = useAutoTuneCountdownLabel(typing ? numberEntry?.expiresAtMs : undefined);
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
   const strip = chrome && chrome.segments.length > 0;
+  const live = snapshot.livePlayback ?? LIVE;
+  const startOverMs = chrome?.startOverMs;
   // OK opens the Guide (playback-clients). While the controls are up, focus rests in them (the strip's
   // block on air, whose OK opens the Guide too); otherwise on the picture itself.
   const pictureFocus = !loading && cover?.kind !== "error" && !(shown && (strip || previous));
@@ -124,12 +130,14 @@ const WatchingSurface = ({
     if (activityKeyRef.current !== controlsActivityKey) return;
     dismissControlsRef.current();
   }, [controlsActivityKey]);
-  // The controls clear five seconds after the last handled key (playback-clients), not on a tune.
+  // The controls clear five seconds after the last handled key (playback-clients), not on a tune, and
+  // not while the More menu is open: it waits for a choice, or for Menu or Back.
+  const menuOpen = layer === "more";
   useEffect(() => {
-    if (!shown || tuning) return undefined;
+    if (!shown || tuning || menuOpen) return undefined;
     const timeout = setTimeout(dismissControlsForActivity, 5_000);
     return () => clearTimeout(timeout);
-  }, [dismissControlsForActivity, shown, tuning]);
+  }, [dismissControlsForActivity, menuOpen, shown, tuning]);
 
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
@@ -188,14 +196,63 @@ const WatchingSurface = ({
                 last: previous
                   ? { number: String(previous.number), onPress: () => onTuneChannel(previous.id) }
                   : undefined,
+                moreOpen: layer === "more",
+                onMore: () => onLayer(layer === "more" ? undefined : "more"),
                 pointer: false,
               }}
               layout="tv"
-              live={snapshot.livePlayback ?? LIVE}
+              live={live}
+              menu={
+                layer === "more" ? (
+                  // More on a television (§9.5): Channels (Surf), Info, and Start over and Go live while
+                  // they apply. Focus starts on its first row; Menu or Back closes it.
+                  <PlayerMenu density="tv" heading={false} title="More">
+                    <PlayerMore
+                      channels={{
+                        onPress: () => {
+                          onLayer(undefined);
+                          onOpenSurf();
+                        },
+                      }}
+                      density="tv"
+                      formatTime={formatTime}
+                      goLive={
+                        live.mode === "live"
+                          ? undefined
+                          : {
+                              detail: formatTime(chrome.window.nowMs),
+                              onPress: () => {
+                                onLayer(undefined);
+                                onGoLive();
+                              },
+                            }
+                      }
+                      info={strip ? { onPress: () => onLayer("info") } : undefined}
+                      startOver={
+                        startOverMs === undefined
+                          ? undefined
+                          : {
+                              detail: chrome.band.title ?? chrome.band.channelName,
+                              onPress: () => {
+                                onLayer(undefined);
+                                onSeek(startOverMs);
+                              },
+                            }
+                      }
+                    />
+                  </PlayerMenu>
+                ) : undefined
+              }
               onGoLive={onGoLive}
               schedule={
                 strip
-                  ? { onSelect: onOpenGuide, playheadMs, segments: chrome.segments, window: chrome.window }
+                  ? {
+                      info: layer === "info",
+                      onSelect: onOpenGuide,
+                      playheadMs,
+                      segments: chrome.segments,
+                      window: chrome.window,
+                    }
                   : undefined
               }
               utilities={{ density: "tv", pointer: false }}
