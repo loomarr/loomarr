@@ -10,6 +10,7 @@ const libraryStatus = (over: Partial<LibraryStatusOutputBody> = {}): LibraryStat
   health: "ok",
   inUse: 1,
   offline: 0,
+  empty: 0,
   toConfirm: 0,
   files: 0,
   headersPending: 0,

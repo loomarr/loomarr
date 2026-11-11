@@ -202,7 +202,15 @@ catalog record again.
   longer reports, and only a folder that is neither in use, typed by hand nor named by any mapping
   disappears. Every folder is re-checked on each pass, within 5 s, so an offline NAS shows as
   "Loomarr can't open this folder" rather than hanging the page.
-- `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
+- **An empty folder is a warning, not health.** A share that isn't mounted leaves its mount point an
+  empty folder, which opens fine. The same check that tests readability records whether the folder
+  held anything (`library_roots.empty`). An empty folder can still be added; its card says "This
+  folder is empty — is the drive connected?" with Check again, and the headline says "Up to date",
+  never "All caught up". A pass that finds a folder's state changed (offline or back, emptied or
+  filled) publishes the empty `library_roots` frame, and Settings → Library reads its folders and
+  status again.
+- `GET /v1/library/status` reports `needs_folders`, `folder_offline`, `folder_empty` or `ok`, with
+  counts.
 
 ## Scanner
 

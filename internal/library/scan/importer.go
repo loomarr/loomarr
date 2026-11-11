@@ -42,7 +42,7 @@ const arrRetry = time.Minute
 // ImportStore is the store the importer reads roots from and keeps its file table in.
 type ImportStore interface {
 	LibraryRoots(ctx context.Context) (librarystore.LibraryRoots, error)
-	CheckLibraryRoot(ctx context.Context, check librarystore.LibraryRootCheck, at time.Time) (bool, error)
+	CheckLibraryRoot(ctx context.Context, check librarystore.LibraryRootCheck, at time.Time) (librarystore.LibraryRootFlip, error)
 	librarystore.LibraryFileStore
 }
 
@@ -108,6 +108,10 @@ type Importer struct {
 	// RootReadability hears when a pass finds a root stopped opening, or opens again (decision
 	// 32). Nil hears nothing.
 	RootReadability func(ctx context.Context, root string, readable bool)
+	// RootsChanged hears when a pass finds a root's state changed: it stopped opening or opens
+	// again, or it emptied or filled. A screen showing the folders reads them again. Nil hears
+	// nothing.
+	RootsChanged func()
 	// Tracker records the walk's and the header reads' progress, steps 1 and 2 of an import; nil
 	// records none.
 	Tracker *Tracker
@@ -168,6 +172,8 @@ const (
 type RootResult struct {
 	Root  string
 	State RootState
+	// Empty is a root that opened with nothing in it: usually a share that isn't mounted.
+	Empty bool
 	// Held is how many files the walk no longer found while they wait for confirmation.
 	Held int
 }
@@ -453,18 +459,30 @@ func (im *Importer) refreshArrItem(ctx context.Context, managers []Manager, path
 	return true // an arr no longer configured manages nothing
 }
 
-// recordReadability keeps the root's readability as the pass found it, for the status strip, and
-// tells RootReadability when it changed. A failed write is logged: the pass's own work stands.
+// recordReadability keeps the root's readability, and whether it held anything, as the pass found
+// them, for the status strip. It tells RootsChanged when either changed and RootReadability when
+// readability did. A failed write is logged: the pass's own work stands.
 func (im *Importer) recordReadability(ctx context.Context, result RootResult) {
 	readable := result.State != RootUnreadable
-	flipped, err := im.Store.CheckLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: result.Root, Readable: readable}, im.now())
+	check := Folder{Readable: readable, Empty: result.Empty}.check(result.Root)
+	flipped, err := im.Store.CheckLibraryRoot(ctx, check, im.now())
 	if err != nil {
 		if ctx.Err() == nil {
 			im.log().Warn("library scan: could not record a folder's readability", "root", result.Root, "err", err)
 		}
 		return
 	}
-	if !flipped {
+	if (flipped.Readable || flipped.Empty) && im.RootsChanged != nil {
+		im.RootsChanged()
+	}
+	if flipped.Empty && check.Readable {
+		if check.Empty {
+			im.log().Warn("library scan: a media folder opens but holds nothing; is its drive connected?", "root", result.Root)
+		} else {
+			im.log().Info("library scan: a media folder that held nothing has files again", "root", result.Root)
+		}
+	}
+	if !flipped.Readable {
 		return
 	}
 	if readable {
@@ -560,9 +578,13 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	// On every return, an error included: a file applied before the error was still written.
 	defer func() { im.touch(save, gen) }()
 	result := RootResult{Root: root, State: RootScanned}
-	if im.Disk != nil && !im.Disk.Readable(ctx, root) {
-		result.State = RootUnreadable
-		return result, nil, nil
+	if im.Disk != nil {
+		look := im.Disk.Look(ctx, root)
+		if !look.Readable {
+			result.State = RootUnreadable
+			return result, nil, nil
+		}
+		result.Empty = look.Empty
 	}
 	if im.stalled(root) {
 		// The last walk is still blocked on this share: it reads as offline, and nothing in it
