@@ -514,10 +514,10 @@ band that says what is on, a film strip of what is on next (where there is room 
 remote. It has no glass, and nothing in it needs to be discovered by hovering.
 
 **Where it is built.** The chrome is shared design-system code in `@loomarr/ui` (the
-`watching-surface` family, beside `WatchingPanel`), with focus and remote navigation in
-`@loomarr/ui-tv`. Each app supplies only its player adapter (`@loomarr/player`) and its input
-mapping. No platform keeps its own player chrome; the web-only `VideoPlayer` controls are replaced,
-not restyled alongside.
+`watching-surface` family: `PlayerChrome`, and `WatchingSurface` around it on a television), with
+focus and remote navigation in `@loomarr/ui-tv`. Each app supplies only its player adapter
+(`@loomarr/player`) and its input mapping. No platform keeps its own player chrome; the web-only
+`VideoPlayer` controls are replaced, not restyled alongside.
 
 ### 9.1 Layers
 
@@ -703,7 +703,11 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   both ends of the screen.
 - **Television** (Apple TV and Android TV share one layout, drawn at 960 × 540): 5 % clear at every
   edge, no pointer, an amber focus ring that moves with the remote. When the controls come up, focus
-  starts on the film strip's on-air block; moving to another block opens its card. Up/Down and the
-  Channel keys tune, as before ([`playback-clients.md`](design/playback-clients.md#android-tv)).
+  starts on the film strip's on-air block; Left and Right move it along the strip and on to the keys,
+  and moving to another block opens its card. OK on a block opens the Guide, as OK on the bare picture
+  does; the strip does not seek on a television (Start over is in More). Up/Down and the Channel keys
+  tune, as before ([`playback-clients.md`](design/playback-clients.md#android-tv)). A typed number's
+  readout names the channel it reaches and counts down to its auto-tune (#1659 N4). The controls
+  clear five seconds after the last key. There is no hint line: J draws none.
 - **Not drawn yet:** an iPad, an Android phone (until it is, it follows the iPhone layout without
   AirPlay), and what the remote's left and right do while the chrome is hidden.

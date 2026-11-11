@@ -261,10 +261,10 @@ func resolveDescriptive(out *Resolved, records []mp.Record) {
 	out.Title = d(func(x *mp.Descriptive) string { return x.Title })
 	out.OriginalTitle = d(func(x *mp.Descriptive) string { return x.OriginalTitle })
 	out.SortTitle = d(func(x *mp.Descriptive) string { return x.SortTitle })
-	out.Overview = d(func(x *mp.Descriptive) string { return x.Overview })
+	out.Overview = ownLanguageFirst(records, func(x *mp.Descriptive) (string, string) { return x.Overview, x.OverviewLanguage })
 	out.PremiereDate = d(func(x *mp.Descriptive) string { return x.PremiereDate })
 	out.Status = d(func(x *mp.Descriptive) string { return x.Status })
-	out.Tagline = d(func(x *mp.Descriptive) string { return x.Tagline })
+	out.Tagline = ownLanguageFirst(records, func(x *mp.Descriptive) (string, string) { return x.Tagline, x.TaglineLanguage })
 	out.Trailer = d(func(x *mp.Descriptive) string { return x.Trailer })
 	out.Edition = d(func(x *mp.Descriptive) string { return x.Edition })
 	out.Countries = firstSlice(records, func(rec mp.Record) []string { return rec.Descriptive.Countries })
@@ -362,6 +362,22 @@ func first[T comparable](records []mp.Record, get func(mp.Record) T) Picked[T] {
 		}
 	}
 	return Picked[T]{}
+}
+
+// ownLanguageFirst is first for a text that a catalog may fill from another language when it has
+// none in the installation's (get returns the text and that other language, empty when it is the
+// record's own). Any source's own-language text beats a filled one; a filled one beats none.
+func ownLanguageFirst(records []mp.Record, get func(*mp.Descriptive) (text, language string)) Picked[string] {
+	own := first(records, func(rec mp.Record) string {
+		if text, language := get(rec.Descriptive); language == "" {
+			return text
+		}
+		return ""
+	})
+	if own.Value != "" {
+		return own
+	}
+	return first(records, func(rec mp.Record) string { text, _ := get(rec.Descriptive); return text })
 }
 
 func firstSlice[T any](records []mp.Record, get func(mp.Record) []T) Picked[[]T] {

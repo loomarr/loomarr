@@ -67,4 +67,4 @@ const declarationsOfTree = (node: object): string => {
   return [element, ...element.querySelectorAll("*")].map(declarationsOfElement).join(";");
 };
 
-export { declarationsOf, declarationsOfElement, declarationsOfTree, stylesOfText, tagBefore };
+export { declarationsOfElement, declarationsOfTree, stylesOfText };
