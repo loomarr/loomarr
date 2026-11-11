@@ -212,8 +212,8 @@ tables:
         The person signed in on the app that sent it, pointing at users. Empty if unknown or the person
         has been deleted.
       device_id: >
-        The paired device that sent it, matching device_tokens.token_hash. Empty when not sent from a
-        paired device.
+        The paired device that sent it (device_tokens.token_hash). Null when not sent from a paired
+        device, or once that device is unpaired; device_name still says which it was.
       device_name: The paired device's name at the time, or empty.
       kind: >
         What crashed. js-fatal is an app error that closed the app, js-error is an app error that was
