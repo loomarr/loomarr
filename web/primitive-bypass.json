@@ -20,20 +20,11 @@
     "apps/web/src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
       "flexStack": 7
     },
-    "apps/web/src/components/loomarr/ai/intent-input/intent-input.tsx": {
-      "flexStack": 3
-    },
     "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
       "flexStack": 6
     },
-    "apps/web/src/components/loomarr/ai/model-picker/model-picker.tsx": {
-      "flexStack": 5
-    },
     "apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
       "flexStack": 6
-    },
-    "apps/web/src/components/loomarr/ai/proposal-outlook/proposal-outlook.tsx": {
-      "flexStack": 2
     },
     "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
       "flexStack": 14

@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { outlook } from "@/test/fixtures/outlook";
+import { render } from "@/test/render";
 import { ProposalOutlook } from "./proposal-outlook";
 
 describe("ProposalOutlook", () => {

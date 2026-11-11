@@ -1,10 +1,11 @@
 import { getGetProposalOutlookMockHandler } from "@loomarr/api/msw";
 import { proposal } from "@loomarr/fixtures";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { outlook } from "@/test/fixtures/outlook";
 import { server } from "@/test/msw/server";
+import { render } from "@/test/render";
 import { LiveProposalOutlook } from "./live-proposal-outlook";
 
 it("an older response cannot replace the estimate for newer approval edits", async () => {
