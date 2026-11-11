@@ -1,7 +1,8 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
 import { StatusDot, type StatusTone, Text } from "@loomarr/design-system";
-import { Link } from "@tanstack/react-router";
+import { StatePanel } from "@loomarr/ui";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
@@ -74,6 +75,7 @@ const CRITERION_LABEL: Record<CoverageCriterionDTOCriterion, string> = {
 };
 
 const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
+  const navigate = useNavigate();
   // ⚠ Falls back rather than indexing blind. `LEVEL_COPY[level]` returning undefined crashed
   // the whole Filler section on `.tone` — found when this landed and five unrelated
   // ChannelFiller tests went red. The trigger there was a stub payload, but the real one is a
@@ -108,26 +110,17 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
 
   // An empty catalogue is not eight settings each ruling everything out (#3412). Every criterion
   // is counted over the same base, the break commercials, so when none of them keeps a clip and no
-  // rung holds one there is nothing to rule out: say so in one line and point at Filler.
+  // rung holds one there is nothing to rule out: the design system's empty state says so and
+  // points at Filler.
   const noClips = widest === 0 && criteria.length > 0 && emptyCriteria.length === criteria.length;
   if (noClips) {
     return (
-      <section
-        className={cn(
-          "border-border flex flex-wrap items-center justify-between gap-2 rounded-lg border p-4",
-          className,
-        )}
-      >
-        <p className="text-sm">No clips yet. Breaks show the channel card until some arrive.</p>
-        <Link
-          to="/filler"
-          className="text-signal text-xs underline-offset-2 hover:underline"
-          data-testid="find-clips"
-          data-touch-target
-        >
-          Add filler →
-        </Link>
-      </section>
+      <StatePanel
+        kind="empty"
+        title="No clips yet"
+        description="Breaks show the channel card until some arrive."
+        action={{ label: "Add filler", onPress: () => void navigate({ to: "/filler" }) }}
+      />
     );
   }
 

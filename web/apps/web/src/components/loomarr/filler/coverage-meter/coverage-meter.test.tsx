@@ -339,10 +339,9 @@ describe("CoverageMeter", () => {
         }}
       />,
     );
-    expect(
-      await screen.findByText("No clips yet. Breaks show the channel card until some arrive."),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add filler →" })).toHaveAttribute("href", "/filler");
+    expect(await screen.findByText("No clips yet")).toBeInTheDocument();
+    expect(screen.getByText("Breaks show the channel card until some arrive.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add filler" })).toBeInTheDocument();
     expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
     expect(screen.queryByText("nothing matches")).not.toBeInTheDocument();
     expect(screen.queryByText("Exact era + audience")).not.toBeInTheDocument();
