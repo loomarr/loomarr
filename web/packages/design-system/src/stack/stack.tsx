@@ -53,7 +53,10 @@ const Stack = ({
   wrap = false,
   ...props
 }: StackProps) => (
+  // Tamagui's View never shrinks as a flex item (flex-shrink 0), unlike the <div> a call site moves
+  // from, so a Stack in a flex row would overflow rather than give way. A caller can still set it.
   <View
+    flexShrink={1}
     {...props}
     alignItems={alignItems[align]}
     flexDirection={direction}
