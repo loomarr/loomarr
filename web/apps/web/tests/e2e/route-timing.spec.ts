@@ -26,14 +26,25 @@ import { installMockBackend } from "./mock-backend";
 // content on every route. Loaders, SSE-driven freshness and the persisted cache are landing in
 // parallel PRs, so the budgets below sit just above what main measures today and each of those PRs
 // lowers the ones it earns. A budget only ever goes down; raise one only with the reason in the
-// commit. Today's numbers (CI, macOS runner, median of RUNS, API_DELAY_MS = 100):
+// commit. Today's numbers (CI, macOS runner, 2026-11-11, API_DELAY_MS = 100), as median
+// (slowest of the three sessions) in ms to real content:
 //
-//   route      cold   warm
-//   (filled in from the first CI run)
+//   route      cold          warm
+//   Home       325 (325)     70 (100)
+//   Guide      180 (180)     57 (107)
+//   Library    305 (462)     103 (113)
+//   Requests   152 (162)     52 (58)
+//   Settings    95 (207)     32 (49)
+//   Channels   188 (222)     89 (105)
 //
-// The assertion is on the median of RUNS fresh sessions, so one slow frame on a shared runner does
-// not fail the gate. Every run is printed (and appended to the job summary) so a failure shows
-// the spread, not only the median.
+// Each budget is the slowest session measured, plus a quarter, rounded up to 10 ms. The assertion
+// is on the median of RUNS fresh sessions, so one slow frame on a shared runner does not fail the
+// gate. Every run is printed (and appended to the job summary) so a failure shows the spread, not
+// only the median. The first session of a job tends to be the slowest: it pays the runner's cold
+// disk and the browser's cold code cache.
+//
+// Warm is already near the 100 ms goal; cold misses 300 ms on Home and Library, and Settings and
+// Requests land well inside it. Those two are where the loader work has most to earn.
 
 const API_DELAY_MS = 100;
 const RUNS = 3;
@@ -58,11 +69,10 @@ const DESTINATIONS: Destination[] = [
 
 type Pass = "cold" | "warm";
 
-// Milliseconds from the click to real content, per route. Deliberately loose until the first CI
-// run measures the real numbers; see the ratchet note above.
+// Milliseconds from the click to real content, per route: the ratchet described above.
 const BUDGET_MS: Record<Pass, Record<string, number>> = {
-  cold: { Home: 2000, Guide: 2000, Library: 2000, Requests: 2000, Settings: 2000, Channels: 2000 },
-  warm: { Home: 1000, Guide: 1000, Library: 1000, Requests: 1000, Settings: 1000, Channels: 1000 },
+  cold: { Home: 410, Guide: 230, Library: 580, Requests: 210, Settings: 260, Channels: 280 },
+  warm: { Home: 130, Guide: 140, Library: 150, Requests: 80, Settings: 70, Channels: 140 },
 };
 
 const LIBRARY_STATUS: LibraryStatusOutputBody = {
