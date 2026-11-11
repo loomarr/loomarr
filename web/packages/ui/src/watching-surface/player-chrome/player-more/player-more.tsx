@@ -87,6 +87,8 @@ const MoreRow = ({
         density={density}
         numberOfLines={1}
         style={{ flex: 1 }}
+        // Left, beside the icon: on the web a button's text inherits a centred alignment.
+        textAlign="left"
         textRole={rowRole(density)}
         tone="primary"
       >
