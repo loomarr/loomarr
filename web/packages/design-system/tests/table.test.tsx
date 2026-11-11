@@ -63,6 +63,22 @@ describe("Table (web)", () => {
     ).toEqual(["database", "Healthy"]);
   });
 
+  it("gives a header the header voice when its text arrives as several strings", () => {
+    render(
+      <LoomarrProvider>
+        <Table caption="Markdown table">
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>{["Symptom", " ", "or cause"]}</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+        </Table>
+      </LoomarrProvider>,
+    );
+
+    expect(screen.getByRole("columnheader").querySelector("span")?.textContent).toBe("Symptom or cause");
+  });
+
   it("carries a row's id, dimming and a cell's span for a detail row", () => {
     const { container } = renderTable();
     const detail = container.querySelector<HTMLTableRowElement>("#detail");

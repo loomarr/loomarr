@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
-import { createContext, type ReactNode, useContext, useState } from "react";
+import { createContext, useContext, useState } from "react";
 
 import { Text } from "../primitives";
 import { type Density, semanticRadius, semanticSpace, typography } from "../tokens";
+import { isPlainText as isPlain } from "./plain-text";
 import type {
   TableCellProps,
   TableHeaderCellProps,
@@ -32,9 +33,6 @@ const visuallyHidden = {
 } as const;
 
 const cellPadding = { paddingBlock: semanticSpace.control, paddingInline: semanticSpace.control };
-
-// A bare string or number takes the cell's voice; anything else (a button, a status word) brings its own.
-const isPlain = (children: ReactNode) => typeof children === "string" || typeof children === "number";
 
 const Table = ({ caption, children, density = "pointer", framed = true, minWidth }: TableProps) => {
   const [ringed, setRinged] = useState(false);
