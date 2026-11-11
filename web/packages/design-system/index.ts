@@ -19,6 +19,8 @@ export type { ChipProps, ChipTone } from "./src/chip";
 export { Chip } from "./src/chip";
 export type { ChoiceCardAccent, ChoiceCardProps } from "./src/choice-card";
 export { ChoiceCard } from "./src/choice-card";
+export type { ComboboxOption, ComboboxProps } from "./src/combobox";
+export { Combobox } from "./src/combobox";
 export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
 export { CompactSelect } from "./src/compact-select";
 export type { DateFieldProps } from "./src/date-field";
