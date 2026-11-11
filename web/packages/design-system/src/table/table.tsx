@@ -1,8 +1,9 @@
 import { View } from "@tamagui/core";
-import { createContext, type ReactNode, useContext } from "react";
+import { createContext, useContext } from "react";
 
 import { Text } from "../primitives";
 import type { Density } from "../tokens";
+import { isPlainText as isPlain } from "./plain-text";
 import type {
   TableCellProps,
   TableHeaderCellProps,
@@ -15,9 +16,6 @@ import type {
 // takes a share of it by its `width` (the web adapter, table.web.tsx, is a real <table>). The look
 // is the same: a bordered box, a raised header row of small tracked mono labels, a quiet row rule.
 const DensityContext = createContext<Density>("pointer");
-
-// A bare string or number takes the cell's voice; anything else (a button, a status word) brings its own.
-const isPlain = (children: ReactNode) => typeof children === "string" || typeof children === "number";
 
 const Table = ({ caption, children, density = "pointer", framed = true }: TableProps) => (
   <DensityContext.Provider value={density}>
