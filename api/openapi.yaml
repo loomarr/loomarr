@@ -21335,7 +21335,7 @@ paths:
       tags:
         - titles
     post:
-      description: Idempotent by external id (§4). Admin only.
+      description: Idempotent by external id (§4); re-enqueueing an unavailable title retries it. Admin only.
       operationId: enqueue-title
       requestBody:
         content:
