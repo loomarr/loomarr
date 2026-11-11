@@ -6,6 +6,11 @@ type TableProps = {
   /** The table's accessible name (a visually hidden caption on web, the label on native). */
   caption: string;
   children: ReactNode;
+  /**
+   * Tighter cells (8 where it is 12) and plain caption headers instead of tracked capitals, for a
+   * table in a narrow card that must fit five short columns on a phone.
+   */
+  dense?: boolean;
   density?: Density;
   /**
    * The bordered, rounded box the mock draws around a table. Turn it off when the table already
