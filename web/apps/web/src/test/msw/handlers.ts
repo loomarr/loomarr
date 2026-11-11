@@ -13,6 +13,7 @@ import {
   getGetChannelMockHandler,
   getGetChannelWatermarkOptionsMockHandler,
   getGetCurrentHealthMockHandler,
+  getGetDiagnosticVerboseCaptureMockHandler,
   getGuideHighlightsMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
@@ -230,6 +231,8 @@ const appHandlers = (): RequestHandler[] => [
     hosted: [],
   }),
   getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
+  // What the Diagnostics route's loader reads.
+  getGetDiagnosticVerboseCaptureMockHandler({ active: false }),
   getListDocsMockHandler({ docs: [] }),
   getFillerPoolMockHandler({ channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 }),
   getFillerWatchMockHandler({
