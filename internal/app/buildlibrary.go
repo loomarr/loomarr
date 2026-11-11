@@ -170,6 +170,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Log:      deps.log,
 	}
 	im.Busy = deps.watched
+	if deps.frames != nil {
+		im.RootsChanged = deps.frames.LibraryRootsChanged
+	}
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
 	}

@@ -20,6 +20,9 @@ type LibraryRoot struct {
 	// Readable and CheckedAt are the last readability check; a zero CheckedAt means never checked.
 	Readable  bool
 	CheckedAt time.Time
+	// Empty is a readable root that held nothing at the last check: most often a share that isn't
+	// mounted, whose mount point is an empty folder.
+	Empty bool
 	// ByHand marks a folder the maintainer typed rather than one an authority reported.
 	ByHand  bool
 	AddedAt time.Time
@@ -42,6 +45,16 @@ type LibraryRootPath struct {
 type LibraryRootCheck struct {
 	Path     string
 	Readable bool
+	// Empty is a readable root with nothing in it.
+	Empty bool
+}
+
+// LibraryRootFlip is what one check of a root changed from the check before it.
+type LibraryRootFlip struct {
+	// Readable: the root went from opening to not, or back.
+	Readable bool
+	// Empty: the root went from holding something to holding nothing, or back.
+	Empty bool
 }
 
 // LibraryRootDiscovery is the outcome of one discovery pass.
@@ -81,14 +94,14 @@ type LibraryRootStore interface {
 	// ErrNotFound when the authority never reported that folder.
 	SetLibraryRootPath(ctx context.Context, authority, authorityPath, rootPath string, at time.Time) error
 	// CheckLibraryRoot records one readability check of a root, as a scan pass makes it, and
-	// reports whether it flipped the root between readable and not. A root never checked before
-	// does not flip. ErrNotFound when the root does not exist.
-	CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (flipped bool, err error)
+	// reports what it flipped: readable and not, empty and not. A root never checked before does
+	// not flip. ErrNotFound when the root does not exist.
+	CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (LibraryRootFlip, error)
 }
 
 func (s *Store) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	var out LibraryRoots
-	rows, err := s.h.QueryContext(ctx, `SELECT path, in_use, readable, checked_at_ms, by_hand, added_at_ms, scanned_at_ms
+	rows, err := s.h.QueryContext(ctx, `SELECT path, in_use, readable, empty, checked_at_ms, by_hand, added_at_ms, scanned_at_ms
 		FROM library_roots ORDER BY path`)
 	if err != nil {
 		return out, fmt.Errorf("list library roots: %w", err)
@@ -96,7 +109,7 @@ func (s *Store) LibraryRoots(ctx context.Context) (LibraryRoots, error) {
 	for rows.Next() {
 		var r LibraryRoot
 		var checked, added, scanned int64
-		if err := rows.Scan(&r.Path, &r.InUse, &r.Readable, &checked, &r.ByHand, &added, &scanned); err != nil {
+		if err := rows.Scan(&r.Path, &r.InUse, &r.Readable, &r.Empty, &checked, &r.ByHand, &added, &scanned); err != nil {
 			_ = rows.Close()
 			return out, fmt.Errorf("list library roots: %w", err)
 		}
@@ -173,31 +186,34 @@ func (s *Store) RecordLibraryRootDiscovery(ctx context.Context, d LibraryRootDis
 
 func (s *Store) applyLibraryRootChecks(ctx context.Context, tx storedb.Tx, checks []LibraryRootCheck, ms int64) error {
 	for _, c := range checks {
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_roots SET readable = ?, checked_at_ms = ?
-			WHERE path = ?`), c.Readable, ms, c.Path); err != nil {
+		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE library_roots SET readable = ?, empty = ?, checked_at_ms = ?
+			WHERE path = ?`), c.Readable, c.Readable && c.Empty, ms, c.Path); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Store) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (bool, error) {
+func (s *Store) CheckLibraryRoot(ctx context.Context, check LibraryRootCheck, at time.Time) (LibraryRootFlip, error) {
+	var flipped LibraryRootFlip
 	if check.Path == "" || at.IsZero() {
-		return false, fmt.Errorf("check library root: path and time are required")
+		return flipped, fmt.Errorf("check library root: path and time are required")
 	}
-	flipped := false
 	err := s.libraryRootTx(ctx, "check library root", func(tx storedb.Tx) error {
-		var readable bool
+		var readable, empty bool
 		var checkedAt int64
-		err := tx.QueryRowContext(ctx, s.ph(`SELECT readable, checked_at_ms FROM library_roots WHERE path = ?`), check.Path).
-			Scan(&readable, &checkedAt)
+		err := tx.QueryRowContext(ctx, s.ph(`SELECT readable, empty, checked_at_ms FROM library_roots WHERE path = ?`), check.Path).
+			Scan(&readable, &empty, &checkedAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			return storedb.ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
-		flipped = checkedAt != 0 && readable != check.Readable
+		if checkedAt != 0 {
+			flipped.Readable = readable != check.Readable
+			flipped.Empty = empty != (check.Readable && check.Empty)
+		}
 		return s.applyLibraryRootChecks(ctx, tx, []LibraryRootCheck{check}, at.UnixMilli())
 	})
 	return flipped, err

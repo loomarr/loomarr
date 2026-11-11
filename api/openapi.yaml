@@ -7203,6 +7203,9 @@ components:
           description: The last check; absent when never checked
           format: date-time
           type: string
+        empty:
+          description: Loomarr opened it and found nothing in it at the last check; usually a drive or share that isn't connected
+          type: boolean
         foundIn:
           description: Every app that names this folder, and what it calls it
           items:
@@ -7221,6 +7224,7 @@ components:
         - path
         - inUse
         - readable
+        - empty
         - addedByHand
         - foundIn
       type: object
@@ -7250,6 +7254,9 @@ components:
       required:
         - roots
         - pathMap
+      type: object
+    LibraryRootsEvent:
+      additionalProperties: false
       type: object
     LibraryScanDTO:
       additionalProperties: false
@@ -7441,6 +7448,10 @@ components:
           format: uri
           readOnly: true
           type: string
+        empty:
+          description: Folders in use that opened with nothing in them at their last check
+          format: int64
+          type: integer
         files:
           description: Media files found in folders in use
           format: int64
@@ -7450,10 +7461,11 @@ components:
           format: int64
           type: integer
         health:
-          description: "needs_folders: none in use; folder_offline: one in use didn't open"
+          description: "needs_folders: none in use; folder_offline: one in use didn't open; folder_empty: they all opened, but one held nothing"
           enum:
             - needs_folders
             - folder_offline
+            - folder_empty
             - ok
           type: string
         held:
@@ -7492,6 +7504,7 @@ components:
         - health
         - inUse
         - offline
+        - empty
         - toConfirm
         - scan
         - files
@@ -16342,6 +16355,24 @@ paths:
                         - data
                         - event
                       title: Event job
+                      type: object
+                    - properties:
+                        data:
+                          $ref: "#/components/schemas/LibraryRootsEvent"
+                        event:
+                          const: library_roots
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event library_roots
                       type: object
                     - properties:
                         data:

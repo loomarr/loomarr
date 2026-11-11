@@ -557,6 +557,7 @@ One row per local folder Loomarr may walk for media. A folder is added when a me
 | `by_hand` | 1 when someone typed the folder in rather than a media server or arr reporting it. | `BOOLEAN` |
 | `added_at_ms` | When the folder was added, in Unix milliseconds. | `INTEGER` |
 | `scanned_at_ms` | When a walk of the folder last completed, in Unix milliseconds; 0 means never. | `INTEGER` |
+| `empty` | 1 when the last check opened the folder and found nothing in it, which usually means the share behind a mount point isn't mounted. Always 0 when the folder isn't readable. | `BOOLEAN` |
 
 ### library_root_paths
 

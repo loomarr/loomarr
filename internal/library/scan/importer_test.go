@@ -234,6 +234,38 @@ func TestImportWritesOnceAndSkipsUnchanged(t *testing.T) {
 // Library → Items lists the movie and the series a pass wrote, with the series counting its
 // episodes and a skipped trailer counting toward nothing; once headers are read nothing is getting
 // ready.
+// Each pass records whether a root held anything, so a share that comes unmounted (its mount point
+// left empty) shows on the folder's card, and one mounted again clears it.
+func TestImportRecordsAnEmptyRoot(t *testing.T) {
+	h := newHarness(t)
+	h.im.Disk = OSDisk{}
+	changed := 0
+	h.im.RootsChanged = func() { changed++ }
+	empty := func() bool {
+		all, err := h.st.LibraryRoots(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return StatusOf(all).Empty == 1
+	}
+
+	h.run()
+	if !empty() {
+		t.Fatal("a pass over an empty root did not record it as empty")
+	}
+	h.file("Movies/Golf (2013)/Golf (2013).mkv", 10)
+	h.run()
+	if empty() {
+		t.Fatal("a pass over a root with a film in it still records it as empty")
+	}
+	// The harness's root was recorded readable and not empty, so both passes changed it, and the
+	// folders' screen heard each; a pass that changes nothing says nothing.
+	h.run()
+	if changed != 2 {
+		t.Fatalf("RootsChanged heard %d changes, want 2 (emptied, filled)", changed)
+	}
+}
+
 func TestImportListsMoviesAndSeries(t *testing.T) {
 	h := newHarness(t)
 	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv", 10)
