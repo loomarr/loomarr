@@ -157,6 +157,14 @@ export type { StatusLabelProps } from "./src/status-label";
 export { StatusLabel } from "./src/status-label";
 export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
+export type {
+  TableCellProps,
+  TableHeaderCellProps,
+  TableProps,
+  TableRowProps,
+  TableSectionProps,
+} from "./src/table";
+export { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "./src/table";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
 export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
