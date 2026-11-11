@@ -6717,6 +6717,24 @@ components:
         - id
         - name
       type: object
+    LibraryDetailsDTO:
+      additionalProperties: false
+      properties:
+        retryAt:
+          description: When looking up is tried again; absent when nothing is waiting on a retry
+          format: date-time
+          type: string
+        unreachable:
+          description: The catalog didn't answer the last lookup
+          type: boolean
+        waiting:
+          description: Movies and series whose details haven't been looked up yet
+          format: int64
+          type: integer
+      required:
+        - waiting
+        - unreachable
+      type: object
     LibraryDetailsFromDTO:
       additionalProperties: false
       properties:
@@ -7448,6 +7466,9 @@ components:
           format: uri
           readOnly: true
           type: string
+        details:
+          $ref: "#/components/schemas/LibraryDetailsDTO"
+          description: How the titles' details are getting on
         empty:
           description: Folders in use that opened with nothing in them at their last check
           format: int64
@@ -7513,6 +7534,7 @@ components:
         - needsYou
         - held
         - hooks
+        - details
       type: object
     LibrarySubtitleDTO:
       additionalProperties: false
