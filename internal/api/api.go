@@ -81,7 +81,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		ArrDiscovery: opts.ArrDiscovery, LibraryConfigured: opts.LibraryConfigured,
 	})
 	catalogapi.New(catalogapi.Deps{
-		Store: opts.Store, LiveSettings: opts.LiveSettings, Search: opts.Search,
+		Store: opts.Store, LiveSettings: opts.LiveSettings, Search: opts.Search, Now: opts.Now,
 	}).Register(humaAPI)
 	people.New(people.Deps{
 		Store: opts.Store, Log: log, Metrics: recorder, Origin: srv.origin,
