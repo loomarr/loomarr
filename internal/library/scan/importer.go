@@ -140,10 +140,12 @@ type Importer struct {
 	mu       sync.Mutex
 	progress Progress
 	// reading is true while a header stage takes files; handoff are the files later passes queued
-	// for it. touched is the import that last wrote each file, one entry a path: a read queued by
-	// an older one is dropped. Guarded by mu.
+	// for it, and staged every file the stage has taken, so a pass's hand-off of one it already
+	// holds is dropped as it arrives. touched is the import that last wrote each file, one entry a
+	// path: a read queued by an older one is dropped. Guarded by mu.
 	reading bool
 	handoff []pending
+	staged  map[string]bool
 	touched map[string]int64
 	// arrChanged are arr items to read again before the next folder pass uses the index; relist
 	// asks for every arr to be listed again. Guarded by mu.
