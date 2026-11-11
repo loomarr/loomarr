@@ -22,7 +22,6 @@ tables:
       clip_hash: >
         The filler clip the call was about (clips.hash). For a long-reel structure check it is the
         SHA-256 of the reel's source file.
-      run_id: The batch run the call belonged to, used for the per-run spend ceiling. Empty when the call was not part of a run.
       role: >
         Which check made the call, for example defect_judge or complete_timeline_structure.
       rung: >
@@ -80,7 +79,7 @@ tables:
     groups:
       - group: The call
         why: One row is one call to a model; these say which check made it and how it ended.
-        columns: [id, cache_key, clip_hash, run_id, role, rung, state, outcome, failure_reason, attempts, latency_ms, created_at, updated_at]
+        columns: [id, cache_key, clip_hash, role, rung, state, outcome, failure_reason, attempts, latency_ms, created_at, updated_at]
       - group: Who answered
         why: >
           One provider and model asked, and one that answered, per call. Comparing them is how a
