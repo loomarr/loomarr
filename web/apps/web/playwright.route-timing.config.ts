@@ -18,7 +18,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // `list` as well as `github`: the spec prints its table, and `github` alone drops stdout.
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
-  use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },
+  // Playwright's actions wait forever by default; here a control that cannot be pressed must fail
+  // the step in seconds, not run out the whole test's clock.
+  use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}`, actionTimeout: 10_000 },
   projects: [{ name: "chromium", use: DESKTOP }],
   webServer: {
     // The real SPA build over the pure-JS static server, history fallback included, exactly as the

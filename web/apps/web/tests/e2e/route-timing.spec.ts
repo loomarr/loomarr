@@ -140,7 +140,9 @@ const visit = async (page: Page, destination: Destination): Promise<Visit> => {
   if (destination.link) {
     await page
       .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: destination.link, exact: true })
+      // Requests carries a count badge ("Requests 1"), so the name is its label and nothing else
+      // but that count.
+      .getByRole("link", { name: new RegExp(`^${destination.link}( \\d+)?$`) })
       .click();
   } else {
     await page.evaluate((path) => {
