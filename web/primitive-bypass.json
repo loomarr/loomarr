@@ -1,0 +1,554 @@
+{
+  "note": "Design-system primitive ledger (#2147 Wave 4), maintained by web/scripts/check-primitive-bypass.mjs. Counts may only fall: `pnpm primitives:update` shrinks them. Never raise one to pass the check.",
+  "files": {
+    "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
+      "rawDialog": 1,
+      "flexStack": 9
+    },
+    "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/channels/channel-watch/channel-watch.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/channels/guide-page/guide-page.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
+      "flexStack": 7
+    },
+    "apps/web/src/components/loomarr/ai/intent-input/intent-input.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/ai/model-picker/model-picker.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/ai/proposal-outlook/proposal-outlook.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
+      "flexStack": 14
+    },
+    "apps/web/src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
+      "flexStack": 9
+    },
+    "apps/web/src/components/loomarr/ai/refine-review/refine-review.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-card/channel-card.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
+      "flexStack": 14
+    },
+    "apps/web/src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
+      "flexStack": 7
+    },
+    "apps/web/src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/channels/policy-field-source/policy-field-source.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/dashboard/service-control/service-control.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/feedback/error-state/error-state.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/feedback/placeholder/placeholder.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
+      "flexStack": 9
+    },
+    "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
+      "flexStack": 16
+    },
+    "apps/web/src/components/loomarr/filler/watch-line/watch-line.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/people/import-dialog/import-dialog.tsx": {
+      "flexStack": 7
+    },
+    "apps/web/src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/components/loomarr/people/invitation-join/invitation-join.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/people/people-roster/people-roster.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/people/person-detail/person-detail.tsx": {
+      "flexStack": 20
+    },
+    "apps/web/src/components/loomarr/people/session-list/session-list.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/settings/database-migration/database-migration.tsx": {
+      "flexStack": 20
+    },
+    "apps/web/src/components/loomarr/settings/installation-location/installation-location.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
+      "rawCombobox": 1,
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
+      "rawCombobox": 1,
+      "flexStack": 6
+    },
+    "apps/web/src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
+      "flexStack": 14
+    },
+    "apps/web/src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/setup/connection-block/connection-block.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/setup/login-form/login-form.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/setup/login-shell/login-shell.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
+      "flexStack": 7
+    },
+    "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/shell/color-bars/color-bars.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/shell/phone-bottom-bar/phone-bottom-bar.tsx": {
+      "rawDialog": 2
+    },
+    "apps/web/src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/shell/search-command/search-command.tsx": {
+      "rawCombobox": 1,
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/design/palette/palette.tsx": {
+      "flexStack": 11
+    },
+    "apps/web/src/design/spacing/spacing.tsx": {
+      "flexStack": 15
+    },
+    "apps/web/src/design/tokens/tokens.tsx": {
+      "rawTable": 1,
+      "flexStack": 3
+    },
+    "apps/web/src/design/typography/typography.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
+      "flexStack": 14
+    },
+    "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
+      "flexStack": 9
+    },
+    "apps/web/src/diagnostics/server-status/server-status.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
+      "rawTable": 1,
+      "flexStack": 3
+    },
+    "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/discovery-feedback/discovery-feedback.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/filler/channel-filler/channel-filler.tsx": {
+      "flexStack": 9
+    },
+    "apps/web/src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
+      "flexStack": 11
+    },
+    "apps/web/src/filler/clip-details-editor/clip-details-editor.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/filler/clip-details-settings/clip-details-settings.tsx": {
+      "flexStack": 10
+    },
+    "apps/web/src/filler/clip-details/clip-details.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/filler/filler-catalog/catalog-bulk-bar/catalog-bulk-bar.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-catalog/clip-more-details/clip-more-details.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/filler/filler-catalog/filler-catalog.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/filler/filler-manage/filler-manage.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-overview/filler-overview.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/filler/filler-page/filler-page.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/filler/filler-settings/filler-settings.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/filler/incoming/incoming.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/filler/sources-panel/local-source-form/local-source-form.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
+      "rawCombobox": 1,
+      "flexStack": 3
+    },
+    "apps/web/src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/sources-panel/source-location-form/source-location-form.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/filler/sources-panel/source-settings/source-settings.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/sources-panel/source-status/source-status.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/filler/sources-panel/sources-panel.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/split-review-page/split-review-page.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
+      "flexStack": 9
+    },
+    "apps/web/src/help/doc-view/doc-view.tsx": {
+      "rawTable": 1,
+      "flexStack": 3
+    },
+    "apps/web/src/help/help-page/help-page.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/home/home-page/home-page.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/home/home-strip/home-strip.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/home/new-this-week/new-this-week.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/lib/app-form/app-form.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/people/users-page/users-page.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/queue/request-detail/request-detail.tsx": {
+      "flexStack": 7
+    },
+    "apps/web/src/queue/request-lists/request-lists.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/routes/_authed/account.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/routes/_authed/channels/$id/-channel-advanced.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/routes/_authed/channels/$id/-channel-programming.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/routes/_authed/channels/$id/info.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/routes/_authed/channels/$id/route.tsx": {
+      "flexStack": 8
+    },
+    "apps/web/src/routes/_authed/filler/settings/route.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/requests/_tabs.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/access.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/advanced.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/index.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/routes/_authed/settings/route.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/system/about.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/system/backup.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/system/database.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/system/index.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/routes/wizard.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/settings/ai-model-settings/ai-model-settings.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/settings/encryption-settings/encryption-settings.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
+      "flexStack": 12
+    },
+    "apps/web/src/settings/pair-device/pair-device.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/settings/paired-devices/paired-devices.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/settings/secrets-settings/secrets-settings.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/settings/settings-page/settings-page.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/settings/tasks-page/tasks-page.tsx": {
+      "rawTable": 1,
+      "flexStack": 11
+    },
+    "apps/web/src/suggest/approval-queue/approval-queue.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
+      "flexStack": 7
+    },
+    "apps/web/src/suggest/intent-form/intent-form.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
+      "flexStack": 9
+    },
+    "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
+      "flexStack": 6
+    },
+    "apps/web/src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/wizard/bootstrap-step/bootstrap-step.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/wizard/checklist-step/checklist-step.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/wizard/connect-step/connect-step.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/wizard/first-channel-step/first-channel-step.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/wizard/playout-step/playout-step.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/wizard/users-step/users-step.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
+      "flexStack": 3
+    },
+    "packages/ui/src/filler/defect-review/defect-review.tsx": {
+      "rawTable": 1
+    },
+    "packages/ui/src/overlay/overlay.tsx": {
+      "rnModal": 1
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-details/player-details.tsx": {
+      "rawDialog": 1
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-sheet/player-sheet.tsx": {
+      "rawDialog": 1
+    }
+  }
+}
