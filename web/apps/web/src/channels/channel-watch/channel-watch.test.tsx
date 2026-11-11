@@ -1100,13 +1100,14 @@ describe("ChannelWatch at phone width", () => {
     expect(screen.queryByRole("button", { name: /^(Mute|Unmute)$/ })).not.toBeInTheDocument();
   });
 
-  it("pins the picture under the top row, with the band and keys below it", async () => {
+  // Variant J (§9.7): the picture fills the frame, letterboxed and centred by the <video> — a strip
+  // mid-screen — with the toolbar above it and the band and keys below; nothing pins it to the top.
+  it("centres the picture as a strip, with the band and keys below it", async () => {
     renderPhone();
     expect(await screen.findByRole("button", { name: "Leave" })).toBeInTheDocument();
     const video = document.querySelector("video") as HTMLVideoElement;
-    expect(video.style.position).toBe("absolute");
-    expect(video.style.top).toBe("80px");
-    expect(video.style.objectPosition).toBe("center top");
+    expect(video.style.top).toBe("");
+    expect(video.style.objectPosition).not.toBe("center top");
     for (const name of ["Channel up", "Channel down", /^(Play|Pause)$/, "More", "Audio"])
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
   });

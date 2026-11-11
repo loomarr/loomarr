@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { BarsEdge, ChannelBlock } from "../channel-band";
-import { webOnly } from "../flat";
+import { nativeFocus, webOnly } from "../flat";
 import type { PlayerSheetProps } from "../player-chrome.type";
 
 // The one right-hand sheet (§9.5, layer 4): Subtitles, Audio, Picture, More, Info and Channels all
@@ -42,6 +42,7 @@ const CloseKey = ({ title, onPress }: { title: string; onPress: () => void }) =>
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons.close} size="control" />

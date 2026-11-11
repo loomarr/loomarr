@@ -133,9 +133,9 @@ interface PlayerChromeProps {
   keys: PlayerKeysProps;
   /**
    * `overlay` draws over the picture and auto-hides (§9.1). `portrait` is the phone held upright
-   * (§9.7): a toolbar above the picture, the band and keys below it, nothing over the picture, and
-   * always shown. The app pins the picture at `PORTRAIT_PICTURE_TOP`. `tv` is the ten-foot overlay:
-   * 5% clear at every edge, four keys, no utilities row and no Leave (Back leaves).
+   * (§9.7): the player centres the picture as a strip mid-screen, with a toolbar above it and the band
+   * and keys below, nothing over the picture, and always shown. `tv` is the ten-foot overlay: 5% clear
+   * at every edge, four keys, no utilities row and no Leave (Back leaves).
    */
   layout?: "overlay" | "portrait" | "tv";
   /** Leave: the back arrow in the top left corner (§9.3). Omitted on a television, where Back leaves. */
@@ -151,8 +151,11 @@ interface PlayerChromeProps {
   panel?: ReactNode;
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
-  /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
-  readout?: { digits: string; missed?: boolean };
+  /**
+   * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
+   * the channel they reach and, on a remote, the auto-tune countdown.
+   */
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
   /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
   sheet?: ReactNode;
   /**
@@ -168,22 +171,24 @@ interface PlayerChromeProps {
  */
 interface PlayerKeysProps {
   density: Density;
-  /** Pointer devices get Volume, and a legend under a key while it is pointed at or focused. */
+  /** Pointer devices get a legend under a key while it is pointed at or focused. */
   pointer: boolean;
-  playing: boolean;
-  onTogglePlay: () => void;
+  /** Play / Pause; omitted on a television, whose remote has the button (the key is then not drawn). */
+  playing?: boolean;
+  onTogglePlay?: () => void;
   /** The channel Last returns to; omitted until there is one (the key is then not drawn). */
   last?: { number: string; onPress: () => void };
   /** The Channel up / down rocker; omitted where the player cannot tune. */
   onChannelUp?: () => void;
   onChannelDown?: () => void;
-  muted: boolean;
-  /** 0–1. */
-  volume: number;
-  onToggleMute: () => void;
-  /** More: open or close the More sheet. */
-  moreOpen: boolean;
-  onMore: () => void;
+  /**
+   * Volume, on desktop; omitted on a phone and a television, whose own buttons set it (the key is
+   * then not drawn).
+   */
+  volume?: { muted: boolean; onToggleMute: () => void };
+  /** More: open or close the More sheet. Omitted where the player has nothing for More to open. */
+  moreOpen?: boolean;
+  onMore?: () => void;
 }
 
 /**
@@ -218,6 +223,11 @@ interface PlayerSchedule {
   playheadMs: number;
   /** Seek to an instant in the past; without it the strip only previews. */
   onSeek?: (wallClockMs: number) => void;
+  /**
+   * Pressing a block that does not seek. A television passes the Guide here: OK opens the Guide on
+   * Watching (playback-clients), and the strip is where focus rests while the controls are up.
+   */
+  onSelect?: () => void;
 }
 
 interface ClipTransportProps {

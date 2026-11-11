@@ -72,15 +72,13 @@ const row = (host: Host, name: string) =>
 const keys = (overrides: Partial<PlayerKeysProps> = {}): PlayerKeysProps => ({
   density: "pointer",
   moreOpen: false,
-  muted: false,
   onChannelDown: vi.fn(),
   onChannelUp: vi.fn(),
   onMore: vi.fn(),
-  onToggleMute: vi.fn(),
   onTogglePlay: vi.fn(),
   playing: true,
   pointer: true,
-  volume: 1,
+  volume: { muted: false, onToggleMute: vi.fn() },
   ...overrides,
 });
 
@@ -243,14 +241,20 @@ describe("PlayerChrome", () => {
     expect(k.onChannelUp).toHaveBeenCalledOnce();
     expect(k.onChannelDown).toHaveBeenCalledOnce();
     expect(k.onTogglePlay).toHaveBeenCalledOnce();
-    expect(k.onToggleMute).toHaveBeenCalledOnce();
+    expect(k.volume?.onToggleMute).toHaveBeenCalledOnce();
   });
 
-  it("leaves out the rocker where the player cannot tune, and Volume on touch", () => {
+  it("leaves out the rocker where the player cannot tune, and Volume where the device has its own", () => {
     const host = mount(
       chrome({
         density: "touch",
-        keys: keys({ density: "touch", onChannelDown: undefined, onChannelUp: undefined, pointer: false }),
+        keys: keys({
+          density: "touch",
+          onChannelDown: undefined,
+          onChannelUp: undefined,
+          pointer: false,
+          volume: undefined,
+        }),
       }),
     );
     expect(button(host, "Channel up")).toBeUndefined();
@@ -450,12 +454,13 @@ describe("PlayerMore", () => {
         formatTime={String}
         goLive={{ detail: "8:44 PM", onPress: vi.fn() }}
         info={{ onPress: vi.fn() }}
-        last={{ number: "3", onPress: vi.fn() }}
         picture={{ detail: "Auto · 1080p", onPress: vi.fn() }}
         startOver={{ detail: "Opening Night", onPress: onStartOver }}
       />,
     );
-    for (const name of ["Start over", "Go live", "Last channel", "Picture", "Channels", "Info"])
+    // Last channel is a key on every device, so More has no row for it (§9.7).
+    expect(row(host, "Last channel")).toBeUndefined();
+    for (const name of ["Start over", "Go live", "Picture", "Channels", "Info"])
       expect(row(host, name), name).toBeDefined();
     // A detail joins the name; a row without one keeps its label.
     expect(row(host, "Start over")?.getAttribute("aria-label")).toBeNull();

@@ -1,3 +1,4 @@
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -22,10 +23,10 @@ import {
   GuideJourney,
   PairingShell,
   pairingBackAvailable,
+  playerChromeFromGuide,
   SurfJourney,
   useClientDestination,
   WatchingSurface,
-  watchingScheduleFromGuide,
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import {
@@ -147,7 +148,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     runTvRemoteIntent(intent, controller, setActive);
   });
   useTVEventHandler(({ eventKeyAction, eventType }) =>
-    remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching"),
+    remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching", controls.visible),
   );
   const { note: favouriteNote, toggle: toggleFavourite } = useTvFavourites(myChannels, snapshot.catalog);
   const tuneFromList = createTvListTune(remote, controller, controls.showForActivity, setActive);
@@ -171,11 +172,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     const timer = setInterval(() => setClockMs(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
-  const schedule = watchingScheduleFromGuide(
-    guideSnapshot.layout,
-    snapshot.channel?.id,
-    watchingScheduleTimeMs(snapshot, clockMs),
-  );
+  const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs: clockMs, snapshot });
   const markSwitchShown = useCallback(
     (what: "osd" | "still") => certMarks.held(controller.getSnapshot().attemptId, what),
     [controller],
@@ -185,22 +182,26 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       active={active}
       watching={
         <WatchingSurface
-          channelDigits={remoteHasDigits}
+          chrome={chrome}
           chromeVisible={active === "watching"}
           controlsActivityKey={controls.activityKey}
           controlsVisible={controls.visible}
+          formatTime={(ms) => formatGuideTime(ms, guideSnapshot.layout?.timezone)}
           loading={catalogState.loading}
           loadError={catalogState.error}
           onChangeServer={() => session.chooseServer()}
           onDismissControls={controls.dismiss}
           onGoLive={() => void controller.goLive()}
           onOpenGuide={remote.select}
-          onPlay={() => void controller.play()}
           onRetry={() => retryPairedClient({ catalogState, controller, refresh })}
           onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
+          onTuneChannel={(channelId) => {
+            controls.showForActivity();
+            void controller.tuneChannel(channelId);
+          }}
           numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
+          playheadMs={watchingScheduleTimeMs(snapshot, clockMs)}
           player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
-          schedule={schedule}
           snapshot={snapshot}
         />
       }
