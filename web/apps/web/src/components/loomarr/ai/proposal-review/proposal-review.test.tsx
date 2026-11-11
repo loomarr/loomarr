@@ -456,6 +456,37 @@ describe("ProposalReview", () => {
     expect(screen.getByText(/series:tmdb:90003921/)).toBeVisible();
   });
 
+  it("says in plain words why a pick was ruled out by its own reason or the requested mood (#3365)", async () => {
+    renderReview(
+      <ProposalReview
+        proposal={{
+          ...proposal,
+          trace: {
+            ...proposal.trace!,
+            candidates: [
+              {
+                ...proposal.trace!.candidates[0]!,
+                name: "Sleigh Ride Slasher",
+                disposition: "validation_dropped",
+                reason: "rationale_rejects",
+              },
+              {
+                ...proposal.trace!.candidates[0]!,
+                name: "Krampus Night",
+                disposition: "validation_dropped",
+                reason: "tone_mismatch",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
+    await userEvent.click(screen.getByText("Troubleshooting details"));
+    expect(screen.getByText("Considered, but its own reason ruled it out")).toBeVisible();
+    expect(screen.getByText("Doesn't match the mood you asked for")).toBeVisible();
+  });
+
   it("hides stale availability details during an edited-lineup assessment", async () => {
     renderReview(
       <ProposalReview
