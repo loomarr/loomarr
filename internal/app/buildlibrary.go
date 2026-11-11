@@ -220,6 +220,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		lib.Enricher = enricher
 		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
 		deps.owner.goRunAfterBuild(filmographer.Run)
+		// Nightly, what TMDB changed is fetched again ahead of the refresh (#3225).
+		changes := &scan.ChangeFollower{Store: st, Feed: provider, Catalog: string(mp.NamespaceTMDB), Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(changes.Run)
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,

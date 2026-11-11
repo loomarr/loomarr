@@ -412,6 +412,18 @@ tables:
       language: >
         The language the record was fetched in, such as en-US; empty before languages were noted. A
         record in another language than the household's is fetched again first.
+      changed: >
+        1 when the catalog's nightly change feed named the record after it was fetched; it is fetched
+        again ahead of the refresh, which sets it back to 0.
+
+  - name: library_catalog_feeds
+    about: >
+      When each catalog's change feed was last read, so the nightly read asks only for what changed
+      since and picks up where it left off after a restart.
+    retention: One row per catalog, kept and overwritten each night.
+    columns:
+      provider: The catalog, such as tmdb.
+      read_at_ms: When the feed was last read through, in Unix milliseconds.
 
   - name: library_candidates
     about: >
