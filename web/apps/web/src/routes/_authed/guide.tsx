@@ -33,17 +33,18 @@ const Route = createFileRoute("/_authed/guide")({
   // ['/v1/guide', {from, to}] with exact millisecond values, so an unquantised `from` would
   // differ between this loader and the component moments later — warming a key nobody reads.
   //
-  // ensureQueryData, not fetchQuery: a cached-and-fresh entry must be reused rather than
-  // refetched, or hovering the nav would re-request the guide on every pass of the pointer.
+  // prefetchQuery, not fetchQuery: a cached-and-fresh entry is reused rather than refetched, or
+  // hovering the nav would re-request the guide on every pass of the pointer.
   //
-  // NOT awaited, and deliberately so. Awaiting would make the route transition BLOCK on the
-  // request — trading a spinner inside the page for a stall on the nav click, which feels worse
-  // because nothing on screen acknowledges the press. The page's own `isLoading` still covers
-  // the case where the click beats the prefetch, and `retry: false` there keeps a failing guide
-  // from being retried twice over.
-  loader: ({ context: { queryClient } }) => {
+  // Awaited: the router keeps the page the viewer is on until the guide is here, and shows its
+  // pending view only past `defaultPendingMs` (main.tsx), so a click is never a spinner inside the
+  // page. A prefetch never rejects: the page owns a failed guide (its ErrorState and retry), so a
+  // failure mounts the page to say so rather than swapping in the router's error view. Its own
+  // `isLoading` stays for the case where it pins a window a minute later than this one, and
+  // `retry: false` there keeps a failing guide from being retried twice over.
+  loader: async ({ context: { queryClient } }) => {
     const { from, to } = defaultGuideWindow(Date.now());
-    void queryClient.ensureQueryData(channelsApi.getChannelGuideQueryOptions({ from, to }));
+    await queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions({ from, to }));
   },
 });
 
