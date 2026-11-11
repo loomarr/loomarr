@@ -1,1 +1,1 @@
-export { gradientOr, raised, webOnly } from "./flat";
+export { gradientOr, nativeFocus, raised, webOnly } from "./flat";

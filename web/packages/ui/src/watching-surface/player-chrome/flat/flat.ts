@@ -21,4 +21,11 @@ const raised = (): ViewStyle => ({
   borderWidth: 1,
 });
 
-export { gradientOr, raised, webOnly };
+/**
+ * A remote's focus on native, which has no outline: the amber edge as a border (§9.6: focus rings are
+ * amber). The web draws its own outline beside this, so it gets nothing here.
+ */
+const nativeFocus = (focused: boolean): ViewStyle =>
+  focused && !web ? { borderColor: playerChrome.signal, borderWidth: 2 } : {};
+
+export { gradientOr, nativeFocus, raised, webOnly };

@@ -25,8 +25,16 @@ type TvRemote = {
   getSnapshot(): TvWatchingRemoteState;
   /** Leaving Watching drops a half-typed channel number and its timer. */
   leaveWatching(): void;
-  /** A react-native-tvos key event; only Watching (`watching`) acts on it, but any screen arms a long press. */
-  nativeKey(eventType: string, eventKeyAction: number | undefined, watching: boolean): void;
+  /**
+   * A react-native-tvos key event; only Watching (`watching`) acts on it, but any screen arms a long
+   * press. While Watching's controls are up (`controlsShown`), Left and Right move focus through them.
+   */
+  nativeKey(
+    eventType: string,
+    eventKeyAction: number | undefined,
+    watching: boolean,
+    controlsShown?: boolean,
+  ): void;
   /** OK on Watching, unless it is a long press letting go. */
   select(): void;
   setNumberEntryMs(durationMs: number): void;

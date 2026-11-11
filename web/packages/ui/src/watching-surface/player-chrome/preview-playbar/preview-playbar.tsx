@@ -33,6 +33,8 @@ interface PreviewPlaybarProps {
   onPreviewChange?: (open: boolean) => void;
   /** Seek to an instant in the past; without it the strip only previews. */
   onSeek?: (wallClockMs: number) => void;
+  /** Pressing a block that does not seek (a television's OK opens the Guide). */
+  onSelect?: () => void;
   playheadMs: number;
   /** Pointer devices preview on hover. */
   pointer: boolean;
@@ -61,6 +63,7 @@ const PreviewPlaybar = ({
   formatTime,
   onPreviewChange,
   onSeek,
+  onSelect,
   playheadMs,
   pointer,
   quietNow = false,
@@ -116,6 +119,7 @@ const PreviewPlaybar = ({
               // The past is seekable (#2088 decision 2): a block that has begun takes the viewer to
               // its start, or to the window's when the block began before it. The future previews.
               const seek = onSeek && !future ? () => onSeek(segment.startMs) : undefined;
+              const press = seek ?? onSelect;
               const name =
                 segment.kind === "break"
                   ? `the break at ${formatTime(segment.startMs)}`
@@ -132,10 +136,10 @@ const PreviewPlaybar = ({
                   onFocus={tv ? () => show(segment.id) : undefined}
                   onHoverIn={pointer ? () => show(segment.id) : undefined}
                   onHoverOut={pointer ? () => show(undefined) : undefined}
-                  onPress={seek}
-                  // A past tile seeks, so it is a button; any other is a labelled preview, a group
-                  // that names it without claiming an action.
-                  role={seek ? "button" : "group"}
+                  onPress={press}
+                  // A past tile seeks, and a television's opens the Guide, so either is a button; any
+                  // other is a labelled preview, a group that names it without claiming an action.
+                  role={press ? "button" : "group"}
                   style={{
                     borderRadius: 6,
                     height: "100%",

@@ -57,10 +57,15 @@ const numberEntryIntent = (state: TvWatchingRemoteState, handled: boolean): TvWa
     : { handled, state };
 };
 
+/**
+ * `controlsShown`: Watching's controls are up, so Left and Right move remote focus along the film
+ * strip and the keys (frontend-design §9.7) rather than opening Surf; they still count as activity.
+ */
 const reduceTvWatchingRemote = (
   state: TvWatchingRemoteState,
   event: TvWatchingRemoteEvent,
   durationMs: number = DEFAULT_NUMBER_ENTRY_MS,
+  controlsShown = false,
 ): TvWatchingRemoteResult => {
   switch (event.key) {
     case "digit": {
@@ -85,6 +90,9 @@ const reduceTvWatchingRemote = (
     case "longSelect":
       return { handled: true, state };
     case "left":
+      return controlsShown
+        ? { handled: true, state }
+        : { handled: true, intent: { kind: "open-surf" }, state };
     case "menu":
       return { handled: true, intent: { kind: "open-surf" }, state };
     case "up":
@@ -97,8 +105,9 @@ const reduceTvWatchingRemote = (
         intent: { direction: event.direction === "up" ? 1 : -1, kind: "step" },
         state,
       };
-    case "back":
     case "right":
+      return { handled: controlsShown, state };
+    case "back":
       return { handled: false, state };
   }
 };

@@ -1,3 +1,4 @@
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,
@@ -26,19 +27,23 @@ import {
   DeviceSheet,
   GuideJourney,
   PairingShell,
+  PlayerChrome,
+  PlayerInfo,
+  PlayerMore,
+  PlayerSheet,
+  playerChromeFromGuide,
   RequestsJourney,
   ScreenHeader,
   StatePanel,
   useClientDestination,
-  WatchingPanel,
-  watchingPanelFromGuide,
+  watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { Platform, View } from "react-native";
 import { nativeApp } from "../src/native-app";
 
 const credentialStore = createPairingCredentialStore({
@@ -88,85 +93,156 @@ const withDecisionHaptic = (controller: RequestsController, haptic: HapticFeedba
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
 const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
 
-// Watching (#1659 mocks 5e/5g, #1785): the picture edge to edge, and the controls, what's next and
-// the favourites under it, the same panel the web phone draws.
-const WatchingScreen = ({ client }: { client: PairedClient }) => {
-  const {
-    catalogState,
-    controller,
-    guideSnapshot,
-    myChannels,
-    myChannelsSnapshot,
-    refresh,
-    snapshot,
-    transport,
-  } = client;
+const LIVE = { lagSeconds: 0, mode: "live" } as const;
+
+// Watching (§9, variant J, the phone held upright): full screen, the picture a strip mid-screen, a
+// toolbar above it (Leave and the rating, then the utilities) and the band and keys below it, the
+// same chrome the web draws. Leave goes back to the Guide; More opens the schedule, Go live, Start
+// over, Info and Channels (the Guide, where the favourites are).
+const WatchingScreen = ({
+  client,
+  onLeave,
+  onOpenChannels,
+}: {
+  client: PairedClient;
+  onLeave: () => void;
+  onOpenChannels: () => void;
+}) => {
+  const { catalogState, controller, guideSnapshot, refresh, snapshot, transport } = client;
   const haptic = useHaptic();
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
-  const playableChannelIds = useMemo(() => snapshot.catalog.map(({ id }) => id), [snapshot.catalog]);
-  const panel = watchingPanelFromGuide({
-    channelId: snapshot.channel?.id,
-    favouriteIds: myChannelsSnapshot.favouriteIds,
-    layout: guideSnapshot.layout,
-    nowMs,
-    playableChannelIds,
-    recentIds: myChannelsSnapshot.recentIds,
-  });
-  const { previousId } = panel;
-  const channelId = snapshot.channel?.id;
-  const isFavourite = channelId !== undefined && myChannelsSnapshot.favouriteIds.includes(channelId);
+  const [sheet, setSheet] = useState<"info" | "more" | undefined>(undefined);
+  const closeSheet = () => setSheet(undefined);
+  const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs, snapshot });
+  const formatTime = (ms: number) => formatGuideTime(ms, guideSnapshot.layout?.timezone);
+  const live = snapshot.livePlayback ?? LIVE;
+  const playing = snapshot.status === "playing";
+  const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
   const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={{ aspectRatio: 16 / 9, backgroundColor: "black", width: "100%" }}>
-        <NativePlayerView style={{ flex: 1 }} transport={transport} />
-      </View>
-      {failure ? (
-        <StatePanel
-          action={{
-            label: "Try again",
-            onPress: () => retryPairedClient({ catalogState, controller, refresh }),
+  const step = (direction: -1 | 1) => () => {
+    haptic.selection();
+    void controller.step(direction);
+  };
+
+  const sheetFor = (name: "info" | "more") => {
+    if (!chrome || !snapshot.channel) return undefined;
+    const channel = { name: snapshot.channel.name, number: String(snapshot.channel.number) };
+    const { info, segments, startOverMs, window } = chrome;
+    if (name === "info")
+      return info ? (
+        <PlayerSheet channel={channel} density="touch" onClose={closeSheet} title="Info">
+          <PlayerInfo density="touch" formatTime={formatTime} info={info} />
+        </PlayerSheet>
+      ) : undefined;
+    return (
+      <PlayerSheet channel={channel} density="touch" onClose={closeSheet} title="More">
+        <PlayerMore
+          channels={{
+            onPress: () => {
+              closeSheet();
+              onOpenChannels();
+            },
           }}
           density="touch"
-          description={failure}
-          kind="error"
-          title="Can't play this channel"
+          formatTime={formatTime}
+          goLive={
+            live.mode === "live"
+              ? undefined
+              : {
+                  detail: formatTime(nowMs),
+                  onPress: () => {
+                    closeSheet();
+                    void controller.goLive();
+                  },
+                }
+          }
+          info={info ? { onPress: () => setSheet("info") } : undefined}
+          schedule={
+            segments.length > 0
+              ? {
+                  onSeek: (wallClockMs) => void controller.seek(wallClockMs),
+                  playheadMs: watchingScheduleTimeMs(snapshot, nowMs),
+                  segments,
+                  window,
+                }
+              : undefined
+          }
+          startOver={
+            startOverMs === undefined || !info
+              ? undefined
+              : {
+                  detail: info.title,
+                  onPress: () => {
+                    closeSheet();
+                    void controller.seek(startOverMs);
+                  },
+                }
+          }
         />
-      ) : snapshot.channel ? (
-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
-          <WatchingPanel
-            canPrevious={previousId !== undefined}
-            canSurf={snapshot.catalog.length > 1}
-            channel={{ name: snapshot.channel.name, number: String(snapshot.channel.number) }}
-            clockLabel={panel.clockLabel}
+      </PlayerSheet>
+    );
+  };
+
+  return (
+    <View style={{ backgroundColor: "black", flex: 1 }}>
+      {/* The picture, letterboxed and centred: a strip mid-screen. */}
+      <NativePlayerView
+        style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+        transport={transport}
+      />
+      {failure ? (
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <StatePanel
+            action={{
+              label: "Try again",
+              onPress: () => retryPairedClient({ catalogState, controller, refresh }),
+            }}
             density="touch"
-            favourites={panel.favourites}
-            isFavourite={isFavourite}
-            live={snapshot.livePlayback ?? { lagSeconds: 0, mode: "live" }}
-            onChannelDown={() => {
-              haptic.selection();
-              void controller.step(-1);
-            }}
-            onChannelUp={() => {
-              haptic.selection();
-              void controller.step(1);
-            }}
-            onGoLive={() => void controller.goLive()}
-            onPause={controller.pause}
-            onPlay={() => void controller.play()}
-            onPrevious={() => previousId && void controller.tuneChannel(previousId)}
-            onToggleFavourite={() => channelId && void myChannels.setFavourite(channelId, !isFavourite)}
-            onTune={(channelId) => void controller.tuneChannel(channelId)}
-            reconnecting={snapshot.status === "tuning" && snapshot.reconnecting !== undefined}
-            schedule={panel.schedule}
+            description={failure}
+            kind="error"
+            title="Can't play this channel"
           />
-        </ScrollView>
+        </View>
+      ) : chrome ? (
+        <PlayerChrome
+          band={chrome.band}
+          density="touch"
+          formatTime={formatTime}
+          keys={{
+            density: "touch",
+            last: previous
+              ? {
+                  number: String(previous.number),
+                  onPress: () => {
+                    haptic.selection();
+                    void controller.tuneChannel(previous.id);
+                  },
+                }
+              : undefined,
+            moreOpen: sheet === "more",
+            onChannelDown: snapshot.catalog.length > 1 ? step(-1) : undefined,
+            onChannelUp: snapshot.catalog.length > 1 ? step(1) : undefined,
+            onMore: () => setSheet((open) => (open === "more" ? undefined : "more")),
+            onTogglePlay: playing ? controller.pause : () => void controller.play(),
+            playing,
+            pointer: false,
+          }}
+          layout="portrait"
+          live={live}
+          onGoLive={() => void controller.goLive()}
+          onLeave={onLeave}
+          sheet={sheet ? sheetFor(sheet) : undefined}
+          utilities={{ density: "touch", pointer: false }}
+          visible
+        />
       ) : catalogState.loading ? (
-        <StatePanel density="touch" kind="loading" title="Loading channels" />
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <StatePanel density="touch" kind="loading" title="Loading channels" />
+        </View>
       ) : null}
     </View>
   );
@@ -274,7 +350,14 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
           />
         </View>
       ) : (
-        <WatchingScreen client={client} />
+        // Watching is full screen (§9.7): no tab bar, and Leave goes back to the Guide.
+        () => (
+          <WatchingScreen
+            client={client}
+            onLeave={() => setActive("guide")}
+            onOpenChannels={() => setActive("guide")}
+          />
+        )
       )}
     </ClientShell>
   );

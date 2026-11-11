@@ -99,6 +99,17 @@ describe("TV Watching remote navigation", () => {
     expect(reduceTvWatchingRemote(initialTvWatchingRemoteState, { key: "right" }).handled).toBe(false);
   });
 
+  it("lets Left and Right move focus through the controls while they are up (§9.7)", () => {
+    const shown = (key: "left" | "right" | "up" | "menu") =>
+      reduceTvWatchingRemote(initialTvWatchingRemoteState, { key }, undefined, true);
+    // Focus moves along the film strip and the keys; the press still counts as activity.
+    expect(shown("left")).toEqual({ handled: true, state: initialTvWatchingRemoteState });
+    expect(shown("right")).toEqual({ handled: true, state: initialTvWatchingRemoteState });
+    // Up/Down still tune and Menu still opens Surf, as before.
+    expect(shown("up")).toMatchObject({ intent: { direction: 1, kind: "step" } });
+    expect(shown("menu")).toMatchObject({ intent: { kind: "open-surf" } });
+  });
+
   it("keeps the last three digits and restarts the bounded timeout", () => {
     let state: TvWatchingRemoteState = initialTvWatchingRemoteState;
     for (const [digit, atMs] of [

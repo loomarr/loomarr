@@ -10,7 +10,7 @@ import {
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { webOnly } from "../flat";
+import { nativeFocus, webOnly } from "../flat";
 import type { PlaybarSegment, PlaybarWindow } from "../player-chrome.type";
 import { PreviewPlaybar } from "../preview-playbar";
 
@@ -25,8 +25,6 @@ interface PlayerMoreProps {
   /** Go live, behind live. */
   goLive?: { detail: string; onPress: () => void };
   info?: { onPress: () => void };
-  /** Last channel, on phones (a pointer has the key). */
-  last?: { number: string; onPress: () => void };
   /** Picture: the quality on air ("Auto · 1080p"). */
   picture?: { detail: string; onPress: () => void };
   /** Playback details: the technical panel (§9.5). */
@@ -83,6 +81,7 @@ const MoreRow = ({
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons[icon]} size="default" />
@@ -104,7 +103,6 @@ const PlayerMore = ({
   formatTime,
   goLive,
   info,
-  last,
   picture,
   pictureInPicture,
   playbackDetails,
@@ -145,15 +143,6 @@ const PlayerMore = ({
           icon="play"
           label="Go live"
           onPress={goLive.onPress}
-        />
-      ) : null}
-      {last ? (
-        <MoreRow
-          density={density}
-          detail={`CH ${last.number}`}
-          icon="swap"
-          label="Last channel"
-          onPress={last.onPress}
         />
       ) : null}
       {picture ? (

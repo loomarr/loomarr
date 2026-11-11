@@ -2,7 +2,7 @@ import { Icon, type IconName, icons, playerChrome, Text, useFocusLook } from "@l
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 import type { PlayerUtilitiesProps } from "../player-chrome.type";
 
 // The utilities (§9.3, variant J): a smaller row of icon keys directly over the main keys, sharing
@@ -69,6 +69,7 @@ const UtilityKey = ({
             outlineWidth: 2,
             transition: "background-color 120ms ease, border-color 120ms ease",
           }),
+          ...nativeFocus(focused),
         })}
       >
         <Icon

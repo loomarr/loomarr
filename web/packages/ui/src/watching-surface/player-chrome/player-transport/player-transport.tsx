@@ -12,7 +12,7 @@ import {
 import { type ReactNode, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 import type { ClipTransportProps } from "../player-chrome.type";
 
 // A clip's transport: flat capsules, Play/pause as the one primary control, a white disc; every other
@@ -145,6 +145,7 @@ const ToolButton = ({
           outlineWidth: 2,
           transition: "background-color 140ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon
