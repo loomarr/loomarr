@@ -10,6 +10,7 @@ import { LoadingStrip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { meQueryOptions } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback";
 import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
@@ -351,6 +352,19 @@ const Route = createFileRoute("/wizard")({
       step: known(search.step) ? (search.step as string) : undefined,
       conn: knownConn(search.conn as string | undefined) ? (search.conn as string) : undefined,
     };
+  },
+  // The server truth the resume point is derived from, so the wizard opens on the right step rather
+  // than holding the paint. Not signed in yet (the bootstrap step) there is nothing to read, and the
+  // reads are the signed-in operator's: a member would only be refused. Each answers for itself
+  // when it fails (the page's own retry), so they are warmed, not awaited to success.
+  loader: async ({ context: { queryClient } }) => {
+    const me = await queryClient.ensureQueryData(meQueryOptions()).catch(() => undefined);
+    if (me?.status !== 200 || me.data.role !== "admin") return;
+    await Promise.all([
+      queryClient.prefetchQuery(setupApi.getSetupStatusQueryOptions({ query: { retry: false } })),
+      queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions({ query: { retry: false } })),
+      queryClient.prefetchQuery(libraryApi.getLibraryStatusQueryOptions({ query: { retry: false } })),
+    ]);
   },
   component: WizardScreen,
 });

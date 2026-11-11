@@ -118,6 +118,7 @@ const Route = createFileRoute("/login")({
     redirect: safeRedirectPath(search.redirect),
     sso: typeof search.sso === "string" ? search.sso : undefined,
   }),
+  // no-loader: the setup state the form reads is ensured by this beforeLoad guard
   beforeLoad: async ({ context, search }) => {
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());

@@ -1,32 +1,4 @@
 {
   "note": "Routes with no loader yet (#3399 item 9.2), maintained by web/scripts/check-route-loaders.mjs. Entries may only be removed: give the route a loader (or a `// no-loader: <reason>` comment) and run `pnpm route-loaders:update`. Never add one to pass the check.",
-  "files": [
-    "src/routes/_authed/$.tsx",
-    "src/routes/_authed/account.tsx",
-    "src/routes/_authed/filler/advanced.tsx",
-    "src/routes/_authed/filler/incoming.tsx",
-    "src/routes/_authed/filler/index.tsx",
-    "src/routes/_authed/filler/library.tsx",
-    "src/routes/_authed/filler/manage.tsx",
-    "src/routes/_authed/filler/quality.tsx",
-    "src/routes/_authed/filler/settings/$section.tsx",
-    "src/routes/_authed/filler/settings/index.tsx",
-    "src/routes/_authed/filler/settings/route.tsx",
-    "src/routes/_authed/filler/sources/$sourceId.tsx",
-    "src/routes/_authed/filler/sources/index.tsx",
-    "src/routes/_authed/filler/sources/route.tsx",
-    "src/routes/_authed/filler/splits/$proposalId.tsx",
-    "src/routes/_authed/filler/taxonomy.tsx",
-    "src/routes/_authed/help.tsx",
-    "src/routes/_authed/notifications.tsx",
-    "src/routes/_authed/people.tsx",
-    "src/routes/_authed/watch.$id.tsx",
-    "src/routes/_authed/watch.index.tsx",
-    "src/routes/forgot-password.tsx",
-    "src/routes/join.tsx",
-    "src/routes/login.tsx",
-    "src/routes/pair.tsx",
-    "src/routes/reset-password.tsx",
-    "src/routes/wizard.tsx"
-  ]
+  "files": []
 }
