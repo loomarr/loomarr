@@ -1024,6 +1024,50 @@ func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
 	}
 }
 
+// A pass made while the header stage waits finds the files the stage already holds still pending,
+// and queues them again. The stage takes none of them twice: step 2 counts each file once however
+// many passes run, rather than growing by the library's size with each (a 33k-file library read
+// 81k, and held every pass's queue until the stage's own ran out).
+func TestPassesDuringAStageDoNotCountItsFilesAgain(t *testing.T) {
+	h := newHarness(t)
+	var live atomic.Bool
+	live.Store(true)
+	h.im.Busy = live.Load
+	h.file("Bravo (2007)/Bravo.mkv", 10)
+	h.file("Charlie (2008)/Charlie.mkv", 10)
+	ctx := context.Background()
+	full := make(chan error, 1)
+	go func() { full <- h.im.Run(ctx) }()
+	for deadline := time.Now().Add(5 * time.Second); !h.paused(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the header stage never waited for playback")
+		}
+	}
+
+	for range 3 {
+		if err := h.im.Run(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := h.im.Tracker.Snapshot(time.Now()); got.Step != StepReading || got.Total != 2 {
+		t.Errorf("step %v total = %d after three passes, want reading 2", got.Step, got.Total)
+	}
+	h.im.mu.Lock()
+	held := len(h.im.handoff)
+	h.im.mu.Unlock()
+	if held != 0 {
+		t.Errorf("%d files waiting to be handed over that the stage already holds, want 0", held)
+	}
+
+	live.Store(false)
+	if err := <-full; err != nil {
+		t.Fatal(err)
+	}
+	if n := h.reads.Load(); n != 2 {
+		t.Errorf("header reads = %d, want 2", n)
+	}
+}
+
 // A pass that arrives while a stage is still starting (ordering its files) hands its files over
 // too, rather than waiting out the stage it would otherwise queue behind.
 func TestAPassDuringAStageStartIsNotHeldUp(t *testing.T) {
