@@ -31,9 +31,6 @@
     "packages/ui/src/library/library-settings/library-settings.tsx",
     "packages/ui/src/library/pick-title/pick-title.tsx",
     "packages/ui/src/number-field/number-field.tsx",
-    "packages/ui/src/pairing-shell/pairing-shell.tsx",
-    "packages/ui/src/requests/request-channel/request-channel.tsx",
-    "packages/ui/src/requests/review-sheet/review-sheet.tsx",
     "packages/ui/src/year-range-list-field/year-range-list-field.tsx"
   ]
 }

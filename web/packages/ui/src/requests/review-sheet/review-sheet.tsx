@@ -1,9 +1,9 @@
 import { provisionKey } from "@loomarr/core/provision";
 import type { ApprovalEditDTO, ProposalDTO } from "@loomarr/core/requests";
-import { Action, BottomSheet, Field, Surface, Text, Toggle } from "@loomarr/design-system";
-import { useState } from "react";
+import { Action, BottomSheet, Surface, Text, Toggle } from "@loomarr/design-system";
 import { Platform } from "react-native";
 
+import { useUiForm } from "../../form-kit";
 import type { ReviewGroup, ReviewRow } from "../review";
 import type { ReviewSheetProps } from "./review-sheet.type";
 
@@ -65,10 +65,17 @@ const EditSheet = ({
   onClose: () => void;
   proposal: ProposalDTO;
 }) => {
-  const [dropped, setDropped] = useState<readonly string[]>([]);
-  const [note, setNote] = useState("");
+  const form = useUiForm({
+    defaultValues: { dropped: [] as string[], note: "" },
+    onSubmit: ({ value }) => {
+      const trimmed = value.note.trim();
+      onApprove({
+        ...(value.dropped.length > 0 ? { drop: [...value.dropped] } : {}),
+        ...(trimmed ? { note: trimmed } : {}),
+      });
+    },
+  });
   const titles = editableTitles(proposal);
-  const trimmed = note.trim();
   return (
     <>
       <Text density="touch" numberOfLines={2} textRole="title">
@@ -77,37 +84,36 @@ const EditSheet = ({
       <Text density="touch" textRole="body" tone="secondary">
         Untick a title to leave it out. Approving applies your changes.
       </Text>
-      {titles.map(({ key, label }) => (
-        <Toggle
-          checked={!dropped.includes(key)}
-          density="touch"
-          disabled={busy}
-          key={key}
-          kind="checkbox"
-          label={label}
-          onCheckedChange={(keep) =>
-            setDropped((previous) => (keep ? previous.filter((k) => k !== key) : [...previous, key]))
-          }
-        />
-      ))}
-      <Field
-        density="touch"
-        disabled={busy}
-        label="Optional note to the requester"
-        onChangeText={setNote}
-        value={note}
-      />
+      <form.Field name="dropped">
+        {(field) =>
+          titles.map(({ key, label }) => (
+            <Toggle
+              checked={!field.state.value.includes(key)}
+              density="touch"
+              disabled={busy}
+              key={key}
+              kind="checkbox"
+              label={label}
+              onCheckedChange={(keep) =>
+                field.handleChange((previous) =>
+                  keep ? previous.filter((k) => k !== key) : [...previous, key],
+                )
+              }
+            />
+          ))
+        }
+      </form.Field>
+      <form.AppField name="note">
+        {(field) => (
+          <field.TextField density="touch" disabled={busy} label="Optional note to the requester" />
+        )}
+      </form.AppField>
       <Buttons>
         <SheetAction label="Cancel" onPress={onClose} tone="secondary" />
         <SheetAction
           disabled={busy}
           label="Approve with changes"
-          onPress={() =>
-            onApprove({
-              ...(dropped.length > 0 ? { drop: [...dropped] } : {}),
-              ...(trimmed ? { note: trimmed } : {}),
-            })
-          }
+          onPress={() => void form.handleSubmit()}
           tone="primary"
         />
       </Buttons>
@@ -128,28 +134,24 @@ const DenySheet = ({
   onDeny: (reason?: string) => void;
   title: string;
 }) => {
-  const [reason, setReason] = useState("");
+  const form = useUiForm({
+    defaultValues: { reason: "" },
+    onSubmit: ({ value }) => onDeny(value.reason.trim() || undefined),
+  });
   const verb = filler ? "Dismiss" : "Deny";
   return (
     <>
       <Text density="touch" numberOfLines={2} textRole="title">{`${verb} "${title}"?`}</Text>
       {filler ? null : (
-        <Field
-          density="touch"
-          disabled={busy}
-          label="Optional note to the requester"
-          onChangeText={setReason}
-          value={reason}
-        />
+        <form.AppField name="reason">
+          {(field) => (
+            <field.TextField density="touch" disabled={busy} label="Optional note to the requester" />
+          )}
+        </form.AppField>
       )}
       <Buttons>
         <SheetAction label="Cancel" onPress={onClose} tone="secondary" />
-        <SheetAction
-          disabled={busy}
-          label={verb}
-          onPress={() => onDeny(reason.trim() || undefined)}
-          tone="primary"
-        />
+        <SheetAction disabled={busy} label={verb} onPress={() => void form.handleSubmit()} tone="primary" />
       </Buttons>
     </>
   );
