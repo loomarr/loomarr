@@ -121,7 +121,7 @@ func newPodsServer(t *testing.T) (*httptest.Server, records.Store, *fakePods) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Pods:  fp,
+		Guide: api.GuideOptions{Pods: fp},
 	}))
 	t.Cleanup(srv.Close)
 	return srv, st, fp
