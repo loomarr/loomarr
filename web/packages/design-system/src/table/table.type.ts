@@ -36,6 +36,8 @@ type TableCellProps = {
   colSpan?: number;
   /** The cell's text in the mono voice: a key, an id, a path. */
   mono?: boolean;
+  /** The cell names its row (a check's name, a task's title): a screen reader reads it with every other cell. */
+  rowHeader?: boolean;
   /** Where the content sits when a neighbour is taller. Defaults to `middle`. */
   verticalAlign?: "top" | "middle";
   /**
@@ -45,6 +47,6 @@ type TableCellProps = {
   width?: number;
 };
 
-type TableHeaderCellProps = Omit<TableCellProps, "mono" | "verticalAlign">;
+type TableHeaderCellProps = Omit<TableCellProps, "mono" | "rowHeader" | "verticalAlign">;
 
 export type { TableCellProps, TableHeaderCellProps, TableProps, TableRowProps, TableSectionProps };

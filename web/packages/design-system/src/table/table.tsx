@@ -86,6 +86,7 @@ const TableCell = ({
   align = "start",
   children,
   mono = false,
+  rowHeader = false,
   verticalAlign = "middle",
   width,
 }: TableCellProps) => {
@@ -96,7 +97,7 @@ const TableCell = ({
       borderBottomColor="surfaceElevated"
       borderBottomWidth={1}
       justifyContent={verticalAlign === "top" ? "flex-start" : "center"}
-      role="cell"
+      role={rowHeader ? "rowheader" : "cell"}
     >
       {isPlain(children) ? (
         <Text density={density} textRole={mono ? "mono" : "body"}>
