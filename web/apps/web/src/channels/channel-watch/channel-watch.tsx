@@ -6,11 +6,13 @@ import { ThemeScope } from "@loomarr/design-system";
 import type { PlayerFailureCause } from "@loomarr/player";
 import {
   PlayerAudio,
+  PlayerBottomSheet,
   PlayerChrome,
   PlayerCover,
   PlayerDetails,
   PlayerDetailsPanel,
   PlayerInfo,
+  PlayerMenu,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
@@ -328,6 +330,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
     channels: drawer?.channels,
     detailsAsSheet: touch,
+    infoAsCard: !touch,
     onDetails: () => setDetailsOpen((open) => !open),
     onLast: goLast,
     // Esc closes the top layer, then leaves: the details panel is a layer too.
@@ -352,17 +355,38 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // The channel's bug is burned into the picture; the chrome keeps out of its corner (§9.6, #2772).
   const watermark = watermarkOf(channel.policy?.watermark);
 
-  // The sheet's own name for the channel it is about.
+  // Where what a key opens goes (§9.5, variant J): a menu in the control cluster on a pointer, a sheet
+  // from the bottom on a phone held upright, the right-hand sheet on a phone on its side. Channels is
+  // still the console drawer (#1659 W1) everywhere, until it is rebuilt on the sheet.
+  const placement = onPhone ? "bottom" : touch ? "right" : "menu";
+  const inMenu = placement === "menu" && sheet !== "channels";
+  // The right-hand sheet's own name for the channel it is about.
   const sheetChannel = { name: osdChannel.name, number: String(osdChannel.number) };
-  const sheetOf = (title: string, body: ReactNode) => (
-    <PlayerSheet channel={sheetChannel} density={density} key={title} onClose={closeSheet} title={title}>
-      {body}
-    </PlayerSheet>
-  );
+  const sheetOf = (title: string, body: ReactNode, back?: () => void) =>
+    placement === "menu" ? (
+      // More names no heading: its rows say what they are. Picture is its second page.
+      <PlayerMenu
+        density={density}
+        heading={title !== "More"}
+        key={title}
+        title={title}
+        {...(back ? { onBack: back } : {})}
+      >
+        {body}
+      </PlayerMenu>
+    ) : placement === "bottom" ? (
+      <PlayerBottomSheet key={title} onClose={closeSheet} title={title}>
+        {body}
+      </PlayerBottomSheet>
+    ) : (
+      <PlayerSheet channel={sheetChannel} density={density} key={title} onClose={closeSheet} title={title}>
+        {body}
+      </PlayerSheet>
+    );
   const live = player.liveTransport.state;
 
-  // The open sheet, over the dimmed picture. Channels is still the console drawer (#1659 W1) until it
-  // is rebuilt on the sheet.
+  // What is open: a menu or a sheet, by placement. Info on a pointer is neither: it is the block on
+  // air's card on the film strip, pinned open in full (the strip's `info`).
   const openSheetFor = (chrome: VideoPlayerChrome) =>
     sheet === "audio" ? (
       sheetOf(
@@ -385,6 +409,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             options={qualityOptions}
           />
         ) : null,
+        placement === "menu" ? () => toggleSheet("more") : undefined,
       )
     ) : sheet === "more" ? (
       sheetOf(
@@ -426,8 +451,9 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
                 }
               : undefined
           }
+          // A phone has no film strip in its band, so its More keeps the schedule.
           schedule={
-            airings.length > 0
+            touch && airings.length > 0
               ? {
                   onSeek: chrome.seekTo,
                   playheadMs: viewerTimeMs,
@@ -445,7 +471,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       )
     ) : sheet === "details" ? (
       sheetOf("Playback details", <PlayerDetails density={density} onCopy={copyDetails} rows={detailRows} />)
-    ) : sheet === "info" && info ? (
+    ) : sheet === "info" && info && placement !== "menu" ? (
       sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
     ) : sheet === "channels" && drawer ? (
       <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
@@ -480,76 +506,81 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     ) : undefined;
 
   // The chrome over the picture (§9), or the error cover in its place.
-  const renderChrome = (chrome: VideoPlayerChrome) => (
-    <>
-      <HoldWhile hold={chrome.hold} on={sheet !== undefined} />
-      <FirstPlayMuted chrome={chrome} onStart={onFirstPlayStart} onUnmuted={onFirstPlayUnmuted} />
-      <HideForIdent hide={chrome.hide} ident={ident} />
-      {errorCover ?? (
-        <PlayerChrome
-          band={chromeData.band}
-          density={density}
-          formatTime={formatGuideTime}
-          ident={ident}
-          layout={onPhone ? "portrait" : "overlay"}
-          keys={{
-            density,
-            // Last is a key everywhere (§9.7); a phone's More has no row for it.
-            last: last && goLast ? { number: last.number, onPress: goLast } : undefined,
-            moreOpen: sheet === "more",
-            onChannelDown: player.canSurf ? () => player.step(-1) : undefined,
-            onChannelUp: player.canSurf ? () => player.step(1) : undefined,
-            onMore: () => toggleSheet("more"),
-            onTogglePlay: chrome.toggle,
-            playing: chrome.playing,
-            pointer: !touch,
-            // Volume is desktop's: a phone's own buttons set it.
-            volume: touch
-              ? undefined
-              : { muted: chrome.muted, onToggleMute: () => chrome.setMuted(!chrome.muted) },
-          }}
-          live={live}
-          onGoLive={chrome.goLive}
-          readout={readout}
-          panel={
-            detailsOpen && !touch ? (
-              <PlayerDetailsPanel
-                density={density}
-                onClose={() => setDetailsOpen(false)}
-                onCopy={copyDetails}
-                rows={detailRows}
-              />
-            ) : undefined
-          }
-          onLeave={onLeave}
-          // The film strip is the band's foot on a pointer device (§9.2); a phone's is in More.
-          schedule={
-            !touch && airings.length > 0
-              ? {
-                  onSeek: chrome.seekTo,
-                  playheadMs: viewerTimeMs,
-                  segments: chromeData.segments,
-                  window: chromeData.window,
-                }
-              : undefined
-          }
-          sheet={openSheetFor(chrome)}
-          utilities={{
-            audioOpen: sheet === "audio",
-            density,
-            fullscreen: chrome.fullscreen,
-            onAudio: () => toggleSheet("audio"),
-            onFullscreen: chrome.toggleFullscreen,
-            pointer: !touch,
-          }}
-          unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
-          // The quiet flip keeps the band up (§9.4); only the full signature hides it.
-          visible={onPhone || (chrome.controlsShown && !signature)}
-          watermark={onPhone ? undefined : watermark}
-        />
-      )}
-    </>
-  );
+  const renderChrome = (chrome: VideoPlayerChrome) => {
+    const opened = openSheetFor(chrome);
+    return (
+      <>
+        <HoldWhile hold={chrome.hold} on={sheet !== undefined} />
+        <FirstPlayMuted chrome={chrome} onStart={onFirstPlayStart} onUnmuted={onFirstPlayUnmuted} />
+        <HideForIdent hide={chrome.hide} ident={ident} />
+        {errorCover ?? (
+          <PlayerChrome
+            band={chromeData.band}
+            density={density}
+            formatTime={formatGuideTime}
+            ident={ident}
+            layout={onPhone ? "portrait" : "overlay"}
+            keys={{
+              density,
+              // Last is a key everywhere (§9.7); a phone's More has no row for it.
+              last: last && goLast ? { number: last.number, onPress: goLast } : undefined,
+              moreOpen: sheet === "more",
+              onChannelDown: player.canSurf ? () => player.step(-1) : undefined,
+              onChannelUp: player.canSurf ? () => player.step(1) : undefined,
+              onMore: () => toggleSheet("more"),
+              onTogglePlay: chrome.toggle,
+              playing: chrome.playing,
+              pointer: !touch,
+              // Volume is desktop's: a phone's own buttons set it.
+              volume: touch
+                ? undefined
+                : { muted: chrome.muted, onToggleMute: () => chrome.setMuted(!chrome.muted) },
+            }}
+            live={live}
+            menu={inMenu ? opened : undefined}
+            onGoLive={chrome.goLive}
+            readout={readout}
+            panel={
+              detailsOpen && !touch ? (
+                <PlayerDetailsPanel
+                  density={density}
+                  onClose={() => setDetailsOpen(false)}
+                  onCopy={copyDetails}
+                  rows={detailRows}
+                />
+              ) : undefined
+            }
+            onLeave={onLeave}
+            // The film strip is the band's foot on a pointer device (§9.2); a phone's is in More.
+            schedule={
+              !touch && airings.length > 0
+                ? {
+                    info: sheet === "info",
+                    onSeek: chrome.seekTo,
+                    playheadMs: viewerTimeMs,
+                    segments: chromeData.segments,
+                    window: chromeData.window,
+                  }
+                : undefined
+            }
+            sheet={inMenu ? undefined : opened}
+            utilities={{
+              audioOpen: sheet === "audio",
+              density,
+              fullscreen: chrome.fullscreen,
+              onAudio: () => toggleSheet("audio"),
+              onFullscreen: chrome.toggleFullscreen,
+              pointer: !touch,
+            }}
+            unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
+            // The quiet flip keeps the band up (§9.4); only the full signature hides it.
+            visible={onPhone || (chrome.controlsShown && !signature)}
+            watermark={onPhone ? undefined : watermark}
+          />
+        )}
+      </>
+    );
+  };
 
   // The player. `live` = no seek bar of its own; `renderChrome` = the §9 chrome; `attach` binds
   // hls.js. Fullscreen is the player's OWN state, handed to the chrome.

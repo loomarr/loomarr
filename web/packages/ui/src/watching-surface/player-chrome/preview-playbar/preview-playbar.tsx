@@ -35,6 +35,8 @@ interface PreviewPlaybarProps {
   onSeek?: (wallClockMs: number) => void;
   /** Pressing a block that does not seek (a television's OK opens the Guide). */
   onSelect?: () => void;
+  /** Info (§9.5): the block on air's card stays open, in full, until pointing elsewhere moves it. */
+  pinNow?: boolean;
   playheadMs: number;
   /** Pointer devices preview on hover. */
   pointer: boolean;
@@ -64,6 +66,7 @@ const PreviewPlaybar = ({
   onPreviewChange,
   onSeek,
   onSelect,
+  pinNow = false,
   playheadMs,
   pointer,
   quietNow = false,
@@ -72,9 +75,9 @@ const PreviewPlaybar = ({
   window,
 }: PreviewPlaybarProps) => {
   const [width, setWidth] = useState(0);
-  const [open, setOpen] = useState<string | undefined>(undefined);
+  const [pointed, setPointed] = useState<string | undefined>(undefined);
   const show = (id: string | undefined) => {
-    setOpen(id);
+    setPointed(id);
     onPreviewChange?.(id !== undefined);
   };
   const height = pointer || tv ? 72 : 52;
@@ -82,6 +85,9 @@ const PreviewPlaybar = ({
   const head = xAt(Math.min(playheadMs, window.nowMs));
   const liveX = xAt(window.nowMs);
   const behind = playheadMs < window.nowMs - 1000;
+  const nowId = boxes.find((b) => b.segment.startMs <= window.nowMs && window.nowMs < b.segment.stopMs)?.id;
+  const open = pointed ?? (pinNow ? nowId : undefined);
+  const full = pinNow && open === nowId;
   const openBox = boxes.find((b) => b.id === open);
   const openMid = openBox ? openBox.x + openBox.width / 2 : 0;
   const previews = pointer || tv;
@@ -102,6 +108,7 @@ const PreviewPlaybar = ({
           <PreviewCard
             density={density}
             formatTime={formatTime}
+            full={full}
             nowMs={window.nowMs}
             onNowSpot={openBox.segment.kind === "break" ? onNowSpot(openBox.segment, playheadMs) : undefined}
             segment={openBox.segment}

@@ -156,7 +156,16 @@ interface PlayerChromeProps {
    * the channel they reach and, on a remote, the auto-tune countdown.
    */
   readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
-  /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
+  /**
+   * The open menu (§9.5, variant J): on desktop and television, what a key opens sits in the control
+   * cluster, right over the keys, with the picture whole. Omitted when none is open.
+   */
+  menu?: ReactNode;
+  /**
+   * The open sheet: the right-hand sheet over a dimmed picture on a phone on its side, the bottom
+   * sheet (picture undimmed, so a choice shows as it is made) on one held upright. Omitted when none
+   * is open.
+   */
   sheet?: ReactNode;
   /**
    * The channel's watermark, burned into the picture (§9.6): the chrome keeps out of its box. Omitted
@@ -228,6 +237,11 @@ interface PlayerSchedule {
    * Watching (playback-clients), and the strip is where focus rests while the controls are up.
    */
   onSelect?: () => void;
+  /**
+   * Info is open (§9.5, variant J): on desktop and television it is the block on air's own card,
+   * pinned open in full. A phone has no strip, so its Info is a sheet.
+   */
+  info?: boolean;
 }
 
 interface ClipTransportProps {

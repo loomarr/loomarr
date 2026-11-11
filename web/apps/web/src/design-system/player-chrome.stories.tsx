@@ -3,12 +3,14 @@ import { formatGuideTime } from "@loomarr/core/guide";
 import { LoomarrProvider, ThemeScope } from "@loomarr/design-system";
 import {
   PlayerAudio,
+  PlayerBottomSheet,
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
   PlayerDetails,
   PlayerDetailsPanel,
   PlayerInfo,
+  PlayerMenu,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
@@ -287,21 +289,19 @@ const Television: Story = {
   ),
 };
 
-const AudioSheet: Story = {
+// What a key opens (§9.5, variant J): on a pointer and a television, a menu in the control cluster,
+// right over the keys, with the picture whole; on a phone held upright, a sheet from the bottom.
+const audioOptions = [
+  { label: "Auto", selected: false, value: "auto" },
+  { label: "English", selected: true, value: "eng" },
+  { label: "Spanish", selected: false, value: "spa" },
+];
+const AudioMenu: Story = {
   args: {
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Audio">
-        <PlayerAudio
-          density="pointer"
-          onSwitchSound={fn()}
-          options={[
-            { label: "Auto", selected: false, value: "auto" },
-            { label: "English", selected: true, value: "eng" },
-            { label: "Spanish", selected: false, value: "spa" },
-          ]}
-          switchSound
-        />
-      </PlayerSheet>
+    menu: (
+      <PlayerMenu density="pointer" title="Audio">
+        <PlayerAudio density="pointer" onSwitchSound={fn()} options={audioOptions} switchSound />
+      </PlayerMenu>
     ),
     utilities: { ...utilities, audioOpen: true },
   },
@@ -352,10 +352,12 @@ const WatermarkTopRightTyping: Story = {
   render: (args) => <BugFrame {...args} corner="top-right" />,
 };
 
-const PictureSheet: Story = {
+// Picture is More's second page: its heading is the way back.
+const PictureMenu: Story = {
   args: {
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Picture">
+    keys: { ...keys, moreOpen: true },
+    menu: (
+      <PlayerMenu density="pointer" onBack={fn()} title="Picture">
         <PlayerOptions
           density="pointer"
           label="Picture quality"
@@ -366,7 +368,7 @@ const PictureSheet: Story = {
             { label: "720p", selected: false, value: "720" },
           ]}
         />
-      </PlayerSheet>
+      </PlayerMenu>
     ),
   },
 };
@@ -419,11 +421,12 @@ const PlaybackDetailsSheet: Story = {
   },
 };
 
-const MoreSheet: Story = {
+// More holds only what has no key of its own; the band's strip is the schedule, so More has none.
+const MoreMenu: Story = {
   args: {
     keys: { ...keys, moreOpen: true },
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="More">
+    menu: (
+      <PlayerMenu density="pointer" heading={false} title="More">
         <PlayerMore
           channels={{ onPress: fn() }}
           density="pointer"
@@ -432,9 +435,8 @@ const MoreSheet: Story = {
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
           pictureInPicture={{ onPress: fn() }}
           playbackDetails={{ onPress: fn() }}
-          {...moreData(live)}
         />
-      </PlayerSheet>
+      </PlayerMenu>
     ),
   },
 };
@@ -444,8 +446,8 @@ const MoreBehind: Story = {
   args: {
     ...chromeArgs({ lagSeconds: 134, mode: "paused" }),
     keys: { ...keys, moreOpen: true, playing: false },
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="More">
+    menu: (
+      <PlayerMenu density="pointer" heading={false} title="More">
         <PlayerMore
           channels={{ onPress: fn() }}
           density="pointer"
@@ -453,11 +455,45 @@ const MoreBehind: Story = {
           goLive={{ detail: formatTime(NOW), onPress: fn() }}
           info={{ onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
-          {...moreData({ lagSeconds: 134, mode: "paused" })}
+          playbackDetails={{ onPress: fn() }}
+          startOver={moreData({ lagSeconds: 134, mode: "paused" }).startOver}
         />
-      </PlayerSheet>
+      </PlayerMenu>
     ),
   },
+};
+
+// A television's More: the remote's ring on its rows; Back closes it.
+const TelevisionMore: Story = {
+  args: {
+    density: "tv",
+    keys: {
+      ...keys,
+      density: "tv",
+      last: { number: "3", onPress: fn() },
+      moreOpen: true,
+      pointer: false,
+      volume: undefined,
+    },
+    layout: "tv",
+    menu: (
+      <PlayerMenu density="tv" heading={false} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="tv"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+        />
+      </PlayerMenu>
+    ),
+    onLeave: undefined,
+    utilities: { ...utilities, density: "tv", onSubtitles: fn(), pointer: false, subtitlesOn: false },
+  },
+  render: (args) => (
+    <div style={{ ...TV, margin: "0 auto", overflow: "hidden", position: "relative" }}>
+      <PlayerChrome {...(args as PlayerChromeProps)} />
+    </div>
+  ),
 };
 
 // The first play of the session starts muted: a pill under the controls takes one tap to undo it.
@@ -536,21 +572,49 @@ const PortraitUnmute: Story = {
   args: { ...portraitArgs, unmute: fn() },
   render: (args) => <PhoneFrame {...args} />,
 };
+// Held upright, what a key opens rises from the bottom, as tall as what it holds and never over the
+// toolbar, with the picture above it undimmed. A phone has no strip in its band, so More keeps the
+// schedule.
 const PortraitMore: Story = {
   args: {
     ...portraitArgs,
     sheet: (
-      <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="More">
+      <PlayerBottomSheet onClose={fn()} title="More">
         <PlayerMore
           channels={{ onPress: fn() }}
           density="touch"
           formatTime={formatTime}
           info={{ onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          playbackDetails={{ onPress: fn() }}
           {...moreData(live)}
         />
-      </PlayerSheet>
+      </PlayerBottomSheet>
     ),
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitAudio: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: (
+      <PlayerBottomSheet onClose={fn()} title="Audio">
+        <PlayerAudio density="touch" onSwitchSound={fn()} options={audioOptions} switchSound />
+      </PlayerBottomSheet>
+    ),
+    utilities: { ...portraitArgs.utilities, audioOpen: true },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+// A phone has no strip to pin a card on, so its Info is a sheet.
+const PortraitInfo: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: liveData.info ? (
+      <PlayerBottomSheet onClose={fn()} title="Info">
+        <PlayerInfo density="touch" formatTime={formatTime} info={liveData.info} />
+      </PlayerBottomSheet>
+    ) : undefined,
   },
   render: (args) => <PhoneFrame {...args} />,
 };
@@ -593,14 +657,9 @@ const StationIdDecade: Story = {
   args: { band: { ...liveData.band, decade: 1990 }, ident: true, visible: false },
 };
 
+// Info on a pointer and a television: the block on air's own card on the strip, pinned open in full.
 const Info: Story = {
-  args: {
-    sheet: liveData.info ? (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Info">
-        <PlayerInfo density="pointer" formatTime={formatTime} info={liveData.info} />
-      </PlayerSheet>
-    ) : undefined,
-  },
+  args: { schedule: { ...chromeArgs(live).schedule, info: true } },
 };
 
 // The full-picture states take the chrome's place.
@@ -636,7 +695,7 @@ const OffAir: Story = {
 
 export default meta;
 export {
-  AudioSheet,
+  AudioMenu,
   Behind,
   Commercials,
   Decade1970,
@@ -647,19 +706,21 @@ export {
   LightPlaying,
   LogoWide,
   MoreBehind,
-  MoreSheet,
+  MoreMenu,
   NoSchedule,
   NoStrip,
   NoSuchChannel,
   OffAir,
-  PictureSheet,
+  PictureMenu,
   PlaybackDetails,
   PlaybackDetailsBare,
   PlaybackDetailsSheet,
   Playing,
   Portrait,
+  PortraitAudio,
   PortraitBehind,
   PortraitCommercials,
+  PortraitInfo,
   PortraitLongChannel,
   PortraitLongTitle,
   PortraitMore,
@@ -669,6 +730,7 @@ export {
   StationIdDecade,
   StreamStopped,
   Television,
+  TelevisionMore,
   Touch,
   TypingChannel,
   UnmutePill,

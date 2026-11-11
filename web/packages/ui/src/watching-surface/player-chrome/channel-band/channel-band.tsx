@@ -511,6 +511,7 @@ const ChannelBand = ({
             cardLift={headerHeight}
             density={text}
             formatTime={formatTime}
+            pinNow={schedule.info === true}
             playheadMs={schedule.playheadMs}
             pointer={!tv}
             quietNow

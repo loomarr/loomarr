@@ -92,26 +92,30 @@ const wash = () => document.querySelector<HTMLElement>("[data-wash]");
 const SIGNATURE_WAIT = { timeout: 3_000 };
 const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull(), SIGNATURE_WAIT);
 
-// The Audio sheet, opened from the top row's Audio key.
+// On a pointer, what a key opens is a menu in the control cluster (§9.5, variant J): a non-modal
+// dialog named for what it holds.
+const menu = (name: string) => screen.getByRole("dialog", { name });
+
+// The Audio menu, opened from the utilities' Audio key.
 const openAudio = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-  return screen.getByRole("dialog", { name: "Audio" });
+  return menu("Audio");
 };
 
-// The More sheet, opened from the keys' More.
+// The More menu, opened from the keys' More.
 const openMore = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "More" }));
-  return screen.getByRole("dialog", { name: "More" });
+  return menu("More");
 };
 
-// A sheet reached through More: its row, then the sheet it opens.
+// A menu reached through More: its row, then the page it opens.
 // A More row with a detail ("Picture  Auto · 1080p") is named by what it shows, so the row is found by
-// its leading words; the sheet it opens is titled with the row's label alone.
+// its leading words; the page it opens is titled with the row's label alone.
 const openFromMore = async (row: string) => {
   const more = await openMore();
   const named = new RegExp(`^${row}(?! in picture)`);
   await userEvent.click(within(more).getByRole("button", { name: named }));
-  return screen.getByRole("dialog", { name: row });
+  return menu(row);
 };
 
 // stubTracks makes GET /v1/channels/:id/tracks return the given media tracks, and
@@ -537,12 +541,12 @@ describe("ChannelWatch — full-bleed route", () => {
     });
   });
 
-  it("closes a sheet from its close key and from Escape, handing focus back to what opened it", async () => {
+  it("closes a menu from the key that opened it and from Escape, handing focus back to that key", async () => {
     stubTracks();
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
     await openAudio();
-    await userEvent.click(screen.getByRole("button", { name: "Close Audio" }));
+    await userEvent.click(screen.getByRole("button", { name: "Audio" }));
     expect(screen.queryByRole("dialog", { name: "Audio" })).not.toBeInTheDocument();
 
     await openAudio();
@@ -551,13 +555,28 @@ describe("ChannelWatch — full-bleed route", () => {
     expect(screen.getByRole("button", { name: "Audio" })).toHaveFocus();
   });
 
-  it("keeps the keys up with a sheet open, and names the channel in the sheet's header", async () => {
+  // Variant J: the menu sits in the control cluster over the keys, and the rest of the chrome stays.
+  it("opens a menu in the control cluster, with the keys and the band still up", async () => {
     stubTracks();
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
     const more = await openMore();
+    expect(screen.getByTestId("player-cluster")).toContainElement(more);
     expect(screen.getByRole("button", { name: /^(Play|Pause)$/ })).toBeInTheDocument();
-    expect(within(more).getByText("Late Night Noir")).toBeInTheDocument();
+    expect(screen.getByText("Late Night Noir")).toBeInTheDocument();
+  });
+
+  it("opens Picture as More's second page, its heading the way back", async () => {
+    stubTracks();
+    const ladder = { height: 1080, rungs: [{ height: 1080, index: 0 }] };
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} player={{ ladder }} />, {
+      wrapper: makeWrapper(),
+    });
+
+    await openFromMore("Picture");
+    await userEvent.click(screen.getByRole("button", { name: "Back from Picture" }));
+    expect(menu("More")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Picture" })).not.toBeInTheDocument();
   });
 
   // Info (#2088 decision 9): the programme on air and the next one, from ⓘ or I.
@@ -590,20 +609,27 @@ describe("ChannelWatch — full-bleed route", () => {
 
     afterEach(() => vi.useRealTimers());
 
-    it("opens Info from More, reading the programme and what is up next", async () => {
+    // Info on a pointer (variant J): the block on air's own card on the film strip, opened in full.
+    const openInfo = async () => {
+      await userEvent.click(within(await openMore()).getByRole("button", { name: "Info" }));
+    };
+    const synopsis = () => screen.queryByText("A storm cuts the island off.");
+
+    it("opens Info from More as the on-air block's card, pinned open on the strip", async () => {
       stubTracks();
       withProgramme();
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await screen.findByText("Airing Programme");
-      await openFromMore("Info");
-      const info = screen.getByRole("dialog", { name: "Info" });
-      expect(within(info).getByText("A storm cuts the island off.")).toBeInTheDocument();
-      expect(within(info).getByText("1994 · TV-PG")).toBeInTheDocument();
-      expect(within(info).getByText(/^Up next · .+ · Next Programme$/)).toBeInTheDocument();
+      expect(synopsis()).not.toBeInTheDocument();
+      await openInfo();
+      expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument();
+      expect(
+        within(screen.getByRole("group", { name: "Schedule" })).getByText("A storm cuts the island off."),
+      ).toBeInTheDocument();
 
       await userEvent.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+      expect(synopsis()).not.toBeInTheDocument();
     });
 
     it("has no Info while nothing is known to be airing", async () => {
@@ -621,11 +647,11 @@ describe("ChannelWatch — full-bleed route", () => {
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await screen.findByText("Airing Programme");
-      await openFromMore("Info");
+      await openInfo();
       act(() => vi.advanceTimersByTime(7_000));
-      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+      expect(synopsis()).toBeInTheDocument();
       act(() => vi.advanceTimersByTime(1_500));
-      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+      expect(synopsis()).not.toBeInTheDocument();
     });
 
     it("keeps Info open while the viewer is paused", async () => {
@@ -641,9 +667,9 @@ describe("ChannelWatch — full-bleed route", () => {
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await screen.findByText("Airing Programme");
-      await openFromMore("Info");
+      await openInfo();
       act(() => vi.advanceTimersByTime(20_000));
-      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+      expect(synopsis()).toBeInTheDocument();
     });
 
     it("names the station's era and place on the card a settled tune shows, for five seconds", async () => {
@@ -1110,6 +1136,16 @@ describe("ChannelWatch at phone width", () => {
     expect(video.style.objectPosition).not.toBe("center top");
     for (const name of ["Channel up", "Channel down", /^(Play|Pause)$/, "More", "Audio"])
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
+  });
+
+  // Variant J: held upright, what a key opens rises from the bottom, not over the keys.
+  it("opens More as a sheet from the bottom, closed by its own key", async () => {
+    renderPhone();
+    await userEvent.click(await screen.findByRole("button", { name: "More" }));
+    const more = screen.getByRole("dialog", { name: "More" });
+    expect(screen.queryByTestId("player-menu")).not.toBeInTheDocument();
+    await userEvent.click(within(more).getByRole("button", { name: "Close More" }));
+    expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument();
   });
 
   it("never hides the controls: nothing covers the picture, so there is nothing to uncover", async () => {

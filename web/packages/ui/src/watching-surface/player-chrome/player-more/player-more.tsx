@@ -10,13 +10,14 @@ import {
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { nativeFocus, webOnly } from "../flat";
 import type { PlaybarSegment, PlaybarWindow } from "../player-chrome.type";
+import { playerRow, rowRole } from "../player-menu";
 import { PreviewPlaybar } from "../preview-playbar";
 
-// The More sheet's body (§9.3): the schedule — what is on and coming, the past seekable — then
-// everything the screen leaves out. Rows are quiet text actions; a row the caller leaves out (no
-// channel to return to, nothing to start over) is not drawn.
+// More (§9.3, variant J): only what has no key of its own. On a phone, which has no film strip in its
+// band, the schedule comes first — what is on and coming, the past seekable. Then the rows: an icon,
+// the words, what it is set to, and a chevron when it opens something. A row the caller leaves out
+// (no channel to return to, nothing to start over) is not drawn.
 
 interface PlayerMoreProps {
   channels?: { onPress: () => void };
@@ -29,9 +30,9 @@ interface PlayerMoreProps {
   picture?: { detail: string; onPress: () => void };
   /** Playback details: the technical panel (§9.5). */
   playbackDetails?: { onPress: () => void };
-  /** Picture in picture, where the browser offers it. */
+  /** Picture in picture, where the platform has it and no key shows it. */
   pictureInPicture?: { onPress: () => void };
-  /** The schedule's blocks and window; omitted while it hasn't loaded. */
+  /** The schedule's blocks and window, on a phone; omitted where the band has the strip. */
   schedule?: {
     onSeek?: (wallClockMs: number) => void;
     playheadMs: number;
@@ -48,12 +49,15 @@ const MoreRow = ({
   icon,
   label,
   onPress,
+  opens = false,
 }: {
   density: Density;
   detail?: string;
   icon: IconName;
   label: string;
   onPress: () => void;
+  /** It opens another page or panel (a chevron); otherwise it just does the thing. */
+  opens?: boolean;
 }) => {
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
@@ -67,31 +71,30 @@ const MoreRow = ({
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={onPress}
-      style={{
-        alignItems: "center",
-        backgroundColor: hovered ? playerChrome.surfaceRaised : "transparent",
-        borderRadius: 6,
-        flexDirection: "row",
-        gap: 16,
-        minHeight: 56,
-        paddingHorizontal: 16,
-        ...webOnly({
-          outlineColor: playerChrome.signal,
-          outlineStyle: focused ? "solid" : "none",
-          outlineWidth: 2,
-          transition: "background-color 120ms ease",
-        }),
-        ...nativeFocus(focused),
-      }}
+      style={playerRow(density, { focused, hovered })}
     >
-      <Icon color={playerChrome.text} decorative glyph={icons[icon]} size="default" />
-      <Text density={density} numberOfLines={1} style={{ flex: 1 }} textRole="body" tone="primary">
+      <Icon
+        color={playerChrome.textSecondary}
+        decorative
+        glyph={icons[icon]}
+        size={density === "pointer" ? "compact" : "default"}
+      />
+      <Text
+        density={density}
+        numberOfLines={1}
+        style={{ flex: 1 }}
+        textRole={rowRole(density)}
+        tone="primary"
+      >
         {label}
       </Text>
       {detail ? (
-        <Text density={density} numberOfLines={1} textRole="compact" tone="muted">
+        <Text density={density} numberOfLines={1} textRole="cardMeta" tone="muted">
           {detail}
         </Text>
+      ) : null}
+      {opens ? (
+        <Icon color={playerChrome.textMuted} decorative glyph={icons.disclosure} size="compact" />
       ) : null}
     </Pressable>
   );
@@ -109,9 +112,9 @@ const PlayerMore = ({
   schedule,
   startOver,
 }: PlayerMoreProps) => (
-  <View style={{ gap: 24 }}>
+  <View style={{ gap: 16 }}>
     {schedule ? (
-      <View style={{ gap: 16 }}>
+      <View style={{ gap: 16, paddingHorizontal: 12, paddingTop: 4 }}>
         <Text density={density} textRole="label" tone="secondary">
           Schedule
         </Text>
@@ -126,7 +129,7 @@ const PlayerMore = ({
         />
       </View>
     ) : null}
-    <View>
+    <View style={{ gap: 2 }}>
       {startOver ? (
         <MoreRow
           density={density}
@@ -145,6 +148,10 @@ const PlayerMore = ({
           onPress={goLive.onPress}
         />
       ) : null}
+      {channels ? (
+        <MoreRow density={density} icon="list" label="Channels" onPress={channels.onPress} opens />
+      ) : null}
+      {info ? <MoreRow density={density} icon="info" label="Info" onPress={info.onPress} opens /> : null}
       {picture ? (
         <MoreRow
           density={density}
@@ -152,23 +159,26 @@ const PlayerMore = ({
           icon="settings"
           label="Picture"
           onPress={picture.onPress}
+          opens
         />
       ) : null}
       {playbackDetails ? (
-        <MoreRow density={density} icon="info" label="Playback details" onPress={playbackDetails.onPress} />
+        <MoreRow
+          density={density}
+          icon="activity"
+          label="Playback details"
+          onPress={playbackDetails.onPress}
+          opens
+        />
       ) : null}
       {pictureInPicture ? (
         <MoreRow
           density={density}
-          icon="external"
+          icon="pictureInPicture"
           label="Picture in picture"
           onPress={pictureInPicture.onPress}
         />
       ) : null}
-      {channels ? (
-        <MoreRow density={density} icon="list" label="Channels" onPress={channels.onPress} />
-      ) : null}
-      {info ? <MoreRow density={density} icon="info" label="Info" onPress={info.onPress} /> : null}
     </View>
   </View>
 );
