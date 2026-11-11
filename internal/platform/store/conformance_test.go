@@ -45,6 +45,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryCatalogChanges", func(t *testing.T) { testLibraryCatalogChanges(t, newStore) })
 		t.Run("LibraryFilmography", func(t *testing.T) { testLibraryFilmography(t, newStore) })
 		t.Run("LibraryItemFacts", func(t *testing.T) { testLibraryItemFacts(t, newStore) })
+		t.Run("LibraryEvidence", func(t *testing.T) { testLibraryEvidence(t, newStore) })
 		t.Run("LibraryEpisodes", func(t *testing.T) { testLibraryEpisodes(t, newStore) })
 		t.Run("LibraryTitles", func(t *testing.T) { testLibraryTitles(t, newStore) })
 		t.Run("LibraryReferences", func(t *testing.T) { testLibraryReferences(t, newStore) })

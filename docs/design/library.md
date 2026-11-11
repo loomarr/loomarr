@@ -746,6 +746,11 @@ Loomarr builds no search index (decision [0003](decisions/0003-federated-search.
   through `/search/keyword`; people through `/search/person` (one exact match); a network through TMDB's
   daily network-id export. Malformed, unresolved or ambiguous qualifiers fail the call instead of
   broadening it. Mixed movie and series discovery splits the TMDB pool between types.
+- **An owned discovery hit carries the Library's own evidence** (#3006). After ownership backfill,
+  one read of `library_tags` and `library_credits` over the owned ids attaches the asked keywords
+  a title's tags hold and the asked people its credits name, filling only what TMDB left empty
+  (TMDB can attribute a keyword only for a one-keyword query). Only the matched term rides, never
+  the title's whole tag or cast list, so the prompt grows only for titles that match.
 - `GET /v1/movie-collections` expands up to 24 movie keys into their TMDB collection rosters for review;
   it never builds a lineup by itself.
 - Channel, proposal and help filtering stay client-side at household scale.
