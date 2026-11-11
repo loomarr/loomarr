@@ -1,1 +1,1 @@
-export { UNMUTE_PILL_HEIGHT, UnmutePill } from "./unmute-pill";
+export { UnmutePill } from "./unmute-pill";

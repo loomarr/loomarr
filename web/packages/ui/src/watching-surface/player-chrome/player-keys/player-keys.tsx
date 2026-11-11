@@ -1,7 +1,7 @@
 import {
-  brandChroma,
   type Density,
   Icon,
+  type IconName,
   icons,
   playerChrome,
   Text,
@@ -11,32 +11,37 @@ import { type ReactNode, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { raised, webOnly } from "../flat";
-import type { PlayerKeysProps } from "../player-chrome.type";
+import type { PlayerKeysProps, PlayerUtilitiesProps } from "../player-chrome.type";
 
-// The keys (§9.3, layer 3): a small remote. Last (hidden until there is a channel to return to), a
-// Channel up / down rocker, Play / Pause, Volume (pointer) and More. Neutral solid surfaces with 6 px
-// corners on an 8 px grid and room between them; the rocker is not louder than its neighbours. Play is
-// the one amber key. Each other key's brand colour is a thin edge on hover and press, nothing more.
-// Pointer devices read a short sentence-case legend under each key.
+// The keys (§9.3, variant J): a small remote. Last channel (only when there is one to return to,
+// then a hairline), Channel down, Play / Pause, Channel up, Volume (desktop) and More. Solid squares
+// with a hairline and soft corners; Play is the one filled key and it is white, so amber stays on the
+// channel block and focus. A key's legend shows under it only while it is pointed at or focused.
+// A television has four keys: Last channel, Subtitles, Audio and More. Its remote has the rest.
 
 interface KeyProps {
   accessibilityLabel: string;
   children: ReactNode;
-  /** The key's brand colour, drawn as its edge while hovered or pressed. */
-  edge?: string;
-  fill?: string;
   height: number;
+  /** The short word under the key, while it is pointed at or focused. */
+  legend?: string | undefined;
+  /** Play: the one filled key, white with an ink glyph. */
+  ok?: boolean;
   onPress: () => void;
-  pressed?: boolean;
+  /** What the key opens is open: a tone lighter, and it says it is expanded. */
+  pressed?: boolean | undefined;
+  /** Legends, for a pointer or a remote's focus; a phone has neither. */
+  legends: boolean;
   width: number;
 }
 
 const Key = ({
   accessibilityLabel,
   children,
-  edge = brandChroma[3],
-  fill,
   height,
+  legend,
+  legends,
+  ok = false,
   onPress,
   pressed = false,
   width,
@@ -44,56 +49,82 @@ const Key = ({
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
   return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-      accessibilityState={{ expanded: pressed || undefined }}
-      {...focusHandlers}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
-      onPress={onPress}
-      style={({ pressed: down }) => ({
-        alignItems: "center",
-        borderRadius: 6,
-        height,
-        justifyContent: "center",
-        width,
-        ...raised(),
-        ...(fill ? { backgroundColor: fill, borderColor: fill } : null),
-        ...(!fill && (hovered || down || pressed) ? { borderColor: edge } : null),
-        ...(!fill && (hovered || down) ? { backgroundColor: playerChrome.surfaceHover } : null),
-        ...webOnly({
-          outlineColor: playerChrome.signal,
-          outlineOffset: 2,
-          outlineStyle: focused ? "solid" : "none",
-          outlineWidth: 2,
-          transition: "background-color 120ms ease, border-color 120ms ease",
-        }),
-      })}
-    >
-      {children}
-    </Pressable>
+    <View style={{ alignItems: "center", gap: 8 }}>
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: pressed || undefined }}
+        {...focusHandlers}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        onPress={onPress}
+        style={({ pressed: down }) => ({
+          alignItems: "center",
+          borderRadius: 12,
+          height,
+          justifyContent: "center",
+          width,
+          ...(ok
+            ? {
+                backgroundColor: playerChrome.disc,
+                borderColor: playerChrome.disc,
+                borderWidth: 1,
+                opacity: hovered || down ? 0.9 : 1,
+              }
+            : raised()),
+          ...(!ok && (hovered || down) ? { backgroundColor: playerChrome.surfaceHover } : null),
+          ...(!ok && pressed
+            ? { backgroundColor: playerChrome.surfaceHover, borderColor: playerChrome.textSecondary }
+            : null),
+          ...webOnly({
+            outlineColor: playerChrome.signal,
+            outlineOffset: 3,
+            outlineStyle: focused ? "solid" : "none",
+            outlineWidth: 2,
+            transition: "background-color 120ms ease, border-color 120ms ease, opacity 120ms ease",
+          }),
+        })}
+      >
+        {children}
+      </Pressable>
+      {legends && legend ? (
+        // The legend keeps its room while hidden, so a key showing it moves nothing.
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          pointerEvents="none"
+          style={{ opacity: hovered || focused ? 1 : 0, ...webOnly({ transition: "opacity 120ms ease" }) }}
+        >
+          <Text density="pointer" numberOfLines={1} textRole="cardMeta" tone="secondary">
+            {legend}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 };
 
-const Legend = ({ children, density, pointer }: { children: string; density: Density; pointer: boolean }) =>
-  pointer ? (
-    <Text density={density} strong textRole="label" tone="primary">
-      {children}
-    </Text>
-  ) : null;
+const Glyph = ({ density, ink = false, name }: { density: Density; ink?: boolean; name: IconName }) => (
+  <Icon
+    color={ink ? playerChrome.discInk : playerChrome.text}
+    decorative
+    glyph={icons[name]}
+    size={density === "touch" ? "control" : "touch"}
+  />
+);
 
-const Column = ({
-  children,
-  gap,
-  marginHorizontal = 0,
-}: {
-  children: ReactNode;
-  gap: number;
-  marginHorizontal?: number;
-}) => <View style={{ alignItems: "center", gap, marginHorizontal }}>{children}</View>;
+/** Last channel: a swap glyph over the number it returns to. */
+const LastFace = ({ number, pointer }: { number: string; pointer: boolean }) => (
+  <View style={{ alignItems: "center", gap: 2 }}>
+    <Icon color={playerChrome.text} decorative glyph={icons.swap} size={pointer ? "player" : "compact"} />
+    <Text density={pointer ? "pointer" : "touch"} strong textRole="mono" tone="secondary">
+      {number}
+    </Text>
+  </View>
+);
 
 const PlayerKeys = ({
+  audio,
   density,
   last,
   moreOpen,
@@ -105,161 +136,140 @@ const PlayerKeys = ({
   onTogglePlay,
   playing,
   pointer,
-  volume,
-}: PlayerKeysProps) => {
-  const compact = density === "touch";
-  const key = pointer ? 64 : compact ? 56 : 64;
-  const hero = pointer ? { height: 72, width: 112 } : { height: 64, width: 88 };
-  const legendGap = pointer ? 16 : 0;
-  const level = muted ? 0 : Math.round(volume * 100);
-  return (
-    <View style={{ alignItems: "flex-end", flexDirection: "row", flexShrink: 0, gap: pointer ? 24 : 16 }}>
-      {last ? (
-        <Column gap={legendGap}>
-          <Key
-            accessibilityLabel={`Last channel, ${last.number}`}
-            height={key}
-            onPress={last.onPress}
-            width={key}
-          >
-            <View style={{ alignItems: "center", gap: 4 }}>
-              <Icon color={playerChrome.text} decorative glyph={icons.swap} size="compact" />
-              <Text density={density} strong textRole="label" tone="primary">
-                {last.number}
-              </Text>
-            </View>
-          </Key>
-          <Legend density={density} pointer={pointer}>
-            Last
-          </Legend>
-        </Column>
-      ) : null}
-      {onChannelUp && onChannelDown ? (
-        <Column gap={legendGap} marginHorizontal={pointer ? 16 : 8}>
-          <View
-            style={{
-              borderRadius: 6,
-              height: key * 2,
-              overflow: "hidden",
-              width: key,
-              ...raised(),
-            }}
-          >
-            <RockerHalf label="Channel up" onPress={onChannelUp}>
-              <Icon color={playerChrome.text} decorative glyph={icons.channelUp} size="control" />
-            </RockerHalf>
-            <View style={{ backgroundColor: playerChrome.hairline, height: 1 }} />
-            <RockerHalf label="Channel down" onPress={onChannelDown}>
-              <Icon color={playerChrome.text} decorative glyph={icons.channelDown} size="control" />
-            </RockerHalf>
-          </View>
-          <Legend density={density} pointer={pointer}>
-            Channel
-          </Legend>
-        </Column>
-      ) : null}
-      <Column gap={legendGap}>
-        <Key
-          accessibilityLabel={playing ? "Pause" : "Play"}
-          fill={playerChrome.signal}
-          height={hero.height}
-          onPress={onTogglePlay}
-          width={hero.width}
-        >
-          <Icon
-            color={playerChrome.discInk}
-            decorative
-            glyph={playing ? icons.pause : icons.play}
-            size="control"
-          />
-        </Key>
-        <Legend density={density} pointer={pointer}>
-          {playing ? "Pause" : "Play"}
-        </Legend>
-      </Column>
-      {pointer ? (
-        <Column gap={legendGap}>
-          <Key accessibilityLabel={muted ? "Unmute" : "Mute"} height={key} onPress={onToggleMute} width={key}>
-            <Icon
-              color={muted ? playerChrome.textMuted : playerChrome.text}
-              decorative
-              glyph={muted ? icons.volumeMuted : icons.volume}
-              size="control"
-            />
-            {/* The level: a thin white line in the key's foot. */}
-            <View
-              style={{
-                backgroundColor: playerChrome.track,
-                bottom: 8,
-                height: 4,
-                left: 16,
-                position: "absolute",
-                right: 16,
-              }}
-            >
-              <View style={{ backgroundColor: playerChrome.text, height: 4, width: `${level}%` }} />
-            </View>
-          </Key>
-          <Legend density={density} pointer={pointer}>
-            {muted ? "Muted" : "Volume"}
-          </Legend>
-        </Column>
-      ) : null}
-      <Column gap={legendGap}>
-        <Key
-          accessibilityLabel="More"
-          edge={brandChroma[4]}
-          height={key}
-          onPress={onMore}
-          pressed={moreOpen}
-          width={key}
-        >
-          <Icon color={playerChrome.text} decorative glyph={icons.more} size="control" />
-        </Key>
-        <Legend density={density} pointer={pointer}>
-          More
-        </Legend>
-      </Column>
-    </View>
-  );
-};
-
-// One half of the rocker: a flat press target inside the shared frame.
-const RockerHalf = ({
-  children,
-  label,
-  onPress,
-}: {
-  children: ReactNode;
-  label: string;
-  onPress: () => void;
+}: PlayerKeysProps & {
+  /** A television's Subtitles and Audio, which are main keys there (§9.3). */
+  audio?: PlayerUtilitiesProps | undefined;
 }) => {
-  const [hovered, setHovered] = useState(false);
-  const { focused, ...focusHandlers } = useFocusLook();
+  const tv = density === "tv";
+  const legends = pointer || tv;
+  const size = pointer || tv ? 56 : 48;
+  const okWidth = pointer ? 80 : 64;
+  const lastKey = last ? (
+    <Key
+      accessibilityLabel={`Last channel, ${last.number}`}
+      height={size}
+      legend="Last channel"
+      legends={legends}
+      onPress={last.onPress}
+      width={size}
+    >
+      <LastFace number={last.number} pointer={pointer || tv} />
+    </Key>
+  ) : null;
+  const moreKey = (
+    <Key
+      accessibilityLabel="More"
+      height={size}
+      legend="More"
+      legends={legends}
+      onPress={onMore}
+      pressed={moreOpen}
+      width={size}
+    >
+      <Glyph density={density} name="more" />
+    </Key>
+  );
+
+  if (tv)
+    return (
+      <View style={{ alignItems: "flex-start", flexDirection: "row", flexShrink: 0, gap: 16 }}>
+        {lastKey}
+        {audio?.onSubtitles ? (
+          <Key
+            accessibilityLabel="Subtitles"
+            height={size}
+            legend="Subtitles"
+            legends
+            onPress={audio.onSubtitles}
+            pressed={audio.subtitlesOpen}
+            width={size}
+          >
+            <Glyph density={density} name="captions" />
+          </Key>
+        ) : null}
+        {audio?.onAudio ? (
+          <Key
+            accessibilityLabel="Audio"
+            height={size}
+            legend="Audio"
+            legends
+            onPress={audio.onAudio}
+            pressed={audio.audioOpen}
+            width={size}
+          >
+            <Glyph density={density} name="audio" />
+          </Key>
+        ) : null}
+        {moreKey}
+      </View>
+    );
+
   return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      {...focusHandlers}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
-      onPress={onPress}
+    <View
       style={{
-        alignItems: "center",
-        backgroundColor: hovered ? playerChrome.surfaceHover : "transparent",
-        flex: 1,
-        justifyContent: "center",
-        ...webOnly({
-          outlineColor: playerChrome.signal,
-          outlineOffset: -2,
-          outlineStyle: focused ? "solid" : "none",
-          outlineWidth: 2,
-          transition: "background-color 120ms ease",
-        }),
+        alignItems: "flex-start",
+        flexDirection: "row",
+        flexShrink: 0,
+        gap: pointer ? 16 : 12,
       }}
     >
-      {children}
-    </Pressable>
+      {lastKey ? (
+        <>
+          {lastKey}
+          <View
+            style={{ backgroundColor: playerChrome.hairline, height: size, marginHorizontal: 4, width: 1 }}
+          />
+        </>
+      ) : null}
+      {onChannelDown ? (
+        <Key
+          accessibilityLabel="Channel down"
+          height={size}
+          legend="Channel down"
+          legends={legends}
+          onPress={onChannelDown}
+          width={size}
+        >
+          <Glyph density={density} name="channelDown" />
+        </Key>
+      ) : null}
+      <Key
+        accessibilityLabel={playing ? "Pause" : "Play"}
+        height={size}
+        legend={playing ? "Pause" : "Play"}
+        legends={legends}
+        ok
+        onPress={onTogglePlay}
+        width={okWidth}
+      >
+        <Glyph density={density} ink name={playing ? "pause" : "play"} />
+      </Key>
+      {onChannelUp ? (
+        <Key
+          accessibilityLabel="Channel up"
+          height={size}
+          legend="Channel up"
+          legends={legends}
+          onPress={onChannelUp}
+          width={size}
+        >
+          <Glyph density={density} name="channelUp" />
+        </Key>
+      ) : null}
+      {pointer ? (
+        <Key
+          accessibilityLabel={muted ? "Unmute" : "Mute"}
+          height={size}
+          legend={muted ? "Muted" : "Volume"}
+          legends={legends}
+          onPress={onToggleMute}
+          width={size}
+        >
+          <Glyph density={density} name={muted ? "volumeMuted" : "volume"} />
+        </Key>
+      ) : null}
+      {moreKey}
+    </View>
   );
 };
 

@@ -48,4 +48,4 @@ const UnmutePill = ({ onPress }: { onPress: () => void }) => {
   );
 };
 
-export { UNMUTE_PILL_HEIGHT, UnmutePill };
+export { UnmutePill };
