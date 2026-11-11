@@ -13,7 +13,7 @@ import (
 
 func certifiedAutoPolicy() *AutoSplitPolicy {
 	return &AutoSplitPolicy{
-		Enabled: func() bool { return true }, MinConfidence: func() int { return 70 },
+		Enabled:     func() bool { return true },
 		MaxDuration: func() time.Duration { return 2 * time.Minute },
 	}
 }
@@ -176,7 +176,9 @@ func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.
 	}
 }
 
-func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t *testing.T) {
+// The certified gate reads the plan, not the tags: untagged segments of a certified window plan
+// still materialize (they are tagged on their own ladder afterwards).
+func TestCertifiedWindowPlanMaterializesUntaggedSegments(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)
 	projected, err := split.ProjectConfirmedDecision(proposal.Source, nil, *proposal.StructureDecision)
@@ -188,41 +190,27 @@ func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t 
 		proposal.Segments[index].Category = ""
 		proposal.Segments[index].Audience = ""
 	}
-	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
-	legacy, applied := stage.splitPartitions(proposal, allowCertifiedWindowStructure(t, *proposal.StructureDecision))
-	if legacy.Verdict() != RejectUntagged || len(legacy.Confirm) != 0 {
-		t.Fatalf("legacy shadow input=%+v", legacy)
-	}
+	applied := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(),
+		allowCertifiedWindowStructure(t, *proposal.StructureDecision), 10*time.Second)
 	if applied.Verdict() != AutoSplitOK || len(applied.Confirm) != 2 || len(applied.Hold) != 0 {
 		t.Fatalf("certified application decision=%+v", applied)
 	}
 }
 
-func TestSplitStageNeverAppliesCompatibilityPartitionWithoutCertifiedAuthority(t *testing.T) {
+// Without a certifying authority every segment is held, however clean the detection looks.
+func TestCertifiedGateHoldsWithoutAuthority(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
-	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
-
-	compatibility, application := stage.splitPartitions(proposal, nil)
-	if compatibility.Verdict() != AutoSplitOK || len(compatibility.Confirm) != 2 {
-		t.Fatalf("compatibility comparison = %+v", compatibility)
-	}
+	application := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), nil, 10*time.Second)
 	if application.Reject != RejectStructureUncertified || len(application.Confirm) != 0 || len(application.Hold) != 2 {
 		t.Fatalf("application partition without authority = %+v", application)
 	}
 }
 
-func TestSplitStageNeverAppliesCompatibilityPartitionWithoutDecision(t *testing.T) {
+// Without a retained decision the assessment cannot be verified, so every segment is held.
+func TestCertifiedGateHoldsWithoutDecision(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = nil
-	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
-
-	compatibility, application := stage.splitPartitions(proposal, allowCertifiedStructure(t))
-	if compatibility.Verdict() != AutoSplitOK || len(compatibility.Confirm) != 2 {
-		t.Fatalf("compatibility comparison = %+v", compatibility)
-	}
+	application := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
 	if application.Reject != RejectStructureInvalid || len(application.Confirm) != 0 || len(application.Hold) != 2 {
 		t.Fatalf("application partition without decision = %+v", application)
 	}
@@ -348,5 +336,24 @@ func TestCertifiedStructureMaterializableSeparatesProgrammeDiscardFromFiller(t *
 	partition := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
 	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 1 || partition.Confirm[0].StartMs != 20_000 || len(partition.Discard) != 2 || len(partition.Hold) != 0 {
 		t.Fatalf("programme/filler partition = %+v", partition)
+	}
+}
+
+// The plan's own refusals: auto-split off holds everything, an empty plan has nothing to cut, and
+// a span longer than one advert holds the whole plan back (a certified plan is cut whole or not).
+func TestCertifiedPlanRefusals(t *testing.T) {
+	segments := []split.Segment{{StartMs: 0, EndMs: 30_000}, {StartMs: 30_000, EndMs: 60_000}}
+	off := &AutoSplitPolicy{Enabled: func() bool { return false }}
+	if got := certifiedPlanMaterializable(segments, off, 0); got.Reject != RejectDisabled || len(got.Hold) != 2 {
+		t.Errorf("auto-split off = %+v, want every segment held as disabled", got)
+	}
+	if got := certifiedPlanMaterializable(nil, certifiedAutoPolicy(), 0); got.Reject != RejectNoSegments {
+		t.Errorf("empty plan = %+v, want %q", got, RejectNoSegments)
+	}
+	long := append([]split.Segment(nil), segments...)
+	long[1].EndMs = 30_000 + (3 * time.Minute).Milliseconds()
+	got := certifiedPlanMaterializable(long, certifiedAutoPolicy(), 0)
+	if got.Reject != RejectTooLong || len(got.Confirm) != 0 || len(got.Hold) != 2 {
+		t.Errorf("an over-long span = %+v, want the plan held as too long", got)
 	}
 }

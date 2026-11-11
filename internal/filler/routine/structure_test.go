@@ -10,19 +10,11 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/structure"
 )
 
-// runtimePart stands in for both the assessment and the shadow, tagged with the build that made it.
+// runtimePart stands in for the assessment, tagged with the build that made it.
 type runtimePart struct{ build int }
 
 func (runtimePart) Assess(context.Context, split.AssessmentSource) (structure.Artifact, error) {
 	return structure.Artifact{}, nil
-}
-
-func (runtimePart) NeedsStructureSplitObservation(context.Context, filler.SplitProposal) (bool, error) {
-	return false, nil
-}
-
-func (runtimePart) ObserveStructureSplit(context.Context, filler.SplitProposal, filler.SplitPartition) error {
-	return nil
 }
 
 // The long-reel files apply live (#1659). A path edit must rebuild the runtime whole, and a reader
@@ -31,6 +23,7 @@ func TestLiveStructureRuntimeSwapsWholeRuntimesOnPathChange(t *testing.T) {
 	var mu sync.Mutex
 	authority, deployment := "/reviewed/a.json", "/reviewed/d.json"
 	builds := 0
+	var gateBuild sync.Map // *StructureMaterializationPolicy → the build that made it
 	live := NewLiveStructureRuntime(
 		func() (string, string) {
 			mu.Lock()
@@ -39,8 +32,9 @@ func TestLiveStructureRuntimeSwapsWholeRuntimesOnPathChange(t *testing.T) {
 		},
 		func(string, string) filler.StructureRuntime {
 			builds++ // serialized by the holder's own lock
-			part := runtimePart{build: builds}
-			return filler.StructureRuntime{Decisioner: part, Shadow: part, Materialization: &filler.StructureMaterializationPolicy{}}
+			gate := &filler.StructureMaterializationPolicy{}
+			gateBuild.Store(gate, builds)
+			return filler.StructureRuntime{Decisioner: runtimePart{build: builds}, Materialization: gate}
 		},
 	)
 	first := live.Current()
@@ -55,7 +49,7 @@ func TestLiveStructureRuntimeSwapsWholeRuntimesOnPathChange(t *testing.T) {
 			defer wg.Done()
 			for range 200 {
 				rt := live.Current()
-				if rt.Decisioner.(runtimePart).build != rt.Shadow.(runtimePart).build {
+				if build, _ := gateBuild.Load(rt.Materialization); rt.Decisioner.(runtimePart).build != build {
 					t.Error("one runtime carried parts of two builds")
 					return
 				}

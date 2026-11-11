@@ -385,9 +385,8 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			Budget:   func() int { return settings.FillerPipelineMaxWhisper.Get(set) },
 		})
 		autoSplitPolicy := &filler.AutoSplitPolicy{
-			Enabled:       func() bool { return settings.FillerAutosplitEnabled.Get(set) },
-			MinConfidence: func() int { return settings.FillerAutosplitMinConfidence.Get(set) },
-			MaxDuration:   func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
+			Enabled:     func() bool { return settings.FillerAutosplitEnabled.Get(set) },
+			MaxDuration: func() time.Duration { return settings.FillerAutosplitMaxDuration.Get(set) },
 		}
 		minClipDuration := func() time.Duration { return settings.FillerMinDuration.Get(set) }
 		// The two long-reel files apply live (#1659): each path edit builds the whole runtime
@@ -399,7 +398,6 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 			func(authorityPath, deploymentPath string) filler.StructureRuntime {
 				materialization := &filler.StructureMaterializationPolicy{}
 				rt := filler.StructureRuntime{Materialization: materialization}
-				policyVersion := "production-shadow-no-certified-slices-v1"
 				windowAuthority, authorityErr := window.LoadAuthority(authorityPath)
 				if authorityErr != nil {
 					log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
@@ -413,21 +411,12 @@ func buildPipeline(st records.Store, set resolved, layout cliplibrary.Layout, lo
 				if runtimeErr != nil {
 					log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
 				} else if windowRuntime != nil {
-
 					rt.Decisioner = windowRuntime
 					materialization.WindowAuthority = windowAuthority
-					policyVersion = "production-window-authority-" + windowAuthority.SHA256[:12] + "-deployment-" + windowDeployment.SHA256[:12]
 					log.Info("certified long-reel runtime activated", "authority_sha256", windowAuthority.SHA256,
 						"deployment_sha256", windowDeployment.SHA256, "minimum_source_ms", windowAuthority.MinimumSourceDurationMS,
 						"maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
 				}
-
-				structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, materialization, minClipDuration, policyVersion)
-				if shadowErr != nil {
-					log.Error("could not construct filler structure split shadow", "err", shadowErr)
-				}
-
-				rt.Shadow = structureShadow
 				return rt
 			})
 

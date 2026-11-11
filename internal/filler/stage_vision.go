@@ -330,11 +330,9 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 	// `toys` because it shows toys is the reason a vision tier exists, and demanding the genre be
 	// printed on screen does not make the judgement honest, only rare.
 	//
-	// ⚠ This matters for split auto-confirm: `segmentVerdict` refuses an untagged segment BEFORE it
-	// consults boundary confidence, so requiring the word on the frame would drop a correct `psa`
-	// against visibleText "WAGA-5/Fox Commercial Breaks (2/5/1995)" and make auto-confirm
-	// structurally impossible, while `era` still grounds from the same string because "1995" is in
-	// it.
+	// Requiring the word on the frame would drop a correct `psa` against visibleText
+	// "WAGA-5/Fox Commercial Breaks (2/5/1995)", while `era` still grounds from the same string
+	// because "1995" is in it.
 	//
 	// ⚠ The TAXONOMY is what keeps this grounded rather than open: an unresolvable category is
 	// still dropped, so the vocabulary is the constraint. Resolution still maps `burgers`→`fast_food`.

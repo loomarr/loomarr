@@ -83,7 +83,6 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("FillerStructureWindowCallLedgerRetry", func(t *testing.T) { testFillerStructureWindowCallLedgerRetry(t, newStore) })
 		t.Run("FillerHeldClipUpsertAndCompositeRelease", func(t *testing.T) { testFillerHeldClipUpsertAndCompositeRelease(t, newStore) })
 		t.Run("FillerTerminalReadyTransaction", func(t *testing.T) { testFillerTerminalReadyTransaction(t, newStore) })
-		t.Run("FillerSplitShadowDecisions", func(t *testing.T) { testFillerSplitShadowDecisions(t, newStore) })
 		t.Run("SplitProposals", func(t *testing.T) { testSplitProposals(t, newStore) })
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
 		t.Run("ClipPipelineOverview", func(t *testing.T) { testClipPipelineOverview(t, newStore) })

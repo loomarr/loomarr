@@ -373,20 +373,9 @@ func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 		}
 	}
 
-	for child, controller := range map[string]string{
-		"filler.autosplit.min_confidence": "filler.autosplit.enabled",
-	} {
-		s, ok := r.Get(child)
-		if !ok {
-			t.Fatalf("%s not declared", child)
-		}
-		allowed := s.ShowWhen[controller]
-		if len(allowed) != 1 || allowed[0] != "true" {
-			t.Errorf("%s should ShowWhen %s=true, got %v", child, controller, s.ShowWhen)
-		}
-	}
-
-	for _, retired := range []string{"filler.autofile.enabled", "filler.autofile.min_confidence", "filler.autofile.normalize_loudness", "filler.conditioning.normalize_loudness"} {
+	// filler.autosplit.min_confidence is retired: only the V43 gate read it, and V67's certified gate
+	// replaced that; the knob round-tripped through the registry and moved nothing.
+	for _, retired := range []string{"filler.autofile.enabled", "filler.autofile.min_confidence", "filler.autofile.normalize_loudness", "filler.conditioning.normalize_loudness", "filler.autosplit.min_confidence"} {
 		if _, ok := r.Get(retired); ok {
 			t.Errorf("retired publication setting %s is still declared", retired)
 		}

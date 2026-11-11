@@ -854,8 +854,8 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []split.
 // parameter was named `clipPath` and tested against `c.Path`, while the one call site passes the
 // compilation's HASH — so the guard never fired and every segment was compared against the very
 // file it was cut from. Any segment resembling its parent came back flagged `DupOf` the
-// compilation: noise in the review, and enough to make `AutoConfirmable` reject a perfectly good
-// reel. It read as correct because the splitter's test
+// compilation: noise in the review, and enough to make the auto-confirm gate reject a perfectly
+// good reel. It read as correct because the splitter's test
 // store keyed clips by path, so the fixture made `hash` and `path` the same string (§10 V51a).
 func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []split.Segment) {
 	catalog, err := sp.store.ListClips(ctx)

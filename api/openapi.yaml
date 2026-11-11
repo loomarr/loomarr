@@ -11530,7 +11530,6 @@ components:
         - filler.defects.judge_look_cents
         - filler.defects.judge_daily_cents
         - filler.autosplit.enabled
-        - filler.autosplit.min_confidence
         - filler.autosplit.max_duration
         - filler.structure_window_authority_path
         - filler.structure_window_deployment_path
@@ -11691,7 +11690,6 @@ components:
         - FillerDefectsJudgeLookCents
         - FillerDefectsJudgeDailyCents
         - FillerAutosplitEnabled
-        - FillerAutosplitMinConfidence
         - FillerAutosplitMaxDuration
         - FillerStructureWindowAuthorityPath
         - FillerStructureWindowDeploymentPath

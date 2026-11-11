@@ -146,9 +146,8 @@ readiness. Unresolved intervals leave one concise structure review.
   reviewed envelope, keeps the source and proposal at the split review rung; it never exhausts into
   a terminal Complete, creates children or confers authority. Cancellation keeps resumable work.
 - Without a verified complete-timeline decision and matching authority, a proposal stays reviewable.
-  The legacy calculation may run as a non-authorizing **shadow comparison**, recorded immutably with
-  exact spans; failing to persist a required comparison blocks unattended materialization and never
-  selects the comparison as a fallback.
+  There is no fallback gate: the V43 per-segment calculation and its shadow comparison were removed
+  (#2147).
 - Children are prepared as **one replacement generation** from the exact reviewed source intervals
   through the V66 publisher. The parent, assessment and prior generation stay until every child and
   its lineage validates and the switch commits atomically, so a partial generation never replaces a
@@ -161,12 +160,12 @@ structure, under- and over-splitting separately, boundary error at predeclared t
 coverage, role accuracy, abstention and operational failure per slice. Every automatic decision
 must have zero wrong outcomes; abstentions count against coverage. The development certificate
 (at least 30 of 60 decisions, 6 per source-unit category, 6 per declared difficult slice) permits
-shadow evaluation only. Automatic materialization expands only for slices whose locked estimates
+no automatic materialization. Automatic materialization expands only for slices whose locked estimates
 and bounds pass. Model training waits until measurement names a residual error class.
 
 ## Detection
 
-The V34 detector is now a proposal and shadow input under V67; where they conflict, V67 governs.
+The V34 detector is now a proposal input under V67; where they conflict, V67 governs.
 Its design and measurements are archived in
 [`filler-splitting-v34.md`](../../project/design-archive-2026-09/filler-splitting-v34.md).
 
@@ -201,20 +200,20 @@ splits for long clips, so review can happen later and survive restarts. Nothing 
 
 ## Auto-split and boundary confidence
 
-`filler.autosplit.enabled` (default on) confirms confident segments without a click, gated on
-`filler.autosplit.min_confidence`, a separate dial from tagging: a mis-cut plays half an advert.
+`filler.autosplit.enabled` (default on) lets the certified gate above cut a reel without a click.
+It cuts only from a certified complete-timeline plan, whole: a duplicate, an over-long or a
+sub-floor span in the kept plan holds the reel for review. `filler.autosplit.max_duration` is the
+over-long ceiling.
 
-- **Per segment.** A segment is cut when it passes every refusal and clears the threshold; the rest
-  stay in a shrunken proposal (a reel of 52 becomes 47 clips and 5 cuts to review).
-- **Refusals first, then the threshold.** A suggested era, `unsplittable`, a duplicate, an over-long
-  or a sub-floor span refuses at any score. `boundaryScore` cannot see tag facts, so nothing
-  launders a refusal into a score.
 - **A confirmed segment is not airable.** It is a held child that still goes through conditioning,
   classification, screening and terminal readiness.
+- **The V43 gate** cut per segment on tags, a grounded era and boundary confidence. V67 replaced
+  it; it ran only as a shadow comparison until #2147 deleted it, and its threshold setting
+  `filler.autosplit.min_confidence` is retired with it.
 
 **Boundary confidence** (0–100 per segment) answers "did we cut in the right place?". It is
-distinct from a clip's tagging confidence ("do we know what this is?"), and the split gate reads
-only the first. It is a ceiling ladder:
+distinct from a clip's tagging confidence ("do we know what this is?"). The review editor shows it
+beside each cut; it authorizes nothing. It is a ceiling ladder:
 
 | Evidence for one boundary | Ceiling | Basis |
 | --- | --- | --- |
