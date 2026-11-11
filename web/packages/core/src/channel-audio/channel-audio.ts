@@ -23,12 +23,17 @@ const createChannelAudioSource = (request: typeof globalThis.fetch): ChannelAudi
     return (await response.json()) as T;
   };
   return {
+    // As on the web, tracks that can't be read still leave the channel's language to show; only the
+    // channel itself is required, since without it nothing can be marked as the one in use.
     load: async (channelId, signal) => {
       const [tracks, channel] = await Promise.all([
-        read<ChannelTracksOutputBody>(getChannelTracksUrl(channelId), signal),
+        read<ChannelTracksOutputBody>(getChannelTracksUrl(channelId), signal).catch((error: unknown) => {
+          if (signal.aborted) throw error;
+          return undefined;
+        }),
         read<ChannelDTO>(getGetChannelUrl(channelId), signal),
       ]);
-      return audioChoices(tracks.audio, channel.policy?.playout?.audioLanguage);
+      return audioChoices(tracks?.audio ?? [], channel.policy?.playout?.audioLanguage);
     },
   };
 };

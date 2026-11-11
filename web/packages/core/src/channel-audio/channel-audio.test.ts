@@ -32,12 +32,29 @@ describe("channel audio source", () => {
     ]);
   });
 
-  it("fails when either read fails, so the menu shows nothing stale", async () => {
+  it("fails when the channel can't be read, so nothing is marked from a guess", async () => {
     const request = vi.fn((url: string) =>
       Promise.resolve(url.endsWith("/tracks") ? json({ audio: [], subtitles: [] }) : json({}, 404)),
     );
     await expect(
       createChannelAudioSource(request as typeof fetch).load("ch-1", new AbortController().signal),
     ).rejects.toThrow("Couldn't read the channel's audio (404).");
+  });
+
+  // The web's Audio menu lists the channel's language while the tracks are missing; so do these.
+  it("still lists the channel's language when the airing tracks can't be read", async () => {
+    const request = vi.fn((url: string) =>
+      Promise.resolve(
+        url.endsWith("/tracks") ? json({}, 503) : json({ policy: { playout: { audioLanguage: "spa" } } }),
+      ),
+    );
+    const choices = await createChannelAudioSource(request as typeof fetch).load(
+      "ch-1",
+      new AbortController().signal,
+    );
+    expect(choices.map((c) => [c.value, c.selected])).toEqual([
+      ["auto", false],
+      ["spa", true],
+    ]);
   });
 });
