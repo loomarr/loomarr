@@ -3,6 +3,7 @@ export { ClipChrome } from "./clip-chrome";
 export { playbarFromTimeline, playerChromeFromGuide } from "./playbar-data";
 export type { PlayerAudioProps } from "./player-audio";
 export { PlayerAudio } from "./player-audio";
+export { PlayerBottomSheet } from "./player-bottom-sheet";
 export { PlayerChrome } from "./player-chrome";
 export type {
   ClipChromeProps,
@@ -27,10 +28,12 @@ export type { PlayerDetailRow, PlayerDetailsProps } from "./player-details";
 export { PlayerDetails, PlayerDetailsPanel } from "./player-details";
 export type { PlayerInfoProps } from "./player-info";
 export { PlayerInfo } from "./player-info";
+export { PlayerMenu } from "./player-menu";
 export type { PlayerMoreProps } from "./player-more";
 export { PlayerMore } from "./player-more";
 export type { PlayerOption, PlayerOptionsProps } from "./player-options";
 export { PlayerOptions } from "./player-options";
 export { PlayerSheet } from "./player-sheet";
+export { PlayerVolume } from "./player-volume";
 export type { PlayerWatermark, WatermarkPolicyLike } from "./watermark-clearance";
 export { clearOfWatermark, pictureIn, watermarkOf } from "./watermark-clearance";

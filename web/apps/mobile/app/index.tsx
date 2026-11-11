@@ -27,10 +27,10 @@ import {
   DeviceSheet,
   GuideJourney,
   PairingShell,
+  PlayerBottomSheet,
   PlayerChrome,
   PlayerInfo,
   PlayerMore,
-  PlayerSheet,
   playerChromeFromGuide,
   RequestsJourney,
   ScreenHeader,
@@ -128,18 +128,18 @@ const WatchingScreen = ({
     void controller.step(direction);
   };
 
+  // Held upright, what a key opens rises from the bottom (§9.5, variant J), over the picture undimmed.
   const sheetFor = (name: "info" | "more") => {
     if (!chrome || !snapshot.channel) return undefined;
-    const channel = { name: snapshot.channel.name, number: String(snapshot.channel.number) };
     const { info, segments, startOverMs, window } = chrome;
     if (name === "info")
       return info ? (
-        <PlayerSheet channel={channel} density="touch" onClose={closeSheet} title="Info">
+        <PlayerBottomSheet onClose={closeSheet} title="Info">
           <PlayerInfo density="touch" formatTime={formatTime} info={info} />
-        </PlayerSheet>
+        </PlayerBottomSheet>
       ) : undefined;
     return (
-      <PlayerSheet channel={channel} density="touch" onClose={closeSheet} title="More">
+      <PlayerBottomSheet onClose={closeSheet} title="More">
         <PlayerMore
           channels={{
             onPress: () => {
@@ -183,7 +183,7 @@ const WatchingScreen = ({
                 }
           }
         />
-      </PlayerSheet>
+      </PlayerBottomSheet>
     );
   };
 

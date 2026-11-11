@@ -34,7 +34,8 @@ const Hero = ({ density, segment }: { density: Density; segment: PlaybarProgramm
   return (
     <View style={{ height: 148, justifyContent: "flex-end", padding: 14 }}>
       <PlaybarStill
-        style={{ height: "100%", position: "absolute", width: "100%" }}
+        // Pinned to the corner: without left and top it sits at its static place, inside the padding.
+        style={{ height: "100%", left: 0, position: "absolute", top: 0, width: "100%" }}
         {...(segment.stillUri ? { uri: segment.stillUri } : {})}
       />
       {logo && size ? (

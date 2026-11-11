@@ -40,6 +40,7 @@ const ChromeBody = memo(
     keys,
     layout = "overlay",
     live,
+    menu,
     onGoLive,
     onLeave,
     panel,
@@ -92,7 +93,25 @@ const ChromeBody = memo(
     const bandLift = liftOf(bandHeight, "left");
     const clusterLift = liftOf(clusterHeight, "right");
 
-    // The open sheet, over a dimmed picture, above either layout.
+    // The open sheet. A phone held upright's rises from the bottom over a picture left undimmed, so a
+    // choice shows as it is made; otherwise the right-hand sheet dims the picture.
+    if (layout === "portrait")
+      return (
+        <ThemeScope theme="dark">
+          <PortraitChrome
+            band={band}
+            formatTime={formatTime}
+            insets={insets}
+            keys={keys}
+            live={live}
+            onGoLive={onGoLive}
+            onLeave={onLeave}
+            unmute={unmute}
+            utilities={utilities}
+          />
+          {sheet}
+        </ThemeScope>
+      );
     const sheetLayer = sheet ? (
       <>
         <View
@@ -110,23 +129,6 @@ const ChromeBody = memo(
         {sheet}
       </>
     ) : null;
-    if (layout === "portrait")
-      return (
-        <ThemeScope theme="dark">
-          <PortraitChrome
-            band={band}
-            formatTime={formatTime}
-            insets={insets}
-            keys={keys}
-            live={live}
-            onGoLive={onGoLive}
-            onLeave={onLeave}
-            unmute={unmute}
-            utilities={utilities}
-          />
-          {sheetLayer}
-        </ThemeScope>
-      );
     return (
       <ThemeScope theme="dark">
         <View
@@ -184,7 +186,8 @@ const ChromeBody = memo(
             {card ? null : (
               // The control cluster: everything you can press, in one place. The utilities are a smaller
               // row over the main keys, sharing their right edge (§9.3). A television has none: its
-              // Subtitles and Audio are main keys, and the remote has the rest.
+              // Subtitles and Audio are main keys, and the remote has the rest. What a key opens is a
+              // menu over them all (§9.5), so the rest of the chrome stays where it is.
               <View
                 aria-hidden={hiddenFromReaders(!controls)}
                 onLayout={(e: LayoutChangeEvent) => setClusterHeight(e.nativeEvent.layout.height)}
@@ -197,6 +200,7 @@ const ChromeBody = memo(
                 }}
                 testID="player-cluster"
               >
+                {menu}
                 {tv ? null : <PlayerUtilities {...utilities} />}
                 <PlayerKeys {...keys} {...(tv ? { audio: utilities } : {})} />
               </View>

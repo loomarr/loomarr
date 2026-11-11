@@ -28,7 +28,7 @@ interface KeyProps {
   /** Play: the one filled key, white with an ink glyph. */
   ok?: boolean;
   onPress: () => void;
-  /** What the key opens is open: a tone lighter, and it says it is expanded. */
+  /** What the key opens is open: a tone lighter, and it says it is expanded. Left out on a key that opens nothing. */
   pressed?: boolean | undefined;
   /** Legends, for a pointer or a remote's focus; a phone has neither. */
   legends: boolean;
@@ -43,7 +43,7 @@ const Key = ({
   legends,
   ok = false,
   onPress,
-  pressed = false,
+  pressed,
   width,
 }: KeyProps) => {
   const [hovered, setHovered] = useState(false);
@@ -53,7 +53,9 @@ const Key = ({
       <Pressable
         accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
-        accessibilityState={{ expanded: pressed || undefined }}
+        // aria-expanded, not accessibilityState: React Native for Web 0.21 drops the latter. A key that
+        // opens nothing (pressed undefined) says nothing about it.
+        aria-expanded={pressed}
         {...focusHandlers}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
@@ -259,12 +261,14 @@ const PlayerKeys = ({
         </Key>
       ) : null}
       {volume ? (
+        // Volume opens the level in the menu's place (§9.5); M mutes.
         <Key
-          accessibilityLabel={volume.muted ? "Unmute" : "Mute"}
+          accessibilityLabel="Volume"
           height={size}
           legend={volume.muted ? "Muted" : "Volume"}
           legends={legends}
-          onPress={volume.onToggleMute}
+          onPress={volume.onPress}
+          pressed={volume.open}
           width={size}
         >
           <Glyph density={density} name={volume.muted ? "volumeMuted" : "volume"} />

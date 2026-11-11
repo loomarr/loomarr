@@ -187,6 +187,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
   shortcuts · `Esc` closes the top layer, then leaves `/watch`.
+- **Volume** (desktop). The Volume key opens the volume level in the menu's place: a glyph, a
+  slider and the level, or "Off" when muted. Dragging to zero mutes. Any change of level or mute
+  (`M`, `−`/`=`) shows it for a moment. The first play's own mute does not; the unmute pill
+  speaks for that. A phone or a television has no Volume key: its own buttons set the level.
 - **Phone.** On its side, the band and keys at phone size over the picture; tap shows or hides the
   chrome. Upright, nothing covers the picture: a toolbar above it, the band and keys below (#2775).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
@@ -204,7 +208,10 @@ the user's home-screen ordering.
 
 - **Watching** is full-screen video. Up/down and Channel keys tune adjacent Channels, number keys
   enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. While the
-  controls are up, Left and Right move focus through them instead (frontend-design §9.7). Channel
+  controls are up, Left and Right move focus through them instead (frontend-design §9.7). The More
+  key opens a menu over the keys (Channels, Info, and Start over and Go live when behind): every
+  arrow moves through its rows, the controls stay up until a choice, and Menu or Back closes it, as
+  they close Info, the on-air card pinned open, before doing anything else (§9.5). Channel
   identity and the programme bar appear together and clear after five seconds. During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
   never shown. The Guide supplies a clip title only when it is viewer copy. Each clip records where

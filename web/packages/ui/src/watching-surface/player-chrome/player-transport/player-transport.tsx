@@ -175,10 +175,14 @@ const ToolButton = ({
 
 const VolumeSlider = ({
   density,
+  fill = false,
   muted,
   onVolume,
   volume,
-}: Pick<ClipTransportProps, "density" | "muted" | "onVolume" | "volume">) => {
+}: Pick<ClipTransportProps, "density" | "muted" | "onVolume" | "volume"> & {
+  /** Take the row's free width (the live player's level bar) rather than a fixed 80. */
+  fill?: boolean;
+}) => {
   const [width, setWidth] = useState(0);
   const level = muted ? 0 : volume;
   const step = (delta: number) => onVolume(Math.min(1, Math.max(0, volume + delta)));
@@ -195,7 +199,11 @@ const VolumeSlider = ({
       onAccessibilityAction={(e) => step(e.nativeEvent.actionName === "increment" ? 0.1 : -0.1)}
       onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
       onPress={(e) => width > 0 && onVolume(Math.min(1, Math.max(0, e.nativeEvent.locationX / width)))}
-      style={{ height: density === "touch" ? 44 : 36, justifyContent: "center", width: 80 }}
+      style={{
+        height: density === "touch" ? 44 : 36,
+        justifyContent: "center",
+        ...(fill ? { flex: 1 } : { width: 80 }),
+      }}
       // The web has no accessibility actions: the arrow keys step the level, as a slider's do.
       {...(Platform.OS === "web" && {
         onKeyDown: (e: unknown) => {
@@ -319,4 +327,4 @@ const ClipTransport = ({
   </View>
 );
 
-export { ClipTransport };
+export { ClipTransport, VolumeSlider };

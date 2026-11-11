@@ -6,6 +6,7 @@ export { watchingPanelFromGuide } from "./watching-panel";
 export { WatchingSurface } from "./watching-surface";
 export type {
   ChannelNumberEntry,
+  WatchingLayer,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,

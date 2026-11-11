@@ -30,7 +30,12 @@ interface WatchingChromeData {
   band: PlayerBandData;
   segments: readonly PlaybarSegment[];
   window: PlaybarWindow;
+  /** The programme's start, while the window still holds it: More's Start over. */
+  startOverMs?: number | undefined;
 }
+
+/** What Watching has open over the chrome (§9.5): the More menu, or Info (the on-air card pinned). */
+type WatchingLayer = "info" | "more";
 
 interface WatchingSurfaceProps {
   /** The tuned channel's band and film strip; omitted until a channel is tuned. */
@@ -43,6 +48,17 @@ interface WatchingSurfaceProps {
   controlsActivityKey?: number;
   /** Formats a wall-clock instant for the band's clocks ("8:44 PM"). */
   formatTime: (ms: number) => string;
+  /**
+   * The open layer, owned by the app because the remote acts on it: in the More menu the arrows move
+   * through its rows, and Menu or Back closes it. Omitted when none is open.
+   */
+  layer?: WatchingLayer;
+  /** Opens or closes a layer (More's key and rows); `undefined` closes. */
+  onLayer: (layer: WatchingLayer | undefined) => void;
+  /** More's Channels: Surf, the remote's channel list. */
+  onOpenSurf: () => void;
+  /** More's Start over: seek to a wall-clock instant in the window. */
+  onSeek: (wallClockMs: number) => void;
   /** True only while the authoritative Channel catalog request is unresolved. */
   loading?: boolean;
   loadError?: string;
@@ -66,6 +82,7 @@ interface WatchingSurfaceProps {
 export type {
   ChannelNumberEntry,
   WatchingChromeData,
+  WatchingLayer,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,
