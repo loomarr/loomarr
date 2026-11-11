@@ -18,10 +18,13 @@ const acquisitionRunSelect = `SELECT id, trigger, source_id, pull_id, status,
 	requested, fetched, skipped, failed, empty_count, error, started_at, completed_at, updated_at
 	FROM filler_acquisition_runs`
 
+// acquisitionRunInsert writes source_id through a lookup, so a source deleted while its download
+// runs stores NULL, as the foreign key's SET NULL already did to the row. The ownership guard in
+// UpsertAcquisitionRun then still matches, and the run can finish rather than being stranded.
 const acquisitionRunInsert = `INSERT INTO filler_acquisition_runs
 		(id, trigger, source_id, pull_id, status, requested, fetched, skipped, failed,
 		 empty_count, error, started_at, completed_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, (SELECT id FROM filler_sources WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 func acquisitionRunArgs(run acquisition.AcquisitionRun) []any {
 	return []any{run.ID, string(run.Trigger), storedb.OptionalID(run.SourceID), storedb.OptionalID(run.PullID), string(run.Status), run.Requested, run.Fetched, run.Skipped, run.Failed, run.Empty, run.Error, epoch(run.StartedAt), epoch(run.CompletedAt), epoch(run.UpdatedAt)}

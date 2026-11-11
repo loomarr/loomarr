@@ -47,3 +47,34 @@ func saveAcquisitionRun(t *testing.T, s Store, id string) {
 		t.Fatalf("save acquisition run %s: %v", id, err)
 	}
 }
+
+// testAcquisitionRunOutlivesItsSource pins a download whose source is deleted while it runs: the
+// run's source_id is cleared (SET NULL, #2793), and the run still records its finish rather than
+// being refused as a change of ownership.
+func testAcquisitionRunOutlivesItsSource(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_900_000_000, 0).UTC()
+	saveFillerSources(t, s, "src-deleted-mid-run")
+	run := acquisition.AcquisitionRun{
+		ID: "run-mid", Trigger: acquisition.TriggerSource, SourceID: "src-deleted-mid-run",
+		Status: acquisition.RunRunning, StartedAt: at, UpdatedAt: at,
+	}
+	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteFillerSource(ctx, "src-deleted-mid-run"); err != nil {
+		t.Fatal(err)
+	}
+	run.Status, run.CompletedAt, run.UpdatedAt = acquisition.RunSuccess, at.Add(time.Minute), at.Add(time.Minute)
+	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+		t.Fatalf("finish a run whose source was deleted: %v", err)
+	}
+	got, err := s.GetAcquisitionRun(ctx, "run-mid", at.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != acquisition.RunSuccess || got.SourceID != "" {
+		t.Errorf("run = status %q, source %q; want success with no source", got.Status, got.SourceID)
+	}
+}
