@@ -155,16 +155,32 @@ const ProgrammeTile = ({
 
 interface PlaybarProps {
   density: Density;
+  /** The playhead's colour. Amber unless a variant keeps amber for something else (J: white). */
+  headColor?: string;
   /** Programme or break id drawn as hovered, with its preview card open. */
   hovered?: string;
   playheadMs: number;
   /** Sentence-case labels: "Live", not "LIVE" (variants E and F). */
   plain?: boolean;
   pointer: boolean;
+  /** The block on air carries no name: the band above it has just said it (variant J). */
+  quietNow?: boolean;
+  /** The block that has remote focus (television). */
+  ringId?: string;
   segments: readonly Segment[];
 }
 
-const Playbar = ({ density, hovered, plain = false, playheadMs, pointer, segments }: PlaybarProps) => {
+const Playbar = ({
+  density,
+  headColor = flat.amber,
+  hovered,
+  plain = false,
+  playheadMs,
+  pointer,
+  quietNow = false,
+  ringId,
+  segments,
+}: PlaybarProps) => {
   const { ref, width } = useWidth();
   const { boxes, xAt } = layout(segments, width);
   const head = xAt(Math.min(playheadMs, WINDOW.nowMs));
@@ -185,7 +201,14 @@ const Playbar = ({ density, hovered, plain = false, playheadMs, pointer, segment
                     filter: future ? playerFuture : undefined,
                     height: "100%",
                     left: box.x,
-                    outline: isNow ? `2px solid ${flat.control}` : undefined,
+                    // A television has no pointer: the block the remote is on wears the amber
+                    // focus ring (variant J, device "tv"), and its preview card is open.
+                    outline:
+                      box.segment.id === ringId
+                        ? `2px solid ${flat.amber}`
+                        : isNow
+                          ? `2px solid ${flat.control}`
+                          : undefined,
                     outlineOffset: -1,
                     borderRadius: 6,
                     position: "absolute",
@@ -199,7 +222,8 @@ const Playbar = ({ density, hovered, plain = false, playheadMs, pointer, segment
                       density={density}
                       pointer={pointer}
                       segment={box.segment}
-                      width={box.width}
+                      // A width of 0 draws the still with no label bar.
+                      width={quietNow && isNow ? 0 : box.width}
                     />
                   )}
                 </div>
@@ -222,7 +246,7 @@ const Playbar = ({ density, hovered, plain = false, playheadMs, pointer, segment
             />
             <div
               style={{
-                background: flat.amber,
+                background: headColor,
                 bottom: 0,
                 left: head - 1,
                 position: "absolute",
@@ -232,7 +256,7 @@ const Playbar = ({ density, hovered, plain = false, playheadMs, pointer, segment
             >
               <div
                 style={{
-                  background: flat.amber,
+                  background: headColor,
                   borderRadius: 999,
                   height: 10,
                   left: -4,

@@ -5,11 +5,14 @@
 // artwork tint, motion, scrub preview), flat. F: E in Apple-style glass. G: Loomarr TV, live
 // television as an object (channel readout, broadcast lower third, surfing, tuning). H: G with the
 // channel change rebuilt as one choreographed tune (states "tune", "slow-tune"; ?t=ms freezes it,
-// ?loop=1 replays it) and a restrained remote. Switch with [ ] variant, , . state, D device, T tint.
+// ?loop=1 replays it) and a restrained remote. I: H's channel identity with the preview timeline
+// back as the lower third, icon-only keys, amber on the number tab alone (state "chrome-top" holds a
+// preview card open). Switch with [ ] variant, , . state, D device, T tint.
 import { ThemeScope } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { BrightFrame, DinerFrame } from "@/prototype-direction/player/art";
 import { ClassicChrome } from "@/prototype-direction/player/chrome-classic";
+import { LineChrome } from "@/prototype-direction/player/chrome-line";
 import { OsdChrome } from "@/prototype-direction/player/chrome-osd";
 import { PolishedChrome } from "@/prototype-direction/player/chrome-polished";
 import { RichChrome } from "@/prototype-direction/player/chrome-rich";
@@ -44,6 +47,8 @@ type PlayerSearch = Omit<ProtoSearch, "device"> & {
   device: PlayerDevice;
   frame?: "bright" | "drawn";
   loop?: boolean;
+  /** J only: `long` puts long names everywhere; `bare` is a library with no art at all. */
+  stress?: "bare" | "long";
   t?: number;
 };
 
@@ -55,6 +60,7 @@ const validateSearch = (raw: Record<string, unknown>): PlayerSearch => {
     ...(raw.t !== undefined && Number.isFinite(t) ? { t } : {}),
     ...(String(raw.loop) === "1" || raw.loop === true ? { loop: true } : {}),
     ...(raw.frame === "bright" || raw.frame === "drawn" ? { frame: raw.frame } : {}),
+    ...(raw.stress === "long" || raw.stress === "bare" ? { stress: raw.stress } : {}),
     ...(BUG_CORNERS.includes(raw.bug as PlayerSearch["bug"] & string)
       ? { bug: raw.bug as (typeof BUG_CORNERS)[number] }
       : {}),
@@ -65,9 +71,14 @@ const PlayerPrototype = () => {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const scenario = scenarioOf(search.state as (typeof STATES)[number]);
-  const tv = search.variant === "G";
+  // J is G with the maintainer's four changes (2026-11-09): the readout only on a channel change, a
+  // white progress line, a quiet row of utility icons, and the preview timeline opening from the
+  // band's progress line on desktop (state "chrome-top" holds it open with a preview card).
+  const refined = search.variant === "J";
+  const tv = search.variant === "G" || refined;
   const tune = search.variant === "H";
-  const polished = search.variant === "E" || search.variant === "F" || tv || tune;
+  const line = search.variant === "I";
+  const polished = search.variant === "E" || search.variant === "F" || tv || tune || line;
   const props = {
     device: search.device,
     scenario,
@@ -99,10 +110,19 @@ const PlayerPrototype = () => {
           ) : (
             <LivePicture />
           )}
-          {tune ? (
+          {line ? (
+            <LineChrome {...props} />
+          ) : tune ? (
             <TuneChrome {...props} bug={search.bug} freezeAt={search.t} loop={search.loop} />
           ) : tv ? (
-            <TvChrome {...props} />
+            <TvChrome
+              {...props}
+              bug={search.bug}
+              freezeAt={search.t}
+              loop={search.loop}
+              refined={refined}
+              stress={search.stress}
+            />
           ) : polished ? (
             <PolishedChrome {...props} material={search.variant === "F" ? "glass" : "flat"} />
           ) : search.variant === "D" ? (

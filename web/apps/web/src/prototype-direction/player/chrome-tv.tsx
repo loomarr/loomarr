@@ -19,15 +19,43 @@
 // Interactive: ArrowUp / ArrowDown flip, digits type a channel number, and the strip settles into a
 // tune after a beat. The static states (surfing, tuning) hold still so they can be looked at.
 import { brandChroma, icons, playerChrome, semanticMotion, Text, typography } from "@loomarr/design-system";
-import { ArrowLeftRight } from "lucide-react";
+import {
+  Airplay,
+  ArrowLeft,
+  ArrowLeftRight,
+  AudioLines,
+  Captions,
+  type LucideIcon,
+  Maximize,
+  PictureInPicture2,
+} from "lucide-react";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type BugCorner, ChannelBug, clearOfBug } from "./bug";
 import type { ChromeProps } from "./chrome-classic";
+import { PreviewTimeline } from "./chrome-line";
 import { nowProgramme as current, nextProgramme as next } from "./chrome-rich";
 import { b1, type ChannelRow, channel, channels, formatTime, lastChannel, MINUTE, NOW } from "./data";
 import { type Density, flat, scrimStyle } from "./flat";
+import {
+  AudioBody,
+  BottomSheet,
+  Caption,
+  DetailsBody,
+  DetailsPanel,
+  InfoBody,
+  Menu,
+  MoreRows,
+  PanelStyles,
+  PictureBody,
+  SubtitlesBody,
+  UnmutePill,
+  VolumeBar,
+} from "./panels-j";
+import { realChannel } from "./real-art";
 import type { Scenario } from "./scenario";
 import { stationLine } from "./scenario";
 import { ChannelList, Cover, MoreBody, Sheet } from "./sheets";
+import { FlipEdge, Tune, type TuneKind } from "./tune-j";
 
 const EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
 const { focus: FOCUS_MS, overlay: OVERLAY_MS, tune: TUNE_MS } = semanticMotion;
@@ -107,6 +135,10 @@ const TvStyles = () => (
     .tv-key.tv-key-ok:hover { background-color: ${playerChrome.text}; opacity: 0.88; }
     .tv-key:active { transform: scale(0.96); }
     .tv-cell { transition: background-color ${FOCUS_MS}ms ${EASE}; }
+    .tv-keywrap-quiet .tv-legend { opacity: 0; transition: opacity ${FOCUS_MS}ms ${EASE}; }
+    .tv-keywrap-quiet:hover .tv-legend, .tv-keywrap-quiet:focus-within .tv-legend, .tv-keywrap-on .tv-legend { opacity: 1; }
+    .tv-util { border-radius: 8px; color: ${flat.textSecondary}; transition: background-color ${FOCUS_MS}ms ${EASE}, color ${FOCUS_MS}ms ${EASE}; }
+    .tv-util:hover { background-color: ${flat.focus}; color: ${flat.text}; }
 
     @media (prefers-reduced-motion: reduce) {
       .tv-chrome[data-shown="true"] { animation-name: tv-fade; }
@@ -152,11 +184,14 @@ const Block = ({
   density,
   ident = false,
   number,
+  squareFoot = false,
   tint,
 }: {
   density: Density;
   ident?: boolean;
   number: string;
+  /** Variant J: the block stops at the header rows and the film strip runs beneath it. */
+  squareFoot?: boolean;
   tint?: string;
 }) => {
   const pointer = density === "pointer";
@@ -166,7 +201,7 @@ const Block = ({
       style={{
         alignItems: "center",
         background: tint ?? flat.amber,
-        borderRadius: "12px 0 0 12px",
+        borderRadius: squareFoot ? "12px 0 0 0" : "12px 0 0 12px",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -199,7 +234,7 @@ const Block = ({
 // ---------------------------------------------------------------------------------------------
 // The lower third: Now, the slot's progress line with clock times at both ends, and Next.
 
-const Slot = ({ scenario }: { scenario: Scenario }) => {
+const Slot = ({ scenario, white = false }: { scenario: Scenario; white?: boolean }) => {
   const length = current.stopMs - current.startMs;
   const at = (ms: number) => Math.min(Math.max((ms - current.startMs) / length, 0), 1);
   const played = at(scenario.playheadMs);
@@ -229,7 +264,8 @@ const Slot = ({ scenario }: { scenario: Scenario }) => {
       ) : null}
       <div
         style={{
-          background: flat.amber,
+          // Variant J: the line is white, so amber stays on the channel block alone.
+          background: white ? flat.text : flat.amber,
           borderRadius: 2,
           height: 4,
           position: "absolute",
@@ -293,15 +329,35 @@ const LowerThird = ({
   density,
   guide,
   landscape,
+  refined = false,
   row,
   scenario,
+  standIns = false,
+  timelineCard = false,
+  timelineFull = false,
+  timelineOpen = false,
+  timelineRing = false,
+  topEdge,
   tint,
 }: {
+  /** Variant J: the open card is Info, so it shows the whole synopsis and what follows. */
+  timelineFull?: boolean;
   density: Density;
   guide: Guide;
   landscape: boolean;
+  refined?: boolean;
   row: ChannelRow;
   scenario: Scenario;
+  /** Variant J: a library with no art, so the strip and its card use the drawn stand-ins. */
+  standIns?: boolean;
+  /** Variant J, television: the block with the card open has remote focus. */
+  timelineRing?: "now" | boolean;
+  /** Variant J: drawn along the band's top edge (the warm flip's bars). */
+  topEdge?: ReactNode;
+  /** Variant J: hold a preview card open, for a still: the programme on now, or the next one. */
+  timelineCard?: "next" | "now" | false;
+  /** Variant J: the film strip stands in for the progress line and the Next row (desktop). */
+  timelineOpen?: boolean;
   tint?: string;
 }) => {
   const pointer = density === "pointer";
@@ -309,127 +365,222 @@ const LowerThird = ({
   const breakLeft = Math.max(1, Math.round((b1.stopMs - scenario.playheadMs) / MINUTE));
   const gutter = pointer ? 40 : 36;
   return (
-    <div style={{ display: "flex", flex: 1, maxWidth: pointer ? 960 : undefined, minWidth: 0 }}>
-      <Block density={density} number={row.number} tint={tint} />
-      <div
-        style={{
-          background: flat.raised,
-          border: `1px solid ${flat.hairline}`,
-          borderLeft: 0,
-          borderRadius: "0 12px 12px 0",
-          display: "flex",
-          flex: 1,
-          flexDirection: "column",
-          gap: pointer ? 8 : 4,
-          minWidth: 0,
-          padding: pointer ? "16px 24px" : "12px 16px",
-        }}
-      >
+    <div
+      style={{
+        display: "flex",
+        flex: 1,
+        flexDirection: "column",
+        maxWidth: pointer ? 960 : undefined,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ display: "flex", minWidth: 0, position: "relative" }}>
+        {topEdge}
+        <Block density={density} number={row.number} squareFoot={timelineOpen} tint={tint} />
         <div
           style={{
-            alignItems: "center",
+            background: flat.raised,
+            border: `1px solid ${flat.hairline}`,
+            borderBottom: timelineOpen ? 0 : `1px solid ${flat.hairline}`,
+            borderLeft: 0,
+            borderRadius: timelineOpen ? "0 12px 0 0" : "0 12px 12px 0",
             display: "flex",
-            gap: 16,
-            justifyContent: "space-between",
-            minHeight: 32,
+            flex: 1,
+            flexDirection: "column",
+            gap: pointer ? 8 : 4,
+            minWidth: 0,
+            padding: pointer ? "16px 24px" : "12px 16px",
           }}
         >
-          <span style={{ alignItems: "baseline", display: "inline-flex", gap: 8, minWidth: 0 }}>
-            {/* The block beside this already says CH and the number; the band names the channel. */}
-            <Text density={density} numberOfLines={1} strong textRole="label" tone="primary">
-              {row.name}
-            </Text>
-          </span>
-          <span style={{ alignItems: "center", display: "inline-flex", flexShrink: 0, gap: 16 }}>
-            {behind ? (
-              <>
-                {pointer ? <Tag density={density}>{behindLabel(scenario.lagMs)}</Tag> : null}
-                <GoLive density={density} />
-              </>
-            ) : (
-              <LiveMark density={density} />
-            )}
-            {pointer || !behind ? <Clock density={density} ms={scenario.playheadMs} /> : null}
-          </span>
-        </div>
-
-        <div
-          style={{
-            alignItems: "baseline",
-            columnGap: 16,
-            display: "grid",
-            gridTemplateColumns: `${gutter}px 1fr`,
-            rowGap: pointer ? 8 : 4,
-          }}
-        >
-          <Tag density={density}>Now</Tag>
           <div
             style={{
-              alignItems: pointer ? "baseline" : "flex-start",
+              alignItems: "center",
               display: "flex",
-              flexDirection: pointer ? "row" : "column",
-              gap: pointer ? 16 : 0,
-              minWidth: 0,
+              gap: 16,
+              justifyContent: "space-between",
+              minHeight: 32,
             }}
           >
-            <Text
-              density={density}
-              numberOfLines={1}
-              strong
-              textRole={pointer ? "title" : "label"}
-              tone="primary"
+            <span style={{ alignItems: "baseline", display: "inline-flex", gap: 8, minWidth: 0 }}>
+              {/* The block beside this already says CH and the number; the band names the channel. */}
+              <Text density={density} numberOfLines={1} strong textRole="label" tone="primary">
+                {row.name}
+              </Text>
+            </span>
+            <span style={{ alignItems: "center", display: "inline-flex", flexShrink: 0, gap: 16 }}>
+              {behind ? (
+                <>
+                  {pointer ? <Tag density={density}>{behindLabel(scenario.lagMs)}</Tag> : null}
+                  <GoLive density={density} />
+                </>
+              ) : (
+                <LiveMark density={density} />
+              )}
+              {pointer || !behind ? <Clock density={density} ms={scenario.playheadMs} /> : null}
+            </span>
+          </div>
+
+          {/* Variant J: a channel with nothing scheduled says so in the app's own two words, and has
+              no Now, no Next and no strip to draw. */}
+          {scenario.noSchedule ? (
+            <div style={{ alignItems: "center", display: "flex", minHeight: pointer ? 36 : 24 }}>
+              <Text density={density} textRole={pointer ? "reading" : "cardMeta"} tone="secondary">
+                Nothing scheduled
+              </Text>
+            </div>
+          ) : null}
+          <div
+            style={{
+              alignItems: "baseline",
+              columnGap: 16,
+              display: scenario.noSchedule ? "none" : "grid",
+              // minmax(0, …): a bare 1fr grows to fit a long unbroken line and pushes it out of the
+              // band (found with the long-name stress case on a portrait phone).
+              gridTemplateColumns: `${gutter}px minmax(0, 1fr)`,
+              rowGap: pointer ? 8 : 4,
+            }}
+          >
+            <Tag density={density}>Now</Tag>
+            <div
+              style={{
+                alignItems: pointer ? "baseline" : "flex-start",
+                display: "flex",
+                flexDirection: pointer ? "row" : "column",
+                gap: pointer ? 16 : 0,
+                minWidth: 0,
+              }}
             >
-              {guide.title}
-            </Text>
-            {scenario.inBreak ? (
-              <Text
-                density={density}
-                numberOfLines={1}
-                strong
-                textRole={pointer ? "reading" : "cardMeta"}
-                tone="primary"
+              {/* The title is typed, in every variant built on G. A title's logo was tried here for J and
+                taken out (maintainer, 2026-11-09): at this size its own colours and detail fight the
+                band, and only some titles have one. Logos go where they have room (the preview card). */}
+              {/* Variant J: when the row is tight the episode line gives way first, then the title.
+                  Shrinking both evenly cut a seven-letter title to "Fra…" on a television. */}
+              <div
+                // A flex box, so the text inside is a flex item and its ellipsis applies; as an inline
+                // box inside a plain div it ran straight out of the band.
+                style={
+                  refined && pointer
+                    ? { display: "flex", flex: "0 1 auto", minWidth: 0, overflow: "hidden" }
+                    : { display: "flex", maxWidth: "100%", minWidth: 0, overflow: "hidden" }
+                }
               >
-                <span style={{ color: playerChrome.breakAccent }}>Back in {breakLeft} min</span>
-              </Text>
-            ) : guide.line ? (
-              <Text
-                density={density}
-                numberOfLines={1}
-                textRole={pointer ? "reading" : "cardMeta"}
-                tone="secondary"
-              >
-                {guide.line}
-              </Text>
-            ) : null}
-          </div>
+                {/* A portrait phone has the height: the title may take two lines there. */}
+                <Text
+                  density={density}
+                  minWidth={0}
+                  numberOfLines={refined && !pointer && !landscape ? 2 : 1}
+                  strong
+                  textRole={pointer ? "title" : "label"}
+                  tone="primary"
+                >
+                  {guide.title}
+                </Text>
+              </div>
+              {scenario.inBreak ? (
+                <Text
+                  density={density}
+                  numberOfLines={1}
+                  strong
+                  textRole={pointer ? "reading" : "cardMeta"}
+                  tone="primary"
+                >
+                  <span style={{ color: playerChrome.breakAccent }}>Back in {breakLeft} min</span>
+                </Text>
+              ) : guide.line ? (
+                <div
+                  style={
+                    refined && pointer
+                      ? { display: "flex", flex: "0 100000 auto", minWidth: 0, overflow: "hidden" }
+                      : { display: "flex", maxWidth: "100%", minWidth: 0, overflow: "hidden" }
+                  }
+                >
+                  <Text
+                    density={density}
+                    minWidth={0}
+                    numberOfLines={1}
+                    textRole={pointer ? "reading" : "cardMeta"}
+                    tone="secondary"
+                  >
+                    {guide.line}
+                  </Text>
+                </div>
+              ) : null}
+              {/* Variant J: with the strip standing in for the line and its two clocks, the row says
+                how long is left in words. It is the thing people look at the band for. */}
+              {timelineOpen && !scenario.inBreak ? (
+                <span style={{ flexShrink: 0, marginLeft: "auto" }}>
+                  <Text density={density} textRole="reading" tone="secondary">
+                    {`${Math.max(1, Math.round((current.stopMs - scenario.playheadMs) / MINUTE))} min left`}
+                  </Text>
+                </span>
+              ) : null}
+            </div>
 
-          <span />
-          <div style={{ alignItems: "center", display: "flex", gap: 12, minHeight: 16 }}>
-            <Text density={density} textRole="cardTime" tone="secondary">
-              {clock(current.startMs)}
-            </Text>
-            <Slot scenario={scenario} />
-            <Text density={density} textRole="cardTime" tone="secondary">
-              {clock(current.stopMs)}
-            </Text>
-          </div>
+            {timelineOpen ? null : (
+              <>
+                <span />
+                <div style={{ alignItems: "center", display: "flex", gap: 12, minHeight: 16 }}>
+                  <Text density={density} textRole="cardTime" tone="secondary">
+                    {clock(current.startMs)}
+                  </Text>
+                  <Slot scenario={scenario} white={refined} />
+                  <Text density={density} textRole="cardTime" tone="secondary">
+                    {clock(current.stopMs)}
+                  </Text>
+                </div>
 
-          <Tag density={density}>Next</Tag>
-          <div style={{ alignItems: "baseline", display: "flex", gap: 12, minWidth: 0 }}>
-            <Text density={density} textRole="cardTime" tone="secondary">
-              {guide.nextAt}
-            </Text>
-            <Text density={density} numberOfLines={1} textRole={pointer ? "body" : "cardMeta"} tone="primary">
-              {guide.nextName}
-            </Text>
-            {landscape && behind ? (
-              <span style={{ marginLeft: "auto" }}>
-                <Tag density={density}>{behindLabel(scenario.lagMs)}</Tag>
-              </span>
-            ) : null}
+                <Tag density={density}>Next</Tag>
+                <div style={{ alignItems: "baseline", display: "flex", gap: 12, minWidth: 0 }}>
+                  <Text density={density} textRole="cardTime" tone="secondary">
+                    {guide.nextAt}
+                  </Text>
+                  <Text
+                    density={density}
+                    numberOfLines={1}
+                    textRole={pointer ? "body" : "cardMeta"}
+                    tone="primary"
+                  >
+                    {guide.nextName}
+                  </Text>
+                  {landscape && behind ? (
+                    <span style={{ flexShrink: 0, marginLeft: "auto", whiteSpace: "nowrap" }}>
+                      <Tag density={density}>{behindLabel(scenario.lagMs)}</Tag>
+                    </span>
+                  ) : null}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
+      {timelineOpen ? (
+        // Variant J: the film strip is the band's foot, the full width of the band, under the
+        // channel block as well. It says what the thin line and the Next row said and more (what
+        // follows, where the breaks fall, a card for each block). The block on air carries no name,
+        // because the row above has just said it. The card rises clear of the header, so it covers
+        // the picture and not the band; the playhead is white, so amber stays on the block.
+        <div
+          style={{
+            background: flat.raised,
+            border: `1px solid ${flat.hairline}`,
+            borderRadius: "0 0 12px 12px",
+            borderTop: 0,
+            padding: "14px 16px 12px",
+          }}
+        >
+          <PreviewTimeline
+            card={timelineCard}
+            cardFull={timelineFull}
+            cardLift={118}
+            density={density}
+            headColor={flat.text}
+            playheadMs={scenario.playheadMs}
+            quietNow
+            ring={timelineRing}
+            standIns={standIns}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -519,12 +670,18 @@ const IdentCard = ({ density, tint }: { density: Density; tint?: string }) => {
 // is marked. Wide screens show five channels, phones three.
 
 const Strip = ({
+  art = false,
   count,
   density,
   onAir,
+  standIns = false,
   target,
   tintFor,
 }: {
+  /** A library with no art: every card's picture is its flat stand-in. */
+  standIns?: boolean;
+  /** Variant J: a channel whose programme has fanart shows it, dimmed, behind its card. */
+  art?: boolean;
   count: number;
   density: Density;
   onAir: number;
@@ -553,6 +710,9 @@ const Strip = ({
         const lit = index === target;
         const here = index === onAir;
         const era = tintFor(row.era);
+        const fanart = art && !standIns ? realChannel(row.number)?.fanartSrc : undefined;
+        // No fanart: a flat tone from the channel's number, the way the film strip's stand-ins are.
+        const standIn = `hsl(${(Number(row.number) * 47) % 360} 24% 17%)`;
         const block = (
           <span
             style={{
@@ -590,13 +750,39 @@ const Strip = ({
               boxShadow: lit ? `inset 0 0 0 2px ${flat.amber}` : undefined,
               display: "flex",
               flexDirection: "column",
-              gap: 8,
+              gap: art ? 0 : 8,
               minWidth: 0,
-              padding: pointer ? 12 : 8,
+              overflow: art ? "hidden" : undefined,
+              padding: art ? 0 : pointer ? 12 : 8,
             }}
           >
-            {block}
-            <div style={{ display: "flex", flexDirection: "column", minWidth: 0, width: "100%" }}>
+            {art ? (
+              // Variant J: what is on is what you choose a channel by, so each card gets a picture
+              // of its own with the words under it, never words on top of a washed-out picture.
+              // Fanart when the library has it, otherwise a flat stand-in. The card being aimed at
+              // is at full strength; the rest sit back.
+              <div
+                style={{
+                  background: fanart ? `${flat.elevated} url("${fanart}") center/cover` : standIn,
+                  height: pointer ? 76 : 48,
+                  opacity: lit ? 1 : 0.6,
+                  position: "relative",
+                }}
+              >
+                <span style={{ left: 8, position: "absolute", top: 8 }}>{block}</span>
+              </div>
+            ) : (
+              block
+            )}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                minWidth: 0,
+                padding: art ? (pointer ? "10px 12px 12px" : "6px 8px 8px") : undefined,
+                width: "100%",
+              }}
+            >
               <Text
                 density={density}
                 numberOfLines={1}
@@ -628,22 +814,38 @@ const Strip = ({
 
 const Key = ({
   children,
+  focused = false,
   label,
   legend,
   ok = false,
   onPress,
+  pressed = false,
+  quiet = false,
   size,
   width,
 }: {
+  /** Variant J: this key's menu is open, so it is a tone lighter and says so to a screen reader. */
+  pressed?: boolean;
   children: ReactNode;
+  /** Television: this key has remote focus, so it wears the amber ring and shows its legend. */
+  focused?: boolean;
   label: string;
   legend?: string;
   ok?: boolean;
   onPress?: () => void;
+  /** Variant J: the legend shows only while the key is pointed at or focused. */
+  quiet?: boolean;
   size: number;
   width?: number;
 }) => (
   <div
+    className={
+      quiet
+        ? focused
+          ? "tv-keywrap tv-keywrap-quiet tv-keywrap-on"
+          : "tv-keywrap tv-keywrap-quiet"
+        : "tv-keywrap"
+    }
     style={{
       alignItems: "center",
       display: "flex",
@@ -653,18 +855,21 @@ const Key = ({
     }}
   >
     <button
+      aria-expanded={pressed || undefined}
       aria-label={label}
       className={ok ? "pp-btn tv-key tv-key-ok" : "pp-btn tv-key"}
       onClick={onPress}
       style={{
         alignItems: "center",
-        background: ok ? playerChrome.disc : flat.elevated,
-        border: ok ? undefined : `1px solid ${flat.hairline}`,
+        background: ok ? playerChrome.disc : pressed ? flat.focus : flat.elevated,
+        border: ok ? undefined : `1px solid ${pressed ? flat.textSecondary : flat.hairline}`,
         borderRadius: 12,
         display: "inline-flex",
         flexShrink: 0,
         height: size,
         justifyContent: "center",
+        outline: focused ? `2px solid ${flat.amber}` : undefined,
+        outlineOffset: 3,
         width: width ?? size,
       }}
       type="button"
@@ -672,7 +877,7 @@ const Key = ({
       {children}
     </button>
     {legend ? (
-      <span aria-hidden>
+      <span aria-hidden className="tv-legend">
         <Text density="pointer" textRole="cardMeta" tone="secondary">
           {legend}
         </Text>
@@ -691,11 +896,22 @@ const Keys = ({
   landscape,
   onFlip,
   playing,
+  pressed,
+  quiet = false,
+  focusPlay = false,
+  tv = false,
 }: {
+  /** Variant J: the key whose menu is open. */
+  pressed?: "more" | "volume" | undefined;
   density: Density;
   landscape: boolean;
   onFlip: (dir: -1 | 1) => void;
   playing: boolean;
+  quiet?: boolean;
+  /** Television: Play has remote focus (it is where focus lands when the chrome comes up). */
+  focusPlay?: boolean;
+  /** Television: no Volume key; the remote has one. */
+  tv?: boolean;
 }) => {
   const pointer = density === "pointer";
   const size = pointer ? 56 : 48;
@@ -718,6 +934,7 @@ const Keys = ({
           <Key
             label={`Last channel, ${lastChannel.number}`}
             legend={legends ? "Last channel" : undefined}
+            quiet={quiet}
             size={size}
           >
             <span style={{ alignItems: "center", display: "inline-flex", flexDirection: "column", gap: 4 }}>
@@ -742,14 +959,17 @@ const Keys = ({
         label="Channel down"
         legend={legends ? "Channel down" : undefined}
         onPress={() => onFlip(-1)}
+        quiet={quiet}
         size={size}
       >
         <Glyph name="channelDown" size={glyph} />
       </Key>
       <Key
         label={playing ? "Pause" : "Play"}
+        focused={focusPlay}
         legend={legends ? (playing ? "Pause" : "Play") : undefined}
         ok
+        quiet={quiet}
         size={size}
         width={ok}
       >
@@ -767,11 +987,24 @@ const Keys = ({
         label="Channel up"
         legend={legends ? "Channel up" : undefined}
         onPress={() => onFlip(1)}
+        quiet={quiet}
         size={size}
       >
         <Glyph name="channelUp" size={glyph} />
       </Key>
-      <Key label="More" legend={legends ? "More" : undefined} size={size}>
+      {/* Variant J, desktop: Volume in one click, as H had it. Phones use the hardware keys. */}
+      {quiet && pointer && !tv ? (
+        <Key label="Volume" legend="Volume" pressed={pressed === "volume"} quiet size={size}>
+          <Glyph name="volume" size={glyph} />
+        </Key>
+      ) : null}
+      <Key
+        label="More"
+        legend={legends ? "More" : undefined}
+        pressed={pressed === "more"}
+        quiet={quiet}
+        size={size}
+      >
         <Glyph name="more" size={glyph} />
       </Key>
     </div>
@@ -785,16 +1018,22 @@ const Readout = ({
   density,
   device,
   entry,
+  missed = false,
   name,
   number,
   shown,
+  top,
 }: {
+  /** Variant J: no channel has the number typed. The line under it says so, in the live red. */
+  missed?: boolean;
   density: Density;
   device: string;
   entry: boolean;
   name: string;
   number: string;
   shown: boolean;
+  /** Variant J: where it starts, when the channel's watermark is in this corner. */
+  top?: number;
 }) => {
   const pointer = density === "pointer";
   const edge = pointer ? 48 : device === "landscape" ? 24 : 16;
@@ -813,7 +1052,17 @@ const Readout = ({
         position: "absolute",
         right: edge,
         textShadow: "0 1px 3px rgba(0, 0, 0, 0.85)",
-        top: pointer ? 40 : device === "landscape" ? 16 : 24,
+        top: top ?? (pointer ? 40 : device === "landscape" ? 16 : 24),
+        // The miss is red words, and red words do not read on a bright picture by a shadow alone,
+        // so this one moment gets a solid ink plate (as the real player's readout has).
+        ...(missed
+          ? {
+              background: "rgba(11, 12, 14, 0.92)",
+              borderRadius: 12,
+              padding: pointer ? "12px 24px 16px" : "8px 16px 12px",
+              textShadow: "none",
+            }
+          : {}),
       }}
     >
       <span
@@ -826,13 +1075,23 @@ const Readout = ({
         {entry ? <Cursor /> : null}
       </span>
       <Text density={density} numberOfLines={1} strong textRole={pointer ? "title" : "label"} tone="primary">
-        {name}
+        {missed ? <span style={{ color: flat.live }}>No such channel</span> : name}
       </Text>
     </div>
   );
 };
 
-const ParentalBug = ({ device, shown }: { device: string; shown: boolean }) => {
+const ParentalBug = ({
+  device,
+  left,
+  shown,
+  top,
+}: {
+  device: string;
+  left?: number | undefined;
+  shown: boolean;
+  top?: number;
+}) => {
   const pointer = device === "desktop";
   return (
     <div
@@ -843,11 +1102,11 @@ const ParentalBug = ({ device, shown }: { device: string; shown: boolean }) => {
         background: "rgba(0, 0, 0, 0.5)",
         border: "1px solid rgba(255, 255, 255, 0.72)",
         borderRadius: 4,
-        left: pointer ? 48 : device === "landscape" ? 24 : 16,
+        left: left ?? (pointer ? 48 : device === "landscape" ? 24 : 16),
         padding: pointer ? "8px 12px" : "4px 8px",
         pointerEvents: "none",
         position: "absolute",
-        top: pointer ? 40 : device === "landscape" ? 16 : 24,
+        top: top ?? (pointer ? 40 : device === "landscape" ? 16 : 24),
       }}
     >
       <span style={mono(pointer ? 14 : 12, 600, { color: flat.text, letterSpacing: "0.08em" })}>TV-PG</span>
@@ -949,10 +1208,117 @@ const Tuning = ({ density, row }: { density: Density; row: ChannelRow }) => {
 
 type Phase = "idle" | "surfing" | "tuning";
 
-const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
-  const density: Density = device === "desktop" ? "pointer" : "touch";
+// Variant J's four utilities (top right): icons only, a tone step on hover, the amber ring on focus.
+const Utility = ({
+  icon: Icon,
+  label,
+  pressed = false,
+  size,
+}: {
+  icon: LucideIcon;
+  label: string;
+  /** Its menu or sheet is open. */
+  pressed?: boolean;
+  size: number;
+}) => (
+  <button
+    aria-expanded={pressed || undefined}
+    aria-label={label}
+    className="pp-btn tv-util"
+    style={{
+      alignItems: "center",
+      // The same solid square as a main key, smaller: it reads over any picture and as one family.
+      background: pressed ? flat.focus : flat.elevated,
+      border: `1px solid ${pressed ? flat.textSecondary : flat.hairline}`,
+      borderRadius: 10,
+      color: pressed ? flat.text : undefined,
+      display: "inline-flex",
+      height: size,
+      justifyContent: "center",
+      width: size,
+    }}
+    title={label}
+    type="button"
+  >
+    <Icon aria-hidden size={size >= 44 ? 22 : 20} strokeWidth={1.75} />
+  </button>
+);
+
+interface TvProps extends ChromeProps {
+  /** Variant J: the corner the channel's watermark is burned into (playout's default is top right). */
+  bug?: BugCorner | undefined;
+  /** Variant J: freeze the tune this many ms in (`?t=`), for a still. */
+  freezeAt?: number | undefined;
+  /** Variant J: replay the tune (`?loop=1`). */
+  loop?: boolean | undefined;
+  refined?: boolean;
+  /** Variant J: `long` puts long names everywhere; `bare` is a library with no art at all. */
+  stress?: "bare" | "long" | undefined;
+}
+
+/** Variant J: what each thing the player opens is called, in its heading. */
+const TITLES = {
+  audio: "Audio",
+  channels: "Channels",
+  details: "Playback details",
+  info: "Info",
+  more: "More",
+  picture: "Picture",
+  subtitles: "Subtitles",
+} as const;
+
+/** The upright iPhone's frame, and how far its 16:9 picture's foot is from the bottom of the screen. */
+const PORTRAIT = { height: 844, pictureFoot: (844 - (390 * 9) / 16) / 2 } as const;
+
+// Long names, for the stress case: a channel, a title, an episode and what follows.
+const LONG = {
+  channel: "Saturday Morning Cartoon Marathon Classics",
+  line: "S12 E104 “The One Where Everything Takes Rather Longer Than Anybody Had Expected”",
+  next: "The Extraordinary Voyages of the Lighthouse Keeper's Apprentice",
+  title: "The Incredibly Long-Running Adventures of Captain Barnaby",
+};
+
+const TvInner = ({
+  bug: corner = "top-right",
+  device,
+  freezeAt,
+  loop,
+  refined = false,
+  scenario,
+  stress,
+  tint,
+  tintFor,
+}: TvProps) => {
+  // Variant J, device "tv": the ten-foot layout the Apple TV and Android TV (Shield) apps share.
+  // Same pieces as desktop at 960 × 540, but there is no pointer: the remote moves an amber focus
+  // ring, the focused key shows its legend, and the focused block of the film strip opens its card.
+  // No Fullscreen or Leave (Back leaves), no Volume key (the remote has one).
+  const tv = refined && device === "tv";
+  const density: Density = device === "desktop" || tv ? "pointer" : "touch";
   const pointer = density === "pointer";
   const landscape = device === "landscape";
+  // Variant J on a phone is drawn as an iPhone: the chrome keeps out of the Dynamic Island, the home
+  // indicator and, in landscape, both ends of the screen.
+  const ios = refined && !pointer;
+  const safe = ios
+    ? landscape
+      ? { bottom: 21, side: 59, top: 0 }
+      : { bottom: 34, side: 0, top: 59 }
+    : { bottom: 0, side: 0, top: 0 };
+  // Variant J: the watermark is part of the video, so the chrome in its corner steps clear of it and
+  // nothing else moves. Top right: the utilities (and the readout while flipping). Top left: the
+  // rating. Bottom left: the band. Bottom right: the keys.
+  const watermark = refined ? corner : "off";
+  // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540.
+  const topBase = tv ? 28 : pointer ? 40 : landscape ? 16 : ios ? safe.top + 4 : 24;
+  const bottomBase = tv ? 28 : pointer ? 40 : landscape ? 16 + safe.bottom / 2 : 24 + safe.bottom / 2;
+  const topAt = (corner: BugCorner, reach: number) =>
+    watermark === corner ? clearOfBug(device, topBase, reach) : topBase;
+  const liftOf = (corner: BugCorner, reach: number) =>
+    watermark === corner ? clearOfBug(device, bottomBase, reach) - bottomBase : 0;
+  const bandLift = liftOf("bottom-left", pointer ? 220 : 150);
+  // The cluster is the main keys with the utilities row over them.
+  const keysLift = liftOf("bottom-right", pointer ? 150 : 120);
   const [phase, setPhase] = useState<Phase>(
     scenario.tuning ? "tuning" : scenario.surfing ? "surfing" : "idle",
   );
@@ -962,7 +1328,8 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
   const [target, setTarget] = useState(scenario.tuning ? 3 : scenario.surfing ? 4 : HOME);
   const [entry, setEntry] = useState(scenario.surfing ? "1" : "");
   const [osdN, setOsdN] = useState(0);
-  const [osd, setOsd] = useState(true);
+  // Variant J: the readout belongs to a channel change, so it is not up when the player first shows.
+  const [osd, setOsd] = useState(!refined);
   const [bug, setBug] = useState(true);
   const timer = useRef(0);
   const targetRef = useRef(target);
@@ -1024,6 +1391,7 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
   // The readout is up after every tune and fades by itself; the bug only at a programme's start.
   // biome-ignore lint/correctness/useExhaustiveDependencies: osdN is the trigger, not a value read here
   useEffect(() => {
+    if (refined && osdN === 0) return;
     setOsd(true);
     const t = window.setTimeout(() => setOsd(false), READOUT_MS);
     return () => window.clearTimeout(t);
@@ -1033,10 +1401,43 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
     return () => window.clearTimeout(t);
   }, []);
 
-  if (scenario.cover) return <Cover density={density} kind={scenario.cover} />;
+  if (scenario.cover) {
+    return <Cover density={density} kind={scenario.cover} primary={refined ? "white" : "amber"} />;
+  }
 
-  const sheet = scenario.sheet;
-  const tuning = phase === "tuning";
+  // Variant J changes channel with H's tune, not G's static-and-bars screen. A flip made with the
+  // keys is the warm flip (the band stays up); the "tune" states play it once; "cold-tune",
+  // "slow-tune" and "tuning" are the full signature, the last one frozen mid-way as H freezes it.
+  const tuneKind: TuneKind | undefined = !refined
+    ? undefined
+    : scenario.tune
+      ? scenario.cold
+        ? "cold"
+        : scenario.slow
+          ? "slow"
+          : "warm"
+      : scenario.tuning
+        ? "cold"
+        : phase === "tuning"
+          ? "warm"
+          : undefined;
+  const tuneFreeze = freezeAt ?? (refined && scenario.tuning ? 900 : undefined);
+  // Variant J: what is open, and the form it takes on this device (panels-j.tsx has the reasoning).
+  // Desktop and television: a menu in the control cluster. An upright iPhone: a sheet from the
+  // bottom. A landscape iPhone: the right-hand sheet. Playback details and Info have places of their
+  // own where there is room for them. A phone and a television have no Volume key to open a level.
+  const open = refined ? (scenario.panel ?? scenario.extra ?? scenario.sheet) : undefined;
+  const menu =
+    pointer && (open === "more" || open === "subtitles" || open === "audio" || open === "picture")
+      ? open
+      : undefined;
+  const volumeBar = pointer && !tv && open === "volume";
+  const detailsPanel = pointer && open === "details";
+  const infoCard = pointer && open === "info";
+  const phoneSheet = !pointer && open !== "volume" ? open : undefined;
+  const bottomSheet = ios && !landscape ? phoneSheet : undefined;
+  const sheet = refined ? (pointer ? (open === "channels" ? open : undefined) : phoneSheet) : scenario.sheet;
+  const tuning = phase === "tuning" && !refined;
   const surfing = phase === "surfing";
   const controls = (scenario.visible || surfing) && !sheet && !tuning;
   const card = scenario.ident && !scenario.visible && !sheet && !tuning;
@@ -1044,38 +1445,304 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
   const row = channels[onAir] ?? channels[HOME] ?? channels[0];
   const aim = channels[target] ?? row;
   if (!(row && aim)) return null;
+  // The stills tune INTO the channel the rest of the mock is on, so the band the bars land on, the
+  // picture and the film strip all agree. A flip made with the keys tunes to where it was aimed.
+  const tuneTo = (scenario.tune || scenario.tuning ? row : aim) ?? row;
   const playing = scenario.mode !== "paused";
+  // Variant J, "no-channel": 99 was typed and nothing has that number. The readout says so and goes.
+  const missed = refined && Boolean(scenario.missed) && !surfing;
   const readout = surfing
     ? { entry: entry !== "", name: aim.name, number: entry || aim.number }
-    : { entry: false, name: row.name, number: row.number };
-  const readoutOn = !sheet && !tuning && !card && (surfing || (osd && scenario.visible));
+    : missed
+      ? { entry: false, missed: true, name: "", number: "99" }
+      : { entry: false, name: row.name, number: row.number };
+  // Variant J: one identity at a time. The readout is up while flipping (the strip has replaced the
+  // band) and for a moment after a tune when the band is hidden; never beside the band.
+  const readoutOn =
+    !sheet &&
+    !tuning &&
+    !card &&
+    (surfing || missed || (osd && (refined ? !scenario.visible : scenario.visible)));
+  const utilities = refined && controls && !surfing;
+  // An upright iPhone's toolbar and back arrow are above the picture, so a sheet from the bottom
+  // does not cover them and they stay.
+  const topKeys = utilities || Boolean(bottomSheet);
   const bugOn =
     bug && !sheet && !tuning && !surfing && scenario.visible && !scenario.inBreak && scenario.mode === "live";
-  const edge = pointer ? "0 48px 40px" : landscape ? "0 24px 16px" : "0 16px 24px";
-  const keys = <Keys density={density} landscape={landscape} onFlip={flip} playing={playing} />;
+  const side = (tv || pointer ? 48 : landscape ? 24 : 16) + safe.side;
+  const edge = `0 ${side}px ${bottomBase}px`;
+  // Television focus, for the stills: Play when the chrome comes up; the next block of the film
+  // strip in "chrome-top" (its card opens, as hovering it does on desktop).
+  const focusStrip = tv && Boolean(scenario.topTip);
+  const keys = tv ? (
+    // Television: only what a remote does not have. Channel up and down are the remote's own up and
+    // down, Play/Pause and Volume are its own buttons, Back leaves, and there is no fullscreen. Six
+    // keys here squeezed the band until the title read "F."; four leave it room.
+    <div style={{ alignItems: "flex-start", display: "flex", flexShrink: 0 }}>
+      {lastChannel ? (
+        <Key label={`Last channel, ${lastChannel.number}`} legend="Last channel" quiet size={56}>
+          <span style={{ alignItems: "center", display: "inline-flex", flexDirection: "column", gap: 4 }}>
+            <ArrowLeftRight aria-hidden color={playerChrome.text} size={18} strokeWidth={2} />
+            <span style={mono(14, 600, { color: flat.textSecondary })}>{lastChannel.number}</span>
+          </span>
+        </Key>
+      ) : null}
+      <Key label="Subtitles" legend="Subtitles" pressed={open === "subtitles"} quiet size={56}>
+        <Captions aria-hidden color={playerChrome.text} size={26} strokeWidth={2} />
+      </Key>
+      <Key label="Audio" legend="Audio" pressed={open === "audio"} quiet size={56}>
+        <AudioLines aria-hidden color={playerChrome.text} size={26} strokeWidth={2} />
+      </Key>
+      <Key label="More" legend="More" pressed={open === "more" || open === "picture"} quiet size={56}>
+        <Glyph name="more" size={28} />
+      </Key>
+    </div>
+  ) : (
+    <Keys
+      density={density}
+      landscape={landscape}
+      onFlip={flip}
+      playing={playing}
+      pressed={open === "more" || open === "picture" ? "more" : volumeBar ? "volume" : undefined}
+      quiet={refined}
+    />
+  );
+  const utilSize = pointer ? 40 : 44;
+  const utilityKeys = (
+    <>
+      <Utility icon={Captions} label="Subtitles" pressed={open === "subtitles"} size={utilSize} />
+      <Utility icon={AudioLines} label="Audio" pressed={open === "audio"} size={utilSize} />
+      {tv ? null : ios ? (
+        // iPhone: there is no fullscreen to toggle (you turn the phone). AirPlay and
+        // picture-in-picture are what an iPhone player is expected to offer.
+        <>
+          <Utility icon={Airplay} label="AirPlay" size={utilSize} />
+          <Utility icon={PictureInPicture2} label="Picture in picture" size={utilSize} />
+        </>
+      ) : (
+        <Utility icon={Maximize} label="Fullscreen" size={utilSize} />
+      )}
+    </>
+  );
+  // Leave is a back arrow in the top left corner of the screen, where people reach for it (the
+  // maintainer, 2026-11-09: "I'm used to clicking the top left of the screen to exit watch"). A
+  // corner is a place of its own, so it is not a control floating over the picture. It steps below
+  // the watermark when the channel's bug is in that corner. A television has no such key: Back leaves.
+  const leaveLeft = pointer ? 48 : landscape ? 24 + safe.side : 12;
+  const leaveTop = ios && !landscape ? topBase : topAt("top-left", utilSize);
+  const long = refined && stress === "long";
+  const bare = refined && stress === "bare";
+  const shownRow = long ? { ...row, name: LONG.channel } : row;
+  const guide = long
+    ? { ...guideOf(row), line: LONG.line, nextName: LONG.next, title: LONG.title }
+    : guideOf(row);
   const body = card ? (
     <IdentCard density={density} tint={tint} />
   ) : surfing ? (
-    <Strip count={pointer ? 5 : 3} density={density} onAir={onAir} target={target} tintFor={tintFor} />
+    <Strip
+      art={refined}
+      count={pointer ? 5 : 3}
+      density={density}
+      onAir={onAir}
+      standIns={bare}
+      target={target}
+      tintFor={tintFor}
+    />
   ) : (
     <LowerThird
       density={density}
-      guide={guideOf(row)}
+      guide={guide}
       landscape={landscape}
-      row={row}
+      refined={refined}
+      row={shownRow}
       scenario={scenario}
+      standIns={bare}
+      // The on-now block's card on desktop, because that programme is the one with real art on this
+      // machine. On a television, the next block: it is the one the remote has moved to.
+      // Info is the block on air, its card opened in full.
+      timelineCard={infoCard ? "now" : scenario.topTip ? (tv ? "next" : "now") : false}
+      timelineFull={infoCard}
+      // Television: remote focus starts on the block on air (ring, no card yet) and, in "chrome-top",
+      // has moved to the next block, whose card is open.
+      timelineRing={tv ? (focusStrip ? true : "now") : false}
+      topEdge={tuneKind === "warm" ? <FlipEdge freezeAt={tuneFreeze} loop={loop} /> : undefined}
+      // Variant J: on desktop the film strip IS the band's progress row, there whenever the band is.
+      // Nothing to discover, and nothing that only a mouse can reach (the first draft opened it on
+      // hover over a thin line, which nobody would find). Phones keep the line and the Next row.
+      timelineOpen={refined && pointer && !scenario.noSchedule}
       tint={tint}
     />
   );
 
+  // What a sheet holds (phones, and Channels everywhere). A phone has no film strip in its band, so
+  // its More keeps the schedule; its rows are J's (Picture and Playback details, no "Sound and
+  // picture"), and it lists no picture in picture because the iPhone toolbar has that key.
+  const inset = (child: ReactNode) => <div style={{ padding: "4px 12px 0" }}>{child}</div>;
+  const sheetBody =
+    sheet === "channels" ? (
+      <ChannelList density={density} tintFor={tintFor} />
+    ) : sheet === "more" ? (
+      <MoreBody
+        behind={scenario.mode !== "live"}
+        density={density}
+        headColor={refined ? flat.text : undefined}
+        only={refined}
+        plain
+        rows={
+          refined ? <MoreRows behind={scenario.mode !== "live"} density={density} pip={false} /> : undefined
+        }
+        schedule={!(refined && pointer)}
+      />
+    ) : sheet === "subtitles" ? (
+      <SubtitlesBody density={density} />
+    ) : sheet === "audio" ? (
+      <AudioBody density={density} />
+    ) : sheet === "picture" ? (
+      <PictureBody density={density} />
+    ) : sheet === "details" ? (
+      inset(<DetailsBody density={density} />)
+    ) : sheet === "info" ? (
+      inset(<InfoBody bare={bare} density={density} />)
+    ) : null;
+
   return (
     <div className="tv-root" style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>
       <TvStyles />
+      {refined ? <PanelStyles /> : null}
+      {/* The warm flip's dip is on the picture only, so it is drawn under the chrome. */}
+      {tuneKind === "warm" ? (
+        <Tune
+          compact={!pointer || tv}
+          freezeAt={tuneFreeze}
+          kind="warm"
+          loop={loop}
+          lowerThird={0}
+          name={tuneTo.name}
+          number={tuneTo.number}
+        />
+      ) : null}
       <div className="tv-dress" style={{ inset: 0, opacity: shown ? 1 : 0, position: "absolute" }}>
         <div style={scrimStyle(pointer ? 520 : landscape ? 340 : 460, true)} />
       </div>
-      <ParentalBug device={device} shown={bugOn} />
-      <Readout density={density} device={device} {...readout} shown={readoutOn} />
+      {watermark === "off" ? null : <ChannelBug corner={watermark} device={device} name={shownRow.name} />}
+      {/* With subtitles on, a line of them: centred on the picture and lifted clear of the band while
+          the controls are up. An upright iPhone's picture has nothing over it, so they sit at its foot. */}
+      {open === "subtitles" ? (
+        <Caption
+          bottom={
+            ios && !landscape
+              ? PORTRAIT.pictureFoot + 8
+              : landscape
+                ? // The side sheet hides the controls, so the line is back at the picture's foot.
+                  bottomBase + 12
+                : bottomBase + bandLift + 226 + 16
+          }
+          lines={
+            // A television's line is short (about 32 characters, as broadcast captions are), which
+            // also keeps it clear of the menu beside it.
+            tv
+              ? ["I thought you said tonight", "would be quiet."]
+              : ["I thought you said tonight would be quiet."]
+          }
+          maxWidth={tv ? 320 : pointer ? 720 : landscape ? 320 : 340}
+          // A landscape phone's sheet covers the right of the picture; the line stays in what shows.
+          right={landscape ? 384 : 0}
+          size={tv ? 18 : pointer ? 24 : landscape ? 15 : 13}
+        />
+      ) : null}
+      {/* iPhone furniture, so the safe areas are visible: the Dynamic Island and the home indicator. */}
+      {ios ? (
+        <>
+          <span
+            aria-hidden
+            style={{
+              background: "#000",
+              borderRadius: 20,
+              position: "absolute",
+              ...(landscape
+                ? { height: 126, left: 11, top: "50%", transform: "translateY(-50%)", width: 37 }
+                : { height: 37, left: "50%", top: 11, transform: "translateX(-50%)", width: 126 }),
+            }}
+          />
+          <span
+            aria-hidden
+            style={{
+              background: "rgba(255, 255, 255, 0.85)",
+              borderRadius: 3,
+              bottom: 8,
+              height: 5,
+              left: "50%",
+              position: "absolute",
+              transform: "translateX(-50%)",
+              width: landscape ? 220 : 140,
+              zIndex: 70,
+            }}
+          />
+        </>
+      ) : null}
+      {/* The rating sits beside the back arrow, in the same place whether or not the arrow is up. */}
+      <ParentalBug
+        device={device}
+        left={refined && !tv ? leaveLeft + utilSize + 12 : undefined}
+        shown={bugOn}
+        top={refined && !tv ? leaveTop + (utilSize - (pointer ? 34 : 26)) / 2 : topAt("top-left", 40)}
+      />
+      {topKeys && !tv ? (
+        <div style={{ left: leaveLeft, pointerEvents: "auto", position: "absolute", top: leaveTop }}>
+          <Utility icon={ArrowLeft} label="Leave" size={utilSize} />
+        </div>
+      ) : null}
+      {/* Playback details: upper left, under the back arrow, clear of the band and the keys. It is
+          the one panel that stays while the controls hide. A television has less height, so it is
+          two columns wide there, and has no Copy key (no clipboard) or close key (Back closes it). */}
+      {detailsPanel ? (
+        <DetailsPanel
+          closable={!tv}
+          left={48}
+          top={tv ? topAt("top-left", 40) + 46 : leaveTop + utilSize + 12}
+          wide={tv}
+        />
+      ) : null}
+      {/* The muted first play (a browser's rule, so not on a television): top centre, clear of both
+          corners; on an upright phone, just under the picture. */}
+      {refined && scenario.unmute && !tv ? (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            left: 0,
+            position: "absolute",
+            right: 0,
+            ...(ios && !landscape ? { bottom: PORTRAIT.pictureFoot - 12 - 44 } : { top: topBase }),
+          }}
+        >
+          <UnmutePill touch={!pointer} />
+        </div>
+      ) : null}
+      <Readout
+        density={density}
+        device={device}
+        {...readout}
+        shown={readoutOn}
+        top={topAt("top-right", pointer ? 150 : 100)}
+      />
+      {/* A portrait iPhone has black above its picture, so the utilities are a toolbar there, under
+          the Dynamic Island: grounded to the top of the screen, never over the picture. Everywhere
+          else they sit in the control cluster (below). */}
+      {topKeys && ios && !landscape ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            pointerEvents: "auto",
+            position: "absolute",
+            right: 12,
+            top: topBase,
+          }}
+        >
+          {utilityKeys}
+        </div>
+      ) : null}
       <div
         aria-hidden={!shown || undefined}
         className="tv-chrome"
@@ -1085,7 +1752,7 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
           bottom: 0,
           display: "flex",
           flexDirection: pointer || landscape ? "row" : "column",
-          gap: pointer ? 48 : landscape ? 24 : 16,
+          gap: tv ? 28 : pointer ? 48 : landscape ? 24 : 16,
           left: 0,
           padding: edge,
           pointerEvents: shown ? "auto" : "none",
@@ -1093,22 +1760,93 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
           right: 0,
         }}
       >
-        {body}
-        {card ? null : pointer || landscape ? keys : <div style={{ alignSelf: "center" }}>{keys}</div>}
+        {bandLift > 0 ? (
+          <div style={{ display: "flex", flex: 1, marginBottom: bandLift, minWidth: 0 }}>{body}</div>
+        ) : (
+          body
+        )}
+        {/* Television, while flipping channels: the keys are no use, so the strip takes the row. */}
+        {card || (tv && surfing) ? null : pointer || landscape ? (
+          // The control cluster: everything you can press, in one place. The four utilities are a
+          // smaller row over the main keys, sharing their right edge. They used to sit alone in the
+          // picture's top corner, under the watermark, grounded to nothing (maintainer, 2026-11-09).
+          <div
+            style={{
+              alignItems: "flex-end",
+              display: "flex",
+              flexDirection: "column",
+              gap: pointer ? 12 : 8,
+              marginBottom: keysLift,
+            }}
+          >
+            {/* The cluster's menu: whatever a key here opens, over the keys, and the rest of the
+                chrome stays where it is. More holds what has no key of its own, and Picture is its
+                second page. On a television the amber ring is on a row of it. */}
+            {volumeBar ? <VolumeBar level={0.8} /> : null}
+            {menu ? (
+              <Menu back={menu === "picture"} title={menu === "more" ? undefined : TITLES[menu]}>
+                {menu === "more" ? (
+                  <MoreRows
+                    behind={scenario.mode !== "live"}
+                    density={density}
+                    focus={tv ? 0 : undefined}
+                    pip={!tv}
+                  />
+                ) : menu === "subtitles" ? (
+                  <SubtitlesBody density={density} focus={tv ? 1 : undefined} />
+                ) : menu === "audio" ? (
+                  <AudioBody density={density} focus={tv ? 0 : undefined} />
+                ) : (
+                  <PictureBody density={density} focus={tv ? 0 : undefined} />
+                )}
+              </Menu>
+            ) : null}
+            {utilities && !tv ? <div style={{ display: "flex", gap: 6 }}>{utilityKeys}</div> : null}
+            {keys}
+          </div>
+        ) : (
+          <div style={{ alignSelf: "center" }}>{keys}</div>
+        )}
       </div>
       {tuning ? <Tuning density={density} row={aim} /> : null}
-      {sheet ? (
-        <Sheet
-          density={density}
-          icon={sheet === "channels" ? "list" : "more"}
-          panelStyle={{ pointerEvents: "auto" }}
-          title={sheet === "channels" ? "Channels" : "More"}
+      {tuneKind && tuneKind !== "warm" ? (
+        <Tune
+          compact={!pointer || tv}
+          fanart={bare ? undefined : realChannel(tuneTo.number)?.fanartSrc}
+          freezeAt={tuneFreeze}
+          kind={tuneKind}
+          loop={loop}
+          // Where the band's top edge is, for the bars to land on.
+          lowerThird={bottomBase + (pointer ? 226 : landscape ? 150 : 236)}
+          name={tuneTo.name}
+          number={tuneTo.number}
+        />
+      ) : null}
+      {sheet && bottomSheet ? (
+        // An upright iPhone: from the bottom, as tall as what it holds, never over the toolbar.
+        <BottomSheet
+          maxHeight={PORTRAIT.height - (topBase + utilSize + 12)}
+          safeBottom={safe.bottom}
+          title={TITLES[sheet]}
         >
-          {sheet === "channels" ? (
-            <ChannelList density={density} tintFor={tintFor} />
-          ) : (
-            <MoreBody behind={scenario.mode !== "live"} density={density} plain />
-          )}
+          {sheetBody}
+        </BottomSheet>
+      ) : sheet ? (
+        <Sheet
+          closable={!tv}
+          density={density}
+          icon={sheet === "channels" ? "list" : sheet === "more" ? "more" : undefined}
+          // Variant J on an iPhone: the sheet keeps out of the Dynamic Island, the home indicator
+          // and, in landscape, the end of the screen it sits against.
+          panelStyle={{
+            paddingBottom: safe.bottom,
+            paddingRight: safe.side,
+            paddingTop: safe.top,
+            pointerEvents: "auto",
+          }}
+          title={TITLES[sheet]}
+        >
+          {sheetBody}
         </Sheet>
       ) : null}
     </div>
@@ -1116,7 +1854,9 @@ const TvInner = ({ device, scenario, tint, tintFor }: ChromeProps) => {
 };
 
 // Keyed by state, so switching states in the prototype starts that state's moment afresh.
-const TvChrome = (props: ChromeProps) => <TvInner key={props.scenario.state} {...props} />;
+// `refined` is variant J: G with the readout only on a channel change, a white progress line, a quiet
+// row of utility icons, key legends on hover, and the preview timeline opening from the progress line.
+const TvChrome = (props: TvProps) => <TvInner key={props.scenario.state} {...props} />;
 
 // Variant H (chrome-tune.tsx) builds on G's pieces and replaces only the tune and the remote.
 export { behindLabel, clock, guideOf, IdentCard, mono, ParentalBug, Slot, Strip, TvChrome };

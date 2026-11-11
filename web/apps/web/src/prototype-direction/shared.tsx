@@ -99,7 +99,10 @@ const frameClass = (device: string) =>
     ? "h-[844px] w-[390px] rounded-[36px] ring-8 ring-static-800"
     : device === "landscape"
       ? "h-[390px] w-[844px] rounded-[36px] ring-8 ring-static-800"
-      : "h-[900px] w-[1440px] ring-1 ring-static-800";
+      : device === "tv"
+        ? // A television: 960 × 540 layout units (what both TV apps lay out at), drawn at 1.5×.
+          "h-[540px] w-[960px] [zoom:1.5] ring-[10px] ring-static-800"
+        : "h-[900px] w-[1440px] ring-1 ring-static-800";
 
 const ProtoFrame = ({ device, children }: { device: string; children: ReactNode }) => (
   <div className="bg-static-950 flex min-h-dvh items-center justify-center p-12">

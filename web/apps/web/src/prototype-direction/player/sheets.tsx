@@ -1,7 +1,7 @@
 // PROTOTYPE — throwaway (Direction mocks, 2026-11-08)
 // The transient layer, flat: one right-hand sheet over a dimmed picture (solid raised surface, a
 // hairline on its left edge, no blur, no shadow), and the full-picture covers (error, off-air).
-import { Action, Icon, type IconName, icons, Text } from "@loomarr/design-system";
+import { Action, Icon, type IconName, icons, playerChrome, Text } from "@loomarr/design-system";
 import { ArrowLeftRight } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { type ChannelRow, channel, channels, formatTime, segments, WINDOW } from "./data";
@@ -11,6 +11,7 @@ import { Playbar } from "./playbar";
 const Sheet = ({
   children,
   className,
+  closable = true,
   density,
   dimClassName,
   icon,
@@ -18,6 +19,8 @@ const Sheet = ({
   title,
 }: {
   children: ReactNode;
+  /** A television has no close key on the sheet: the remote's Back closes it (variant J). */
+  closable?: boolean;
   /** Motion hooks for variants E and F; the earlier variants draw the sheet without them. */
   className?: string;
   density: Density;
@@ -69,7 +72,11 @@ const Sheet = ({
         <Text density={density} numberOfLines={1} textRole="cardMeta" tone="muted">
           {`CH ${channel.number} · ${channel.name}`}
         </Text>
-        <Tool density={density} icon="close" label={`Close ${title}`} />
+        {closable ? (
+          <Tool density={density} icon="close" label={`Close ${title}`} />
+        ) : (
+          <span style={{ height: density === "touch" ? 44 : 36 }} />
+        )}
       </div>
       <div style={{ flex: 1, overflow: "auto", padding: 16 }}>{children}</div>
     </div>
@@ -235,39 +242,61 @@ const SettingsBody = ({ density }: { density: Density }) => (
 const MoreBody = ({
   density,
   behind,
+  headColor,
+  only = false,
   plain = false,
+  rows,
+  schedule = true,
 }: {
+  /** Variant J: its own rows in place of the ones below (panels-j.tsx). */
+  rows?: ReactNode;
   behind: boolean;
   density: Density;
+  /** The schedule strip's playhead colour (variant J: white). */
+  headColor?: string;
+  /**
+   * Variant J: More holds only what is not already on screen. Last channel, Fullscreen and Leave
+   * have keys of their own there, so listing them again here is the same control twice.
+   */
+  only?: boolean;
   /** Sentence-case section labels (variants E and F). */
   plain?: boolean;
+  /** Variant J on desktop and television: the film strip is in the band, so not here as well. */
+  schedule?: boolean;
 }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-    <div>
-      <Text density={density} shout={!plain} strong={plain} textRole="cardMeta" tone="muted">
-        Schedule
-      </Text>
-      <div style={{ marginTop: 14 }}>
-        <Playbar
-          density="touch"
-          plain={plain}
-          playheadMs={behind ? WINDOW.nowMs - 134_000 : WINDOW.nowMs}
-          pointer={false}
-          segments={segments}
-        />
+    {schedule ? (
+      // J's rows carry their own side padding, so the strip is inset to line up with their words.
+      <div style={rows ? { padding: "0 12px" } : undefined}>
+        <Text density={density} shout={!plain} strong={plain} textRole="cardMeta" tone="muted">
+          Schedule
+        </Text>
+        <div style={{ marginTop: 14 }}>
+          <Playbar
+            density="touch"
+            headColor={headColor}
+            plain={plain}
+            playheadMs={behind ? WINDOW.nowMs - 134_000 : WINDOW.nowMs}
+            pointer={false}
+            segments={segments}
+          />
+        </div>
       </div>
-    </div>
-    <div>
+    ) : null}
+    {rows}
+    <div style={rows ? { display: "none" } : undefined}>
       {behind ? <Row density={density} glyph="startOver" label="Start over" detail="Opening Night" /> : null}
       {behind ? (
         <Row density={density} glyph="play" label="Go live" detail={formatTime(WINDOW.nowMs)} />
       ) : null}
-      <Row density={density} label="Last channel" detail="CH 3" swap />
+      {only ? null : <Row density={density} label="Last channel" detail="CH 3" swap />}
       <Row density={density} glyph="list" label="Channels" />
       <Row density={density} glyph="info" label="Info" />
       <Row density={density} glyph="settings" label="Sound and picture" />
-      {density === "pointer" ? <Row density={density} glyph="fullscreen" label="Fullscreen" /> : null}
-      <Row density={density} glyph="back" label="Leave Watch" />
+      {density === "pointer" && !only ? (
+        <Row density={density} glyph="fullscreen" label="Fullscreen" />
+      ) : null}
+      {only ? null : <Row density={density} glyph="back" label="Leave Watch" />}
     </div>
   </div>
 );
@@ -286,13 +315,30 @@ const copy = {
       "The picture stopped because this device lost touch with Loomarr. Check that the server is running and that you're on the same network, then try again.",
     title: "Loomarr's server isn't answering",
   },
+  // The real player's words, and all of them: it does not know why, so it does not guess.
+  "error-stopped": {
+    message: "",
+    title: "The stream stopped.",
+  },
   "off-air": {
     message: "This channel is paused, so there's nothing to watch.",
     title: `${channel.name} is off air`,
   },
 } as const;
 
-const Cover = ({ density, kind }: { density: Density; kind: keyof typeof copy }) => {
+const Cover = ({
+  density,
+  kind,
+  primary = "amber",
+}: {
+  density: Density;
+  kind: keyof typeof copy;
+  /**
+   * Variant J: Retry is white, like the player's play key. Inside the player amber is for the
+   * channel block and focus, so the app's amber primary does not come in with the cover.
+   */
+  primary?: "amber" | "white";
+}) => {
   const { message, title } = copy[kind];
   const off = kind === "off-air";
   return (
@@ -327,16 +373,35 @@ const Cover = ({ density, kind }: { density: Density; kind: keyof typeof copy })
       >
         {title}
       </Text>
-      <div style={{ maxWidth: 440 }}>
-        <Text density={density} textAlign="center" textRole="body" tone="secondary">
-          {message}
-        </Text>
-      </div>
+      {message ? (
+        <div style={{ maxWidth: 440 }}>
+          <Text density={density} textAlign="center" textRole="body" tone="secondary">
+            {message}
+          </Text>
+        </div>
+      ) : null}
       <Text density={density} textRole="cardMeta" tone="muted">
         {`CH ${channel.number} · ${channel.name}`}
       </Text>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        {off ? null : (
+        {off ? null : primary === "white" ? (
+          <button
+            className="pp-btn"
+            style={{
+              alignItems: "center",
+              background: playerChrome.disc,
+              borderRadius: 8,
+              color: playerChrome.discInk,
+              display: "inline-flex",
+              fontWeight: 600,
+              minHeight: density === "touch" ? 44 : 36,
+              padding: "0 16px",
+            }}
+            type="button"
+          >
+            Retry
+          </button>
+        ) : (
           <Action density={density} onPress={() => undefined}>
             Retry
           </Action>

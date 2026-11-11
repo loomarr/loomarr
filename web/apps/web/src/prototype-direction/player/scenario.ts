@@ -29,6 +29,16 @@ const STATES = [
   "subtitles",
   "audio",
   "details",
+  // J only: the rest of what the real player has. Picture quality (a page of the More menu), Info,
+  // the volume level, the muted first play, a typed number no channel has, a channel with nothing
+  // scheduled, and the stream stopping. The other variants draw the first six as "playing".
+  "picture",
+  "info",
+  "volume",
+  "unmute",
+  "no-channel",
+  "no-schedule",
+  "error-stopped",
 ] as const;
 type PlayerState = (typeof STATES)[number];
 
@@ -41,9 +51,13 @@ const VARIANTS = [
   { key: "F", name: "Glass" },
   { key: "G", name: "Loomarr TV" },
   { key: "H", name: "Loomarr TV · signature tune" },
+  { key: "I", name: "Loomarr TV · preview timeline" },
+  { key: "J", name: "Loomarr TV · G refined" },
 ] as const;
 
-const DEVICES = ["desktop", "portrait", "landscape"] as const;
+// "tv" is the ten-foot layout the Apple TV and Android TV (Shield) apps share: both lay out at 960
+// wide, so the frame is 960 × 540 drawn at 1.5×. Variant J draws it; the others treat it as desktop.
+const DEVICES = ["desktop", "portrait", "landscape", "tv"] as const;
 type PlayerDevice = (typeof DEVICES)[number];
 
 const lagLabel = (ms: number) => {
@@ -56,7 +70,15 @@ const lagLabel = (ms: number) => {
 interface Scenario {
   /** The break airing at the playhead, with the spot on air. */
   breakSpot?: string;
-  cover?: "error-not-started" | "error-server" | "off-air";
+  cover?: "error-not-started" | "error-server" | "error-stopped" | "off-air";
+  /** Variant J: what else is open, beyond H's three panels. */
+  extra?: "info" | "picture" | "volume";
+  /** Variant J: a number was typed that no channel has. */
+  missed?: boolean;
+  /** Variant J: the channel has nothing scheduled, so the band has only its name. */
+  noSchedule?: boolean;
+  /** Variant J: the first play of a session starts muted; the pill that undoes it is up. */
+  unmute?: boolean;
   ident: boolean;
   inBreak: boolean;
   lagMs: number;
@@ -168,8 +190,19 @@ const scenarioFor = (state: PlayerState): Omit<Scenario, "state"> => {
       return { ...base, sheet: "channels" };
     case "more":
       return { ...base, sheet: "more" };
+    case "picture":
+    case "info":
+    case "volume":
+      return { ...base, extra: state };
+    case "unmute":
+      return { ...base, unmute: true, visible: false };
+    case "no-channel":
+      return { ...base, missed: true, visible: false };
+    case "no-schedule":
+      return { ...base, noSchedule: true };
     case "error-server":
     case "error-not-started":
+    case "error-stopped":
     case "off-air":
       return { ...base, cover: state, visible: false };
     default:
