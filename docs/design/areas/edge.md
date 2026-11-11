@@ -6,7 +6,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (93), filler (56), library (32), channels (23), proposals (19), media (18), playout (14), people (13)
+**Imports from other areas:** any, by design — platform (93), filler (56), library (32), channels (22), proposals (19), media (18), playout (14), people (13)
 
 ## Packages
 
@@ -24,7 +24,7 @@ One area of the [package map](../package-map.md#start-here).
   Plumbing every API area shares and none owns: RFC 7807 problem constructors and the transformer that stamps them with the request id, the request-id and security-header middleware, the caller's role and the authorizer seam, the route-role marker every registration carries, the raw-operation helpers, the wire-JSON never-null format and the docs page.
 - **`api/images`** · 2 importers · → `api/httpcore`, `media/images`
   Serves the image service's HTTP surface (§22): a rendition's bytes, an image's record and uploads.
-- **`api/library`** · 3 importers · → `api/httpcore`, `channels/schedule`, `library/provision`, `library/scan`, `platform/settings`, `platform/store`, `platform/store/channelstore`, `platform/store/librarystore`
+- **`api/library`** · 3 importers · → `api/httpcore`, `library/provision`, `library/scan`, `platform/settings`, `platform/store`, `platform/store/channelstore`, `platform/store/librarystore`
   Serves the household's media library: its scan roots and scanner status, the items, the titles that need a look and the fixes for them, the *arr webhooks, the household's collections and ready-made sets, and the media server's collections and TMDB movie collections.
 - **`api/ops`** · 2 importers · → `api/httpcore`, `api/library`, `api/system`, `library/provision`, `platform/buildinfo`, `platform/diagnostics`, `platform/events`, `platform/metrics`, `platform/store`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/identitystore`, `playout`, `proposals/quality`
   Serves the operator and household status surfaces: liveness, readiness, Prometheus and the API reference; the server-sent event stream; diagnostics, startup reports and client crash reports; the live playout sessions and the activity and services panels; and the discovery feedback and quality ledgers.

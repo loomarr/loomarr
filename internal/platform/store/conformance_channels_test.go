@@ -33,7 +33,9 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 		{Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	ch.Desired = []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
+		// No library item: a planned item is a foreign key, and most callers keep no library. The
+		// library references test saves slots that name items.
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", Title: "A", DurationMs: 3600000},
 		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	// A non-empty policy exercises the policy_json round-trip: an audience ceiling,

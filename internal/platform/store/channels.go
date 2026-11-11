@@ -26,6 +26,10 @@ var ErrChannelConflict = channelstore.ErrChannelConflict
 // channelstore.ErrChannelStale, the same value under a second name.
 var ErrChannelStale = channelstore.ErrChannelStale
 
+// ErrUnknownLibraryReference reports that a channel names a library item or collection the library
+// has no row for. It is channelstore.ErrUnknownLibraryReference under a second name.
+var ErrUnknownLibraryReference = channelstore.ErrUnknownLibraryReference
+
 // channelCluster names the embedded channel store; see identityCluster for why an alias.
 type channelCluster = channelstore.Store
 

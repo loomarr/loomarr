@@ -33,6 +33,11 @@ var ErrChannelConflict = errors.New("store: channel conflict")
 // either reapply their domain merge or surface a conflict to the operator.
 var ErrChannelStale = errors.New("store: stale channel revision")
 
+// ErrUnknownLibraryReference reports that a channel names a library item or collection the
+// library has no row for (#2793): a planned slot's item, or a collection its scope or a rule
+// names. The write has rolled back.
+var ErrUnknownLibraryReference = errors.New("store: channel names a library item or collection that does not exist")
+
 // Invalidations builds the commit-ordered Postgres wake-ups a channel write and delete publish
 // (the store's durable invalidation payloads). A nil Invalidations, which is every SQLite store,
 // publishes nothing.
@@ -321,7 +326,7 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 		if err != nil {
 			return Channel{}, fmt.Errorf("insert channel %s: %w", ch.ID, err)
 		}
-		return ch, s.writeLineup(ctx, exec, ch.ID, ch.Lineup)
+		return ch, s.writeContents(ctx, exec, ch)
 	}
 	if ch.Revision < 0 {
 		return Channel{}, fmt.Errorf("save channel %s: revision must not be negative", ch.ID)
@@ -350,7 +355,112 @@ func (s *Store) saveChannel(ctx context.Context, exec DB, ch Channel) (Channel, 
 	if err != nil {
 		return Channel{}, fmt.Errorf("save channel %s: %w", ch.ID, err)
 	}
-	return ch, s.writeLineup(ctx, exec, ch.ID, ch.Lineup)
+	return ch, s.writeContents(ctx, exec, ch)
+}
+
+// writeContents writes the rows a channel row carries: its lineup, and the library items and
+// collections its JSON names (writeReferences).
+func (s *Store) writeContents(ctx context.Context, exec DB, ch Channel) error {
+	if err := s.writeLineup(ctx, exec, ch.ID, ch.Lineup); err != nil {
+		return err
+	}
+	return s.writeReferences(ctx, exec, ch)
+}
+
+// writeReferences replaces the rows naming the library items a channel plans to air
+// (channel_planned_items, from its desired slots) and the collections its scope and rules name
+// (channel_scope_collections), so the foreign keys hold them and no reader decodes channels to find
+// them (#2793). An id the library has no row for is ErrUnknownLibraryReference, not a key
+// violation, which SaveChannel would report as a uniqueness race.
+func (s *Store) writeReferences(ctx context.Context, exec DB, ch Channel) error {
+	for _, table := range []string{"channel_planned_items", "channel_scope_collections"} {
+		if _, err := exec.ExecContext(ctx, s.h.Rebind(`DELETE FROM `+table+` WHERE channel_id = ?`), ch.ID); err != nil {
+			return fmt.Errorf("clear %s of %s: %w", table, ch.ID, err)
+		}
+	}
+	insert := func(what, query, id string) error {
+		res, err := exec.ExecContext(ctx, s.h.Rebind(query), ch.ID, id)
+		if err != nil {
+			return fmt.Errorf("write %s %s of %s: %w", what, id, ch.ID, err)
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return fmt.Errorf("write %s %s of %s: %w", what, id, ch.ID, err)
+		} else if n == 0 {
+			return fmt.Errorf("%w: %s %s of channel %s", ErrUnknownLibraryReference, what, id, ch.ID)
+		}
+		return nil
+	}
+	for _, id := range plannedItems(ch) {
+		if err := insert("planned item", `INSERT INTO channel_planned_items (channel_id, library_item_id)
+			SELECT ?, id FROM library_items WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	for _, id := range scopeCollections(ch.Policy) {
+		if err := insert("scope collection", `INSERT INTO channel_scope_collections (channel_id, collection_id)
+			SELECT ?, id FROM library_collections WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ChannelsNamingCollections maps each collection a channel's scope or rules name to those channels'
+// ids, in id order.
+func (s *Store) ChannelsNamingCollections(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.h.QueryContext(ctx, `SELECT collection_id, channel_id FROM channel_scope_collections
+		ORDER BY collection_id, channel_id`)
+	if err != nil {
+		return nil, fmt.Errorf("channels naming collections: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string][]string{}
+	for rows.Next() {
+		var collection, channel string
+		if err := rows.Scan(&collection, &channel); err != nil {
+			return nil, fmt.Errorf("channels naming collections: %w", err)
+		}
+		out[collection] = append(out[collection], channel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("channels naming collections: %w", err)
+	}
+	return out, nil
+}
+
+// plannedItems is every distinct library item the channel's desired slots name, in slot order.
+func plannedItems(ch Channel) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, slot := range ch.Desired {
+		if id := slot.LibraryItemID; id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// scopeCollections is every distinct collection a policy's scope and its rules name, scope first.
+func scopeCollections(p schedule.ChannelPolicy) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(scope *schedule.ScopePolicy) {
+		if scope == nil {
+			return
+		}
+		for _, id := range scope.Collections {
+			if id != "" && !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	add(&p.Scope)
+	for _, r := range p.Rules {
+		add(r.What)
+	}
+	return out
 }
 
 func channelRevisionMiss(ctx context.Context, q DB, ph storedb.Placeholder, id string, expected int64) error {

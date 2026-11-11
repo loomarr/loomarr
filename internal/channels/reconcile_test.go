@@ -30,7 +30,7 @@ import (
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	return testkit.MigratedSQLiteStore(t)
+	return testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 }
 
 // mapAvail is a mutable Availability tests drive to simulate content landing.

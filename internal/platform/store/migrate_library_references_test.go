@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -36,7 +38,10 @@ func testLibraryReferencesMigration(t *testing.T, db *sql.DB, dialect Dialect, d
 	}
 	for _, stmt := range []string{
 		`INSERT INTO library_items (id, kind, name, sort_name, updated_at_ms) VALUES ('lib-film', 'movie', 'Film', 'film', 1)`,
-		`INSERT INTO channels (id, name, number, strategy, status) VALUES ('ch1', 'Cartoons', 3, 'shuffle', 'live')`,
+		`INSERT INTO library_collections (id, name, created_at_ms, updated_at_ms) VALUES ('col-kept', 'Kept', 1, 1)`,
+		`INSERT INTO channels (id, name, number, strategy, status, desired_json, policy_json) VALUES ('ch1', 'Cartoons', 3, 'shuffle', 'live',
+			'[{"Kind":"program","LibraryItemID":"lib-film"},{"Kind":"program","LibraryItemID":"lib-film"},{"Kind":"program","LibraryItemID":"90000927"},{"Kind":"filler"}]',
+			'{"scope":{"collections":["col-kept","90000928"],"genres":{"include":["Comedy"]}},"rules":[{"what":{"collections":["90000929","col-kept"]}},{"name":"no scope"}]}')`,
 		`INSERT INTO titles (key, title_json, state, library_id) VALUES
 			('movie:1', '{}', 'available', 'lib-film'),
 			('movie:2', '{}', 'wanted', ''),
@@ -92,8 +97,50 @@ func testLibraryReferencesMigration(t *testing.T, db *sql.DB, dialect Dialect, d
 		}
 	}
 
+	// A channel's planned items and named collections are rows; a name with no row left the policy.
+	var planned, named string
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) || ':' || MIN(library_item_id) FROM channel_planned_items`).Scan(&planned); err != nil {
+		t.Fatal(err)
+	}
+	if planned != "1:lib-film" {
+		t.Errorf("planned items = %s, want 1:lib-film", planned)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) || ':' || MIN(collection_id) FROM channel_scope_collections`).Scan(&named); err != nil {
+		t.Fatal(err)
+	}
+	if named != "1:col-kept" {
+		t.Errorf("scope collections = %s, want 1:col-kept", named)
+	}
+	var policy string
+	if err := db.QueryRowContext(ctx, `SELECT policy_json FROM channels WHERE id = 'ch1'`).Scan(&policy); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Scope struct {
+			Collections []string            `json:"collections"`
+			Genres      map[string][]string `json:"genres"`
+		} `json:"scope"`
+		Rules []struct {
+			Name string `json:"name"`
+			What *struct {
+				Collections []string `json:"collections"`
+			} `json:"what"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(policy), &got); err != nil {
+		t.Fatalf("policy after the migration %s: %v", policy, err)
+	}
+	if !slices.Equal(got.Scope.Collections, []string{"col-kept"}) || !slices.Equal(got.Scope.Genres["include"], []string{"Comedy"}) ||
+		len(got.Rules) != 2 || got.Rules[0].What == nil || !slices.Equal(got.Rules[0].What.Collections, []string{"col-kept"}) ||
+		got.Rules[1].Name != "no scope" || got.Rules[1].What != nil {
+		t.Errorf("policy after the migration = %s; want the unknown collections taken out and the rest kept", policy)
+	}
+
 	// Enforced from now on.
 	for _, stmt := range []string{
+		`INSERT INTO channel_planned_items (channel_id, library_item_id) VALUES ('ch1', '90000930')`,
+		`INSERT INTO channel_scope_collections (channel_id, collection_id) VALUES ('ch1', '90000931')`,
+		`DELETE FROM library_collections WHERE id = 'col-kept'`,
 		`INSERT INTO titles (key, title_json, state, library_id) VALUES ('movie:4', '{}', 'available', '90000924')`,
 		`INSERT INTO airings (channel_id, library_item_id, aired_at, recorded_at) VALUES ('ch1', '90000925', 30, 30)`,
 		`INSERT INTO scheduled_airings (channel_id, library_item_id, aired_at, recorded_at) VALUES ('ch1', '90000926', 30, 30)`,

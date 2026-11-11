@@ -79,7 +79,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`channel_planned_items`](#channel_planned_items), [`channel_scope_collections`](#channel_scope_collections), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
@@ -342,6 +342,28 @@ A channel's approved lineup, one row per title in order: what should play on it.
 | `position` | Where the title sits in the lineup, from 0. | `INTEGER` · key |
 | `title_key` | The title (a titles key, such as `movie:tmdb:603`). A title added by hand that nothing has asked for yet has a pending titles row. | `TEXT` · → `titles.key` |
 | `entry` | The rest of the entry: its display name, known runtime, any season range or episode selection, the rating, genres and year the channel rules filter on, and its media-server box sets. | `TEXT` |
+
+### channel_planned_items
+
+The library items a channel's current schedule (channels.desired_json) plans to air, one row per item, so the library keeps them and nothing reads the schedule to find them.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `library_item_id` | A library item one of its programme slots plays (library_items.id). The item can't be deleted while a channel plans to air it. | `TEXT` · key · → `library_items.id` |
+
+### channel_scope_collections
+
+The collections a channel's rules name (channels.policy_json): its scope's and each scheduling rule's. One row per collection, so the library knows which channels use one.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `collection_id` | A collection its scope or a rule limits it to (library_collections.id). The collection can't be deleted while a channel names it; take it off the channel first. | `TEXT` · key · → `library_collections.id` |
 
 ### airings
 

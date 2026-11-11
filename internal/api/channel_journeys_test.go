@@ -65,7 +65,7 @@ func TestReferenceChannelJourneys(t *testing.T) {
 func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore.Channel, []schedule.Slot, channelsapi.ChannelDTO) {
 	t.Helper()
 	ctx := context.Background()
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	log := testkit.Logger()
 	b := approval.New(st, nil, nil, log)
 	srv := httptest.NewServer(api.Router(log, api.Options{
@@ -141,7 +141,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			now := channeljourney.Clock()
-			st := testkit.MigratedSQLiteStore(t)
+			st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 			log := testkit.Logger()
 			b := approval.New(st, nil, nil, log)
 			srv := httptest.NewServer(api.Router(log, api.Options{
