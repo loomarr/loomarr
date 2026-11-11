@@ -16,8 +16,8 @@ type TvWatchingRemoteIntent =
 /**
  * Where Watching is, for the remote (frontend-design §9.5, §9.7): the bare picture; the controls up
  * (Left and Right move focus along the strip and keys); Info, the on-air card pinned open (the same,
- * and Menu closes it); or the More menu open (every arrow moves focus through its rows, and Menu
- * closes it).
+ * and Menu closes it); or a menu open, Audio or More (every arrow moves focus through its rows, and
+ * Menu closes it).
  */
 type TvWatchingFocus = "controls" | "info" | "menu" | "picture";
 

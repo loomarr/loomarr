@@ -16,7 +16,12 @@ import {
   usePairingBreadcrumbs,
   useShellCrashReporting,
 } from "@loomarr/native-app";
-import { createLastChannelStore, retryPairedClient, usePairedClient } from "@loomarr/paired-client";
+import {
+  createLastChannelStore,
+  retryPairedClient,
+  useChannelAudio,
+  usePairedClient,
+} from "@loomarr/paired-client";
 import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
 import {
   clientBackDestination,
@@ -109,6 +114,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const lastKeyAtMs = useRef<number | undefined>(undefined);
   const {
     catalogState,
+    channelAudio,
     controller,
     guide,
     guideSnapshot,
@@ -140,7 +146,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const [autoTuneMs, changeAutoTune] = useTvAutoTune(autoTuneSetting);
-  // Watching's open layer (§9.5): the More menu, or Info. It goes when the controls do, and when
+  // Watching's open layer (§9.5): the Audio or More menu, or Info. It goes when the controls do, and when
   // Watching does; the remote reads it, and Menu or Back closes it.
   const [layer, setLayer] = useState<WatchingLayer | undefined>(undefined);
   const layerOpen = layer !== undefined && active === "watching" && controls.visible;
@@ -165,13 +171,15 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     if (handled) controls.showForActivity();
     runTvRemoteIntent(intent, controller, setActive, () => setLayer(undefined));
   });
+  // Audio and More are menus: the arrows stay in them rather than tuning, and Menu closes them.
   const remoteFocus = !controls.visible
     ? "picture"
     : layerOpen
-      ? layer === "more"
-        ? "menu"
-        : "info"
+      ? layer === "info"
+        ? "info"
+        : "menu"
       : "controls";
+  const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, layerOpen && layer === "audio");
   useTVEventHandler(({ eventKeyAction, eventType }) =>
     remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching", remoteFocus),
   );
@@ -207,6 +215,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
       active={active}
       watching={
         <WatchingSurface
+          audioOptions={audioOptions}
           chrome={chrome}
           chromeVisible={active === "watching"}
           controlsActivityKey={controls.activityKey}

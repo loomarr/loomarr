@@ -167,6 +167,41 @@ describe("WatchingSurface", () => {
     expect(onSeek).toHaveBeenCalledWith(0);
   });
 
+  // Audio (§9.5): a television's own key, opening the channel's language read-only in the cluster.
+  it("opens Audio from its key, lists the channel's language, and closes from the same key", () => {
+    const onLayer = vi.fn();
+    const { host, render } = mount(() => surface({ onLayer }));
+    act(() => button(host, "Audio")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith("audio");
+    render(() =>
+      surface({
+        audioOptions: [
+          { label: "Auto (default)", selected: false, value: "auto" },
+          { label: "English", selected: true, value: "eng" },
+        ],
+        layer: "audio",
+        onLayer,
+      }),
+    );
+    const menu = '[role="dialog"][aria-label="Audio"]';
+    expect(host.querySelector(menu)?.textContent).toContain("English");
+    expect(host.querySelector(menu)?.textContent).toContain("An admin sets it on the channel’s page.");
+    // Read-only: nothing in it to press, and no channel-change sound (the web player's own).
+    const pressable = ["button", "radio", "switch"].map((role) => `${menu} [role="${role}"]`).join(", ");
+    expect(host.querySelector(pressable)).toBeNull();
+    expect(host.querySelector(`${menu} [aria-current="true"]`)?.textContent).toBe("English");
+    act(() => button(host, "Audio")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("keeps the controls up while Audio is open", () => {
+    vi.useFakeTimers();
+    const dismiss = vi.fn();
+    mount(() => surface({ layer: "audio", onDismissControls: dismiss }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
   it("keeps the controls up while More waits for a choice", () => {
     vi.useFakeTimers();
     const dismiss = vi.fn();

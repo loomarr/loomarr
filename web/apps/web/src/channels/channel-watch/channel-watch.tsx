@@ -1,6 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { audioChoices } from "@loomarr/core/channel-audio";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
 import type { PlayerFailureCause } from "@loomarr/player";
@@ -23,7 +24,6 @@ import {
 } from "@loomarr/ui";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AUTO_SENTINEL, audioOptions, withSaved } from "@/channels/channel-default-audio";
 import { ChannelDrawer } from "@/channels/channel-drawer";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player/video-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
@@ -261,17 +261,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     viewerTimeMs,
     serverNowMs,
   });
-  const audioValue = channel.policy?.playout?.audioLanguage ?? "";
-
   // The channel may be set to a track the CURRENTLY-airing programme doesn't carry (set to French,
-  // but this film is English-only). Keep that selection VISIBLE in Settings rather than dropping it:
-  // the preference still applies when a programme with that track airs (withSaved).
-  const selectedAudio = audioValue || AUTO_SENTINEL;
-  const audio = withSaved(audioOptions(tracksBody?.audio ?? []), selectedAudio).map((option) => ({
-    label: option.label,
-    selected: option.value === selectedAudio,
-    value: option.value,
-  }));
+  // but this film is English-only). The selection stays VISIBLE rather than dropped: the preference
+  // still applies when a programme with that track airs (audioChoices keeps it).
+  const audio = audioChoices(tracksBody?.audio ?? [], channel.policy?.playout?.audioLanguage);
 
   // Quality (#2088 decision 7): Auto, naming the rung on air, then the channel's rungs. A remembered
   // rung this channel doesn't offer shows Auto chosen, because Auto is what plays.
@@ -440,9 +433,8 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         "Audio",
         <PlayerAudio
           density={density}
-          onSwitchSound={setSwitchSoundOn}
           options={audio}
-          switchSound={switchSoundOn}
+          switchSound={{ on: switchSoundOn, onChange: setSwitchSoundOn }}
         />,
       )
     ) : sheet === "picture" ? (

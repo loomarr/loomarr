@@ -18,7 +18,7 @@ const runTvRemoteIntent = (
   intent: TvWatchingRemoteIntent | undefined,
   controller: TvRemoteController,
   open: (destination: ClientDestination) => void,
-  /** Close Watching's open layer (the More menu, or Info). */
+  /** Close Watching's open layer (the Audio or More menu, or Info). */
   closeLayer: () => void,
 ) => {
   switch (intent?.kind) {

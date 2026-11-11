@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { ChannelSwitchOverlay } from "../channel-switch-overlay";
-import { PlayerChrome, PlayerCover, type PlayerLiveState, PlayerMenu, PlayerMore } from "./player-chrome";
+import {
+  PlayerAudio,
+  PlayerChrome,
+  PlayerCover,
+  type PlayerLiveState,
+  PlayerMenu,
+  PlayerMore,
+} from "./player-chrome";
 import { PlayerReadout } from "./player-chrome/player-readout";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
 
@@ -80,6 +87,7 @@ const coverOf = (snapshot: PlayerSnapshot, loadError: string | undefined) => {
 };
 
 const WatchingSurface = ({
+  audioOptions,
   chrome,
   chromeVisible = true,
   controlsActivityKey = 0,
@@ -131,8 +139,8 @@ const WatchingSurface = ({
     dismissControlsRef.current();
   }, [controlsActivityKey]);
   // The controls clear five seconds after the last handled key (playback-clients), not on a tune, and
-  // not while the More menu is open: it waits for a choice, or for Menu or Back.
-  const menuOpen = layer === "more";
+  // not while a menu (Audio or More) is open: it waits for a choice, or for Menu or Back.
+  const menuOpen = layer === "audio" || layer === "more";
   useEffect(() => {
     if (!shown || tuning || menuOpen) return undefined;
     const timeout = setTimeout(dismissControlsForActivity, 5_000);
@@ -203,7 +211,13 @@ const WatchingSurface = ({
               layout="tv"
               live={live}
               menu={
-                layer === "more" ? (
+                layer === "audio" ? (
+                  // Audio on a television (§9.5): the channel's language, read-only, so its rows take no
+                  // focus; it stays on the Audio key, whose OK closes the menu as Menu or Back does.
+                  <PlayerMenu density="tv" title="Audio">
+                    <PlayerAudio density="tv" options={audioOptions ?? []} />
+                  </PlayerMenu>
+                ) : layer === "more" ? (
                   // More on a television (§9.5): Channels (Surf), Info, and Start over and Go live while
                   // they apply. Focus starts on its first row; Menu or Back closes it.
                   <PlayerMenu density="tv" heading={false} title="More">
@@ -255,7 +269,12 @@ const WatchingSurface = ({
                     }
                   : undefined
               }
-              utilities={{ density: "tv", pointer: false }}
+              utilities={{
+                audioOpen: layer === "audio",
+                density: "tv",
+                onAudio: () => onLayer(layer === "audio" ? undefined : "audio"),
+                pointer: false,
+              }}
               visible
             />
           ) : null}
