@@ -39,8 +39,6 @@ type namingRow struct {
 var namingToday = map[string]string{
 	"A7 Movies/[TrackerNet] Ferrow Lane (2019).mkv":                   "movie TrackerNet Ferrow Lane 2019",
 	"A12 Movies/Marrow Point (1920x1080).mkv":                         "movie Marrow Point 1920x1080 -",
-	"A14 Movies/Tinder.Hollow.2012.1080p.BluRay-WRDS/a8f3c91e0b.mkv":  "movie a8f3c91e0b -",
-	"C4 Movies/Ashgrove (2015)/Ashgrove.mkv":                          "movie Ashgrove -",
 	"C9 Movies/(2015) Ashgrove.mkv":                                   "movie 2015 Ashgrove -",
 	"E6 TV/Kettle Bay/Kettle.Bay.102.mkv":                             "movie Kettle Bay 102 -",
 	"E8 TV/Kettle Bay/Kettle Bay Season 1 Episode 2.mkv":              "movie Kettle Bay Season 1 Episode 2 -",
@@ -52,8 +50,6 @@ var namingToday = map[string]string{
 	"I2 TV/Evening Ledger/Evening Ledger 20240314.mkv":                "movie Evening Ledger 20240314 -",
 	"I4 TV/Evening Ledger/Evening Ledger 14.03.2024.mkv":              "movie Evening Ledger 14.03.2024 -",
 	"K3 TV/Kettle Bay/1/Kettle Bay S01E01.mkv":                        "episode 1 S1E1",
-	"L3 Movies/Ashgrove (2015)/asg-1080p.mkv":                         "movie asg-1080p -",
-	"O10 Movies/Ashgrove (2015)/trailerthings.mkv":                    "movie trailerthings -",
 	"P3 Movies/Ashgrove.2015-GRP/grp-asg.mkv":                         "movie grp-asg -",
 	"P9 Downloads/Complete/Kettle.Bay.S01E02.mkv":                     "episode Complete S1E2",
 	"P9 Downloads/Incomplete/Kettle.Bay.S01E03.mkv":                   "episode Incomplete S1E3",
