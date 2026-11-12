@@ -24,6 +24,15 @@ const ENTRIES: SettingEntry[] = [
     value: "",
     set: false,
   }),
+  setting({
+    // A second field in the block; the key is a stand-in, the label is what the operator sees.
+    key: SettingKey.TunarrTranscodeConfigID,
+    label: "TMDB region",
+    group: "connections.tmdb",
+    kind: "string",
+    value: "",
+    set: false,
+  }),
 ];
 
 const renderStep = () => {
@@ -39,6 +48,64 @@ const renderStep = () => {
 };
 
 describe("ChecklistStep", () => {
+  it("saves only the edited keys in one PATCH", async () => {
+    const sent: unknown[] = [];
+    server.use(
+      getSettingsPatchMockHandler(async ({ request }) => {
+        sent.push(await request.json());
+        return { results: [{ key: SettingKey.TMDBAPIKey, status: "saved" }] };
+      }),
+    );
+    renderStep();
+
+    await userEvent.type(await screen.findByLabelText("TMDB key"), "good-key");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(sent).toEqual([{ edits: { [SettingKey.TMDBAPIKey]: "good-key" } }]));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("drops the keys the server saved and keeps the ones it refused", async () => {
+    server.use(
+      getSettingsPatchMockHandler({
+        results: [
+          { key: SettingKey.TMDBAPIKey, status: "saved" },
+          { key: SettingKey.TunarrTranscodeConfigID, status: "invalid", problem: "Not a region." },
+        ],
+      }),
+    );
+    renderStep();
+
+    await userEvent.type(await screen.findByLabelText("TMDB key"), "good-key");
+    await userEvent.type(screen.getByLabelText("TMDB region"), "zz");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Not a region.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("TMDB key")).toHaveValue(""));
+    expect(screen.getByLabelText("TMDB region")).toHaveValue("zz");
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("discards the staged edits without sending anything", async () => {
+    let patches = 0;
+    server.use(
+      getSettingsPatchMockHandler(() => {
+        patches += 1;
+        return { results: [] };
+      }),
+    );
+    renderStep();
+
+    await userEvent.type(await screen.findByLabelText("TMDB key"), "typo");
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+
+    expect(screen.getByLabelText("TMDB key")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+    expect(patches).toBe(0);
+  });
+
   it("keeps a value the server rejected in the form, and does not test the old settings", async () => {
     let tests = 0;
     server.use(
