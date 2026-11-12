@@ -794,7 +794,7 @@ var extraKinds = [][]string{
 func extraKindAt(words []string) int {
 	bare := make([]string, len(words))
 	for i, w := range words {
-		bare[i] = strings.TrimRight(w, "0123456789")
+		bare[i] = strings.NewReplacer("'", "", "’", "").Replace(strings.TrimRight(w, "0123456789"))
 	}
 	for i := range bare {
 		for _, kind := range extraKinds {
@@ -816,10 +816,11 @@ var episodeExtra = regexp.MustCompile(`(?i)-(?:trailer|featurette|behindthescene
 // number ("S01E02-short") is Jellyfin's.
 var titleWordExtra = regexp.MustCompile(`(?i)[a-z]-(?:short|scene)$`)
 
-// extraWords are a name's lower-cased words, split at its separators and brackets.
+// extraWords are a name's lower-cased words, split at its separators and brackets; an apostrophe
+// stays in its word ("barney's"), as the title it is matched against keeps it.
 func extraWords(name string) []string {
 	return strings.FieldsFunc(strings.ToLower(stem(name)), func(r rune) bool {
-		return unicode.IsSpace(r) || strings.ContainsRune("._-()[]{}#,'’", r)
+		return unicode.IsSpace(r) || strings.ContainsRune("._-()[]{}#,", r)
 	})
 }
 

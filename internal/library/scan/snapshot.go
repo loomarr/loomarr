@@ -145,7 +145,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    own with none beside it; specials loose beside a show's season folders and episodes numbered
 //	    alone in a show's folder are its; "Complete Series" folders, "第1期", "시즌 1" and "Series 7
 //	    Club" are read as they mean; ".45 …" and "@Home …" are titles, not hidden folders.
-const writeVersion = 42
+//	43: an extra of a title with an apostrophe in its name ("…'s … (2010)-trailer") is one.
+const writeVersion = 43
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

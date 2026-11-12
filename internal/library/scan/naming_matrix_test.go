@@ -519,6 +519,12 @@ var namingMatrix = []namingRow{
 		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Music Video.mkv":     "skip",
 		"Movies/Copper Hollow (2018)/Bonus/Making Of Part 1.mkv":                 "skip",
 	}},
+	// A title's apostrophe is in its extra's name too; Kodi's trailer carries the release's notes.
+	{id: "W51b", files: map[string]string{
+		"Movies/Barley's Ferry (2010)/Barley's Ferry (2010) 1080p DTS 6ch.mkv":              "movie Barley's Ferry 2010",
+		"Movies/Barley's Ferry (2010)/Barley's Ferry (2010) 1080p DTSHD-MA 6ch-trailer.flv": "skip",
+		"Movies/Barley's Ferry (2010)/Barley's Ferry (2010) - Director's Commentary.mkv":    "skip",
+	}},
 	{id: "W52", files: map[string]string{
 		"Movies/Night.Trailer.mkv":                         "movie Night Trailer -",
 		"Movies/The.Last.Sample.mkv":                       "skip",
