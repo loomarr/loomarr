@@ -266,6 +266,36 @@ describe("the committed draft", () => {
     assert.equal(isHandRolledForm(pair.replace(/setName/g, "setQuery")), false);
   });
 
+  it("is one input's draft: two in one component are a form kept in renamed state", () => {
+    const twoDrafts = `
+      import { useCommittedDraft } from "@loomarr/ui";
+      export const Contact = ({ person }) => {
+        const { draft: name, editDraft: setName } = useCommittedDraft(person.name);
+        const { draft: email, editDraft: setEmail } = useCommittedDraft(person.email);
+        return (
+          <>
+            <Field onChangeText={setName} value={name} />
+            <Field onChangeText={setEmail} value={email} />
+          </>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(twoDrafts), true);
+    // One draft each in two components of the same file is two single inputs.
+    const twoBoxes = `
+      import { useCommittedDraft } from "@loomarr/ui";
+      const NameBox = ({ person }) => {
+        const { draft, editDraft } = useCommittedDraft(person.name);
+        return <Field onChangeText={editDraft} value={draft} />;
+      };
+      export const EmailBox = ({ person }) => {
+        const { draft, editDraft } = useCommittedDraft(person.email);
+        return <Field onChangeText={editDraft} value={draft} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(twoBoxes), false);
+  });
+
   it("does not excuse a hand-rolled input in a file that also uses the hook", () => {
     const mixed = `${sanctioned.replace("export const Box", "const Box")}
       export const Name = () => {

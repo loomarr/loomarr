@@ -13,7 +13,8 @@
 // (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, and neither is a flag a
 // handler raises (`setOpen(true)`). Tests and stories are not production code and are not counted.
 // Two buffers are sanctioned that are not a TanStack form: a settings draft (`useSettingsDraft`) and
-// a single input's draft-until-commit (`useCommittedDraft`); see SANCTIONED_DRAFT_HOOKS below.
+// a single input's draft-until-commit (`useCommittedDraft`, once per component: a second in the same
+// component makes it a form); see SANCTIONED_DRAFT_HOOKS below.
 //
 // The committed ledger (hand-rolled-forms.json) is a ratchet:
 //   - the check fails when a file not in the ledger is a hand-rolled form;
@@ -207,6 +208,40 @@ const usesSettingsDraft = (source) => usesDraftHook(source, "settings");
 // usesCommittedDraft: the file keeps a single input's draft through the sanctioned hook.
 const usesCommittedDraft = (source) => usesDraftHook(source, "committed");
 
+// FUNCTION_NODES are the nodes that own the hooks called directly in their body.
+const FUNCTION_NODES = new Set(["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration"]);
+
+// doubledCommittedDraft: one function calls the committed-draft hook twice or more. That hook is
+// one input's draft, so two in one component are several inputs edited together, a form kept in
+// renamed state; two components with one each are two single inputs.
+const doubledCommittedDraft = (program) => {
+  const sanctioned = sanctionedHookNames(program, ["committed"]);
+  if (sanctioned.size === 0) return false;
+  let doubled = false;
+  const visit = (node, owner, counts) => {
+    if (doubled || !node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, owner, counts);
+      return;
+    }
+    const nextOwner = FUNCTION_NODES.has(node.type) ? node : owner;
+    if (
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      sanctioned.has(node.callee.name)
+    ) {
+      const count = (counts.get(owner) ?? 0) + 1;
+      counts.set(owner, count);
+      if (owner && count > 1) doubled = true;
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") visit(child, nextOwner, counts);
+    }
+  };
+  visit(program, undefined, new Map());
+  return doubled;
+};
+
 // unsanctionedDraftSetters: draft setters bound from a hook that is not a sanctioned one.
 const unsanctionedDraftSetters = (program) => {
   const sanctioned = sanctionedHookNames(program);
@@ -295,6 +330,7 @@ const textSetters = (program) => {
 // setter is handed to a change prop for another component to write from its own input.
 const isHandRolledForm = (source) => {
   const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
+  if (doubledCommittedDraft(program)) return true;
   const setters = stateSetters(program);
   for (const setter of unsanctionedDraftSetters(program)) setters.add(setter);
   if (setters.size === 0) return false;
