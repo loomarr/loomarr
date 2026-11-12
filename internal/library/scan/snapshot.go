@@ -166,7 +166,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    series; TV captures' parts are episodes; a site's promo, a sneak peek, a recap, a bonus
 //	    and a preview are extras; an anime's dashed number wins over one in its name, a dated
 //	    anime and a batch's folder are read; "S01E01" alone among films is a film.
-const writeVersion = 48
+//	49: a film's parts, a file named as its own folder with its year, sequels and a saga's films
+//	    are films wherever they are; a season folder's "- 03" and "1.05" are its own; a "Show
+//	    Season 2" folder gives its season, as does "Season IV"; a season pack's release folder
+//	    stands for its show's folder; "Part 1 of 3" is a miniseries'; plural kinds, a trailer in
+//	    a film's folder, a day's file in a show's folder and a DVR's dated name are read.
+const writeVersion = 49
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

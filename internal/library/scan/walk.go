@@ -97,7 +97,7 @@ func holdsTitle(rel string, entries []fs.DirEntry) bool {
 		switch {
 		case e.IsDir() && (discDirs[lower] || isSeasonFolder(path.Join(rel, e.Name()))):
 			return true
-		case !e.IsDir() && (videoExtensions[filepath.Ext(lower)] && !extraName(lower) || filepath.Ext(lower) == ".iso"):
+		case !e.IsDir() && (videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) || filepath.Ext(lower) == ".iso"):
 			return true
 		}
 	}
@@ -340,7 +340,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		if e.IsDir() {
 			continue
 		}
-		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraName(lower) {
+		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) {
 			videoNames = append(videoNames, e.Name())
 		}
 		switch {
@@ -455,7 +455,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		case filepath.Ext(lower) == ".iso" || filepath.Ext(lower) == ".img":
 			st, _ := w.stat(path, e)
 			w.problem(path, st, ProblemDiscImage)
-		case videoExtensions[filepath.Ext(lower)] && !extraName(lower) && !extras[e.Name()]:
+		case videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) && !extras[e.Name()]:
 			st, ok := w.stat(path, e)
 			if !ok {
 				w.unread(path)
@@ -799,10 +799,21 @@ func extraName(lowerName string) bool {
 	return false
 }
 
+// extraFile is extraName for a file's name as it is written: an episode titled as a household
+// titles one, "Thornbury S01E07 - Sample", is that episode, where a release's lower-case "kettle bay
+// s01e02 - sample" is its sample.
+func extraFile(name string) bool {
+	return extraName(strings.ToLower(name)) && !titledSample.MatchString(stem(name))
+}
+
+// titledSample matches an episode's mark, then its title "Sample", capitalised, after a dash set
+// apart: "S01E07 - Sample", "S01E07.-.Sample".
+var titledSample = regexp.MustCompile(`(?i:s\d{1,4}[ ._]?e\d{1,4})[ ._]-[ ._]Sample$`)
+
 // siteName matches a video named by nothing but a site, the promo a tracker or a release group
 // leaves in a download: "RARBG.com.mp4", "www.Torrent.to.mkv". A suffix that is also a word needs
 // the "www.": "Trust.Me.mkv" and "Nine.To.mkv" are films.
-var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club|example))$`)
+var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club))$`)
 
 // extraKinds are the words an extra is named by, as Jellyfin, Plex and households name them; a
 // longer one is tried before a word it starts with.
@@ -812,7 +823,8 @@ var extraKinds = [][]string{
 	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
 	{"audio", "commentary"}, {"blooper", "reel"}, {"tv", "spot"}, {"photo", "gallery"},
 	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"}, {"sample"}, {"sneak", "peek"},
-	{"recap"}, {"bonus"}, {"preview"},
+	{"recap"}, {"bonus"}, {"preview"}, {"trailers"}, {"teasers"}, {"featurettes"}, {"interviews"},
+	{"promos"}, {"previews"}, {"recaps"}, {"clips"}, {"extras"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
 	{"deletedscenes"}, {"deleted"}, {"bloopers"}, {"outtakes"}, {"commentary"}, {"scene"}, {"short"},
 	{"clip"}, {"extra"}, {"other"}, {"theme"},
@@ -922,7 +934,11 @@ func siblingExtras(folder string, names []string) map[string]bool {
 		}
 		// A title's year, then a kind only an extra is named by, says an extra with no title beside
 		// it: "Movies/Gravel Peak (2003) Trailer.mp4".
-		if titles[key(k.words[:k.at])] || slices.ContainsFunc(k.words[:k.at], releaseYear) && strongExtraKind(k.words[k.at:]) {
+		// In a film's own folder, one named with its year, a trailer is an extra whichever film it
+		// names, "Glimmerfold Sequel Teaser" or another's, "Ironvale Trailer"; one named as the
+		// folder's film is the film: "Night Trailer (2010)/Night Trailer.mkv".
+		if titles[key(k.words[:k.at])] || slices.ContainsFunc(k.words[:k.at], releaseYear) && strongExtraKind(k.words[k.at:]) ||
+			titled && strongExtraKind(k.words[k.at:]) && !titles[key(k.words)] {
 			out[k.name] = true
 		}
 	}
@@ -931,7 +947,10 @@ func siblingExtras(folder string, names []string) map[string]bool {
 
 // strongExtraKinds are the kinds only an extra is named by; "Short", "Clip" or "Theme" after a
 // year may be a title's or an edition's.
-var strongExtraKinds = []string{"trailer", "teaser", "featurette", "behind", "making", "deleted", "bloopers", "outtakes", "gag", "official", "theatrical", "behindthescenes", "deletedscene", "deletedscenes"}
+var strongExtraKinds = []string{
+	"trailer", "teaser", "featurette", "behind", "making", "deleted", "bloopers", "outtakes", "gag", "official",
+	"theatrical", "behindthescenes", "deletedscene", "deletedscenes", "trailers", "teasers", "featurettes",
+}
 
 // strongExtraKind says whether the words an extra's kind starts are a kind only an extra is
 // named by.

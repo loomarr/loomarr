@@ -18,7 +18,8 @@ import (
 //   - An episode's last episode, if it has one, comes after its first.
 //   - An episode's show is never a season folder: "Season 1" names no show.
 //   - A show in a folder is one of the file's own folders, never one beside or below it, unless the
-//     file is loose and names its own: in a catch-all folder, or a release folder at the top.
+//     file is loose and names its own: in a catch-all folder, or a release folder at the top; or
+//     its season pack's release folder stands for the show's folder beside it.
 //   - A show's folder name never comes out empty, and a search year is a real one.
 func FuzzNamingFromAPath(f *testing.F) {
 	for _, row := range namingMatrix {
@@ -32,6 +33,7 @@ func FuzzNamingFromAPath(f *testing.F) {
 		"Show (2019) {tmdb-0}/Season 0/x.mkv", "Show/Specials/Specials/x.mkv", "x/Season 1/../S01E01.mkv",
 		"TV/00/A 0X0", "[](0-0)0/x.mkv", "S0/0/A S0E0", "SeAsonOne/A/0 S0E0", "0/S0/ S/S0/1", "S0/S0/S0 S0e0",
 		"TV/Series Seven/Series S0E0/0", "TV/Series Seven/Series Seven S0E0/0", "0/S0/TV/S S0E0", "S0/A/0/A S0E0",
+		"TV/ S0/0",
 	} {
 		f.Add(rel)
 	}
@@ -88,6 +90,12 @@ func checkEpisode(t *testing.T, rel string, rec mp.Record, seriesDir string) {
 		return // a loose episode's show is a name, or the root
 	}
 	inFolder := dir == seriesDir || strings.HasPrefix(dir, seriesDir+"/")
+	// A season pack's release folder stands for its show's folder beside it: "Downloads/Kettle.Bay.
+	// S02.1080p.WEB/" for "Downloads/Kettle Bay".
+	for d := dir; !inFolder && d != "."; d = path.Dir(d) {
+		show := showFolderName(path.Base(d))
+		inFolder = show != path.Base(d) && path.Join(path.Dir(d), show) == seriesDir
+	}
 	if !inFolder {
 		// A loose episode is named by its file, not a folder: one in a season folder (or its disc's
 		// folder) with no show's folder above, in a catch-all folder ("Downloads/Complete"), in a

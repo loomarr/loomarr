@@ -708,6 +708,77 @@ var namingMatrix = []namingRow{
 		"TV Shows/Pebble Pals Season 1/Pebble Pals - Sunny Day.mp4":        "episode Pebble Pals S?E?",
 		"TV Shows/Pebble Pals Season 1/Pebbel Pals - Windy Day.mp4":        "episode Pebble Pals S?E?",
 	}},
+	// Re-score #7: a season folder's dashed number is that season's; "1.05" is season 1's fifth; a
+	// "Show Season 2" folder's numbers are season 2's; "Season I"; an episode titled "Sample".
+	{id: "W79", files: map[string]string{
+		"TV/Bramble House/Season 2/Bramble House - 03.mkv":         "episode Bramble House S2E3",
+		"TV/Bramble House/Season 2/Bramble House - 04 [1080p].mkv": "episode Bramble House S2E4",
+		"TV/Hedgerow/Season 1/1.05 Hedge.mkv":                      "episode Hedgerow S1E5",
+		"TV/Hedgerow/Season 2/2.01 - Gate.mkv":                     "episode Hedgerow S2E1",
+		"Puddle Pals Season 2/01 Big Splash.mp4":                   "episode Puddle Pals S2E1",
+		"Puddle Pals Season 2/02 Small Splash.mp4":                 "episode Puddle Pals S2E2",
+		"Kids/Puddle Pups Series 1/01 Big Splash.mp4":              "episode Puddle Pups S1E1",
+		"Kids/Puddle Pups Series 1/02 Small Splash.mp4":            "episode Puddle Pups S1E2",
+		"Bramble Hill Season 2/Episode 3.mkv":                      "episode Bramble Hill S2E3",
+		"TV/Thornbury/Season I/Thornbury - Hedge.mkv":              "episode Thornbury S?E?",
+		"TV/Thornbury/Season I/Thornbury S01E07 - Sample.mkv":      "episode Thornbury S1E7",
+	}},
+	// Re-score #7: films with no "Movies" folder above them — sequels, a saga, parts, a film named
+	// as its folder is — and a miniseries' "Part 1 of 3" loose at the top.
+	{id: "W80", files: map[string]string{
+		"Ironvale/Ironvale.mkv":                          "movie Ironvale -",
+		"Ironvale/Ironvale 2.mkv":                        "movie Ironvale 2 -",
+		"Ironvale/Ironvale 3.mkv":                        "movie Ironvale 3 -",
+		"Kids/Pippin Paws/Pippin Paws.mp4":               "movie Pippin Paws -",
+		"Kids/Pippin Paws/Pippin Paws 2.mp4":             "movie Pippin Paws 2 -",
+		"Kids/Pippin Paws/Pippin Paws 3 - Snowed In.mp4": "movie Pippin Paws 3 - Snowed In -",
+		"Gravelton Collection/Gravelton 1.mkv":           "movie Gravelton 1 -",
+		"Gravelton Collection/Gravelton 2.mkv":           "movie Gravelton 2 -",
+		"Thistledown Saga/1 - Thistledown.mkv":           "movie Thistledown -",
+		"Thistledown Saga/2 - Thistledown Rises.mkv":     "movie Thistledown Rises -",
+		"Old Stuff/Grimwold/Grimwold CD1.avi":            "movie Grimwold -",
+		"Old Stuff/Grimwold/Grimwold CD2.avi":            "movie Grimwold -",
+		"Larkspur/Larkspur - Disc 1.mkv":                 "movie Larkspur -",
+		"Larkspur/Larkspur - Disc 2.mkv":                 "movie Larkspur -",
+		"Kids/Series 7 (2001)/Series 7 (2001).mkv":       "movie Series 7 2001",
+		"Episode 50 (2011)/Episode 50 (2011).mkv":        "movie Episode 50 2011",
+		"Ashen Coast - Part 1 of 3.mkv":                  "episode Ashen Coast S1E1",
+		"Ashen Coast - Part 2 of 3.mkv":                  "episode Ashen Coast S1E2",
+	}},
+	// Re-score #7: plural extras, extras named by their film or another, a release group's promo;
+	// a dated daily show's file, a recording's day, a CJK episode.
+	{id: "W81", files: map[string]string{
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011).mkv":               "movie Glimmerfold 2011",
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011) - Interviews.mkv":  "skip",
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011) - Trailers.mkv":    "skip",
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011) - Featurettes.mkv": "skip",
+		"Movies/Glimmerfold (2011)/Glimmerfold Sequel Teaser.mkv":        "skip",
+		"Movies/Glimmerfold (2011)/Ironvale Trailer.mkv":                 "skip",
+		"TV/Nightly Ledger/2024-03-14.mkv":                               "episode Nightly Ledger 2024-03-14",
+		"TV/Nightly Ledger/2024-03-15.mkv":                               "episode Nightly Ledger 2024-03-15",
+		"Recorded TV/Wexcombe - Hedge (2023-01-02 21-00).ts":             "episode Wexcombe 2023-01-02",
+		"Anime/[Kumo] Hoshi Kettle 第03話 [1080p].mkv":                     "episode Hoshi Kettle S?E?",
+	}},
+	// Re-score #7's over-corrections: a film named by a kind in its own folder, a day's home video,
+	// a show's folder holding one video named as the show, a DVR-less dated film, a pack with ids.
+	{id: "W83", files: map[string]string{
+		"Movies/Night Trailer (2010)/Night Trailer.mkv":    "movie Night Trailer 2010",
+		"Home Videos/2019-06-01.mp4":                       "movie 2019-06-01 -",
+		"Kids/Pebble Pals/Pebble Pals.mp4":                 "episode Pebble Pals S?E?",
+		"Kids/Pebble Pals/Pebble Pals - Rainy Day.mp4":     "episode Pebble Pals S?E?",
+		"Kids/Pebble Pals/Pebble Pals - Sunny Day.mp4":     "episode Pebble Pals S?E?",
+		"Concerts/Ferrow Band - Live (2019).mkv":           "movie Ferrow Band - Live 2019",
+		"Ashen Point Part 2 (2009)/Ashen Point Part 2.mkv": "movie Ashen Point Part 2 2009",
+	}},
+	// Re-score #7: one show in two release folders, or in a show's folder and a release's.
+	{id: "W82", files: map[string]string{
+		"Downloads/Bramble.House.S01.720p.WEB-DL/Bramble.House.S01E01.720p.WEB-DL.mkv": "episode Bramble House S1E1",
+		"Downloads/Bramble.House.S02.720p.WEB-DL/Bramble.House.S02E01.720p.WEB-DL.mkv": "episode Bramble House S2E1",
+		"TV/Kettle Lane/Season 1/Kettle Lane S01E01.mkv":                               "episode Kettle Lane S1E1",
+		"TV/Kettle.Lane.S02.720p.WEB-DL/Kettle.Lane.S02E01.720p.WEB-DL.mkv":            "episode Kettle Lane S2E1",
+		"Downloads/Hob.Lane.S01E03.720p.mkv":                                           "episode Hob Lane S1E3",
+		"Downloads/HOB.LANE.S01E04.mkv":                                                "episode Hob Lane S1E4",
+	}},
 	// A franchise's folder holds its shows, each its own.
 	{id: "W65", files: map[string]string{
 		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E01.mkv": "episode Star Ridge Origins S1E1",
