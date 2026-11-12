@@ -21,7 +21,7 @@ func TestNamingPlaces(t *testing.T) {
 		for _, place := range namingPlaces {
 			t.Run(row.id+"/"+place, func(t *testing.T) {
 				t.Parallel()
-				moved := namingRow{id: row.id, files: map[string]string{}}
+				moved := namingRow{id: row.id, root: row.root, files: map[string]string{}}
 				for rel, want := range row.files {
 					moved.files[place+rel] = want
 				}
@@ -47,7 +47,7 @@ func TestNamingSeasons(t *testing.T) {
 		if len(row.nfo) > 0 {
 			continue
 		}
-		moved := namingRow{id: row.id, files: map[string]string{}}
+		moved := namingRow{id: row.id, root: row.root, files: map[string]string{}}
 		changed := false
 		for rel, want := range row.files {
 			// A name that writes the season into its number, "101 - Tidewater" or "1.05 Hedge", is

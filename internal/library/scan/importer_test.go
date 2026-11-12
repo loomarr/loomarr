@@ -77,7 +77,17 @@ type harness struct {
 
 func newHarness(t *testing.T, managers ...Manager) *harness {
 	t.Helper()
-	h := &harness{t: t, root: t.TempDir(), st: openStore(t)}
+	return newHarnessIn(t, t.TempDir(), managers...)
+}
+
+// newHarnessIn is newHarness with its root at root, made if it is not there: a root named as a
+// shelf ("…/TV") is read as one.
+func newHarnessIn(t *testing.T, root string, managers ...Manager) *harness {
+	t.Helper()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{t: t, root: root, st: openStore(t)}
 	h.enable.Store(true)
 	h.inv = &countingInventory{Service: inventory.New(h.st)}
 	resolver, err := precedence.New("US")

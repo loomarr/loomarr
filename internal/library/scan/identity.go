@@ -278,7 +278,7 @@ func datedEpisode(file File) bool {
 	// A name that is its day alone, "Nightly Ledger/2024-03-14.mkv", is the episode of the show
 	// whose folder it is in; a catch-all's, "Home Videos/2019-06-01.mp4", is a day's video.
 	if before == "" && dir != "." && airDateMark.ReplaceAllString(name, "") == "" &&
-		(underShows(dir) || file.Notes.Episodes) && !catchAllFolder(path.Base(dir)) {
+		(underShows(shelved(file, dir)) || file.Notes.Episodes) && !catchAllFolder(path.Base(dir)) {
 		return true
 	}
 	if before == "" || cameraPrefixes[strings.ToLower(before)] {
@@ -516,7 +516,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// is no show's name.
 	// So does a miniseries' folder there whose episodes say so by their word, and give no years
 	// as a saga's films do: "Movies/Reed Wood/Reed Wood - Episode 1.mkv" beside "… Episode 2".
-	if dir := path.Dir(file.Rel); amongFilms(dir) && !inShowsSeason(dir) && !miniseriesAmongFilms(file) &&
+	if dir := path.Dir(file.Rel); amongFilms(shelved(file, dir)) && !inShowsSeason(dir) && !miniseriesAmongFilms(file) &&
 		(!sxxeyy.MatchString(file.Rel) && !crossMark.MatchString(name) || catchAllFolder(path.Base(seriesFolderOf(file)))) {
 		return movieRecord(src, segments), ""
 	}
@@ -593,7 +593,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// Christmas Buzz (2015)" beside "Busy Bees 101".
 	dir := path.Dir(file.Rel)
 	special := file.Notes.Numbered && showTitled(name, path.Base(dir))
-	if dir != "." && (file.Notes.Episodes || file.Notes.Series || file.Notes.Titled || special || underShows(dir)) &&
+	if dir != "." && (file.Notes.Episodes || file.Notes.Series || file.Notes.Titled || special || underShows(shelved(file, dir))) &&
 		!file.Notes.Dump && !catchAllFolder(path.Base(dir)) {
 		seriesDir := seriesFolderOf(file)
 		return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
@@ -970,7 +970,7 @@ func showFolderIn(file File) string {
 	// folder names several too, when the show was renamed or its files spell it two ways, but one of
 	// them is the folder's.
 	show := ownSeries(name)
-	if show == "" && inAnime(dir) {
+	if show == "" && inAnime(shelved(file, dir)) {
 		show, _, _ = animeRelease(name, true)
 	}
 	// A folder's files numbered after a name they share, "Cartoons/Fizzy Fox 01.mp4" beside "… 02",
@@ -1603,7 +1603,7 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 			return episode(n.Absolute)
 		}
 	}
-	if _, n, ok := animeRelease(path.Base(file.Rel), inAnime(dir)); ok {
+	if _, n, ok := animeRelease(path.Base(file.Rel), inAnime(shelved(file, dir))); ok {
 		return n, true
 	}
 	// A catch-all's file ("Movies/Ferrow Lane Part 2 of 3 (2010).mkv") has no show folder to number
@@ -1668,7 +1668,7 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	// A show's folder in a shows' catch-all numbers its episodes by a number alone or after the
 	// show's name, "TV/Ivory Fen/02.mkv" and "Anime/Hoshizora/Hoshizora 12.mkv": its episode by
 	// its place in the whole show. In a film's folder, "Marrow Point 2" is the sequel.
-	if !ok && !inSeason && (underShows(dir) || file.Notes.Series) {
+	if !ok && !inSeason && (underShows(shelved(file, dir)) || file.Notes.Series) {
 		// A miniseries' "Ridge Point Part 2" and "Ridge Fall - Part Two" are its episodes.
 		// Its "Part 2" straight after the show's name is no film's sequel here (partIn's titlesOwnPart).
 		if _, part, ok := partIn(name + ".mkv"); ok && part > 0 {
@@ -1784,6 +1784,27 @@ func amongFilms(dir string) bool {
 	return false
 }
 
+// rootShelf is a root's own name when it is a shelf of a kind or an audience's (walker.shelf): a
+// household that adds "/media/TV" and "/media/Movies" as two roots keeps its shows and films apart
+// by them, as one root's "TV/" and "Movies/" do.
+func rootShelf(root string) string {
+	base := filepath.Base(filepath.Clean(root))
+	if key := folderKey(base); showsFolderNames[key] || filmsFolderNames[key] || animeFolderNames[key] || audienceNames[key] {
+		return base
+	}
+	return ""
+}
+
+// shelved is a folder of a file's, relative to the root, as the shelf predicates (underShows,
+// amongFilms, inAnime) read it: under the root's own name when that is a shelf, so "Hop Glen" in a
+// root named "TV" is read as "TV/Hop Glen".
+func shelved(file File, dir string) string {
+	if file.Notes.Root == "" {
+		return dir
+	}
+	return path.Join(file.Notes.Root, dir)
+}
+
 // inAnime says whether a folder, relative to the root, is an anime catch-all or in one.
 func inAnime(dir string) bool {
 	for d := dir; d != "."; d = path.Dir(d) {
@@ -1852,6 +1873,9 @@ type folderNotes struct {
 	// "Pebble Pals Season 1/Pebble Pals 1.mp4". A film's folder holds one film, and a collection's
 	// films give their years.
 	Series bool
+	// Root is the root's own name when it is a shelf ("TV" for "/media/TV" added as a root), ""
+	// otherwise: the shelf predicates read the folder as if under it (shelved).
+	Root string
 	// Titled is a folder on an audience's shelf whose videos are a show's episodes named by their
 	// titles alone (titledEpisodes): "Kids/Hop Pond/Frost Morning.mp4" beside "Big Carrot.mp4".
 	Titled bool
@@ -1948,13 +1972,28 @@ func namedSeries(folder string, names []string) bool {
 // alike: a folder in one is a film's or a show's by what its videos say.
 var audienceNames = map[string]bool{"kids": true, "children": true, "family": true}
 
+// onAudienceShelf says whether a folder, relative to the root, is on an audience's shelf: the
+// first folder above it that is no mere catch-all ("Media", "Library") is an audience's.
+func onAudienceShelf(rel string) bool {
+	for d := path.Dir(rel); d != "."; d = path.Dir(d) {
+		key := folderKey(path.Base(d))
+		if audienceNames[key] {
+			return true
+		}
+		if !catchAllNames[key] {
+			return false
+		}
+	}
+	return false
+}
+
 // titledEpisodes says whether a folder on an audience's shelf holds a show's episodes named by their
 // titles alone (folderNotes.Titled): "Kids/Hop Pond/Frost Morning.mp4" beside "Big Carrot.mp4". A film's
 // folder holds a video named as it is ("Tansy Fell/Tansy Fell.mp4") or its sequels ("Wren Lake 2");
 // a collection's films give their years, and a franchise's folder says so ("Gorse Trilogy").
 func titledEpisodes(rel string, names []string) bool {
 	folder := path.Base(rel)
-	if !audienceNames[folderKey(path.Base(path.Dir(rel)))] || catchAllFolder(folder) || filmSeries.MatchString(folder) ||
+	if !onAudienceShelf(rel) || catchAllFolder(folder) || filmSeries.MatchString(folder) ||
 		len(idsIn(folder)) > 0 || len(names) < 2 || len(partsOf(names)) > 0 {
 		return false
 	}
