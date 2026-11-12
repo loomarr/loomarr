@@ -437,6 +437,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	notes.Dashed = dashedShows(path.Join(w.shelf, w.rel(dir)), videoNames)
 	notes.Root = w.shelf
 	notes.Years = looseYears(videoNames)
+	notes.MonthFirst = monthFirstDays(videoNames)
 	for _, e := range entries {
 		if e.IsDir() {
 			notes.Folders = append(notes.Folders, e.Name())
