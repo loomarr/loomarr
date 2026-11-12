@@ -1,6 +1,11 @@
+import { formatEpgTime } from "@loomarr/core/format";
 import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
-import type { LibraryHeldRemoval, LibraryScan } from "../library-settings/library-settings.type";
+import type {
+  LibraryDetails,
+  LibraryHeldRemoval,
+  LibraryScan,
+} from "../library-settings/library-settings.type";
 
 // The Library's shared plain words (design/library, PLAIN-WORDS.md): a folder is named for what it
 // holds, never by its path; counts read the way people say them.
@@ -118,4 +123,21 @@ const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
   };
 };
 
-export { folderName, heldTitle, joinNames, scanHeadline };
+// Titles waiting for their details, said only while a retry is due: while step 3 is looking them up
+// the progress says so instead. A key problem never shows here — the household has nothing to do
+// about it (a release build ships its own key), so only the server's log says it. undefined when
+// nothing waits on a retry.
+//   line:   "12 titles are waiting on details — trying again at 3:40 PM" (the Library's line)
+//   title:  "12 titles are waiting on details" (Settings → Library's row)
+//   reason: "Can't reach TMDB — trying again at 3:40 PM", or "Trying again at 3:40 PM"
+const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan) => {
+  if (!details?.retryAt || details.waiting === 0 || scan.step === "lookingUp") return undefined;
+  const title = `${count(details.waiting, "title", "titles")} ${details.waiting === 1 ? "is" : "are"} waiting on details`;
+  const retry = `trying again at ${formatEpgTime(details.retryAt)}`;
+  const reason = details.unreachable
+    ? `Can't reach TMDB — ${retry}`
+    : `Trying again at ${formatEpgTime(details.retryAt)}`;
+  return { title, line: `${title} — ${retry}`, reason };
+};
+
+export { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline };

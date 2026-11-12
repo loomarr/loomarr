@@ -36,6 +36,10 @@ const AboutPage = () => {
 
 const Route = createFileRoute("/_authed/settings/system/about")({
   component: AboutPage,
+  // The one query the page is made of. The shell reads it too, so this is usually already cached.
+  loader: async ({ context: { queryClient } }) => {
+    await queryClient.ensureQueryData(systemApi.getSystemVersionQueryOptions());
+  },
 });
 
 export { Route };

@@ -263,6 +263,37 @@ func (l *Library) Importing() ProgressSnapshot {
 	return l.Scanner.Importer.Tracker.Snapshot(l.now())
 }
 
+// Details is how the titles' details are getting on: how many movies and series still wait for
+// theirs, whether they can be looked up now, and when the next try is.
+type Details struct {
+	Waiting int
+	Lookups
+}
+
+// Details reads how the titles' details are getting on; the zero wait when there is no catalog.
+// RetryAt is the Enricher's next try after a failed lookup while that is still ahead; past it, a
+// tick that found every waiting title held back tried nothing, so it is when the first of those is
+// tried again. Zero when nothing waits, or when there is no key.
+func (l *Library) Details(ctx context.Context) (Details, error) {
+	if l.Enricher == nil {
+		return Details{Lookups: Lookups{State: LookupsOK}}, nil
+	}
+	now := l.now()
+	waiting, err := l.Enricher.Store.LibraryCatalogWaiting(ctx, now)
+	if err != nil {
+		return Details{}, err
+	}
+	d := Details{Waiting: waiting.Titles, Lookups: l.Enricher.Lookups()}
+	switch {
+	case d.Waiting == 0, d.State == LookupsNoKey:
+		// Nothing waits, or nothing is tried again until a key is added.
+		d.RetryAt = time.Time{}
+	case !d.RetryAt.After(now):
+		d.RetryAt = waiting.NextRetry
+	}
+	return d, nil
+}
+
 // Enabled reports whether the kill switch lets the scanner run.
 func (l *Library) Enabled() bool {
 	if l.Scanner == nil {

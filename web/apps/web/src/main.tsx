@@ -32,6 +32,11 @@ const queryClient = createQueryClient();
 // 15s matches the query defaults above, so a preload is trusted exactly as long as any other
 // cached read.
 //
+// Every route declares its data in a `loader` (ratcheted by scripts/check-route-loaders.mjs), and the
+// router waits for it: a click keeps the page it is on until the next one has its data, and only a
+// load slower than `defaultPendingMs` shows the pending view. Once shown, that view stays for
+// `defaultPendingMinMs`, so a load that lands just past the delay does not flash it.
+//
 // The route error and pending views are design-system views, and everything above the routes is
 // in the first download. Loaded on first use, they keep the design-system runtime (about 380 KiB)
 // out of it: every route is code-split, so a page that renders brings that runtime with it anyway.
@@ -46,9 +51,11 @@ const LazyRoutePending = lazy(() =>
 
 const router = createRouter({
   routeTree,
-  context: { queryClient },
+  context: { queryClient, warmNavAtIdle: true },
   defaultPreload: "intent",
   defaultPreloadStaleTime: 15_000,
+  defaultPendingMs: 1_000,
+  defaultPendingMinMs: 500,
   defaultErrorComponent: (props: ErrorComponentProps) => (
     <Suspense fallback={null}>
       <LazyRouteError {...props} />
