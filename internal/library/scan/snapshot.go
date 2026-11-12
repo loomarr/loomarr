@@ -191,7 +191,14 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    title's words after it is the title's ("Back to 1985 Again"); a season's disc label
 //	    ("SHOW_S1_D1") holds its episodes; MakeMKV's "title00" and a recorded film are named by
 //	    their folder and film; "シーズン1" is a season folder.
-const writeVersion = 52
+//	53: a tracker's promo ("ETRG.mp4"), a film's credits and Q&A, and a ".partial" download are
+//	    no title; one show's loose episodes key alike with their year bare or bracketed, and join
+//	    the show a season pack beside them stands for; a franchise's films numbered in order are
+//	    films; a full mark beats a title's "2x4", and a season folder beats a "2x4" naming another
+//	    season; "108 Rain" in Season 1 is its eighth beside "07 Sleet"; "1of3" with no year is a
+//	    miniseries' episode; an OVA with no number is season 0's; an edition last is set aside
+//	    with no year; "Widescreen" is a release's; "VTS_01_1" is named by its folder.
+const writeVersion = 53
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -577,8 +584,9 @@ var (
 )
 
 // genericStem matches a file's name that says what it is, never which: "movie", "film", "video",
-// "main", "feature", "main feature", "1", "01".
-var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main[ ._-]?feature|the[ ._-]movie|\d{1,2})$`)
+// "main", "feature", "main feature", "1", "01", and a DVD's title set copied out of its disc,
+// "VTS_01_1".
+var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main[ ._-]?feature|the[ ._-]movie|\d{1,2}|vts[ ._]\d{2}[ ._]\d)$`)
 
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the

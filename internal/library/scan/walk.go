@@ -811,7 +811,8 @@ func extraName(lowerName string) bool {
 	hidden := strings.HasPrefix(lowerName, "._") || strings.HasPrefix(lowerName, ".") && !strings.Contains(lowerName, " ")
 	if hidden || strings.HasPrefix(lowerName, "~") || base == "sample" || strings.HasPrefix(base, "sample-") ||
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) ||
-		siteName.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) {
+		siteName.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) ||
+		promoNames[strings.TrimSuffix(lowerName, filepath.Ext(lowerName))] || strings.HasSuffix(base, ".partial") {
 		return true
 	}
 	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv".
@@ -856,6 +857,13 @@ var titledSample = regexp.MustCompile(`(?i:s\d{1,4}[ ._]?e\d{1,4})[ ._]-[ ._]Sam
 // the "www.": "Trust.Me.mkv" and "Nine.To.mkv" are films.
 var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club))$`)
 
+// promoNames are the names a release group's or tracker's promo clip goes by, in lower case, with
+// no site's ending: "ETRG.mp4", "YTS.mp4". A download still being written ends ".partial".
+var promoNames = map[string]bool{
+	"etrg": true, "rarbg": true, "yts": true, "yify": true, "torrentgalaxy": true, "tgx": true,
+	"extratorrent": true, "1337x": true, "rarbg_do_not_mirror": true, "torrent downloaded from": true,
+}
+
 // extraKinds are the words an extra is named by, as Jellyfin, Plex and households name them; a
 // longer one is tried before a word it starts with.
 var extraKinds = [][]string{
@@ -864,7 +872,8 @@ var extraKinds = [][]string{
 	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
 	{"audio", "commentary"}, {"blooper", "reel"}, {"tv", "spot"}, {"photo", "gallery"},
 	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"}, {"sample"}, {"sneak", "peek"},
-	{"extended", "scene"}, {"extended", "scenes"}, {"easter", "eggs"}, {"easter", "egg"}, {"credits"}, {"intro"},
+	{"extended", "scene"}, {"extended", "scenes"}, {"easter", "eggs"}, {"easter", "egg"},
+	{"opening", "credits"}, {"end", "credits"}, {"closing", "credits"}, {"q&a"}, {"credits"}, {"intro"},
 	{"recap"}, {"bonus"}, {"preview"}, {"trailers"}, {"teasers"}, {"featurettes"}, {"interviews"},
 	{"promos"}, {"previews"}, {"recaps"}, {"clips"}, {"extras"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},

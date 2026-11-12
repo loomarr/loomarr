@@ -420,7 +420,7 @@ var (
 	noteWord = regexp.MustCompile(`(?i)^(directors?|director's|cut|uncut|extended|unrated|theatrical|special|edition|version|remaster|remastered|restored|dual|audio|multi|subs?|subbed|dubbed|eng|english|hd|sd|fhd|imax|criterion|anniversary|complete|\d+(?:st|nd|rd|th))$`)
 	// releaseMark is a word only a release name carries after its title: a resolution, source, codec
 	// or rip. The title ends before the first.
-	releaseMark = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|blu-?ray|bdrip|brrip|web-?dl|webrip|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|repack|camrip|hdcam|hdrip|hdts|telesync|dvdscr|vostfr|vost|fhd|dl)$`)
+	releaseMark = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|blu-?ray|bdrip|brrip|web-?dl|webrip|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|repack|camrip|hdcam|hdrip|hdts|telesync|dvdscr|vostfr|vost|fhd|dl|widescreen|fullscreen)$`)
 	// releaseWord is a word a release name carries after its title that a title may carry too:
 	// "Tangled Web", "The Cam", "Mister Proper", "The German". It ends the title only where a
 	// release's words are plainly under way: after the year, before another release word, or last
@@ -580,6 +580,10 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 			words = withoutEdition(words[:j])
 			break
 		}
+	}
+	// With no year in its words, an edition last is still the file's: "Brackenfold Special Edition".
+	if j := slices.IndexFunc(words, func(w string) bool { return releaseYear(strings.SplitN(strings.TrimLeft(w, "-"), "-", 2)[0]) }); j < 1 {
+		words = withoutEdition(words)
 	}
 	if year == 0 {
 		year = leadingYear
