@@ -408,6 +408,20 @@ func atoi(s string) int {
 
 // embeddedRecord is what a file's names say: ids in the names and, for an episode, its numbering
 // and the ids in its series folder. seriesDir is the episode's series folder relative to the root.
+//
+// A name is read in one order, the surest reading first, and the first that holds decides:
+//
+//  1. an episode's mark in the file's name, or its own folder's ("S01E02", "1x02": numberingIn);
+//  2. the day a daily show's episode aired, where a show is plainly there (datedEpisode);
+//  3. a mark its folders let it give ("Ep 2", "Folge 2", "05 - Title" in a season folder:
+//     numberingInFolder);
+//  4. a fansub release loose at the top (looseAnime);
+//  5. any file in a show's season folder, or beside its marked episodes;
+//  6. otherwise a movie.
+//
+// Which show an episode is, is seriesFolderOf's; what is no title at all (extras, samples, a
+// NAS's folders) the walk decides before this (walk.go's skippedDir and extraName); a movie's or
+// show's search words and year are searchQuery's (match.go).
 func embeddedRecord(file File) (mp.Record, string) {
 	segments := strings.Split(file.Rel, "/")
 	name := segments[len(segments)-1]
