@@ -4,7 +4,7 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, Chip, CompactSelect, Text, Toggle } from "@loomarr/design-system";
+import { Action, Chip, CompactSelect, Stack, Text, Toggle } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YEAR_MAX, YEAR_MIN, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
@@ -203,7 +203,7 @@ const FillerCriteria = ({
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-end gap-3">
+            <Stack align="end" direction="row" gap="control" wrap>
               <CommitField
                 autoCapitalize="characters"
                 disabled={disabled || Boolean(fixedCountry)}
@@ -243,7 +243,7 @@ const FillerCriteria = ({
                   }
                 />
               </div>
-            </div>
+            </Stack>
             <p className="text-muted-foreground text-xs">
               A blank place follows the installation's city; with no city, only national filler airs.{" "}
               <button
@@ -323,7 +323,7 @@ const FillerCriteria = ({
             />
           </>
         ) : (
-          <div className="flex items-center gap-3">
+          <Stack align="center" direction="row" gap="control">
             <CommitField
               disabled={disabled}
               id="filler-era-from"
@@ -358,7 +358,7 @@ const FillerCriteria = ({
               placeholder="Any"
               width={112}
             />
-          </div>
+          </Stack>
         )}
         {eraWindows === undefined && (
           <Action
@@ -425,7 +425,7 @@ const FillerCriteria = ({
         <FieldLabel help="Narrow by what a clip is about. A broad tag such as Food includes every descendant; none selected draws from all products and topics.">
           Products & topics
         </FieldLabel>
-        <div className="flex flex-wrap items-center gap-2">
+        <Stack align="center" direction="row" gap="inline" wrap>
           <span className="text-muted-foreground text-sm">
             {categories.length === 0
               ? "All products & topics"
@@ -439,7 +439,7 @@ const FillerCriteria = ({
           >
             {choosingCategories ? "Done" : "Choose products & topics"}
           </Action>
-        </div>
+        </Stack>
         {(choosingCategories || categories.length > 0) && (
           <div className="flex flex-wrap gap-1.5">
             {productCategories

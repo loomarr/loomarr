@@ -4,7 +4,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
-import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
@@ -177,9 +177,13 @@ const FillerSettingsIndex = () => (
                   {item.description}
                 </span>
               </span>
-              <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+              <Stack
+                className="text-muted-foreground group-hover:text-foreground mt-0.5 transition-colors"
+                direction="row"
+                render="span"
+              >
                 <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
-              </span>
+              </Stack>
             </Link>
           ))}
         </div>

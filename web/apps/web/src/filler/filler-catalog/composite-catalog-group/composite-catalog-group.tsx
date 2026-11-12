@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure, Stack } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 
 interface CompositeCatalogGroupProps {
@@ -24,7 +24,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
   const total = unwrap(children.data, (body) => body.total) ?? 0;
 
   return (
-    <div className="flex flex-col gap-2">
+    <Stack gap="inline">
       {/* Keep the ordinary clip surface as the parent. A compilation still needs the same
           inspection entry point and confirmed split action; replacing it with a
           bespoke group heading made those established actions disappear. The disclosure below
@@ -40,11 +40,11 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
         {children.isFetching ? (
           <span className="text-muted-foreground text-xs">Loading segments…</span>
         ) : (
-          <div className="flex">
+          <Stack direction="row">
             <Action onPress={onManage} variant="outline">
               {`Manage ${pluralize(total, "segment")}`}
             </Action>
-          </div>
+          </Stack>
         )}
         {children.error ? (
           <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
@@ -54,7 +54,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
           <p className="text-muted-foreground text-sm">No filed segments remain under this compilation.</p>
         )}
       </Disclosure>
-    </div>
+    </Stack>
   );
 };
 

@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -194,12 +194,18 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       {clipSplit.error != null && <ErrorState error={clipSplit.error} />}
       {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
       {parentHash ? (
-        <div className="border-border bg-card flex flex-wrap items-center gap-3 rounded-lg border p-3">
+        <Stack
+          align="center"
+          className="border-border bg-card rounded-lg border p-3"
+          direction="row"
+          gap="control"
+          wrap
+        >
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">{parentName || "Compilation segments"}</p>
             <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
@@ -207,11 +213,17 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           <Action onPress={() => setFilters({ parent: undefined })} variant="outline">
             Back to top-level catalog
           </Action>
-        </div>
+        </Stack>
       ) : null}
 
       {taxon || unclassified || withoutAxis ? (
-        <div className="border-signal/30 bg-signal/5 flex flex-wrap items-center gap-3 rounded-lg border p-3">
+        <Stack
+          align="center"
+          className="border-signal/30 bg-signal/5 rounded-lg border p-3"
+          direction="row"
+          gap="control"
+          wrap
+        >
           <p className="min-w-0 flex-1 text-sm">
             {unclassified
               ? "Showing clips with no directly assigned taxonomy tags"
@@ -225,7 +237,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           >
             Clear taxonomy filter
           </Action>
-        </div>
+        </Stack>
       ) : null}
 
       {selection.selected.size > 0 && (
@@ -302,7 +314,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
         <>
           {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
               ("what's next?") — never both in one place. */}
-          <div className="flex items-center gap-3">
+          <Stack align="center" direction="row" gap="control">
             <p className="text-muted-foreground text-sm">
               {pageCount > 1
                 ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
@@ -326,7 +338,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                       : "Select all"}
               </Action>
             )}
-          </div>
+          </Stack>
           {view === "list" ? (
             <div className="border-border overflow-hidden rounded-lg border">
               {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
@@ -353,7 +365,15 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               catalog redesign's call to make; what this must not do is leave the clips past
               row 60 unreachable, which is what a page size with no pager would be. */}
           {pageCount > 1 && (
-            <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
+            <Stack
+              align="center"
+              aria-label="Catalog pages"
+              className="pt-1"
+              direction="row"
+              gap="control"
+              justify="between"
+              render="nav"
+            >
               <Action disabled={page <= 1} onPress={() => goToPage(page - 1)} variant="outline">
                 Previous
               </Action>
@@ -365,7 +385,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               <Action disabled={page >= pageCount} onPress={() => goToPage(page + 1)} variant="outline">
                 Next
               </Action>
-            </nav>
+            </Stack>
           )}
         </>
       )}
@@ -391,7 +411,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
         finalFocus={detailTrigger}
         onClose={() => setInspecting(undefined)}
       />
-    </div>
+    </Stack>
   );
 };
 

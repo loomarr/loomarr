@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, StatusDot, type StatusTone } from "@loomarr/design-system";
+import { Action, Stack, StatusDot, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 
@@ -90,9 +90,13 @@ const FillerManage = () => {
     <section aria-label="Filler tools" className="border-border bg-card overflow-hidden rounded-lg border">
       <ul>
         {rows.map((row) => (
-          <li
+          <Stack
+            align="center"
+            className="border-border border-b px-4 py-3 last:border-b-0"
+            direction="row"
+            gap="control"
             key={row.title}
-            className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+            render="li"
           >
             {/* Decorative: the summary beside it says the same thing in words. */}
             <StatusDot tone={row.tone} label="" size="compact" />
@@ -109,7 +113,7 @@ const FillerManage = () => {
                 Open
               </Action>
             ) : null}
-          </li>
+          </Stack>
         ))}
       </ul>
     </section>

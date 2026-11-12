@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   PressableRow,
+  Stack,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -199,7 +200,7 @@ const Incoming = () => {
         <h2 id="incoming-empty-heading" className="text-2xl font-semibold">
           Nothing on the way
         </h2>
-        <div className="flex flex-col items-center">
+        <Stack align="center">
           <EmptyState
             title="Incoming is clear"
             description="New clips will appear here after you add a source."
@@ -209,7 +210,7 @@ const Incoming = () => {
               Add a source
             </Action>
           </div>
-        </div>
+        </Stack>
       </section>
     );
   }
@@ -276,12 +277,18 @@ const Incoming = () => {
           </div>
           {helpTask ? (
             <Card gap={16} padding={16}>
-              <div className="text-muted-foreground flex items-center justify-between gap-3 text-xs">
+              <Stack
+                align="center"
+                className="text-muted-foreground text-xs"
+                direction="row"
+                gap="control"
+                justify="between"
+              >
                 <span>
                   {helpIndex + 1} of {view.needsHelp.total}
                 </span>
                 {view.needsHelp.total > 1 ? <span>One choice at a time</span> : null}
-              </div>
+              </Stack>
               <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium break-words">{helpTask.name}</p>
@@ -292,7 +299,7 @@ const Incoming = () => {
                 </Action>
               </div>
               {view.needsHelp.total > 1 ? (
-                <div className="border-border flex justify-end gap-2 border-t pt-3">
+                <Stack className="border-border border-t pt-3" direction="row" gap="inline" justify="end">
                   <Action
                     disabled={helpIndex === 0}
                     onPress={() => setHelpIndex((current) => Math.max(0, current - 1))}
@@ -307,7 +314,7 @@ const Incoming = () => {
                   >
                     {loadingGroup === "needsHelp" ? "Loading…" : "Next"}
                   </Action>
-                </div>
+                </Stack>
               ) : null}
             </Card>
           ) : null}
@@ -316,7 +323,7 @@ const Incoming = () => {
 
       {view.recentlyReady.total > 0 ? (
         <section aria-labelledby="ready-heading" className="space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
+          <Stack align="end" direction="row" gap="inline" justify="between" wrap>
             <div>
               <h3 id="ready-heading" className="text-lg font-semibold">
                 Ready
@@ -335,7 +342,7 @@ const Incoming = () => {
             <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
               Open Library
             </Action>
-          </div>
+          </Stack>
           <StatusRows
             group={view.recentlyReady}
             loading={loadingGroup === "recentlyReady"}

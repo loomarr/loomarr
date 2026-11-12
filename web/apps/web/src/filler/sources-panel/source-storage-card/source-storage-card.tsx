@@ -1,7 +1,7 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, pluralize } from "@loomarr/core/format";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
@@ -63,7 +63,7 @@ const SourceStorageCard = () => {
         allowanceFull ? "border-caution/40 bg-caution/5" : "border-border bg-card",
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div className="min-w-0 flex-1">
           <h2 id="filler-storage-heading" className="text-sm font-medium">
             Storage
@@ -104,7 +104,7 @@ const SourceStorageCard = () => {
               ? "Raise allowance"
               : "Storage options"}
         </Action>
-      </div>
+      </Stack>
 
       {storage.pausedBy === "host_reserve" ? (
         <div className="border-border mt-3 border-t pt-3">
@@ -113,7 +113,7 @@ const SourceStorageCard = () => {
               Checking for old temporary downloads…
             </p>
           ) : cleanupPreview && cleanupPreview.items > 0 ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <Stack align="center" direction="row" gap="control" justify="between" wrap>
               <p className="text-muted-foreground text-sm">
                 {formatBytes(cleanupPreview.bytes)} in{" "}
                 {pluralize(cleanupPreview.items, "unfinished download")} is safe to remove. Clips in your
@@ -122,7 +122,7 @@ const SourceStorageCard = () => {
               <Action disabled={cleanupStorage.isPending} onPress={() => cleanupStorage.mutate()}>
                 {cleanupStorage.isPending ? "Freeing space…" : `Free ${formatBytes(cleanupPreview.bytes)}`}
               </Action>
-            </div>
+            </Stack>
           ) : (
             <p className="text-muted-foreground text-sm">
               There are no old temporary downloads Loomarr can safely remove. Free space elsewhere on this

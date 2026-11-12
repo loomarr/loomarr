@@ -4,7 +4,7 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Chip, DateField, Field } from "@loomarr/design-system";
+import { Action, Chip, DateField, Field, Stack } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -321,7 +321,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             server-side, so it is not edited here. */}
       <details className="border-border rounded-lg border p-3">
         <summary className="cursor-pointer text-sm font-medium">Topics and tags</summary>
-        <div className="mt-3 flex flex-col gap-3">
+        <Stack className="mt-3" gap="control">
           <p className="text-muted-foreground text-xs">Choose what this clip shows or advertises.</p>
           {vocab.error != null && <ErrorState error={vocab.error} />}
           {vocabTaxa == null ? (
@@ -347,7 +347,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               );
             })
           )}
-        </div>
+        </Stack>
       </details>
 
       {derivedTags.length > 0 ? (
@@ -360,14 +360,14 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         </section>
       ) : null}
 
-      <div className="flex justify-end gap-2">
+      <Stack direction="row" gap="inline" justify="end">
         <Action onPress={onClose} variant="outline">
           Cancel
         </Action>
         <Action disabled={patch.isPending} onPress={() => void form.handleSubmit()}>
           {patch.isPending ? "Saving…" : "Save details"}
         </Action>
-      </div>
+      </Stack>
     </section>
   );
 };

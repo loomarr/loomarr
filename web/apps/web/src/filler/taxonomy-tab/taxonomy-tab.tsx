@@ -4,7 +4,7 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Card, Field, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Icon, icons, Stack } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -106,11 +106,11 @@ const TaxonTree = ({
       const resolverTermCount = synonyms.length + aliases.length;
       return (
         <li key={taxon.slug}>
-          <div className="flex items-start gap-2 px-4 py-3">
+          <Stack align="start" className="px-4 py-3" direction="row" gap="inline">
             {nested ? (
-              <span className="mt-1 flex">
+              <Stack className="mt-1" direction="row" render="span">
                 <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
-              </span>
+              </Stack>
             ) : null}
             <div className="min-w-0 flex-1">
               <Action
@@ -122,7 +122,7 @@ const TaxonTree = ({
               >
                 {taxon.label}
               </Action>
-              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              <Stack align="center" className="mt-0.5" direction="row" gap="inline" wrap>
                 <span className="text-muted-foreground font-mono text-xs break-all">{taxon.slug}</span>
                 {resolverTermCount > 0 ? (
                   <details className="text-muted-foreground text-xs">
@@ -135,7 +135,7 @@ const TaxonTree = ({
                     </div>
                   </details>
                 ) : null}
-              </div>
+              </Stack>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
@@ -152,7 +152,7 @@ const TaxonTree = ({
                 {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
               </Link>
             </div>
-          </div>
+          </Stack>
           {children.length > 0 ? (
             <TaxonTree nodes={children} axis={axis} isAdmin={isAdmin} onEdit={onEdit} nested />
           ) : null}
@@ -428,7 +428,7 @@ const TaxonEditor = ({
           ) : null}
         </Card>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
+      <Stack align="center" direction="row" gap="inline" wrap>
         {current ? (
           <Action
             disabled={busy}
@@ -472,7 +472,7 @@ const TaxonEditor = ({
             </Action>
           </>
         )}
-      </div>
+      </Stack>
     </Card>
   );
 };
@@ -495,7 +495,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   if (!data) return <p className="text-muted-foreground text-sm">Loading the taxonomy…</p>;
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       <div className="grid gap-3 sm:grid-cols-3">
         <Card padding={16}>
           <p className="text-muted-foreground text-xs">Library coverage</p>
@@ -611,7 +611,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             {AXES.map((axis) => {
               return (
                 <Card key={axis} overflow="hidden">
-                  <div className="border-border flex items-start gap-3 border-b p-4">
+                  <Stack align="start" className="border-border border-b p-4" direction="row" gap="control">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-medium">{AXIS_COPY[axis].label}</h3>
                       <p className="text-muted-foreground mt-0.5 text-sm">{AXIS_COPY[axis].help}</p>
@@ -626,7 +626,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                         Add
                       </Action>
                     ) : null}
-                  </div>
+                  </Stack>
                   {byAxis[axis].length === 0 ? (
                     <p className="text-muted-foreground px-4 py-3 text-sm">No terms yet.</p>
                   ) : (
@@ -643,7 +643,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
           </div>
         </div>
       </details>
-    </div>
+    </Stack>
   );
 };
 

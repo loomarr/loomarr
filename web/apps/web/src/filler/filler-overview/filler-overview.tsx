@@ -4,7 +4,7 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Card, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -152,7 +152,7 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
   const badge = COVERAGE_BADGE[coverage.level];
   return (
     <Card padding={16}>
-      <div className="flex items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between">
         <div className="min-w-0">
           {title}
           <p className="text-muted-foreground mt-1 text-sm">
@@ -162,7 +162,7 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
           </p>
         </div>
         <StatusLabel tone={badge.tone}>{badge.label}</StatusLabel>
-      </div>
+      </Stack>
       <p className="text-muted-foreground mt-3 text-xs">
         {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
         {pluralize(coverage.brands, "brand")}
@@ -192,7 +192,7 @@ const FillerOverview = () => {
   const shared = sharedPool(readiness.pool.channels);
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       {/* Normal is quiet and the exception is loud (#1817, decided on #1908). Amber is the brand's
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
@@ -240,7 +240,7 @@ const FillerOverview = () => {
       )}
 
       <section aria-labelledby="coverage-heading">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <Stack align="end" className="mb-3" direction="row" gap="control" justify="between" wrap>
           <div>
             <h2 id="coverage-heading" className="text-lg font-semibold">
               Channel coverage
@@ -252,7 +252,7 @@ const FillerOverview = () => {
           <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
             Browse library
           </Action>
-        </div>
+        </Stack>
         {readiness?.pool.channels.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
             {shared ? (
@@ -293,7 +293,7 @@ const FillerOverview = () => {
           </Card>
         )}
       </section>
-    </div>
+    </Stack>
   );
 };
 

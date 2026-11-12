@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -72,11 +72,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <p className="text-muted-foreground text-sm">
               This clip is not ready for channels yet. Open the preview when you are ready.
             </p>
-            <div className="flex">
+            <Stack direction="row">
               <Action onPress={() => setRevealedHash(clip.hash)} variant="outline">
                 Preview clip
               </Action>
-            </div>
+            </Stack>
           </div>
         )}
       </div>
@@ -144,11 +144,11 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         </p>
       ) : null}
       {onEdit ? (
-        <div className="flex">
+        <Stack direction="row">
           <Action onPress={onEdit} variant="outline">
             Edit details
           </Action>
-        </div>
+        </Stack>
       ) : null}
     </div>
   );

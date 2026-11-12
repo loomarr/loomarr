@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Tooltip } from "@loomarr/design-system";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
 
@@ -69,7 +69,7 @@ const FillerClipList = ({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <Stack gap="inline">
       <div>
         <p className="text-sm font-medium">{label}</p>
         <p className="text-muted-foreground text-xs">{hint}</p>
@@ -100,9 +100,13 @@ const FillerClipList = ({
             // assembler silently skips it, so nothing else says the pin does nothing.
             const gone = !clip && !resolving;
             return (
-              <li
+              <Stack
+                align="center"
+                className="border-border bg-card rounded-md border px-3 py-2"
+                direction="row"
+                gap="control"
                 key={id}
-                className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2"
+                render="li"
               >
                 <div className="min-w-0 flex-1">
                   {gone ? (
@@ -141,14 +145,14 @@ const FillerClipList = ({
                       : `Remove ${clip?.name ?? id}`}
                   </Action>
                 </Tooltip>
-              </li>
+              </Stack>
             );
           })}
         </ul>
       )}
 
       {adding ? (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <SearchCommand
             query={query}
             onQueryChange={setQuery}
@@ -181,7 +185,7 @@ const FillerClipList = ({
           >
             Cancel
           </Action>
-        </div>
+        </Stack>
       ) : (
         <Action
           disabled={disabled}
@@ -193,7 +197,7 @@ const FillerClipList = ({
           Add a clip…
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

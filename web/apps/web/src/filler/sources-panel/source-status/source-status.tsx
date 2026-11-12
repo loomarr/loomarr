@@ -1,7 +1,7 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { formatRelative } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
@@ -55,7 +55,7 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
   const [checkResult, setCheckResult] = useState<FetchFillerSourceOutputBody>();
 
   return (
-    <section aria-labelledby="source-status-heading" className="flex flex-col gap-3">
+    <Stack aria-labelledby="source-status-heading" gap="control" render="section">
       <div>
         <h3 id="source-status-heading" className="font-medium">
           {readinessLabel(source)}
@@ -112,7 +112,7 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
           {fetchError.detail}
         </p>
       )}
-    </section>
+    </Stack>
   );
 };
 

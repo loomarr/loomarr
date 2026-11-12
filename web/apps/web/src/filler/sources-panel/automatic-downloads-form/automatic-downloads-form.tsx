@@ -1,7 +1,7 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { type ComponentRef, useRef, useState } from "react";
@@ -138,7 +138,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       <div>
         <p className="text-sm font-medium">Automatic downloads</p>
         <p className="text-muted-foreground mt-1 text-sm">{automaticDownloads.summary}</p>
@@ -192,7 +192,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           {editingCustomSchedule && (
             <div className="flex flex-col gap-1.5 sm:col-span-2">
               <span className="text-sm">Custom schedule</span>
-              <div className="flex gap-2">
+              <Stack direction="row" gap="inline">
                 <NumberField
                   accessibilityLabel="Source check interval"
                   amount={interval.amount}
@@ -218,7 +218,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                     value={interval.unit}
                   />
                 </div>
-              </div>
+              </Stack>
             </div>
           )}
         </div>
@@ -237,7 +237,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
           {saveError}
         </p>
       )}
-    </div>
+    </Stack>
   );
 };
 

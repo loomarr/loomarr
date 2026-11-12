@@ -17,6 +17,7 @@ import {
   Field,
   Icon,
   icons,
+  Stack,
   Surface,
   Text,
 } from "@loomarr/design-system";
@@ -157,7 +158,7 @@ const DurationChoiceField = ({
         value={mode}
       />
       {mode === "custom" && (
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <AmountBox
             accessibilityLabel={choice.customAriaLabel}
             disabled={disabled}
@@ -167,7 +168,7 @@ const DurationChoiceField = ({
             value={customValue}
           />
           <span className="text-muted-foreground text-sm">{unit.words}</span>
-        </div>
+        </Stack>
       )}
       <p className="text-muted-foreground text-sm">{choice.help}</p>
     </div>
@@ -246,7 +247,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
         value={mode}
       />
       {mode === "custom" && (
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <AmountBox
             accessibilityLabel="Custom breaks per program hour"
             disabled={disabled}
@@ -256,7 +257,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
             value={customValue}
           />
           <span className="text-muted-foreground text-sm">breaks per program hour</span>
-        </div>
+        </Stack>
       )}
       <p className="text-muted-foreground text-sm">
         How often this channel pauses for filler. Manage the inherited value in{" "}
@@ -333,7 +334,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
   const entries = preview?.entries ?? [];
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    <Stack className={className} gap="section">
       <div>
         {/* Reached from a Filler Overview coverage card, this page is a detour out of the Filler
             area; the header's back arrow goes to the channel list, so the detour gets its own way
@@ -358,7 +359,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           works before meeting the controls that can make its pool narrower. This is intentionally
           not collapsed: coverage is the primary answer, not advanced diagnosis. The headings and
           sentences on this page are the web mock's. */}
-      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
+      <Stack className="border-border bg-card rounded-lg border p-5" gap="control" render="section">
         <div>
           <h3 className="text-base font-semibold">What this channel can play</h3>
           <p className="text-muted-foreground text-sm">
@@ -378,7 +379,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             Coverage becomes available after filler is configured for this install.
           </p>
         )}
-      </section>
+      </Stack>
 
       <section className="border-border bg-card flex flex-col gap-5 rounded-lg border p-5">
         <div>
@@ -461,7 +462,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
       </Disclosure>
 
       {/* The live break — the ground-truth preview of the current draft. */}
-      <section className="border-border bg-card flex flex-col gap-2 rounded-lg border p-5">
+      <Stack className="border-border bg-card rounded-lg border p-5" gap="inline" render="section">
         <h3 className="text-base font-semibold">Preview break</h3>
         {previewError ? (
           <p className="text-onair-300 text-sm">
@@ -490,12 +491,17 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             </p>
           </div>
         )}
-      </section>
+      </Stack>
 
       {/* Apply / Discard — only offered when the draft differs from what's saved. Apply is
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
-        <div className="border-border bg-background/95 sticky bottom-0 flex items-center gap-2 rounded-lg border p-3 shadow-lg backdrop-blur">
+        <Stack
+          align="center"
+          className="border-border bg-background/95 sticky bottom-0 rounded-lg border p-3 shadow-lg backdrop-blur"
+          direction="row"
+          gap="inline"
+        >
           <Action disabled={isApplying} onPress={apply} tone="suggest">
             {isApplying ? "Applying…" : "Apply filler"}
           </Action>
@@ -503,7 +509,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             Discard
           </Action>
           <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
-        </div>
+        </Stack>
       )}
 
       <Dialog open={Boolean(previewingClip)} onOpenChange={(open) => !open && setPreviewingClip(undefined)}>
@@ -521,7 +527,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           </DialogContent>
         ) : null}
       </Dialog>
-    </div>
+    </Stack>
   );
 };
 
