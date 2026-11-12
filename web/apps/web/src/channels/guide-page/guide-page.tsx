@@ -42,6 +42,7 @@ import {
   guideHourOf,
   guideWindow,
 } from "../guide-window";
+import { useGuideDay } from "../use-guide-day";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
 // shared axis. It answers both halves of the question in one place: "what do I have" and
@@ -167,9 +168,6 @@ const GuidePage = () => {
     atParam !== undefined && channelParam ? { channelId: channelParam, anchorMs: atParam } : undefined,
   );
   const [timeZone, setTimeZone] = useState(() => cachedGuideZone(queryClient));
-  const [dayOffset, setDayOffset] = useState<number>(() =>
-    atParam === undefined ? 0 : dayOffsetOf(atParam, timeZone),
-  );
   // A phone opens on the shortest span: the compact grid (mocks 5d/5f) shows about an hour and a
   // half across, and four hours leave a half-hour programme a few pixels wide.
   const phoneWidth = usePhoneWidth();
@@ -195,6 +193,11 @@ const GuidePage = () => {
   const nowNextView = view === "list";
   const queryMinutes = nowNextView ? DEFAULT_WINDOW_MINUTES : windowMinutes;
   const { nowMs, anchorMs } = useGuideWindow(queryMinutes);
+  const [dayOffset, setDayOffset] = useGuideDay({
+    anchorMs,
+    initialOffset: atParam === undefined ? 0 : dayOffsetOf(atParam, timeZone),
+    timeZone,
+  });
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
   // from `startHour` so stepping away from a chosen start hour is still relative to it.
   const [hourShift, setHourShift] = useState<number>(0);
