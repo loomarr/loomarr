@@ -401,7 +401,7 @@ var namingMatrix = []namingRow{
 		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) - Teaser.mkv":    "skip",
 		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019)-Trailer 2.mkv":   "skip",
 		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) - Making Of.mkv": "skip",
-		"Movies/Ferrow.Lane.Uncut.2019.mkv":                            "movie Ferrow Lane 2019",
+		"Movies/Ferrow.Lane.2019.Uncut.mkv":                            "movie Ferrow Lane 2019",
 		"Movies/Ashgrove-(2015).mkv":                                   "movie Ashgrove 2015",
 		"Movies/Plex Versions/Optimized for TV/Ashgrove (2015).mp4":    "skip",
 	}},
@@ -435,6 +435,75 @@ var namingMatrix = []namingRow{
 	}},
 	// A catch-all's "Part 2 of 3" is a film's, not an episode of a show named "Movies".
 	{id: "W34", files: map[string]string{"Movies/Ferrow Lane Part 2 of 3 (2010).mkv": "movie Ferrow Lane Part 2 of 3 2010"}},
+	// A title may carry a word a release name does: it ends the title only after the year, before
+	// another release word, or last in a dotted name.
+	{id: "W35", files: map[string]string{
+		"Movies/Tangled Web (2016).mkv":                "movie Tangled Web 2016",
+		"Movies/The Cam (2017).mkv":                    "movie The Cam 2017",
+		"Movies/Mister Proper (2010).mkv":              "movie Mister Proper 2010",
+		"Movies/Kettle Extended Family (2013).mkv":     "movie Kettle Extended Family 2013",
+		"Movies/Ferrow DVD Night (2012).mkv":           "movie Ferrow DVD Night 2012",
+		"Movies/Marrow.2014.PROPER.1080p.mkv":          "movie Marrow 2014",
+		"Movies/Lantern.Cove.German.DL.1080p.mkv":      "movie Lantern Cove -",
+		"Movies/Ashgrove+Cove+2014+720p.mkv":           "movie Ashgrove Cove 2014",
+		"Movies/www.TrackerNet.org_Low.Water.2014.mkv": "movie Low Water 2014",
+		"Movies/Trailer (2014).mkv":                    "movie Trailer 2014",
+		"Movies/The 4x4 Club (2016).mkv":               "movie The 4x4 Club 2016",
+	}},
+	{id: "W36", files: map[string]string{"TV/The Web Crew/Season 1/The Web Crew S01E01.mkv": "episode The Web Crew S1E1"}},
+	{id: "W37", files: map[string]string{
+		"TV/Kids/Kettle Bay S01E04.mkv":      "episode Kettle Bay S1E4",
+		"Dad's Stuff/Ferrow.Lane.S01E01.mkv": "episode Ferrow Lane S1E1",
+		"Dad's Stuff/Ashgrove (2015).mkv":    "movie Ashgrove 2015",
+	}},
+	{id: "W38", files: map[string]string{
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014).mkv":                       "movie Brindle Cove 2014",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Official Trailer.mkv":    "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) Teaser Trailer.mkv":        "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Director Commentary.mkv": "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Interview with Cast.mkv": "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Alternate Ending.mkv":    "skip",
+	}},
+	{id: "W39", files: map[string]string{
+		"Downloads/Evening.Ledger.2024.03.18.720p.WEB.mkv": "episode Evening Ledger 2024-03-18",
+		"Evening.Ledger.2024.03.19.Guest.Name.720p.mkv":    "episode Evening Ledger 2024-03-19",
+	}},
+	{id: "W40", files: map[string]string{"TV/Evening Ledger/The Evening Ledger 2024-03-25.mkv": "episode Evening Ledger 2024-03-25"}},
+	{id: "W41", files: map[string]string{
+		"TV/La Bahia/Temporada 1/Capitulo 5.mkv":   "episode La Bahia S1E5",
+		"TV/La Bahia/Temporada 1/Capítulo 06.mkv":  "episode La Bahia S1E6",
+		"TV/La Bahia/La Bahia [HDTV][Cap.117].avi": "episode La Bahia S1E17",
+	}},
+	{id: "W42", files: map[string]string{"TV/Gavan/Сезон 1/Серия 9.mkv": "episode Gavan S1E9"}},
+	{id: "W43", files: map[string]string{"TV/Liman/Sezon 1/Bölüm 15.mkv": "episode Liman S1E15"}},
+	{id: "W44", files: map[string]string{"TV/Kettle Kou/Season 1/第11話.mkv": "episode Kettle Kou S1E11"}},
+	{id: "W45", files: map[string]string{
+		"Movies/Ashgrove (2015).wtv":                                               "movie Ashgrove 2015",
+		"Movies/Ferrow (2016).dvr-ms":                                              "movie Ferrow 2016",
+		"Movies/Lantern (2017).mk3d":                                               "movie Lantern 2017",
+		"Movies/Network Trash Folder/Marrow (2018).mkv":                            "skip",
+		"Movies/Temporary Items/Marrow (2018).mkv":                                 "skip",
+		"Movies/RECYCLER/Marrow (2018).mkv":                                        "skip",
+		"Movies/~snapshot/Marrow (2018).mkv":                                       "skip",
+		"Downloads/intermediate/Kettle.Bay.S01E05.720p/Kettle.Bay.S01E05.720p.mkv": "skip",
+	}},
+	{id: "W46", files: map[string]string{
+		"Anime/[Kumo] Sora no Kettle (01-12) [BD 1080p]/[Kumo] Sora no Kettle - 01 [BD 1080p].mkv": "episode Sora no Kettle S?E?",
+		"[Kumo] Ferrow Gakuen - 10 END [1080p].mkv":                                                "episode Ferrow Gakuen S?E?",
+	}},
+	{id: "W47", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Kettle Bay S01E01.mkv":                    "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle.Bay.S02.1080p.WEB-DL/Kettle.Bay.S02E01.mkv": "episode Kettle Bay S2E1",
+	}},
+	{id: "W48", files: map[string]string{
+		"TV/Kettle Bay (Complete)/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+	}},
+	{id: "W49", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2",
+		"TV/Kettle Bay/Pilot Extended.mkv":    "episode Kettle Bay S?E?",
+	}},
+	{id: "W50", files: map[string]string{"Movies/Brindle Cove/bc.mkv": "movie Brindle Cove -"}},
 	// Episode marks as other apps and languages write them, and one file of several.
 	{id: "W15", files: map[string]string{
 		"TV/Kettle Bay/Kettle Bay 1x2.avi":               "episode Kettle Bay S1E2",

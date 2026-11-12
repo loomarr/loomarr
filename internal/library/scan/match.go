@@ -406,7 +406,7 @@ var (
 	leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
 	// trackerPrefix matches the site a download names itself after, before the title:
 	// "www.TrackerNet.org - Ashgrove", "[www.TrackerNet.org] Ashgrove".
-	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*www\.[^\s\]]+\s*\]?[ ._]*(?:-[ ._]*)?`)
+	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*www\.[a-z0-9-]+\.[a-z]{2,6}\s*\]?[ ._]*(?:-[ ._]*)?`)
 	// indexPrefix matches a collection's place for a film, before its title: "01 - Ashgrove",
 	// "1. Ashgrove", "(1) Ashgrove". A number that starts a title, "10 Kettles", has none of these.
 	indexPrefix = regexp.MustCompile(`^\s*(?:\(\d{1,2}\)|\d{1,2}\.|\d{1,2}[ ._]+-)[ ._]+`)
@@ -414,11 +414,43 @@ var (
 	// release rather than part of its name: "(Dual Audio)", "[HD]", "(2016 Remaster)".
 	bracketNote = regexp.MustCompile(`[(\[]([^()\[\]]*)[)\]]`)
 	// noteWord is a word a bracketed note on a release is made of.
-	noteWord = regexp.MustCompile(`(?i)^(directors?|director's|cut|uncut|extended|unrated|theatrical|special|edition|version|remaster|remastered|restored|dual|audio|multi|subs?|subbed|dubbed|eng|english|hd|sd|fhd|imax|criterion|anniversary|\d+(?:st|nd|rd|th))$`)
-	// releaseToken is a word a release name carries after the title: the quality, source, codec,
-	// language or edition. The title ends before the first.
-	releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|uncut|remastered|imax|internal|limited|cam|camrip|hdcam|hdrip|hdts|telesync|dvdscr|screener|multi|vostfr|vost|subbed|dubbed|hd|fhd)$`)
+	noteWord = regexp.MustCompile(`(?i)^(directors?|director's|cut|uncut|extended|unrated|theatrical|special|edition|version|remaster|remastered|restored|dual|audio|multi|subs?|subbed|dubbed|eng|english|hd|sd|fhd|imax|criterion|anniversary|complete|\d+(?:st|nd|rd|th))$`)
+	// releaseMark is a word only a release name carries after its title: a resolution, source, codec
+	// or rip. The title ends before the first.
+	releaseMark = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|blu-?ray|bdrip|brrip|web-?dl|webrip|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|repack|camrip|hdcam|hdrip|hdts|telesync|dvdscr|vostfr|vost|fhd|dl)$`)
+	// releaseWord is a word a release name carries after its title that a title may carry too:
+	// "Tangled Web", "The Cam", "Mister Proper", "The German". It ends the title only where a
+	// release's words are plainly under way: after the year, before another release word, or last
+	// in a name written with dots.
+	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch)$`)
 )
+
+// releaseToken says whether a word is a release's: a releaseMark, or a releaseWord.
+func releaseToken(w string) bool { return releaseMark.MatchString(w) || releaseWord.MatchString(w) }
+
+// releaseCut is where a name's title ends among its words: at its first releaseMark, or at a
+// releaseWord after the year, before another release word, or last in a name written with dots
+// ("Ashgrove.CAM").
+func releaseCut(words []string, dotted bool) int {
+	first := func(w string) string { return strings.SplitN(w, "-", 2)[0] }
+	for i, w := range words {
+		if i == 0 {
+			continue
+		}
+		w = first(w)
+		switch {
+		case releaseMark.MatchString(w):
+			return i
+		case !releaseWord.MatchString(w):
+			continue
+		case releaseYear(first(words[i-1])),
+			i+1 < len(words) && releaseToken(first(words[i+1])),
+			i+1 == len(words) && dotted:
+			return i
+		}
+	}
+	return len(words)
+}
 
 // releaseNote says whether a bracketed group's words are a note on the release ("Dual Audio",
 // "2016 Remaster", "HD"), not part of the title. A year alone is the title's year, kept.
@@ -428,7 +460,7 @@ func releaseNote(inner string) bool {
 		return false
 	}
 	for _, w := range words {
-		if !noteWord.MatchString(w) && !releaseToken.MatchString(w) && !yearToken.MatchString(w) {
+		if !noteWord.MatchString(w) && !releaseToken(w) && !yearToken.MatchString(w) {
 			return false
 		}
 	}
@@ -486,8 +518,9 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 		}
 		return group
 	})
-	if !strings.Contains(name, " ") {
-		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
+	dotted := !strings.Contains(name, " ")
+	if dotted {
+		name = strings.NewReplacer(".", " ", "_", " ", "+", " ").Replace(name)
 	}
 	// A name joined only with dashes, "ferrow-lane-2019", is spaced where a year shows it is words.
 	if !strings.Contains(name, " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], func(w string) bool {
@@ -501,13 +534,7 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	}) {
 		words = append(words, dottedWords(w)...)
 	}
-	cut := len(words)
-	for i, w := range words {
-		if i > 0 && releaseToken.MatchString(strings.SplitN(w, "-", 2)[0]) {
-			cut = i
-			break
-		}
-	}
+	cut := releaseCut(words, dotted)
 	// A year among the release words, "Ashgrove 1080p 2015", is the year when the title gives none.
 	after := 0
 	for _, w := range words[cut:] {

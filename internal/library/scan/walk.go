@@ -31,6 +31,8 @@ var videoExtensions = map[string]bool{
 	".mov": true, ".wmv": true, ".mpg": true, ".mpeg": true, ".webm": true,
 	".divx": true, ".flv": true, ".f4v": true, ".ogm": true, ".ogv": true, ".rmvb": true, ".rm": true,
 	".vob": true, ".asf": true, ".3gp": true, ".m2v": true, ".xvid": true,
+	// Windows Media Center's recordings, 3D Matroska, camcorders' MPEG and phones' MPEG-4.
+	".wtv": true, ".dvr-ms": true, ".mk3d": true, ".mod": true, ".tod": true, ".mpeg4": true, ".3g2": true,
 }
 
 // skippedDirs hold media-server and NAS by-products, snapshots and recycle bins, never media. A
@@ -42,10 +44,13 @@ var skippedDirs = map[string]bool{
 	"trickplay": true, "extrafanart": true, ".actors": true,
 	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "incomplete": true,
 	"#snapshot": true, "system volume information": true, "plex versions": true,
+	// A Mac's leavings on a share, Windows' older recycle bins, NZBGet's unpacking.
+	"network trash folder": true, "temporary items": true, "recycler": true, "recycle bin": true,
+	"intermediate": true,
 }
 
 // skippedPrefixes begin the names of folders skippedDirs skips by their prefix.
-var skippedPrefixes = []string{".", "@", "_unpack_", "_failed_"}
+var skippedPrefixes = []string{".", "@", "~", "_unpack_", "_failed_"}
 
 // discDirs are disc structures, which are not imported but listed as problems.
 var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
@@ -357,7 +362,16 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 	}
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
-	notes.Dump = dir != w.root && dumpFolder(filepath.Base(dir), videoNames)
+	marked := 0
+	for _, name := range videoNames {
+		if episodeMark.MatchString(name) {
+			marked++
+		}
+	}
+	notes.Episodes = marked >= 2
+	// A season folder's episodes name their show, not the season: it is never a dump.
+	notes.Dump = dir != w.root && seasonDirOf(w.rel(dir)) == "" && len(idsIn(filepath.Base(dir))) == 0 &&
+		dumpFolder(filepath.Base(dir), videoNames)
 	// A folder holding one video, named by a part mark alone, may be one part of a movie whose
 	// parts each have a folder: the movie's folder is the set.
 	folderPart := 0
@@ -773,8 +787,10 @@ var (
 	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:op|ed|pv|cm|menu|preview)\d*(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
 	// plainExtra matches an extra a household named in words, alone or before a dash: "Gag Reel",
 	// "Making Of", "Trailer 2", "Featurette - Costumes", "Creditless Opening".
-	plainExtra = regexp.MustCompile(`(?i)^(?:gag reel|making of|commentary|behind the scenes|bloopers|outtakes|teaser|trailer|featurette|deleted scenes?|interview|creditless (?:opening|ending))(?:[ ._]*\d*)(?:[ ._]+-[ ._]+.*)?$`)
-	// dashedExtra matches an extra named after its film: "Ashgrove (2015) - Teaser", "Ashgrove (2015)
-	// - Making Of", "Ashgrove (2015)-Trailer 2".
-	dashedExtra = regexp.MustCompile(`(?i)[ ._]*-[ ._]*(?:teaser|making of|gag reel|bloopers|outtakes|commentary|trailer)(?:[ ._]*\d*)$`)
+	plainExtra = regexp.MustCompile(`(?i)^(?:gag reel|making of|commentary|behind the scenes|bloopers|outtakes|teaser|trailer|featurette|deleted scenes?|interview|creditless (?:opening|ending))(?:[ ._]*\d{1,2})?(?:[ ._]+-[ ._]+.*)?$`)
+	// dashedExtra matches an extra named after its film, after a dash or its year: "Ashgrove (2015) -
+	// Teaser", "Ashgrove (2015) - Official Trailer", "Ashgrove (2015) Teaser Trailer", "Ashgrove
+	// (2015)-Trailer 2", "Ashgrove (2015) - Director Commentary", "- Interview with Cast", "-
+	// Alternate Ending".
+	dashedExtra = regexp.MustCompile(`(?i)(?:[ ._]*-[ ._]*|[)\]][ ._]*)(?:(?:official|teaser|final|theatrical)[ ._]+)?(?:teaser|trailer|making of|gag reel|bloopers|outtakes|(?:directors?'?s?[ ._]+|audio[ ._]+)?commentary|interview(?:[ ._]+with[ ._].*)?|alternate[ ._]+ending|short[ ._]+film|featurette(?:[ ._]+-?[ ._]*.*)?)(?:[ ._]*\d{1,2})?$`)
 )

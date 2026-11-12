@@ -135,7 +135,13 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    episodes name several shows, none its own, names none; extras named in words beside a film
 //	    are skipped; "Show E01" in the show's folder, a year's folder in a show's, "Season
 //	    Specials", "1st Season", "Folge 1" and a fansub's "Show S2 - 03" place their episodes.
-const writeVersion = 40
+//	41: a word a title may share with a release ("Tangled Web", "The Cam") ends it only where a
+//	    release's words are under way; a genre folder's one show is its episodes' own; a dated
+//	    release loose at the top or in a catch-all is its show's; "Capítulo 5", "Серия 9", "Cap.117"
+//	    and "第11話" are marks; a season pack in its show's folder, a fansub pack's folder and an
+//	    unmarked file beside a show's episodes are the show's; descriptive extras, Media Center
+//	    recordings and a Mac's share leavings are read as they are.
+const writeVersion = 41
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -533,6 +539,10 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	}
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
+		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
+		if !catchAllFolder(folder) && len(name) > 1 && strings.EqualFold(name, initials(folder)) {
+			return folder
+		}
 		if _, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
 			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" {
 				return folder
