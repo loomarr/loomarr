@@ -105,6 +105,113 @@ describe("isHandRolledForm, a flag a handler raises", () => {
   });
 });
 
+describe("isHandRolledForm, a draft written through a wrapper", () => {
+  const note = (declaration, attribute = "onChangeText={changeNote}") => `
+    import { useState } from "react";
+    export const Pull = ({ onEdited }) => {
+      const [note, setNote] = useState("");
+      const [open, setOpen] = useState(false);
+      ${declaration}
+      return <Field ${attribute} value={note} />;
+    };
+  `;
+
+  it("flags an input handled by a function that writes the setter", () => {
+    assert.equal(
+      isHandRolledForm(
+        note("const changeNote = (value) => { setNote(value); onEdited(value.trim() !== ''); };"),
+      ),
+      true,
+    );
+    assert.equal(
+      isHandRolledForm(note("function changeNote(value) { setNote(value); }", "onChangeText={changeNote}")),
+      true,
+    );
+    assert.equal(isHandRolledForm(note("const changeNote = function (value) { setNote(value); };")), true);
+  });
+
+  it("follows a wrapper that calls another wrapper", () => {
+    assert.equal(
+      isHandRolledForm(
+        note("const store = (value) => setNote(value); const changeNote = (value) => { store(value); };"),
+      ),
+      true,
+    );
+  });
+
+  it("passes a wrapper that writes no draft, or only raises a flag", () => {
+    assert.equal(isHandRolledForm(note("const changeNote = (value) => { onEdited(value); };")), false);
+    assert.equal(isHandRolledForm(note("const changeNote = () => { setOpen(true); };")), false);
+  });
+
+  it("does not follow a wrapper that no input handler names", () => {
+    assert.equal(
+      isHandRolledForm(
+        note("const save = (value) => { setNote(value); };", "onPress={save} onChangeText={onEdited}"),
+      ),
+      false,
+    );
+  });
+
+  it("follows a DOM input's onChange, but not a component's, which reports a structured value", () => {
+    const declaration = "const changeNote = (value) => { setNote(value); };";
+    assert.equal(
+      isHandRolledForm(note(declaration, "onChange={changeNote}").replace("<Field", "<input")),
+      true,
+    );
+    assert.equal(isHandRolledForm(note(declaration, "onChange={changeNote}")), false);
+  });
+
+  it("passes a wrapper that resets state beside what an input handed it", () => {
+    assert.equal(
+      isHandRolledForm(note("const changeNote = (value) => { onEdited(value); setOpen([]); };")),
+      false,
+    );
+  });
+
+  it("terminates on a wrapper that calls itself", () => {
+    assert.equal(isHandRolledForm(note("const changeNote = (value) => { changeNote(value); };")), false);
+  });
+});
+
+describe("isHandRolledForm, a text setter passed as a prop", () => {
+  const panel = (attribute, initial = '("")') => `
+    import { useState } from "react";
+    export const Page = () => {
+      const [dsn, setDsn] = useState${initial};
+      return <Form ${attribute} dsn={dsn} />;
+    };
+  `;
+
+  it("flags a text state's setter handed to a change prop", () => {
+    assert.equal(isHandRolledForm(panel("onDsnChange={setDsn}")), true);
+    assert.equal(isHandRolledForm(panel("onDsnChangeText={setDsn}")), true);
+    assert.equal(isHandRolledForm(panel("onDsnChange={setDsn}", "<string>(initial)")), true);
+    assert.equal(isHandRolledForm(panel("onDsnChange={setDsn}", "(`x`)")), true);
+  });
+
+  it("passes a setter of state that is not text, a flag, or a view choice", () => {
+    assert.equal(isHandRolledForm(panel("onStepChange={setDsn}", "(null)")), false);
+    assert.equal(isHandRolledForm(panel("onOpenChange={setDsn}")), false);
+    assert.equal(isHandRolledForm(panel("onValueChange={setDsn}")), false);
+    assert.equal(isHandRolledForm(panel("onCheckedChange={setDsn}")), false);
+    assert.equal(isHandRolledForm(panel("onPress={setDsn}")), false);
+  });
+
+  it("passes a search box's setter", () => {
+    assert.equal(
+      isHandRolledForm(`
+        import { useState } from "react";
+        export const Page = () => {
+          const [query, setQuery] = useState("");
+          return <List onQueryChange={setQuery} query={query} />;
+        };
+      `),
+      false,
+    );
+  });
+});
+
 describe("the committed draft", () => {
   const sanctioned = `
     import { useCommittedDraft } from "../use-committed-draft";
@@ -113,6 +220,14 @@ describe("the committed draft", () => {
       return <Field onBlur={() => onCommit(draft)} onChangeText={editDraft} value={draft} />;
     };
   `;
+
+  it("is sanctioned from the UI package's entry point, where the app imports it", () => {
+    const fromPackage = sanctioned.replace("../use-committed-draft", "@loomarr/ui");
+    assert.equal(isHandRolledForm(fromPackage), false);
+    assert.equal(usesCommittedDraft(fromPackage), true);
+    // A hook of that name from anywhere else is not the buffer.
+    assert.equal(isHandRolledForm(sanctioned.replace("../use-committed-draft", "@elsewhere/hooks")), true);
+  });
 
   it("is the sanctioned draft of a single input, and is named, not merely unnoticed", () => {
     assert.equal(isHandRolledForm(sanctioned), false);

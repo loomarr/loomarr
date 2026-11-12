@@ -21,6 +21,7 @@ import {
   Surface,
   Text,
 } from "@loomarr/design-system";
+import { useCommittedDraft } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { type ComponentProps, useEffect, useState } from "react";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -109,12 +110,14 @@ const DurationChoiceField = ({
   };
   const mode = value === undefined ? "default" : "custom";
   const defaultAmount = inUnit(defaultValue) ?? choice.fallbackDefault;
-  const [customValue, setCustomValue] = useState(String(inUnit(value) ?? defaultAmount));
+  const { draft: customValue, editDraft: setCustomValue } = useCommittedDraft(
+    String(inUnit(value) ?? defaultAmount),
+  );
 
   useEffect(() => {
     const minutes = goDurationMinutes(value);
     if (minutes !== undefined) setCustomValue(String(minutes / unit.minutes));
-  }, [value, unit.minutes]);
+  }, [value, unit.minutes, setCustomValue]);
 
   const options = [
     { value: "default", label: `Follow default (${unit.describe(defaultAmount)})` },
@@ -197,11 +200,13 @@ const poolSummary = (
 const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakFrequencyFieldProps) => {
   const mode = value === undefined ? "default" : value === 0 ? "off" : "custom";
   const seed = defaultValue != null && defaultValue > 0 ? defaultValue : 1;
-  const [customValue, setCustomValue] = useState(String(value != null && value > 0 ? value : seed));
+  const { draft: customValue, editDraft: setCustomValue } = useCommittedDraft(
+    String(value != null && value > 0 ? value : seed),
+  );
 
   useEffect(() => {
     if (value != null && value > 0) setCustomValue(String(value));
-  }, [value]);
+  }, [value, setCustomValue]);
 
   const defaultLabel =
     defaultValue === 0

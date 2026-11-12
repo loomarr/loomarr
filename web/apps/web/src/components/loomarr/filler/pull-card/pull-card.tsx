@@ -1,7 +1,9 @@
 import { pluralize } from "@loomarr/core/format";
 import { Action, Badge, Card, Field, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
 import type { PullCardProps } from "./pull-card.type";
 
@@ -29,7 +31,9 @@ const PullCard = ({
   // click: a pull is decided in one act, and a per-click PATCH would make "half-approved" a
   // state the gate has to reason about.
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
-  const [note, setNote] = useState("");
+  // The annotation is read when the pull is approved; nothing validates or submits it on its own.
+  const noteForm = useAppForm({ defaultValues: { note: "" } });
+  const note = useStore(noteForm.store, (state) => state.values.note);
   const titleId = useId();
   const edited = dropped.size > 0 || note.trim() !== "";
 
@@ -47,10 +51,6 @@ const PullCard = ({
     if (!next.delete(id)) next.add(id);
     setDropped(next);
     onEditedChange?.(next.size > 0 || note.trim() !== "");
-  };
-  const changeNote = (value: string) => {
-    setNote(value);
-    onEditedChange?.(dropped.size > 0 || value.trim() !== "");
   };
 
   return (
@@ -193,13 +193,20 @@ const PullCard = ({
         </details>
       )}
 
-      <Field
-        accessibilityLabel="Notes for this pull"
-        disabled={deciding}
-        onChangeText={changeNote}
-        placeholder="Optional annotation for your records"
-        value={note}
-      />
+      <noteForm.Field name="note">
+        {(field) => (
+          <Field
+            accessibilityLabel="Notes for this pull"
+            disabled={deciding}
+            onChangeText={(value) => {
+              field.handleChange(value);
+              onEditedChange?.(dropped.size > 0 || value.trim() !== "");
+            }}
+            placeholder="Optional annotation for your records"
+            value={field.state.value}
+          />
+        )}
+      </noteForm.Field>
 
       <Text as="span" textRole="mono">
         Optional annotation for your records. This does not change what is downloaded.

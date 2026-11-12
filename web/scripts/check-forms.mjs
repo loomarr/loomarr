@@ -4,7 +4,10 @@
 //
 // A source is a hand-rolled form when it keeps a typed input's draft in `useState`: a `useState`
 // setter is called from an input's `onChangeText` or `onChange` (a select's `onValueChange` picks
-// what to show, which is a view setting, not a draft). Each input is judged on its own: a file that
+// what to show, which is a view setting, not a draft). A handler counts when it names a function of
+// the same file that stores what it was handed (`onChangeText={changeNote}` with a `changeNote` that
+// calls `setNote(value)`), and so does a text state's setter handed whole to a change prop
+// (`onDsnChange={setDsn}`). Each input is judged on its own: a file that
 // also holds a TanStack form is not excused, since a field's `handleChange` is never a `useState`
 // setter and so never counts. A search box or filter
 // (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, and neither is a flag a
@@ -116,7 +119,8 @@ const SANCTIONED_DRAFT_HOOKS = [
   {
     group: "committed",
     hooks: new Set(["useCommittedDraft"]),
-    module: /(?:^|\/)use-committed-draft$/,
+    // Inside the UI package it is imported from its own module; the app takes it from the package.
+    module: /(?:^|\/)use-committed-draft$|^@loomarr\/ui$/,
   },
 ];
 const DRAFT_SETTER = /^(?:set(?:Edit|Edits)|editDraft)$/;
@@ -211,20 +215,112 @@ const unsanctionedDraftSetters = (program) => {
     .flatMap((call) => call.setters);
 };
 
-// isHandRolledForm: a state setter is reachable from an input's change handler.
+// localFunctions maps the name of every function the file binds (`const f = () => …`,
+// `const f = function () …`, `function f() …`) to the function, so a handler that names one is
+// followed into it.
+const localFunctions = (program) => {
+  const functions = new Map();
+  walk(program, (node) => {
+    if (node.type === "FunctionDeclaration" && node.id) functions.set(node.id.name, node);
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      (node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression")
+    ) {
+      functions.set(node.id.name, node.init);
+    }
+  });
+  return functions;
+};
+
+// storesArgument: the function calls one of `setters` with something derived from its own
+// parameters, which is how a wrapper stores what an input handed it. A wrapper that resets a page
+// or a cursor beside navigating carries nothing the viewer typed.
+const storesArgument = (fn, setters) => {
+  const parameters = new Set();
+  for (const parameter of fn.params) {
+    walk(parameter, (inner) => {
+      if (inner.type === "Identifier") parameters.add(inner.name);
+    });
+  }
+  let stores = false;
+  walk(fn.body, (inner) => {
+    if (inner.type !== "CallExpression" || inner.callee.type !== "Identifier") return;
+    if (!setters.has(inner.callee.name)) return;
+    for (const argument of inner.arguments) {
+      walk(argument, (name) => {
+        if (name.type === "Identifier" && parameters.has(name.name)) stores = true;
+      });
+    }
+  });
+  return stores;
+};
+
+// A change prop is where a component hands back what the viewer typed. A select's `onValueChange`,
+// a dialog's `onOpenChange` and a switch's `onCheckedChange` pick a view or raise a flag.
+const CHANGE_PROP = /^on[A-Z]\w*Change(?:Text)?$/;
+const VIEW_CHANGE_PROPS = new Set(["onValueChange", "onOpenChange", "onCheckedChange"]);
+
+// textSetters names the setters of `useState` calls that hold text: a string, a template or a
+// `useState<string>`. A bare setter handed to a change prop is a draft only when it holds text; a
+// stepper's position or a chosen view is client state, not something typed.
+const textSetters = (program) => {
+  const setters = new Set();
+  walk(program, (node) => {
+    if (
+      node.type !== "VariableDeclarator" ||
+      node.id.type !== "ArrayPattern" ||
+      node.id.elements[1]?.type !== "Identifier" ||
+      node.init?.type !== "CallExpression" ||
+      node.init.callee.type !== "Identifier" ||
+      node.init.callee.name !== "useState"
+    ) {
+      return;
+    }
+    const initial = node.init.arguments[0];
+    const declared = node.init.typeArguments?.params?.[0];
+    if (
+      initial?.type === "StringLiteral" ||
+      initial?.type === "TemplateLiteral" ||
+      declared?.type === "TSStringKeyword"
+    ) {
+      setters.add(node.id.elements[1].name);
+    }
+  });
+  return setters;
+};
+
+// isHandRolledForm: a state setter is reachable from an input's change handler, whether the
+// handler is the setter, calls it, or names a function in this file that does; or a text state's
+// setter is handed to a change prop for another component to write from its own input.
 const isHandRolledForm = (source) => {
   const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
   const setters = stateSetters(program);
   for (const setter of unsanctionedDraftSetters(program)) setters.add(setter);
   if (setters.size === 0) return false;
-  let found = false;
-  walk(program, (node) => {
-    if (found || node.type !== "JSXAttribute" || !INPUT_HANDLERS.has(node.name.name)) return;
-    // `setOpen(true)` raises a flag and `setError(undefined)` clears what the last submit said;
-    // neither carries anything the viewer typed. An `onChange` prop on a component that is not an
-    // input (an editor that reports a changed list) often does the first.
+  const functions = localFunctions(program);
+  const text = textSetters(program);
+
+  // storesThrough: a function an input's handler names stores what it is handed, directly or
+  // through another function in the file.
+  const storesThrough = (fn, seen) => {
+    if (storesArgument(fn, setters)) return true;
+    let stores = false;
+    walk(fn.body, (inner) => {
+      if (stores || inner.type !== "Identifier" || !functions.has(inner.name) || seen.has(inner.name)) return;
+      seen.add(inner.name);
+      stores = storesThrough(functions.get(inner.name), seen);
+    });
+    return stores;
+  };
+
+  // writesSetter: `root` writes a setter, looking into the local functions it names. `setOpen(true)`
+  // raises a flag and `setError(undefined)` clears what the last submit said; neither carries
+  // anything the viewer typed. An `onChange` prop on a component that is not an input (an editor
+  // that reports a changed list) often does the first.
+  const writesSetter = (root, follow, seen = new Set()) => {
     const flags = new Set();
-    walk(node.value, (inner) => {
+    walk(root, (inner) => {
       const argument = inner.type === "CallExpression" ? inner.arguments[0] : undefined;
       if (
         inner.type === "CallExpression" &&
@@ -237,9 +333,40 @@ const isHandRolledForm = (source) => {
         flags.add(inner.callee);
       }
     });
-    walk(node.value, (inner) => {
-      if (inner.type === "Identifier" && setters.has(inner.name) && !flags.has(inner)) found = true;
+    let writes = false;
+    walk(root, (inner) => {
+      if (writes || inner.type !== "Identifier" || flags.has(inner)) return;
+      if (setters.has(inner.name)) {
+        writes = true;
+      } else if (follow && functions.has(inner.name) && !seen.has(inner.name)) {
+        seen.add(inner.name);
+        writes = storesThrough(functions.get(inner.name), seen);
+      }
     });
+    return writes;
+  };
+
+  let found = false;
+  walk(program, (element) => {
+    if (found || element.type !== "JSXOpeningElement") return;
+    // A handler is followed into a function of the file when it is an input's: a field's
+    // `onChangeText`, or a DOM input's `onChange`. A component's `onChange` reports a structured
+    // value (an editor's changed list), so only a setter it names outright counts.
+    const intrinsic = element.name.type === "JSXIdentifier" && /^[a-z]/.test(element.name.name);
+    for (const node of element.attributes) {
+      if (node.type !== "JSXAttribute" || node.name.type !== "JSXIdentifier") continue;
+      const name = node.name.name;
+      if (INPUT_HANDLERS.has(name)) {
+        found ||= writesSetter(node.value, name === "onChangeText" || intrinsic);
+      } else if (
+        CHANGE_PROP.test(name) &&
+        !VIEW_CHANGE_PROPS.has(name) &&
+        node.value?.type === "JSXExpressionContainer" &&
+        node.value.expression.type === "Identifier"
+      ) {
+        found ||= text.has(node.value.expression.name) && setters.has(node.value.expression.name);
+      }
+    }
   });
   return found;
 };

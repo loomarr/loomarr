@@ -2,6 +2,7 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
 import { unwrap } from "@loomarr/api/unwrap";
 import { Stack } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import type { MigrationStep } from "@/components/loomarr/settings/database-migra
 import { DatabaseMigration } from "@/components/loomarr/settings/database-migration";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useLoomarrEventListener } from "@/events/events-provider";
+import { useAppForm } from "@/lib/app-form";
 
 // Settings → System → Database (§18, V11) — the SQLite → PostgreSQL migration stepper.
 //
@@ -21,7 +23,9 @@ import { useLoomarrEventListener } from "@/events/events-provider";
 const DatabasePage = () => {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<MigrationStep | null>(null);
-  const [dsn, setDsn] = useState("");
+  // The connection string the operator types; the migration steps read it, nothing submits it.
+  const dsnForm = useAppForm({ defaultValues: { dsn: "" } });
+  const dsn = useStore(dsnForm.store, (state) => state.values.dsn);
   const [checks, setChecks] = useState<DatabaseCheck[]>([]);
   const [passed, setPassed] = useState(false);
   // After migrate acknowledges, a dropped connection is expected rather than an error
@@ -108,7 +112,7 @@ const DatabasePage = () => {
           step={step}
           onStepChange={setStep}
           dsn={dsn}
-          onDsnChange={setDsn}
+          onDsnChange={(value) => dsnForm.setFieldValue("dsn", value)}
           checks={checks}
           preflightPassed={passed}
           onPreflight={() => preflight.mutate({ data: { dsn } })}
