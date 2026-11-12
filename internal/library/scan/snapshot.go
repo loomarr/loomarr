@@ -239,7 +239,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    top is a show's; a "Creditless" folder is extras; "第1話" alone is its folder's episode; a
 //	    film named as its own folder stays a film; a video site's id leaves the title; a file's own
 //	    <movie> NFO makes a film of one only its folder placed as an episode.
-const writeVersion = 62
+//	63: an edition's word right after a film's year ends its title ("Gloam.Moss.2011.Theatrical");
+//	    a year set first by a dash, dot or underscore is the year ("2010 - Hob Crag"); a span of
+//	    years is the title's; loose "Show - Title" files sharing a show in a catch-all are its
+//	    episodes; a show folder its episodes name whole ("Unit S9") is no season pack; one file in
+//	    a season's pack is an episode; "Show Ep01" among films is one; a disc label's "WS" goes.
+const writeVersion = 63
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -620,8 +625,9 @@ var (
 	// makeMKVTitle matches MakeMKV's mark for a title it ripped, at a name's end: "title_t00",
 	// "GILDED_MOOR_t01", and its older versions' "title00".
 	makeMKVTitle = regexp.MustCompile(`(?i)(?:^title_?t?|_t)\d{2}$`)
-	// discLabel matches the disc's place a disc's label ends in: "OSTREVIN D1", "OSTREVIN DISC 2".
-	discLabel = regexp.MustCompile(`(?i)[ ]+d(?:isc)?[ ]?\d$`)
+	// discLabel matches the disc's place, or its screen's shape, a disc's label ends in: "OSTREVIN
+	// D1", "OSTREVIN DISC 2", "GLOAM RISE WS", "GLOAM RISE FS".
+	discLabel = regexp.MustCompile(`(?i)[ ]+(?:d(?:isc)?[ ]?\d|ws|fs|widescreen|fullscreen)$`)
 )
 
 // genericStem matches a file's name that says what it is, never which: "movie", "film", "video",

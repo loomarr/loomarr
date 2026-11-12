@@ -404,6 +404,13 @@ func posterURL(rec mp.Record) string {
 var (
 	// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
 	leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
+	// leadingYearSet matches a year that starts a name, set apart by a dash, a dot or an
+	// underscore: "2010 - ", "2010.", "2010_".
+	leadingYearSet = regexp.MustCompile(`^\s*((?:19|20)\d{2})(?:\s*-\s*|[._])`)
+	// yearSpan matches a word that is a span of years, "1939-1945".
+	yearSpan = regexp.MustCompile(`^(?:19|20)\d{2}[-–](?:19|20)\d{2}$`)
+	// yearAnywhere matches a year as a word of its own anywhere in a name.
+	yearAnywhere = regexp.MustCompile(`(?:^|[^0-9])(?:19|20)\d{2}(?:[^0-9]|$)`)
 	// trackerPrefix matches the site a download names itself after, before the title:
 	// "www.TrackerNet.org - Ashgrove", "[www.TrackerNet.org] Ashgrove", "[ www.Torrent.Example ] -
 	// Ashgrove", and, with no "www.", a site's name with its domain and a dash: "Tracker.io -
@@ -444,6 +451,10 @@ func releaseCut(words []string, dotted bool) int {
 		w = first(w)
 		switch {
 		case releaseMark.MatchString(w):
+			return i
+		// Radarr's "{Movie.CleanTitle}.{Release.Year}.{Edition.Tags}": an edition's word right
+		// after the year ends the title however it is written, "Gloam.Moss.2011.Theatrical".
+		case releaseYear(first(words[i-1])) && versionWords[strings.ToLower(w)] && w != "and":
 			return i
 		case !releaseWord.MatchString(w):
 			continue
@@ -536,6 +547,13 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	leadingYear := 0
 	if m := leadingYearTag.FindStringSubmatch(name); m != nil {
 		leadingYear, name = atoi(m[1]), name[len(m[0]):]
+	} else if m := leadingYearSet.FindStringSubmatch(name); m != nil && releaseYear(m[1]) &&
+		!yearAnywhere.MatchString(name[len(m[0]):]) && strings.IndexFunc(name[len(m[0]):], unicode.IsLetter) == 0 {
+		// So is one set apart by a dash, a dot or an underscore, as a collection sorted by year
+		// names its films: "2010 - Hob Crag", "2010.Hob.Cove", "2010_Hob_Corrie". A year with only
+		// a space after it may start a title ("1984 Revisited"), and one with a year of its own
+		// after it is its title's ("2001.Gloam.Odyssey.1968").
+		leadingYear, name = atoi(m[1]), name[len(m[0]):]
 	}
 	name = trackerPrefix.ReplaceAllString(name, "")
 	// A leading tag is a group's only when a title follows it: "[Carrow Fell] (2017)" is the title
@@ -597,6 +615,10 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 			// "Kettle Bay 2021 AMZN") or an edition, or is in brackets.
 			bracketed := strings.Contains(name, "("+w+")") || strings.Contains(name, "["+w+"]")
 			if !bracketed && titleWords(words[j+1:], name) {
+				continue
+			}
+			// A span of years, "Gannet Wars 1939-1945", is what the title is about, not its year.
+			if yearSpan.MatchString(words[j]) {
 				continue
 			}
 			if year == 0 {
