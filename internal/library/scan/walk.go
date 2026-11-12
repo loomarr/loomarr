@@ -380,9 +380,10 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
 	})
 	notes.Leading = leadingEpisodes(videoNames)
+	notes.Series = dir != w.root && namedSeries(folder, videoNames)
 	// A season folder's episodes name their show, not the season: it is never a dump.
 	notes.Dump = dir != w.root && seasonDirOf(w.rel(dir)) == "" && len(idsIn(filepath.Base(dir))) == 0 &&
-		dumpFolder(filepath.Base(dir), videoNames)
+		dumpFolder(filepath.Base(dir), videoNames, showsFolderNames[folderKey(path.Base(path.Dir(w.rel(dir))))])
 	// A folder holding one video, named by a part mark alone, may be one part of a movie whose
 	// parts each have a folder: the movie's folder is the set.
 	folderPart := 0
@@ -768,7 +769,8 @@ func extraName(lowerName string) bool {
 	base := strings.TrimRight(strings.TrimSuffix(lowerName, filepath.Ext(lowerName)), "0123456789")
 	hidden := strings.HasPrefix(lowerName, "._") || strings.HasPrefix(lowerName, ".") && !strings.Contains(lowerName, " ")
 	if hidden || strings.HasPrefix(lowerName, "~") || base == "sample" || strings.HasPrefix(base, "sample-") ||
-		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
+		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) ||
+		siteName.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) {
 		return true
 	}
 	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv".
@@ -797,6 +799,11 @@ func extraName(lowerName string) bool {
 	return false
 }
 
+// siteName matches a video named by nothing but a site, the promo a tracker or a release group
+// leaves in a download: "RARBG.com.mp4", "www.Torrent.to.mkv". A suffix that is also a word needs
+// the "www.": "Trust.Me.mkv" and "Nine.To.mkv" are films.
+var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club|example))$`)
+
 // extraKinds are the words an extra is named by, as Jellyfin, Plex and households name them; a
 // longer one is tried before a word it starts with.
 var extraKinds = [][]string{
@@ -804,7 +811,8 @@ var extraKinds = [][]string{
 	{"short", "film"}, {"deleted", "scenes"}, {"deleted", "scene"}, {"official", "trailer"},
 	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
 	{"audio", "commentary"}, {"blooper", "reel"}, {"tv", "spot"}, {"photo", "gallery"},
-	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"}, {"sample"},
+	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"}, {"sample"}, {"sneak", "peek"},
+	{"recap"}, {"bonus"}, {"preview"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
 	{"deletedscenes"}, {"deleted"}, {"bloopers"}, {"outtakes"}, {"commentary"}, {"scene"}, {"short"},
 	{"clip"}, {"extra"}, {"other"}, {"theme"},

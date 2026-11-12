@@ -692,6 +692,22 @@ var namingMatrix = []namingRow{
 		"Downloads/www.Tracker.Example - Quillmere Two (2016) 720p.mkv":     "movie Quillmere Two 2016",
 		"Movies/Tracker.io - Brindlewood Four (2017).mkv":                   "movie Brindlewood Four 2017",
 	}},
+	// Re-score #6's misreads: a number in an anime's name, a dated anime, a batch, a recorder's
+	// names, a site's promo, a typo'd episode in a shows' catch-all, a TV capture's parts.
+	{id: "W78", files: map[string]string{
+		"Anime/[Kumo] Hoshizora 86 - 04 [1080p].mkv":                       "episode Hoshizora 86 S?E?",
+		"Anime/[Kumo] Ridgeback (2019) - 07 [1080p].mkv":                   "episode Ridgeback 2019 S?E?",
+		"Anime/[Kumo] Saltmarsh - 01-12 [Batch]/[Kumo] Saltmarsh - 03.mkv": "episode Saltmarsh S?E?",
+		"Movies/S01E01 (2019).mkv":                                         "movie S01E01 2019",
+		"Recordings/Wexcombe_20231105_2000.ts":                             "episode Wexcombe 2023-11-05",
+		"Movies/Trust.Me.mkv":                                              "movie Trust Me -",
+		"Downloads/Brackenridge (2014)/www.Torrent.to.mp4":                 "skip",
+		"Downloads/Brackenridge (2014)/RARBG.com.mp4":                      "skip",
+		"Downloads/Brackenridge (2014)/Brackenridge (2014).mkv":            "movie Brackenridge 2014",
+		"TV Shows/Pebble Pals Season 1/Pebble Pals - Rainy Day.mp4":        "episode Pebble Pals S?E?",
+		"TV Shows/Pebble Pals Season 1/Pebble Pals - Sunny Day.mp4":        "episode Pebble Pals S?E?",
+		"TV Shows/Pebble Pals Season 1/Pebbel Pals - Windy Day.mp4":        "episode Pebble Pals S?E?",
+	}},
 	// A franchise's folder holds its shows, each its own.
 	{id: "W65", files: map[string]string{
 		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E01.mkv": "episode Star Ridge Origins S1E1",

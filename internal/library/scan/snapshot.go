@@ -162,7 +162,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    own shows; MakeMKV's, Media Center's, old scene and phone names; trackers' sites.
 //	47: a title named by its file keeps its release's notes in its name, as before 46; the
 //	    catalog's search sets them aside.
-const writeVersion = 47
+//	48: catch-alls are films', shows' or mixed; a show's loose folder of named episodes is a
+//	    series; TV captures' parts are episodes; a site's promo, a sneak peek, a recap, a bonus
+//	    and a preview are extras; an anime's dashed number wins over one in its name, a dated
+//	    anime and a batch's folder are read; "S01E01" alone among films is a film.
+const writeVersion = 48
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

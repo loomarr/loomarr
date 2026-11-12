@@ -27,8 +27,9 @@ func partsOf(names []string) map[string]int {
 	}
 	sets := map[string][]part{}
 	for _, name := range names {
+		// A TV capture's parts are a broadcast's episodes (capturedEpisode).
 		set, number, ok := partIn(name)
-		if ok {
+		if ok && !tvCapture.MatchString(name) {
 			sets[set] = append(sets[set], part{name: name, number: number})
 		}
 	}
