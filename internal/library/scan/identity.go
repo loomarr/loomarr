@@ -904,6 +904,10 @@ func isSeasonFolder(dir string) bool {
 // - Specials", "Tamsworth.Specials", "Kaito Run OVAs". Its group is the show's name.
 var showSpecials = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:specials|ovas?|oads?)$`)
 
+// animeAside matches an anime release's show named with a special's or a recap's word after a
+// dash, ahead of its number: "Kame - Special" of "[Grp] Kame - Special - 01".
+var animeAside = regexp.MustCompile(`(?i)^(.+?)[ ._]+-[ ._]+(special|recap|summary)$`)
+
 // initials are a name's words' first letters: "Kettle Bay (2001)" is "KB".
 func initials(name string) string {
 	var b strings.Builder
@@ -996,7 +1000,8 @@ func packShow(dir string) string {
 	}
 	words := strings.FieldsFunc(base, func(r rune) bool { return strings.ContainsRune(" ._", r) })
 	if dir == "." || len(words) < 2 || seasonToken.MatchString(words[0]) ||
-		!slices.ContainsFunc(words[1:], seasonToken.MatchString) && namedSeasonOf(base) == 0 && !completeWord.MatchString(base) {
+		!slices.ContainsFunc(words[1:], func(w string) bool { return seasonToken.MatchString(strings.Trim(w, "()[]")) }) &&
+			namedSeasonOf(base) == 0 && !completeWord.MatchString(base) {
 		return ""
 	}
 	show := showFolderName(base)
@@ -1285,7 +1290,8 @@ var holdingWords = regexp.MustCompile(`^(?:\d{1,4}|s\d{1,4}|complete|collection|
 func packSeason(name string) int {
 	words := strings.FieldsFunc(name, func(r rune) bool { return strings.ContainsRune(" ._", r) })
 	for _, w := range words[min(1, len(words)):] {
-		if seasonToken.MatchString(w) && !strings.Contains(w, "-") {
+		// "Bracken Hall (S07)" brackets its season.
+		if w = strings.Trim(w, "()[]"); seasonToken.MatchString(w) && !strings.Contains(w, "-") {
 			return atoi(w[1:])
 		}
 	}
@@ -1358,7 +1364,7 @@ func showFolderName(folder string) string {
 		// "Brine Sea (Season 1-3)" holds seasons 1 to 3.
 		run, _, _ := strings.Cut(next, "-")
 		bare := strings.Trim(w, "()[]")
-		holds := seasonToken.MatchString(w) ||
+		holds := seasonToken.MatchString(bare) ||
 			((bare == "season" || bare == "seasons" || bare == "series" || bare == "staffel" || bare == "saison") && digits(run)) || complete ||
 			(w == "the" && next == "complete")
 		if holds {
@@ -1435,7 +1441,13 @@ func looseSeries(name string) string {
 // untagged is a show's name before its episode's mark with the release group's tags before it
 // taken off: "[Grp] Hana Kettle", "【Grp】Kettle Hana".
 func untagged(name string) string {
-	name = leadingTags.ReplaceAllString(name, "")
+	// A tag with nothing after it is the show's name in brackets, no group's: "[Tolland Mews]" of
+	// "[Tolland Mews] S01E09".
+	bare := leadingTags.ReplaceAllString(name, "")
+	if strings.IndexFunc(bare, unicode.IsLetter) < 0 {
+		return strings.NewReplacer("[", "", "]", "", "【", "", "】", "").Replace(name)
+	}
+	name = bare
 	if rest := cjkTag.ReplaceAllString(name, ""); strings.TrimSpace(rest) != "" {
 		return rest
 	}
@@ -1679,6 +1691,14 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 	if m := showSpecials.FindStringSubmatch(show); m != nil {
 		return strings.TrimSpace(m[1]), mp.Numbering{Season: 0, Episode: number}, true
 	}
+	// So are "[Grp] Kame - Special - 01" and its "[Grp] Kame - Recap - 06.5": a recap's number is
+	// the episode it follows, never its own.
+	if m := animeAside.FindStringSubmatch(show); m != nil {
+		if strings.EqualFold(m[2], "special") {
+			return strings.TrimSpace(m[1]), mp.Numbering{Season: 0, Episode: number}, true
+		}
+		return strings.TrimSpace(m[1]), mp.Numbering{Season: 0}, true
+	}
 	if m := animeSeason.FindStringSubmatch(show); m != nil {
 		season := atoi(matched(m[2], m[3], m[4]))
 		return strings.TrimSpace(m[1]), mp.Numbering{Season: season, Episode: number}, true
@@ -1730,6 +1750,10 @@ func groupTag(inner string) bool {
 // animeSeason matches a fansub show's name that ends in its season: "Show S2", "Show 2nd Season",
 // "Show Season 2".
 var animeSeason = regexp.MustCompile(`(?i)^(.+?)[ ._]+(?:s(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)[ ._]+season|season[ ._]+(\d{1,2}))$`)
+
+// kodiTitled matches Kodi's episode named by its show, its season and episode in three digits,
+// and its title, apart by dashes: "Cutters Bay - 214 - Late".
+var kodiTitled = regexp.MustCompile(`^.+?[ ._]+-[ ._]+([1-9]\d{2})[ ._]+-[ ._]+\S`)
 
 // numberingInFolder is the numbering a file's folders let its name give, where the name alone does
 // not say it is an episode: a show's file "Ep02", "2of6" or "Season 1 Episode 2"; a season folder's
@@ -1798,6 +1822,22 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	if _, n, ok := shelvedEpisode(path.Base(file.Rel), dir); ok {
 		return n, true
 	}
+	// Kodi's "Cutters Bay - 214 - Late" is season 2's fourteenth: three digits between dashes, its
+	// episode's title after. An anime's number across its show is padded, "- 014 -", or on its shelf.
+	if m := kodiTitled.FindStringSubmatch(name); m != nil && !leadingTags.MatchString(name) && !inAnime(shelved(file, dir)) {
+		if n := atoi(m[1]); n%100 > 0 && (!inSeason || n/100 == season) {
+			return mp.Numbering{Season: n / 100, Episode: n % 100}, true
+		}
+	}
+	// So is "Fennick 1-05" in Fennick's own folder: the show's name, then its season and episode
+	// apart by a dash.
+	if m := dashedSeason.FindStringSubmatch(name); m != nil && dir != "." && !inSeason && atoi(m[3]) > 0 &&
+		!leadingTags.MatchString(name) && !inAnime(shelved(file, dir)) {
+		before, _, _ := searchQuery(m[1], 0)
+		if own, _, _ := searchQuery(showFolderName(show), 0); relatedName(before, own) {
+			return mp.Numbering{Season: atoi(m[2]), Episode: atoi(m[3])}, true
+		}
+	}
 	if dir == "." {
 		// Loose at the top, "Bramblecourt E01" beside "Bramblecourt E02" number one show's episodes.
 		// A fansub's "[Kumo] Show - E20" is numbered across its show (looseAnime).
@@ -1810,7 +1850,9 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	if m := seasonDashEpisode.FindStringSubmatch(name); m != nil && atoi(m[2]) > 0 {
 		return mp.Numbering{Season: atoi(m[1]), Episode: atoi(m[2])}, true
 	}
-	if inSeason && season > 0 && !leadingTags.MatchString(name) {
+	// So is a folder named by its show and season, "Bracken Hall (S07)", but for an anime's pack.
+	seasoned := inSeason || namedFolder && !leadingTags.MatchString(path.Base(dir)) && !inAnime(shelved(file, dir))
+	if seasoned && season > 0 && !leadingTags.MatchString(name) {
 		// "Kettle Bay - 3.05" or "1.05 Hedge" in Season 3 or 1, before "1" reads as a number alone;
 		// and the season's number then the episode's apart by a dash, "Bramley Court - 3 - 01" or
 		// "2-03" in Season 3 or 2.

@@ -29,21 +29,24 @@ func (b *builder) joinShows(ids, others []identity) {
 		if id.kind != mp.KindEpisode || id.seriesDir == "" {
 			continue
 		}
-		if p := places[id.seriesDir]; p != nil {
-			p.episodes++
-			continue
+		p := places[id.seriesDir]
+		if p == nil {
+			s := b.series[id.seriesDir]
+			if s == nil || s.managed != nil {
+				continue
+			}
+			name, year := showIdentity(path.Base(id.seriesDir))
+			if name == "" {
+				continue
+			}
+			p = &showPlace{dir: id.seriesDir, year: year, real: b.dirs[id.seriesDir], tagged: leadingTags.MatchString(path.Base(id.seriesDir)), marks: map[[2]int]bool{}}
+			places[id.seriesDir] = p
+			byName[name] = append(byName[name], p)
 		}
-		s := b.series[id.seriesDir]
-		if s == nil || s.managed != nil {
-			continue
+		p.episodes++
+		if n := id.numbering(); n != nil && n.Episode > 0 {
+			p.marks[[2]int{n.Season, n.Episode}] = true
 		}
-		name, year := showIdentity(path.Base(id.seriesDir))
-		if name == "" {
-			continue
-		}
-		p := &showPlace{dir: id.seriesDir, year: year, real: b.dirs[id.seriesDir], tagged: leadingTags.MatchString(path.Base(id.seriesDir)), episodes: 1}
-		places[id.seriesDir] = p
-		byName[name] = append(byName[name], p)
 	}
 	join := map[string]string{}
 	for _, group := range byName {
@@ -70,6 +73,7 @@ func (b *builder) joinShows(ids, others []identity) {
 				return strings.Compare(a.dir, c.dir)
 			})
 		}
+		homes := map[int]*showPlace{}
 		for year := range years {
 			var same []*showPlace
 			for _, p := range group {
@@ -77,7 +81,26 @@ func (b *builder) joinShows(ids, others []identity) {
 					same = append(same, p)
 				}
 			}
-			b.joinInto(home(same).dir, same, join)
+			homes[year] = home(same)
+			b.joinInto(homes[year].dir, same, join)
+		}
+		// A show's folders kept with and without its year, "TV/Dunmore/Season 1/" beside "TV/Dunmore
+		// (2016)/Season 2/", are one show when it is the only dated one of its name and they number
+		// no episode alike: a remake kept beside its original numbers its own first season again.
+		if len(years) != 2 || !years[0] {
+			continue
+		}
+		delete(homes, 0)
+		for _, dated := range homes {
+			var yearless []*showPlace
+			for _, p := range group {
+				if p.year == 0 {
+					yearless = append(yearless, p)
+				}
+			}
+			if !slices.ContainsFunc(yearless, func(p *showPlace) bool { return sharesMark(p, group, dated.year) }) {
+				b.joinInto(dated.dir, append(yearless, dated), join)
+			}
 		}
 	}
 	if len(join) == 0 {
@@ -133,6 +156,23 @@ type showPlace struct {
 	real     bool
 	tagged   bool
 	episodes int
+	// marks are the season and episode each of its episodes numbers.
+	marks map[[2]int]bool
+}
+
+// sharesMark says whether p numbers an episode as any of group's places of year does.
+func sharesMark(p *showPlace, group []*showPlace, year int) bool {
+	for _, o := range group {
+		if o.year != year {
+			continue
+		}
+		for mark := range p.marks {
+			if o.marks[mark] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // sameIDs says whether two shows' ids agree: one names none, or they share one.

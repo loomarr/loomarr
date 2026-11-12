@@ -583,9 +583,11 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	if dotted {
 		name = strings.NewReplacer(".", " ", "_", " ", "+", " ").Replace(name)
 	}
-	// A name joined only with dashes, "ferrow-lane-2019", is spaced where a year shows it is words.
+	// A name joined only with dashes, "ferrow-lane-2019" or "ferrow-lane-1080p", is spaced where a
+	// year or a release's mark shows it is words; "Spider-Lane" stays one.
 	if !strings.Contains(strings.TrimSpace(name), " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], func(w string) bool {
-		return releaseYear(strings.Trim(w, "()[]"))
+		w = strings.Trim(w, "()[]")
+		return releaseYear(w) || releaseMark.MatchString(w)
 	}) {
 		name = strings.ReplaceAll(name, "-", " ")
 	}
