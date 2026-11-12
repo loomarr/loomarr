@@ -20399,13 +20399,14 @@ paths:
               - tmdb
               - all
             type: string
-        - description: Max results (default 20)
+        - description: Max results (default 20, at most 50)
           explode: false
           in: query
           name: limit
           schema:
-            description: Max results (default 20)
+            description: Max results (default 20, at most 50)
             format: int64
+            maximum: 50
             minimum: 1
             type: integer
         - description: Optional title-result narrowing, or the media type for structured discovery

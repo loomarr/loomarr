@@ -177,6 +177,30 @@ func TestSearchTitleModeAllowsMediaTypeNarrowing(t *testing.T) {
 	}
 }
 
+// The limit is bounded at the API: a member cannot ask for more than 50 results, so one call
+// cannot fan out into hundreds of TMDB pages.
+func TestSearchLimitIsBounded(t *testing.T) {
+	handler, search := newConfiguredSearchHandler(t, map[string]string{"tmdb.api_key": "key"})
+
+	for _, limit := range []string{"51", "5000", "35184372088832"} {
+		resp := searchRequest(handler, "/v1/search?q=Ashgrove&scope=tmdb&limit="+limit)
+		if resp.Code != http.StatusUnprocessableEntity {
+			t.Errorf("limit=%s status = %d, want 422: %s", limit, resp.Code, resp.Body.String())
+		}
+	}
+	if got := len(search.Requests()); got != 0 {
+		t.Errorf("search ran %d times for rejected limits, want 0", got)
+	}
+
+	resp := searchRequest(handler, "/v1/search?q=Ashgrove&scope=tmdb&limit=50")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("limit=50 status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
+	if got := search.Requests()[0].Limit; got != 50 {
+		t.Errorf("limit passed to search = %d, want 50", got)
+	}
+}
+
 func TestSearchRejectsAmbiguousOperationOrUnsupportedDiscoveryScope(t *testing.T) {
 	tests := []struct {
 		name string

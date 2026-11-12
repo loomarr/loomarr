@@ -28,7 +28,7 @@ type searchInput struct {
 	// Clips are NOT a scope (§7.2): Candidate models a provisionable title, and a clip
 	// is not one (§10). Clip search is GET /v1/filler?q=, which returns ClipDTOs.
 	Scope            string   `query:"scope" enum:"library,tmdb,all" doc:"Corpus to search (default all). Clips are not searchable here — use /v1/filler?q="`
-	Limit            int      `query:"limit" minimum:"1" doc:"Max results (default 20)"`
+	Limit            int      `query:"limit" minimum:"1" maximum:"50" doc:"Max results (default 20, at most 50)"`
 	MediaType        string   `query:"media_type" enum:"movie,series" doc:"Optional title-result narrowing, or the media type for structured discovery"`
 	Genres           []string `query:"genres,explode" doc:"Structured genre terms; repeat the parameter for multiple values"`
 	Keywords         []string `query:"keywords,explode" doc:"Structured thematic keyword terms; repeat the parameter for multiple values"`
