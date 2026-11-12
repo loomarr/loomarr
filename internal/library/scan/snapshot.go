@@ -198,7 +198,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    season; "108 Rain" in Season 1 is its eighth beside "07 Sleet"; "1of3" with no year is a
 //	    miniseries' episode; an OVA with no number is season 0's; an edition last is set aside
 //	    with no year; "Widescreen" is a release's; "VTS_01_1" is named by its folder.
-const writeVersion = 53
+//	54: a show's packs, disc labels and loose copies at the top or in a shows' catch-all join one
+//	    show kept by its catch-all ("TV/Kettle Bay"); a film's unnamed extras beside it are
+//	    extras, and a show's trailer is no episode; a sequel keeps its own name; "Part 1 - Tides"
+//	    titles an episode; a daily show filed by year and month is one show; a recorded film
+//	    keeps its film's name; "Criterion" is a release's.
+const writeVersion = 54
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -588,6 +593,13 @@ var (
 // "VTS_01_1".
 var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main[ ._-]?feature|the[ ._-]movie|\d{1,2}|vts[ ._]\d{2}[ ._]\d)$`)
 
+// runsOn says whether a title is another's with more words after it: "Brook 2" and "Heath Part 2"
+// run on from "Brook" and "Heath".
+func runsOn(title, other string) bool {
+	words, own := strings.Fields(normName(title)), strings.Fields(normName(other))
+	return len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own)
+}
+
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
@@ -607,8 +619,9 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		}
 	}
 	// A recorder names a film it recorded by the film, then its channel and when it began: "Iron
-	// Spire (2011)_Film4_2022_05_01_21_00_00" is "Iron Spire (2011)".
-	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain)) {
+	// Spire (2011)_Film4_2022_05_01_21_00_00" and "Grey Harbour (1958) 2022-01-01" are "Iron Spire
+	// (2011)" and "Grey Harbour (1958)".
+	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain) || recordedFilm(plain, path.Dir(rel))) {
 		return clean(datedShow(plain))
 	}
 	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
@@ -628,8 +641,10 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		if !catchAllFolder(folder) && (len(plain) > 1 && strings.EqualFold(plain, initials(folder)) || genericStem.MatchString(plain)) {
 			return folder
 		}
-		if _, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
-			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" {
+		// A sequel kept in the first film's folder, "Brook (2010)/Brook 2.mkv", says more than the
+		// folder's title: it is its own.
+		if fileTitle, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
+			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" && !runsOn(fileTitle, title) {
 				return folder
 			}
 		}

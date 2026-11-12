@@ -64,7 +64,8 @@ var extrasDirs = map[string]bool{
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
 	"bonus": true, "bonus disc": true, "bonus material": true, "extras disc": true,
 	"backdrops": true, "sample": true, "special features": true, "bonus features": true, "clips": true,
-	"extra": true, "theme-music": true, "proof": true, "proofs": true,
+	"extra": true, "theme-music": true, "proof": true, "proofs": true, "dvd extras": true, "supplements": true,
+	"supplemental": true, "bonus content": true, "extras and bonus": true,
 }
 
 // extrasFolder says whether a folder named name in parent is an extras folder: named by its kind,
@@ -392,10 +393,10 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	if dir != w.root {
 		folder = filepath.Base(dir)
 	}
-	extras := siblingExtras(folder, videoNames)
+	shows := dir != w.root && underShows(w.rel(dir))
+	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
-	shows := dir != w.root && underShows(w.rel(dir))
 	if shows {
 		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder).
 		parts = nil
@@ -417,6 +418,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	})
 	notes.Leading = leadingEpisodes(folder, videoNames)
 	notes.Series = dir != w.root && namedSeries(folder, videoNames)
+	notes.Years = looseYears(videoNames)
 	for _, e := range entries {
 		if e.IsDir() {
 			notes.Folders = append(notes.Folders, e.Name())
@@ -815,8 +817,9 @@ func extraName(lowerName string) bool {
 		promoNames[strings.TrimSuffix(lowerName, filepath.Ext(lowerName))] || strings.HasSuffix(base, ".partial") {
 		return true
 	}
-	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv".
-	if strings.HasSuffix(base, "-sample") {
+	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv"; and its proof after its year
+	// or tags, "Brigg (2008)-proof.mkv" ("Bullet-proof" is a title's word).
+	if strings.HasSuffix(base, "-sample") || releaseProof.MatchString(base) {
 		return true
 	}
 	// Otherwise it follows a release's own words: "Movie (2001) sample", "Kettle Bay S01E02 -
@@ -856,6 +859,10 @@ var titledSample = regexp.MustCompile(`(?i:s\d{1,4}[ ._]?e\d{1,4})[ ._]-[ ._]Sam
 // leaves in a download: "RARBG.com.mp4", "www.Torrent.to.mkv". A suffix that is also a word needs
 // the "www.": "Trust.Me.mkv" and "Nine.To.mkv" are films.
 var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club))$`)
+
+// releaseProof matches a release's proof clip, joined after its year, tags or group: "brigg
+// (2008)-proof", "brigg.2008.1080p.bluray.x264-grp-proof".
+var releaseProof = regexp.MustCompile(`(?:[)\]]|\d{4}|x26[45]|-[a-z0-9]+)-proof$`)
 
 // promoNames are the names a release group's or tracker's promo clip goes by, in lower case, with
 // no site's ending: "ETRG.mp4", "YTS.mp4". A download still being written ends ".partial".
@@ -945,7 +952,7 @@ func extraWords(name string) []string {
 // ("Night Trailer", "Cut-Short", "The Other Side (2019)"), as is one with its own year after its
 // kind ("Ashgrove Short (2017)"), and an episode, whose mark says what it is ("S02E08 - Trailer").
 // folder is the folder's name, "" for a root's top.
-func siblingExtras(folder string, names []string) map[string]bool {
+func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 	// A title is keyed by its letters alone: "E.T.A. the Ferry" and its extra's words, "e t a the
 	// ferry", are one.
 	compact := func(title string) string { return strings.ReplaceAll(normName(title), " ", "") }
@@ -966,9 +973,28 @@ func siblingExtras(folder string, names []string) map[string]bool {
 	var kinds []marked
 	out := map[string]bool{}
 	episodes := slices.ContainsFunc(names, episodeMark.MatchString)
+	// The film a film's own folder holds, named as the folder is: "Corbel Ridge (2013).mkv".
+	film := titled && slices.ContainsFunc(names, func(name string) bool {
+		return !strings.Contains(stem(name), " - ") && titles[key(strings.Fields(stem(name)))]
+	})
 	for _, name := range names {
 		words := extraWords(name)
 		at := extraKindAt(words)
+		// Beside that film, "<film> - <anything else>" is its extra, whatever the household called
+		// it ("- Animatic", "- Press Conference"), unless what follows says which copy of the film
+		// it is: "- 1080p", "- Directors Cut", "- Part 2".
+		if before, after, ok := strings.Cut(stem(name), " - "); film && ok && titles[key(strings.Fields(before))] && !filmVersion(name, after) &&
+			!episodeMark.MatchString(name) && airDateIn(stem(name)) == "" {
+			out[name] = true
+			continue
+		}
+		// In a show's folder, a name its kind ends that only an extra is named by, with no episode's
+		// mark, is the show's extra: "Gannet Rock - Official Trailer", "Gannet Rock S02 Trailer",
+		// "trailer.mkv". "Gannet Rock S01E05 - The Trailer" is an episode.
+		if shows && at >= 0 && strongExtraKind(words[at:]) && kindEnds(words[at:]) && !episodeMark.MatchString(name) {
+			out[name] = true
+			continue
+		}
 		// A name written all in lower case can't say "Paper-Clip" from Jellyfin's "Tidewater-clip":
 		// it is the episode, never skipped unread.
 		if episodeMark.MatchString(name) && episodeExtra.MatchString(stem(name)) && !titleWordExtra.MatchString(stem(name)) &&
@@ -1017,6 +1043,25 @@ func siblingExtras(folder string, names []string) map[string]bool {
 		}
 	}
 	return out
+}
+
+// filmVersion says whether what follows a film's name and a dash, after, says which copy of the
+// film name is: its quality ("1080p", "4K HDR"), an edition ("Directors Cut") or a part ("Part 2",
+// "cd1"), as Plex and Radarr name a film's versions.
+func filmVersion(name, after string) bool {
+	if editionIn(name) != "" {
+		return true
+	}
+	if _, part, ok := partIn(name); ok && part > 0 {
+		return true
+	}
+	words := strings.FieldsFunc(after, func(r rune) bool { return strings.ContainsRune(" ._-[]()", r) })
+	if len(words) == 0 {
+		return false
+	}
+	rest := slices.DeleteFunc(slices.Clone(words), releaseToken)
+	unmarked := slices.DeleteFunc(slices.Clone(words), releaseMark.MatchString)
+	return len(rest) == 0 || editionOnly(rest) || editionOnly(unmarked)
 }
 
 // titleKinds are the kinds an episode is as often titled by: "Credits", "Recap", "Intro".
