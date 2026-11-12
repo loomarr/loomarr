@@ -218,6 +218,16 @@ func seriesFolderSidecars(dir string) map[string]Stat {
 	return out
 }
 
+// absolute is the episode's number counted across its show, when its name gives only that (an
+// anime release's "Show - 013"); zero otherwise.
+func (id identity) absolute() int {
+	n := id.embedded.Numbering
+	if len(id.managed.records) > 0 || n == nil || n.Episode > 0 {
+		return 0
+	}
+	return n.Absolute
+}
+
 // numbering is where the cheap sources place an episode file, through its last episode; nil for
 // none.
 func (id identity) numbering() *mp.Numbering {
@@ -311,6 +321,8 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
 		if day := id.airDate(); day != "" {
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+		} else if abs := id.absolute(); abs > 0 {
+			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, abs)
 		} else {
 			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
 		}
