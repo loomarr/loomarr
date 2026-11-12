@@ -33,6 +33,29 @@ func TestTheShowsYearInAnEpisodesName(t *testing.T) {
 	}
 }
 
+// A name says the same title however its letters are written: accents or none, composed or
+// decomposed (a Mac writes "é" as "e" and a mark), and an acronym with its dots or stars or none.
+func TestSameNameReadsLettersHoweverTheyAreWritten(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"Ameline", "Améline"},
+		{"Grisée", "Grisée"},
+		{"Kettlemon Tide", "Kettlémon Tide"},
+		{"KLTV", "K.L.T.V."},
+		{"BRAM", "B*R*A*M"},
+		{"Strasse", "Straße"},
+		{"Harbor's Twelve", "Harbors Twelve"},
+	} {
+		if !sameName(pair[0], pair[1]) {
+			t.Errorf("%q and %q read as different titles", pair[0], pair[1])
+		}
+	}
+	for _, pair := range [][2]string{{"Comet", "Comets"}, {"A Lantern", "Lantern"}, {"Tide 2", "Tide"}} {
+		if sameName(pair[0], pair[1]) {
+			t.Errorf("%q and %q read as the same title", pair[0], pair[1])
+		}
+	}
+}
+
 func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

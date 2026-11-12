@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/width"
 
@@ -82,7 +83,8 @@ type Matcher struct {
 // each title still waiting is searched once more under the new rules.
 //
 //	r2: a movie whose files name no year is settled by its name and length.
-const matchRules = "r2"
+//	r3: names agree with their accents off, composed or not, and acronyms with their dots off.
+const matchRules = "r3"
 
 // evidence is what the files say about a title beyond its name: a movie's length, a series'
 // episodes. A search result is checked against it.
@@ -483,25 +485,46 @@ func sameName(a, b string) bool {
 	return a != "" && normName(a) == normName(b)
 }
 
+//
+// Its letters are read as sortKey reads them, accents off and composed or not ("Amélie" is
+// "amelie"), and letters written apart are one word ("S.W.A.T." and "M*A*S*H" are "swat" and
+// "mash").
 func normName(s string) string {
-	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
+	s = strings.ReplaceAll(sortKey(s), "&", " and ")
+	var words []string
 	var b strings.Builder
-	space := false
+	flush := func() {
+		if b.Len() > 0 {
+			words = append(words, b.String())
+			b.Reset()
+		}
+	}
 	for _, r := range s {
 		switch {
 		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			if space && b.Len() > 0 {
-				b.WriteByte(' ')
-			}
 			b.WriteRune(r)
-			space = false
 		case r == '\'' || r == '’':
 			// "Harbor's" is "Harbors".
 		default:
-			space = true
+			flush()
 		}
 	}
-	return b.String()
+	flush()
+	// Single letters in a row are one word written apart.
+	var out []string
+	for i := 0; i < len(words); i++ {
+		j := i
+		for j < len(words) && utf8.RuneCountInString(words[j]) == 1 && unicode.IsLetter([]rune(words[j])[0]) {
+			j++
+		}
+		if j-i >= 2 {
+			out = append(out, strings.Join(words[i:j], ""))
+			i = j - 1
+			continue
+		}
+		out = append(out, words[i])
+	}
+	return strings.Join(out, " ")
 }
 
 // sameYear is whether a candidate's year agrees with the file's, a year apart at most: a release
