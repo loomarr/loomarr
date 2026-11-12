@@ -24,10 +24,17 @@ const InvitationJoin = ({
 
   if (isLoading) {
     return (
-      <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
+      <Stack
+        align="center"
+        className="text-muted-foreground min-h-48"
+        direction="row"
+        gap="inline"
+        justify="center"
+        role="status"
+      >
         <LoadingStrip decorative width={32} />
         Checking invitation…
-      </div>
+      </Stack>
     );
   }
   if (!preview) {

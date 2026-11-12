@@ -219,7 +219,7 @@ const TasksPage = () => {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="Tasks"
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
@@ -406,7 +406,7 @@ const TasksPage = () => {
           onOpenChange={(open) => !open && setEditing(undefined)}
         />
       )}
-    </div>
+    </Stack>
   );
 };
 

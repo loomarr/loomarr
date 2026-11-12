@@ -309,7 +309,7 @@ const ChannelRulesEditor = ({
         <>
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
             <SortableContext items={drafts.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-              <ul className="flex flex-col gap-2">
+              <Stack gap="inline" render="ul">
                 {drafts.map((draft) => (
                   <RuleRow
                     key={draft.id}
@@ -321,7 +321,7 @@ const ChannelRulesEditor = ({
                     onRemove={() => commit(drafts.filter((d) => d.id !== draft.id))}
                   />
                 ))}
-              </ul>
+              </Stack>
             </SortableContext>
           </DndContext>
           <Action icon="plus" onPress={addRule} style={{ alignSelf: "flex-start" }} variant="outline">

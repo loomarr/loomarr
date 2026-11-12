@@ -96,14 +96,18 @@ const seasonEpisode = (slot: CycleSlotDTO): string =>
 const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number; showTitle?: string }) => {
   if (slot.kind === "break") {
     return (
-      <li
-        className="text-muted-foreground flex items-center gap-2 py-1.5 text-xs"
+      <Stack
+        align="center"
         aria-label="Commercial break"
+        className="text-muted-foreground py-1.5 text-xs"
+        direction="row"
+        gap="inline"
+        render="li"
       >
         <div className="bg-border h-px flex-1" />
         <span>Commercial break</span>
         <div className="bg-border h-px flex-1" />
-      </li>
+      </Stack>
     );
   }
   const pending = slot.kind === "pending";
@@ -197,9 +201,9 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
       {/* Same scroll treatment as the slot list above: a tight era filter can refuse dozens,
             and the panel must not run off the page. tabIndex + aria-label keep the region
             keyboard-reachable (WCAG 2.1.1) — the rows are non-focusable text. */}
-      <ul
-        className="scroll-thin divide-border flex max-h-64 flex-col divide-y overflow-y-auto"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — see the slot list's note
+      <Stack
+        className="scroll-thin divide-border max-h-64 divide-y overflow-y-auto"
+        render="ul"
         tabIndex={0}
         aria-label="Titles not airing"
       >
@@ -223,7 +227,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             </span>
           </li>
         ))}
-      </ul>
+      </Stack>
     </Disclosure>
   );
 };
@@ -272,9 +276,9 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
           {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
         </p>
       ) : null}
-      <ul
-        className="scroll-thin divide-border flex max-h-72 flex-col divide-y overflow-y-auto"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: bounded trace is a keyboard-scrollable region
+      <Stack
+        className="scroll-thin divide-border max-h-72 divide-y overflow-y-auto"
+        render="ul"
         tabIndex={0}
         aria-label="Scheduler decisions"
       >
@@ -292,7 +296,7 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
             </span>
           </li>
         ))}
-      </ul>
+      </Stack>
     </Disclosure>
   );
 };

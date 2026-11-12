@@ -148,11 +148,11 @@ const SortableLineupRow = ({
       </button>
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Stack align="center" className="min-w-0" direction="row" gap="inline" wrap>
           <span className="truncate text-sm font-medium">{entry.name}</span>
           {entry.year ? <span className="text-static-400 font-mono text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
-        </div>
+        </Stack>
         {isSeries && onSeasonChange && (
           <div className="col-[2/-1] flex flex-wrap items-center gap-1.5 @md:mt-1.5">
             <span className="text-muted-foreground text-xs">Seasons</span>
@@ -320,7 +320,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-              <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
+              <Stack className="scroll-thin @container max-h-128 overflow-y-auto" gap="inline" render="ul">
                 {shown.map((entry) => (
                   <SortableLineupRow
                     key={entry.key}
@@ -342,7 +342,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                     }
                   />
                 ))}
-              </ul>
+              </Stack>
             </SortableContext>
           </DndContext>
         </>

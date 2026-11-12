@@ -284,7 +284,11 @@ const ProposalReview = ({
       />
 
       {actionable && onApprove && (
-        <footer className="border-border bg-card/95 sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 border-t px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none">
+        <Stack
+          className="border-border bg-card/95 sticky bottom-0 z-10 -mx-4 border-t px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:backdrop-blur-none"
+          gap="control"
+          render="footer"
+        >
           <div>
             <p className="text-sm font-medium">
               {selectedCount === 0
@@ -336,7 +340,7 @@ const ProposalReview = ({
               </Action>
             </Stack>
           )}
-        </footer>
+        </Stack>
       )}
 
       <details className="border-border border-t pt-3 text-sm">

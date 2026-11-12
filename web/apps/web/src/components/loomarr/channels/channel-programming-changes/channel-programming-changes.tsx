@@ -122,11 +122,11 @@ const ChannelProgrammingChanges = ({
         </p>
         {/* Rows are text, so the scroll region itself takes the Tab stop (see the cycle
             preview's slot list for the same treatment). */}
-        <ul
+        <Stack
           // `relative` contains each row's absolutely positioned sr-only text: without it they
           // escape this scroll box's clip and stretch the page by the list's full height.
-          className="scroll-thin relative flex max-h-96 flex-col overflow-y-auto"
-          // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive
+          className="scroll-thin relative max-h-96 overflow-y-auto"
+          render="ul"
           tabIndex={0}
           aria-label="Changed slots"
         >
@@ -137,7 +137,7 @@ const ChannelProgrammingChanges = ({
               timeZone={timeZone}
             />
           ))}
-        </ul>
+        </Stack>
       </Stack>
     );
   }

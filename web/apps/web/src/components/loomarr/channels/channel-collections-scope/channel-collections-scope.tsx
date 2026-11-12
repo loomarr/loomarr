@@ -110,7 +110,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
       ) : (
         <fieldset className="flex flex-col gap-2" aria-label="Only these collections">
           {selected.length > 0 && (
-            <ul className="flex flex-wrap gap-2">
+            <Stack direction="row" gap="inline" render="ul" wrap>
               {selected.map((id) => (
                 <li
                   key={id}
@@ -128,7 +128,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   </Action>
                 </li>
               ))}
-            </ul>
+            </Stack>
           )}
 
           {adding ? (

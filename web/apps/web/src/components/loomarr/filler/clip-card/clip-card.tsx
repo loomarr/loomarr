@@ -200,7 +200,12 @@ const ClipFrame = ({
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
           never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
       {onPlay && thumbImage && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <Stack
+          align="center"
+          className="pointer-events-none absolute inset-0"
+          direction="row"
+          justify="center"
+        >
           {/* A plain <button>, not a DS Action: the target is the whole preview frame with no
               control box of its own, which no Action layout draws. So the pointer cursor (which
               Tailwind v4's Preflight stopped giving <button>) and the focus ring are set here.
@@ -220,13 +225,19 @@ const ClipFrame = ({
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
-            <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            <Stack
+              align="center"
+              className="bg-signal/90 size-11 rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+              direction="row"
+              justify="center"
+              render="span"
+            >
               <Stack className="ml-0.5" direction="row" render="span">
                 <Icon decorative glyph={icons.play} size="default" tone="inherit" />
               </Stack>
-            </span>
+            </Stack>
           </button>
-        </div>
+        </Stack>
       )}
     </div>
   );

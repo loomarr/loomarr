@@ -155,10 +155,15 @@ const SourceSearch = ({
               const acquisition = queueStatus?.[clip.id];
               const parts = metaParts(clip, stats?.[clip.id]);
               return (
-                <li
+                <Stack
+                  align="center"
                   key={clip.id}
+                  className="border-border rounded-lg border px-3 py-2"
                   data-clip-id={clip.id}
-                  className="border-border flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2"
+                  direction="row"
+                  gap="control"
+                  render="li"
+                  wrap
                 >
                   {/* Archive's own thumbnail service — a stable URL, no API call. Rendered only
                       when present, following the clip card: a grid of identical grey
@@ -237,7 +242,7 @@ const SourceSearch = ({
                       </Action>
                     )}
                   </div>
-                </li>
+                </Stack>
               );
             })}
           </ul>

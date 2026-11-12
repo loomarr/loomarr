@@ -4,6 +4,7 @@ import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { HealthReportState } from "@loomarr/api/models/healthReportState";
 import {
+  Stack,
   StatusWord,
   type StatusWordKind,
   Table,
@@ -146,10 +147,10 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
   );
   if (embedded) return content;
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader title="Current Health" description="What is working now and what needs your attention." />
       {content}
-    </div>
+    </Stack>
   );
 };
 

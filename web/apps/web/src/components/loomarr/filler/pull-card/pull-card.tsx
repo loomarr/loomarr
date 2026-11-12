@@ -106,7 +106,7 @@ const PullCard = ({
         <p className="bg-muted/40 text-muted-foreground rounded-md p-3 text-sm">{pull.reason}</p>
       )}
 
-      <ul className="flex flex-col gap-2">
+      <Stack gap="inline" render="ul">
         {plan.map((row) => {
           const id = candidateID(row);
           const isDropped = dropped.has(id);
@@ -142,7 +142,7 @@ const PullCard = ({
             </li>
           );
         })}
-      </ul>
+      </Stack>
 
       {(pull.rejected?.length ?? 0) > 0 && (
         <details className="border-border rounded-md border px-3 py-2 text-sm">
@@ -151,12 +151,12 @@ const PullCard = ({
           </summary>
           <ul className="mt-2 flex flex-col gap-1">
             {(pull.rejected ?? []).map((candidate) => (
-              <li key={candidate.candidateId} className="flex flex-wrap gap-2">
+              <Stack direction="row" gap="inline" key={candidate.candidateId} render="li" wrap>
                 <span>{candidate.name}</span>
                 <Text as="span" textRole="mono">
                   {candidate.disposition.replaceAll("_", " ")}: {candidate.detail}
                 </Text>
-              </li>
+              </Stack>
             ))}
           </ul>
         </details>
@@ -169,12 +169,12 @@ const PullCard = ({
           </summary>
           <ul className="mt-2 flex flex-col gap-1">
             {skippedSources.map((source) => (
-              <li key={source.sourceId} className="flex flex-wrap gap-2">
+              <Stack direction="row" gap="inline" key={source.sourceId} render="li" wrap>
                 <span>{source.label || source.sourceId}</span>
                 <Text as="span" textRole="mono">
                   {source.disposition.replaceAll("_", " ")}: {source.detail}
                 </Text>
-              </li>
+              </Stack>
             ))}
           </ul>
         </details>

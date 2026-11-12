@@ -253,7 +253,7 @@ const SplitReviewEditor = ({
         onSelect={openSegment}
       />
 
-      <ol className="flex list-none flex-col gap-2" aria-label="Clips in this recording">
+      <Stack aria-label="Clips in this recording" className="list-none" gap="inline" render="ol">
         {draft.map((seg, i) => (
           <SegmentSummaryRow
             key={seg.key}
@@ -264,7 +264,7 @@ const SplitReviewEditor = ({
             onOpen={(trigger) => openSegment(seg.key, trigger)}
           />
         ))}
-      </ol>
+      </Stack>
 
       {draft.length === 0 && (
         <p className="text-muted-foreground text-sm">
@@ -391,9 +391,15 @@ const SegmentSummaryRow = ({
             {segment.artwork ? (
               <ServedImage image={segment.artwork} alt="" sizes="96px" />
             ) : (
-              <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
+              <Stack
+                align="center"
+                className="text-muted-foreground size-full px-2 text-center text-[10px]"
+                direction="row"
+                justify="center"
+                render="span"
+              >
                 Preview unavailable
-              </span>
+              </Stack>
             )}
           </span>
           <span className="min-w-0 flex-1">

@@ -137,12 +137,16 @@ const SegmentPreview = ({
             Preview unavailable
           </span>
         )}
-        <span
+        <Stack
+          align="center"
           aria-hidden
-          className="bg-static-950/25 absolute inset-0 flex items-center justify-center text-sm text-white"
+          className="bg-static-950/25 absolute inset-0 text-sm text-white"
+          direction="row"
+          justify="center"
+          render="span"
         >
           ▶
-        </span>
+        </Stack>
         {/* ⚠ `formatMmSs` ("00:30"), NOT `formatClipDuration` ("30s"). The row already renders the
             span as "30s", and a second "30s" inside the same region makes the editor's existing
             `getByText("30s")` match two elements and throw. It also reads better: the row's is a

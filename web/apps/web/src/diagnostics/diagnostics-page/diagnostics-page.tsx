@@ -1,4 +1,4 @@
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics } from "../application-diagnostics";
@@ -38,7 +38,7 @@ const DiagnosticsPage = ({
     { id: "process" as const, label: "Media processes", icon: icons.process },
   ];
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="Diagnostics"
         description="Find what happened and check whether this Loomarr server is healthy."
@@ -106,7 +106,7 @@ const DiagnosticsPage = ({
         )}
         {search.view === "process" && playout}
       </div>
-    </div>
+    </Stack>
   );
 };
 
