@@ -203,7 +203,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    extras, and a show's trailer is no episode; a sequel keeps its own name; "Part 1 - Tides"
 //	    titles an episode; a daily show filed by year and month is one show; a recorded film
 //	    keeps its film's name; "Criterion" is a release's.
-const writeVersion = 54
+//	55: a show's folder of episodes named by their titles on an audience's shelf ("Kids/") is a
+//	    show's; a miniseries' folder among films numbered "Episode 1", "E01" or "Night 1" holds
+//	    episodes; "Show.E05.240301" is an episode; "第05集" loose beside its siblings is numbered;
+//	    a film's disc or version folder ("Disc 1/", "4K/") names no film; a doubled show folder,
+//	    a volume's ("Vol 2"), a "(TV)" tag and a bracketed day each join their show.
+const writeVersion = 55
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -595,6 +600,20 @@ var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main
 
 // runsOn says whether a title is another's with more words after it: "Brook 2" and "Heath Part 2"
 // run on from "Brook" and "Heath".
+// filmFolder is the folder that names the film a file in dir is: dir, or the film's folder above a
+// disc's or a version's own, which names no film ("Holm Fen (2004)/Disc 1/", "Ashlee Vane
+// (2015)/4K/").
+func filmFolder(dir string) string {
+	for dir != "." && path.Dir(dir) != "." {
+		words := strings.Fields(folderKey(path.Base(dir)))
+		if !partFolder.MatchString(path.Base(dir)) && (len(words) == 0 || slices.ContainsFunc(words, func(w string) bool { return !releaseToken(w) })) {
+			break
+		}
+		dir = path.Dir(dir)
+	}
+	return dir
+}
+
 func runsOn(title, other string) bool {
 	words, own := strings.Fields(normName(title)), strings.Fields(normName(other))
 	return len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own)
@@ -628,12 +647,12 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
 	if m := makeMKVTitle.FindStringSubmatchIndex(plain); m != nil && kind == mp.KindMovie {
 		label := strings.Trim(strings.ReplaceAll(plain[:m[0]], "_", " "), " ")
-		if dir := path.Dir(rel); (len(label) <= 3 || strings.EqualFold(label, "title")) && dir != "." && !catchAllFolder(path.Base(dir)) {
+		if dir := filmFolder(path.Dir(rel)); (len(label) <= 3 || strings.EqualFold(label, "title")) && dir != "." && !catchAllFolder(path.Base(dir)) {
 			label = strings.ReplaceAll(path.Base(dir), "_", " ")
 		}
 		return clean(discLabel.ReplaceAllString(label, ""))
 	}
-	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
+	if dir := filmFolder(path.Dir(rel)); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
 		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
 		// So is one named by what it is rather than what it is called: "Pikestaff/movie.mkv",

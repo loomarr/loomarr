@@ -355,7 +355,8 @@ func datedShow(name string) string {
 		start = m[12]
 	}
 	show := strings.NewReplacer(".", " ", "_", " ").Replace(leadingTags.ReplaceAllString(name[:start], ""))
-	return strings.Trim(strings.Join(strings.Fields(show), " "), " -")
+	// A day in brackets, "Kite Hill (2023-01-30)", leaves its bracket behind.
+	return strings.Trim(strings.Join(strings.Fields(show), " "), " -([")
 }
 
 // idsIn returns the grounded ids written into one name.
@@ -513,7 +514,9 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// season's and episode's mark, "S01E01", or a season's folder in a show's says a file there is an
 	// episode, and only one with a show to be: "Movies/S01E01 (2019).mkv" names none, and "Movies"
 	// is no show's name.
-	if dir := path.Dir(file.Rel); amongFilms(dir) && !inShowsSeason(dir) &&
+	// So does a miniseries' folder there whose episodes say so by their word, and give no years
+	// as a saga's films do: "Movies/Reed Wood/Reed Wood - Episode 1.mkv" beside "… Episode 2".
+	if dir := path.Dir(file.Rel); amongFilms(dir) && !inShowsSeason(dir) && !miniseriesAmongFilms(file) &&
 		(!sxxeyy.MatchString(file.Rel) && !crossMark.MatchString(name) || catchAllFolder(path.Base(seriesFolderOf(file)))) {
 		return movieRecord(src, segments), ""
 	}
@@ -529,6 +532,9 @@ func embeddedRecord(file File) (mp.Record, string) {
 		return movieRecord(src, segments), ""
 	}
 	n, ok := numberingIn(name)
+	if m := dramaRelease.FindStringSubmatch(name); !ok && m != nil {
+		n, ok = mp.Numbering{Season: 1, Episode: atoi(m[1])}, true
+	}
 	// "12 - 2x4" in Season 1 is its twelfth, titled "2x4": its season folder names another season.
 	if season := seasonDirOf(path.Dir(file.Rel)); ok && shortCross(name) && season != "" {
 		if s, known := seasonIn(path.Base(season)); known && s != n.Season {
@@ -587,7 +593,8 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// Christmas Buzz (2015)" beside "Busy Bees 101".
 	dir := path.Dir(file.Rel)
 	special := file.Notes.Numbered && showTitled(name, path.Base(dir))
-	if dir != "." && (file.Notes.Episodes || file.Notes.Series || special || underShows(dir)) && !file.Notes.Dump && !catchAllFolder(path.Base(dir)) {
+	if dir != "." && (file.Notes.Episodes || file.Notes.Series || file.Notes.Titled || special || underShows(dir)) &&
+		!file.Notes.Dump && !catchAllFolder(path.Base(dir)) {
 		seriesDir := seriesFolderOf(file)
 		return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
 	}
@@ -621,6 +628,15 @@ func inShowsSeason(dir string) bool {
 	}
 	show := aboveSeasons(season)
 	return show != "." && !catchAllFolder(path.Base(show))
+}
+
+// miniseriesAmongFilms says whether a file in a folder of its own among films is a miniseries'
+// episode: its folder's videos number themselves by an episode's word after the name they share
+// (folderNotes.Spelled), and it gives no year, as a saga's film does ("Kettle Wars Episode 4
+// (1977)").
+func miniseriesAmongFilms(file File) bool {
+	_, year, _ := searchQuery(stem(path.Base(file.Rel)), 0)
+	return file.Notes.Spelled && year == 0 && !catchAllFolder(path.Base(path.Dir(file.Rel)))
 }
 
 // movieRecord is a movie's embedded record, from the path's segments.
@@ -906,8 +922,29 @@ func looseKey(show string) string {
 // "Fernhill (2019)".
 var looseYear = regexp.MustCompile(`^(.*\S)[ ._]+[(\[]?((?:19|20)\d{2})[)\]]?$`)
 
-// seriesFolderOf is seriesFolder for a file the walk found.
+// seriesFolderOf is seriesFolder for a file the walk found. A copy of a show's folder inside it, as
+// unpacking leaves one ("TV/Moss Hollow/Moss Hollow/Season 2/"), stands for the show's folder; so
+// does a volume of it beside it ("Kids/Puddle Ducks Vol 2/" for "Kids/Puddle Ducks").
 func seriesFolderOf(file File) string {
+	dir := showFolderIn(file)
+	if dir == "" || dir == "." || path.Dir(dir) == "." {
+		return dir
+	}
+	parent, base := path.Dir(dir), path.Base(dir)
+	if !catchAllFolder(path.Base(parent)) && !isSeasonFolder(parent) && sameWords(showFolderName(base), showFolderName(path.Base(parent))) {
+		return parent
+	}
+	if bare := strings.TrimSpace(volumeTag.ReplaceAllString(base, "")); volumeTag.MatchString(base) && bare != "" {
+		return path.Join(parent, bare)
+	}
+	return dir
+}
+
+// volumeTag matches a show's volume after its name: "Puddle Ducks Vol 2", "Puddle Ducks - Volume 3".
+var volumeTag = regexp.MustCompile(`(?i)[ ._-]+vol(?:ume)?[ ._]*\d{1,2}$`)
+
+// showFolderIn is the show's folder a file's path names (seriesFolderOf).
+func showFolderIn(file File) string {
 	dir, name := path.Dir(file.Rel), path.Base(file.Rel)
 	// A folder named by an episode's mark is the episode's own (Emby's "Season 2/S02E05/", a
 	// release's "Kettle.Bay.S01E02.720p-GRP/"): its show is above it, and with none above, it names
@@ -1110,6 +1147,10 @@ func showFolderName(folder string) string {
 	if bare := strings.TrimSpace(kindTag.ReplaceAllString(name, "")); bare != "" {
 		name = bare
 	}
+	// "Puddle Ducks Vol 2" is "Puddle Ducks" (seriesFolderOf).
+	if bare := strings.TrimSpace(volumeTag.ReplaceAllString(name, "")); bare != "" {
+		name = bare
+	}
 	if (leadingTags.MatchString(name) || batchWord.MatchString(name)) && episodeRange.MatchString(name) {
 		// A pack named by nothing but its tags and its run keeps its name.
 		if pack := strings.TrimSpace(leadingTags.ReplaceAllString(strings.TrimSpace(name[:episodeRange.FindStringIndex(name)[0]]), "")); pack != "" {
@@ -1167,11 +1208,10 @@ func looseSeries(name string) string {
 	if mark == nil {
 		mark = seasonEpisodeWords.FindStringIndex(name)
 	}
-	if mark == nil {
-		mark = dashedEpisode.FindStringIndex(name)
-	}
-	if mark == nil {
-		mark = sceneNumber.FindStringIndex(name)
+	for _, re := range []*regexp.Regexp{dashedEpisode, dramaRelease, nightMark, cjkEpisode, sceneNumber} {
+		if mark == nil {
+			mark = re.FindStringIndex(name)
+		}
 	}
 	if mark == nil {
 		mark = partOfWord.FindStringIndex(name)
@@ -1192,7 +1232,17 @@ func looseSeries(name string) string {
 	if mark == nil {
 		return ""
 	}
-	return showSpelling(strings.Trim(leadingTags.ReplaceAllString(name[:mark[0]], ""), " ._-"))
+	return showSpelling(strings.Trim(untagged(name[:mark[0]]), " ._-"))
+}
+
+// untagged is a show's name before its episode's mark with the release group's tags before it
+// taken off: "[Grp] Hana Kettle", "【Grp】Kettle Hana".
+func untagged(name string) string {
+	name = leadingTags.ReplaceAllString(name, "")
+	if rest := cjkTag.ReplaceAllString(name, ""); strings.TrimSpace(rest) != "" {
+		return rest
+	}
+	return name
 }
 
 // showSpelling is how a show's name loose in a file's name is written as a show: its words apart,
@@ -1200,6 +1250,10 @@ func looseSeries(name string) string {
 // "Brass.Reed.S01E01" are one show, "Brass Reed". A name in capitals is an acronym's, "KBX".
 func showSpelling(name string) string {
 	name = strings.Trim(strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(name)), " "), " -")
+	// "[Grp] Hana Kettle (TV) - 06" is "Hana Kettle"'s, as its folder would be (showFolderName).
+	if bare := strings.TrimSpace(kindTag.ReplaceAllString(name, "")); bare != "" {
+		name = bare
+	}
 	words := strings.Fields(name)
 	// A release's name in capitals, "HOB.LANE.S01E04", is its show's words shouted: each of two or
 	// more is a word, three letters or longer. An acronym's, "KBX" or "CSI NY", stays.
@@ -1260,6 +1314,15 @@ var (
 	seasonDotEpisode = regexp.MustCompile(`(?:^|[ ._-])(\d{1,2})\.(\d{2})(?:[ ._-]|$)`)
 	// bareEpisode matches an episode written "E03" with no season before it.
 	bareEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])e(\d{1,4})(?:[ ._-]|$)`)
+	// dramaRelease matches a Korean drama's release, its episode then the day it aired as YYMMDD:
+	// "Kettle.Love.E05.240301.1080p". It says an episode wherever it is.
+	dramaRelease = regexp.MustCompile(`(?i)[ ._-]e(\d{2,4})[ ._-]\d{6}(?:[ ._-]|$)`)
+	// nightMark matches a miniseries' night after its name and a dash: "Ash Vale (2008) - Night 2".
+	nightMark = regexp.MustCompile(`(?i)[ ._]+-[ ._]+night[ ._]*(\d{1,2})(?:[^0-9]|$)`)
+	// spelledEpisode matches a name, then an episode's word and its number: "Rook Hall Mini E01",
+	// "Reed Wood - Episode 1", "Ash Vale (2008) - Night 1". Its groups are the name and the number.
+	// An "E" stands apart from the name and touches its number: "Ironvale 2" is a sequel's.
+	spelledEpisode = regexp.MustCompile(`(?i)^(.*?[^ ._-])[ ._]+(?:-[ ._]+)?(?:(?:episode|ep\.?|night)[ ._]*|e)(\d{1,3})(?:[^0-9]|$)`)
 	// seasonTwoDigits matches a two-digit number after a show's name, with or without a dash:
 	// "Kettle Bay - 03", "Kettle Bay 06".
 	seasonTwoDigits = regexp.MustCompile(`[ ._](?:-[ ._]*)?\d{2}(?:[ ._-]|$)`)
@@ -1267,6 +1330,9 @@ var (
 	// "{Kumo} ", "(Kumo) ". A round bracket's tag is a word, never a number: "(500) Lanterns" is a
 	// title.
 	leadingTags = regexp.MustCompile(`^(?:[ ._]*(?:\[[^\]]*\]|\{[^}]*\}|\(\pL[^)\s]*\)))+[ ._]*`)
+	// cjkTag matches a group's tag in CJK brackets before a name: "【Grp】Kettle Hana 第05集". Alone,
+	// "【Lantern Cove】(2016)", the brackets hold the title.
+	cjkTag = regexp.MustCompile(`^[ ._]*【[^】]*】[ ._]*`)
 	// trailingGroup matches a release group's tag at a name's end: "Show - 06 [Kumo]".
 	trailingGroup = regexp.MustCompile(`[ ._]*\[(\pL[^\]\s]*)\]$`)
 	// ovaWord matches an OVA's or OAD's word, a special's whatever follows it.
@@ -1543,8 +1609,12 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	// A catch-all's file ("Movies/Ferrow Lane Part 2 of 3 (2010).mkv") has no show folder to number
 	// it after, unless it is one of several numbered after a name they share ("Cartoons/Fizzy Fox
 	// 01.mp4" beside "… 02").
-	if !inSeason && catchAllFolder(show) && !file.Notes.Numbered {
+	if !inSeason && catchAllFolder(show) && !file.Notes.Numbered && !file.Notes.Spelled {
 		return mp.Numbering{}, false
+	}
+	// "Rook Hall Mini E01" beside "… E02", and "Ash Vale - Night 1" beside "… Night 2".
+	if m := spelledEpisode.FindStringSubmatch(name); m != nil && file.Notes.Spelled {
+		return episode(atoi(m[2]))
 	}
 	if m := capMark.FindStringSubmatch(name); m != nil && atoi(m[2]) > 0 && !yearToken.MatchString(m[1]+m[2]) {
 		return mp.Numbering{Season: atoi(m[1]), Episode: atoi(m[2])}, true
@@ -1758,6 +1828,10 @@ type folderNotes struct {
 	// Numbered is a folder two or more of whose videos number themselves after a name they share
 	// ("kb 101", "kb 201").
 	Numbered bool
+	// Spelled is a folder two or more of whose videos number themselves by an episode's word after
+	// a name they share (spelledEpisode, cjkEpisode): "Rook Hall Mini E01" beside "… E02", "Reed
+	// Wood - Episode 1" beside "… Episode 2", "Kettle Hana 第05集" beside "… 第06集".
+	Spelled bool
 	// Hundreds is the hundred every video named by a leading number of three digits shares ("101 -
 	// Tidewater", "102 - Low Water" share 1), and 0 when they share none, or one is "99" or a whole
 	// hundred.
@@ -1778,6 +1852,9 @@ type folderNotes struct {
 	// "Pebble Pals Season 1/Pebble Pals 1.mp4". A film's folder holds one film, and a collection's
 	// films give their years.
 	Series bool
+	// Titled is a folder on an audience's shelf whose videos are a show's episodes named by their
+	// titles alone (titledEpisodes): "Kids/Hop Pond/Frost Morning.mp4" beside "Big Carrot.mp4".
+	Titled bool
 	// Folders are the folder's own folders, by name in order: a loose episode beside its show's
 	// folder ("TV/Holm Lane S01E02.mkv" by "TV/Holm Lane/") is that show's.
 	Folders []string
@@ -1865,6 +1942,36 @@ func namedSeries(folder string, names []string) bool {
 		}
 	}
 	return named >= 2
+}
+
+// audienceNames are the catch-alls a household sorts by who watches, which hold films and shows
+// alike: a folder in one is a film's or a show's by what its videos say.
+var audienceNames = map[string]bool{"kids": true, "children": true, "family": true}
+
+// titledEpisodes says whether a folder on an audience's shelf holds a show's episodes named by their
+// titles alone (folderNotes.Titled): "Kids/Hop Pond/Frost Morning.mp4" beside "Big Carrot.mp4". A film's
+// folder holds a video named as it is ("Tansy Fell/Tansy Fell.mp4") or its sequels ("Wren Lake 2");
+// a collection's films give their years, and a franchise's folder says so ("Gorse Trilogy").
+func titledEpisodes(rel string, names []string) bool {
+	folder := path.Base(rel)
+	if !audienceNames[folderKey(path.Base(path.Dir(rel)))] || catchAllFolder(folder) || filmSeries.MatchString(folder) ||
+		len(idsIn(folder)) > 0 || len(names) < 2 || len(partsOf(names)) > 0 {
+		return false
+	}
+	own := showWordsOf(folder)
+	if _, year, _ := searchQuery(folder, 0); year != 0 || len(own) == 0 {
+		return false
+	}
+	for _, name := range names {
+		s := plainStem(name)
+		if _, year, _ := searchQuery(s, 0); year != 0 || bracketYear.MatchString(s) {
+			return false
+		}
+		if words := strings.Fields(normName(s)); len(words) >= len(own) && slices.Equal(words[:len(own)], own) {
+			return false
+		}
+	}
+	return true
 }
 
 // showTitled says whether a file's name is its folder's show, a dash and a title: "Busy Bees -
@@ -1963,9 +2070,24 @@ func notesOf(names []string) folderNotes {
 			prefixes[strings.ToLower(strings.Join(strings.Fields(m[1]), " "))]++
 		}
 	}
+	spelled := map[string]int{}
+	for _, name := range names {
+		s, prefix := plainStem(name), ""
+		if m := spelledEpisode.FindStringSubmatch(s); m != nil {
+			prefix = m[1]
+		} else if at := cjkEpisode.FindStringIndex(s); at != nil {
+			prefix = s[:at[0]]
+		} else {
+			continue
+		}
+		spelled[normName(untagged(prefix))]++
+	}
 	var notes folderNotes
 	for _, n := range prefixes {
 		notes.Numbered = notes.Numbered || n >= 2
+	}
+	for prefix, n := range spelled {
+		notes.Spelled = notes.Spelled || n >= 2 && prefix != ""
 	}
 	// Every name that starts with a number of three digits starts with one in the same hundred:
 	// "101", "102", beside a "07" written plainly. A whole hundred, "100" after "99", says the
@@ -1981,7 +2103,7 @@ func notesOf(names []string) folderNotes {
 		}
 		switch hundreds := n / 100; {
 		case n < 100 || n%100 == 0 || (notes.Hundreds != 0 && notes.Hundreds != hundreds):
-			return folderNotes{Numbered: notes.Numbered}
+			return folderNotes{Numbered: notes.Numbered, Spelled: notes.Spelled}
 		default:
 			notes.Hundreds = hundreds
 		}
