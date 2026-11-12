@@ -180,4 +180,39 @@ describe("native event stream", () => {
     ]);
     stream.close();
   });
+
+  // As an EventSource does: "open" once for each connection the server accepts, so a caller hears
+  // the stream come back and reads again what it missed while it was down.
+  it("announces each connection the server accepts, once, and none it refuses", () => {
+    const timers = timerHarness();
+    const requests: RequestStub[] = [];
+    const stream = createNativeEventStream("http://loomarr.test/v1/events", {
+      createRequest: () => {
+        const request = new RequestStub();
+        requests.push(request);
+        return request;
+      },
+      setTimer: timers.setTimer,
+    });
+    const opens = vi.fn();
+    stream.addEventListener("open", opens);
+    const answer = (request: RequestStub, status: number, readyState: number) => {
+      request.status = status;
+      request.readyState = readyState;
+      request.onreadystatechange?.(new Event("readystatechange"));
+    };
+
+    timers.callbacks.shift()?.();
+    answer(requests[0]!, 200, 3);
+    answer(requests[0]!, 200, 3);
+    expect(opens).toHaveBeenCalledOnce();
+    answer(requests[0]!, 200, 4);
+    timers.callbacks.shift()?.();
+    answer(requests[1]!, 502, 4);
+    expect(opens).toHaveBeenCalledOnce();
+    timers.callbacks.shift()?.();
+    answer(requests[2]!, 200, 3);
+    expect(opens).toHaveBeenCalledTimes(2);
+    stream.close();
+  });
 });

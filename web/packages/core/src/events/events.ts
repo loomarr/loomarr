@@ -222,8 +222,9 @@ const openEventStream = (
   handlers: EventHandlers,
   url?: string,
   createStream?: EventStreamFactory,
+  onOpen?: () => void,
 ): (() => void) =>
-  openFrameStream((type, payload) => dispatchFrame(handlers, type, payload), url, createStream);
+  openFrameStream((type, payload) => dispatchFrame(handlers, type, payload), url, createStream, onOpen);
 
 // invalidateByPrefix invalidates every query whose first key element (the URL, per
 // orval's fetch client) starts with prefix — coarse but correct.

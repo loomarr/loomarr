@@ -99,6 +99,9 @@ const createNativeEventStream = (
     if (closed) return;
     buffer = "";
     processedLength = 0;
+    // "open" once per connection the server accepts, as an EventSource does, so a caller hears
+    // the stream come back after a drop.
+    let announced = false;
     const next = createRequest();
     request = next;
     next.open("GET", url, true);
@@ -108,6 +111,10 @@ const createNativeEventStream = (
     next.onreadystatechange = () => {
       if (closed || request !== next || (next.readyState !== 3 && next.readyState !== 4)) return;
       if (next.status >= 200 && next.status < 300) {
+        if (!announced) {
+          announced = true;
+          dispatch("open", "");
+        }
         readFrames(next.responseText);
         if (next.readyState === 4) scheduleReconnect();
         return;

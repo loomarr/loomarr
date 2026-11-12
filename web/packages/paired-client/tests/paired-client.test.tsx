@@ -50,7 +50,12 @@ const fakes = vi.hoisted(() => {
     reporterDisposed: vi.fn(),
     requests: [] as unknown[],
     streamOptions: [] as { headers: Record<string, string>; onUnauthorized: () => unknown }[],
-    streams: [] as { closed: boolean; handlers: { onChannel: () => void }; url: string }[],
+    streams: [] as {
+      closed: boolean;
+      handlers: { onChannel: () => void };
+      onOpen?: () => void;
+      url: string;
+    }[],
     transport: undefined as unknown as PlayerTransport & {
       emit: (event: PlayerTransportEvent) => void;
       resume: ReturnType<typeof vi.fn>;
@@ -62,8 +67,13 @@ const fakes = vi.hoisted(() => {
 vi.mock("expo-crypto", () => ({ randomUUID: () => "11111111-2222-4333-8444-555555555555" }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 vi.mock("@loomarr/core/events", () => ({
-  openEventStream: (handlers: { onChannel: () => void }, url: string) => {
-    const stream = { closed: false, handlers, url };
+  openEventStream: (
+    handlers: { onChannel: () => void },
+    url: string,
+    _createStream: unknown,
+    onOpen?: () => void,
+  ) => {
+    const stream = { closed: false, handlers, onOpen, url };
     fakes.streams.push(stream);
     return () => {
       stream.closed = true;
@@ -331,6 +341,24 @@ describe("paired client", () => {
 
       await act(async () => fakes.streams[0]?.handlers.onChannel());
 
+      expect(fakes.catalogLists).toHaveLength(2);
+      expect(fakes.guide.refresh).toHaveBeenCalledWith();
+      await act(async () => root.unmount());
+    });
+
+    // Frames sent while the stream was down (a server restarting for an update) are gone, so a
+    // reconnect reloads what they would have changed. The first open needs none: the catalog and
+    // guide load as the stream opens, on launch and on every return to the foreground.
+    it("reloads the catalog and the guide when the stream comes back, not when it first opens", async () => {
+      const { root } = await mountClient();
+      expect(fakes.catalogLists).toHaveLength(1);
+      fakes.guide.refresh.mockClear();
+
+      await act(async () => fakes.streams[0]?.onOpen?.());
+      expect(fakes.catalogLists).toHaveLength(1);
+      expect(fakes.guide.refresh).not.toHaveBeenCalled();
+
+      await act(async () => fakes.streams[0]?.onOpen?.());
       expect(fakes.catalogLists).toHaveLength(2);
       expect(fakes.guide.refresh).toHaveBeenCalledWith();
       await act(async () => root.unmount());
