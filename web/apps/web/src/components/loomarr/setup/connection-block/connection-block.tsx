@@ -67,7 +67,7 @@ const ConnectionBlock = ({
       onExpandedChange={() => onToggle()}
       status={status}
     >
-      <div className="flex flex-col gap-4">
+      <Stack gap="4">
         {children}
         {(action || verdict) && (
           <Stack align="center" direction="row" gap="control" wrap>
@@ -102,7 +102,7 @@ const ConnectionBlock = ({
         {/* Below the fields AND below the Test row — a statement about the service, read
             after its settings rather than competing with them. */}
         {footer}
-      </div>
+      </Stack>
     </Disclosure>
   );
 };

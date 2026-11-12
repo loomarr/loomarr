@@ -208,13 +208,15 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
         aria-label="Titles not airing"
       >
         {items.map((item, i) => (
-          <li
+          <Stack
             // ⚠ The key is NOT `item.key` alone: a per-episode ceiling refusal carries its
             // SERIES key, so several rows legitimately share one. Title disambiguates them
             // (it holds the SxxEyy), and the index closes the remaining gap.
             // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
             key={`${item.key}-${item.title}-${i}`}
-            className="flex flex-col gap-0.5 px-3 py-2"
+            className="px-3 py-2"
+            gap="0.5"
+            render="li"
           >
             <span className="truncate text-sm">{item.title || item.key}</span>
             <span
@@ -225,7 +227,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             >
               {REASON_LABEL[item.reason]}
             </span>
-          </li>
+          </Stack>
         ))}
       </Stack>
     </Disclosure>
@@ -283,18 +285,20 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
         aria-label="Scheduler decisions"
       >
         {trace.facts.map((fact, i) => (
-          <li
+          <Stack
             // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
             // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
             key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
-            className="flex flex-col gap-0.5 px-3 py-2"
+            className="px-3 py-2"
+            gap="0.5"
+            render="li"
           >
             <span className="truncate text-sm">{fact.title || fact.key || "Commercial gap"}</span>
             <span className="text-muted-foreground text-xs">
               {TRACE_REASON_LABEL[fact.reason]}
               {fact.cyclePosition !== undefined ? ` · cycle slot ${fact.cyclePosition + 1}` : ""}
             </span>
-          </li>
+          </Stack>
         ))}
       </Stack>
     </Disclosure>
@@ -374,13 +378,13 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           value={toDatetimeLocalValue(at)}
           width={224}
         />
-        <div className="flex flex-wrap gap-1.5 pb-0.5">
+        <Stack className="pb-0.5" direction="row" gap="1.5" wrap>
           {TIME_PRESETS.map((preset) => (
             <Action key={preset.label} onPress={() => setAt(preset.at())} variant="outline">
               {preset.label}
             </Action>
           ))}
-        </div>
+        </Stack>
       </Stack>
 
       {(draftPolicy ? draft.isPending : saved.isLoading) ? (
@@ -438,9 +442,10 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             // role override — the <ul> keeps its implicit role="list" (a role="group" would
             // orphan the <li> children and trip the `listitem` rule); aria-label names the
             // list without changing that role.
-            <ul
-              className="scroll-thin flex max-h-96 flex-col gap-1.5 overflow-y-auto"
-              // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive — axe's scrollable-region-focusable requires this tabIndex so keyboard users can scroll (see comment above)
+            <Stack
+              className="scroll-thin max-h-96 overflow-y-auto"
+              gap="1.5"
+              render="ul"
               tabIndex={0}
               aria-label="Scheduled slots"
             >
@@ -456,7 +461,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
                   showTitle={slot.key ? showByKey.get(slot.key) : undefined}
                 />
               ))}
-            </ul>
+            </Stack>
           )}
 
           {/* ⚠ BELOW the schedule, deliberately. The question it answers ("why isn't X on?")

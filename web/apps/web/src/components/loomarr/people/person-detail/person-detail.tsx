@@ -250,7 +250,7 @@ const PersonDetail = ({
           </h3>
           <p className="text-muted-foreground text-sm">Role changes take effect immediately.</p>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <Stack gap="1.5">
           <BrowserSelectControl
             appearance="field"
             disabled={busy || isSelf}
@@ -260,12 +260,14 @@ const PersonDetail = ({
             value={user.role}
           />
           {isSelf && <FieldHint>You cannot change your own role.</FieldHint>}
-        </div>
+        </Stack>
       </Stack>
 
-      <section
+      <Stack
         aria-labelledby="person-requests"
-        className="border-static-800 flex flex-col gap-4 border-t pt-6"
+        className="border-static-800 border-t pt-6"
+        gap="4"
+        render="section"
       >
         <div>
           <h3 id="person-requests" className="font-semibold">
@@ -306,7 +308,7 @@ const PersonDetail = ({
           disabled={busy}
           onCheckedChange={(checked) => onToggleAutoApprove?.(checked)}
         />
-      </section>
+      </Stack>
 
       <Stack
         aria-labelledby="person-sessions"

@@ -414,7 +414,13 @@ const SettingField = ({
                   text — a swap that changes width would make the label twitch on hover. The
                   padlock is the control and keeps its open-on-hover tell; the state itself is
                   the quiet dot and word, not a filled chip (#2784). */}
-              <span className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal flex items-center gap-1.5">
+              <Stack
+                align="center"
+                className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal"
+                direction="row"
+                gap="1.5"
+                render="span"
+              >
                 <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
                   <Stack
                     className="absolute transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0"
@@ -432,7 +438,7 @@ const SettingField = ({
                   </Stack>
                 </span>
                 <StatusLabel tone="off">Set via environment</StatusLabel>
-              </span>
+              </Stack>
             </button>
           ) : (
             <StatusLabel tone="off">Set via environment</StatusLabel>

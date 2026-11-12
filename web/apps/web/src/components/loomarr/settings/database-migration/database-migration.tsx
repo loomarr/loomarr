@@ -146,7 +146,7 @@ const DatabaseMigration = ({
 
             {step === "connect" && (
               <Stack className="max-w-xl" gap="control">
-                <div className="flex flex-col gap-1.5">
+                <Stack gap="1.5">
                   <Field
                     aria-describedby="migration-dsn-doc"
                     autoCapitalize="none"
@@ -163,7 +163,7 @@ const DatabaseMigration = ({
                     sslmode=prefer negotiates TLS and falls back, which is right for a docker network. Use
                     require for a database across the internet.
                   </FieldHint>
-                </div>
+                </Stack>
                 <Action
                   disabled={dsn.trim() === "" || pending === "preflight"}
                   onPress={onPreflight}

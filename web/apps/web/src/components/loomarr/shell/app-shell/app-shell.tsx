@@ -152,7 +152,7 @@ const AppShell = ({
       {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
       <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
-        <nav aria-label="Primary" className="flex w-56 flex-col gap-1">
+        <Stack aria-label="Primary" className="w-56" gap="1" render="nav">
           <div className="mb-4 px-2">
             <BrandLockup variant="compact" />
           </div>
@@ -226,7 +226,7 @@ const AppShell = ({
               </Link>
             );
           })}
-        </nav>
+        </Stack>
 
         {serverVersion && (
           <Tooltip content={`Loomarr ${serverVersion}`} side="right">

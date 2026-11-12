@@ -93,13 +93,13 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
 
   return (
     <Stack className={className} gap="inline">
-      <div className="flex items-center gap-1.5">
+      <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these collections</Text>
         <FieldHelp label="Only these collections">
           Restrict the channel to titles in the collections you keep in your media server. Leave empty for no
           restriction. Changes to a collection are picked up the next time the channel rebuilds.
         </FieldHelp>
-      </div>
+      </Stack>
 
       {q.isError ? (
         // A failure must NOT read as "you have none" — that would send the operator off to
@@ -112,9 +112,13 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
           {selected.length > 0 && (
             <Stack direction="row" gap="inline" render="ul" wrap>
               {selected.map((id) => (
-                <li
+                <Stack
                   key={id}
-                  className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
+                  align="center"
+                  className="border-border bg-muted/40 rounded-md border px-2 py-1 text-sm"
+                  direction="row"
+                  gap="1.5"
+                  render="li"
                 >
                   <span>{labelOf(id)}</span>
                   <Action
@@ -126,7 +130,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   >
                     {`Remove ${labelOf(id)}`}
                   </Action>
-                </li>
+                </Stack>
               ))}
             </Stack>
           )}

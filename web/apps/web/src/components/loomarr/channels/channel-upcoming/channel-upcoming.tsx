@@ -37,7 +37,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
         // the same empty list. Do not infer broadcast state from a response that cannot prove it.
         <p className="text-muted-foreground text-sm">Programme information isn't available.</p>
       ) : (
-        <ol className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ol">
           {entries.map((entry, i) => {
             // The first entry is what's airing now when the channel is live and it has already
             // started (start ≤ now); everything after is genuinely upcoming.
@@ -83,7 +83,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
               </Stack>
             );
           })}
-        </ol>
+        </Stack>
       )}
     </section>
   );

@@ -97,9 +97,9 @@ const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): Policy
 const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
   if (deltas.length === 0) return null;
   return (
-    <section className="flex flex-col gap-1.5">
+    <Stack gap="1.5" render="section">
       <h3 className="text-2xs text-static-400">{`Programming · ${deltas.length}`}</h3>
-      <ul className="flex flex-col gap-1.5">
+      <Stack gap="1.5" render="ul">
         {deltas.map((d) => (
           <li key={d.label} className="flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="text-muted-foreground">{d.label}</span>
@@ -119,8 +119,8 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
             )}
           </li>
         ))}
-      </ul>
-    </section>
+      </Stack>
+    </Stack>
   );
 };
 
@@ -182,7 +182,7 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
 };
 
 const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "removed"; note?: string }) => (
-  <li className="flex flex-col gap-0.5 text-sm">
+  <Stack className="text-sm" gap="0.5" render="li">
     <Stack align="baseline" direction="row" gap="inline">
       <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
         {tone === "kept" && <Icon decorative glyph={icons.selected} size="compact" tone="muted" />}
@@ -207,7 +207,7 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
     {tone === "added" && row.rationale && (
       <p className="text-muted-foreground pl-6 text-xs">{friendlyTitleRationale(row.rationale)}</p>
     )}
-  </li>
+  </Stack>
 );
 
 const Group = ({
@@ -225,15 +225,15 @@ const Group = ({
 }) => {
   if (rows.length === 0) return null;
   return (
-    <section className="flex flex-col gap-1.5">
+    <Stack gap="1.5" render="section">
       <h3 className="text-2xs text-static-400">{`${title} · ${rows.length}`}</h3>
-      <ul className="flex flex-col gap-1">
+      <Stack gap="1" render="ul">
         {rows.map((row) => (
           <Row key={row.key} row={row} tone={tone} note={rowNote} />
         ))}
-      </ul>
+      </Stack>
       {emptyNote}
-    </section>
+    </Stack>
   );
 };
 
@@ -276,13 +276,13 @@ const RefineReview = ({
       {noChanges ? (
         <p className="text-sm">The suggestions are already on this channel.</p>
       ) : (
-        <div className="flex flex-col gap-4">
+        <Stack gap="4">
           <Group title="Keeping" rows={kept} tone="kept" />
           <Group title="Adding" rows={added} tone="added" />
           {acquiring.length > 0 && <Group title="Adding (needs downloading)" rows={acquiring} tone="added" />}
           <Group title="Removing" rows={removed} tone="removed" />
           <PolicyDeltaGroup deltas={deltas} />
-        </div>
+        </Stack>
       )}
 
       <Stack

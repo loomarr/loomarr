@@ -57,20 +57,24 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
 
   return (
     <Stack className={className} gap="inline">
-      <div className="flex items-center gap-1.5">
+      <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these shows</Text>
         <FieldHelp label="Only these shows">
           Restrict the channel to specific series. Leave empty for no restriction. The lineup decides on its
           own.
         </FieldHelp>
-      </div>
+      </Stack>
 
       {series.length > 0 && (
         <Stack direction="row" gap="inline" render="ul" wrap>
           {series.map((key) => (
-            <li
+            <Stack
               key={key}
-              className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
+              align="center"
+              className="border-border bg-muted/40 rounded-md border px-2 py-1 text-sm"
+              direction="row"
+              gap="1.5"
+              render="li"
             >
               <span className="text-muted-foreground font-mono text-xs">{labelOfKey(key)}</span>
               <Action
@@ -82,7 +86,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               >
                 {`Remove ${labelOfKey(key)}`}
               </Action>
-            </li>
+            </Stack>
           ))}
         </Stack>
       )}
