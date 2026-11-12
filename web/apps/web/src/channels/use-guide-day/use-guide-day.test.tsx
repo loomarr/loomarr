@@ -30,6 +30,33 @@ describe("useGuideDay", () => {
     expect(nineAm(afterMidnight, result.current[0])).toBe(tomorrowNine);
   });
 
+  it("stays on today when the anchor slides past midnight", () => {
+    const { result, rerender } = renderHook(
+      ({ anchorMs }) => useGuideDay({ anchorMs, initialOffset: 0, timeZone }),
+      {
+        initialProps: { anchorMs: beforeMidnight },
+      },
+    );
+
+    rerender({ anchorMs: afterMidnight });
+
+    expect(result.current[0]).toBe(0);
+  });
+
+  it("stays on today after picking it back across midnight", () => {
+    const { result, rerender } = renderHook(
+      ({ anchorMs }) => useGuideDay({ anchorMs, initialOffset: 1, timeZone }),
+      {
+        initialProps: { anchorMs: beforeMidnight },
+      },
+    );
+    act(() => result.current[1](0));
+
+    rerender({ anchorMs: afterMidnight });
+
+    expect(result.current[0]).toBe(0);
+  });
+
   it("keeps a past day picked across midnight", () => {
     const { result, rerender } = renderHook(
       ({ anchorMs }) => useGuideDay({ anchorMs, initialOffset: -1, timeZone }),
