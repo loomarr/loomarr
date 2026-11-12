@@ -41,7 +41,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // Fixed airtimes (a Saturday-morning block) so the snapshot is stable regardless of the wall
-// clock — formatEpgTime renders these in the viewer's locale, pinned by the visual harness.
+// clock. The stub's guide answer names no household zone, so they render in the harness's pinned
+// zone.
 const NINE_AM = Date.UTC(2026, 6, 25, 9, 0, 0);
 const at = (mins: number) => NINE_AM + mins * 60_000;
 

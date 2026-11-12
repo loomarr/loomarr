@@ -1,9 +1,9 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import { unwrap } from "@loomarr/api/unwrap";
-import { formatEpgTime } from "@loomarr/core/format";
-import { formatGuideEpisode } from "@loomarr/core/guide";
+import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
 import { Badge, Stack, Surface, Text } from "@loomarr/design-system";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
@@ -17,6 +17,8 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
     query: { retry: false },
   });
   const entries = unwrap(upcoming.data, (b) => b.upcoming) ?? [];
+  // Start times on the household clock, as the Guide tells them.
+  const timeZone = useHouseholdTimeZone();
   // The upcoming list carries only a title; the channel's timeline knows the show and the episode
   // (#2753). Joined on the start time, and the row falls back to the bare title without it.
   const timeline = channelsApi.useChannelTimeline(channelId, undefined, { query: { retry: false } });
@@ -64,7 +66,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
                   textRole="mono"
                   tone={onNow ? "primary" : "secondary"}
                 >
-                  {formatEpgTime(entry.startMs)}
+                  {formatGuideTime(entry.startMs, timeZone)}
                 </Text>
                 <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
                   <Text numberOfLines={1} textRole="compact">
