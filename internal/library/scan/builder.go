@@ -354,6 +354,11 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		External: file.externalTracks(), Markers: readEDL(file.edl()),
 	})
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
+	// Every part of a movie in parts names its set, so the parts are one title from the first
+	// pass, before any catalog names it.
+	if id.kind == mp.KindMovie && file.Part > 0 && file.PartSet != "" {
+		snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: partsNamespace, Value: partsID(file.PartSet)})
+	}
 	return snapshot
 }
 

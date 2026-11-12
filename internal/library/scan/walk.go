@@ -108,8 +108,10 @@ type File struct {
 	// a name they share.
 	Notes folderNotes
 	// Part is which part of a movie it is, from 1, when its folder holds the movie in parts
-	// ("cd1", "cd2"); 0 for a whole file.
-	Part int
+	// ("cd1", "cd2"), or holds one part of it in a folder of its own ("CD1/"); 0 for a whole file.
+	// PartSet names the set it is a part of, the same for every part of one movie.
+	Part    int
+	PartSet string
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
 	// Top is which of step 1's units the file is under (a top-level entry, or an entry of one, as
@@ -315,6 +317,12 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 	}
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
+	// A folder holding one video, named by a part mark alone, may be one part of a movie whose
+	// parts each have a folder: the movie's folder is the set.
+	folderPart := 0
+	if len(videoNames) == 1 {
+		folderPart = partFolderOf(dir)
+	}
 	// A movie in parts is one video: its folder's poster is the movie's.
 	movies := len(videoNames) - len(parts)
 	for _, n := range parts {
@@ -385,9 +393,17 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 				w.unread(path)
 				continue
 			}
+			part, set := parts[e.Name()], ""
+			switch {
+			case part > 0:
+				inFolder, _, _ := partIn(e.Name())
+				set = w.rel(dir) + "\x00" + inFolder
+			case folderPart > 0:
+				part, set = folderPart, w.rel(filepath.Dir(dir))+"\x00folders"
+			}
 			w.out.Files = append(w.out.Files, File{
 				Path: path, Rel: w.rel(path), Stat: st,
-				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Notes: notes, Part: parts[e.Name()], Top: w.top,
+				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Notes: notes, Part: part, PartSet: set, Top: w.top,
 			})
 		}
 	}

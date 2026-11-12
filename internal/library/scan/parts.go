@@ -1,6 +1,9 @@
 package scan
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -54,6 +57,60 @@ func partsOf(names []string) map[string]int {
 		}
 	}
 	return out
+}
+
+// partFolder matches a folder named by a part mark alone: "CD1", "Disc 2", "dvd-b".
+var partFolder = regexp.MustCompile(`(?i)^(?:cd|dvd|part|pt|disc|disk)[ ._-]*([0-9]{1,2}|[a-d])$`)
+
+// partFolderOf is which part of a movie in parts the folder dir holds, from 1, when its folder
+// holds the movie one part to a folder ("Ashgrove (2015)/CD1/", "…/CD2/"); 0 otherwise. The set
+// is its folder's subfolders named by part marks alone: whole, numbered from 1 with none missing,
+// and each holding one video. It is read from dir's own folder, so a pass over one part's folder
+// alone finds it too.
+func partFolderOf(dir string) int {
+	if !partFolder.MatchString(filepath.Base(dir)) {
+		return 0
+	}
+	entries, err := os.ReadDir(filepath.Dir(dir))
+	if err != nil {
+		return 0
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() || !partFolder.MatchString(e.Name()) {
+			continue
+		}
+		if videosIn(filepath.Join(filepath.Dir(dir), e.Name())) != 1 {
+			return 0
+		}
+		names = append(names, e.Name())
+	}
+	return partsOf(names)[filepath.Base(dir)]
+}
+
+// videosIn counts the videos directly in dir, as a walk would list them.
+func videosIn(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if lower := strings.ToLower(e.Name()); !e.IsDir() && videoExtensions[filepath.Ext(lower)] && !extraName(lower) {
+			n++
+		}
+	}
+	return n
+}
+
+// partsNamespace is the scanner's own id for a movie in parts: every part of one set carries the
+// same value, so the parts are one title before any catalog names it. It is never listed.
+const partsNamespace = "loomarr-parts"
+
+// partsID is the id a set's parts share, from where the set is in its root.
+func partsID(set string) string {
+	sum := sha256.Sum256([]byte(set))
+	return hex.EncodeToString(sum[:16])
 }
 
 // withoutPart is a part's stem with its part mark taken out: "Ashgrove (2015) - cd1" is

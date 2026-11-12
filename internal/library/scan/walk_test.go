@@ -271,11 +271,13 @@ func TestStep1CountsAFewBigFoldersByWhatTheyHold(t *testing.T) {
 	}
 }
 
-// A movie takes ids from its own name or folder: not from a collection or series folder above it,
-// and never a tvdb id.
+// A movie takes ids from its own name or folder, the one above a part's own folder: not from a
+// collection or series folder above it, and never a tvdb id.
 func TestMovieIDsComeFromItsOwnFolder(t *testing.T) {
 	cases := map[string][]mp.ExternalID{
 		"Saga {tmdb-90000700}/November (2001)/November (2001).mkv":   nil,
+		"November (2001) {tmdb-90000703}/CD1/nov-a.avi":              {{Namespace: mp.NamespaceTMDB, Value: "90000703"}},
+		"Saga {tmdb-90000700}/November (2001)/CD1/nov-a.avi":         nil,
 		"Saga/November (2001) {tmdb-90000701}/November (2001).mkv":   {{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
 		"Saga/November (2001)/November (2001) {imdb-tt90000702}.mkv": {{Namespace: mp.NamespaceIMDB, Value: "tt90000702"}},
 		"Oscar {tvdb-90081192}/Oscar.mkv":                            nil,

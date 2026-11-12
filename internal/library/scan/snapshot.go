@@ -123,7 +123,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	37: a season folder's "101", "- 03", "3.05" and "E03" place its episodes; "10x10 (2018)" is a
 //	    title; DivX, Flash, OGM, RealMedia and VOB files are read; an episode titled "Each-Other" and
 //	    a catch-all's "Shorts" folder are not extras.
-const writeVersion = 37
+//	38: a movie in parts is one title before any catalog names it, and its parts may each have a
+//	    folder of their own ("CD1/", "Disc 2/").
+const writeVersion = 38
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -309,7 +311,10 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 		}
 	}
 	for _, id := range item.ExternalIDs {
-		it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		// A movie in parts' own mark only holds its parts together; no catalog knows it.
+		if id.Namespace != partsNamespace {
+			it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		}
 	}
 	for _, a := range facts.Artwork {
 		it.Art = append(it.Art, librarystore.LibraryArt{Kind: a.Kind, Season: a.Season, Ref: a.Ref})
@@ -500,7 +505,8 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
-// (part > 0) is named without its part mark.
+// (part > 0) is named without its part mark; one whose part has a folder of its own ("CD1/") is
+// named by the movie's folder, the one name all its parts share.
 func fallbackName(rel string, kind mp.Kind, part int) string {
 	clean := func(name string) string {
 		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
@@ -511,6 +517,9 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	}
 	if part > 0 {
 		name = withoutPart(name)
+		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
+			return clean(path.Base(path.Dir(dir)))
+		}
 	}
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
