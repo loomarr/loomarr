@@ -1,5 +1,5 @@
 import { guideSelectionForChannel } from "@loomarr/core/guide";
-import { Surface } from "@loomarr/design-system";
+import { Notice, Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
@@ -126,8 +126,22 @@ const GuideJourney = ({
     );
   }
 
+  // A failed background refresh keeps the layout on screen; say so, so a stale grid doesn't read as current.
+  const stale = snapshot.error !== undefined && snapshot.status === "ready" && snapshot.layout !== undefined;
+
   return (
     <Surface borderRadius={0} borderWidth={0} flex={1} level="canvas">
+      {stale ? (
+        <Surface backgroundColor="transparent" borderWidth={0} padding="control">
+          <Notice
+            action={{ label: "Try again", onPress: () => void controller.refresh(preferredChannelId) }}
+            body="Showing what Loomarr had a moment ago."
+            density={density}
+            title="Couldn't refresh the Guide"
+            tone="warn"
+          />
+        </Surface>
+      ) : null}
       {content}
     </Surface>
   );
