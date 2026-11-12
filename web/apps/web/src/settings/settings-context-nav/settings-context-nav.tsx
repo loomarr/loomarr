@@ -1,4 +1,4 @@
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 
 interface SettingsContextNavProps {
@@ -11,7 +11,7 @@ interface SettingsContextNavProps {
 const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
   <div className="border-border flex min-h-11 shrink-0 items-center justify-between gap-3 border-b px-4 sm:px-6">
     <nav aria-label="Settings location" className="min-w-0">
-      <ol className="flex min-w-0 items-center gap-2 text-sm">
+      <Stack align="center" className="min-w-0 text-sm" direction="row" gap="inline" render="ol">
         <li>
           <Link
             to="/settings"
@@ -29,7 +29,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
             <li className="text-foreground truncate">{section}</li>
           </>
         ) : null}
-      </ol>
+      </Stack>
     </nav>
     <Link
       to="/settings"

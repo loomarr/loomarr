@@ -138,9 +138,15 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     {item.artwork ? (
                       <ServedImage image={item.artwork} alt="" sizes="240px" />
                     ) : (
-                      <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
+                      <Stack
+                        align="center"
+                        className="text-muted-foreground size-full px-2 text-center text-[10px]"
+                        direction="row"
+                        justify="center"
+                        render="span"
+                      >
                         Preview unavailable
-                      </span>
+                      </Stack>
                     )}
                     <span className="from-static-950 via-static-950/85 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-5 pb-1.5">
                       <span className="text-static-50 block truncate text-[11px] font-medium">{name}</span>

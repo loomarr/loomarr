@@ -76,9 +76,11 @@ const PodTimeline = ({
         {chip && <StatusLabel tone={chip.tone}>{chip.label}</StatusLabel>}
       </Stack>
 
-      <ul
-        className="border-border flex h-9 w-full overflow-hidden rounded-md border"
+      <Stack
         aria-label="Pod segments"
+        className="border-border h-9 w-full overflow-hidden rounded-md border"
+        direction="row"
+        render="ul"
       >
         {entries.map((entry, i) => (
           <li
@@ -106,16 +108,22 @@ const PodTimeline = ({
                 </Text>
               </button>
             ) : (
-              <span className="flex h-full min-w-0 items-center justify-center px-1">
+              <Stack
+                align="center"
+                className="h-full min-w-0 px-1"
+                direction="row"
+                justify="center"
+                render="span"
+              >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
                   {segmentLabel(entry)}
                 </Text>
-              </span>
+              </Stack>
             )}
           </li>
         ))}
-      </ul>
+      </Stack>
     </Stack>
   );
 };

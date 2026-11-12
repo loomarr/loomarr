@@ -3,7 +3,7 @@ import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatEpgTime } from "@loomarr/core/format";
 import { formatGuideEpisode } from "@loomarr/core/guide";
-import { Badge, Surface, Text } from "@loomarr/design-system";
+import { Badge, Stack, Surface, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
@@ -49,7 +49,14 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
               ? [formatGuideEpisode(detail.season, detail.episode), detail.title].filter(Boolean).join(" · ")
               : "";
             return (
-              <li key={`${entry.startMs}-${entry.title}`} className="flex items-baseline gap-3 text-sm">
+              <Stack
+                align="baseline"
+                className="text-sm"
+                direction="row"
+                gap="control"
+                key={`${entry.startMs}-${entry.title}`}
+                render="li"
+              >
                 <span
                   className={cn(
                     "w-16 shrink-0 font-mono text-xs tabular-nums",
@@ -73,7 +80,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
                     Now
                   </Badge>
                 )}
-              </li>
+              </Stack>
             );
           })}
         </ol>

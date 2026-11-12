@@ -27,7 +27,7 @@
       "flexStack": 3
     },
     "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "flexStack": 6
+      "flexStack": 5
     },
     "apps/web/src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "flexStack": 4
@@ -48,10 +48,10 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "flexStack": 9
+      "flexStack": 6
     },
     "apps/web/src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
       "flexStack": 4
@@ -63,25 +63,25 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "flexStack": 6
+      "flexStack": 4
     },
     "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
       "flexStack": 4
@@ -105,37 +105,34 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
-      "flexStack": 5
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
       "flexStack": 5
     },
     "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
-      "flexStack": 8
-    },
-    "apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
-      "flexStack": 1
+      "flexStack": 5
     },
     "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
-      "flexStack": 7
+      "flexStack": 6
     },
     "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "flexStack": 10
+      "flexStack": 8
     },
     "apps/web/src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "flexStack": 1
@@ -150,7 +147,7 @@
       "flexStack": 3
     },
     "apps/web/src/components/loomarr/people/invitation-join/invitation-join.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
       "flexStack": 1
@@ -177,7 +174,7 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "flexStack": 9
+      "flexStack": 7
     },
     "apps/web/src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
       "flexStack": 1
@@ -234,16 +231,16 @@
       "flexStack": 8
     },
     "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
       "flexStack": 4
     },
     "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
       "flexStack": 2
@@ -405,7 +402,7 @@
       "flexStack": 1
     },
     "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/settings/settings-page/settings-page.tsx": {
       "flexStack": 3
@@ -414,7 +411,7 @@
       "flexStack": 2
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "flexStack": 10
+      "flexStack": 9
     },
     "apps/web/src/suggest/approval-queue/approval-queue.tsx": {
       "flexStack": 1

@@ -416,12 +416,20 @@ const SettingField = ({
                   the quiet dot and word, not a filled chip (#2784). */}
               <span className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal flex items-center gap-1.5">
                 <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
-                  <span className="absolute flex transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0">
+                  <Stack
+                    className="absolute transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0"
+                    direction="row"
+                    render="span"
+                  >
                     <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
-                  </span>
-                  <span className="absolute flex opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100">
+                  </Stack>
+                  <Stack
+                    className="absolute opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100"
+                    direction="row"
+                    render="span"
+                  >
                     <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
-                  </span>
+                  </Stack>
                 </span>
                 <StatusLabel tone="off">Set via environment</StatusLabel>
               </span>

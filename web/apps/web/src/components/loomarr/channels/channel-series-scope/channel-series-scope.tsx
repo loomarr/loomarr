@@ -66,7 +66,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
       </div>
 
       {series.length > 0 && (
-        <ul className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" render="ul" wrap>
           {series.map((key) => (
             <li
               key={key}
@@ -84,7 +84,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               </Action>
             </li>
           ))}
-        </ul>
+        </Stack>
       )}
 
       {adding ? (

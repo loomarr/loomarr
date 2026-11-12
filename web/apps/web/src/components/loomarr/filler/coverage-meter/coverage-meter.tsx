@@ -142,7 +142,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             // Percentage of the widest rung, NOT of some invented total — see the header.
             const share = widest > 0 ? Math.round((rung.clips / widest) * 100) : 0;
             return (
-              <li key={rung.level} className="flex items-center gap-2">
+              <Stack align="center" direction="row" gap="inline" key={rung.level} render="li">
                 <span className="w-44 shrink-0 truncate text-xs">{RUNG_LABEL[rung.level] ?? rung.level}</span>
                 <span className="bg-static-800 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
                   <span
@@ -157,7 +157,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="mono">
                   {rung.clips}
                 </Text>
-              </li>
+              </Stack>
             );
           })}
         </ul>
@@ -179,7 +179,14 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           </Text>
           <ul className="flex flex-col gap-1">
             {criteria.map((c) => (
-              <li key={c.criterion} className="flex items-center gap-2 text-xs">
+              <Stack
+                align="center"
+                className="text-xs"
+                direction="row"
+                gap="inline"
+                key={c.criterion}
+                render="li"
+              >
                 <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
                 <Text
                   as="span"
@@ -195,7 +202,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 >
                   {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
                 </Text>
-              </li>
+              </Stack>
             ))}
           </ul>
         </div>
