@@ -219,6 +219,11 @@ type discoverResult struct {
 	VoteCount        int      `json:"vote_count"`
 }
 
+// maxDiscoverRows bounds one Discover call whatever limit the caller passes: TMDB pages are 20
+// rows, so it caps the pages fetched (and the quota spent) at five per media type. The
+// search API's own ceiling of 50 plus the catalog's doubled pool fits inside it.
+const maxDiscoverRows = 100
+
 type discoverResponse struct {
 	Page       int              `json:"page"`
 	TotalPages int              `json:"total_pages"`
@@ -237,6 +242,7 @@ func (c *Client) Discover(ctx context.Context, query titlesearch.DiscoveryQuery,
 	if limit <= 0 {
 		limit = 20
 	}
+	limit = min(limit, maxDiscoverRows)
 	if err := validateEntityQuery(query); err != nil {
 		return nil, err
 	}

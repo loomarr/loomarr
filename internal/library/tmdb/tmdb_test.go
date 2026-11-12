@@ -2,11 +2,14 @@ package tmdb_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
@@ -138,6 +141,39 @@ func TestDiscover_AppliesAuthoritativeScalarQualifiersToMovieAndTV(t *testing.T)
 	}
 	if !seen["/discover/movie"] || !seen["/discover/tv"] {
 		t.Fatalf("discover requests = %+v, want movie and TV", mock.Requests())
+	}
+}
+
+// A caller's limit never decides how much TMDB is fetched or allocated: a huge limit neither
+// panics on the row allocation nor walks hundreds of discover pages.
+func TestDiscover_HugeLimitIsBounded(t *testing.T) {
+	var pages atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/discover/movie" {
+			http.NotFound(w, r)
+			return
+		}
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		pages.Add(1)
+		results := make([]map[string]any, 20)
+		for i := range results {
+			id := 90100000 + page*20 + i
+			results[i] = map[string]any{"id": id, "title": "Title " + strconv.Itoa(id), "release_date": "1994-01-01"}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"page": page, "total_pages": 500, "results": results})
+	}))
+	t.Cleanup(server.Close)
+	c := tmdb.NewWithBase(server.URL, "key")
+
+	got, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie}, 1<<45)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || len(got) > 100 {
+		t.Errorf("got %d candidates, want between 1 and 100", len(got))
+	}
+	if n := pages.Load(); n > 5 {
+		t.Errorf("fetched %d discover pages for one call, want at most 5", n)
 	}
 }
 
