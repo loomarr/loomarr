@@ -13,6 +13,7 @@ const SECTION_IDS = ["info", "watch", "programming", "filler", "danger"] as cons
 // ⚠ Also the landing spot for an old `?section=` bookmark/shared link: the query is read here
 // and turned into the matching path (`watch` goes on to the player), so a link from before the
 // move still lands on the right section rather than always falling back to info.
+// no-loader: redirects to a section before anything is read
 const Route = createFileRoute("/_authed/channels/$id/")({
   beforeLoad: ({ params, location }) => {
     const section = (location.search as { section?: unknown }).section;

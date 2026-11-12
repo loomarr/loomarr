@@ -4,6 +4,7 @@ import {
   getChannelsNowNextMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
+  getChannelUpcomingMockHandler,
   getDeviceListMockHandler,
   getFillerDefectReportMockHandler,
   getFillerPoolMockHandler,
@@ -25,6 +26,8 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListInvitationsMockHandler,
+  getListLibraryItemsMockHandler,
+  getListLibraryNeedsMockHandler,
   getListProposalJobsMockHandler,
   getListProposalsMockHandler,
   getListStartupReportsMockHandler,
@@ -33,6 +36,7 @@ import {
   getMyChannelsMockHandler,
   getNotificationProvidersListMockHandler,
   getNotificationProviderTypesListMockHandler,
+  getPreviewChannelPodsMockHandler,
   getRecordChannelTuneMockHandler,
   getSettingsListMockHandler,
   getSetupStateMockHandler,
@@ -150,6 +154,11 @@ const appHandlers = (): RequestHandler[] => [
   // request, not to make it play. A test that cares about tracks or the timeline stubs its own.
   getChannelTracksMockHandler({ audio: [], subtitles: [] }),
   getChannelTimelineMockHandler({ serverNowMs: Date.UTC(2026, 0, 1), airings: [] }),
+  // What the channel and Library routes' loaders read, so opening one is not an unhandled request.
+  getChannelUpcomingMockHandler({ upcoming: [] }),
+  getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+  getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
+  getListLibraryItemsMockHandler({ items: [], total: 0 }),
   getChannelPlayUrlMockHandler({
     url: "",
     relativeUrl: "",

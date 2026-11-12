@@ -4,6 +4,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import type { MigrationStep } from "@/components/loomarr/settings/database-migration";
 import { DatabaseMigration } from "@/components/loomarr/settings/database-migration";
@@ -123,6 +124,11 @@ const DatabasePage = () => {
 
 const Route = createFileRoute("/_authed/settings/system/database")({
   component: DatabasePage,
+  // The backend the stepper starts from. Admin-only like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.ensureQueryData(systemApi.getSystemDatabaseStatusQueryOptions());
+  },
 });
 
 export { Route };

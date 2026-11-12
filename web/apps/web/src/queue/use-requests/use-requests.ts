@@ -129,5 +129,22 @@ const fetchLandingTab = async (queryClient: QueryClient, isAdmin: boolean): Prom
   return !tabs.includes("in-progress") && tabs.includes("done") ? "done" : "in-progress";
 };
 
+// What `useRequests` reads, ensured imperatively for the Requests layout's `loader`, so the tabs
+// open on their lists. The viewer's own jobs and the per-state titles are what the lists are made
+// of, so a failure there reaches the route's error view. The admin's approvals only add to the Needs
+// you count and are read with `retry: false` by the page, so they are warmed and may fail quietly.
+const ensureRequests = async (queryClient: QueryClient, isAdmin: boolean): Promise<void> => {
+  await Promise.all([
+    queryClient.ensureQueryData(proposalJobsApi.getListProposalJobsQueryOptions({ mine: true })),
+    ...STATES.map((state) => queryClient.ensureQueryData(titlesApi.getListTitlesQueryOptions({ state }))),
+    isAdmin
+      ? queryClient.prefetchQuery(proposalsApi.getListProposalsQueryOptions({ status: "submitted" }))
+      : undefined,
+    isAdmin
+      ? queryClient.prefetchQuery(fillerApi.getListFillerPullsQueryOptions({ status: "pending" }))
+      : undefined,
+  ]);
+};
+
 export type { RequestEntry };
-export { fetchLandingTab, useNeedsYouCount, useRequests };
+export { ensureRequests, fetchLandingTab, useNeedsYouCount, useRequests };

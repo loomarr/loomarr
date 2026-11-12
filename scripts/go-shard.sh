@@ -4,8 +4,9 @@
 #
 #   ./scripts/go-shard.sh          -> "./..."   (the whole tree — the default, always)
 #   ./scripts/go-shard.sh 2/2      -> the 2nd ordinary measured-weight slice
-#   ./scripts/go-shard.sh --certification 2/2
-#                                  -> the second reviewed serial lane (scripts/go-certification-lanes.tsv)
+#   ./scripts/go-shard.sh --certification 2/4
+#                                  -> the second reviewed serial lane (scripts/go-certification-lanes.tsv;
+#                                     the manifest's highest lane number is the lane count)
 #   ./scripts/go-shard.sh --plan 2 -> print each ordinary shard's modeled package-seconds
 #   ./scripts/go-shard.sh --worker-plan 2
 #                                  -> print each shard's bounded four-worker makespan
@@ -20,11 +21,11 @@
 # `go list` order after modeling LPT left expensive packages waiting behind cheap compilations and
 # made the modeled worker bound fictional. This replaces alphabetical placement, which drifted from
 # a balanced 2026-09-01 sample to 1430/657/583 package-seconds in merge-group run 35472062915.
-# Packages that must not share a runner live in two reviewed serial lanes, still identified as
+# Packages that must not share a runner live in reviewed serial lanes, still identified as
 # `certification`: latency-sensitive media packages, and CPU-heavy packages whose own parallel tests
-# need every core (internal/platform/store, #1570). The remaining weighted packages are balanced across two
-# ordinary lanes. Separate runners let the two serial groups overlap without allowing package
-# concurrency inside either group.
+# need every core (internal/platform/store, #1570; schedule and demolibrary, #2716). The remaining
+# weighted packages are balanced across two ordinary lanes. Separate runners let the serial groups
+# overlap without allowing package concurrency inside any of them.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
 # fail anything: the dropped tests simply never run and every shard stays green, which is the
@@ -44,7 +45,6 @@ cd "$ROOT"
 WEIGHTS="${GO_SHARD_WEIGHTS:-$ROOT/scripts/go-race-weights.tsv}"
 CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.tsv}"
 RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
-CERTIFICATION_LANES=2
 MAX_IMBALANCE_PERCENT=125
 ORDINARY_WORKERS=4
 
@@ -95,7 +95,7 @@ certification_rows() {
     line="${line%"${line##*[![:space:]]}"}"
     [[ -z "$line" ]] && continue
     read -r lane path extra <<< "$line"
-    if [[ -n "$extra" || ! "$lane" =~ ^[12]$ || -z "$path" ]]; then
+    if [[ -n "$extra" || ! "$lane" =~ ^[1-9][0-9]*$ || -z "$path" ]]; then
       echo "go-shard: invalid certification lane row: $line" >&2
       return 2
     fi
@@ -114,6 +114,14 @@ certification_rows() {
 
 certification_paths() {
   certification_rows | cut -f2
+}
+
+# The manifest's highest lane number. Every lane up to it must hold a package: --verify fails an
+# empty lane on its zero load, and --certification refuses to emit one.
+certification_lane_count() {
+  local rows
+  rows="$(certification_rows)"
+  printf '%s\n' "$rows" | cut -f1 | sort -n | tail -n 1
 }
 
 certification_lane_paths() {
@@ -311,7 +319,7 @@ worker_plan() {
 }
 
 usage() {
-  echo "usage: go-shard.sh [i/n | --certification i/2 | --plan n | --worker-plan n | --verify n | --budgets]" >&2
+  echo "usage: go-shard.sh [i/n | --certification i/n | --plan n | --worker-plan n | --verify n | --budgets]" >&2
   exit 2
 }
 
@@ -322,6 +330,7 @@ if [ "${1:-}" = "--verify" ]; then
     usage
   fi
 
+  CERTIFICATION_LANES="$(certification_lane_count)"
   all="$(packages | sort)"
   union="$( { for ((i = 1; i <= total; i++)); do slice "$i" "$total"; done; certification_paths; } | sort)"
 
@@ -418,6 +427,7 @@ if [ "${1:-}" = "--certification" ]; then
   total="${spec##*/}"
   [[ "$index" =~ ^[0-9]+$ ]] || usage
   [[ "$total" =~ ^[0-9]+$ ]] || usage
+  CERTIFICATION_LANES="$(certification_lane_count)"
   [ "$total" -eq "$CERTIFICATION_LANES" ] || usage
   if [ "$index" -lt 1 ] || [ "$index" -gt "$CERTIFICATION_LANES" ]; then
     usage

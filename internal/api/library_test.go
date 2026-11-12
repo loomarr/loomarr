@@ -58,7 +58,7 @@ func newScanHarness(t *testing.T, sonarrFolders ...string) (*apiHarness, *scan.L
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib = newScanLibrary(t, defaults.Store, sonarrFolders...)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, LibraryRoots: lib,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Library: api.LibraryOptions{Roots: lib},
 		})
 	})
 	return h, lib
@@ -128,6 +128,10 @@ func libraryStatus(t *testing.T, h *apiHarness) (health string, inUse, offline, 
 // Discover → confirm → status: the path the Settings → Library page drives.
 func TestLibraryRoots_DiscoverConfirmAndStatus(t *testing.T) {
 	tv := t.TempDir()
+	// A folder that holds something: an empty one reports folder_empty, not ok (#2151).
+	if err := os.WriteFile(filepath.Join(tv, "Pilot.mkv"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	h := newLibraryHarness(t, tv, "/not/on/this/machine")
 
 	if health, _, _, _ := libraryStatus(t, h); health != "needs_folders" {

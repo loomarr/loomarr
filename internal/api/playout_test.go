@@ -163,11 +163,11 @@ func newPlayoutHarness(t *testing.T, config playoutHarnessConfig) *playoutHarnes
 			LiveSettings: stringSettings(func(key string) string { return cfg[key] }),
 		}
 		if config.Sessions != nil {
-			opts.Playout = config.Sessions
-			opts.PlayoutObserver = config.Sessions
+			opts.Playout.Service = config.Sessions
+			opts.Playout.Observer = config.Sessions
 		}
 		if !config.WithoutSecret {
-			opts.PlayoutSecret = func() string { return playoutToken }
+			opts.Playout.Secret = func() string { return playoutToken }
 		}
 		return api.Router(defaults.Log, opts)
 	})

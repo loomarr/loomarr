@@ -141,7 +141,7 @@ const SETTINGS_DESTINATIONS = [
   destination({
     id: "people",
     label: "People",
-    description: "Choose who may sign in, what they may spend, and what they may approve.",
+    description: "Choose who can sign in, and what they can ask for.",
     aliases: ["users", "accounts", "invite", "members", "household", "admins"],
     card: "people",
     path: "/people",

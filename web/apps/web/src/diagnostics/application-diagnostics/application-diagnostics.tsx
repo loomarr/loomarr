@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useCopied } from "@/lib/use-copied";
 import {
   type ApplicationFilters,
   type EventOrder,
@@ -121,7 +122,7 @@ const EventDetail = ({
   onOpenProcess?: (id: string) => void;
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopied();
   const correlations = [
     ["Request id", event.requestId],
     ["Playback session", event.playbackSessionId],
@@ -131,12 +132,7 @@ const EventDetail = ({
     ["Process run", event.processRunId],
     ["Instance", event.instanceId],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
-  const copyLog = () => {
-    void navigator.clipboard.writeText(JSON.stringify(event, null, 2)).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1_500);
-    });
-  };
+  const copyLog = () => void copy(JSON.stringify(event, null, 2));
   return (
     <div className="bg-muted/20 space-y-4 p-4 text-sm">
       <div className="flex items-start justify-between gap-3">

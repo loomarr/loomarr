@@ -1,35 +1,50 @@
 import { type Density, playerChrome, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { type LayoutChangeEvent, Pressable, View } from "react-native";
+import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { webOnly } from "../flat";
 import { layoutPlaybar } from "../playbar-layout";
 import { PlaybarStill } from "../playbar-still";
 import type { PlaybarBreak, PlaybarSegment, PlaybarWindow } from "../player-chrome.type";
 import { CARD_WIDTH, PreviewCard } from "../preview-card";
 
-// The preview playbar (§9.3, plane 3), on a flat tray. Time-true: a block is as wide as its share
-// of the window, fifteen minutes behind live to about two hours ahead. Programmes carry their still,
-// name and start; a break carries one thumbnail per spot, sized by duration. Depth is light, never
-// size (§9.2): every block is the same height and nothing moves; now has an amber edge, the block
-// under the pointer is fully lit with a white ring, and the rest of the future is dimmed. Pointing
-// at a block opens its preview card above it (pointer only), joined to it by a connector.
+// The film strip (§9.2, variant J): the timeline of the programme on air and what follows, flat.
+// Time-true: a block is as wide as its share of the window, fifteen minutes behind live to about two
+// hours ahead; a break never shrinks below a legible tile. A programme is its still with a solid label
+// bar; a break is one tile with a thumbnail per spot. The playhead is white, so amber stays on the
+// channel block and focus. Pointing at a block (or, on a television, moving focus to it) opens its
+// preview card above. It is the band's foot on desktop and television, and More's schedule on a phone.
 
 const GAP = 4;
-const MIN_BREAK = 36;
+const MIN_BREAK = 40;
 const TICK_MINUTES = [30, 60, 90] as const;
+/** The block on air's quiet outline. */
+const NOW_EDGE = "rgba(255, 255, 255, 0.4)";
 
 interface PreviewPlaybarProps {
+  /**
+   * How far above the strip the card's foot sits, besides its 12px gap: the band's header, so a card
+   * covers the picture and not the band.
+   */
+  cardLift?: number;
   density: Density;
   formatTime: (ms: number) => string;
-  /** Called as a preview card opens and closes, so the band can step back behind it. */
+  /** Called as a preview card opens and closes. */
   onPreviewChange?: (open: boolean) => void;
-  /** Seek to an instant in the past; without it the playbar only previews. */
+  /** Seek to an instant in the past; without it the strip only previews. */
   onSeek?: (wallClockMs: number) => void;
+  /** Pressing a block that does not seek (a television's OK opens the Guide). */
+  onSelect?: () => void;
+  /** Info (§9.5): the block on air's card stays open, in full, until pointing elsewhere moves it. */
+  pinNow?: boolean;
   playheadMs: number;
-  /** Pointer devices preview on hover; touch has no card. */
+  /** Pointer devices preview on hover. */
   pointer: boolean;
+  /** The block on air carries no name: the band above it has just said it (§9.2). */
+  quietNow?: boolean;
   segments: readonly PlaybarSegment[];
+  /** Television: every block takes remote focus, focus opens its card, and focus starts on now. */
+  tv?: boolean;
   window: PlaybarWindow;
 }
 
@@ -45,162 +60,162 @@ const onNowSpot = (segment: PlaybarBreak, playheadMs: number) => {
 };
 
 const PreviewPlaybar = ({
+  cardLift = 0,
   density,
   formatTime,
   onPreviewChange,
   onSeek,
+  onSelect,
+  pinNow = false,
   playheadMs,
   pointer,
+  quietNow = false,
   segments,
+  tv = false,
   window,
 }: PreviewPlaybarProps) => {
   const [width, setWidth] = useState(0);
-  const [hovered, setHovered] = useState<string | undefined>(undefined);
-  const hover = (id: string | undefined) => {
-    setHovered(id);
+  const [pointed, setPointed] = useState<string | undefined>(undefined);
+  const show = (id: string | undefined) => {
+    setPointed(id);
     onPreviewChange?.(id !== undefined);
   };
-  const height = pointer ? 64 : 44;
+  const height = pointer || tv ? 72 : 52;
   const { boxes, xAt } = layoutPlaybar(segments, window, width, { gap: GAP, minBreak: MIN_BREAK });
   const head = xAt(Math.min(playheadMs, window.nowMs));
   const liveX = xAt(window.nowMs);
   const behind = playheadMs < window.nowMs - 1000;
-  const openBox = boxes.find((b) => b.id === hovered);
+  const nowId = boxes.find((b) => b.segment.startMs <= window.nowMs && window.nowMs < b.segment.stopMs)?.id;
+  const open = pointed ?? (pinNow ? nowId : undefined);
+  const full = pinNow && open === nowId;
+  const openBox = boxes.find((b) => b.id === open);
   const openMid = openBox ? openBox.x + openBox.width / 2 : 0;
+  const previews = pointer || tv;
 
   return (
     <View aria-label="Schedule" role="group">
-      {openBox && pointer ? (
-        <>
-          <View
-            pointerEvents="none"
-            style={{
-              bottom: "100%",
-              left: Math.min(Math.max(openMid + 6 - CARD_WIDTH / 2, 0), Math.max(0, width + 12 - CARD_WIDTH)),
-              marginBottom: 20,
-              position: "absolute",
-              zIndex: 20,
-            }}
-          >
-            <PreviewCard
-              density={density}
-              formatTime={formatTime}
-              nowMs={window.nowMs}
-              onNowSpot={
-                openBox.segment.kind === "break" ? onNowSpot(openBox.segment, playheadMs) : undefined
-              }
-              segment={openBox.segment}
-            />
-          </View>
-          <View
-            pointerEvents="none"
-            style={{
-              bottom: "100%",
-              height: 26,
-              left: openMid + 6,
-              position: "absolute",
-              width: 1,
-              zIndex: 20,
-              backgroundColor: playerChrome.focusRing,
-            }}
+      {openBox && previews ? (
+        <View
+          pointerEvents="none"
+          style={{
+            bottom: "100%",
+            left: Math.min(Math.max(openMid - CARD_WIDTH / 2, 0), Math.max(0, width - CARD_WIDTH)),
+            marginBottom: (cardLift > 0 ? cardLift + 14 : 0) + 12,
+            position: "absolute",
+            zIndex: 20,
+          }}
+        >
+          <PreviewCard
+            density={density}
+            formatTime={formatTime}
+            full={full}
+            nowMs={window.nowMs}
+            onNowSpot={openBox.segment.kind === "break" ? onNowSpot(openBox.segment, playheadMs) : undefined}
+            segment={openBox.segment}
           />
-        </>
+        </View>
       ) : null}
 
-      {/* The tray: a flat shelf the blocks stand on, so the bar has a surface of its own. */}
-      <View style={{ borderRadius: 12, padding: 6, ...raised() }}>
-        <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={{ height }}>
-          {width > 0
-            ? boxes.map((box) => {
-                const { segment } = box;
-                const lit = segment.id === hovered;
-                const isNow = segment.startMs <= window.nowMs && window.nowMs < segment.stopMs;
-                const future = segment.startMs > window.nowMs;
-                // The past is seekable (#2088 decision 2): a block that has begun takes the viewer to
-                // its start, or to the window's when the block began before it. The future previews.
-                const seek = onSeek && !future ? () => onSeek(segment.startMs) : undefined;
-                const name =
-                  segment.kind === "break"
-                    ? `the break at ${formatTime(segment.startMs)}`
-                    : `${segment.name}, ${formatTime(segment.startMs)}`;
-                const filter = lit ? playerChrome.litFilter : future ? playerChrome.futureFilter : "none";
-                const ring =
-                  segment.kind === "break"
-                    ? { color: lit ? playerChrome.breakAccent : playerChrome.breakRing, width: lit ? 2 : 1 }
-                    : {
-                        color: lit
-                          ? playerChrome.focusRing
-                          : isNow
-                            ? playerChrome.signal
-                            : playerChrome.hairline,
-                        width: lit ? 2 : 1,
-                      };
-                return (
-                  <Pressable
-                    accessibilityLabel={
-                      seek ? `Seek to ${name}` : name.charAt(0).toUpperCase() + name.slice(1)
-                    }
-                    focusable={seek !== undefined}
-                    key={segment.id}
-                    onHoverIn={pointer ? () => hover(segment.id) : undefined}
-                    onHoverOut={pointer ? () => hover(undefined) : undefined}
-                    onPress={seek}
-                    // A past tile seeks, so it is a button; any other is a labelled preview, a group
-                    // that names it without claiming an action.
-                    role={seek ? "button" : "group"}
-                    style={{
-                      borderColor: ring.color,
-                      borderRadius: 6,
-                      borderWidth: ring.width,
-                      height: "100%",
-                      left: box.x,
-                      overflow: "hidden",
-                      position: "absolute",
-                      width: box.width,
-                      zIndex: lit ? 10 : 1,
-                      ...webOnly({ filter, transition: "filter 120ms ease, border-color 120ms ease" }),
-                    }}
-                  >
-                    {segment.kind === "break" ? (
-                      <View
-                        style={{
-                          backgroundColor: playerChrome.breakTint,
-                          flexDirection: "row",
-                          gap: 2,
-                          height: "100%",
-                          padding: 2,
-                        }}
-                      >
-                        {segment.spots.map((spot) => (
-                          <PlaybarStill
-                            key={spot.id}
-                            style={{
-                              borderRadius: 3,
-                              flexBasis: 0,
-                              flexGrow: spot.durationMs,
-                              height: "100%",
-                            }}
-                            uri={spot.stillUri}
-                          />
-                        ))}
-                      </View>
-                    ) : (
-                      <>
+      <View onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)} style={{ height }}>
+        {width > 0
+          ? boxes.map((box) => {
+              const { segment } = box;
+              const isNow = segment.startMs <= window.nowMs && window.nowMs < segment.stopMs;
+              const future = segment.startMs > window.nowMs;
+              const lit = segment.id === open;
+              // The past is seekable (#2088 decision 2): a block that has begun takes the viewer to
+              // its start, or to the window's when the block began before it. The future previews.
+              const seek = onSeek && !future ? () => onSeek(segment.startMs) : undefined;
+              const press = seek ?? onSelect;
+              const name =
+                segment.kind === "break"
+                  ? `the break at ${formatTime(segment.startMs)}`
+                  : `${segment.name}, ${formatTime(segment.startMs)}`;
+              const edge = lit && tv ? playerChrome.signal : isNow ? NOW_EDGE : undefined;
+              const labelled = segment.kind === "programme" && box.width >= 72 && !(quietNow && isNow);
+              return (
+                <Pressable
+                  accessibilityLabel={seek ? `Seek to ${name}` : name.charAt(0).toUpperCase() + name.slice(1)}
+                  focusable={tv || seek !== undefined}
+                  hasTVPreferredFocus={tv && isNow}
+                  key={segment.id}
+                  onBlur={tv ? () => show(undefined) : undefined}
+                  onFocus={tv ? () => show(segment.id) : undefined}
+                  onHoverIn={pointer ? () => show(segment.id) : undefined}
+                  onHoverOut={pointer ? () => show(undefined) : undefined}
+                  onPress={press}
+                  // A past tile seeks, and a television's opens the Guide, so either is a button; any
+                  // other is a labelled preview, a group that names it without claiming an action.
+                  role={press ? "button" : "group"}
+                  style={{
+                    borderRadius: 6,
+                    height: "100%",
+                    left: box.x,
+                    position: "absolute",
+                    width: box.width,
+                    zIndex: lit ? 10 : 1,
+                    ...webOnly({
+                      filter: future && !lit ? playerChrome.futureFilter : "none",
+                      outlineColor: edge ?? "transparent",
+                      outlineOffset: -1,
+                      outlineStyle: edge ? "solid" : "none",
+                      outlineWidth: 2,
+                      transition: "filter 120ms ease",
+                    }),
+                    // Native has no outline: the same edge as a border.
+                    ...(edge && Platform.OS !== "web" ? { borderColor: edge, borderWidth: 2 } : null),
+                  }}
+                  testID={isNow ? "strip-block-now" : undefined}
+                >
+                  {segment.kind === "break" ? (
+                    <View
+                      style={{
+                        backgroundColor: playerChrome.breakTint,
+                        borderColor: lit ? playerChrome.breakAccent : playerChrome.hairline,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        flexDirection: "row",
+                        gap: 1,
+                        height: "100%",
+                        padding: 2,
+                      }}
+                    >
+                      {segment.spots.map((spot) => (
                         <PlaybarStill
-                          style={{ height: "100%", position: "absolute", width: "100%" }}
-                          uri={segment.stillUri}
+                          key={spot.id}
+                          style={{ borderRadius: 3, flexBasis: 0, flexGrow: spot.durationMs, height: "100%" }}
+                          {...(spot.stillUri ? { uri: spot.stillUri } : {})}
                         />
+                      ))}
+                    </View>
+                  ) : (
+                    <View
+                      style={{
+                        borderColor: playerChrome.hairline,
+                        borderRadius: 6,
+                        borderWidth: 1,
+                        height: "100%",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <PlaybarStill
+                        style={{ height: "100%", position: "absolute", width: "100%" }}
+                        {...(segment.stillUri ? { uri: segment.stillUri } : {})}
+                      />
+                      {labelled ? (
                         <View
                           style={{
+                            alignItems: "baseline",
+                            backgroundColor: playerChrome.tooltip,
                             bottom: 0,
-                            justifyContent: "flex-end",
+                            flexDirection: "row",
+                            gap: 8,
+                            justifyContent: "space-between",
                             left: 0,
-                            paddingBottom: 6,
-                            paddingHorizontal: 10,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
                             position: "absolute",
                             right: 0,
-                            top: 0,
-                            backgroundColor: playerChrome.dim,
                           }}
                         >
                           {/* Left-aligned by hand: a seekable tile is a button, which the web centres. */}
@@ -208,91 +223,82 @@ const PreviewPlaybar = ({
                             density={density}
                             numberOfLines={1}
                             strong
-                            style={{ textAlign: "left" }}
+                            style={{ flexShrink: 1, minWidth: 0, textAlign: "left" }}
                             textRole="cardMeta"
                             tone="primary"
                           >
-                            {/* The space keeps the name and the time two words on the web, where both
-                                are inline spans: a seekable tile's name must contain its text. */}
+                            {/* The space keeps the name and the time two words on the web. */}
                             {`${segment.name} `}
                           </Text>
-                          {pointer ? (
-                            <Text
-                              density={density}
-                              numberOfLines={1}
-                              style={{ textAlign: "left" }}
-                              textRole="mono"
-                              tone="secondary"
-                            >
+                          {(pointer || tv) && box.width >= 150 ? (
+                            <Text density={density} textRole="mono" tone="secondary">
                               {formatTime(segment.startMs)}
                             </Text>
                           ) : null}
                         </View>
-                      </>
-                    )}
-                  </Pressable>
-                );
-              })
-            : null}
+                      ) : null}
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })
+          : null}
 
-          {/* What's been watched: a warm wash up to the playhead, under the glowing playhead. */}
+        {/* What's been watched: a faint wash up to the playhead, under the white playhead. */}
+        <View
+          pointerEvents="none"
+          style={{
+            backgroundColor: playerChrome.signalPast,
+            borderBottomLeftRadius: 6,
+            borderTopLeftRadius: 6,
+            bottom: 0,
+            left: 0,
+            position: "absolute",
+            top: 0,
+            width: Math.max(0, head),
+            zIndex: 15,
+          }}
+        />
+        <View
+          pointerEvents="none"
+          style={{
+            backgroundColor: playerChrome.text,
+            bottom: 0,
+            left: head - 1,
+            position: "absolute",
+            top: -8,
+            width: 2,
+            zIndex: 30,
+          }}
+          testID="strip-playhead"
+        >
           <View
-            pointerEvents="none"
             style={{
-              borderBottomLeftRadius: 6,
-              borderTopLeftRadius: 6,
-              bottom: 0,
-              left: 0,
+              backgroundColor: playerChrome.text,
+              borderRadius: 999,
+              height: 10,
+              left: -4,
               position: "absolute",
-              top: 0,
-              width: Math.max(0, head),
-              zIndex: 15,
-              backgroundColor: playerChrome.signalPast,
+              top: -4,
+              width: 10,
             }}
           />
+        </View>
+        {behind ? (
           <View
             pointerEvents="none"
             style={{
-              backgroundColor: playerChrome.signal,
+              backgroundColor: playerChrome.live,
               bottom: 0,
-              left: head - 1,
+              left: liveX - 1,
+              opacity: 0.8,
               position: "absolute",
-              top: -8,
+              top: 0,
               width: 2,
               zIndex: 30,
             }}
-          >
-            <View
-              style={{
-                backgroundColor: playerChrome.signal,
-                borderColor: playerChrome.signalPastRing,
-                borderRadius: 999,
-                borderWidth: 3,
-                height: 14,
-                left: -6,
-                position: "absolute",
-                top: -6,
-                width: 14,
-                ...webOnly({ backgroundClip: "padding-box" }),
-              }}
-            />
-          </View>
-          {behind ? (
-            <View
-              pointerEvents="none"
-              style={{
-                backgroundColor: playerChrome.live,
-                bottom: 0,
-                left: liveX - 1,
-                opacity: 0.8,
-                position: "absolute",
-                top: 0,
-                width: 2,
-                zIndex: 30,
-              }}
-            />
-          ) : null}
-        </View>
+          />
+        ) : null}
       </View>
 
       {/* The scale: the seekable past's edge, live, and the next hours. */}
@@ -303,33 +309,40 @@ const PreviewPlaybar = ({
       >
         {width > 0 ? (
           <>
-            <Text density={density} style={{ left: 6, position: "absolute" }} textRole="mono" tone="muted">
+            <Text
+              density={density}
+              style={{ left: 0, position: "absolute" }}
+              textRole="cardMeta"
+              tone="muted"
+            >
               −15m
             </Text>
             <Text
               density={density}
               strong
-              style={{ left: liveX + 6, position: "absolute", transform: [{ translateX: "-50%" }] }}
-              textRole="mono"
+              style={{ left: liveX, position: "absolute", transform: [{ translateX: "-50%" }] }}
+              textRole="cardMeta"
               tone="live"
             >
-              LIVE
+              Live
             </Text>
-            {TICK_MINUTES.map((m) => {
-              const at = window.nowMs + m * 60_000;
-              if (at >= window.endMs) return null;
-              return (
-                <Text
-                  density={density}
-                  key={m}
-                  style={{ left: xAt(at) + 6, position: "absolute", transform: [{ translateX: "-50%" }] }}
-                  textRole="mono"
-                  tone="muted"
-                >
-                  {formatTime(at)}
-                </Text>
-              );
-            })}
+            {pointer || tv
+              ? TICK_MINUTES.map((m) => {
+                  const at = window.nowMs + m * 60_000;
+                  if (at >= window.endMs) return null;
+                  return (
+                    <Text
+                      density={density}
+                      key={m}
+                      style={{ left: xAt(at), position: "absolute", transform: [{ translateX: "-50%" }] }}
+                      textRole="mono"
+                      tone="muted"
+                    >
+                      {formatTime(at)}
+                    </Text>
+                  );
+                })
+              : null}
           </>
         ) : null}
       </View>

@@ -207,6 +207,7 @@ const dataRoles = new Set<TextRole>([
   "time",
   "data",
   "channelNumber",
+  "bandNumber",
   "code",
   "cardChannelNumber",
   "cardTime",

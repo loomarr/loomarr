@@ -9,6 +9,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -48,6 +51,28 @@ func seriesOrigin(root, dir string) inventory.OriginKey {
 	return inventory.OriginKey{Authority: Authority(root), ExternalItemID: "series:dir:" + hex.EncodeToString(digest[:16])}
 }
 
+// sortKey is the key a title sorts by: its sort title in lower case with the accents taken off,
+// so "À Nous la Liberté" files under A rather than after Z. The few letters that are not an accent
+// on another one read as the letters people file them under: "Øster" under O, "Æon" under AE.
+func sortKey(title string) string {
+	decomposed := norm.NFD.String(strings.ToLower(title))
+	var b strings.Builder
+	b.Grow(len(decomposed))
+	for _, r := range decomposed {
+		switch {
+		case unicode.Is(unicode.Mn, r):
+		case sortLetters[r] != "":
+			b.WriteString(sortLetters[r])
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// sortLetters are the lower-case letters with no decomposition that sort as other letters.
+var sortLetters = map[rune]string{'ø': "o", 'æ': "ae", 'œ': "oe", 'ß': "ss", 'ł': "l", 'đ': "d", 'ð': "d", 'þ': "th"}
+
 // revision is a file's inventory revision: its stat. A new size or mtime is new bytes.
 func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.ModifiedNs) }
 
@@ -80,20 +105,23 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	24: a person is linked by any catalog's id (namespace and value), not a TMDB id.
 //	25: an episode its show's catalog can't number is marked, and one whose show has an answer is
 //	    numbered by the order picked (decision 53).
-const writeVersion = 25
+//	26: a title sorts by its letters with the accents taken off ("À Nous" under A).
+const writeVersion = 26
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
-// learns more reaches every file.
-func identityDigest(file File, m managed, embedded mp.Record, reader int) string {
+// learns more reaches every file. seriesSidecars are an episode's series folder's tvshow.nfo and
+// folder art (#3226); omitted when empty, so a movie's digest is unchanged by them.
+func identityDigest(file File, m managed, embedded mp.Record, reader int, seriesSidecars map[string]Stat) string {
 	payload, _ := json.Marshal(struct {
-		Version  int
-		Header   int
-		Records  []mp.Record
-		Series   *mp.Record
-		Embedded mp.Record
-		Sidecars map[string]Stat
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars})
+		Version        int
+		Header         int
+		Records        []mp.Record
+		Series         *mp.Record
+		Embedded       mp.Record
+		Sidecars       map[string]Stat
+		SeriesSidecars map[string]Stat `json:",omitempty"`
+	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }
@@ -225,7 +253,7 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 	facts := best.Observation.Facts
 	it := librarystore.LibraryItem{
 		ID: string(item.ID), Kind: string(item.Kind), Name: facts.Name,
-		SortName: strings.ToLower(facts.SortTitle), Year: facts.ProductionYear,
+		SortName: sortKey(facts.SortTitle), Year: facts.ProductionYear,
 		Catalog: listed.Catalog, Set: listed.Set,
 		Origin: libraryOrigin(best.Key), Match: listed.Match,
 		OriginalTitle: facts.OriginalTitle, Overview: facts.Overview, PremiereDate: facts.PremiereDate,
