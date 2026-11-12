@@ -1,3 +1,4 @@
+export * from "./src/channel-audio";
 export type { LastChannelStorage, LastChannelStore } from "./src/last-channel";
 export { createLastChannelStore } from "./src/last-channel";
 export * from "./src/paired-account";

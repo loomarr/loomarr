@@ -10,8 +10,8 @@ import { PlayerChrome, type PlayerChromeProps } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// The portrait band (#3408): a narrower block, a two-line title, the progress line on its own row, and
-// a next time that never wraps. The desktop and landscape band keep their structure.
+// The phone's band (#3408, variant J): a 56px block held either way, a two-line title upright, a next
+// time that never wraps, and the toolbar above the picture holding Leave and the utilities.
 
 type El = {
   children: ArrayLike<El>;
@@ -35,7 +35,14 @@ const mount = (node: ReactNode) => {
   const host = doc.createElement("div");
   doc.body.append(host);
   const root = createRoot(host);
-  act(() => root.render(<LoomarrProvider theme="dark">{node}</LoomarrProvider>));
+  // An iPhone's safe areas, as the native app's provider hands them down.
+  act(() =>
+    root.render(
+      <LoomarrProvider insets={IPHONE} theme="dark">
+        {node}
+      </LoomarrProvider>,
+    ),
+  );
   mounted.push({ host, unmount: () => act(() => root.unmount()) });
   return host;
 };
@@ -60,17 +67,17 @@ const band = {
 
 const keys = {
   density: "touch" as const,
+  last: { number: "3", onPress: vi.fn() },
   moreOpen: false,
-  muted: false,
   onChannelDown: vi.fn(),
   onChannelUp: vi.fn(),
   onMore: vi.fn(),
-  onToggleMute: vi.fn(),
   onTogglePlay: vi.fn(),
   playing: true,
   pointer: false,
-  volume: 0.8,
 };
+
+const IPHONE = { bottom: 34, left: 0, right: 0, top: 59 };
 
 const chrome = (layout: PlayerChromeProps["layout"], density: "pointer" | "touch") => (
   <PlayerChrome
@@ -81,13 +88,13 @@ const chrome = (layout: PlayerChromeProps["layout"], density: "pointer" | "touch
     layout={layout}
     live={{ lagSeconds: 0, mode: "live" }}
     onGoLive={vi.fn()}
-    top={{
+    onLeave={vi.fn()}
+    utilities={{
       audioOpen: false,
       density,
       fullscreen: false,
       onAudio: vi.fn(),
       onFullscreen: vi.fn(),
-      onLeave: vi.fn(),
       pointer: false,
     }}
     visible
@@ -99,16 +106,37 @@ const block = (host: Host) =>
   Array.from(host.querySelectorAll("div")).find((el) => el.textContent === "CH101") as El;
 
 describe("the portrait band", () => {
-  it("narrows the channel block to 56px, where the landscape phone keeps 72px", () => {
+  it("draws a phone's channel block 56px wide, held either way, and desktop's 96px (§9.2)", () => {
     expect(computed(block(mount(chrome("portrait", "touch")))).width).toBe("56px");
-    expect(computed(block(mount(chrome("overlay", "touch")))).width).toBe("72px");
+    expect(computed(block(mount(chrome("overlay", "touch")))).width).toBe("56px");
+    expect(computed(block(mount(chrome("overlay", "pointer")))).width).toBe("96px");
   });
 
-  it("steps a three-digit number down a size, so it keeps a margin in the narrow block", () => {
+  it("steps a three-digit number down a size in a phone's block, so it keeps a margin", () => {
     // The fixture's channel is 101: about 50px wide at the full size, in a 56px block.
     const size = (host: Host) => computed(byId(host, "band-channel-number")).fontSize;
     expect(size(mount(chrome("portrait", "touch")))).toBe("22px");
-    expect(size(mount(chrome("overlay", "touch")))).toBe("30px");
+    expect(size(mount(chrome("overlay", "touch")))).toBe("22px");
+    expect(size(mount(chrome("overlay", "pointer")))).toBe("48px");
+  });
+
+  it("holds Leave and the utilities in the toolbar above the picture", () => {
+    const host = mount(chrome("portrait", "touch"));
+    const labels = Array.from(host.querySelectorAll('[data-testid="player-toolbar"] [role="button"]')).map(
+      (el) => (el as El & { getAttribute(n: string): string | null }).getAttribute("aria-label"),
+    );
+    expect(labels).toEqual(["Leave", "Audio", "Fullscreen"]);
+  });
+
+  it("keeps the toolbar under the Dynamic Island and the band and keys above the home indicator", () => {
+    const host = mount(chrome("portrait", "touch"));
+    // The toolbar starts 4px below the top inset.
+    expect(computed(byId(host, "player-toolbar")).top).toBe("63px");
+    // The band and keys are grounded 24px plus half the bottom inset up from the foot.
+    const bottomBlock = byId(host, "channel-band").parentElement as El;
+    expect(computed(bottomBlock).bottom).toBe("41px");
+    // Last is a key on a phone too (§9.7).
+    expect(host.querySelector('[aria-label="Last channel, 3"]')).not.toBeNull();
   });
 
   it("lets the title take two lines, and the episode line one", () => {
@@ -120,18 +148,11 @@ describe("the portrait band", () => {
     expect(clamp(byId(landscape, "band-title"))).not.toBe("2");
   });
 
-  it("gives the progress line a row of its own, with the clocks on the row under it", () => {
-    const host = mount(chrome("portrait", "touch"));
-    const line = byId(host, "band-progress");
-    const lineRow = line.parentElement as El;
-    // Nothing shares the line's row: no clock squeezes it.
-    expect(lineRow.children).toHaveLength(1);
-    expect(lineRow.textContent).toBe("");
-    // The clocks sit together on the next row, start at one end and end at the other.
-    const clocks = (lineRow.parentElement as El).children[1] as El;
-    expect(clocks.children).toHaveLength(2);
-    expect(clocks.children[0]?.textContent).toBe("t0");
-    expect(clocks.children[1]?.textContent).toBe("t10");
+  it("sets the progress line between its two clocks, as every band does (variant J)", () => {
+    const row = byId(mount(chrome("portrait", "touch")), "band-progress").parentElement as El;
+    expect(row.children).toHaveLength(3);
+    expect(row.children[0]?.textContent).toBe("t0");
+    expect(row.children[2]?.textContent).toBe("t10");
   });
 
   it("keeps the next time on one line and lets the title take the rest", () => {
@@ -142,19 +163,11 @@ describe("the portrait band", () => {
     expect(style.flexShrink).toBe("0");
   });
 
-  it("tightens the Now and Next chips, so a chip never touches its text and the title keeps its width", () => {
-    // The touch NEXT chip is 67px at full padding: in the 56px column it ran into the next time.
-    const padding = (host: Host) => computed(byId(host, "band-chip")).paddingLeft;
-    expect(padding(mount(chrome("portrait", "touch")))).toBe("4px");
-    expect(padding(mount(chrome("overlay", "touch")))).toBe("8px");
-  });
-
-  it("leaves the desktop band as it was: the progress line between its two clocks in one row", () => {
+  it("keeps the desktop band's progress line between its two clocks in one row, without a strip", () => {
     const host = mount(chrome("overlay", "pointer"));
     const row = byId(host, "band-progress").parentElement as El;
     expect(row.children).toHaveLength(3);
     expect(row.children[0]?.textContent).toBe("t0");
     expect(row.children[2]?.textContent).toBe("t10");
-    expect(computed(block(host)).width).toBe("144px");
   });
 });

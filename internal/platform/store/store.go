@@ -733,6 +733,7 @@ type Store interface {
 	LibraryCollectionStore
 	LibraryPeopleStore
 	LibraryItemFactsReader
+	LibraryEvidenceReader
 	LibraryEpisodeReader
 	LibraryTitleReader
 	LibraryReferenceStore

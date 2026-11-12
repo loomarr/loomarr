@@ -14,13 +14,21 @@ const GuideScreen = () => <GuidePage />;
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads only `view`:
+  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads `view`:
   // `?view=grid` is the full grid, and anything else the Now/Next list it opens on (#2787), so the
-  // grid survives a reload and a link can open it.
-  validateSearch: (search: Record<string, unknown>): Record<string, unknown> & { view?: "grid" } => ({
-    ...search,
-    view: search.view === "grid" ? "grid" : undefined,
-  }),
+  // grid survives a reload and a link can open it. `at` (epoch ms) and `channel` open the grid on
+  // that day and hour with that channel's programme selected: Home's Tonight rows link here (#2763).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): Record<string, unknown> & { view?: "grid"; at?: number; channel?: string } => {
+    const at = Number(search.at);
+    return {
+      ...search,
+      view: search.view === "grid" ? "grid" : undefined,
+      at: search.at !== undefined && Number.isFinite(at) ? at : undefined,
+      channel: typeof search.channel === "string" && search.channel !== "" ? search.channel : undefined,
+    };
+  },
   beforeLoad: ({ search }) => {
     const origination = legacyGuideOrigination(search);
     if (origination) throw redirect({ to: "/requests/new", search: origination, replace: true });

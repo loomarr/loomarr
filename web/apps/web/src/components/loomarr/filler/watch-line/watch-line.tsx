@@ -1,8 +1,9 @@
 import { cn } from "@/lib/utils";
 import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
-// WatchLine — the web mock's `watchLine` (#1659): a plain mono line under the Filler page's
-// description, with a 7px status dot. It was a bordered pill at the header's top right (§10
+// WatchLine — the web mock's `watchLine` (#1659): a plain line under the Filler page's
+// description, with a 7px status dot. The mock set it in mono; it is a sentence, and mono is for
+// channel numbers and clocks (#2778), so it is in the body face (#3412). It was a bordered pill at the header's top right (§10
 // V38c); the web mock draws it unboxed under the description, so it is a line now.
 //
 // ⚠ **The dot's colour follows the server's health verdict.** The web mock does the same (green and
@@ -38,7 +39,7 @@ const WatchLine = ({ status, health, className }: WatchLineProps) => (
       )}
       aria-hidden
     />
-    <span className="text-muted-foreground min-w-0 font-mono text-xs">{status}</span>
+    <span className="text-muted-foreground min-w-0 text-xs">{status}</span>
     {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}

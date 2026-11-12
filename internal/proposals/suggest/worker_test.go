@@ -734,6 +734,41 @@ func TestWorker_NoGroundedTitlesPersistsTypedFailure(t *testing.T) {
 	t.Fatal("job did not reach failed state")
 }
 
+// panickingLLM stands in for any bug deep in one suggestion run.
+type panickingLLM struct{}
+
+func (panickingLLM) Chat(context.Context, []llm.Message, llm.ChatOptions) (llm.Response, error) {
+	panic("provider exploded")
+}
+func (panickingLLM) Name() string { return "panicking" }
+
+func TestWorker_PanicFailsTheJobAndKeepsTheWorkerAlive(t *testing.T) {
+	st := newStore(t)
+	flow := workflow.New(st, func() string { return "workflow-proposal-1" }, time.Now, suggest.IntentHash)
+	svc := buildServiceWith(t, st, flow, panickingLLM{})
+	jobID, err := svc.Submit(context.Background(), proposals.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		job, _ := st.GetJob(context.Background(), jobID)
+		if job.Status == "failed" {
+			if !strings.Contains(job.LastError, "panicked") {
+				t.Fatalf("last_error = %q, want the panic named", job.LastError)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("panicking job did not reach failed state")
+}
+
 func TestWorker_RecordsCommittedDiscoveryQualityStages(t *testing.T) {
 	tests := []struct {
 		name      string
