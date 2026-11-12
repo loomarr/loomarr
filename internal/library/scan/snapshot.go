@@ -244,7 +244,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    years is the title's; loose "Show - Title" files sharing a show in a catch-all are its
 //	    episodes; a show folder its episodes name whole ("Unit S9") is no season pack; one file in
 //	    a season's pack is an episode; "Show Ep01" among films is one; a disc label's "WS" goes.
-const writeVersion = 63
+//	64: a dashed file name with a release's mark ("pratt-wood-1080p") is its folder's film; an
+//	    episode's NFO <showtitle> names its show; Kodi's "Show - 214 - Title" is S2E14; an anime's
+//	    "Show - Special - 01" and "- Recap -" are its show's; "[Show] S01E09" names its show; a
+//	    show's yearless and dated folders join unless both number an episode; "Show 1-05" in its
+//	    folder and a "(S07)" folder's "- 01" number their episodes.
+const writeVersion = 64
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

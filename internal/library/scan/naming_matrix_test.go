@@ -1228,6 +1228,37 @@ var namingMatrix = []namingRow{
 		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
 		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
 	}},
+	// Re-score #21: a film's file named with dashes and a release's mark is its folder's film; an
+	// episode's NFO names its show; Kodi's "Show - 101 - Title" numbers its episode; an anime's loose
+	// special and recap are its show's; a loose file's bracketed name with no group is its show; a
+	// show's yearless and dated folders are one show unless both number an episode; "Fennick 1-05"
+	// in its own folder and "(S07)" in a show's folder number their episodes.
+	{id: "W136", files: map[string]string{
+		"Movies/Pratt Wood (2004)/pratt-wood-1080p.mkv":             "movie Pratt Wood 2004",
+		"Movies/Lyle.Cove.2011.720p.BluRay/lyle-cove-720p.mkv":      "movie Lyle Cove 2011",
+		"Downloads/Moss.Bank.2013.1080p.BluRay/moss-bank-1080p.mkv": "movie Moss Bank 2013",
+		"TV/Unsorted/zz9.mkv":                                 "episode Ollerton S2E3",
+		"Downloads/vid1.mkv":                                  "episode Pollard Moor S1E4",
+		"TV/Kelso Rise - 101 - Pilot.mkv":                     "episode Kelso Rise S1E1",
+		"TV/Kelso Rise - 102 - Second.mkv":                    "episode Kelso Rise S1E2",
+		"TV/Cutters Bay/Cutters Bay - 101 - Pilot.mkv":        "episode Cutters Bay S1E1",
+		"TV/Cutters Bay/Cutters Bay - 214 - Late.mkv":         "episode Cutters Bay S2E14",
+		"Anime/[Grp] Kuroi Tori - 05.mkv":                     "episode Kuroi Tori S?E?",
+		"Anime/[Grp] Kuroi Tori - Special - 01.mkv":           "episode Kuroi Tori S0E1",
+		"Anime/[Grp] Kuroi Tori - Recap - 06.5.mkv":           "episode Kuroi Tori S?E?",
+		"TV/Dunmore/Season 1/Dunmore S01E01.mkv":              "episode Dunmore 2016 S1E1",
+		"TV/Dunmore (2016)/Season 2/Dunmore S02E01.mkv":       "episode Dunmore 2016 S2E1",
+		"TV/Harrowgate/Season 1/Harrowgate S01E01.mkv":        "episode Harrowgate S1E1",
+		"TV/Harrowgate (2019)/Season 1/Harrowgate S01E01.mkv": "episode Harrowgate 2019 S1E1",
+		"TV/Fennick/Fennick 1-05.mkv":                         "episode Fennick S1E5",
+		"TV/Fennick/Fennick 1-06.mkv":                         "episode Fennick S1E6",
+		"TV/Bracken Hall (S07)/Bracken Hall - 01.mkv":         "episode Bracken Hall S7E1",
+		"TV/Bracken Hall (S07)/Bracken Hall - 02.mkv":         "episode Bracken Hall S7E2",
+		"TV/[Tolland Mews] S01E09.mkv":                        "episode Tolland Mews S1E9",
+	}, nfo: map[string]string{
+		"TV/Unsorted/zz9.nfo": "<episodedetails><title>Nine</title><showtitle>Ollerton</showtitle><season>2</season><episode>3</episode></episodedetails>",
+		"Downloads/vid1.nfo":  "<episodedetails><title>Four</title><showtitle>Pollard Moor</showtitle><season>1</season><episode>4</episode></episodedetails>",
+	}},
 	// Re-score #20: loose "Show - Title" files sharing a show are its episodes; a show named with an
 	// S-number keeps it; one titled file in a show's season pack is its; a disc label's "WS", a
 	// war's span of years, a "1x1" in a show's name and a film's language codes leave its title.

@@ -173,10 +173,24 @@ func (b *builder) identify(file File) identity {
 			if !isNFO(nfo) || strings.ToLower(strings.TrimSuffix(nfo, filepath.Ext(nfo))) != own {
 				continue
 			}
-			switch root := b.im.nfoRoots.rootOf(nfo, st); {
-			case root == "episodedetails" && embedded.Kind == mp.KindMovie:
-				seriesDir = seriesFolderOf(file)
-				embedded = mp.Record{Source: embedded.Source, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}
+			head := b.im.nfoRoots.headOf(nfo, st)
+			switch root := head.root; {
+			case root == "episodedetails" && (embedded.Kind == mp.KindMovie || placedOnly):
+				if embedded.Kind == mp.KindMovie {
+					seriesDir = seriesFolderOf(file)
+					embedded = mp.Record{Source: embedded.Source, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}
+				}
+				// The show its NFO names is the episode's when the folder it sits in is no show's of
+				// that name: "TV/Unsorted/zz9.mkv" with <showtitle>Ollerton</showtitle> is Ollerton's,
+				// kept as a folder of its own there would be.
+				if head.show != "" && !namesShow(path.Base(seriesDir), head.show) {
+					container := path.Dir(file.Rel)
+					if seriesDir != "" {
+						container = path.Dir(seriesDir)
+					}
+					seriesDir = showKey(container, head.show)
+					embedded.Parent = nil
+				}
 			case root == "movie" && placedOnly:
 				seriesDir = ""
 				embedded = mp.Record{Source: embedded.Source, Kind: mp.KindMovie}
@@ -216,6 +230,15 @@ func (b *builder) identify(file File) identity {
 	}
 	id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
 	return id
+}
+
+// namesShow is whether a folder's name could be show's, spelled its own way: they share a word
+// ("Ollerton (2010)", "The Ollerton Files" for "Ollerton"). "Unsorted" and "Downloads" share none.
+func namesShow(folder, show string) bool {
+	own := strings.Fields(normName(showFolderName(folder)))
+	return slices.ContainsFunc(strings.Fields(normName(show)), func(w string) bool {
+		return w != "and" && slices.Contains(own, w)
+	})
 }
 
 // seriesFolderSidecars stats a series folder's own tvshow.nfo and folder art. It reads the folder
