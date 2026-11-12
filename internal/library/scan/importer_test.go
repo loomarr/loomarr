@@ -617,6 +617,49 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 	}
 }
 
+// A file that comes back as it went, its size and time unchanged (a drive plugged back in after
+// its titles were let go), is present again at once and not opened again: its header is the one
+// read before. One that comes back changed is read again.
+func TestAFileBackAsItWentIsNotReadAgain(t *testing.T) {
+	h := newHarness(t)
+	var paths []string
+	for i := range 20 {
+		paths = append(paths, h.file("Show/Season 1/Show S01E"+twoDigits(i+1)+".mkv", 5))
+	}
+	h.run()
+	aside := filepath.Join(t.TempDir(), "aside")
+	for _, p := range paths[:2] {
+		if err := os.Rename(p, aside+filepath.Base(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	gone := fileOrigin(h.root, "Show/Season 1/Show S01E01.mkv")
+	if o := h.origin(h.item(gone), gone); o.MissingAt.IsZero() {
+		t.Fatal("the removal was not applied")
+	}
+	reads := h.reads.Load()
+	for _, p := range paths[:2] {
+		if err := os.Rename(aside+filepath.Base(p), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The second comes back with other bytes.
+	if err := os.WriteFile(paths[1], make([]byte, 6), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	if o := h.origin(h.item(gone), gone); !o.MissingAt.IsZero() {
+		t.Fatal("the file that came back is still missing")
+	}
+	if row := h.fileRow(paths[0]); row.Header != librarystore.LibraryHeaderRead || !row.MissingAt.IsZero() {
+		t.Errorf("returned file = %+v, want present with its header read", row)
+	}
+	if got := h.reads.Load() - reads; got != 1 {
+		t.Errorf("headers read = %d, want only the changed file's", got)
+	}
+}
+
 // A walk that would remove more than a tenth of a root's files is held; confirming applies it.
 // A small removal applies at once.
 func TestImportRemovalGuard(t *testing.T) {

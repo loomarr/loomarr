@@ -684,12 +684,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		id := ids[i]
 		row := librarystore.LibraryFile{Path: file.Path, Root: root, Size: file.Stat.Size, ModifiedNs: file.Stat.ModifiedNs,
 			Identity: id.digest, Kind: string(kindOf(id.kind)), Header: librarystore.LibraryHeaderPending, SeenAt: now}
-		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs && old.MissingAt.IsZero()
+		// The same bytes as the row recorded, whether the file stayed or came back as it went (a
+		// drive plugged in again after its titles were let go): the header read then is still its
+		// own. Only one that stayed is unchanged; one that came back is written present again.
+		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs
 		if sameBytes {
 			row.Header = old.Header
 		}
 		switch {
-		case sameBytes && old.Identity == id.digest && old.ItemID != "":
+		case sameBytes && old.MissingAt.IsZero() && old.Identity == id.digest && old.ItemID != "":
 			// Unchanged: never written, never opened again.
 			if prev[file.Path].Held {
 				save = append(save, old)
