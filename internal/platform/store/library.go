@@ -49,6 +49,8 @@ type (
 	LibraryItemFacts         = librarystore.LibraryItemFacts
 	LibraryItemChannel       = librarystore.LibraryItemChannel
 	LibraryItemFactsReader   = librarystore.LibraryItemFactsReader
+	LibraryEvidence          = librarystore.LibraryEvidence
+	LibraryEvidenceReader    = librarystore.LibraryEvidenceReader
 	LibraryItemPage          = librarystore.LibraryItemPage
 	LibraryItemQuery         = librarystore.LibraryItemQuery
 	LibraryItemStore         = librarystore.LibraryItemStore
@@ -66,6 +68,7 @@ type (
 	LibraryRoot              = librarystore.LibraryRoot
 	LibraryRootCheck         = librarystore.LibraryRootCheck
 	LibraryRootDiscovery     = librarystore.LibraryRootDiscovery
+	LibraryRootFlip          = librarystore.LibraryRootFlip
 	LibraryRootPath          = librarystore.LibraryRootPath
 	LibraryRootStore         = librarystore.LibraryRootStore
 	LibraryRoots             = librarystore.LibraryRoots

@@ -1,104 +1,114 @@
 import { type Density, playerChrome, Text } from "@loomarr/design-system";
-import { View } from "react-native";
+import { useState } from "react";
+import { Image, PixelRatio, View } from "react-native";
 
-import { panel } from "../flat";
+import { logoSize, rungFor } from "../art";
 import { PlaybarStill } from "../playbar-still";
 import type { PlaybarBreak, PlaybarProgramme } from "../player-chrome.type";
 
-// The preview card (§9.3, pointer only), over the segment it describes. A programme: its still as
-// the hero with the title set on it, when it starts, chips and two lines of synopsis. A break: every
-// spot with its thumbnail, name, `brand · era` or kind, and duration, the one on air marked ON NOW.
+// The preview card (§9.2, variant J): what pointing at a block of the film strip (or moving a
+// remote's focus to it) opens, 12px clear of the band. A programme: its fanart as the hero, with the
+// title's logo set on it (sized by area, over a flat ink wash) when there is one; then its name, when
+// it starts or until when it runs, its facts and two lines of synopsis. A break: every spot with its
+// thumbnail, name, `brand · era` or kind, and duration, the one on air marked.
 
-const CARD_WIDTH = 352;
+const CARD_WIDTH = 320;
 
 interface PreviewCardProps {
   density: Density;
   formatTime: (ms: number) => string;
-  /** The live edge: what a programme's "IN 16 MIN" counts from. */
+  /** The whole synopsis (Info, the on-air programme's card opened in full). */
+  full?: boolean;
+  /** The live edge: on now reads `Until`, later reads `Starts`. */
   nowMs: number;
   /** The spot on air, when the playhead is inside this break. */
-  onNowSpot?: number;
+  onNowSpot?: number | undefined;
   segment: PlaybarBreak | PlaybarProgramme;
 }
 
-const badgeOf = (segment: PlaybarProgramme, nowMs: number) => {
-  if (segment.startMs > nowMs) return `IN ${Math.max(1, Math.round((segment.startMs - nowMs) / 60_000))} MIN`;
-  return segment.stopMs > nowMs ? "ON NOW" : "EARLIER";
+/** The hero: the fanart, and the title's logo on it under a flat ink wash. */
+const Hero = ({ density, segment }: { density: Density; segment: PlaybarProgramme }) => {
+  const [failed, setFailed] = useState<string | undefined>(undefined);
+  const logo = segment.logo && failed !== segment.logo.src ? segment.logo : undefined;
+  const size = logo ? logoSize(logo, density) : undefined;
+  return (
+    <View style={{ height: 148, justifyContent: "flex-end", padding: 14 }}>
+      <PlaybarStill
+        // Pinned to the corner: without left and top it sits at its static place, inside the padding.
+        style={{ height: "100%", left: 0, position: "absolute", top: 0, width: "100%" }}
+        {...(segment.stillUri ? { uri: segment.stillUri } : {})}
+      />
+      {logo && size ? (
+        <>
+          <View
+            style={{
+              backgroundColor: "rgba(11, 12, 14, 0.42)",
+              bottom: 0,
+              left: 0,
+              position: "absolute",
+              right: 0,
+              top: 0,
+            }}
+          />
+          <Image
+            accessibilityLabel={segment.name}
+            onError={() => setFailed(logo.src)}
+            resizeMode="contain"
+            source={{ uri: rungFor(logo, size.width, PixelRatio.get()) }}
+            style={{
+              height: Math.min(64, size.height),
+              width: (Math.min(64, size.height) * size.width) / size.height,
+            }}
+          />
+        </>
+      ) : null}
+    </View>
+  );
 };
 
 const ProgrammeCard = ({
   density,
   formatTime,
+  full = false,
   nowMs,
   segment,
-}: Omit<PreviewCardProps, "segment"> & { segment: PlaybarProgramme }) => (
-  <View>
-    <View style={{ aspectRatio: 16 / 9, width: "100%" }}>
-      <PlaybarStill style={{ height: "100%", position: "absolute", width: "100%" }} uri={segment.stillUri} />
-      <View
-        style={{
-          bottom: 0,
-          left: 0,
-          position: "absolute",
-          right: 0,
-          top: 0,
-          backgroundColor: playerChrome.dim,
-        }}
-      />
-      <View
-        style={{
-          backgroundColor: playerChrome.signal,
-          borderRadius: 999,
-          left: 10,
-          paddingHorizontal: 8,
-          paddingVertical: 2,
-          position: "absolute",
-          top: 10,
-        }}
-      >
-        <Text density={density} textRole="cardChannelNumber" tone="inverse">
-          {badgeOf(segment, nowMs)}
-        </Text>
-      </View>
-      <View style={{ bottom: 10, left: 14, position: "absolute", right: 14 }}>
-        <Text density={density} textRole="cardTime" tone="secondary">
-          {`${formatTime(segment.startMs)} – ${formatTime(segment.stopMs)}`}
-        </Text>
-        <Text density={density} numberOfLines={2} strong textRole="headline" tone="primary">
-          {segment.name}
-        </Text>
-      </View>
-    </View>
-    <View style={{ gap: 10, paddingBottom: 14, paddingHorizontal: 14, paddingTop: 8 }}>
-      {segment.chips.length > 0 ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {segment.chips.map((chip) => (
-            <View
-              key={chip}
-              style={{
-                backgroundColor: playerChrome.surfaceRaised,
-                borderColor: playerChrome.hairline,
-                borderRadius: 6,
-                borderWidth: 1,
-                paddingHorizontal: 6,
-                paddingVertical: 1,
-              }}
-            >
-              <Text density={density} textRole="cardMeta" tone="secondary">
-                {chip}
-              </Text>
-            </View>
-          ))}
+}: Omit<PreviewCardProps, "segment"> & { segment: PlaybarProgramme }) => {
+  const onNow = segment.startMs <= nowMs && nowMs < segment.stopMs;
+  return (
+    <View>
+      <Hero density={density} segment={segment} />
+      <View style={{ gap: 6, paddingBottom: 14, paddingHorizontal: 14, paddingTop: 12 }}>
+        <View
+          style={{ alignItems: "baseline", flexDirection: "row", gap: 8, justifyContent: "space-between" }}
+        >
+          <Text
+            density={density}
+            numberOfLines={1}
+            strong
+            style={{ flexShrink: 1, minWidth: 0 }}
+            textRole="cardTitle"
+            tone="primary"
+          >
+            {segment.name}
+          </Text>
+          <Text density={density} style={{ flexShrink: 0 }} textRole="compact" tone="secondary">
+            {onNow ? `Until ${formatTime(segment.stopMs)}` : `Starts ${formatTime(segment.startMs)}`}
+          </Text>
         </View>
-      ) : null}
-      {segment.synopsis ? (
-        <Text density={density} numberOfLines={2} textRole="cardMeta" tone="secondary">
-          {segment.synopsis}
-        </Text>
-      ) : null}
+        {segment.chips.length > 0 ? (
+          <Text density={density} numberOfLines={1} textRole="label" tone="secondary">
+            {segment.chips.join(" · ")}
+          </Text>
+        ) : null}
+        {segment.synopsis ? (
+          <Text density={density} {...(full ? {} : { numberOfLines: 2 })} textRole="label" tone="secondary">
+            {segment.synopsis}
+          </Text>
+        ) : null}
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 const BreakCard = ({
   density,
@@ -135,19 +145,22 @@ const BreakCard = ({
             padding: 6,
           }}
         >
-          <PlaybarStill style={{ aspectRatio: 16 / 9, borderRadius: 6, width: 80 }} uri={spot.stillUri} />
+          <PlaybarStill
+            style={{ aspectRatio: 16 / 9, borderRadius: 6, width: 80 }}
+            {...(spot.stillUri ? { uri: spot.stillUri } : {})}
+          />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text density={density} numberOfLines={1} textRole="cardMeta" tone="primary">
               {spot.name}
             </Text>
             {spot.detail ? (
-              <Text density={density} numberOfLines={1} textRole="mono" tone="secondary">
+              <Text density={density} numberOfLines={1} textRole="cardMeta" tone="secondary">
                 {spot.detail}
               </Text>
             ) : null}
           </View>
-          <Text density={density} textRole="mono" tone={i === onNowSpot ? "info" : "secondary"}>
-            {i === onNowSpot ? "ON NOW" : spot.durationLabel}
+          <Text density={density} textRole="cardMeta" tone={i === onNowSpot ? "info" : "secondary"}>
+            {i === onNowSpot ? "On now" : spot.durationLabel}
           </Text>
         </View>
       ))}
@@ -158,11 +171,14 @@ const BreakCard = ({
 const PreviewCard = (props: PreviewCardProps) => (
   <View
     style={{
-      borderRadius: 12,
+      backgroundColor: playerChrome.band,
+      borderColor: playerChrome.hairline,
+      borderRadius: 8,
+      borderWidth: 1,
       overflow: "hidden",
       width: CARD_WIDTH,
-      ...panel(),
     }}
+    testID="preview-card"
   >
     {props.segment.kind === "break" ? (
       <BreakCard {...props} segment={props.segment} />

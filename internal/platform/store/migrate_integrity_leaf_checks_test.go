@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -25,8 +24,9 @@ var integrityLeafRebuilt = []string{
 // foreign key, and every row, including the ” values two columns write on purpose; afterwards a
 // misspelt state is refused.
 func TestIntegrityLeafChecksMigration(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "integrity.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, integrityLeafChecksMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

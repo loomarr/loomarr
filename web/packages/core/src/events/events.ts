@@ -127,6 +127,10 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // the grid, a title's page, Ready so far and Needs you refetch, because a list assembled from
   // frames would lose rows this bus drops.
   library_titles: { prefixes: ["/v1/library/items", "/v1/library/needs"] },
+  // A media folder stopped or started opening, or emptied or filled (a share unmounted or mounted
+  // again), found by a scan pass rather than by anything done on screen: the folders' cards and
+  // the status read again, so a warning appears and clears without a reload.
+  library_roots: { prefixes: ["/v1/library/roots", "/v1/library/status"] },
 };
 
 // The frame types the stream subscribes to: every event the spec declares.

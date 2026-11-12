@@ -58,9 +58,10 @@ const etaShort = (seconds: number) => {
 
 // What the scanner is doing, as one sentence and its dot, and the lines under it while a step runs.
 // running is true while an import shows its steps; quiet is an hourly pass that found nothing to
-// add, shown as one small line. With anything waiting in Needs you, idle says only "Up to date"
-// (the word sheet's): "every title's ready to air" would contradict it (#2779).
-const scanHeadline = (scan: LibraryScan, needsYou = false) => {
+// add, shown as one small line. With anything waiting in Needs you, or a folder in use that held
+// nothing (a drive that may not be connected), idle says only "Up to date" (the word sheet's):
+// "every title's ready to air" would contradict it (#2779).
+const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
   const active = scan.enabled && scan.step !== "idle";
   const quiet = active && scan.quiet;
   const running = active && !quiet;
@@ -74,7 +75,7 @@ const scanHeadline = (scan: LibraryScan, needsYou = false) => {
         ? ["pending", "Paused while someone is watching"]
         : running
           ? ["progress", "Adding your media"]
-          : needsYou
+          : notAllThere
             ? ["ok", "Up to date"]
             : ["ok", "All caught up — every title's ready to air"];
   const step = scan.step === "idle" ? undefined : scan.step;

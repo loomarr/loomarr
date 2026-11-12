@@ -57,7 +57,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 	// keep_alive is watched too: it is a property of how the provider is BUILT
 	// (WithKeepAlive at construction), so without it here an operator's change would
 	// sit in the store, apply to nothing, and appear to have been ignored until restart.
-	go func() {
+	owner.goRun(func(ctx context.Context) {
 		ch := set.svc.Watch(settings.LLMProvider.Key(), settings.LLMURL.Key(), settings.LLMModel.Key(),
 			settings.LLMAPIKey.Key(), settings.LLMKeepAlive.Key())
 		for {
@@ -73,7 +73,7 @@ func buildLLM(ctx context.Context, set resolved, st store.Store, bus *events.Bus
 				selection.Warm(ctx, sw, log)
 			}
 		}
-	}()
+	})
 
 	return sw, &systemLLMService{picker: picker.New(picker.Config{
 		Swap:         sw,
