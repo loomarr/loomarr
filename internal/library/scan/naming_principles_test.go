@@ -67,6 +67,31 @@ func TestPrincipleSpecialsFolderIsTheShows(t *testing.T) {
 	}
 }
 
+// TestPrincipleGroupingFolderIsTheShows: a folder in a show's own folder that groups its episodes,
+// by volume, book, chapter, year, DVD or collection, named by the show or not, holds the show's
+// episodes, as its season folders do: one show, never a film named by the folder.
+func TestPrincipleGroupingFolderIsTheShows(t *testing.T) {
+	folders := []string{"Volume 1", "Vol 2", "Vol.3", "%s Vol 4", "%s - Volume 5", "Book One", "Book 2", "Chapter 3",
+		"Year 1", "DVD1", "DVD 2", "Collection 1"}
+	for _, shelf := range []string{"TV", "Kids", "Anime"} {
+		for _, show := range principleShows {
+			bare := strings.TrimSpace(strings.Split(show, " (")[0])
+			files := map[string]string{
+				fmt.Sprintf("%s/%s/Season 1/%s S01E01.mkv", shelf, show, bare): fmt.Sprintf("episode %s S1E1", showName(show)),
+			}
+			for i, folder := range folders {
+				if strings.Contains(folder, "%s") {
+					folder = fmt.Sprintf(folder, bare)
+				}
+				files[fmt.Sprintf("%s/%s/%s/%s S02E%02d.mkv", shelf, show, folder, bare, i+1)] = fmt.Sprintf("episode %s S2E%d", showName(show), i+1)
+				// An unmarked title there is the show's too, for the catalog to place.
+				files[fmt.Sprintf("%s/%s/%s/%s - Long Night %d.mkv", shelf, show, folder, bare, i+1)] = fmt.Sprintf("episode %s S?E?", showName(show))
+			}
+			t.Run(shelf+"-"+strings.Fields(show)[0], func(t *testing.T) { principleRead(t, files) })
+		}
+	}
+}
+
 // TestPrincipleAnimeExtraIsSkipped: a release's opening, ending, menu, preview or trailer in its
 // episode's place is an extra however it is written, and its episodes beside it are the show's.
 func TestPrincipleAnimeExtraIsSkipped(t *testing.T) {
