@@ -1538,7 +1538,7 @@ func declared() []Setting {
 			Key: "security.trust_proxy", Label: "Trust reverse proxy", EnvVar: "TRUST_PROXY", Group: GroupUsersSecurity,
 			Kind: KindBool, Default: "false", Advanced: true,
 			Doc:    "Turn on only when a reverse proxy sits in front of Loomarr.",
-			Detail: "Trust the X-Forwarded-For and X-Forwarded-Proto headers. Turn this on only if a reverse proxy sits in front of Loomarr and sets them. Off by default so a direct client can't forge them to bypass the login rate limit or downgrade its cookie.",
+			Detail: "Trust the X-Forwarded-For and X-Forwarded-Proto headers. Turn this on only if a reverse proxy sits in front of Loomarr and sets them. The proxy must reach Loomarr from a loopback, private or link-local address. Off by default so a direct client can't forge them to bypass the login rate limit or downgrade its cookie.",
 		},
 
 		// --- SSO: a third CREDENTIAL path, never a provisioning one (§11, D-F, V8) ---
