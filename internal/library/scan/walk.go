@@ -240,7 +240,10 @@ type walker struct {
 	top int
 	// firstUnit is each top-level folder counted by its own entries, by path: its first unit.
 	firstUnit map[string]int
-	out       Walk
+	// listed is a top-level folder's entries, read once by units and taken by dir, so a small
+	// root's folders are each listed once.
+	listed map[string][]os.DirEntry
+	out    Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
 }
@@ -252,6 +255,7 @@ func newWalker(root string, steps *atomic.Int64) *walker {
 	w := &walker{
 		root: filepath.Clean(root), visited: map[string]bool{},
 		nfo: map[string]map[string]Stat{}, videos: map[string]int{}, steps: steps, firstUnit: map[string]int{},
+		listed: map[string][]os.DirEntry{},
 	}
 	w.out.Complete = true
 	return w
@@ -282,6 +286,7 @@ func (w *walker) units(root string, entries []os.DirEntry) (int, []int) {
 			if inside, err := os.ReadDir(path); err == nil && len(inside) > 0 {
 				size = len(inside)
 				w.firstUnit[path] = n
+				w.listed[path] = inside
 			}
 			w.steps.Add(1)
 		}
@@ -316,8 +321,12 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		dir = canonical
 	}
 	w.report.listing(w.rel(dir))
-	entries, err := os.ReadDir(dir)
-	w.steps.Add(1)
+	entries, err := w.listed[dir], error(nil)
+	if entries == nil {
+		entries, err = os.ReadDir(dir)
+		w.steps.Add(1)
+	}
+	delete(w.listed, dir)
 	if err != nil {
 		w.unread(dir)
 		return nil
