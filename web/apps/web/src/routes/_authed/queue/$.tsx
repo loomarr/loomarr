@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-// The old Queue tabs, mapped to where their contents live now (#1405). Anything else under
+// The legacy Queue tab paths, mapped to where their contents live (#1405). Anything else under
 // /queue falls back to the Requests page rather than a Not Found.
 const MOVED = {
   approval: "/requests/needs-you",

@@ -7,9 +7,9 @@ import { legacyGuideOrigination } from "@/suggest/origination-flow";
 // The channels surface (§12) — headed "Guide", the cross-channel time grid. Readable by any
 // authenticated user: the guide is viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
-// Channel origination used to live here, in this route's search params (`/guide?new=1`, `?job=`,
-// `?manual=1`, `?intent=`). It has its own route now (`/requests/new`), so an old URL of that kind
-// is sent there with its params, rather than opening a grid it no longer answers to.
+// Channel origination has its own route (`/requests/new`). A legacy origination URL on this route
+// (`/guide?new=1`, `?job=`, `?manual=1`, `?intent=`) is sent there with its params, rather than
+// opening a grid that does not answer to them.
 const GuideScreen = () => <GuidePage />;
 
 const Route = createFileRoute("/_authed/guide")({

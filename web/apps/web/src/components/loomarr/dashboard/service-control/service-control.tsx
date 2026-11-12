@@ -24,7 +24,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   // The only consequence worth a confirm step. Everything else a restart does (sessions
   // survive, scans resume, Tunarr keeps playing) is either invisible or reassuring, and
-  // listing it was noise an operator had to read past to find the part that mattered.
+  // listing it is noise an operator has to read past to find the part that mattered.
   const dropWarning =
     cost.streamingChannels > 0
       ? `${pluralize(cost.streamingChannels, "channel")} Loomarr is streaming will cut out for a few seconds, then come back.`

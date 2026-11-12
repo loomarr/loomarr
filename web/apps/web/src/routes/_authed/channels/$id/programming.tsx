@@ -5,8 +5,8 @@ import { viewerIsAdmin } from "@/auth/me-query";
 import { useChannelDetail } from "./-channel-detail-context";
 import { ChannelProgramming } from "./-channel-programming";
 
-// Programming — admin-only (a member gets AdminOnly's no-access state, #1977). Folds the old
-// Lineup + Programming-rules + Refine tabs into one surface (P7).
+// Programming — admin-only (a member gets AdminOnly's no-access state, #1977). Lineup,
+// Programming rules and Refine as one surface (P7).
 const ProgrammingScreen = () => {
   const { id, channel: ch, savePolicy, invalidate } = useChannelDetail();
 

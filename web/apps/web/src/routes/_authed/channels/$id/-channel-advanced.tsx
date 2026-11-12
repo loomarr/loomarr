@@ -39,8 +39,8 @@ const BACKEND_OPTIONS: { value: string; label: string }[] = [
 // for the things a VIEWER should never see: which programming rules Loomarr had to ease to
 // fill the channel, and who streams it. Keeping them here is what lets the page above speak in
 // plain language. Everything is explained in a sentence, not left as a code. (The
-// commercial-break preview moved up into the channel's Filler section — it's now part of
-// choosing filler, not a scheduler internal.)
+// commercial-break preview is in the channel's Filler section, not here — it's part of choosing
+// filler, not a scheduler internal.)
 //
 // Mostly read-only STATUS, with one exception: the playout backend (§9.1 — "one can be moved
 // from its own page"). It sits beside the Tunarr link because they are the same subject — who
@@ -83,10 +83,10 @@ const ChannelAdvanced = ({
         </Text>
       )}
 
-      {/* Playout backend — orphaned until now: §9.1 promised a channel "can be moved from its
-          own page" and no page offered the move, so the per-channel override existed only for a
-          hand-written policy_json. The mock doesn't draw it; it stays because it's the only
-          place the override can be set. It sits beside the Tunarr row: the same subject. */}
+      {/* Playout backend — §9.1 says a channel "can be moved from its own page", and this is
+          that page: without it the per-channel override exists only for a hand-written
+          policy_json. The mock doesn't draw it; it stays because it's the only place the
+          override can be set. It sits beside the Tunarr row: the same subject. */}
       {onPolicyChange && (
         <>
           <Text

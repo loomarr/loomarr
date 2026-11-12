@@ -124,9 +124,9 @@ const SortableLineupRow = ({
   // what decides it is the column the editor sits in, not the viewport) the row becomes a grid:
   // grip and title on top, the seasons under the title, the feedback controls, then remove on its
   // own line at the right with a 44 px target. Every piece auto-places in DOM order, so what you
-  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899; remove used to
-  // sit top right, beside the title, while still being last in Tab order). From `@md` up the
-  // wrappers below dissolve (`contents`) or turn back into the one flex line this row always was.
+  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899: remove is last
+  // in Tab order, so it is never drawn top right beside the title). From `@md` up the
+  // wrappers below dissolve (`contents`) so the row is one flex line.
   return (
     <li
       ref={setNodeRef}

@@ -44,8 +44,8 @@ import {
 } from "../guide-window";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
-// shared axis. It answers both halves of the question the old card list and this grid used to
-// split between them: "what do I have" and "what is on".
+// shared axis. It answers both halves of the question in one place: "what do I have" and
+// "what is on".
 //
 // It is also the door to **origination**: `✦ Add a channel` in the header and the "Dead air" empty
 // state both go to the request page (/requests/new), where describe→approve lives under Requests.
@@ -117,8 +117,8 @@ const reconcileSelection = (
   return kept ?? (first ? guideSelectionForChannel(layout, first, atMs) : undefined);
 };
 
-// The programme card's art: the same ServedImage (ThumbHash placeholder, sized sources) the old
-// detail card used, contained rather than cropped so it still identifies what will air.
+// The programme card's art: the shared ServedImage (ThumbHash placeholder, sized sources),
+// contained rather than cropped so it still identifies what will air.
 const renderArtwork = (airing: GuideAiringLayout) =>
   airing.source.thumbImage ? (
     <ServedImage image={airing.source.thumbImage} alt="" sizes="360px" fit="contain" />
@@ -323,7 +323,7 @@ const GuidePage = () => {
     },
     [layout, selected],
   );
-  // A guide row or block tunes its channel (#2088): the channel page now opens on Info, not Watch.
+  // A guide row or block tunes its channel (#2088): the channel page itself opens on Info, not Watch.
   const onOpenChannel = useCallback(
     (id: string) => void navigate({ to: "/watch/$id", params: { id } }),
     [navigate],
@@ -528,16 +528,14 @@ const GuidePage = () => {
         // one next action (§6) goes to the same request page the header links to, worded for
         // who is asking.
         //
-        // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
-        // channel" while the header said "Add a channel" and the panel that opened was
-        // titled "Add a channel" — three names for one handler. One action, one name.
+        // ⚠ The LABEL matches the header's exactly, and the panel it opens is titled the same:
+        // one action, one name, never a second wording such as "Describe your first channel".
         // ⚠ No static behind it (#2789): TvStatic is for entry moments only (login, the wizard
         // and the player's tune-in), so a resting page stays still.
         //
-        // A scanline sweeping over the bars was tried first and removed: to register on a
-        // small element it had to be scaled up and brightened, at which point it dominated a
-        // surface whose whole job is to stay calm and point at one button. Tuning it was the
-        // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
+        // No scanline sweeps over the bars either: to register on a small element it has to be
+        // scaled up and brightened, at which point it dominates a surface whose whole job is to
+        // stay calm and point at one button. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
         <div className="flex flex-1 items-center justify-center p-10">
           <EmptyState

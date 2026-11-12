@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
 
 // ChannelIdentityField — an inline-editable channel identity field (name / number) with
-// explicit per-field confirmation. Unlike the old ghost inputs that committed silently on
-// blur, this looks clearly editable, and CHANGING it reveals Save (✓) / Cancel (✕) so the
+// explicit per-field confirmation. Rather than a ghost input that commits silently on blur,
+// this looks clearly editable, and CHANGING it reveals Save (✓) / Cancel (✕) so the
 // operator confirms that one field before it commits. Enter saves, Escape cancels.
 //
 // `onSave` is async: it RESOLVES on success (the field adopts the new value + closes) or

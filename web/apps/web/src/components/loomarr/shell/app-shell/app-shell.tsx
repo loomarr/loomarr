@@ -38,19 +38,19 @@ const PHONE_HEADER_HEIGHT = 49;
 // the product soul; nostalgia stays in the margins (§1).
 // TWO AUTHORED NAVS, not one list filtered by role (§12).
 //
-// This used to be `NAV.filter(i => !i.admin || isAdmin)`, which can only ever present a
-// member with the admin's product minus some entries. A member is not a diminished admin —
-// they arrive to watch and to ask for things — and the same two routes need DIFFERENT NAMES
-// for them: `/suggest` was "Request a channel", `/settings/notifications` is "Notifications". A
-// filter cannot rename, so the shape of the old code made the right IA inexpressible.
+// A role filter (`NAV.filter(i => !i.admin || isAdmin)`) can only ever present a member with
+// the admin's product minus some entries. A member is not a diminished admin — they arrive to
+// watch and to ask for things — and the same routes need DIFFERENT NAMES for them
+// (`/settings/notifications` is "Notifications"). A filter cannot rename, so it cannot express
+// the right IA.
 const ADMIN_NAV: NavItem[] = [
   // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
   // `dashboard`, and so is the route, so bookmarks keep working).
   { to: "/dashboard", label: "Home", icon: "home" },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
-  // one grid. The fold completed when the grid grew the origination affordance the mock always
-  // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
-  // redirects here rather than doors of their own. `Suggest` needs no admin entry because that
+  // one grid. The grid carries the origination affordance the mock specifies — `✦ Add a channel`
+  // in its header — so `/channels` and `/suggest` are redirects here rather than doors of their
+  // own. `Suggest` needs no admin entry because that
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: "schedule" },

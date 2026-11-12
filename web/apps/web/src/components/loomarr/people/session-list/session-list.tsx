@@ -8,8 +8,8 @@ import type { SessionListProps } from "./session-list.type";
 const ALL = "all-sessions";
 
 // SessionList — who is signed in as this user, and the ability to end it (§11: sessions
-// are revocable rows, and disabling a user kills them immediately). Surfaced because
-// revocation was previously something the system did with nothing able to observe it.
+// are revocable rows, and disabling a user kills them immediately). Surfaced so revocation
+// is something an operator can observe, not only something the system does.
 //
 // The caller's own session is labelled rather than hidden: an admin reviewing their
 // account should see every live session, and the label is what stops them from signing

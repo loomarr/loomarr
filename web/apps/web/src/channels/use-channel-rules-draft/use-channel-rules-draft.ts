@@ -100,12 +100,12 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
     // an OMITTED `filler` are preserved server-side), so the draft IS the policy: no merge
     // needed, unlike the filler draft which owns one key.
     //
-    // ⚠ **This used to be safe only by accident.** The draft is seeded from `policy ?? {}`, so
-    // before the page's channel resolves it is the EMPTY object — and applying then sent a policy
-    // with no `filler`, wiping the channel's pins, exclusions and criteria with no way to get them
-    // back (nothing re-proposes an operator's filler selection the way a refine re-suggests a
-    // scope). The server now treats an absent `filler` as "unchanged", so the loss is unreachable
-    // from here regardless of what this hook sends or when.
+    // ⚠ The draft is seeded from `policy ?? {}`, so before the page's channel resolves it is the
+    // EMPTY object, and applying then sends a policy with no `filler`. That is safe only because
+    // the server treats an absent `filler` as "unchanged": the channel's pins, exclusions and
+    // criteria survive regardless of what this hook sends or when. Without that rule the loss
+    // would be unrecoverable (nothing re-proposes an operator's filler selection the way a refine
+    // re-suggests a scope).
     apply: () => {
       setApplying(true);
       void save({ policy: draft }, { success: "Programming rules updated" })

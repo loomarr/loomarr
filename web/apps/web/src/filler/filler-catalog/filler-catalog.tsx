@@ -96,14 +96,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     setInspecting(hash);
   };
   // The clip whose split is awaiting confirmation, by hash (§10 V54 A8). Nothing fires until the
-  // operator confirms — see the dialog for why the old first-click behaviour was a hazard.
+  // operator confirms — see the dialog for why splitting on the first click is a hazard.
   const [splitting, setSplitting] = useState<string>();
   const clipSplit = useClipSplit();
   const { job: splitJob } = clipSplit;
 
-  // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
-  // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
-  // silently show the first hundred clips and call it the catalog.
+  // One page of the catalog (§10 V51d). ⚠ The endpoint caps at 500 and defaults to 100, so an
+  // un-paged catalog would silently show the first hundred clips and call it the catalog.
   const clips = fillerApi.useListFiller(
     catalogListParams({
       q,
@@ -123,11 +122,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     { query: { enabled: Boolean(parentHash) } },
   );
 
-  // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
-  // source is moving onto the Sources tab, where it belongs — a search is something you do to a
-  // source, not a destination of its own — and `GET /v1/filler/discover` is still the route
-  // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
-  // still fires is how a page keeps paying for a feature nobody can reach.
+  // ⚠ No Discover query state here (V35). Searching a source belongs to the Sources tab — a
+  // search is something you do to a source, not a destination of its own — with
+  // `GET /v1/filler/discover` as the route behind it. An unused query that still fires is how a
+  // page keeps paying for a feature nobody can reach.
 
   const selection = useCatalogSelection(resultScope);
   // Paging (§10 V51d).

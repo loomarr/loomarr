@@ -53,8 +53,8 @@ const hasDetails = (intent?: Intent): boolean =>
 // The hero (§3) plus the constraints §13 calls "intent-writing hints": era, tone,
 // runtime target, and an acquisition cap. They stay behind a disclosure because the
 // blank-page problem is solved by ONE good sentence, not by a form — but they are here,
-// and they now actually reach the server (`runtimeTargetMin` was unreachable until the
-// submit body was typed from the domain).
+// and they reach the server because the submit body is typed from the domain (an untyped
+// body can silently drop a field such as `runtimeTargetMin`).
 const IntentForm = ({
   initialDescription = "",
   initialIntent,

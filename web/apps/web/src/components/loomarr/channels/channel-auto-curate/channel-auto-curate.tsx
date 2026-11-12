@@ -7,11 +7,11 @@ import type { ChannelAutoCurateProps } from "./channel-auto-curate.type";
 
 // ChannelAutoCurate — the per-channel auto-curate opt-in (programming-design.md §8.2).
 //
-// ORPHANED until now, and for a structural reason worth keeping written down: **the opt-in IS
-// the object's presence.** `policy.autoCurate` is a `*AutoCurate` — nil means off, and a
+// Its own component for a structural reason worth keeping written down: **the opt-in IS the
+// object's presence.** `policy.autoCurate` is a `*AutoCurate` — nil means off, and a
 // zero-value (non-nil) object means "opted in, inherit both global thresholds". So there is no
 // boolean field to bind a checkbox to; the checkbox has to CONSTRUCT `{}` or DELETE the object.
-// A generic policy field editor could never reach it, which is exactly why nothing did.
+// A generic policy field editor cannot reach it.
 //
 // The opt-out is safe because PATCH /v1/channels/{id} replaces the policy wholesale
 // (schedule.MergeFromOperator: `out := incoming`, only `Applied` is force-preserved). Sending a

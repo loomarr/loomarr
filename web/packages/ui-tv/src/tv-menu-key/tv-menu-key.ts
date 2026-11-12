@@ -12,7 +12,7 @@ interface TvPlatform {
   isTV: boolean;
 }
 
-/** tvOS is iOS on a TV; react-native-tvos 0.88's types no longer declare `Platform.isTVOS`. */
+/** tvOS is iOS on a TV; react-native-tvos 0.88's types do not declare `Platform.isTVOS`. */
 const isTvOS = (platform: TvPlatform = Platform): boolean => platform.OS === "ios" && platform.isTV;
 
 /**

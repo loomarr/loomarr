@@ -17,9 +17,9 @@ import type { AdvancedSettingsTableProps } from "./advanced-settings-table.type"
 // are carrying.
 //
 // ⚠ The EDITING half is not a nicety — it is load-bearing. `GroupAdvanced` holds 19 keys (job
-// schedules, TTLs, the reconcile interval) whose only editor was the old "Advanced" page, and
-// V9 folded that page into this one. A read-only table here — which is what the v2 mock draws —
-// would have left all 19 uneditable, with nothing on screen saying so. Rows edit through the
+// schedules, TTLs, the reconcile interval) whose only editor is this table (V9: there is no
+// separate "Advanced" page). A read-only table here — which is what the v2 mock draws — would
+// leave all 19 uneditable, with nothing on screen saying so. Rows edit through the
 // same `SettingField` the other pages use (in `compact` mode) and stage into the same cross-tab
 // save bar, so env-pinned locking and the secret replace-flow behave identically.
 
