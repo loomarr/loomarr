@@ -50,8 +50,8 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       aria-label={`Preview ${clip.name}`}
       className="bg-static-800 focus-visible:ring-ring h-[30px] w-[54px] overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:outline-none"
     >
-      {/* ⚠ ONE path since V52 phase 8 — the legacy `/v1/filler/thumb/{hash}` fallback retired with
-          its route. A clip whose artwork the adoption job has not reached yet renders the empty
+      {/* ⚠ ONE path (V52 phase 8): the artwork is an image-service image, with no thumbnail-route
+          fallback. A clip whose artwork the adoption job has not reached yet renders the empty
           box above, which is the same honest "no frame" state as a clip that never had one. */}
       {clip.thumbImage && <ServedImage image={clip.thumbImage} alt="" sizes="54px" />}
     </button>

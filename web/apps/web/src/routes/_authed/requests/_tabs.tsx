@@ -13,7 +13,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRouteContent } from "@/lib/use-route-content";
 import { ensureRequests, useRequests } from "@/queue/use-requests";
 
-// Requests — what you've asked for, and anything that needs you (#1405; this was "Queue"). Three
+// Requests — what you've asked for, and anything that needs you (#1405; `/queue` redirects here). Three
 // tabs, each its own PATH so a tab can be linked and reopened:
 //   Needs you    — approvals waiting on an admin, and your own requests that couldn't be built
 //   In progress  — every unfinished request, with one status line

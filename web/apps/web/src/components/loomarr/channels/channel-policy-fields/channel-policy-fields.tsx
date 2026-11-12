@@ -266,9 +266,9 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Unrated titles — the safety PAIR to the ceiling, and orphaned until now: the gate has
-          always been enforced (and reported in the exclusion report) while nothing could choose
-          it, so an operator could see "3 skipped: unrated" and had no way to say "allow them".
+      {/* Unrated titles — the safety PAIR to the ceiling: the gate is always enforced (and
+          reported in the exclusion report), so an operator who sees "3 skipped: unrated" needs
+          this to say "allow them".
           Sits beside the ceiling because its default is DERIVED from it. */}
       {showScope && (
         <PolicyField
@@ -433,8 +433,8 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Longest programme — orphaned until now: the backend has filtered on runtimeMax
-          since the scope policy existed, and nothing could set it. Useful for a channel
+      {/* Longest programme — the backend filters on runtimeMax, and this is the field that
+          sets it. Useful for a channel
           that should stay to half-hour episodes and never pull in a three-hour film. */}
       {showScope && (
         <PolicyField
@@ -469,8 +469,8 @@ const ChannelPolicyFields = ({
 
       {/* Repeat spacing — commit-on-blur duration strings, one field per window so each shows
           its own source and Reset. Series gap + block cap are the OTHER half of separation
-          (§3). They were orphaned: the relaxation ladder narrates them in Diagnostics ("series
-          gap was 2h") while nothing could set them. */}
+          (§3). The relaxation ladder narrates them in Diagnostics ("series gap was 2h"), and
+          these fields are what set them. */}
       {showOrdering &&
         DURATION_FIELDS.map(({ field, id, label, help }) => (
           <PolicyField key={field} id={id} htmlFor={id} label={label} help={help} {...source(field)}>

@@ -14,8 +14,8 @@ import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import type { CurrentLineupItem, RefineReviewProps } from "./refine-review.type";
 
 // --- programming-policy deltas (§8.2) --------------------------------------------------
-// A refine can change what the LLM owns (scope/audience/ordering/seasonal). Those changes
-// used to apply invisibly; showing them here is the visible half of the operator-dirty fix.
+// A refine can change what the LLM owns (scope/audience/ordering/seasonal). Shown here so
+// none applies invisibly; this is the visible half of operator-dirty stickiness.
 // A field the operator PINNED is shown as "kept" — the refine can't overwrite it.
 interface PolicyDelta {
   label: string;

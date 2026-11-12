@@ -4,8 +4,8 @@ import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
 // WatchLine — the web mock's `watchLine` (#1659): a plain line under the Filler page's
 // description, with a 7px status dot. The mock set it in mono; it is a sentence, and mono is for
-// channel numbers and clocks (#2778), so it is in the body face (#3412). It was a bordered pill at the header's top right (§10
-// V38c); the web mock draws it unboxed under the description, so it is a line now.
+// channel numbers and clocks (#2778), so it is in the body face (#3412). It is a line, not a bordered pill at the header's top
+// right (§10 V38c): the web mock draws it unboxed under the description.
 //
 // ⚠ **The dot's colour follows the server's health verdict.** The web mock does the same (green and
 // pulsing when healthy, caution and still when not). Before it did, a static mock drew the dot

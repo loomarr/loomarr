@@ -26,9 +26,8 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // fork the flow or the approval gate: approve is the same admin-only useApproveProposal, and a
 // member sees the review without the controls (§7/§11).
 //
-// This is now the app's ONLY origination surface — the standalone `/suggest` page folded away
-// once this panel moved onto the channels surface. Nothing was stranded with it: the
-// cross-user approval queue had already moved into `/queue`'s tabs (V27).
+// This is the app's ONLY origination surface — there is no standalone `/suggest` page. The
+// cross-user approval queue lives in `/queue`'s tabs (V27), not here.
 //
 // One expanding surface over the run's three states: idle → describe form; running → live
 // phases; a landed proposal → review with Approve/Deny. A successful approve or "Create
@@ -185,8 +184,8 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
 
       {/* Running — the live generation phases. */}
       {/* Before the first frame lands the model is already loading and thinking, so
-          "reasoning" is the honest default. It used to fall back to "searching", which
-          announced a library search that had not started and could not be the slow part. */}
+          "reasoning" is the honest default. "searching" would announce a library search that
+          has not started and cannot be the slow part. */}
       {run.isRunning && !proposal && (
         <GenerationProgress
           phase={run.phase ?? "reasoning"}

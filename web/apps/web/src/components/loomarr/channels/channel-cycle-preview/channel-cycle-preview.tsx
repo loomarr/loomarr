@@ -187,11 +187,11 @@ const REASON_LABEL: Record<ExcludedItemDTOReason, string> = {
 const isSafetyReason = (reason: ExcludedItemDTOReason): boolean =>
   reason === ExcludedItemDTOReason.over_ceiling || reason === ExcludedItemDTOReason.unrated;
 
-// ExcludedPanel — "why isn't X on my channel", finally answerable (#263).
+// ExcludedPanel — "why isn't X on my channel", answered (#263).
 //
-// ⚠ This report was computed by every single reconcile and thrown away by every caller. The
-// scheduler always knew which titles it refused and why; nothing ever showed anyone. Diagnosing
-// one over-ceiling episode previously meant querying the media server by hand.
+// ⚠ Every reconcile computes this report: the scheduler knows which titles it refused and why.
+// This panel is the only place anyone sees it; without it, diagnosing one over-ceiling episode
+// means querying the media server by hand.
 //
 // Collapsed by default: on a healthy channel it is a footnote, and a channel with a tight era
 // filter can legitimately refuse dozens of titles — an expanded list would bury the schedule

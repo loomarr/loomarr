@@ -54,10 +54,10 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
   const blockingError = taken ? undefined : (bootstrap.error ?? login.error);
 
   // ⚠ ALREADY DONE ⇒ SHOW THE OUTCOME, NEVER THE FORM. Bootstrap runs exactly once, so an
-  // operator who walks Back to this step (or deep-links to it) was being offered a full
+  // operator who walks Back to this step (or deep-links to it) must not be offered a full
   // username/password/confirm form for an action guaranteed to 409 — a dead-end they could
-  // only discover by filling it in and submitting. The backend was never at risk; the defect
-  // was the UI advertising an impossible action.
+  // only discover by filling it in and submitting. The backend is not at risk; the hazard is
+  // the UI advertising an impossible action.
   //
   // Keyed on the SESSION rather than on `taken`, which is only set by a failed submit: the
   // point is to never reach that submit. The owner comes from the route, which resolved the

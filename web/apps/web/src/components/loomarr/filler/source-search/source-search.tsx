@@ -12,7 +12,7 @@ import type { SourceSearchProps } from "./source-search.type";
 // distinction is invisible from the rows themselves and an operator browsing a collection must
 // not fear triggering a multi-gigabyte walk.
 //
-// ⚠ These rows are deliberately THINNER than the retired Discover cards: no description, and
+// ⚠ These rows are deliberately THIN: no description, and
 // **no licence badge**. Build plan §6.3 measured ~92% of archive.org items as declaring no
 // licence at all, so a badge would be empty on almost every row — and an absent licence means
 // UNKNOWN, never "public domain", which a chip cannot say.

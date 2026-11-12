@@ -19,9 +19,9 @@ import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal"
 import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
 import { cn } from "@/lib/utils";
 
-// ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
-// what used to be three peer tabs (Lineup, Programming rules, Refine with AI) into ONE surface
-// with a visible hierarchy, so an operator stops guessing which tab shapes what:
+// ChannelProgramming — the unified "what plays, and when" surface (design.md §12). Lineup,
+// Programming rules and Refine with AI are ONE surface with a visible hierarchy rather than
+// three peer tabs, so an operator never guesses which tab shapes what:
 //
 //   Refine with AI (the header affordance — describe a change, review a diff, apply)
 //   1. What plays      — the deck (lineup) + the content it's limited to (era + ceiling)
@@ -37,8 +37,8 @@ import { cn } from "@/lib/utils";
 // intermediate state is a different schedule. Everything else here — lineup, era/ceiling,
 // ordering, seasonal, auto-curate — is self-contained and stays seamless.
 //
-// The single cycle preview replaces the old split between the series-level lineup and a
-// separate episode-level "preview what airs" list. It follows the rules DRAFT while one is
+// One cycle preview serves both the series-level lineup and the episode-level "what airs"
+// question, rather than two separate lists. It follows the rules DRAFT while one is
 // dirty, so what you are looking at is what applying would ship.
 
 interface ChannelProgrammingProps {
@@ -92,7 +92,7 @@ const ChannelProgramming = ({
   // surface keeps saving inline through `onPolicyChange`.
   const rules = useChannelRulesDraft(channelId, policy);
 
-  // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
+  // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor never
   // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
   // it lands (a gate below), so its drafts are never derived against an empty vocabulary.
   const vocabQuery = channelsApi.useGetProgrammingVocabulary({

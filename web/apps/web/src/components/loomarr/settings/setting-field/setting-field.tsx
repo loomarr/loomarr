@@ -100,7 +100,7 @@ const SettingField = ({
   const [editingCustomSchedule, setEditingCustomSchedule] = useState(false);
   const id = `setting-${entry.key}`;
   const label = entry.label || humanizeSettingKey(entry.key);
-  // `pinned` is the LOCK STATE, which is no longer the same question as "is this env's key".
+  // `pinned` is the LOCK STATE, which is not the same question as "is this env's key".
   // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
   // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;

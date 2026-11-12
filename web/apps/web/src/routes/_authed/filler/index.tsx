@@ -9,7 +9,7 @@ import { type FillerSearch, validateCatalogSearch } from "@/filler/filler-search
 // Each field is narrowed to a known value / dropped, so a hand-typed or stale link can't
 // push garbage into the filler list query.
 //
-// ⚠ `tab` is GONE from this type (V-nav-paths): which section shows is now the PATH
+// ⚠ `tab` is NOT in this type (V-nav-paths): which section shows is the PATH
 // (`/filler`, `/filler/incoming`, `/filler/sources`), matching Settings. These four stay
 // query params because they are catalog FILTERS, not navigation — a filtered/searched view
 // needs to be shareable independent of which section it was reached from.
@@ -27,14 +27,14 @@ const Route = createFileRoute("/_authed/filler/")({
     ...(search.tab === "incoming" || search.tab === "sources" ? { tab: search.tab } : {}),
   }),
   // ⚠ `?tab=incoming` / `?tab=sources` are old bookmarks and shared links (pre-nav-paths). The
-  // section is a path segment now, so they redirect to it, carrying every other search param
+  // section is a path segment, so they redirect to it, carrying every other search param
   // through unchanged.
   //
   // ⚠ **In `beforeLoad`, NOT in `validateSearch`.** Throwing a `redirect` from the validator
   // does not navigate — the router is still parsing the URL at that point and treats the throw
-  // as a parse failure, so the page rendered BLANK at the old address. That is the exact
-  // bookmark-compatibility promise this code exists to keep, and every unit test passed while
-  // it was broken; only loading the URL in a browser showed it.
+  // as a parse failure, so the page renders BLANK at the old address. That breaks the exact
+  // bookmark-compatibility promise this code exists to keep, and unit tests pass regardless;
+  // only loading the URL in a browser shows it.
   beforeLoad: ({ search }) => {
     if (search.tab) {
       const { tab, ...rest } = search;

@@ -5,11 +5,11 @@ import { useSettingsDraft } from "../settings-draft";
 
 // The Settings edit buffer, owned by the LAYOUT rather than a page (config-design §5, V9).
 //
-// ⚠ This is the whole point of the cross-tab save bar. `SettingsPage` used to hold `edits` in
-// its own `useState`, so switching tabs unmounted the page and silently discarded them — an
-// operator who edited a connection, stepped over to check a default, and came back found their
-// first edit gone with nothing having said so. Hoisting the buffer above the `<Outlet />` makes
-// the tab bar navigation rather than a commit boundary.
+// ⚠ This is the whole point of the cross-tab save bar. Edits held in a page's own `useState`
+// would be silently discarded when switching tabs unmounts the page — an operator who edits a
+// connection, steps over to check a default, and comes back would find their first edit gone
+// with nothing having said so. Holding the buffer above the `<Outlet />` makes the tab bar
+// navigation rather than a commit boundary.
 //
 // One map keyed by setting id, one bar, one Save. Per-tab buffers were the alternative and are
 // worse: the bar's "3 unsaved" would then mean something different depending on where you were

@@ -211,7 +211,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
 
       {/* Names the blocks that actually gate THIS install. Reading the derived set rather
           than a hardcoded pair is what keeps the sentence honest on the internal path, where
-          it would otherwise promise the operator a Tunarr requirement that no longer exists. */}
+          it would otherwise promise the operator a Tunarr requirement that does not exist there. */}
       {only === undefined && (
         <Text as="p" className="mt-1" textRole="hint" tone="secondary">
           {requiredChecks(backend)

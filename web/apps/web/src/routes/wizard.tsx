@@ -96,13 +96,13 @@ const COPY: Record<string, { title: string; description: string }> = {
 // A step the operator may pass on. Skipped reads neutral, never red (§6).
 //
 // The blocking set is "the shortest honest path to a live channel" (§13, config-design §6),
-// which since §9.1 depends on the playout backend (see requiredChecks). A step that gates on
+// which depends on the playout backend (§9.1, see requiredChecks). A step that gates on
 // a check the operator cannot satisfy is a dead end, because the wizard offers only
 // Back/Continue and the rail goes back, never ahead: they'd be stranded on that screen for good.
-// It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling slots
-// with no programme, and hardest of all on `tunarr`, which an internal-playout install can
-// never turn green. (Live TV is no longer a step, it auto-wires on the Tunarr save, so it
-// can't strand anyone here either.)
+// That matters most for `library`, whose entire purpose (§6) is to stop channels scheduling slots
+// with no programme, and most of all for `tunarr`, which an internal-playout install can
+// never turn green. (Live TV is not a step: it auto-wires on the Tunarr save, so it can't
+// strand anyone here either.)
 const SKIPPABLE = new Set(["media", "library", "users"]);
 
 // Skippable steps whose Continue still waits for their own work, as the mock draws it: Skip is

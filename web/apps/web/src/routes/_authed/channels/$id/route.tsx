@@ -79,7 +79,7 @@ const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
   // (`tunarrId`); internal-playout channels — the DEFAULT backend, which never gets a
   // `tunarrId` — signal it with `inAppPlayable`, the server-resolved surfability truth
   // (§9.1 V57: effective backend plays internally AND the lifecycle is reconcilable). Keying
-  // "On air" on `tunarrId` alone told every working internal-playout channel it was "Not on
+  // "On air" on `tunarrId` alone would tell every working internal-playout channel it was "Not on
   // air yet — connect Tunarr", contradicting reality at the first-channel "aha" moment.
   const pushed = Boolean(ch.tunarrId);
   const broadcasting = pushed || ch.inAppPlayable;
@@ -101,8 +101,8 @@ const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
     };
   }
   if (ch.status === "live" && broadcasting && scheduled === false) {
-    // Live, but the guide has nothing for it now or next (#2728): On air here sat beside an empty
-    // guide row and "Programme information isn't available".
+    // Live, but the guide has nothing for it now or next (#2728): On air here would sit beside an
+    // empty guide row and "Programme information isn't available".
     return {
       dot: "off",
       label: "No schedule yet",
@@ -129,7 +129,7 @@ const ChannelDetailLayout = () => {
   const navigate = Route.useNavigate();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
+  // ⚠ From `useLocation`, not `?section=`: which panel is active is the PATH.
   const { pathname } = useLocation();
   // Every section renders in the one scroller below, so a new tab would open at the last tab's
   // offset (#2744). Each section starts at its own top.
@@ -324,7 +324,7 @@ const ChannelDetailLayout = () => {
             )}
           </Stack>
         </div>
-        {/* Watch opens the full-bleed player (#2088); it replaced the Watch tab. The media-server
+        {/* Watch opens the full-bleed player (#2088); there is no Watch tab. The media-server
             hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
             TV link, so the viewer goes on from there. */}
         <Surface
@@ -359,7 +359,7 @@ const ChannelDetailLayout = () => {
         // One reachable section ⇒ no bar (a lone tab is chrome, not navigation).
         if (visible.length < 2) return null;
         // ⚠ No fallback tab. An admin's bar lights only the section the path names; lighting Channel
-        // info for any other path (the old `?? "info"`) said they were on a page they weren't (#1987).
+        // info for any other path (a `?? "info"` fallback) says they are on a page they aren't (#1987).
         return (
           // min-w-0 + overflow-x-auto: on a phone the four tabs scroll sideways inside this row
           // instead of widening the page past the viewport (#3404).

@@ -9,10 +9,10 @@ import { useMemo } from "react";
 // override is never hidden.
 //
 // ⚠ **It asks for exactly the ids it holds** (`hashes`, §10 V51d) rather than loading the catalog
-// and building a map. It used to do the latter, which paging made silently WRONG rather than
-// merely wasteful: with a 100-row default page, an install with more clips than that would resolve
-// the pins that happened to land on page one and render the rest as bare hashes — an override that
-// looks like it has gone missing.
+// and building a map. Paging makes the map silently WRONG rather than merely wasteful: with a
+// 100-row default page, an install with more clips than that would resolve the pins that happen to
+// land on page one and render the rest as bare hashes — an override that looks like it has gone
+// missing.
 //
 // ⚠ Held and removed clips are deliberately NOT opted into. A pinned clip that was later removed
 // from the catalog SHOULD fail to resolve: the fallback renders the raw id, which is the honest

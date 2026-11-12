@@ -8,9 +8,9 @@ import { ServiceControl } from "@/components/loomarr/dashboard/service-control";
 import { ServicesPanel } from "@/components/loomarr/dashboard/services-panel";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 
-// ServerStatus — the connected services, recent activity and the restart control, moved here from
-// the old Dashboard when Home replaced it (#1659, Q-H7: the operator panels keep working, on This
-// server's routes). Admin-only, like the page that hosts it.
+// ServerStatus — the connected services, recent activity and the restart control: the operator
+// panels, on This server's routes rather than on Home (#1659, Q-H7). Admin-only, like the page that
+// hosts it.
 const ServerStatus = () => {
   const navigate = useNavigate();
   // ⚠ Services POLLS (30s); the feed does NOT (§12). A probe result only exists because the

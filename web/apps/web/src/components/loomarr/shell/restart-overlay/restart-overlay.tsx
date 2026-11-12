@@ -17,19 +17,17 @@ import type { RestartOverlayProps } from "./restart-overlay.type";
 // return, because a spinner that simply vanishes leaves "it worked" and "it never
 // restarted" indistinguishable.
 //
-// ⚠ **THIS IS A STATUS REGION, NOT A DIALOG — and it used to claim otherwise.** It carried
-// `role="alertdialog" aria-modal="true"` on a plain `fixed inset-0` div, with none of the
-// behaviour either attribute promises: no portal, no focus trap, no focus restore, no scroll
-// lock, no inert background. A screen reader was told the rest of the page was inert; Tab walked
-// straight into it.
+// ⚠ **THIS IS A STATUS REGION, NOT A DIALOG — and must not claim otherwise.** `role="alertdialog"
+// aria-modal="true"` on a plain `fixed inset-0` div promises behaviour it does not have: no
+// portal, no focus trap, no focus restore, no scroll lock, no inert background. A screen reader
+// would be told the rest of the page is inert while Tab walks straight into it.
 //
-// V50b was going to make the claim true by rebuilding this on a real AlertDialog. It should not,
-// for two reasons that only surfaced on reading it: `alertdialog` is defined for interrupting with
-// a REQUIRED RESPONSE and requires a focusable element, and this overlay has no interactive
-// content in any of its three states; and the "came back" state is deliberately
-// `pointer-events-none` so a lingering confirmation cannot swallow a click on the app behind it,
-// which a modal would forbid. Dropping the false attributes is the honest fix — a real modal would
-// have satisfied the audit and broken the interaction.
+// Nor should it be rebuilt on a real AlertDialog (V50b), for two reasons: `alertdialog` is
+// defined for interrupting with a REQUIRED RESPONSE and requires a focusable element, and this
+// overlay has no interactive content in any of its three states; and the "came back" state is
+// deliberately `pointer-events-none` so a lingering confirmation cannot swallow a click on the app
+// behind it, which a modal would forbid. A real modal would satisfy an audit and break the
+// interaction.
 //
 // `alert` (assertive) when the restart FAILED, because that is an interruption worth one; `status`
 // (polite) otherwise, so a routine restart does not talk over whatever the operator is reading.

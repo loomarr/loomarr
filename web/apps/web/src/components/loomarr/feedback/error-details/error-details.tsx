@@ -14,8 +14,8 @@ import type { ErrorDetailsProps } from "./error-details.type";
 //
 // ⚠ A native `<details>`, not a hand-rolled disclosure. It is keyboard-operable and announced
 // as an expandable region by screen readers with no ARIA of our own, and it survives a page
-// print. The repo has been bitten before by hand-rolled widgets that looked right and had no
-// keyboard path (SearchCommand's arrow keys, §12 drift `:757`).
+// print. A hand-rolled widget can look right and have no keyboard path (SearchCommand's arrow
+// keys, §12 drift `:757`).
 const ErrorDetails = ({ message, showLabel, hideLabel, className }: ErrorDetailsProps) => {
   if (!message) return null;
   return (
