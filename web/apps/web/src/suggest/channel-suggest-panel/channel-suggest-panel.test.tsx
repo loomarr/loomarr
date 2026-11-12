@@ -3,6 +3,7 @@ import {
   getApproveProposalMockHandler,
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
+  getHouseholdMockHandler,
   getListChannelIdeasMockHandler,
   getMeMockHandler,
   getResolveMovieCollectionsMockHandler,
@@ -197,6 +198,7 @@ const renderPanel = (onCreated: (id: string) => void) => {
 describe("ChannelSuggestPanel", () => {
   beforeEach(() => {
     server.use(
+      getHouseholdMockHandler({ timeZone: "" }),
       getResolveMovieCollectionsMockHandler({ collections: [], complete: true }),
       getGetProposalOutlookMockHandler(
         outlook({

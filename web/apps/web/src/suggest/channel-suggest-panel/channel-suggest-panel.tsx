@@ -7,6 +7,7 @@ import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
@@ -83,6 +84,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
     proposal: proposal?.proposal,
     edit,
   });
+  const timeZone = useHouseholdTimeZone();
   const startFresh = () => {
     setEdit(undefined);
     flow.startFresh();
@@ -255,6 +257,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                 : undefined
             }
             assessmentPending={proposal.status === "submitted" && outlook.isFetching}
+            assessmentTimeZone={timeZone}
             status={edit && proposal.status === "submitted" ? "partially-edited" : proposal.status}
             selfService={isAdmin}
             busy={approve.isPending || deny.isPending}

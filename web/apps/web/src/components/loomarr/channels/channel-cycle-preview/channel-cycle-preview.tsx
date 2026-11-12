@@ -6,8 +6,10 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { guideWallClock, guideWallTime } from "@loomarr/core/guide";
 import { Action, Badge, DateField, Disclosure, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
@@ -25,36 +27,36 @@ const PREVIEW_DEBOUNCE_MS = 300;
 
 interface TimePreset {
   label: string;
-  at: () => string;
+  at: (timeZone?: string) => string;
 }
 
 const TIME_PRESETS: TimePreset[] = [
   { label: "Now", at: () => "" },
-  { label: "Sat 9am", at: () => nextWeekdayAt(6, 9).toISOString() },
-  { label: "Weekday primetime", at: () => nextWeekdayAt(2, 20).toISOString() },
-  { label: "Christmas morning", at: () => nextMonthDayAt(11, 25, 9).toISOString() },
-  { label: "Halloween night", at: () => nextMonthDayAt(9, 31, 20).toISOString() },
+  { label: "Sat 9am", at: (tz) => nextWeekdayAt(6, 9, new Date(), tz).toISOString() },
+  { label: "Weekday primetime", at: (tz) => nextWeekdayAt(2, 20, new Date(), tz).toISOString() },
+  { label: "Christmas morning", at: (tz) => nextMonthDayAt(11, 25, 9, new Date(), tz).toISOString() },
+  { label: "Halloween night", at: (tz) => nextMonthDayAt(9, 31, 20, new Date(), tz).toISOString() },
 ];
 
-// toDatetimeLocalValue / fromDatetimeLocalValue — convert between an RFC3339 `at` string
-// and the value a <input type="datetime-local"> wants/produces (no timezone suffix,
-// local wall-clock, minute precision). The preview evaluates against the CONTAINER
-// wall-clock server-side, so what the picker shows is "local browser time" as a proxy —
-// close enough for "what airs Saturday 9am", and the resolved `at` echoed back in the
-// response is the authority on what was actually evaluated.
-const toDatetimeLocalValue = (at: string): string => {
-  if (!at) return "";
-  const d = new Date(at);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+// toDatetimeLocalValue / fromDatetimeLocalValue — convert between an RFC3339 `at` string and
+// the value a datetime-local field wants and produces (no zone suffix, minute precision). The
+// field reads in the household's wall clock, the clock the server evaluates the preview on, so
+// "Saturday 9am" means 9am at home even from a phone in another zone. An undefined zone (not yet
+// read) is the device's own.
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const toDatetimeLocalValue = (at: string, timeZone?: string): string => {
+  const ms = at ? Date.parse(at) : Number.NaN;
+  if (Number.isNaN(ms)) return "";
+  const w = guideWallClock(ms, timeZone);
+  return `${w.year}-${pad(w.month)}-${pad(w.day)}T${pad(w.hour)}:${pad(w.minute)}`;
 };
 
-const fromDatetimeLocalValue = (v: string): string => {
-  if (!v) return "";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString();
+const fromDatetimeLocalValue = (v: string, timeZone?: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v);
+  if (!m) return "";
+  const [year, month, day, hour, minute] = m.slice(1).map(Number) as [number, number, number, number, number];
+  return new Date(guideWallTime(year, month, day, hour, minute, timeZone)).toISOString();
 };
 
 // humanWindow — windowMs (0 = whole run) as a short horizon phrase.
@@ -309,6 +311,7 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
 // active-rule attribution is the most prominent thing on the panel, not a footnote.
 const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: ChannelCyclePreviewProps) => {
   const [at, setAt] = useState("");
+  const timeZone = useHouseholdTimeZone();
 
   // ⚠ **The draft REPLACES the saved preview while editing, rather than sitting beside it.**
   // Two panes would make the reader diff them; one pane that always answers "what would air
@@ -373,13 +376,13 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           id="cycle-preview-at"
           kind="datetime"
           label="At"
-          onValueChange={(value) => setAt(fromDatetimeLocalValue(value))}
-          value={toDatetimeLocalValue(at)}
+          onValueChange={(value) => setAt(fromDatetimeLocalValue(value, timeZone))}
+          value={toDatetimeLocalValue(at, timeZone)}
           width={224}
         />
         <Stack className="pb-0.5" direction="row" gap="1.5" wrap>
           {TIME_PRESETS.map((preset) => (
-            <Action key={preset.label} onPress={() => setAt(preset.at())} variant="outline">
+            <Action key={preset.label} onPress={() => setAt(preset.at(timeZone))} variant="outline">
               {preset.label}
             </Action>
           ))}

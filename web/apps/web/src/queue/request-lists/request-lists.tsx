@@ -8,6 +8,7 @@ import { CardAction, ListGroup } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useRouteContent } from "@/lib/use-route-content";
@@ -35,14 +36,17 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
 };
 
 // The date reads relative, like the rest of the app; the full date shows on hover and the `<time>`
-// carries it machine-readable.
-const When = ({ at, verb }: { at: string; verb: string }) => (
-  <Text textRole="cardMeta" tone="secondary">
-    <time dateTime={at} title={new Date(at).toLocaleString()}>
-      {verb} {formatRelative(at)}
-    </time>
-  </Text>
-);
+// carries it machine-readable. The full date is on the household's clock, as the Guide tells it.
+const When = ({ at, verb }: { at: string; verb: string }) => {
+  const timeZone = useHouseholdTimeZone();
+  return (
+    <Text textRole="cardMeta" tone="secondary">
+      <time dateTime={at} title={new Date(at).toLocaleString(undefined, { timeZone })}>
+        {verb} {formatRelative(at)}
+      </time>
+    </Text>
+  );
+};
 
 // The title as a link to the request's detail, for a row whose one action goes somewhere else.
 const DetailLink = ({ jobId, title }: { jobId: string; title: string }) => (

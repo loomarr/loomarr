@@ -73,6 +73,20 @@ const zonedTime = (year: number, month: number, day: number, hour: number, timeZ
   return matches.length ? Math.min(...matches) : Math.max(first, second);
 };
 
+// The household's wall-clock date and time at a moment (month from 1), for a picker that shows and
+// edits times the way the household reads them.
+const guideWallClock = (at: number, timeZone?: string) => wallClock(at, timeZone);
+
+// The moment the household's wall clock reads a date and time, to the minute (month from 1).
+const guideWallTime = (
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone?: string,
+) => zonedTime(year, month, day, hour, timeZone) + minute * 60_000;
+
 // The household's date `days` after the one it is at a moment, as a UTC midnight to count with.
 const wallDate = (at: number, days: number, timeZone?: string): Date => {
   const w = wallClock(at, timeZone);
@@ -452,6 +466,8 @@ export {
   guideSelectionForChannel,
   guideTimeFormatter,
   guideWaitingForTitles,
+  guideWallClock,
+  guideWallTime,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,

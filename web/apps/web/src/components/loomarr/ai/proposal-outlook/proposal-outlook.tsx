@@ -5,6 +5,9 @@ interface ProposalOutlookProps {
   assessment?: Assessment;
   pending?: boolean;
   showDetails?: boolean;
+  // The household's timezone, so "Checked" reads as the Guide tells times; undefined is the
+  // device's own.
+  timeZone?: string;
 }
 
 const duration = (milliseconds: number, lowerBound = false) => {
@@ -25,7 +28,13 @@ const describedDuration = (milliseconds: number, lowerBound = false) =>
 
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
-const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessment }) => (
+const ProposalOutlookDiagnostics = ({
+  assessment: value,
+  timeZone,
+}: {
+  assessment: Assessment;
+  timeZone?: string;
+}) => (
   <Stack className="text-muted-foreground" gap="inline">
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
       {(
@@ -62,6 +71,7 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
       {new Date(value.observedAt).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone,
       })}
       . Changes to your library or schedule can update this result.
     </p>
@@ -71,9 +81,11 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
 const ProposalOutlookDetails = ({
   assessment: value,
   showDiagnostics = true,
+  timeZone,
 }: {
   assessment: Assessment;
   showDiagnostics?: boolean;
+  timeZone?: string;
 }) => (
   <Stack aria-label="What can play now" className="text-muted-foreground" gap="inline" render="section">
     <Text as="h3" textRole="cardLabel">
@@ -111,7 +123,7 @@ const ProposalOutlookDetails = ({
       <details className="mt-1">
         <summary className="w-fit cursor-pointer">How this estimate works</summary>
         <div className="mt-3">
-          <ProposalOutlookDiagnostics assessment={value} />
+          <ProposalOutlookDiagnostics assessment={value} timeZone={timeZone} />
         </div>
       </details>
     )}
@@ -122,6 +134,7 @@ const ProposalOutlook = ({
   assessment: value,
   pending = false,
   showDetails = true,
+  timeZone,
 }: ProposalOutlookProps) => {
   if (pending)
     return (
@@ -164,7 +177,7 @@ const ProposalOutlook = ({
         <details className="mt-2">
           <summary className="text-muted-foreground cursor-pointer">Schedule details</summary>
           <div className="mt-2">
-            <ProposalOutlookDetails assessment={value} />
+            <ProposalOutlookDetails assessment={value} timeZone={timeZone} />
           </div>
         </details>
       )}
