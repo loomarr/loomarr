@@ -7,7 +7,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, ChoiceCard, Field } from "@loomarr/design-system";
+import { Action, Badge, ChoiceCard, Field, Stack } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { useState } from "react";
@@ -177,7 +177,7 @@ const ManualChannelBuilder = ({
           <p className="text-muted-foreground mt-1 text-xs">
             Grounded in your library's genres, decades and the seasonal calendar — no AI involved.
           </p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <Stack className="mt-2" direction="row" gap="inline" wrap>
             {facets.map((idea: ChannelIdeaDTO) => (
               <div key={idea.id} className="min-w-[150px]">
                 <ChoiceCard
@@ -189,7 +189,7 @@ const ManualChannelBuilder = ({
                 />
               </div>
             ))}
-          </div>
+          </Stack>
           {activeFacet && (
             <ul className="border-border mt-2 rounded-md border">
               {activeFacet.titles
@@ -198,9 +198,13 @@ const ManualChannelBuilder = ({
                   return key === "" || !lineupKeys.has(key);
                 })
                 .map((item, index) => (
-                  <li
+                  <Stack
+                    align="center"
+                    className="border-border border-b px-3 py-2 last:border-b-0"
+                    direction="row"
+                    gap="inline"
                     key={provisionKey(item) || `${activeFacet.id}-${index}`}
-                    className="border-border flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
+                    render="li"
                   >
                     <span className="min-w-0 flex-1 text-sm">
                       {item.name} <span className="text-muted-foreground">{item.year}</span>
@@ -214,7 +218,7 @@ const ManualChannelBuilder = ({
                     >
                       Add
                     </Action>
-                  </li>
+                  </Stack>
                 ))}
               {activeFacet.titles.length === 0 && (
                 <li className="text-muted-foreground px-3 py-2 text-sm">
@@ -229,7 +233,7 @@ const ManualChannelBuilder = ({
       <div>
         <p className="text-sm font-medium">Search your library or request new titles</p>
         {adding ? (
-          <div className="mt-2 flex flex-col gap-2">
+          <Stack className="mt-2" gap="inline">
             <SearchCommand
               query={query}
               onQueryChange={setQuery}
@@ -262,7 +266,7 @@ const ManualChannelBuilder = ({
                 }
               }}
             />
-          </div>
+          </Stack>
         ) : (
           <div className="mt-2">
             <Action onPress={() => setAdding(true)} variant="outline">
@@ -273,14 +277,14 @@ const ManualChannelBuilder = ({
       </div>
 
       <div>
-        <div className="flex items-center justify-between">
+        <Stack align="center" direction="row" justify="between">
           <p className="text-sm font-medium">Your lineup</p>
           {lineup.length > 0 && (
             <Action onPress={() => setLineup([])} variant="ghost">
               Clear
             </Action>
           )}
-        </div>
+        </Stack>
         <ul className="border-border mt-2 rounded-md border">
           {lineup.length === 0 ? (
             <li className="text-muted-foreground px-3 py-5 text-center text-sm">
@@ -290,9 +294,13 @@ const ManualChannelBuilder = ({
             lineup.map((item, index) => {
               const key = provisionKey(item) || `unkeyed-${index}`;
               return (
-                <li
+                <Stack
+                  align="center"
+                  className="border-border border-b px-3 py-2 last:border-b-0"
+                  direction="row"
+                  gap="inline"
                   key={key}
-                  className="border-border flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
+                  render="li"
                 >
                   <span className="min-w-0 flex-1 text-sm">
                     {item.name} <span className="text-muted-foreground">{item.year}</span>
@@ -306,7 +314,7 @@ const ManualChannelBuilder = ({
                   >
                     {`Remove ${item.name}`}
                   </Action>
-                </li>
+                </Stack>
               );
             })
           )}
@@ -319,17 +327,24 @@ const ManualChannelBuilder = ({
         </p>
       )}
 
-      <div className="border-border flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+      <Stack
+        align="center"
+        className="border-border border-t pt-4"
+        direction="row"
+        gap="inline"
+        justify="between"
+        wrap
+      >
         <span className="text-muted-foreground text-sm">{summary}</span>
-        <div className="flex gap-2">
+        <Stack direction="row" gap="inline">
           <Action onPress={onCancel} variant="ghost">
             Cancel
           </Action>
           <Action disabled={!canContinue || submit.isPending} onPress={() => void form.handleSubmit()}>
             Continue to review
           </Action>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
     </div>
   );
 };

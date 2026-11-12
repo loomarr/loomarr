@@ -12,6 +12,7 @@ import {
   Icon,
   icons,
   PressableRow,
+  Stack,
   StatusDot,
   type StatusTone,
   Surface,
@@ -135,7 +136,7 @@ const EventDetail = ({
   const copyLog = () => void copy(JSON.stringify(event, null, 2));
   return (
     <div className="bg-muted/20 space-y-4 p-4 text-sm">
-      <div className="flex items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between">
         <div>
           <span className="text-muted-foreground inline-flex items-center gap-2 text-xs">
             <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
@@ -158,8 +159,8 @@ const EventDetail = ({
             {copied ? "Copied log details" : "Copy log details"}
           </Action>
         </Tooltip>
-      </div>
-      <div className="flex flex-wrap gap-2">
+      </Stack>
+      <Stack direction="row" gap="inline" wrap>
         {event.processRunId && onOpenProcess && (
           <Action icon="process" onPress={() => onOpenProcess(event.processRunId ?? "")} variant="outline">
             Open process output
@@ -175,7 +176,7 @@ const EventDetail = ({
             Open related Job
           </Action>
         )}
-      </div>
+      </Stack>
       <details className="border-border bg-background rounded-md border p-3">
         <summary className="cursor-pointer text-sm font-medium">Technical details</summary>
         <div className="mt-3 space-y-3">
@@ -228,7 +229,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
   };
   return (
     <section className="border-border bg-card rounded-lg border p-3" aria-labelledby="verbose-capture-title">
-      <div className="flex flex-wrap items-center gap-3">
+      <Stack align="center" direction="row" gap="control" wrap>
         <div className="min-w-64 flex-1">
           <h3 id="verbose-capture-title" className="text-sm font-medium">
             Verbose capture
@@ -274,7 +275,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
             </Action>
           </>
         )}
-      </div>
+      </Stack>
       {query.isError && <p className="text-onair mt-2 text-xs">Verbose capture is unavailable.</p>}
       {(start.isError || stop.isError) && (
         <p className="text-onair mt-2 text-xs">The capture control could not be updated.</p>
@@ -364,7 +365,7 @@ const ApplicationDiagnostics = ({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4" aria-labelledby="logs-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div>
           <h2 id="logs-title" className="text-lg font-medium">
             Logs
@@ -374,7 +375,7 @@ const ApplicationDiagnostics = ({
             first.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" wrap>
           <Action
             disabled={downloadState === "working"}
             icon="download"
@@ -383,10 +384,10 @@ const ApplicationDiagnostics = ({
           >
             {downloadState === "working" ? "Preparing…" : "Download logs"}
           </Action>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
 
-      <div className="border-border bg-card flex flex-wrap gap-2 rounded-lg border p-3">
+      <Stack className="border-border bg-card rounded-lg border p-3" direction="row" gap="inline" wrap>
         <Surface backgroundColor="transparent" borderWidth={0} flexBasis={256} flexGrow={1} minWidth={0}>
           <SearchField
             label="Search logs"
@@ -421,7 +422,7 @@ const ApplicationDiagnostics = ({
         <Action aria-expanded={advanced} icon="filter" onPress={() => setAdvanced(!advanced)} variant="ghost">
           More filters
         </Action>
-      </div>
+      </Stack>
 
       {advanced && (
         <section

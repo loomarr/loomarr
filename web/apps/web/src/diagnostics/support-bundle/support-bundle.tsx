@@ -16,6 +16,7 @@ import {
   Icon,
   icons,
   LoadingStrip,
+  Stack,
   Toggle,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
@@ -208,7 +209,7 @@ const SupportBundle = ({
 
           <div className="space-y-4">
             <section className="border-border bg-muted/20 rounded-lg border p-4" aria-label="Report scope">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <Stack align="start" direction="row" gap="control" justify="between" wrap>
                 <div>
                   <h3 className="font-medium">Recent diagnostic evidence</h3>
                   <p className="text-muted-foreground mt-1 text-sm">
@@ -229,15 +230,20 @@ const SupportBundle = ({
                     />
                   )}
                 </form.Field>
-              </div>
-              <div className="border-success/30 bg-success/5 mt-4 flex items-start gap-2 rounded-md border p-3">
-                <span className="mt-0.5 flex">
+              </Stack>
+              <Stack
+                align="start"
+                className="border-success/30 bg-success/5 mt-4 rounded-md border p-3"
+                direction="row"
+                gap="inline"
+              >
+                <Stack className="mt-0.5" direction="row" render="span">
                   <Icon decorative glyph={icons.verified} size="compact" tone="success" />
-                </span>
+                </Stack>
                 <p className="text-muted-foreground text-xs">
                   Secrets, URL credentials, and local paths are redacted again while the report is built.
                 </p>
-              </div>
+              </Stack>
             </section>
 
             {busy === "preview" && (
@@ -251,10 +257,10 @@ const SupportBundle = ({
                 className="border-border bg-card space-y-3 rounded-lg border p-4"
                 aria-label="Troubleshooting report summary"
               >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <Stack align="baseline" direction="row" gap="inline" justify="between" wrap>
                   <h3 className="font-medium">What will be included</h3>
                   <span className="font-mono text-sm">About {formatBytes(preview.estimatedBytes)}</span>
-                </div>
+                </Stack>
                 <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                   <div>
                     <dt className="text-muted-foreground">Logs</dt>

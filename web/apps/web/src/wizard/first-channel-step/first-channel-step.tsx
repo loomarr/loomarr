@@ -1,5 +1,5 @@
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, ActivityIndicator, ChoiceCard, Icon, icons } from "@loomarr/design-system";
+import { Action, ActivityIndicator, ChoiceCard, Icon, icons, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useCompleteSetup } from "../use-complete-setup";
@@ -45,7 +45,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
 
       {complete.error != null && <ErrorState error={complete.error} />}
 
-      <ul className="flex flex-col gap-2">
+      <Stack gap="inline" render="ul">
         {CHANNEL_TEMPLATES.map((t) => (
           <li key={t.id}>
             <ChoiceCard
@@ -63,7 +63,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
             />
           </li>
         ))}
-      </ul>
+      </Stack>
 
       <Action
         disabled={complete.isPending}
