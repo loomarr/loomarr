@@ -115,6 +115,8 @@ interface LibrarySettingsProps {
   onMapFolder: (mapping: { authority: LibraryAuthority; authorityPath: string; localPath: string }) => void;
   /** Injected for stories and tests; defaults to the current time. */
   now?: number;
+  /** The household's timezone, which times are told in; the device's while undefined. */
+  timeZone?: string;
 }
 
 /** The setup wizard's Library step: the folders, each with Use this folder, and Check again. */

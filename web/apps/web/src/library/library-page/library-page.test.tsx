@@ -1,4 +1,5 @@
 import {
+  getChannelGuideMockHandler,
   getLibraryStatusMockHandler,
   getListCollectionsMockHandler,
   getListLibraryItemsMockHandler,
@@ -53,7 +54,11 @@ const renderPage = (props: Parameters<typeof LibraryPage>[0] = { filter: "all", 
 describe("LibraryPage", () => {
   beforeEach(() => {
     mocks.navigate.mockReset();
-    server.use(getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }));
+    // The page tells times in the household's zone, which the Guide read carries.
+    server.use(
+      getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
+      getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
+    );
   });
 
   it("lists the titles the server found and opens one", async () => {

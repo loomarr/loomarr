@@ -119,10 +119,13 @@ func (o Origin) Cookie(r *http.Request, name, value, path string, sameSite http.
 // peer is itself a proxy (isTrustedProxy): otherwise the header is the client's own claim, and
 // honoring it would let a client rotate it per request and defeat the per-IP throttle.
 //
-// Proxies append the address they saw to the header, so the left of the list is whatever the client
-// sent. The walk starts at the right, skips hops that are proxies, and takes the first one that is
-// not. A hop that is not an address ends the walk at the peer, and a chain made only of proxies
-// yields its left-most hop (a client on the proxy's own network).
+// A proxy appends the address it saw to the header, so only the right-most hop is the trusted
+// proxy's own observation; everything to its left was written by whoever sent the request. That one
+// hop is the client. A hop further left is never taken, even when the right-most one is a private
+// address: a private address cannot be told apart from a LAN client, and taking the hop to its left
+// would let that client pick its own key. Behind a chain of proxies every client therefore shares
+// the inner proxy's key, a stricter throttle rather than a forgeable one. A right-most hop that is
+// not an address falls back to the peer.
 func (o Origin) ClientIP(r *http.Request) string {
 	peer, ok := peerAddr(r.RemoteAddr)
 	if !ok {
@@ -131,24 +134,19 @@ func (o Origin) ClientIP(r *http.Request) string {
 	if !o.TrustProxy || !isTrustedProxy(peer) {
 		return peer.String()
 	}
-	var hops []string
-	for _, line := range r.Header.Values("X-Forwarded-For") {
-		for hop := range strings.SplitSeq(line, ",") {
-			hops = append(hops, strings.TrimSpace(hop))
-		}
+	values := r.Header.Values("X-Forwarded-For")
+	if len(values) == 0 {
+		return peer.String()
 	}
-	client := peer
-	for i := len(hops) - 1; i >= 0; i-- {
-		addr, err := netip.ParseAddr(hops[i])
-		if err != nil {
-			return peer.String()
-		}
-		client = addr.WithZone("").Unmap()
-		if !isTrustedProxy(client) {
-			break
-		}
+	last := values[len(values)-1]
+	if i := strings.LastIndexByte(last, ','); i >= 0 {
+		last = last[i+1:]
 	}
-	return client.String()
+	addr, err := netip.ParseAddr(strings.TrimSpace(last))
+	if err != nil {
+		return peer.String()
+	}
+	return addr.WithZone("").Unmap().String()
 }
 
 // peerAddr parses a socket address ("host:port", IPv6 bracketed) into a normalized address.

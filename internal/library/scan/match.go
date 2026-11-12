@@ -398,11 +398,11 @@ func posterURL(rec mp.Record) string {
 	return ""
 }
 
-// releaseToken is a word a release name carries after the title: the quality, source, codec or
-// edition. The title ends before the first.
 // leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
 var leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
 
+// releaseToken is a word a release name carries after the title: the quality, source, codec or
+// edition. The title ends before the first one after the year.
 var releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited)$`)
 
 var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
@@ -437,9 +437,17 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	words := strings.FieldsFunc(name, func(r rune) bool {
 		return unicode.IsSpace(r) || strings.ContainsRune("()[]{}_", r)
 	})
+	// Release words follow the year, so one before the year is the title's: "Charlotte's Web (2006)".
+	firstYear := 0
+	for i, w := range words {
+		if i > 0 && releaseYear(strings.SplitN(w, "-", 2)[0]) {
+			firstYear = i
+			break
+		}
+	}
 	cut := len(words)
 	for i, w := range words {
-		if i > 0 && releaseToken.MatchString(strings.SplitN(w, "-", 2)[0]) {
+		if i > firstYear && releaseToken.MatchString(strings.SplitN(w, "-", 2)[0]) {
 			cut = i
 			break
 		}

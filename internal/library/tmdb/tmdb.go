@@ -318,7 +318,13 @@ func blendMediaTypes(movies, series []titlesearch.Candidate, limit int) []titles
 	return out
 }
 
+// maxDiscoverKeywords bounds how many keywords one Discover resolves. Each is a sequential
+// /search/keyword call and the terms are OR'd into with_keywords, so the cap trims recall at worst
+// and keeps one call from turning into thousands of lookups whatever list a caller hands over.
+const maxDiscoverKeywords = 8
+
 func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]int, []string, error) {
+	keywords = keywords[:min(len(keywords), maxDiscoverKeywords)]
 	seen := map[int]bool{}
 	ids := make([]int, 0, len(keywords))
 	names := make([]string, 0, len(keywords))

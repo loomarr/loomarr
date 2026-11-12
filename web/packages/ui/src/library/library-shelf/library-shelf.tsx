@@ -22,11 +22,15 @@ const StatusLine = ({
   onCheckAgain,
   onRescan,
   onOpenSettings,
-}: Pick<LibraryShelfProps, "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings">) => {
+  timeZone,
+}: Pick<
+  LibraryShelfProps,
+  "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings" | "timeZone"
+>) => {
   const scan = scanHeadline(status.scan, status.needsYou || status.health === "folder_empty");
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
-  const waiting = detailsWaiting(status.details, status.scan);
+  const waiting = detailsWaiting(status.details, status.scan, timeZone);
   // What needs the maintainer comes first; the import's own words show only when nothing does.
   // Titles stuck waiting for details come after the folders: Settings says why.
   const alert: [ComponentProps<typeof StatusDot>["tone"], string] | undefined =
@@ -233,6 +237,7 @@ const LibraryShelf = ({
   needs,
   showTitles: showGrid = true,
   collections,
+  timeZone,
 }: LibraryShelfProps) => {
   const fresh = status.health === "needs_folders";
   const onCollections = filter === "collections";
@@ -257,6 +262,7 @@ const LibraryShelf = ({
           onOpenSettings={onOpenSettings}
           onRescan={onRescan}
           status={status}
+          timeZone={timeZone}
         />
       </Stack>
       {fresh ? (

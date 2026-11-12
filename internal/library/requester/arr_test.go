@@ -40,6 +40,18 @@ type arrStub struct {
 	// seriesStats is GET /api/v3/series/{id}'s statistics by series id (Sonarr only); a
 	// missing id answers 404.
 	seriesStats map[int]map[string]any
+	// refused names the read ("qualityprofile" or "rootfolder") that answers 401 with a JSON body.
+	refused string
+}
+
+// refuse answers 401 with the JSON body an arr sends for a bad key, when the stub refuses read.
+func (s *arrStub) refuse(w http.ResponseWriter, read string) bool {
+	if s.refused != read {
+		return false
+	}
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"message":"Unauthorized"}`))
+	return true
 }
 
 func newArrStub(t *testing.T, kind string) *arrStub {
@@ -53,9 +65,15 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"title": "Marigold Protocol", "id": s.lookupID}})
 	})
 	mux.HandleFunc("/api/v3/qualityprofile", func(w http.ResponseWriter, r *http.Request) {
+		if s.refuse(w, "qualityprofile") {
+			return
+		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 90000007, "name": s.profileName}})
 	})
 	mux.HandleFunc("/api/v3/rootfolder", func(w http.ResponseWriter, r *http.Request) {
+		if s.refuse(w, "rootfolder") {
+			return
+		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"path": "/data/media"}})
 	})
 	mux.HandleFunc("/api/v3/"+kind, func(w http.ResponseWriter, r *http.Request) {
@@ -357,6 +375,23 @@ func TestArr_RequestMovie_LookupFailureIsAStatusError(t *testing.T) {
 	}
 	if got := httpx.Classify(err); got != httpx.ClassTransient {
 		t.Errorf("Classify = %v, want transient", got)
+	}
+}
+
+// A refused profile or folder read is the arr's status, not a decode error about its body.
+func TestArr_RequestMovie_RefusedSetupReadIsAStatusError(t *testing.T) {
+	for _, read := range []string{"qualityprofile", "rootfolder"} {
+		stub := newArrStub(t, "movie")
+		stub.refused = read
+		a := arrFor("movie", stub.server.URL, "", "")
+		err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000605, Name: "M"})
+		var status *httpx.StatusError
+		if !errors.As(err, &status) || status.Status != http.StatusUnauthorized {
+			t.Errorf("%s refused: err = %v, want *httpx.StatusError 401", read, err)
+		}
+		if stub.addBody != nil {
+			t.Errorf("%s refused: the title was still added", read)
+		}
 	}
 }
 
