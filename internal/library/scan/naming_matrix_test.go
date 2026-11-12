@@ -1098,6 +1098,57 @@ var namingMatrix = []namingRow{
 		"Anime/【Grp】Kettle Hana 第05集 [1080p].mp4": "episode Kettle Hana S1E5",
 		"Anime/【Grp】Kettle Hana 第06集 [1080p].mp4": "episode Kettle Hana S1E6",
 	}},
+	// Re-score #16: a show's own folder grouped by volume, book, chapter, year, DVD or collection
+	// holds its episodes, as by season; "Book Two" and "Year 1" give the season. A volume's "03" is
+	// no number of the show's own, so the catalog places it.
+	{id: "W125", files: map[string]string{
+		"TV/Lisk Saga/Volume 2/Lisk Saga - 03.mkv":                   "episode Lisk Saga S?E?",
+		"TV/Lisk Saga/Book One/02 - Water.mkv":                       "episode Lisk Saga S1E2",
+		"TV/Lisk Saga/Book Two/Lisk Saga - Fire.mkv":                 "episode Lisk Saga S?E?",
+		"TV/Lisk Saga/DVD1/Episode 7.mkv":                            "episode Lisk Saga S1E7",
+		"TV/Lisk Saga/Chapter 2/04.mkv":                              "episode Lisk Saga S2E4",
+		"TV/Lisk Saga/Year 1/Lisk Saga - 11.mkv":                     "episode Lisk Saga S1E11",
+		"Kids/Tamsin Train/Volume 3/Tamsin Train - Brave Engine.mp4": "episode Tamsin Train S?E?",
+		"Kids/Tamsin Train/Volume 3/Tamsin Train - Slow Engine.mp4":  "episode Tamsin Train S?E?",
+		"Kids/Abbot Bear/Abbot Bear Vol 1/01 - Picnic.mp4":           "episode Abbot Bear S1E1",
+		"Kids/Abbot Bear/Abbot Bear Vol 1/02 - Kite.mp4":             "episode Abbot Bear S1E2",
+		"Rips/Holm Mere/Disc 1/title_t00.mkv":                        "movie Holm Mere -",
+		"Movies/Gorse Vale (2008)/Part 1/Gorse Vale.mkv":             "movie Gorse Vale 2008",
+		"Movies/Gorse Vale (2008)/Part 2/Gorse Vale.mkv":             "movie Gorse Vale 2008",
+	}},
+	// Re-score #16: a season's folder or pack on a films' shelf is a show's season; a film named as
+	// its folder with its year stays a film.
+	{id: "W126", files: map[string]string{
+		"Movies/Lumen Bay Season 1/01.mkv":                   "episode Lumen Bay S1E1",
+		"Movies/Lumen Bay Season 1/02.mkv":                   "episode Lumen Bay S1E2",
+		"Movies/Fennick Cove S02/01.mkv":                     "episode Fennick Cove S2E1",
+		"Movies/Fennick Cove S02/02.mkv":                     "episode Fennick Cove S2E2",
+		"Movies/Fennick Bank/Episode 1.mkv":                  "episode Fennick Bank S1E1",
+		"Movies/Fennick Bank/Episode 2.mkv":                  "episode Fennick Bank S1E2",
+		"Downloads/Pike.Moss.S02.1080p/01.mkv":               "episode Pike Moss S2E1",
+		"Downloads/Pike.Moss.S02.1080p/02.mkv":               "episode Pike Moss S2E2",
+		"Movies/Season One (2012)/Season One (2012).mkv":     "movie Season One 2012",
+		"Movies/Episode Nine (2014)/Episode Nine (2014).mkv": "movie Episode Nine 2014",
+	}},
+	// Re-score #16: a film's own "Specials" and "Subs" folders hold no titles; an anime release's
+	// notes in brackets are no part of its show's name.
+	{id: "W127", files: map[string]string{
+		"Movies/Ashwood (2015)/Ashwood (2015).mkv":                                    "movie Ashwood 2015",
+		"Movies/Ashwood (2015)/Specials/Making Ashwood.mkv":                           "skip",
+		"Downloads/Hollin.Ward.2017.1080p.BluRay.x264-GRP/Hollin.Ward.2017.1080p.mkv": "movie Hollin Ward 2017",
+		"Downloads/Hollin.Ward.2017.1080p.BluRay.x264-GRP/Subs/English.mkv":           "skip",
+		"Anime/[SubGrp] Kaze no Brindle - 04.mkv":                                     "episode Kaze no Brindle S?E?",
+		"Anime/[SubGrp] Kaze no Brindle (BD 1080p) - 05.mkv":                          "episode Kaze no Brindle S?E?",
+	}},
+	// Re-score #16: a show's episode named by its volume and number is the show's; a league's match
+	// named by its day is that day's.
+	{id: "W128", files: map[string]string{
+		"Kids/Abbot Bear/Abbot Bear - Volume 2 - 03 - Picnic.mp4": "episode Abbot Bear S?E?",
+		"Kids/Abbot Bear/Abbot Bear - Volume 2 - 04 - Kite.mp4":   "episode Abbot Bear S?E?",
+		"Sports/Lisk League 2023-10-05 Abbots vs Wexleys.mkv":     "episode Lisk League 2023-10-05",
+		"Sports/Lisk League 2023-10-12 Wexleys vs Abbots.mkv":     "episode Lisk League 2023-10-12",
+		"Sports/Lisk League/Season 2023/Lisk League S2023E04.mkv": "episode Lisk League S2023E4",
+	}},
 	// Re-score #15: a show and its remake loose together are two shows when both number an episode
 	// alike; a yearless copy beside a dated one with episodes of its own joins it.
 	{id: "W122", files: map[string]string{

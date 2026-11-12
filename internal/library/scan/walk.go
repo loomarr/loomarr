@@ -50,6 +50,9 @@ var skippedDirs = map[string]bool{
 	"intermediate": true,
 }
 
+// subsDirs are the folders a release keeps its subtitles in.
+var subsDirs = map[string]bool{"subs": true, "subtitles": true, "subtitle": true, "sub": true}
+
 // skippedPrefixes begin the names of folders skippedDirs skips by their prefix.
 var skippedPrefixes = []string{".", "@", "~", "_unpack_", "_failed_"}
 
@@ -109,7 +112,10 @@ func skippedDir(parent, name string, titled bool) bool {
 	lower := strings.ToLower(name)
 	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
 	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
-	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) ||
+	// A film's own "Specials" ("Movies/Ashwood (2015)/Specials/") are its extras, where a show's
+	// are its season 0; and a subtitles' folder holds no title, whatever a release put in it.
+	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !catchAllFolder(path.Base(parent))
+	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] ||
 		(parent != "." && extrasFolder(name, parent) && titled && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }

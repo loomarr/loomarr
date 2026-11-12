@@ -220,7 +220,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    day first is its show's on a shows' shelf; a show and its remake numbering an episode alike
 //	    stay two; a show's film kept with it is a film; three title-named videos with only
 //	    catch-alls above are a show's.
-const writeVersion = 58
+//	59: a show's folder grouped by volume, book, chapter, year, DVD or collection holds its
+//	    episodes; a season's pack, or a video named "Episode N" alone, on a films' shelf is a
+//	    show's, and a release pack's "S02" gives its bare numbers' season; a show called a saga on
+//	    a shows' shelf is a show; a film's "Specials" and any "Subs" folder are skipped; an anime
+//	    release's bracketed notes leave its show's name; "Sports/" is a shows' shelf.
+const writeVersion = 59
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
