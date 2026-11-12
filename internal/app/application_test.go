@@ -132,6 +132,37 @@ func TestApplicationQuiesceStopsNetworkResourcesBeforeFinalizers(t *testing.T) {
 	}
 }
 
+// A worker cancelled at quiesce may still be unwinding: recording its outcome, closing a job. The
+// resources it records into (River, the packager, the diagnostics recorder) are torn down only once
+// every worker has returned, so its last writes land instead of meeting a closed resource.
+func TestApplicationShutdownStopsResourcesOnlyAfterItsWorkersReturn(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+
+	var mu sync.Mutex
+	var events []string
+	record := func(event string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	}
+	lifecycle.goRun(func(ctx context.Context) {
+		<-ctx.Done()
+		time.Sleep(50 * time.Millisecond)
+		record("worker returned")
+	})
+	lifecycle.addStop(func(context.Context) error { record("resource stopped"); return nil })
+
+	if err := application.Shutdown(t.Context()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if want := []string{"worker returned", "resource stopped"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("shutdown order = %v, want %v", events, want)
+	}
+}
+
 func TestApplicationQuiesceCanBeWaitedAgainAfterCallerTimeout(t *testing.T) {
 	lifecycle := newGenerationLifecycle(t.Context())
 	application := &Application{lifecycle: lifecycle}
