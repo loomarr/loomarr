@@ -1,5 +1,6 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Stack } from "@loomarr/design-system";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ActivityFeed } from "@/components/loomarr/dashboard/activity-feed";
@@ -36,7 +37,7 @@ const ServerStatus = () => {
   const cost = unwrap(restartCost.data);
 
   return (
-    <div className="mb-6 flex flex-col gap-6 *:shrink-0">
+    <Stack className="mb-6 *:shrink-0" gap="section">
       {services.data?.status === 200 ? (
         <ServicesPanel
           view={services.data.data}
@@ -63,7 +64,7 @@ const ServerStatus = () => {
           error={watch.failed ?? serviceError}
         />
       ) : null}
-    </div>
+    </Stack>
   );
 };
 

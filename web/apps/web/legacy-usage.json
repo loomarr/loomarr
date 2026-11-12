@@ -295,29 +295,29 @@
       "tailwindClasses": 102
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 220
+      "tailwindClasses": 198
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 37,
       "rawButton": 1
     },
     "src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 10
     },
     "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "tailwindClasses": 37
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 168
+      "tailwindClasses": 149
     },
     "src/diagnostics/server-status/server-status.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 2
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
       "tailwindClasses": 50
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 112
+      "tailwindClasses": 98
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 13
@@ -527,28 +527,25 @@
       "tailwindClasses": 11
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 50
+      "tailwindClasses": 36
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
       "tailwindClasses": 34
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 137
+      "tailwindClasses": 97
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 61
+      "tailwindClasses": 57
     },
     "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 53
-    },
-    "src/settings/secrets-settings/secrets-settings.tsx": {
-      "tailwindClasses": 3
+      "tailwindClasses": 48
     },
     "src/settings/settings-context-nav/settings-context-nav.tsx": {
       "tailwindClasses": 42
     },
     "src/settings/settings-page/settings-page.tsx": {
-      "tailwindClasses": 35
+      "tailwindClasses": 32
     },
     "src/settings/settings-save-bar-host/settings-save-bar-host.tsx": {
       "tailwindClasses": 2
@@ -557,47 +554,47 @@
       "tailwindClasses": 8
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 122,
+      "tailwindClasses": 119,
       "rawButton": 2
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
       "tailwindClasses": 3
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 52
+      "tailwindClasses": 38
     },
     "src/suggest/intent-form/intent-form.tsx": {
       "tailwindClasses": 10
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 82
-    },
-    "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 60
     },
+    "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
+      "tailwindClasses": 49
+    },
     "src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 10
     },
     "src/wizard/bootstrap-step/bootstrap-step.tsx": {
-      "tailwindClasses": 21
+      "tailwindClasses": 12
     },
     "src/wizard/checklist-step/checklist-step.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 3
     },
     "src/wizard/connect-step/connect-step.tsx": {
       "tailwindClasses": 5
     },
     "src/wizard/first-channel-step/first-channel-step.tsx": {
-      "tailwindClasses": 8
+      "tailwindClasses": 5
     },
     "src/wizard/playout-step/playout-step.tsx": {
-      "tailwindClasses": 54
+      "tailwindClasses": 48
     },
     "src/wizard/users-step/users-step.tsx": {
-      "tailwindClasses": 34
+      "tailwindClasses": 22
     },
     "src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 9
     }
   }
 }

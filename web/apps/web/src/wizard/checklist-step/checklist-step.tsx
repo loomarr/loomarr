@@ -4,7 +4,7 @@ import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -145,7 +145,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
   const dirty = Object.keys(edits).length > 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       {blocksFor(only).map((block) => {
         const custom = "custom" in block && block.custom;
         // "group" in block narrows the union so TS knows block.group exists (the AI block is
@@ -227,16 +227,16 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
       {/* One save for the step's edits (§6: the wizard saves per step). Only changed keys
           are sent — a stored secret reads back empty and an empty PATCH would clear it. */}
       {dirty && (
-        <div className="flex items-center gap-3">
+        <Stack align="center" direction="row" gap="control">
           <Action disabled={patch.isPending} onPress={save}>
             {patch.isPending ? "Saving…" : "Save changes"}
           </Action>
           <Action disabled={patch.isPending} onPress={resetEdits} variant="ghost">
             Discard
           </Action>
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

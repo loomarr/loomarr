@@ -1,7 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, Stack } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -138,7 +138,15 @@ const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () =>
   const [confirming, setConfirming] = useState(false);
   const name = device.deviceName || "Device";
   return (
-    <li className="border-border flex flex-wrap items-center justify-between gap-2 border-b py-3 last:border-b-0">
+    <Stack
+      align="center"
+      className="border-border border-b py-3 last:border-b-0"
+      direction="row"
+      gap="inline"
+      justify="between"
+      render="li"
+      wrap
+    >
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{name}</p>
         <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
@@ -159,7 +167,7 @@ const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () =>
           {busy ? "Removing…" : "Remove"}
         </Action>
       )}
-    </li>
+    </Stack>
   );
 };
 

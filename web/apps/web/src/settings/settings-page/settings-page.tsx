@@ -2,7 +2,7 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -213,7 +213,7 @@ const SettingsPage = ({
                 ? (block.dirtyCheckLabel ?? "Save & test connection")
                 : (block.checkLabel ?? "Test connection");
             return (
-              <div key={block.title} className="flex flex-col gap-3">
+              <Stack gap="control" key={block.title}>
                 <ConnectionBlock
                   title={block.title}
                   optional={block.optional}
@@ -248,7 +248,7 @@ const SettingsPage = ({
                     disabledReasons={block.disabledReasons}
                   />
                 </ConnectionBlock>
-              </div>
+              </Stack>
             );
           }
           return (
