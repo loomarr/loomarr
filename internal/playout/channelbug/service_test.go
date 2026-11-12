@@ -221,6 +221,26 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	}
 }
 
+// A self-check that shutdown cancelled reached no verdict: it must not log or record that this host
+// cannot draw watermarks.
+func TestChannelWatermarks_CancelledCheckRecordsNoVerdict(t *testing.T) {
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\necho 'killed' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	events := &recordedEvents{}
+	c := &Service{dir: t.TempDir(), channels: staticChannelReader{channel: channelstore.Channel{}}, log: slog.New(slog.DiscardHandler),
+		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() encode.GPUFilters { return encode.GPUFilters{} },
+		events: events}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	c.check(ctx, encode.EncoderVAAPI, &watermarkGate{})
+
+	if len(events.got) != 0 {
+		t.Fatalf("a cancelled check recorded %d Diagnostics events: %+v", len(events.got), events.got)
+	}
+}
+
 // offSeason is an airing start with no calendar holiday on.
 var offSeason = time.Date(2026, time.July, 4, 20, 0, 0, 0, time.UTC)
 

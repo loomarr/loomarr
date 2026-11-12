@@ -495,6 +495,10 @@ func (c *Service) check(ctx context.Context, enc encode.Encoder, g *watermarkGat
 	dir := filepath.Join(c.dir, "check-"+string(enc))
 	r := playout.WatermarkCheck(ctx, c.ffmpeg(), host, dir)
 	_ = os.RemoveAll(dir)
+	if ctx.Err() != nil {
+		// Shutdown cut the check short: there is no verdict to keep, log or record.
+		return
+	}
 	g.colour.Store(r.Colour)
 	g.works.Store(r.Works)
 	level, name, msg := diagnostics.LevelInfo, "watermark.overlay_verified", "Channel watermark GPU overlay verified on "+string(enc)
