@@ -1,6 +1,6 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Card } from "@loomarr/design-system";
+import { Card, Stack } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -64,7 +64,7 @@ const HelpPage = () => {
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
@@ -112,7 +112,7 @@ const HelpPage = () => {
           )}
         </div>
       </div>
-    </div>
+    </Stack>
   );
 };
 

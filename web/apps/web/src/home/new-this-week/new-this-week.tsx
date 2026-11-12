@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import { SectionHeader } from "@loomarr/design-system";
+import { SectionHeader, Stack } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
@@ -59,7 +59,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
     // `@container`: the poster grid's one-column step is measured against this section's own
     // width, not the viewport — what sits beside Home's content (the md+ rail, nothing above the
     // phone's bottom bar) is the shell's business, not this grid's.
-    <section aria-labelledby="home-new" className="@container flex flex-col gap-3">
+    <Stack aria-labelledby="home-new" className="@container" gap="control" render="section">
       <SectionHeader id="home-new" title="New this week" meta={meta} />
       {/* A separate row, never a grid column beside the posters (#1822 evidence geometry table):
           sharing a track with five poster columns is what left phone poster slivers in the first
@@ -112,7 +112,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           ))}
         </div>
       )}
-    </section>
+    </Stack>
   );
 };
 

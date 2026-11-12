@@ -1,4 +1,4 @@
-import { Surface, Text, typography } from "@loomarr/design-system";
+import { Stack, Surface, Text, typography } from "@loomarr/design-system";
 import { webType } from "@loomarr/design-system/web-theme";
 
 const TYPE_ROLES = ["display", "heading", "body", "label", "mono"] as const;
@@ -24,7 +24,7 @@ const SIZE_USE: Record<string, string> = {
 };
 
 const Typography = () => (
-  <div className="flex flex-col gap-8 p-6">
+  <Stack className="p-6" gap="screen">
     <header className="flex flex-col gap-1">
       <h1 className="text-xl font-semibold">Typography</h1>
       <p className="text-muted-foreground max-w-2xl text-sm">
@@ -33,10 +33,10 @@ const Typography = () => (
       </p>
     </header>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="control" render="section">
       <h2 className="text-base font-semibold">The two families</h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="border-border flex flex-col gap-2 rounded-md border p-4">
+        <Stack className="border-border rounded-md border p-4" gap="inline">
           <div className="text-static-400 font-mono text-[11px]">Sans</div>
           <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
             Saturday Morning Cartoons
@@ -44,8 +44,8 @@ const Typography = () => (
           <p className="text-muted-foreground text-sm">
             Everything a person wrote or would say aloud: titles, descriptions, prose, buttons.
           </p>
-        </div>
-        <div className="border-border flex flex-col gap-2 rounded-md border p-4">
+        </Stack>
+        <Stack className="border-border rounded-md border p-4" gap="inline">
           <div className="text-static-400 font-mono text-[11px]">Mono</div>
           <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
             CH 42 · 21:30–22:00
@@ -54,9 +54,9 @@ const Typography = () => (
             <strong className="text-foreground">{MONO_RULE}</strong> Channel numbers, clock times, durations,
             ids, state badges — anything the system emitted rather than authored.
           </p>
-        </div>
+        </Stack>
       </div>
-    </section>
+    </Stack>
 
     <Surface backgroundColor="transparent" borderWidth={0} gap="control" padding={0}>
       <Text as="h2" density="pointer" strong textRole="heading">
@@ -87,9 +87,9 @@ const Typography = () => (
       ))}
     </Surface>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="control" render="section">
       <h2 className="text-base font-semibold">Scale</h2>
-      <div className="divide-border flex flex-col divide-y">
+      <Stack className="divide-border divide-y">
         {Object.entries(webType.size).map(([name, px]) => (
           <div key={name} className="flex items-baseline gap-4 py-3">
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px]">{name}</span>
@@ -102,29 +102,29 @@ const Typography = () => (
             <span className="text-muted-foreground hidden shrink-0 text-xs sm:block">{SIZE_USE[name]}</span>
           </div>
         ))}
-      </div>
+      </Stack>
       <p className="text-muted-foreground max-w-2xl text-sm">
         Seven sizes, and nothing between them. A component reaching for an off-scale value is usually solving
         a spacing problem with type — the scale is short on purpose so that shows up as a decision rather than
         a drift.
       </p>
-    </section>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="control" render="section">
       <h2 className="text-base font-semibold">Leading</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(webType.leading).map(([name, value]) => (
-          <div key={name} className="border-border flex flex-col gap-2 rounded-md border p-4">
+          <Stack className="border-border rounded-md border p-4" gap="inline" key={name}>
             <div className="text-static-400 font-mono text-[11px]">{`${name} · ${value}`}</div>
             <p style={{ lineHeight: value }} className="text-sm">
               A channel is a wall clock, not a playlist that starts when someone watches. Tune in forty
               minutes into an hour-long film and you land forty minutes in.
             </p>
-          </div>
+          </Stack>
         ))}
       </div>
-    </section>
-  </div>
+    </Stack>
+  </Stack>
 );
 
 export { Typography };

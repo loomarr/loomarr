@@ -1,5 +1,5 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { Disclosure, Icon, icons, type StatusTone } from "@loomarr/design-system";
+import { Disclosure, Icon, icons, Stack, type StatusTone } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
@@ -70,7 +70,7 @@ const ConnectionBlock = ({
       <div className="flex flex-col gap-4">
         {children}
         {(action || verdict) && (
-          <div className="flex flex-wrap items-center gap-3">
+          <Stack align="center" direction="row" gap="control" wrap>
             {action}
             {verdict && (
               <p
@@ -97,7 +97,7 @@ const ConnectionBlock = ({
                 )}
               </p>
             )}
-          </div>
+          </Stack>
         )}
         {/* Below the fields AND below the Test row — a statement about the service, read
             after its settings rather than competing with them. */}

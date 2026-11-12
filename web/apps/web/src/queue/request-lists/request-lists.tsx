@@ -3,7 +3,7 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { CardAction, ListGroup } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -215,17 +215,17 @@ const NeedsYouList = () => {
     );
   }
   return (
-    <div className="max-w-reading mx-auto flex w-full flex-col gap-6">
+    <Stack className="max-w-reading mx-auto w-full" gap="section">
       {showApprovals && (
-        <section aria-labelledby="needs-approvals" className="flex flex-col gap-3">
+        <Stack aria-labelledby="needs-approvals" gap="control" render="section">
           <h2 id="needs-approvals" className="text-lg font-semibold">
             Waiting for your approval
           </h2>
           <ApprovalQueue onReviewingChange={setReviewing} />
-        </section>
+        </Stack>
       )}
       {failed.length > 0 && (
-        <section aria-labelledby="needs-failed" className="flex flex-col gap-3">
+        <Stack aria-labelledby="needs-failed" gap="control" render="section">
           <h2 id="needs-failed" className="text-lg font-semibold">
             Couldn't be built
           </h2>
@@ -238,9 +238,9 @@ const NeedsYouList = () => {
               ),
             )}
           </ListGroup>
-        </section>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

@@ -3,6 +3,7 @@ import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { unwrap } from "@loomarr/api/unwrap";
 import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
+import { Stack } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
@@ -65,7 +66,7 @@ const HomePage = () => {
   const needs = useNeedsYou(isAdmin && hasLife);
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack className="h-full">
       <PageHeader title="Home" />
       <div className="flex-1">
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
@@ -118,7 +119,7 @@ const HomePage = () => {
           )}
         </div>
       </div>
-    </div>
+    </Stack>
   );
 };
 

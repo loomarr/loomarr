@@ -1,4 +1,4 @@
-import { Action, ActivityIndicator, StatusWord } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Stack, StatusWord } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
@@ -87,7 +87,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               </>
             }
           >
-            <div className="flex items-center gap-3">
+            <Stack align="center" direction="row" gap="control">
               <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
               <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
                 {/* An unconfigured integration has no target. Saying so beats an empty cell,
@@ -100,7 +100,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
               {!row.ok && row.hint ? (
                 <p className="text-muted-foreground mt-1 basis-full text-xs">{row.hint}</p>
               ) : null}
-            </div>
+            </Stack>
           </PanelRow>
         ))}
       </ListGroup>

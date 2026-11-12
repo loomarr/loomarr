@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import {
   AA_SMALL,
   accents,
@@ -30,7 +31,7 @@ const Verdict = ({ value }: { value: number }) => (
 // static-950 on static-950 would be measuring a surface against itself — a number with no
 // meaning, and worse than no number, since it reads as a defect.
 const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; measure?: boolean }) => (
-  <div className="flex items-center gap-3">
+  <Stack align="center" direction="row" gap="control">
     <div className="border-border size-10 shrink-0 rounded-md border" style={{ backgroundColor: hex }} />
     <div className="min-w-0">
       <div className="truncate text-sm font-medium">{name}</div>
@@ -42,7 +43,7 @@ const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; meas
         <Verdict value={contrast(hex, staticScale["static-950"])} />
       </div>
     )}
-  </div>
+  </Stack>
 );
 
 // Which statics are SURFACES (measuring them as text is meaningless) versus text stops. The
@@ -61,7 +62,7 @@ const isTextStep = (step: number) => step <= 15;
 const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textHex: string }) => (
   <div className="flex flex-col gap-1">
     <div className="text-2xs text-static-400">{`${accent} tints`}</div>
-    <div className="flex flex-wrap gap-2">
+    <Stack direction="row" gap="inline" wrap>
       {tintSteps.map((step) => {
         const composited = compositeTint(hex, step, tintSurface);
         const r = contrast(textHex, composited);
@@ -77,8 +78,10 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // visible without being enacted.
           <div key={step} className="flex min-w-24 flex-col gap-1">
             <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
-            <div
-              className="border-border flex h-8 items-center rounded-md border px-2"
+            <Stack
+              align="center"
+              className="border-border h-8 rounded-md border px-2"
+              direction="row"
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
@@ -88,12 +91,12 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
               ) : (
                 <span className="text-2xs text-static-400/0 font-mono">fill</span>
               )}
-            </div>
+            </Stack>
             <Verdict value={r} />
           </div>
         );
       })}
-    </div>
+    </Stack>
   </div>
 );
 
@@ -105,7 +108,7 @@ const Palette = () => {
   const accentRows = Object.entries(accents);
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <Stack className="p-6" gap="screen">
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Palette</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
@@ -115,14 +118,14 @@ const Palette = () => {
         </p>
       </header>
 
-      <section className="flex flex-col gap-3">
+      <Stack gap="control" render="section">
         <h2 className="text-base font-semibold">Accents</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {accentRows.map(([name, a]) => (
             <Swatch key={name} name={name} hex={a.base} />
           ))}
         </div>
-      </section>
+      </Stack>
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
@@ -148,7 +151,7 @@ const Palette = () => {
         </p>
       </section>
 
-      <section className="flex flex-col gap-3">
+      <Stack gap="control" render="section">
         <h2 className="text-base font-semibold">Statics</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {Object.entries(staticScale).map(([name, hex]) => (
@@ -161,8 +164,8 @@ const Palette = () => {
           :1 on cards — below the AA bar — so it is restricted to disabled states and decorative glyphs. Any
           text carrying information uses <code className="font-mono text-xs">static-400</code> or better.
         </p>
-      </section>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 
