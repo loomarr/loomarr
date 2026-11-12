@@ -30,7 +30,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib = newScanLibrary(t, defaults.Store)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs, LibraryRoots: lib,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs, Library: api.LibraryOptions{Roots: lib},
 		})
 	})
 	ctx := context.Background()

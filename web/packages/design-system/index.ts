@@ -196,5 +196,6 @@ export {
   resolveViewportScale,
   TV_OVERSCAN_INSET,
   useResolvedViewportInsets,
+  useViewportInsets,
   ViewportStage,
 } from "./src/viewport";

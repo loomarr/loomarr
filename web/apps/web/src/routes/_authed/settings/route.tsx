@@ -1,6 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { createFileRoute, Outlet, useChildMatches, useLocation } from "@tanstack/react-router";
 import { AdminOnly } from "@/auth/admin-only";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -70,6 +71,13 @@ const SettingsLayout = () => {
 
 const Route = createFileRoute("/_authed/settings")({
   component: SettingsLayout,
+  // The settings list every page below reads (see `useSettingsEntries`), so a page arrives with its
+  // values rather than blank fields. Admin-only, like the layout's own read: a member's request
+  // would 403, and the pages a member can open need none of it.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.ensureQueryData(settingsApi.getSettingsListQueryOptions({ query: { retry: false } }));
+  },
 });
 
 export { Route };

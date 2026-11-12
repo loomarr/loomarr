@@ -744,10 +744,16 @@ parallel tests only competed for the same cores. So the store package (now `inte
 serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
 first. There, workflow-dispatch run 36366596157 measured it at 171s, which left it too light to
 balance the first lane's 405s, so `internal/integration`, whose tests are serial, shares its lane.
-The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
-workflow matrix, cache keys and release-verifier pins name them), but they now hold two kinds of
-package: media certification that must not compete for a worker while asserting latency, and
-CPU-heavy packages whose own parallelism needs a runner to themselves.
+The serial lanes hold two kinds of package: media certification that must not compete for a
+worker while asserting latency, and CPU-heavy packages whose own parallelism needs a runner to
+themselves.
+
+Since #2716 there are three serial lanes, `certification-1/3` to `certification-3/3`. The highest
+lane number in `scripts/go-certification-lanes.tsv` is the count, and the workflow matrix, cache
+keys and release-verifier pins name each lane. Two lanes passed the 15-minute job limit once
+`internal/channels/schedule` and `internal/demolibrary` joined them. Four lanes could not balance:
+merge-group run 43037503041 measured store alone at 291s, and no four-way split of the rest stayed
+inside the 125% balance budget. The three lanes model 322s, 336s and 378s.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
 per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above

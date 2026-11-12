@@ -14,11 +14,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRouteContent } from "@/lib/use-route-content";
 import { cn } from "@/lib/utils";
 import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
@@ -138,6 +140,9 @@ const ChannelDetailLayout = () => {
   }, [pathname]);
 
   const channel = channelsApi.useGetChannel(id);
+  // A channel's page has its content once the channel itself has arrived; the header's "On now"
+  // line and the section bodies fill in beside it (#3399).
+  useRouteContent(channel.data !== undefined);
   // The "Open in …" hand-off names and opens the configured media server. `library.flavor` gives the
   // name (Emby/Jellyfin) and `library.url` its front door, both non-secret settings. An unset URL
   // hides the link rather than leaving it doing nothing. The settings list is admin-only, so a
@@ -211,7 +216,8 @@ const ChannelDetailLayout = () => {
     );
   }
   const ch = unwrap(channel.data);
-  if (!ch) return <p className="text-muted-foreground p-6 text-sm">Loading channel…</p>;
+  // The route's loader ensured the channel, so it is here before this page mounts.
+  if (!ch) return null;
 
   // The header state comes from now/next (#2728): a channel the guide has nothing for is not On air.
   const nowNext = nowNextBody?.channels.find((entry) => entry.channelId === id);
@@ -396,6 +402,19 @@ const ChannelDetailLayout = () => {
 
 const Route = createFileRoute("/_authed/channels/$id")({
   component: ChannelDetailLayout,
+  // The header paints from the channel, so the channel is awaited and a failure reaches the route's
+  // error view. The reads that finish the header (the air line's now/next and timeline, and the
+  // admin's media-server link) are only warmed: a failure there leaves that detail off, as it does
+  // once the page is open, and prefetching never rejects.
+  loader: async ({ context: { queryClient }, params: { id } }) => {
+    const isAdmin = await viewerIsAdmin(queryClient);
+    await Promise.all([
+      queryClient.ensureQueryData(channelsApi.getGetChannelQueryOptions(id)),
+      queryClient.prefetchQuery(channelsApi.getChannelsNowNextQueryOptions()),
+      queryClient.prefetchQuery(channelsApi.getChannelTimelineQueryOptions(id, undefined)),
+      isAdmin ? queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions()) : undefined,
+    ]);
+  },
 });
 
 export { airStateOf, headerAirLine, Route, SECTIONS };

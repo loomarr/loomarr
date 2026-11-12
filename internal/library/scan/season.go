@@ -81,6 +81,60 @@ func (b *builder) byEntry(ctx context.Context, s *seriesSeen, in precedence.Inpu
 	return res
 }
 
+// byAirDate describes an episode its file names by the day it aired, by the series' catalog entry
+// that aired that day: the entry's season and number stand over any its NFO gives, which may be
+// another catalog's numbering. The day names one episode whatever order the household picked.
+//
+// Each of the series' seasons is read from the cache, and any not cached yet is asked for. While
+// the day is not found the episode keeps its file's name, keyed by a season still to come, so the
+// Enricher fetching it writes the episode again.
+func (b *builder) byAirDate(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, day string) resolution {
+	if s == nil {
+		return res
+	}
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.catalog.String() == "" || series.record.Descriptive == nil {
+		return res
+	}
+	var waiting librarystore.LibraryCatalogKey
+	for _, size := range series.record.Descriptive.Seasons {
+		key := librarystore.LibraryCatalogKey{
+			Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
+			ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(size.Number),
+		}
+		rec, ok := b.season(ctx, s, key)
+		if !ok {
+			if waiting.String() == "" {
+				waiting = key
+			}
+			continue
+		}
+		for _, entry := range rec.Children {
+			if entry.Descriptive == nil || entry.Descriptive.PremiereDate != day || entry.Numbering == nil {
+				continue
+			}
+			// The name's day is where the file is: it says the entry's season and number, as a name's
+			// "S02E02" would. A catalog entry never places a file itself (precedence).
+			at := *entry.Numbering
+			records := make([]mp.Record, 0, len(in.Records)+1)
+			for _, r := range in.Records {
+				r.Numbering = nil
+				if r.Source.Basis == mp.BasisEmbeddedID {
+					r.Numbering = &at
+				}
+				records = append(records, r)
+			}
+			entry.Numbering = nil
+			in.Records = append(records, entry)
+			res.resolved = b.im.Resolver.Resolve(in)
+			res.record, res.catalog = &rec, key
+			return res
+		}
+	}
+	res.catalog = waiting
+	return res
+}
+
 // episodeOrder is the household's answer for which order a show's files follow, read once a pass.
 func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series librarystore.LibraryCatalogKey) (librarystore.LibraryEpisodeOrder, bool) {
 	s.orderOnce.Do(func() {

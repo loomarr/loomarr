@@ -39,7 +39,7 @@ const WatchScreen = () => {
   const channelQuery = channelsApi.useGetChannel(id, { query: { placeholderData: (previous) => previous } });
   const channel = unwrap(channelQuery.data);
   useDocumentTitle(channel?.name);
-  const channels = channelsApi.useListChannels({ query: { staleTime: 30_000 } });
+  const channels = channelsApi.useListChannels();
   const nowNext = channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } });
   const follow = useCallback(
     (channelId: string) => {

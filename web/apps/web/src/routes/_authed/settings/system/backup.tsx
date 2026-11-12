@@ -3,6 +3,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
 import { SettingsPage } from "@/settings/settings-page";
@@ -85,6 +86,11 @@ const BackupPage = () => {
 
 const Route = createFileRoute("/_authed/settings/system/backup")({
   component: BackupPage,
+  // The backups on disk, so the page opens on its list. Admin-only like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.ensureQueryData(systemApi.getSystemBackupsListQueryOptions());
+  },
 });
 
 export { Route };

@@ -33,6 +33,7 @@ const SettingsLibrary = () => {
         health={health}
         held={current.held}
         hooks={current.hooks}
+        details={current.details}
         scan={current.scan}
         readySoFar={folders.readySoFar.map(readyTitleOf)}
         onRescan={() => rescan.mutate()}

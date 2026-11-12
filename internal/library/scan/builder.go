@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -34,6 +35,10 @@ type seriesSeen struct {
 	write   bool
 	// itemID is the series item writeSeries wrote, "" until then.
 	itemID string
+	// sidecars are the series folder's own tvshow.nfo and folder art, stat'd once per pass. Each
+	// episode's identity digest includes them, so editing one rewrites the episodes and, through
+	// them, the series, in a full walk and a folder pass alike (#3226).
+	sidecars map[string]Stat
 	// last is the highest episode number on disk in each season, from every file the pass
 	// identified before writing any.
 	last map[int]int
@@ -124,6 +129,15 @@ type identity struct {
 	digest    string
 }
 
+// airDate is the day the file's name says its episode aired, for one named by it rather than by
+// season and number; "" otherwise.
+func (id identity) airDate() string {
+	if id.embedded.Numbering != nil || id.embedded.Descriptive == nil {
+		return ""
+	}
+	return id.embedded.Descriptive.PremiereDate
+}
+
 func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
@@ -142,12 +156,15 @@ func (b *builder) identify(file File) identity {
 		}
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
+	var seriesSidecars map[string]Stat
 	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
-			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}}
+			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{},
+				sidecars: seriesFolderSidecars(filepath.Join(b.root, filepath.FromSlash(id.seriesDir)))}
 			b.series[id.seriesDir] = s
 		}
+		seriesSidecars = s.sidecars
 		if m.series != nil {
 			s.managed = m.series
 		}
@@ -156,8 +173,34 @@ func (b *builder) identify(file File) identity {
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
-	id.digest = identityDigest(file, m, embedded, b.im.reader())
+	id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
 	return id
+}
+
+// seriesFolderSidecars stats a series folder's own tvshow.nfo and folder art. It reads the folder
+// itself rather than the walk's listing, so a folder pass over one season digests the same
+// sidecars a full walk does. A loose series names no folder, and an unreadable one has none.
+func seriesFolderSidecars(dir string) map[string]Stat {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out map[string]Stat
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.EqualFold(name, "tvshow.nfo") && !localart.IsFolderArt(name) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if out == nil {
+			out = map[string]Stat{}
+		}
+		out[filepath.Join(dir, name)] = Stat{Size: info.Size(), ModifiedNs: info.ModTime().UnixNano()}
+	}
+	return out
 }
 
 // numbering is where the cheap sources place an episode file, through its last episode; nil for
@@ -251,7 +294,11 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
 	res := b.resolve(ctx, snapshot.Origin, in)
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
-		res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+		if day := id.airDate(); day != "" {
+			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+		} else {
+			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+		}
 	}
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)

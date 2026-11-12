@@ -173,6 +173,71 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  // An unmounted share leaves its mount point an empty folder: it opens, so it isn't offline, but
+  // nothing in it is the library's.
+  it("asks whether the drive is connected for an empty folder, and never says all is caught up", () => {
+    const { host, props, cleanup } = render({
+      health: "folder_empty",
+      folders: [{ ...TV_IN_USE, empty: true }],
+    });
+    expect(host.textContent).toContain("This folder is empty — is the drive connected?");
+    expect(host.textContent).not.toContain("Loomarr can open this folder");
+    expect(host.textContent).toContain("Up to date");
+    expect(host.textContent).not.toContain("All caught up");
+    act(() =>
+      Array.from(host.querySelectorAll("button, [role=button]"))
+        .find((n) => n.textContent === "Check again")
+        ?.click(),
+    );
+    expect(props.onCheckAgain).toHaveBeenCalled();
+    cleanup();
+  });
+
+  // A lookup that's stuck is never silent: how many wait and when it tries again. 3:40 PM here is
+  // local time, as the line shows it.
+  const RETRY = new Date(2026, 10, 2, 15, 40).toISOString();
+  it.each([
+    [true, "Can't reach TMDB — trying again at 3:40 PM"],
+    [false, "Trying again at 3:40 PM"],
+  ] as const)(
+    "says when titles waiting for details are tried again (unreachable: %s)",
+    (unreachable, reason) => {
+      const { host, cleanup } = render({
+        health: "ok",
+        folders: [TV_IN_USE],
+        details: { waiting: 12, unreachable, retryAt: RETRY },
+      });
+      expect(host.textContent).toContain("12 titles are waiting on details");
+      expect(host.textContent).toContain(reason);
+      expect(host.textContent).not.toContain("All caught up");
+      expect(host.textContent).toContain("Up to date");
+      cleanup();
+    },
+  );
+
+  // A key problem is never the household's to fix: nothing is tried again, and nothing is said.
+  it("says nothing of waiting titles when no retry is due", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      details: { waiting: 12, unreachable: false },
+    });
+    expect(host.textContent).not.toContain("waiting on details");
+    expect(host.textContent).not.toMatch(/key/i);
+    cleanup();
+  });
+
+  it("leaves waiting titles to the progress while step 3 is looking them up", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...IDLE, step: "lookingUp", stepNumber: 3, done: 3, total: 15 },
+      details: { waiting: 12, unreachable: false, retryAt: RETRY },
+    });
+    expect(host.textContent).not.toContain("waiting on details");
+    cleanup();
+  });
+
   it("says nothing of being caught up beside an offline folder while no import runs", () => {
     const { host, cleanup } = render({ health: "folder_offline", folders: [MOVIES, TV_IN_USE] });
     expect(host.textContent).toContain("Can't reach your Movies folder");

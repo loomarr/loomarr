@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { copyText } from "@/lib/copy-text";
 
 // How long the "Copied" acknowledgement stays up. Long enough to register, short enough
 // that a second copy doesn't feel stuck.
@@ -20,24 +21,29 @@ const useCopied = <K = true>() => {
   // stated out loud rather than a change.
   const timer = useRef<number | undefined>(undefined);
 
-  // Cleared on unmount so a pending acknowledgement can't fire into a dead component.
-  useEffect(
-    () => () => {
-      if (timer.current !== undefined) window.clearTimeout(timer.current);
-    },
-    [],
-  );
+  const mounted = useRef(true);
 
-  const copy = useCallback((value: string, key: K = true as K) => {
-    // Optional-chained because clipboard is undefined on insecure origins — a
-    // plain-HTTP LAN install is a supported deployment (§11 cookie.secure=auto), so
-    // this must degrade rather than throw.
-    void navigator.clipboard?.writeText(value);
+  // Cleared on unmount so a pending acknowledgement can't fire into a dead component.
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (timer.current !== undefined) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  // Resolves true when the text was written. The acknowledgement shows only then: copyText
+  // falls back to a selection copy on an insecure origin (a plain-HTTP LAN install is a
+  // supported deployment, §11 cookie.secure=auto) and says false when nothing could be written.
+  const copy = useCallback(async (value: string, key: K = true as K): Promise<boolean> => {
+    const written = await copyText(value);
+    if (!written || !mounted.current) return written;
     // Restart the window on every copy: without this, a second copy inherits the first
     // one's remaining time and the acknowledgement vanishes early.
     if (timer.current !== undefined) window.clearTimeout(timer.current);
     setCopied(key);
     timer.current = window.setTimeout(() => setCopied(undefined), ACK_MS);
+    return true;
   }, []);
 
   return { copied, copy };

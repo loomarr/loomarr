@@ -3,8 +3,11 @@ import type { ReactNode } from "react";
 /** An app that names library folders: the media server, Sonarr or Radarr. */
 type LibraryAuthority = "emby" | "jellyfin" | "sonarr" | "radarr";
 
-/** Whether any folder is in use, and whether every folder in use opened at its last check. */
-type LibraryHealth = "needs_folders" | "folder_offline" | "ok";
+/**
+ * Whether any folder is in use, whether every folder in use opened at its last check, and whether
+ * one of them held nothing (folder_empty: usually a drive or share that isn't connected).
+ */
+type LibraryHealth = "needs_folders" | "folder_offline" | "folder_empty" | "ok";
 
 /** One media folder on this machine. */
 interface LibraryFolder {
@@ -13,6 +16,8 @@ interface LibraryFolder {
   inUse: boolean;
   /** Loomarr opened it at the last check. */
   readable: boolean;
+  /** Loomarr opened it and found nothing in it at the last check. */
+  empty?: boolean;
   /** The last check, ISO; absent when never checked. */
   checkedAt?: string;
   addedByHand: boolean;
@@ -51,6 +56,16 @@ interface LibraryScan {
   quiet: boolean;
 }
 
+/** How the titles' details are getting on. */
+interface LibraryDetails {
+  /** Movies and series whose details haven't been looked up yet. */
+  waiting: number;
+  /** TMDB didn't answer the last lookup. */
+  unreachable: boolean;
+  /** When looking up is tried again, ISO; absent when nothing waits on a retry. */
+  retryAt?: string;
+}
+
 /** A title that became ready while the import runs (decision 29). */
 interface LibraryReadyTitle {
   id: string;
@@ -82,6 +97,8 @@ interface LibrarySettingsProps {
   readySoFar?: readonly LibraryReadyTitle[];
   held: readonly LibraryHeldRemoval[];
   hooks: readonly LibraryHook[];
+  /** How the titles' details are getting on; absent reads as nothing waiting. */
+  details?: LibraryDetails;
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;
@@ -119,6 +136,7 @@ type LibraryWizardStepProps = Pick<
 
 export type {
   LibraryAuthority,
+  LibraryDetails,
   LibraryFolder,
   LibraryHealth,
   LibraryHeldRemoval,

@@ -405,7 +405,7 @@ classify() {
           ;;
       esac
       case "$path" in
-        web/apps/web/tests/e2e/tuner-*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-watch-player/*)
+        web/apps/web/tests/e2e/tuner-*|web/apps/web/tests/e2e/route-timing*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-watch-player/*)
           select_gate tuner
           ;;
       esac
