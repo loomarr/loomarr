@@ -5,8 +5,8 @@ import { useMemo } from "react";
 
 // useFillerCatalog — a small id→clip lookup so the pin/exclude lists can render a saved id as its
 // clip name + duration rather than a bare id. A miss (an id whose clip isn't in the catalog — e.g.
-// a clip removed after being pinned) returns undefined and the list falls back to the id, so an
-// override is never hidden.
+// a clip removed after being pinned) returns undefined, and the list says the clip is no longer in
+// the catalog, so an override is never hidden.
 //
 // ⚠ **It asks for exactly the ids it holds** (`hashes`, §10 V51d) rather than loading the catalog
 // and building a map. Paging makes the map silently WRONG rather than merely wasteful: with a
@@ -15,8 +15,8 @@ import { useMemo } from "react";
 // missing.
 //
 // ⚠ Held and removed clips are deliberately NOT opted into. A pinned clip that was later removed
-// from the catalog SHOULD fail to resolve: the fallback renders the raw id, which is the honest
-// signal that the override points at something no longer airable.
+// from the catalog SHOULD fail to resolve: the list then marks the pin as pointing at something no
+// longer airable, which the assembler would otherwise skip without a word.
 //
 // Intentionally NOT the search read the add-flow uses: this is the resolve-what's-already-chosen
 // read, always on; that one is query-gated.
