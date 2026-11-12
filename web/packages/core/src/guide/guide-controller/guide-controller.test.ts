@@ -259,6 +259,37 @@ describe("Guide controller", () => {
       expect(controller.getSnapshot().error).toBeUndefined();
     });
 
+    it("keeps a failed refresh's error, and a re-read in flight, across a filter change", async () => {
+      const lineup: GuideOutputBody = {
+        ...guide(),
+        channels: ["two", "seven"].flatMap((id, index) =>
+          guide(id).channels.map((channel) => ({ ...channel, number: index + 1 })),
+        ),
+      };
+      const source = { load: vi.fn().mockResolvedValue(lineup) };
+      const controller = createGuideController({ now: () => 2_000, source });
+      await controller.refresh();
+
+      source.load.mockRejectedValue(new Error("Couldn't load the Guide (503)."));
+      await controller.refresh();
+      // Choosing Favorites narrows what is on screen; the Guide on screen is still the stale one.
+      controller.restrict(["seven"]);
+      expect(controller.getSnapshot()).toMatchObject({
+        error: "Couldn't load the Guide (503).",
+        status: "ready",
+      });
+
+      const slow = deferred<GuideOutputBody>();
+      source.load.mockReturnValue(slow.promise);
+      const refreshed = controller.refresh();
+      controller.restrict(undefined);
+      expect(controller.getSnapshot().refreshing).toBe(true);
+      slow.resolve(lineup);
+      await refreshed;
+      expect(controller.getSnapshot().refreshing).toBeUndefined();
+      expect(controller.getSnapshot().error).toBeUndefined();
+    });
+
     it("keeps an empty Guide empty while it re-reads", async () => {
       const source = { load: vi.fn().mockResolvedValue({ ...guide(), channels: [] }) };
       const controller = createGuideController({ now: () => 2_000, source });
