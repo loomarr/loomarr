@@ -55,21 +55,29 @@ const Card = ({ channel, density, lit }: { channel: PlayerSurfChannel; density: 
       }}
       testID={lit ? "channel-card-lit" : "channel-card"}
     >
-      <View
-        style={{
-          backgroundColor: channel.artUri ? playerChrome.surfaceRaised : standInFor(channel.number),
-          height: wide ? 76 : 48,
-          opacity: lit ? 1 : 0.6,
-        }}
-      >
-        {channel.artUri ? (
-          <Image
-            accessibilityIgnoresInvertColors
-            resizeMode="cover"
-            source={{ uri: channel.artUri }}
-            style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
-          />
-        ) : null}
+      <View style={{ height: wide ? 76 : 48 }}>
+        {/* Only the picture sits back: a number block dimmed with it falls below 4.5:1 on a decade
+            colour, so the block keeps full strength on every card. */}
+        <View
+          style={{
+            backgroundColor: channel.artUri ? playerChrome.surfaceRaised : standInFor(channel.number),
+            bottom: 0,
+            left: 0,
+            opacity: lit ? 1 : 0.6,
+            position: "absolute",
+            right: 0,
+            top: 0,
+          }}
+        >
+          {channel.artUri ? (
+            <Image
+              accessibilityIgnoresInvertColors
+              resizeMode="cover"
+              source={{ uri: channel.artUri }}
+              style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+            />
+          ) : null}
+        </View>
         <View
           style={{
             alignItems: "center",
