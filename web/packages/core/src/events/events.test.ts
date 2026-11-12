@@ -227,6 +227,34 @@ describe("the browser stream", () => {
     stream.close();
   });
 
+  it("waits longer after each refusal in a row, and starts over once a source opens", () => {
+    const stream = browserEventStreamFactory("/v1/events");
+    const refuseLatest = () => {
+      const latest = FakeSource.made.at(-1);
+      if (latest) latest.readyState = FakeSource.CLOSED;
+      latest?.emit("error");
+    };
+    // How long until the next source after a refusal, to the second.
+    const nextWait = () => {
+      const before = FakeSource.made.length;
+      refuseLatest();
+      let waited = 0;
+      while (FakeSource.made.length === before && waited < 120) {
+        vi.advanceTimersByTime(1000);
+        waited += 1;
+      }
+      return waited;
+    };
+
+    expect([nextWait(), nextWait(), nextWait(), nextWait()]).toEqual([3, 6, 12, 24]);
+    for (let refusal = 0; refusal < 4; refusal += 1) nextWait();
+    expect(nextWait()).toBe(60);
+
+    FakeSource.made.at(-1)?.emit("open");
+    expect(nextWait()).toBe(3);
+    stream.close();
+  });
+
   it("opens no new source once it is closed", () => {
     const stream = browserEventStreamFactory("/v1/events");
     const first = FakeSource.made[0];
