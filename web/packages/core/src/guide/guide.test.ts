@@ -81,6 +81,18 @@ describe("guideWindow", () => {
       expect(win("2026-10-31T16:00:00Z", 2, null).from).toBe(Date.parse("2026-11-02T05:00:00Z"));
     });
 
+    // As a Date or Temporal ("compatible") reads a wall time a clock change skips or repeats: a
+    // skipped hour moves forward by the gap, a repeated hour is its first occurrence.
+    it("starts at an hour a clock change skips or repeats as a clock would", () => {
+      // 8 March 2026: 2 AM does not exist in New York (EST jumps to EDT); start at 2 AM is 3 AM EDT.
+      expect(win("2026-03-07T17:00:00Z", 1, 2).from).toBe(Date.parse("2026-03-08T07:00:00Z"));
+      // 1 November 2026: 1 AM happens twice; start at 1 AM is the first, 1 AM EDT.
+      expect(win("2026-10-31T16:00:00Z", 1, 1).from).toBe(Date.parse("2026-11-01T05:00:00Z"));
+      // The hours either side are untouched.
+      expect(win("2026-03-07T17:00:00Z", 1, 1).from).toBe(Date.parse("2026-03-08T06:00:00Z"));
+      expect(win("2026-03-07T17:00:00Z", 1, 3).from).toBe(Date.parse("2026-03-08T07:00:00Z"));
+    });
+
     it("reads a moment's day offset and hour on the household's clock", () => {
       const now = Date.parse("2026-10-31T16:00:00Z");
       expect(guideDayOffset(Date.parse("2026-11-02T05:00:00Z"), now, ny)).toBe(2);

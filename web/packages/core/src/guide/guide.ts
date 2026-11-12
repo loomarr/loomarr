@@ -57,11 +57,20 @@ const zoneOffset = (at: number, timeZone?: string): number => {
   return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(at / 1000) * 1000;
 };
 
-// The moment a zone's wall clock reads a date at an hour. The second pass takes the offset in force
-// at that moment, so an hour after a clock change lands on its own side of it.
+// The moment a zone's wall clock reads a date at an hour, resolved as a Date or Temporal
+// ("compatible") would: the two offsets either side of a clock change give two candidates; a
+// repeated hour is the earlier one that reads right, and an hour the change skips is the later
+// one (the hour moved forward by the gap).
 const zonedTime = (year: number, month: number, day: number, hour: number, timeZone?: string): number => {
   const asUTC = Date.UTC(year, month - 1, day, hour);
-  return asUTC - zoneOffset(asUTC - zoneOffset(asUTC, timeZone), timeZone);
+  const first = asUTC - zoneOffset(asUTC, timeZone);
+  const second = asUTC - zoneOffset(first, timeZone);
+  const reads = (at: number) => {
+    const w = wallClock(at, timeZone);
+    return w.day === day && w.hour === hour;
+  };
+  const matches = [first, second].filter(reads);
+  return matches.length ? Math.min(...matches) : Math.max(first, second);
 };
 
 // The household's date `days` after the one it is at a moment, as a UTC midnight to count with.
