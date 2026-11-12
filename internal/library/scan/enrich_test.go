@@ -445,6 +445,75 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 	}
 }
 
+// A show named by air date (a daily or weekly show: "Golf Hour - 2013-02-15 - February 15,
+// 2013.mkv", loose in its folder) is an episode of that folder's show, never a movie, and TMDB's
+// season entry that aired that day says which episode it is. Its NFO's numbering, which may be
+// another catalog's, does not stand over the date.
+func TestAShowNamedByAirDateIsPlacedByTheDay(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(season, n int, aired, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("900008%d%d", season, n)}},
+			Numbering: &mp.Numbering{Season: season, Episode: n}, Descriptive: &mp.Descriptive{Title: title, PremiereDate: aired},
+		}
+	}
+	records := map[string]mp.Record{
+		"90000801": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{
+				Title: "Golf Hour", Seasons: []mp.SeasonSize{{Number: 1, Episodes: 2}, {Number: 2, Episodes: 2}},
+				Orders: []mp.EpisodeOrder{},
+			},
+		},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, 1, "2012-02-10", "First Drive"), entry(1, 2, "2012-02-17", "Second Drive"),
+		}},
+		"90000801/2": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(2, 1, "2013-02-08", "The Long Putt"), entry(2, 2, "2013-02-15", "Into the Rough"),
+		}},
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	rel := "Golf Hour {tmdb-90000801}/Golf Hour - 2013-02-15 - February 15, 2013.mkv"
+	path := h.file(rel, 10)
+	doc := "<episodedetails><title>February 15, 2013</title><season>11</season><episode>5</episode>" +
+		"<aired>2013-02-15</aired></episodedetails>"
+	if err := os.WriteFile(path[:len(path)-len(".mkv")]+".nfo", []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	catalog := &fakeCatalog{records: records}
+	e := &Enricher{
+		Store: h.st, Provider: catalog,
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	origin := fileOrigin(h.root, rel)
+	item := h.item(origin)
+	if item.Kind != kindEpisode {
+		t.Fatalf("kind = %q, want an episode", item.Kind)
+	}
+	facts := h.origin(item, origin).Observation.Facts
+	if facts.Name != "Into the Rough" || facts.SeasonNumber != 2 || facts.EpisodeNumber != 2 {
+		t.Fatalf("episode = %q S%dE%d, want \"Into the Rough\" S2E2 (fetched %v)", facts.Name, facts.SeasonNumber,
+			facts.EpisodeNumber, catalog.fetched)
+	}
+	movies, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: "movie"})
+	if err != nil || len(movies.Items) != 0 {
+		t.Fatalf("movies = %+v, %v; want none", movies.Items, err)
+	}
+}
+
 // A series record cached in an older shape is fetched again on the next tick, fresh as it is; a
 // movie record of the same age, already in the movie's current shape, is left until its refresh.
 func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -189,7 +190,23 @@ var (
 	embeddedID = regexp.MustCompile(`(?i)[\[{](tmdb|tmdbid|imdb|imdbid|tvdb|tvdbid)[-=]([a-z0-9]+)[\]}]`)
 	// episodeMark matches "S01E02", "S01E02E03", "S01E02-E03" and "1x02".
 	episodeMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])s(\d{1,4})[ ._-]?e(\d{1,4})(?:[ ._-]?-?e(\d{1,4}))?|(?:^|[^a-z0-9])(\d{1,2})x(\d{2,3})(?:[^0-9]|$)`)
+	// airDateMark matches the day a daily or weekly show's episode aired: "2013-02-15",
+	// "2013.02.15", "2013 02 15".
+	airDateMark = regexp.MustCompile(`(?:^|[^0-9])((?:19|20)\d{2})[-. ](\d{2})[-. ](\d{2})(?:[^0-9]|$)`)
 )
+
+// airDateIn is the day a file's name says its episode aired, YYYY-MM-DD; "" for none.
+func airDateIn(name string) string {
+	m := airDateMark.FindStringSubmatch(name)
+	if m == nil {
+		return ""
+	}
+	day := m[1] + "-" + m[2] + "-" + m[3]
+	if _, err := time.Parse(time.DateOnly, day); err != nil {
+		return ""
+	}
+	return day
+}
 
 // idsIn returns the grounded ids written into one name.
 func idsIn(name string) []mp.ExternalID {
@@ -254,6 +271,15 @@ func embeddedRecord(file File) (mp.Record, string) {
 		if seriesDir != "" {
 			rec.Parent = idsIn(path.Base(seriesDir))
 		}
+		return rec, seriesDir
+	}
+	// A daily or weekly show names its episodes by the day they aired, in the show's folder: the
+	// day, not a season and number, says which episode it is (season.go's byAirDate). A dated file
+	// loose at the root's top has no show to belong to.
+	if day := airDateIn(name); day != "" && len(segments) > 1 {
+		rec := mp.Record{Source: src, Kind: mp.KindEpisode, Descriptive: &mp.Descriptive{PremiereDate: day}}
+		seriesDir := seriesFolder(file.Rel)
+		rec.Parent = idsIn(path.Base(seriesDir))
 		return rec, seriesDir
 	}
 	// A movie is named by its file or its own folder. A folder further up is a collection or a
