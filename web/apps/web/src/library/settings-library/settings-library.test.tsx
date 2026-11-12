@@ -1,5 +1,5 @@
 import {
-  getChannelGuideMockHandler,
+  getHouseholdMockHandler,
   getLibraryStatusMockHandler,
   getListLibraryRootsMockHandler,
 } from "@loomarr/api/msw";
@@ -38,8 +38,8 @@ const inUse = {
 // were ever recorded, and shows the server's refusal of a typed folder in its own words.
 describe("SettingsLibrary", () => {
   beforeEach(() => {
-    // The page tells times in the household's zone, which the Guide read carries.
-    server.use(getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }));
+    // The page tells times in the household's zone, which the household read carries.
+    server.use(getHouseholdMockHandler({ timeZone: "" }));
   });
 
   it("looks for folders once when none were ever recorded", async () => {

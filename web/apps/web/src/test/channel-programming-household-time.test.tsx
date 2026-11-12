@@ -19,18 +19,22 @@ import { me } from "@/test/fixtures/users";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
 
-// The Programming tab reads the guide only for its timezone. Its window comes from
-// `useGuideWindow` like Home, Watch and the Guide: pinned while the clock runs, slid near its end,
-// and kept on screen (previous data) while the slid window loads.
+// The Programming tab tells times in the household's timezone. It reads that one fact from the
+// household read, once, rather than loading the Guide and re-reading it as the Guide's window slides.
 
 afterEach(() => vi.useRealTimers());
 
-describe("Programming tab guide window", () => {
-  it("asks for the guide once while the clock runs, then again only after the window slides", async () => {
-    const guideRequests: string[] = [];
+describe("Programming tab household time", () => {
+  it("reads the household timezone once and never loads the Guide for it", async () => {
+    let householdReads = 0;
+    let guideReads = 0;
     server.use(
-      http.get("*/v1/guide", ({ request }) => {
-        guideRequests.push(new URL(request.url).search);
+      http.get("*/v1/household", () => {
+        householdReads++;
+        return HttpResponse.json({ timeZone: "UTC" });
+      }),
+      http.get("*/v1/guide", () => {
+        guideReads++;
         return HttpResponse.json({ channels: [], fromMs: 0, toMs: 0, timezone: "UTC" } as never);
       }),
       getMeMockHandler(me()),
@@ -61,13 +65,11 @@ describe("Programming tab guide window", () => {
       </LoomarrProvider>,
     );
     await screen.findByRole("heading", { name: "Programming" });
-    await waitFor(() => expect(guideRequests).toHaveLength(1));
+    await waitFor(() => expect(householdReads).toBe(1));
 
-    await act(async () => vi.advanceTimersByTime(2 * 60 * 60_000));
-    expect(guideRequests).toHaveLength(1);
-
-    await act(async () => vi.advanceTimersByTime(90 * 60_000));
-    await waitFor(() => expect(guideRequests).toHaveLength(2));
-    expect(guideRequests[1]).not.toBe(guideRequests[0]);
+    // Hours pass, past where the Guide's window would have slid.
+    await act(async () => vi.advanceTimersByTime(4 * 60 * 60_000));
+    expect(householdReads).toBe(1);
+    expect(guideReads).toBe(0);
   });
 });

@@ -17,6 +17,7 @@ import {
   getGetCurrentHealthMockHandler,
   getGetDiagnosticVerboseCaptureMockHandler,
   getGuideHighlightsMockHandler,
+  getHouseholdMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
   getLibraryStatusMockHandler,
@@ -197,6 +198,7 @@ const appHandlers = (): RequestHandler[] => [
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
   // Home's Watching now and Tonight, read once the guide has a channel: nobody watching, nothing
   // highlighted.
+  getHouseholdMockHandler({ timeZone: "" }),
   getHouseholdViewingMockHandler({ channels: [], scope: "household", viewers: [], watching: 0 }),
   getGuideHighlightsMockHandler({ fromMs: 0, highlights: [], toMs: 0 }),
   // A member's Home reads their channel ideas even before anything is on the air: none yet.

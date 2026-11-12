@@ -1,20 +1,18 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useGuideWindow } from "@loomarr/core/guide";
-import { keepPreviousData } from "@tanstack/react-query";
 
 /**
  * The household's timezone, which the Guide tells times in, so a time shown elsewhere reads the same
- * as the Guide's for a viewer in another zone. It comes from the same pinned-window guide read that
- * the Guide, Home and Watch share, so it is usually already cached. Undefined until that read
- * answers; a time formatter falls back to the device's zone in the meantime.
+ * as the Guide's for a viewer in another zone. It is its own small read (`GET /v1/household`), kept
+ * for the session: a setting an admin rarely changes is not worth a Guide load or a refetch per
+ * event. Undefined until that read answers, or when no timezone is set; a time formatter then falls
+ * back to the device's zone.
  */
 const useHouseholdTimeZone = (): string | undefined => {
-  const { window } = useGuideWindow();
-  const guide = channelsApi.useChannelGuide(window, {
-    query: { retry: false, placeholderData: keepPreviousData },
+  const household = channelsApi.useHousehold({
+    query: { retry: false, staleTime: Number.POSITIVE_INFINITY },
   });
-  return unwrap(guide.data)?.timezone;
+  return unwrap(household.data)?.timeZone || undefined;
 };
 
 export { useHouseholdTimeZone };
