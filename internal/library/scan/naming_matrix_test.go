@@ -1167,6 +1167,53 @@ var namingMatrix = []namingRow{
 		"Kids/Moss Mouse/Kite Flying.mp4":             "episode Moss Mouse S?E?",
 		"Kids/Moss Mouse/Moss Mouse Movie (2019).mp4": "movie Moss Mouse Movie 2019",
 	}},
+	// Re-score #18: a show kept in several places is one show: its loose downloads, a second
+	// shelf's copy and a release's batch folders join its own folder; a remake of another year
+	// stays its own.
+	{id: "W130", files: map[string]string{
+		"TV/Gull Rock/Season 1/Gull Rock S01E01.mkv":                          "episode Gull Rock S1E1",
+		"Downloads/Gull.Rock.S02E02.720p.mkv":                                 "episode Gull Rock S2E2",
+		"TV/New/Gull.Rock.S03E02.mkv":                                         "episode Gull Rock S3E2",
+		"Incoming/Gull Rock S03E03.mkv":                                       "episode Gull Rock S3E3",
+		"TV/Unsorted/Corry Fen S02E02.mkv":                                    "episode Corry Fen S2E2",
+		"TV/Corry Fen/Season 1/Corry Fen S01E01.mkv":                          "episode Corry Fen S1E1",
+		"TV/Haven Hill/Season 1/Haven Hill S01E01.mkv":                        "episode Haven Hill S1E1",
+		"TV 2/Haven Hill/Season 2/Haven Hill S02E01.mkv":                      "episode Haven Hill S2E1",
+		"Anime/[Grp] Usagi Hana (01-12) [1080p]/[Grp] Usagi Hana - 01.mkv":    "episode Usagi Hana S?E?",
+		"Anime/[Grp] Usagi Hana S2 (13-24) [1080p]/[Grp] Usagi Hana - 13.mkv": "episode Usagi Hana S?E?",
+		"TV/Kettle Bay (2001)/Season 1/Kettle Bay (2001) S01E01.mkv":          "episode Kettle Bay 2001 S1E1",
+		"TV/Kettle Bay (2019)/Season 1/Kettle Bay (2019) S01E01.mkv":          "episode Kettle Bay 2019 S1E1",
+	}},
+	// Re-score #18: a film's copies named by their cut, framing, colour or voice are its versions,
+	// never skipped; one named by anything else is its extra.
+	{id: "W131", files: map[string]string{
+		"Movies/Hob Fen (2008)/Hob Fen (2008).mkv":                      "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Final Cut.mkv":          "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Open Matte.mkv":         "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Black and White.mkv":    "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - English Dub.mkv":        "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Theatrical.mkv":         "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Workprint.mkv":          "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Animatic.mkv":           "skip",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Theatrical Trailer.mkv": "skip",
+		"Movies/Gloaming Wold (2019).m2t":                               "movie Gloaming Wold 2019",
+	}},
+	// Re-score #18: a shelf never names a show; a show's film beside its titled episodes leaves them
+	// its; a release's language, a disc's word and a specials' word leave the title.
+	{id: "W132", files: map[string]string{
+		"Anime/Kame Ep 5.mkv":                          "episode Kame S1E5",
+		"Anime/Kame Ep 6.mkv":                          "episode Kame S1E6",
+		"Anime/Hoshi Ep 5.mkv":                         "episode Hoshi S1E5",
+		"Kids/Pip Wood Ep 5.mp4":                       "episode Pip Wood S1E5",
+		"Kids/Pip Wood Ep 6.mp4":                       "episode Pip Wood S1E6",
+		"Kids/Peppy Hog/Peppy Hog - Muddy Puddles.mp4": "episode Peppy Hog S?E?",
+		"Kids/Peppy Hog/Peppy Hog - Rainy Day.mp4":     "episode Peppy Hog S?E?",
+		"Kids/Peppy Hog/Peppy Hog Movie (2019).mp4":    "movie Peppy Hog Movie 2019",
+		"Movies/Larkfield 2010 Hindi 720p WEBRip.mkv":  "movie Larkfield 2010",
+		"Kids/Peppy Cow DVD/Title 1.mp4":               "episode Peppy Cow S?E?",
+		"Kids/Peppy Cow DVD/Title 2.mp4":               "episode Peppy Cow S?E?",
+		"Anime/[Grp] Kame Specials - 01 [1080p].mkv":   "episode Kame S0E1",
+	}},
 	// Re-score #15: a show and its remake loose together are two shows when both number an episode
 	// alike; a yearless copy beside a dated one with episodes of its own joins it.
 	{id: "W122", files: map[string]string{

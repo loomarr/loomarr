@@ -115,6 +115,43 @@ func TestPrincipleShelfNameSaysFilms(t *testing.T) {
 	}
 }
 
+// TestPrincipleShowIsOneWhereverKept: a show's episodes are one show's wherever the household keeps
+// them: its own folder, a second shelf's copy, and loose in a download's or a sorting folder.
+func TestPrincipleShowIsOneWhereverKept(t *testing.T) {
+	for _, show := range principleShows {
+		bare := strings.TrimSpace(strings.Split(show, " (")[0])
+		dotted := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(show, " ", "."), "(", ""), ")", "")
+		want := func(s, e int) string { return fmt.Sprintf("episode %s S%dE%d", showName(show), s, e) }
+		files := map[string]string{
+			fmt.Sprintf("TV/%s/Season 1/%s S01E01.mkv", show, bare):   want(1, 1),
+			fmt.Sprintf("TV 2/%s/Season 2/%s S02E01.mkv", show, bare): want(2, 1),
+			fmt.Sprintf("Downloads/%s.S02E02.720p.WEB.mkv", dotted):   want(2, 2),
+			fmt.Sprintf("TV/New/%s.S03E01.mkv", dotted):               want(3, 1),
+			fmt.Sprintf("Incoming/%s S03E02.mkv", show):               want(3, 2),
+		}
+		t.Run(strings.Fields(show)[0], func(t *testing.T) { principleRead(t, files) })
+	}
+}
+
+// TestPrincipleFilmVersionIsKept: a film's copy beside it, named by how it was cut, framed,
+// coloured or voiced, is the film, never skipped; only a label that says an extra is one.
+func TestPrincipleFilmVersionIsKept(t *testing.T) {
+	versions := []string{"Final Cut", "Alternate Cut", "Rough Cut", "Workprint", "Open Matte", "Black and White",
+		"Theatrical", "Colorized", "English Dub", "Original", "Home Release", "Alt Cut", "Directors Cut", "Extended",
+		"Uncut", "1080p", "4K HDR", "Widescreen", "Japanese Dub", "Hindi", "IMAX"}
+	for _, film := range []string{"Hob Fen (2008)", "Station 7 (1999)", "Sample Lane (2011)"} {
+		title := showName(film)
+		files := map[string]string{fmt.Sprintf("Movies/%s/%s.mkv", film, film): "movie " + title}
+		for _, v := range versions {
+			files[fmt.Sprintf("Movies/%s/%s - %s.mkv", film, film, v)] = "movie " + title
+		}
+		for _, extra := range []string{"Trailer", "Theatrical Trailer", "Behind the Scenes", "Animatic", "Press Conference"} {
+			files[fmt.Sprintf("Movies/%s/%s - %s.mkv", film, film, extra)] = "skip"
+		}
+		t.Run(strings.Fields(film)[0], func(t *testing.T) { principleRead(t, files) })
+	}
+}
+
 // TestPrincipleAnimeExtraIsSkipped: a release's opening, ending, menu, preview or trailer in its
 // episode's place is an extra however it is written, and its episodes beside it are the show's.
 func TestPrincipleAnimeExtraIsSkipped(t *testing.T) {
