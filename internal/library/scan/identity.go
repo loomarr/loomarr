@@ -618,7 +618,7 @@ func seasonIn(name string) (season int, ok bool) {
 		return atoi(m[1]), true
 	}
 	if m := cjkSeason.FindStringSubmatch(name); m != nil {
-		return atoi(m[1] + m[2]), true // one of the two is the season
+		return atoi(matched(m[1], m[2])), true
 	}
 	m := seasonFolder.FindStringSubmatch(name)
 	if m == nil {
@@ -643,6 +643,18 @@ func seasonNumberWord(w string) (int, bool) {
 	return n, ok
 }
 
+// matched is the one group of several that took part in a match, where each group is in an
+// alternative of its own: "第(\d+)話|(\d+)화" fills one or the other, never both, as a regexp's
+// alternatives never match together.
+func matched(groups ...string) string {
+	for _, g := range groups {
+		if g != "" {
+			return g
+		}
+	}
+	return ""
+}
+
 // romanNumbers are a season's number as a Roman numeral.
 var romanNumbers = map[string]int{
 	"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 8, "IX": 9, "X": 10,
@@ -662,7 +674,7 @@ func isSeasonFolder(dir string) bool {
 	if m == nil || path.Dir(dir) == "." {
 		return false
 	}
-	if _, ok := seasonNumberWord(m[2] + m[3]); !ok { // one of the two is the season
+	if _, ok := seasonNumberWord(matched(m[2], m[3])); !ok {
 		return false
 	}
 	show := path.Base(path.Dir(dir))
@@ -1101,14 +1113,14 @@ func looseAnime(name string) (string, mp.Numbering, bool) {
 		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1])) {
 			m = nil
 		}
-		if m != nil && (tagged || m[2] != "") && !yearToken.MatchString(m[2]+m[3]) {
-			show, number = m[1], atoi(m[2]+m[3]) // one of the two is the number
+		if m != nil && (tagged || m[2] != "") && !yearToken.MatchString(matched(m[2], m[3])) {
+			show, number = m[1], atoi(matched(m[2], m[3]))
 		}
 	}
 	// A tagged release numbered as Japanese and Chinese write it: "[Kumo] Hoshi Kettle 第03話".
 	if bare := leadingTags.ReplaceAllString(s, ""); number == 0 && bare != s {
 		if m := cjkEpisode.FindStringSubmatch(bare); m != nil {
-			show, number = strings.TrimSpace(bare[:strings.Index(bare, m[0])]), atoi(m[1]+m[2]) // one of the two is the episode
+			show, number = strings.TrimSpace(bare[:strings.Index(bare, m[0])]), atoi(matched(m[1], m[2]))
 		}
 	}
 	if number == 0 || show == "" {
@@ -1116,7 +1128,7 @@ func looseAnime(name string) (string, mp.Numbering, bool) {
 	}
 	show = showSpelling(show)
 	if m := animeSeason.FindStringSubmatch(show); m != nil {
-		season := atoi(m[2] + m[3] + m[4]) // one of the three is the season
+		season := atoi(matched(m[2], m[3], m[4]))
 		return strings.TrimSpace(m[1]), mp.Numbering{Season: season, Episode: number}, true
 	}
 	return show, mp.Numbering{Absolute: number}, true
@@ -1142,12 +1154,12 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		if n, ok := seasonIn(path.Base(seasonDir)); ok {
 			season = n
 		} else if m := namedSeason.FindStringSubmatch(path.Base(seasonDir)); m != nil {
-			season, _ = seasonNumberWord(m[2] + m[3]) // one of the two is the season
+			season, _ = seasonNumberWord(matched(m[2], m[3]))
 		}
 	} else if m := namedSeason.FindStringSubmatch(show); m != nil {
 		// A show's season folder with no show folder above it, "Puddle Pals Season 2/", is the
 		// show's and gives the season.
-		if n, ok := seasonNumberWord(m[2] + m[3]); ok { // one of the two is the season
+		if n, ok := seasonNumberWord(matched(m[2], m[3])); ok {
 			season = n
 		}
 	}
@@ -1207,7 +1219,7 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		return episode(atoi(m[1]))
 	}
 	if m := cjkEpisode.FindStringSubmatch(name); m != nil {
-		return episode(atoi(m[1] + m[2])) // one of the two is the episode
+		return episode(atoi(matched(m[1], m[2])))
 	}
 	if m := partOf.FindStringSubmatch(name); m != nil && atoi(m[1]) <= atoi(m[2]) {
 		return episode(atoi(m[1]))
@@ -1251,7 +1263,7 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		// A folder named by its show and season, "Pebble Pals Season 1", gives the season.
 		named := false
 		if m := namedSeason.FindStringSubmatch(show); m != nil {
-			if n, ok := seasonNumberWord(m[2] + m[3]); ok { // one of the two is the season
+			if n, ok := seasonNumberWord(matched(m[2], m[3])); ok {
 				season, named = n, true
 			}
 		}
