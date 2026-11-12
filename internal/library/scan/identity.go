@@ -188,8 +188,12 @@ func pathMapper(authority string, paths []librarystore.LibraryRootPath) func(str
 var (
 	// embeddedID matches an id written into a name: "{tmdb-1234}", "[imdbid-tt0001234]", "{tvdb-5678}".
 	embeddedID = regexp.MustCompile(`(?i)[\[{](tmdb|tmdbid|imdb|imdbid|tvdb|tvdbid)[-=]([a-z0-9]+)[\]}]`)
-	// episodeMark matches "S01E02", "S01E02E03", "S01E02-E03" and "1x02".
-	episodeMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])s(\d{1,4})[ ._-]?e(\d{1,4})(?:[ ._-]?-?e(\d{1,4}))?|(?:^|[^a-z0-9])(\d{1,2})x(\d{2,3})(?:[^0-9]|$)`)
+	// episodeMark matches "S01E02" and "1x02", and a file holding several episodes through its last:
+	// "S01E02E03", "S01E02-E03", "S01E02+E03", "S01E02-S01E03", "S01E02-03", "1x02-1x03", "1x02-03".
+	// A bare last episode is two or three digits and ends there, so "S01E02-1080p" holds one.
+	episodeMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])s(\d{1,4})[ ._-]?e(\d{1,4})` +
+		`(?:[ ._-]?[-+]?[ ._]?(?:s\d{1,4}[ ._-]?)?e(\d{1,4})|-(\d{2,3})(?:[^a-z0-9]|$))?` +
+		`|(?:^|[^a-z0-9])(\d{1,2})x(\d{2,3})(?:-(?:\d{1,2}x)?(\d{2,3})(?:[^a-z0-9]|$)|[^0-9]|$)`)
 	// airDateMark matches the day a daily or weekly show's episode aired: "2013-02-15",
 	// "2013.02.15", "2013 02 15".
 	airDateMark = regexp.MustCompile(`(?:^|[^0-9])((?:19|20)\d{2})[-. ](\d{2})[-. ](\d{2})(?:[^0-9]|$)`)
@@ -244,14 +248,14 @@ func numberingIn(name string) (mp.Numbering, bool) {
 	if m == nil {
 		return mp.Numbering{}, false
 	}
-	if m[1] != "" {
-		n := mp.Numbering{Season: atoi(m[1]), Episode: atoi(m[2])}
-		if m[3] != "" && atoi(m[3]) > n.Episode {
-			n.EpisodeEnd = atoi(m[3])
-		}
-		return n, true
+	n, last := mp.Numbering{Season: atoi(m[1]), Episode: atoi(m[2])}, m[3]+m[4]
+	if m[1] == "" {
+		n, last = mp.Numbering{Season: atoi(m[5]), Episode: atoi(m[6])}, m[7]
 	}
-	return mp.Numbering{Season: atoi(m[4]), Episode: atoi(m[5])}, true
+	if last != "" && atoi(last) > n.Episode {
+		n.EpisodeEnd = atoi(last)
+	}
+	return n, true
 }
 
 func atoi(s string) int {
@@ -298,8 +302,36 @@ func embeddedRecord(file File) (mp.Record, string) {
 	return rec, ""
 }
 
-// seasonFolder matches a season folder's name: "Season 1", "Season 01", "S01", "Specials".
-var seasonFolder = regexp.MustCompile(`(?i)^(season[ ._-]*\d+|s\d+|specials)$`)
+var (
+	// seasonFolder matches a season folder's name: "Season 1", "Season 01", "S01", "Specials",
+	// "Series 1" and its other languages' words ("Staffel 1", "Saison 1", "Temporada 1"), with any
+	// bracketed notes after it ("Season 2 [1080p]").
+	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:season|series|staffel|saison|temporada|stagione)[ ._-]*\d+|s\d+|specials)` +
+		`(?:[ ._-]*[\[(][^\])]*[\])])*$`)
+	// namedSeason matches a season folder that starts with its show's name: "Kettle Bay Season 1".
+	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:season|series|staffel|saison|temporada|stagione)[ ._-]*\d+` +
+		`(?:[ ._-]*[\[(][^\])]*[\])])*$`)
+)
+
+// isSeasonFolder says whether dir, relative to the root, is a season folder. One that starts with a
+// show's name is one only inside that show's folder: "Kettle Bay/Kettle Bay Season 1" is, while a
+// "Kettle Bay Season 1" folder of its own, with no show folder above it, is the show's.
+func isSeasonFolder(dir string) bool {
+	name := path.Base(dir)
+	if seasonFolder.MatchString(name) {
+		return true
+	}
+	m := namedSeason.FindStringSubmatch(name)
+	return m != nil && path.Dir(dir) != "." && sameWords(m[1], path.Base(path.Dir(dir)))
+}
+
+// sameWords says whether two names have the same words, whatever their case and separators.
+func sameWords(a, b string) bool {
+	words := func(s string) string {
+		return strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(strings.ToLower(s))), " ")
+	}
+	return words(a) == words(b)
+}
 
 // seriesFolder is an episode's series folder relative to the root: the folder above its season
 // folder, else the nearest folder whose name carries an id, else its own folder. An episode with
@@ -310,7 +342,7 @@ func seriesFolder(rel string) string {
 	if dir == "." {
 		return looseSeries(path.Base(rel))
 	}
-	if seasonFolder.MatchString(path.Base(dir)) {
+	if isSeasonFolder(dir) {
 		if parent := path.Dir(dir); parent != "." {
 			return parent
 		}
