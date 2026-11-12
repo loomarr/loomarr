@@ -14,7 +14,16 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Action, Chip, CompactSelect, SegmentedControl, Stack, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Chip,
+  CompactSelect,
+  Notice,
+  SegmentedControl,
+  Stack,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import {
   GuideCompact,
   type GuideFilter,
@@ -349,7 +358,9 @@ const GuidePage = () => {
     return out;
   }, []);
 
-  if (guide.error) {
+  // A failed refetch of a Guide already on screen (an SSE invalidation, a window revisited) keeps it
+  // and says it may be stale; only a Guide that never answered gives the page to the error.
+  if (guide.error && !body) {
     return (
       <div className="p-6">
         <ErrorState error={guide.error} onRetry={() => guide.refetch()} />
@@ -390,6 +401,18 @@ const GuidePage = () => {
           )
         }
       />
+
+      {guide.error ? (
+        // The same inset the TV and phone Guide give it (GuideJourney).
+        <Surface backgroundColor="transparent" borderWidth={0} padding="control">
+          <Notice
+            action={{ label: "Try again", onPress: () => void guide.refetch() }}
+            body="Showing what Loomarr had a moment ago."
+            title="Couldn't refresh the Guide"
+            tone="warn"
+          />
+        </Surface>
+      ) : null}
 
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
           much time is on screen. Precise planning controls live in the secondary View row. */}

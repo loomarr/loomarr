@@ -264,6 +264,30 @@ describe("Guide", () => {
     expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
+  // A failed refetch (the SSE bus invalidating every window) used to swap the whole page for an
+  // error. The Guide on screen stays, and a Notice says it may be stale until a refresh lands.
+  it("keeps the Guide on screen and says so when a refresh fails", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt(GRID);
+    expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+    server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+    const isGuide = (query: { queryKey: readonly unknown[] }) =>
+      String(query.queryKey[0]).includes("/v1/guide");
+    await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+
+    expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+    expect(view.getByText("Showing what Loomarr had a moment ago.")).toBeInTheDocument();
+    expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+    server.resetHandlers();
+    stubGuide();
+    await user.click(view.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+    expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+  });
+
   // #3411: the tab read a bare "Loomarr" here while every other page named itself.
   it("names its browser tab", async () => {
     stubGuide();
