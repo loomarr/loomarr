@@ -330,7 +330,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
-		facts.Name = fallbackName(file.Rel, id.kind)
+		facts.Name = fallbackName(file.Rel, id.kind, file.Part)
 	}
 	// An episode its file names by the day it aired lists that day until a catalog says more.
 	if day := id.airDate(); facts.PremiereDate == "" && day != "" {
@@ -344,7 +344,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		seriesKey = seriesOrigin(b.root, id.seriesDir)
 	}
 	snapshot.Observation.Extension = originExtensionOf(id.kind, res, seriesKey, fileNotes{
-		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Trickplay: file.trickplay(),
+		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Part: file.Part, Trickplay: file.trickplay(),
 		External: file.externalTracks(), Markers: readEDL(file.edl()),
 	})
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)

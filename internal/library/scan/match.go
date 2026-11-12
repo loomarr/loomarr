@@ -300,7 +300,7 @@ func (m *Matcher) details(ctx context.Context, hit SearchHit) (mp.Record, bool) 
 }
 
 // length is a title's length from its files' headers: the longest, for a movie with an extra
-// copy. Zero when no header is read yet.
+// copy, and its parts' together for a movie in parts. Zero when no header is read yet.
 func (m *Matcher) length(ctx context.Context, need librarystore.LibraryNeed) time.Duration {
 	if m.Inventory == nil || need.Kind != string(mp.KindMovie) {
 		return 0
@@ -309,11 +309,33 @@ func (m *Matcher) length(ctx context.Context, need librarystore.LibraryNeed) tim
 	if err != nil || !ok {
 		return 0
 	}
+	// A file's source origin shares its item origin's key, which notes its edition and part.
+	exts := map[inventory.OriginKey]originExtension{}
+	for _, o := range item.Origins {
+		exts[o.Key] = readOriginExtension(o.Observation.Extension)
+	}
 	var longest int64
+	// Each part's longest copy, by edition and part.
+	longestPart := map[string]map[int]int64{}
 	for _, src := range item.Sources {
 		for _, o := range src.Origins {
-			longest = max(longest, o.Observation.Facts.DurationMillis)
+			ms := o.Observation.Facts.DurationMillis
+			longest = max(longest, ms)
+			if part := exts[o.Key].Part; part > 0 {
+				edition := editionKey(exts[o.Key].Edition)
+				if longestPart[edition] == nil {
+					longestPart[edition] = map[int]int64{}
+				}
+				longestPart[edition][part] = max(longestPart[edition][part], ms)
+			}
 		}
+	}
+	for _, byPart := range longestPart {
+		var total int64
+		for _, ms := range byPart {
+			total += ms
+		}
+		longest = max(longest, total)
 	}
 	return time.Duration(longest) * time.Millisecond
 }

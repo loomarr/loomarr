@@ -1,0 +1,97 @@
+package scan
+
+import (
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// partToken matches the last part mark in a file's stem: "cd1", "part 2", "pt.B", "(disc 1)",
+// "[dvd2]". Its groups are the words before it, its number or letter, and the words after it.
+var partToken = regexp.MustCompile(`(?i)^(.*)(?:cd|dvd|part|pt|disc|disk)[ ._-]*([0-9]{1,2}|[a-d])[\)\]]?(.*)$`)
+
+// partsOf is which of a folder's videos are parts of one movie, by name, and each one's number
+// from 1. A file is a part only beside the rest of its set: two or more videos whose names are
+// the same but for a part mark, numbered 1, 2, … (or A, B, …) with none missing. A name alone
+// never says it, so "Kettle Part 2 (2011)", alone in its folder, is a movie of its own.
+func partsOf(names []string) map[string]int {
+	type part struct {
+		name   string
+		number int
+	}
+	sets := map[string][]part{}
+	for _, name := range names {
+		set, number, ok := partIn(name)
+		if ok {
+			sets[set] = append(sets[set], part{name: name, number: number})
+		}
+	}
+	var out map[string]int
+	for _, set := range sets {
+		if len(set) < 2 {
+			continue
+		}
+		seen := make([]bool, len(set)+1)
+		whole := true
+		for _, p := range set {
+			if p.number < 1 || p.number > len(set) || seen[p.number] {
+				whole = false
+				break
+			}
+			seen[p.number] = true
+		}
+		if !whole {
+			continue
+		}
+		if out == nil {
+			out = map[string]int{}
+		}
+		for _, p := range set {
+			out[p.name] = p.number
+		}
+	}
+	return out
+}
+
+// withoutPart is a part's stem with its part mark taken out: "Ashgrove (2015) - cd1" is
+// "Ashgrove (2015)", the movie's name.
+func withoutPart(stem string) string {
+	m := partToken.FindStringSubmatchIndex(stem)
+	if m == nil {
+		return stem
+	}
+	before := strings.TrimRight(stem[m[2]:m[3]], " ._-([")
+	after := strings.TrimLeft(stem[m[6]:m[7]], " ._-)]")
+	return strings.TrimSpace(before + " " + after)
+}
+
+// partIn is the set a file's name puts it in, the name with its part mark taken out, and its part
+// number; ok is false for a name with no part mark. A mark joined to the word before it
+// ("Counterpart2") or the word after it ("part about") is no mark. A letter counts as its place in
+// the alphabet, and a set's numbers and letters are kept apart.
+func partIn(name string) (set string, number int, ok bool) {
+	ext := filepath.Ext(name)
+	m := partToken.FindStringSubmatchIndex(strings.TrimSuffix(name, ext))
+	if m == nil {
+		return "", 0, false
+	}
+	stem := strings.TrimSuffix(name, ext)
+	before, value, after := stem[m[2]:m[3]], stem[m[4]:m[5]], stem[m[6]:m[7]]
+	if r, _ := utf8.DecodeLastRuneInString(before); r != utf8.RuneError && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+		return "", 0, false
+	}
+	if r, _ := utf8.DecodeRuneInString(after); r != utf8.RuneError && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+		return "", 0, false
+	}
+	before = strings.TrimRight(before, " ._-([")
+	kind := "n"
+	if n, err := strconv.Atoi(value); err == nil {
+		number = n
+	} else {
+		kind, number = "a", int(unicode.ToLower(rune(value[0]))-'a')+1
+	}
+	return strings.ToLower(before + "\x00" + kind + "\x00" + after + ext), number, true
+}

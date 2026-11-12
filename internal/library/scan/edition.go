@@ -2,6 +2,7 @@ package scan
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -63,16 +64,23 @@ func editionKey(label string) string {
 	return k
 }
 
-// playingCopies is which of a title's n copies play: one in each edition (decision 54), picked
-// among that edition's copies as playingCopy picks (decision 37).
-func playingCopies(n int, edition func(int) string, managed func(int) bool, pixels func(int) int, size func(int) int64) []bool {
+// playingCopies is which of a title's n files play: one in each edition (decision 54), or each
+// part of an edition in parts, picked among the copies of it as playingCopy picks (decision 37).
+// An edition with a whole file plays that, and its parts are extra copies.
+func playingCopies(n int, edition func(int) string, part func(int) int, managed func(int) bool, pixels func(int) int, size func(int) int64) []bool {
 	groups := map[string][]int{}
+	whole := map[string]bool{}
 	for i := range n {
-		k := editionKey(edition(i))
+		e := editionKey(edition(i))
+		k := e + "\x00" + strconv.Itoa(part(i))
 		groups[k] = append(groups[k], i)
+		whole[e] = whole[e] || part(i) == 0
 	}
 	plays := make([]bool, n)
 	for _, g := range groups {
+		if part(g[0]) != 0 && whole[editionKey(edition(g[0]))] {
+			continue
+		}
 		best := playingCopy(len(g), func(j int) bool { return managed(g[j]) },
 			func(j int) int { return pixels(g[j]) }, func(j int) int64 { return size(g[j]) })
 		plays[g[best]] = true

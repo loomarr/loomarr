@@ -49,7 +49,7 @@ func (s *Store) libraryItemFacts(ctx context.Context, ids []string, out map[stri
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, COALESCE(i.series_id, ''), i.overview, i.year,
 		COALESCE(NULLIF(i.rating, ''), sr.rating, ''),
 		COALESCE(NULLIF((SELECT src.duration_ms FROM library_sources src WHERE src.item_id = i.id AND src.plays
-			ORDER BY src.edition <> '', src.path LIMIT 1), 0), i.runtime_ms)
+			ORDER BY src.edition <> '', src.part, src.path LIMIT 1), 0), i.runtime_ms)
 		FROM library_items i LEFT JOIN library_items sr ON sr.id = i.series_id
 		WHERE i.id IN (`+in+`)`), args...)
 	if err != nil {

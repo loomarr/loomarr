@@ -202,8 +202,8 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	if page.Total != 3 || len(got) != 3 || got[0] != "show" || got[1] != "broken" || got[2] != "twice" {
 		t.Fatalf("problems = %v (total %d), want show, broken and twice", got, page.Total)
 	}
-	if page.Items[1].Unplayable != 1 || page.Items[1].ExtraBytes != 0 || page.Items[2].Unplayable != 0 ||
-		page.Items[2].Files != 2 || page.Items[2].ExtraBytes != 30 {
+	if page.Items[1].Unplayable != 1 || page.Items[1].ExtraCopies != 0 || page.Items[1].ExtraBytes != 0 ||
+		page.Items[2].Unplayable != 0 || page.Items[2].Files != 2 || page.Items[2].ExtraCopies != 1 || page.Items[2].ExtraBytes != 30 {
 		t.Errorf("problem counts = %+v, want Twice Film's 30-byte copy extra", page.Items)
 	}
 	if all, err := st.ListLibraryItems(ctx, LibraryItemQuery{}); err != nil || all.Total != 6 {

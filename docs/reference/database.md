@@ -793,7 +793,8 @@ A title's present files, one row each, with the copy that plays marked. Replaced
 | `bitrate` | The file's overall bitrate in bits per second; 0 when unknown. | `INTEGER` |
 | `duration_ms` | The file's length in milliseconds from its header; 0 until the header is read. | `INTEGER` |
 | `edition` | Which version of the title this file is, such as a director's cut; empty for the usual one. | `TEXT` |
-| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest). | `BOOLEAN` |
+| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order. | `BOOLEAN` |
+| `part` | Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file. | `INTEGER` |
 
 ### library_streams
 
