@@ -18,9 +18,8 @@ import { createChannelCatalogPort, createPlayUrlSourcePort } from "@loomarr/play
 import { randomUUID } from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Image } from "react-native";
-
+import { useDisposedWith } from "../use-disposed-with";
 import type { PairedClient, PairedClientOptions } from "./paired-client.type";
-import { useDisposedWith } from "./use-disposed-with";
 
 // Hermes has no crypto.randomUUID, so expo-crypto supplies the platform's secure one.
 const newPlaybackSessionId = (platform: string) => `${platform}-${randomUUID()}`;
