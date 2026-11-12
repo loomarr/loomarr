@@ -223,6 +223,7 @@ type libraryItemFileDTO struct {
 	AudioChannels int                  `json:"audioChannels,omitempty" doc:"The channels of the sound that plays: its default audio stream, else its first"`
 	Subtitles     []librarySubtitleDTO `json:"subtitles" doc:"Its subtitle streams in order; empty for none or while unread"`
 	Extra         bool                 `json:"extra" doc:"A copy that never plays, because another of the title's files does"`
+	Part          int                  `json:"part,omitempty" doc:"Which part of a movie split over several files it is, from 1; absent for a whole file. Every part plays, in order"`
 }
 
 type libraryPictureDTO struct {
@@ -245,7 +246,7 @@ type libraryDetailsFromDTO struct {
 func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
 	out := libraryItemFileDTO{
 		Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending,
-		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra,
+		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra, Part: f.Part,
 		Subtitles: make([]librarySubtitleDTO, 0, len(f.Subtitles)),
 	}
 	if f.Picture != nil {

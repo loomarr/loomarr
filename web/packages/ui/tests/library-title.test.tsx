@@ -151,6 +151,21 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  it("names each part of a movie split over several files", () => {
+    const part = (n: number) =>
+      ({
+        ...MOVIE.files[0],
+        path: `/media/movies/Paper Kites (1996)/Paper Kites - cd${n}.mkv`,
+        part: n,
+      }) as LibraryTitleDetail["files"][number];
+    const { host, button, cleanup } = render({ ...MOVIE, files: [part(1), part(2)] });
+    act(() => button("Technical details").click());
+    expect(host.textContent).toContain("Part 1 of 2");
+    expect(host.textContent).toContain("Part 2 of 2");
+    expect(host.textContent).not.toContain("An extra copy");
+    cleanup();
+  });
+
   it("offers to remove an extra copy, and says when it couldn't", async () => {
     const extra = {
       ...MOVIE.files[0],
