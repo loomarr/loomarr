@@ -9,6 +9,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface, type WatchingSurfaceProps } from "../index";
 
+// Records which pressable asks for the TV's focus as it renders; react-native-web drops the prop.
+const preferredFocus = vi.hoisted(() => ({ labels: [] as string[] }));
+vi.mock("react-native", async (importOriginal) => {
+  const original = await importOriginal<typeof import("react-native")>();
+  const { createElement } = await import("react");
+  const Pressable = (props: Parameters<typeof original.Pressable>[0]) => {
+    if (props.hasTVPreferredFocus && props.accessibilityLabel)
+      preferredFocus.labels.push(props.accessibilityLabel);
+    return createElement(original.Pressable, props);
+  };
+  return { ...original, Pressable };
+});
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The package compiles without the DOM lib (it is React Native first), so the test names the little
@@ -236,6 +249,24 @@ describe("WatchingSurface", () => {
     expect(host.querySelector('[data-testid="player-caption"]')?.textContent).toBe(
       "I thought you said tonight",
     );
+  });
+
+  it("hands the remote's focus back to the key whose menu Back closed", () => {
+    for (const [layer, key] of [
+      ["subtitles", "Subtitles"],
+      ["more", "More"],
+    ] as const) {
+      const { render } = mount(() => surface({ layer, subtitles: subtitles() }));
+      preferredFocus.labels.length = 0;
+      render(() => surface({ subtitles: subtitles() }));
+      expect(preferredFocus.labels).toContain(key);
+    }
+  });
+
+  it("leaves focus alone on keys whose menus never opened", () => {
+    preferredFocus.labels.length = 0;
+    mount(() => surface({ subtitles: subtitles() }));
+    expect(preferredFocus.labels.filter((l) => ["Audio", "More", "Subtitles"].includes(l))).toEqual([]);
   });
 
   it("keeps the controls up while Subtitles waits for a choice", () => {
