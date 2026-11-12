@@ -1,5 +1,5 @@
 import type { SubtitleTrackDTO } from "@loomarr/api/models/subtitleTrackDTO";
-import { languageLabel } from "../format";
+import { languageLabel } from "../../format";
 
 // SUBTITLES_OFF is the Subtitles menu's first row and a viewer's remembered key when they want none.
 // A track key is a language code, so "off" can never be one.
