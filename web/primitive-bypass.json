@@ -260,6 +260,9 @@
     "apps/web/src/home/new-this-week/new-this-week.tsx": {
       "flexStack": 2
     },
+    "apps/web/src/lib/app-form/app-form.tsx": {
+      "flexStack": 1
+    },
     "apps/web/src/people/users-page/users-page.tsx": {
       "flexStack": 1
     },
