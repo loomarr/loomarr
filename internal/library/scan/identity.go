@@ -586,6 +586,14 @@ func embeddedRecord(file File) (mp.Record, string) {
 	if showFilm.MatchString(stem(name)) && bracketYear.MatchString(name) && markIn(name) == nil {
 		return movieRecord(src, segments), ""
 	}
+	// So is an anime's film in its own release's folder, "[Grp] Kitsune Hana Movie [BD]/[Grp]
+	// Kitsune Hana Movie.mkv": its name numbers no episode, and its folder is no show's.
+	if dir := path.Dir(file.Rel); showFilm.MatchString(plainStem(name)) && markIn(name) == nil && inAnime(shelved(file, dir)) &&
+		showFilm.MatchString(path.Base(dir)) && !file.Notes.Episodes {
+		if _, _, ok := animeRelease(name, true); !ok {
+			return movieRecord(src, segments), ""
+		}
+	}
 	n, ok := numberingIn(name)
 	if m := dramaRelease.FindStringSubmatch(name); !ok && m != nil {
 		n, ok = mp.Numbering{Season: 1, Episode: atoi(m[1])}, true
@@ -2327,12 +2335,17 @@ func leadingEpisodes(folder string, names []string) bool {
 }
 
 // namedSeries says whether a folder's videos are a show's named by the show its folder's name
-// gives (folderNotes.Series).
-func namedSeries(folder string, names []string) bool {
+// gives (folderNotes.Series). audience is a folder on an audience's shelf, "Kids/Gumdrop Garage/",
+// where "Gumdrop Garage 1" beside "… 2" with none named "Gumdrop Garage" alone are a show's
+// episodes, not a film's sequels: a kids' show is numbered so far more than a film is.
+func namedSeries(folder string, names []string, audience bool) bool {
 	own := showWordsOf(folder)
 	if len(own) == 0 || catchAllFolder(folder) {
 		return false
 	}
+	alone := slices.ContainsFunc(names, func(name string) bool {
+		return slices.Equal(strings.Fields(normName(plainStem(name))), own)
+	})
 	named := 0
 	for _, name := range names {
 		s := plainStem(name)
@@ -2347,6 +2360,10 @@ func namedSeries(folder string, names []string) bool {
 		// "Ironvale 2" and "Ironvale 3" beside "Ironvale" are a film's sequels: a show's episodes
 		// say more after its name.
 		sequel := len(words) == len(own)+1 && digits(words[len(own)])
+		if sequel && audience && !alone && slices.Equal(words[:len(own)], own) {
+			named++
+			continue
+		}
 		// One film's editions, "… - Extended" and "… - Theatrical", are no show's; nor is a film's
 		// title that runs on from its franchise's, "Wren Lake and the Stone": an episode's title is
 		// set apart from its show's by a dash.

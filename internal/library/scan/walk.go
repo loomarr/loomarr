@@ -432,7 +432,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
 	})
 	notes.Leading = leadingEpisodes(folder, videoNames)
-	notes.Series = dir != w.root && namedSeries(folder, videoNames)
+	notes.Series = dir != w.root && namedSeries(folder, videoNames, onAudienceShelf(path.Join(w.shelf, w.rel(dir))))
 	notes.Titled = dir != w.root && titledEpisodes(path.Join(w.shelf, w.rel(dir)), videoNames)
 	notes.Dashed = dashedShows(path.Join(w.shelf, w.rel(dir)), videoNames)
 	notes.Root = w.shelf
@@ -955,8 +955,9 @@ func kindEnds(words []string) bool {
 
 // episodeExtra matches Jellyfin's mark for an episode's own extra, joined to its name with a dash:
 // "Kettle Bay - S01E02-trailer", "… - Tidewater-deleted". " - Trailer", spaced, is the episode's
-// title.
-var episodeExtra = regexp.MustCompile(`(?i)-(?:trailer|featurette|behindthescenes|deleted|deletedscene|interview|scene|short|clip|extra)\d*$`)
+// title. So is one joined with a dot straight after the episode's mark, "Coldharbour
+// S01E02.Trailer": a title follows its mark apart, " - Trailer".
+var episodeExtra = regexp.MustCompile(`(?i)(?:-|[ ._]s\d{1,2}e\d{1,3}\.)(?:trailer|featurette|behindthescenes|deleted|deletedscene|interview|scene|short|clip|extra)\d*$`)
 
 // titleWordExtra matches an episode's title that ends in an everyday word joined on with a dash,
 // as a hyphenated title does: "Behind-the-Scene", "Cut-Short", "Paper-Clip", "Re-Interview". A
