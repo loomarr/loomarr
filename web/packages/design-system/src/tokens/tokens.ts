@@ -279,6 +279,8 @@ const playerChrome = {
   textSecondary: "#B8BECA",
   textMuted: "#8B93A3",
   tooltip: "rgba(11, 12, 14, 0.95)",
+  // A panel docked inside the frame (`DockedPanel`): the canvas at 95%, so the picture shows faintly.
+  panel: "rgba(11, 12, 14, 0.95)",
 } as const;
 
 const typography = {
