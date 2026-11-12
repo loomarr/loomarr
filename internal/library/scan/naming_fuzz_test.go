@@ -17,7 +17,8 @@ import (
 //   - A file is a movie or an episode, nothing else.
 //   - An episode's last episode, if it has one, comes after its first.
 //   - An episode's show is never a season folder: "Season 1" names no show.
-//   - A show in a folder is one of the file's own folders, never one beside or below it.
+//   - A show in a folder is one of the file's own folders, never one beside or below it, unless the
+//     file is loose and names its own: in a catch-all folder, or a release folder at the top.
 //   - A show's folder name never comes out empty, and a search year is a real one.
 func FuzzNamingFromAPath(f *testing.F) {
 	for _, row := range namingMatrix {
@@ -85,8 +86,10 @@ func checkEpisode(t *testing.T, rel string, rec mp.Record, seriesDir string) {
 	}
 	inFolder := dir == seriesDir || strings.HasPrefix(dir, seriesDir+"/")
 	if !inFolder {
-		// A loose episode in a season folder at the top is named by its file, not a folder.
-		if strings.Contains(seriesDir, "/") || !isSeasonFolder(dir) {
+		// A loose episode is named by its file, not a folder: one in a season folder at the top, in
+		// a catch-all folder ("Downloads/Complete"), or in its own release folder at the top.
+		loose := isSeasonFolder(dir) || catchAllFolder(path.Base(dir)) || episodeMark.MatchString(path.Base(dir))
+		if strings.Contains(seriesDir, "/") || !loose {
 			t.Errorf("%q files under %q, which is not one of its folders", rel, seriesDir)
 		}
 		return

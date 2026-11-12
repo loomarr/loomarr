@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -36,31 +37,8 @@ type namingRow struct {
 }
 
 // namingToday is what the scanner makes today of each file it gets wrong, keyed "<row id> <file>".
-var namingToday = map[string]string{
-	"A7 Movies/[TrackerNet] Ferrow Lane (2019).mkv":                   "movie TrackerNet Ferrow Lane 2019",
-	"A12 Movies/Marrow Point (1920x1080).mkv":                         "movie Marrow Point 1920x1080 -",
-	"C9 Movies/(2015) Ashgrove.mkv":                                   "movie 2015 Ashgrove -",
-	"E6 TV/Kettle Bay/Kettle.Bay.102.mkv":                             "movie Kettle Bay 102 -",
-	"E8 TV/Kettle Bay/Kettle Bay Season 1 Episode 2.mkv":              "movie Kettle Bay Season 1 Episode 2 -",
-	"E9 TV/Kettle Bay/Season 1/Kettle Bay Ep02.mkv":                   "episode Kettle Bay S?E?",
-	"E10 TV/Kettle Bay/Season 2/05 - Tidewater.mkv":                   "episode Kettle Bay S?E?",
-	"E13 TV/Ferrow Lane/Ferrow.Lane.2of6.mkv":                         "movie Ferrow Lane 2of6 -",
-	"G1 TV/[Kumo] Sora no Kettle - 07 [1080p][A1B2C3D4].mkv":          "movie Kumo Sora no Kettle - 07 -",
-	"G11 TV/Sora no Kettle/[Kumo] Sora no Kettle - NCOP1 [1080p].mkv": "movie Kumo Sora no Kettle - NCOP1 -",
-	"I2 TV/Evening Ledger/Evening Ledger 20240314.mkv":                "movie Evening Ledger 20240314 -",
-	"I4 TV/Evening Ledger/Evening Ledger 14.03.2024.mkv":              "movie Evening Ledger 14.03.2024 -",
-	"K3 TV/Kettle Bay/1/Kettle Bay S01E01.mkv":                        "episode 1 S1E1",
-	"P3 Movies/Ashgrove.2015-GRP/grp-asg.mkv":                         "movie grp-asg -",
-	"P9 Downloads/Complete/Kettle.Bay.S01E02.mkv":                     "episode Complete S1E2",
-	"P9 Downloads/Incomplete/Kettle.Bay.S01E03.mkv":                   "episode Incomplete S1E3",
-	"R1 Media/Kettle.Bay.S01E02.mkv":                                  "episode Media S1E2",
-	"R4 TV/Kettle Bay/kb 101.avi":                                     "movie kb 101 -",
-	"R4 TV/Kettle Bay/kb 201.avi":                                     "movie kb 201 -",
-	"R5 TV/All Shows/Kettle.Bay.S01E01.mkv":                           "episode All Shows S1E1",
-	"R5 TV/All Shows/Ferrow.Lane.S02E03.mkv":                          "episode All Shows S2E3",
-	"S4 Movies/ＦＥＲＲＯＷ　ＬＡＮＥ（２０１９）.mkv":                                 "movie ＦＥＲＲＯＷ ＬＡＮＥ（２０１９） -",
-	"U3 TV/Kettle Bay/Kettle Bay - Tidewater.mkv":                     "movie Kettle Bay - Tidewater -",
-}
+// Every row reads right; a new row the scanner cannot read yet goes here until it can.
+var namingToday = map[string]string{}
 
 var namingMatrix = []namingRow{
 	// A. Release and scene words around the title.
@@ -163,10 +141,10 @@ var namingMatrix = []namingRow{
 		nfo:   map[string]string{"TV/Kettle Bay/Specials/Kettle Bay - The Movie.nfo": "<episodedetails><title>Kettle Bay - The Movie</title><season>0</season></episodedetails>"}},
 
 	// I. Shows named by the day they aired.
-	{id: "I1", files: map[string]string{"TV/Evening Ledger/Evening.Ledger.2024-03-14.Guest.Name.mkv": "episode Evening Ledger S?E?"}},
-	{id: "I2", files: map[string]string{"TV/Evening Ledger/Evening Ledger 20240314.mkv": "episode Evening Ledger S?E?"}},
-	{id: "I4", files: map[string]string{"TV/Evening Ledger/Evening Ledger 14.03.2024.mkv": "episode Evening Ledger S?E?"}},
-	{id: "I10", files: map[string]string{"TV/Evening Ledger/Season 2024/Evening Ledger - 2024-03-14 - Guest.mkv": "episode Evening Ledger S?E?"}},
+	{id: "I1", files: map[string]string{"TV/Evening Ledger/Evening.Ledger.2024-03-14.Guest.Name.mkv": "episode Evening Ledger 2024-03-14"}},
+	{id: "I2", files: map[string]string{"TV/Evening Ledger/Evening Ledger 20240314.mkv": "episode Evening Ledger 2024-03-14"}},
+	{id: "I4", files: map[string]string{"TV/Evening Ledger/Evening Ledger 14.03.2024.mkv": "episode Evening Ledger 2024-03-14"}},
+	{id: "I10", files: map[string]string{"TV/Evening Ledger/Season 2024/Evening Ledger - 2024-03-14 - Guest.mkv": "episode Evening Ledger 2024-03-14"}},
 
 	// J. Show folders.
 	{id: "J2", files: map[string]string{"TV/Kettle Bay (2019)/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay 2019 S1E1"}},
@@ -342,6 +320,13 @@ func TestNamingMatrix(t *testing.T) {
 // file became.
 func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 	t.Helper()
+	return namingOutcomesWith(t, row, false)
+}
+
+// namingOutcomesWith is namingOutcomes, and with grounded, each title's ids (an episode's show's)
+// and a movie's edition too.
+func namingOutcomesWith(t *testing.T, row namingRow, grounded bool) map[string]string {
+	t.Helper()
 	h := newHarness(t)
 	for rel := range row.files {
 		h.file(rel, 10)
@@ -356,6 +341,12 @@ func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 		}
 	}
 	h.run()
+	return outcomesIn(t, h, row.files, grounded)
+}
+
+// outcomesIn is what each of files became in h's last pass.
+func outcomesIn(t *testing.T, h *harness, files map[string]string, grounded bool) map[string]string {
+	t.Helper()
 	ctx := context.Background()
 	rows, err := h.st.LibraryFiles(ctx, h.root)
 	if err != nil {
@@ -378,7 +369,7 @@ func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 		byPath[r.Path] = r
 	}
 	out := map[string]string{}
-	for rel := range row.files {
+	for rel := range files {
 		p := filepath.Join(h.root, filepath.FromSlash(rel))
 		r, ok := byPath[p]
 		// A disc structure is listed as one problem, at its folder.
@@ -399,6 +390,9 @@ func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 				continue
 			}
 			out[rel] = describeItem(showOf, it)
+			if grounded {
+				out[rel] += groundedSuffix(showOf, it)
+			}
 		}
 	}
 	return out
@@ -419,6 +413,9 @@ func describeItem(showOf func(librarystore.LibraryOrigin) librarystore.LibraryIt
 	case "episode":
 		show := strings.TrimSuffix(searched(showOf(it.Series)), " -")
 		if it.Season == 0 && it.Episode == 0 {
+			if it.PremiereDate != "" {
+				return "episode " + show + " " + it.PremiereDate
+			}
 			return "episode " + show + " S?E?"
 		}
 		at := fmt.Sprintf("S%dE%d", it.Season, it.Episode)
@@ -431,4 +428,28 @@ func describeItem(showOf func(librarystore.LibraryOrigin) librarystore.LibraryIt
 	default:
 		return it.Kind + " " + it.Name
 	}
+}
+
+// groundedSuffix is the ids a title carries (an episode, its show's), sorted, and a movie's
+// edition: " [imdb:tt9000001] {Final Cut}".
+func groundedSuffix(showOf func(librarystore.LibraryOrigin) librarystore.LibraryItem, it librarystore.LibraryItem) string {
+	holder := it
+	if it.Kind == "episode" {
+		holder = showOf(it.Series)
+	}
+	var ids []string
+	for _, id := range holder.IDs {
+		ids = append(ids, id.Namespace+":"+id.Value)
+	}
+	slices.Sort(ids)
+	out := ""
+	for _, id := range ids {
+		out += " [" + id + "]"
+	}
+	for _, s := range it.Sources {
+		if s.Edition != "" {
+			out += " {" + s.Edition + "}"
+		}
+	}
+	return out
 }

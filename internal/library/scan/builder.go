@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -148,11 +149,25 @@ func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 func (b *builder) identify(file File) identity {
 	m := b.idx.byPath[file.Path]
 	embedded, seriesDir := embeddedRecord(file)
+	// A file whose name says nothing of an episode is one when its own NFO says so: a scraper
+	// placed it ("Kettle Bay - Tidewater.mkv" beside an <episodedetails>).
+	if embedded.Kind == mp.KindMovie && len(m.records) == 0 && path.Dir(file.Rel) != "." {
+		own := strings.ToLower(strings.TrimSuffix(file.Path, filepath.Ext(file.Path)))
+		for nfo, st := range file.Sidecars {
+			if !isNFO(nfo) || strings.ToLower(strings.TrimSuffix(nfo, filepath.Ext(nfo))) != own {
+				continue
+			}
+			if b.im.nfoRoots.rootOf(nfo, st) == "episodedetails" {
+				seriesDir = seriesFolderOf(file)
+				embedded = mp.Record{Source: embedded.Source, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}
+			}
+		}
+	}
 	id := identity{kind: embedded.Kind, managed: m, embedded: embedded, seriesDir: seriesDir}
 	if len(m.records) > 0 {
 		id.kind = m.records[0].Kind
 		if id.kind == mp.KindEpisode && seriesDir == "" {
-			id.seriesDir = seriesFolder(file.Rel)
+			id.seriesDir = seriesFolderOf(file)
 		}
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
@@ -168,7 +183,7 @@ func (b *builder) identify(file File) identity {
 		if m.series != nil {
 			s.managed = m.series
 		}
-		if n := id.numbering(); n != nil {
+		if n := id.numbering(); n != nil && n.Episode > 0 {
 			s.last[n.Season] = max(s.last[n.Season], n.Episode, n.EpisodeEnd)
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
@@ -304,6 +319,10 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
 		facts.Name = fallbackName(file.Rel, id.kind)
+	}
+	// An episode its file names by the day it aired lists that day until a catalog says more.
+	if day := id.airDate(); facts.PremiereDate == "" && day != "" {
+		facts.PremiereDate = day
 	}
 	coverage["sources"] = inventory.CoveragePresent
 	snapshot.Kind = kindOf(id.kind)
