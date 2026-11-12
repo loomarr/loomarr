@@ -1,4 +1,4 @@
-import { Action, Field, typography } from "@loomarr/design-system";
+import { Action, Field, Stack, typography } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
@@ -80,8 +80,8 @@ const ChannelIdentityField = ({
   const wraps = variant === "title" && narrow;
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <div className="flex items-center gap-2">
+    <Stack className={className} gap="1">
+      <Stack align="center" direction="row" gap="inline">
         {/* 448 px at most from `sm` up; below it the row is the name's alone (#1785). */}
         <div className={cn("min-w-0", variant === "title" ? "flex-1 sm:max-w-md" : "w-20")}>
           <Field
@@ -133,13 +133,13 @@ const ChannelIdentityField = ({
             </Action>
           </div>
         )}
-      </div>
+      </Stack>
       {error && (
         <p className="text-onair-300 text-xs" role="alert">
           {error}
         </p>
       )}
-    </div>
+    </Stack>
   );
 };
 

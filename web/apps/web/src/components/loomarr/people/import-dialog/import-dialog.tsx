@@ -207,9 +207,13 @@ const ImportDialog = ({
                       {visible.map((candidate) => {
                         const id = `${searchId}-${candidate.id}`;
                         return (
-                          <li
+                          <Stack
+                            align="start"
+                            className="border-static-800 border-b px-4 py-1 last:border-b-0"
+                            direction="row"
+                            gap="control"
                             key={candidate.id}
-                            className="border-static-800 flex items-start gap-3 border-b px-4 py-1 last:border-b-0"
+                            render="li"
                           >
                             <Toggle
                               id={id}
@@ -234,7 +238,7 @@ const ImportDialog = ({
                                 Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
                               </Text>
                             </label>
-                          </li>
+                          </Stack>
                         );
                       })}
                     </ul>
