@@ -404,15 +404,21 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 
 	// Resolve the input ffmpeg reads: the library item's file, directly. This is where direct play
 	// begins — reading the file lets the encoder `-c copy` it.
-	input := r.itemInput(ctx, airing.LibraryItemID)
-	if input == "" {
+	input := r.programmeInput(ctx, airing.LibraryItemID, airing.Offset)
+	if input.Path == "" {
 		// The lineup names an item whose file is gone or unreadable, or an id the Library does
 		// not hold. Reporting it as "nothing airing" rather than an error means the channel shows
 		// the offline card instead of failing to tune — the same outcome the viewer would get
 		// from an error, minus the retry storm.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
-	return airing, input, nil
+	// A movie in parts airs a part at a time: the encode ends where the part does, and the
+	// packager, asking again there, gets the next part from its start.
+	airing.PartStart = input.Start
+	if input.End > 0 {
+		airing.Remaining = min(airing.Remaining, input.End-airing.Offset)
+	}
+	return airing, input.Path, nil
 }
 
 // servedWriteTimeout bounds the airing-history write RecordAiringServed makes after its caller's
@@ -495,12 +501,12 @@ func (r *Resolver) StillAiring(ctx context.Context, channelID string) (playout.S
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
-			input := r.itemInput(ctx, itemID)
-			if input == "" {
+			input := r.programmeInput(ctx, itemID, airing.Offset)
+			if input.Path == "" {
 				return playout.StillSource{}, false, nil
 			}
-			source := playout.StillSource{Input: input, HDR: r.inventoryHDR(ctx, itemID)}
-			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, input, airing.Offset)
+			source := playout.StillSource{Input: input.Path, HDR: r.inventoryHDR(ctx, itemID), PartStart: input.Start}
+			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, input.Path, airing.Offset-input.Start)
 			return source, true, nil
 		},
 	}, true, nil
@@ -1298,26 +1304,80 @@ func (r *Resolver) preferredAudioLanguage(ctx context.Context, channelID string)
 	return prefer
 }
 
-// LibraryFileReader is the store's read of the file a Library item plays.
+// LibraryFileReader is the store's read of the files a Library item plays.
 type LibraryFileReader interface {
-	LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error)
+	LibraryPlayingParts(ctx context.Context, itemID string) ([]librarystore.LibraryPlayingPart, error)
 }
 
-// itemInput is the input ffmpeg reads for a programme: the library item's own playing file, while
-// it is readable. Playout reads only files Loomarr's scan found (#2151 step 16); an id the Library
-// does not hold, or a file that is gone, has nothing to play: "".
+// itemInput is the input ffmpeg reads for a programme from its start: its first file. What is
+// measured of a movie in parts (its codec, its keyframes, its fades) is measured of that.
 func (r *Resolver) itemInput(ctx context.Context, itemID string) string {
+	return r.programmeInput(ctx, itemID, 0).Path
+}
+
+// programmeInput is the file a programme airs offset into it: the library item's own playing
+// file, or, for a movie in parts, the part offset falls in. Playout reads only files Loomarr's
+// scan found (#2151 step 16), while every one of them is readable: an id the Library does not
+// hold, or a movie with a file gone, part or not, has nothing to play (Path "").
+func (r *Resolver) programmeInput(ctx context.Context, itemID string, offset time.Duration) programmeInput {
+	return inputAt(r.programmeFiles(ctx, itemID), offset)
+}
+
+// programmeFiles is every file a programme airs, in order, each where it airs in the programme;
+// none when any of them is unreadable.
+func (r *Resolver) programmeFiles(ctx context.Context, itemID string) []programmeInput {
 	if r.libraryFile == nil {
-		return ""
+		return nil
 	}
-	path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
+	parts, err := r.libraryFile.LibraryPlayingParts(ctx, itemID)
 	if err != nil && r.log != nil {
 		r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
 	}
-	if !ok || !readableFile(path) {
-		return ""
+	for _, p := range parts {
+		if !readableFile(p.Path) {
+			return nil
+		}
 	}
-	return path
+	return filesOf(parts)
+}
+
+// programmeInput is where in a programme one of its files airs: Path from Start into the
+// programme to End; End is 0 for its last (or only) file, which airs to the end of its slot.
+type programmeInput struct {
+	Path       string
+	Start, End time.Duration
+}
+
+// filesOf is where each of parts airs, each as long as its header says. Parts whose lengths are
+// not all read yet air as the first alone: the runtime the schedule gave the programme is then
+// the catalog's, not theirs.
+func filesOf(parts []librarystore.LibraryPlayingPart) []programmeInput {
+	for _, p := range parts {
+		if p.DurationMs <= 0 {
+			return []programmeInput{{Path: parts[0].Path}}
+		}
+	}
+	out := make([]programmeInput, len(parts))
+	var start time.Duration
+	for i, p := range parts {
+		end := start + time.Duration(p.DurationMs)*time.Millisecond
+		out[i] = programmeInput{Path: p.Path, Start: start, End: end}
+		start = end
+	}
+	if len(out) > 0 {
+		out[len(out)-1].End = 0
+	}
+	return out
+}
+
+// inputAt is the file of files that airs offset into the programme; zero for none.
+func inputAt(files []programmeInput, offset time.Duration) programmeInput {
+	for _, f := range files {
+		if f.End == 0 || offset < f.End {
+			return f
+		}
+	}
+	return programmeInput{}
 }
 
 // readableFile reports whether path is a regular file this process can open. A directory, a

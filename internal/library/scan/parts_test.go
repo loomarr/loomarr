@@ -98,8 +98,8 @@ func TestAMovieInPartsPlaysEveryPart(t *testing.T) {
 			t.Errorf("source %d = %s part %d plays=%v, want %s part %d playing", i, s.Path, s.Part, s.Plays, want.path, want.part)
 		}
 	}
-	if path, ok, err := h.st.LibraryPlayingFile(ctx, string(item.ID)); err != nil || !ok || path != one {
-		t.Errorf("playing file = %q, %v, %v; want the first part", path, ok, err)
+	if parts, err := h.st.LibraryPlayingParts(ctx, string(item.ID)); err != nil || len(parts) != 2 || parts[0].Path != one || parts[1].Path != two {
+		t.Errorf("playing files = %+v, %v; want both parts in order", parts, err)
 	}
 	if page, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true}); err != nil || page.Total != 0 {
 		t.Errorf("problems = %+v, %v; want none: neither part is an extra copy", page.Items, err)

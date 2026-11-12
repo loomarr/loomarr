@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 )
@@ -59,11 +60,23 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 	// The file the title plays: its source marked plays, while the file is present.
-	if path, ok, err := st.LibraryPlayingFile(ctx, "m1"); err != nil || !ok || path != "/media/film/a.mkv" {
-		t.Errorf("playing file = %q, %v, %v; want the listed file", path, ok, err)
+	playing := func(id string) []string {
+		t.Helper()
+		parts, err := st.LibraryPlayingParts(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, p := range parts {
+			paths = append(paths, p.Path)
+		}
+		return paths
 	}
-	if _, ok, err := st.LibraryPlayingFile(ctx, "90000001"); err != nil || ok {
-		t.Errorf("a media-server id: ok = %v, %v; want no answer", ok, err)
+	if got := playing("m1"); !slices.Equal(got, []string{"/media/film/a.mkv"}) {
+		t.Errorf("playing files = %q; want the listed file", got)
+	}
+	if got := playing("90000001"); got != nil {
+		t.Errorf("a media-server id plays %q; want nothing", got)
 	}
 	if v, ok, err := st.LibraryPlayingVideo(ctx, "m1"); err != nil || !ok || v.Codec != "h264" || v.Index != 0 {
 		t.Errorf("playing video = %+v, %v, %v; want the file's h264 stream", v, ok, err)
@@ -87,8 +100,8 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryFiles(ctx, []LibraryFile{cutFile, plainFile}); err != nil {
 		t.Fatal(err)
 	}
-	if path, ok, err := st.LibraryPlayingFile(ctx, "m2"); err != nil || !ok || path != plain {
-		t.Errorf("playing file of a movie with an edition = %q, %v, %v; want the default %q", path, ok, err, plain)
+	if got := playing("m2"); !slices.Equal(got, []string{plain}) {
+		t.Errorf("playing files of a movie with an edition = %q; want the default %q", got, plain)
 	}
 	if v, ok, err := st.LibraryPlayingVideo(ctx, "m2"); err != nil || !ok || v.Codec != "h264" {
 		t.Errorf("playing video of a movie with an edition = %+v, %v, %v; want the default's h264", v, ok, err)
@@ -97,13 +110,45 @@ func testLibraryAudioTracks(t *testing.T, newStore NewStoreFunc) {
 	if facts, err := st.LibraryItemFacts(ctx, []string{"m2"}); err != nil || facts["m2"].RuntimeMs != 7_200_000 {
 		t.Errorf("runtime of a movie with an edition = %+v, %v; want the default's 7200000", facts["m2"], err)
 	}
+	// A movie in parts plays each part in part order, whatever their paths, and runs as long as
+	// they do together; its video is its first part's. While a part's length is unread, its
+	// runtime is the catalog's.
+	one, two := "/media/parts/z part1.mkv", "/media/parts/a part2.mkv"
+	parts := LibraryItem{ID: "m3", Kind: "movie", Name: "Parts", RuntimeMs: 5_000_000, Sources: []LibrarySource{
+		{Path: two, Part: 2, Plays: true, DurationMs: 2_000_000, Streams: []LibraryStream{{Index: 0, Kind: "video", Codec: "hevc"}}},
+		{Path: one, Part: 1, Plays: true, DurationMs: 3_000_000, Streams: []LibraryStream{{Index: 0, Kind: "video", Codec: "h264"}}},
+	}}
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{parts}, at); err != nil {
+		t.Fatal(err)
+	}
+	oneFile, twoFile := file(one, LibraryHeaderRead), file(two, LibraryHeaderRead)
+	oneFile.ItemID, twoFile.ItemID = "m3", "m3"
+	if err := st.SaveLibraryFiles(ctx, []LibraryFile{oneFile, twoFile}); err != nil {
+		t.Fatal(err)
+	}
+	if got := playing("m3"); !slices.Equal(got, []string{one, two}) {
+		t.Errorf("playing files of a movie in parts = %q; want %q then %q", got, one, two)
+	}
+	if v, ok, err := st.LibraryPlayingVideo(ctx, "m3"); err != nil || !ok || v.Codec != "h264" {
+		t.Errorf("playing video of a movie in parts = %+v, %v, %v; want the first part's h264", v, ok, err)
+	}
+	if facts, err := st.LibraryItemFacts(ctx, []string{"m3"}); err != nil || facts["m3"].RuntimeMs != 5_000_000 {
+		t.Errorf("runtime of a movie in parts = %+v, %v; want both parts' 5000000", facts["m3"], err)
+	}
+	parts.RuntimeMs, parts.Sources[0].DurationMs = 9_000_000, 0
+	if err := st.SaveLibraryItems(ctx, []LibraryItem{parts}, at); err != nil {
+		t.Fatal(err)
+	}
+	if facts, err := st.LibraryItemFacts(ctx, []string{"m3"}); err != nil || facts["m3"].RuntimeMs != 9_000_000 {
+		t.Errorf("runtime of a movie in parts with one unread = %+v, %v; want the catalog's 9000000", facts["m3"], err)
+	}
 	gone := file("/media/film/a.mkv", LibraryHeaderRead)
 	gone.MissingAt = at
 	if err := st.SaveLibraryFiles(ctx, []LibraryFile{gone}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := st.LibraryPlayingFile(ctx, "m1"); err != nil || ok {
-		t.Errorf("a title whose file went missing: ok = %v, %v; want no answer", ok, err)
+	if got := playing("m1"); got != nil {
+		t.Errorf("a title whose file went missing plays %q; want nothing", got)
 	}
 	if _, ok, err := st.LibraryPlayingVideo(ctx, "m1"); err != nil || ok {
 		t.Errorf("the video of a file gone missing: ok = %v, %v; want no answer", ok, err)
