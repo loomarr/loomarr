@@ -12,8 +12,10 @@ import {
   guideBreakProgramme,
   guideChannelForTypeahead,
   guideChannelState,
+  guideDayOffset,
   guideFillerEntryLabel,
   guideFillerNowLabel,
+  guideHourOf,
   guideSelectionForChannel,
   guideWaitingForTitles,
   guideWindow,
@@ -45,6 +47,45 @@ describe("guideWindow", () => {
     expect(guideWindow({ at, dayOffset: 1, windowMinutes: 120, hourShift: -1, startHour: 7 })).toEqual({
       from: tomorrow + 6 * 3_600_000,
       to: tomorrow + 8 * 3_600_000,
+    });
+  });
+
+  // The axis reads in the household's zone, so its days and hours are that zone's wall clock,
+  // whatever zone the device is in, and a day a clock change makes 23 or 25 hours long is one day.
+  describe("in the household's time zone", () => {
+    const ny = "America/New_York";
+    const win = (at: string, dayOffset: number, startHour: number | null) =>
+      guideWindow({
+        at: Date.parse(at),
+        dayOffset,
+        windowMinutes: 60,
+        hourShift: 0,
+        startHour,
+        timeZone: ny,
+      });
+
+    it("starts at the household's hour, not the device's", () => {
+      // Noon in New York; Start at 8 PM is 8 PM there.
+      expect(win("2026-08-23T16:00:00Z", 0, 20).from).toBe(Date.parse("2026-08-24T00:00:00Z"));
+    });
+
+    it("counts days from the household's date", () => {
+      // 10 PM on the 23rd in New York is already the 24th in UTC; tomorrow is the 24th there.
+      expect(win("2026-08-24T02:00:00Z", 1, null).from).toBe(Date.parse("2026-08-24T04:00:00Z"));
+    });
+
+    it("keeps the wall clock across a clock change", () => {
+      // Saturday noon, the day before clocks go back: 8 PM tomorrow is 8 PM EST, and two days on
+      // is Monday's midnight, not Sunday 11 PM.
+      expect(win("2026-10-31T16:00:00Z", 1, 20).from).toBe(Date.parse("2026-11-02T01:00:00Z"));
+      expect(win("2026-10-31T16:00:00Z", 2, null).from).toBe(Date.parse("2026-11-02T05:00:00Z"));
+    });
+
+    it("reads a moment's day offset and hour on the household's clock", () => {
+      const now = Date.parse("2026-10-31T16:00:00Z");
+      expect(guideDayOffset(Date.parse("2026-11-02T05:00:00Z"), now, ny)).toBe(2);
+      expect(guideDayOffset(Date.parse("2026-11-01T03:30:00Z"), now, ny)).toBe(0);
+      expect(guideHourOf(Date.parse("2026-11-02T01:00:00Z"), ny)).toBe(20);
     });
   });
 });

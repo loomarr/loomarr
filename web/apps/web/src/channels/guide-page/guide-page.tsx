@@ -23,7 +23,7 @@ import {
   GuidePhoneHeader,
   GuideProgrammeDetail,
 } from "@loomarr/ui";
-import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -35,7 +35,13 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelRowMenu } from "../channel-row-menu";
-import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
+import {
+  DEFAULT_WINDOW_MINUTES,
+  guideDayOffset,
+  guideDayStart,
+  guideHourOf,
+  guideWindow,
+} from "../guide-window";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
 // shared axis. It answers both halves of the question the old card list and this grid used to
@@ -120,23 +126,32 @@ const renderArtwork = (airing: GuideAiringLayout) =>
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;
 
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+// The day picker's offset of a moment from today on the household's calendar, within the days the
+// picker offers.
+const dayOffsetOf = (atMs: number, timeZone?: string): number =>
+  Math.min(FORWARD_DAYS, Math.max(-RETENTION_DAYS, guideDayOffset(atMs, Date.now(), timeZone)));
 
-// The day picker's offset of a moment from today, within the days the picker offers. Rounded, so a
-// day that a clock change makes 23 or 25 hours long still counts as one.
-const dayOffsetOf = (atMs: number): number => {
-  const days = Math.round((startOfDay(new Date(atMs)) - startOfDay(new Date())) / 86_400_000);
-  return Math.min(FORWARD_DAYS, Math.max(-RETENTION_DAYS, days));
-};
-
-// The day picker's label: relative for the days people actually mean, absolute beyond that.
-const dayLabel = (offset: number, now: number): string => {
+// The day picker's label: relative for the days people actually mean, absolute beyond that, and
+// the household's date, as the axis is.
+const dayLabel = (offset: number, now: number, timeZone?: string): string => {
   if (offset === 0) return "Today";
   if (offset === 1) return "Tomorrow";
   if (offset === -1) return "Yesterday";
-  const d = new Date(startOfDay(new Date(now)) + offset * 86_400_000);
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return new Date(guideDayStart(now, offset, timeZone)).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone,
+  });
 };
+
+// The household's zone, which the axis is labelled in and its days and hours are read on. Every
+// guide answer carries it, and the route's loader has fetched one before the page renders.
+const cachedGuideZone = (queryClient: QueryClient): string | undefined =>
+  queryClient
+    .getQueriesData<channelsApi.channelGuideResponse>({ queryKey: channelsApi.getChannelGuideQueryKey() })
+    .map(([, data]) => unwrap(data)?.timezone)
+    .find((zone) => zone !== undefined && zone !== "");
 
 const GuidePage = () => {
   // The tab is named for the nav item that opens it, as every other page's is.
@@ -151,8 +166,9 @@ const GuidePage = () => {
   const [selection, setSelection] = useState<GuideSelection | undefined>(() =>
     atParam !== undefined && channelParam ? { channelId: channelParam, anchorMs: atParam } : undefined,
   );
+  const [timeZone, setTimeZone] = useState(() => cachedGuideZone(queryClient));
   const [dayOffset, setDayOffset] = useState<number>(() =>
-    atParam === undefined ? 0 : dayOffsetOf(atParam),
+    atParam === undefined ? 0 : dayOffsetOf(atParam, timeZone),
   );
   // A phone opens on the shortest span: the compact grid (mocks 5d/5f) shows about an hour and a
   // half across, and four hours leave a half-hour programme a few pixels wide.
@@ -185,7 +201,7 @@ const GuidePage = () => {
   // null = "follow now" (the default). A number pins the window to that hour of the shown day,
   // which is how you ask "what airs at 7am?" without stepping there an hour at a time.
   const [startHour, setStartHour] = useState<number | null>(() =>
-    atParam === undefined ? null : new Date(atParam).getHours(),
+    atParam === undefined ? null : guideHourOf(atParam, timeZone),
   );
   // A precise start is a useful planning tool, but not a question most people ask on every
   // visit. It lives in a secondary row, and the trigger announces when a hidden non-default
@@ -218,8 +234,8 @@ const GuidePage = () => {
             hourShift: 0,
             startHour: null,
           })
-        : guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour }),
-    [nowNextView, dayOffset, queryMinutes, windowMinutes, anchorMs, hourShift, startHour],
+        : guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour, timeZone }),
+    [nowNextView, dayOffset, queryMinutes, windowMinutes, anchorMs, hourShift, startHour, timeZone],
   );
 
   // "Are we looking at the present?" — drives the NOW button's tone. Any of the three
@@ -249,10 +265,10 @@ const GuidePage = () => {
       ...(dayOffset < FORWARD_DAYS ? [{ hourShift, dayOffset: dayOffset + 1 }] : []),
     ];
     for (const n of neighbours) {
-      const w = guideWindow({ at: anchorMs, windowMinutes, startHour, ...n });
+      const w = guideWindow({ at: anchorMs, windowMinutes, startHour, timeZone, ...n });
       void queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions(w));
     }
-  }, [settled, nowNextView, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour]);
+  }, [settled, nowNextView, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour, timeZone]);
 
   // Live update needs no listener here: a `channel` frame means a lineup actually changed (a
   // reconcile completed), and the SSE bus invalidates every cached `/v1/guide` window —
@@ -261,6 +277,11 @@ const GuidePage = () => {
   // and often return the pre-backfill lineup.
 
   const body = unwrap(guide.data);
+  // A cold page with nothing cached reads the device's zone until the first answer names the
+  // household's.
+  useEffect(() => {
+    if (body?.timezone) setTimeZone(body.timezone);
+  }, [body?.timezone]);
   // Rows count as content from any window, the previous one included: that is what stays on
   // screen while the next window loads.
   useRouteContent(body !== undefined);
@@ -397,7 +418,10 @@ const GuidePage = () => {
                 <CompactSelect
                   label="Day"
                   onValueChange={(v) => setDayOffset(Number(v))}
-                  options={dayChoices.map((d) => ({ label: dayLabel(d, anchorMs), value: String(d) }))}
+                  options={dayChoices.map((d) => ({
+                    label: dayLabel(d, anchorMs, timeZone),
+                    value: String(d),
+                  }))}
                   value={String(dayOffset)}
                 />
               </div>
