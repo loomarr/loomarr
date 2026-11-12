@@ -904,6 +904,75 @@ var namingMatrix = []namingRow{
 		"TV/灰色の海岸/シーズン1/第5話.mkv":                                           "episode 灰色の海岸 S1E5",
 		"Anime/[Grp] Tsuki Kettle - SP01 [1080p].mkv":                      "episode Tsuki Kettle S0E1",
 	}},
+	// Re-score #11: a tracker's promo, a film's credits and Q&A, and a download still being written
+	// are no title.
+	{id: "W97", files: map[string]string{
+		"Movies/Pinecrest (2003)/Pinecrest (2003).mkv":                   "movie Pinecrest 2003",
+		"Movies/Pinecrest (2003)/ETRG.mp4":                               "skip",
+		"Movies/Pinecrest (2003)/YTS.mp4":                                "skip",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010).mkv":                   "movie Tarn Gate 2010",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010) - Opening Credits.mkv": "skip",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010) - End Credits.mkv":     "skip",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010) - Q&A.mkv":             "skip",
+		"Movies/Grimsdale (2010).partial.mkv":                            "skip",
+		"Movies/Grimsdale (2010).mkv":                                    "movie Grimsdale 2010",
+	}},
+	// Re-score #11: one show's loose episodes, written with and without brackets round its year, and
+	// beside its season packs' and named season's folders, are one show.
+	{id: "W98", files: map[string]string{
+		"TV/Fernhill (2019) - S01E03.mkv":                    "episode Fernhill 2019 S1E3",
+		"TV/Fernhill.2019.S01E01.mkv":                        "episode Fernhill 2019 S1E1",
+		"TV/Fernhill.2019.S01E02.mkv":                        "episode Fernhill 2019 S1E2",
+		"TV/Ravenmoor.S01.1080p.WEB-DL/Ravenmoor.S01E01.mkv": "episode Ravenmoor S1E1",
+		"TV/Ravenmoor.S02.1080p.WEB-DL/Ravenmoor.S02E01.mkv": "episode Ravenmoor S2E1",
+		"TV/Ravenmoor Season 3/Ravenmoor S03E01.mkv":         "episode Ravenmoor S3E1",
+		"TV/Ravenmoor.S04E01.mkv":                            "episode Ravenmoor S4E1",
+	}},
+	// Re-score #11: a franchise's or box set's films, numbered in order and each named by the
+	// franchise, are films wherever their folder is.
+	{id: "W99", files: map[string]string{
+		"Franchises/Ironclad Sky/01 - Ironclad Sky.mkv":        "movie Ironclad Sky -",
+		"Franchises/Ironclad Sky/02 - Ironclad Sky Rising.mkv": "movie Ironclad Sky Rising -",
+		"Box Sets/Fenmark Collection/01. Fenmark.mkv":          "movie Fenmark -",
+		"Box Sets/Fenmark Collection/02. Fenmark Two.mkv":      "movie Fenmark Two -",
+		"Stuff/Lantern Hill/1 - Lantern Hill.mkv":              "movie Lantern Hill -",
+		"Stuff/Lantern Hill/2 - Lantern Hill Returns.mkv":      "movie Lantern Hill Returns -",
+	}},
+	// Re-score #11: a show's or episode's title that holds "2x4" is no mark beside a real one: the
+	// full mark, or a season folder's own, says which episode it is. "108 Rain" in Season 1 is its
+	// eighth, as "108 - Rain" is, among episodes under a hundred too.
+	{id: "W100", files: map[string]string{
+		"TV/Block 2x4/Block 2x4 S01E01.mkv":           "episode Block 2x4 S1E1",
+		"TV/Block 2x4/Block 2x4 S01E02.mkv":           "episode Block 2x4 S1E2",
+		"TV/Lindenfield/Season 1/12 - 2x4.mkv":        "episode Lindenfield S1E12",
+		"TV/Lindenfield/Season 1/11 - Planks.mkv":     "episode Lindenfield S1E11",
+		"TV/Harrowgate/Season 1/108 Rain.mkv":         "episode Harrowgate S1E8",
+		"TV/Harrowgate/Season 1/109 Hail.mkv":         "episode Harrowgate S1E9",
+		"TV/Harrowgate/Season 1/07 Sleet.mkv":         "episode Harrowgate S1E7",
+		"TV/Kestrel Row/Season 2/Kestrel Row 2x4.mkv": "episode Kestrel Row S2E4",
+	}},
+	// Re-score #11's flagged: a documentary's "1of3", a season's disc label spelt out, a fansub's OVA
+	// with no number, and release words in a title with no year.
+	{id: "W101", files: map[string]string{
+		"Docs/Wild Moor 1of3.mkv":                       "episode Wild Moor S1E1",
+		"Docs/Wild Moor 2of3.mkv":                       "episode Wild Moor S1E2",
+		"Rips/HOLLOW_FEN_SEASON_2_DISC_1/title_t00.mkv": "episode HOLLOW FEN S?E?",
+		"Anime/[Grp] Kumo no Hana - OVA [1080p].mkv":    "episode Kumo no Hana S?E?",
+		"Movies/Pinecrest Widescreen.mkv":               "movie Pinecrest -",
+		"Movies/Brackenfold Special Edition.mkv":        "movie Brackenfold -",
+		"Movies/Sallowmere (2004)/VTS_01_1.VOB":         "movie Sallowmere 2004",
+	}},
+	// Re-score #11's over-corrections: a film's title that holds a mark's shape, a sequel's number in
+	// a franchise's folder, a show's "Part" in a documentary's, and a film's credits named alone.
+	{id: "W102", files: map[string]string{
+		"Movies/Grid 4x4 (2014).mkv":                        "movie Grid 4x4 2014",
+		"Movies/Credits (2019).mkv":                         "movie Credits 2019",
+		"Franchises/Marrow Point/Marrow Point (2010).mkv":   "movie Marrow Point 2010",
+		"Franchises/Marrow Point/Marrow Point 2 (2012).mkv": "movie Marrow Point 2 2012",
+		"TV/Ocean Halls/01 - Ocean Halls - The Deep.mkv":    "episode Ocean Halls S1E1",
+		"TV/Ocean Halls/02 - Ocean Halls - Shallows.mkv":    "episode Ocean Halls S1E2",
+		"Movies/Grimsdale Partial (2015).mkv":               "movie Grimsdale Partial 2015",
+	}},
 	// Re-score #10's over-corrections: a sequel's number, a film's tag last, a title's leading
 	// number, a film's year with its edition, a show named by a letter, a film's ripped titles.
 	{id: "W96", files: map[string]string{
