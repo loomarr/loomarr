@@ -6853,11 +6853,22 @@ components:
         path:
           description: The folder whose scan is waiting
           type: string
+        titleCount:
+          description: How many titles those files are in all
+          format: int64
+          type: integer
+        titles:
+          description: "A few of the titles whose files it no longer found, by name: a show once for all its episodes"
+          items:
+            type: string
+          type: array
       required:
         - path
         - movies
         - episodes
         - other
+        - titles
+        - titleCount
       type: object
     LibraryHookDTO:
       additionalProperties: false

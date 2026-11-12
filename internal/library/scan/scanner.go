@@ -311,6 +311,18 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
 }
 
+// heldNamed is how many of a held removal's titles the maintainer is shown by name.
+const heldNamed = 3
+
+// HeldTitles names a few of the titles a root's held removal would take, by name, and counts them
+// all: the maintainer sees what "They're gone, remove them" lets go before saying it.
+func (l *Library) HeldTitles(ctx context.Context, root string) ([]string, int, error) {
+	if l.Scanner == nil {
+		return []string{}, 0, nil
+	}
+	return l.Scanner.Importer.Store.LibraryHeldTitles(ctx, root, heldNamed)
+}
+
 // ErrScannerOff is a request the scanner cannot serve because it is not running.
 var ErrScannerOff = errors.New("scan: the scanner is off")
 

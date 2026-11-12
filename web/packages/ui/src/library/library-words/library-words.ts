@@ -33,6 +33,15 @@ const heldTitle = (held: LibraryHeldRemoval) => {
   return `${joinNames(parts)} ${one ? "seems" : "seem"} to be gone from your ${folderName(held.path)} folder`;
 };
 
+// "That's Amber Hollow, Brightwater, Calder Point and 2,403 more." — what letting them go removes.
+// Empty when no title is named (only extras are gone).
+const heldNames = (held: LibraryHeldRemoval) => {
+  if (held.titles.length === 0) return "";
+  const rest = held.titleCount - held.titles.length;
+  const names = rest > 0 ? [...held.titles, `${rest.toLocaleString("en-US")} more`] : held.titles;
+  return `That's ${joinNames(names)}.`;
+};
+
 // The three steps of adding media, as the maintainer reads them.
 const STEP_NAMES: Record<Exclude<LibraryScan["step"], "idle">, string> = {
   walking: "Looking through your folders",
@@ -140,4 +149,4 @@ const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan) 
   return { title, line: `${title} — ${retry}`, reason };
 };
 
-export { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline };
+export { detailsWaiting, folderName, heldNames, heldTitle, joinNames, scanHeadline };

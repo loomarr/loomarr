@@ -17,7 +17,7 @@ import { useUiForm } from "../../form-kit";
 import { ModalOverlay } from "../../overlay";
 import { useCommittedDraft } from "../../use-committed-draft";
 import { LibraryPoster, Twirl } from "../library-poster";
-import { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
+import { detailsWaiting, folderName, heldNames, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
@@ -376,7 +376,9 @@ const LibraryStatus = ({
           key={removal.path}
           title={heldTitle(removal)}
         >
-          We haven't removed anything — if a drive is unplugged, plug it back in.
+          {[heldNames(removal), "We haven't removed anything — if a drive is unplugged, plug it back in."]
+            .filter(Boolean)
+            .join(" ")}
         </Callout>
       ))}
       {health === "folder_offline"

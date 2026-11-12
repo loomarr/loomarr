@@ -392,9 +392,20 @@ describe("LibrarySettings", () => {
     const { host, props, button, cleanup } = render({
       health: "ok",
       folders: [TV_IN_USE],
-      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+      held: [
+        {
+          path: "/media/movies",
+          movies: 2406,
+          episodes: 0,
+          other: 0,
+          titles: ["Amber Hollow", "Brightwater", "Calder Point"],
+          titleCount: 2406,
+        },
+      ],
     });
     expect(host.textContent).toContain("2,406 movies seem to be gone from your Movies folder");
+    // What letting them go removes, by name.
+    expect(host.textContent).toContain("That's Amber Hollow, Brightwater, Calder Point and 2,403 more.");
     expect(host.textContent).not.toContain("All caught up");
     act(() => button("Check again").click());
     expect(props.onRescan).toHaveBeenCalled();

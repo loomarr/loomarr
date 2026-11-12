@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,10 +212,12 @@ type libraryScanStatus struct {
 	} `json:"scan"`
 	Files int `json:"files"`
 	Held  []struct {
-		Path     string `json:"path"`
-		Movies   int    `json:"movies"`
-		Episodes int    `json:"episodes"`
-		Other    int    `json:"other"`
+		Path       string   `json:"path"`
+		Movies     int      `json:"movies"`
+		Episodes   int      `json:"episodes"`
+		Other      int      `json:"other"`
+		Titles     []string `json:"titles"`
+		TitleCount int      `json:"titleCount"`
 	} `json:"held"`
 }
 
@@ -269,6 +272,10 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 	st = scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
 	if len(st.Held) != 1 || st.Held[0].Path != movies || st.Held[0].Movies != 2 || st.Held[0].Episodes != 0 {
 		t.Fatalf("held %+v", st.Held)
+	}
+	// The maintainer sees which titles they would let go.
+	if got := st.Held[0]; strings.Join(got.Titles, ",") != "Alpha,Bravo" || got.TitleCount != 2 {
+		t.Fatalf("held titles = %q of %d, want Alpha and Bravo", got.Titles, got.TitleCount)
 	}
 
 	// The confirmation is recorded at once and applied by the next pass, which it asks for.

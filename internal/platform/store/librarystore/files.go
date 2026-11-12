@@ -99,6 +99,10 @@ type LibraryFileStore interface {
 	SetLibraryRootScanned(ctx context.Context, root string, at time.Time) error
 	// LibraryFileCounts counts present files across roots.
 	LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error)
+	// LibraryHeldTitles names up to limit of the titles whose held files a root no longer found, a
+	// show once for all its episodes, by name, and counts them all: what the maintainer is asked
+	// to let go.
+	LibraryHeldTitles(ctx context.Context, root string, limit int) ([]string, int, error)
 }
 
 // LibraryPlayingPart is one file of what a library item plays, with its header's length (0 until
@@ -377,6 +381,31 @@ func (s *Store) SetLibraryRootScanned(ctx context.Context, root string, at time.
 		return storedb.ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) LibraryHeldTitles(ctx context.Context, root string, limit int) ([]string, int, error) {
+	// An episode's title is its show; any other file's is its own item.
+	rows, err := s.h.QueryContext(ctx, s.ph(`WITH held AS (
+		SELECT DISTINCT i.id, i.name, i.sort_name FROM library_files f JOIN library_items i
+			ON i.id = CASE WHEN COALESCE(f.inventory_series_id, '') <> '' THEN f.inventory_series_id ELSE f.inventory_item_id END
+		WHERE f.root = ? AND f.held AND f.missing_at_ms = 0)
+		SELECT name, (SELECT COUNT(*) FROM held) FROM held ORDER BY sort_name, id LIMIT ?`), root, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("library held titles: %w", err)
+	}
+	names, total := []string{}, 0
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name, &total); err != nil {
+			_ = rows.Close()
+			return nil, 0, fmt.Errorf("library held titles: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, 0, fmt.Errorf("library held titles: %w", err)
+	}
+	return names, total, nil
 }
 
 func (s *Store) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error) {

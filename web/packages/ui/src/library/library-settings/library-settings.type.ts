@@ -80,6 +80,10 @@ interface LibraryHeldRemoval {
   movies: number;
   episodes: number;
   other: number;
+  /** A few of the titles those files are, by name: a show once for all its episodes. */
+  titles: readonly string[];
+  /** How many titles those files are in all. */
+  titleCount: number;
 }
 
 /** Whether an arr tells Loomarr about new downloads. */
