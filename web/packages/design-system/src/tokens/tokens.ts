@@ -281,6 +281,8 @@ const playerChrome = {
   tooltip: "rgba(11, 12, 14, 0.95)",
   // A panel docked inside the frame (`DockedPanel`): the canvas at 95%, so the picture shows faintly.
   panel: "rgba(11, 12, 14, 0.95)",
+  // Behind a subtitle line: near-black, so the line reads on any picture (§9.5).
+  caption: "rgba(0, 0, 0, 0.78)",
 } as const;
 
 const typography = {
@@ -341,6 +343,11 @@ const typography = {
     // pointer mock, so pointer takes the nearest existing role (title, label).
     screenTitle: { size: 24, lineHeight: 30, weight: "650" },
     guideCell: { size: 11, lineHeight: 14, weight: "400" },
+    // A subtitle line over the picture (§9.5, variant J): 24 on desktop, 15 on a phone on its side,
+    // 18 on a television. An upright phone's picture is a strip, so its line is smaller still (13)
+    // at every density, the one place it is drawn.
+    subtitle: { size: 24, lineHeight: 31, weight: "500" },
+    subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -371,6 +378,8 @@ const typography = {
     // 5d: the "Guide" title at 30/700 (-0.02em), and the grid's programme titles in Geist 13/500.
     screenTitle: { size: 30, lineHeight: 36, weight: "700" },
     guideCell: { size: 13, lineHeight: 18, weight: "500" },
+    subtitle: { size: 15, lineHeight: 20, weight: "500" },
+    subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -400,6 +409,8 @@ const typography = {
     // 5b's TV Guide title is 30/600; the TV grid has no cell-title role of its own.
     screenTitle: { size: 30, lineHeight: 36, weight: "600" },
     guideCell: { size: 16, lineHeight: 22, weight: "400" },
+    subtitle: { size: 18, lineHeight: 23, weight: "500" },
+    subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
   },
 } as const;
 

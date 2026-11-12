@@ -290,6 +290,16 @@ const Television: Story = {
   ),
 };
 
+// A television's subtitle is short (about 32 characters a line, as broadcast captions are).
+const TelevisionSubtitles: Story = {
+  ...Television,
+  args: {
+    ...Television.args,
+    captions: ["I thought you said tonight", "would be quiet."],
+    utilities: { ...Television.args?.utilities, subtitlesOn: true },
+  } as Story["args"],
+};
+
 // What a key opens (§9.5, variant J): on a pointer and a television, a menu in the control cluster,
 // right over the keys, with the picture whole; on a phone held upright, a sheet from the bottom.
 const audioOptions = [
@@ -307,6 +317,35 @@ const AudioMenu: Story = {
     utilities: { ...utilities, audioOpen: true },
   },
 };
+
+// Subtitles (§9.5, variant J): Off, then each language, a hearing-impaired track as "English, with
+// sounds"; the line on the picture, centred and lifted clear of the band while the controls are up.
+const subtitleOptions = [
+  { label: "Off", selected: false, value: "off" },
+  { label: "English", selected: true, value: "en" },
+  {
+    detail: "For the deaf and hard of hearing",
+    label: "English, with sounds",
+    selected: false,
+    value: "en-sdh",
+  },
+  { label: "Spanish", selected: false, value: "es" },
+];
+const subtitleLine = ["I thought you said tonight would be quiet."];
+const subtitlesOn = { ...utilities, onSubtitles: fn(), subtitlesOn: true };
+const SubtitlesMenu: Story = {
+  args: {
+    captions: subtitleLine,
+    menu: (
+      <PlayerMenu density="pointer" title="Subtitles">
+        <PlayerOptions density="pointer" label="Subtitles" onSelect={fn()} options={subtitleOptions} />
+      </PlayerMenu>
+    ),
+    utilities: { ...subtitlesOn, subtitlesOpen: true },
+  },
+};
+// With the controls down, the line drops to the picture's foot.
+const SubtitlesIdle: Story = { args: { captions: subtitleLine, utilities: subtitlesOn, visible: false } };
 
 // The volume level (§9.5, desktop): the Volume key opens it in the menu's place; M and the slider show
 // it for a moment.
@@ -539,6 +578,15 @@ const portraitArgs = {
   layout: "portrait" as const,
 };
 const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
+// Nothing covers an upright phone's picture, so its line sits at the picture's own foot, smaller.
+const PortraitSubtitles: Story = {
+  args: {
+    ...portraitArgs,
+    captions: ["I thought you said tonight would be quiet."],
+    utilities: { ...portraitArgs.utilities, onSubtitles: fn(), subtitlesOn: true },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
 const PortraitBehind: Story = {
   args: {
     ...portraitArgs,
@@ -765,13 +813,17 @@ export {
   PortraitLongTitle,
   PortraitMore,
   PortraitMoreMidFilm,
+  PortraitSubtitles,
   PortraitUnmute,
   StationId,
   StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
+  SubtitlesIdle,
+  SubtitlesMenu,
   Television,
   TelevisionMore,
+  TelevisionSubtitles,
   Touch,
   TypingChannel,
   UnmutePill,
