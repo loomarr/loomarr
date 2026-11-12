@@ -280,9 +280,10 @@ describe("Settings", () => {
     );
     renderAt("/settings/access");
 
-    expect(await screen.findByLabelText("Recipient-facing Loomarr address")).toHaveValue(
-      window.location.origin,
-    );
+    // The origin is filled by an effect once the settings have loaded, so the field can render
+    // empty first: wait for the value, not just the field.
+    const field = await screen.findByLabelText("Recipient-facing Loomarr address");
+    await waitFor(() => expect(field).toHaveValue(window.location.origin));
   });
 
   it("does not replace an environment-managed recipient address with the browser origin", async () => {
