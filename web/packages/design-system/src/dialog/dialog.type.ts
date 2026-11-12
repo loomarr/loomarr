@@ -49,9 +49,11 @@ interface DialogContentProps {
    * of the screen, 576 wide at most, with no panel or corner close of its own: the content draws
    * its own surface, and Escape or a press outside closes it. `fill` covers the whole screen with
    * no panel or corner close of its own, for a phone's full-screen search: the content draws its
-   * surface and its own close, since a phone has no Escape key. Native always centres it.
+   * surface and its own close, since a phone has no Escape key. `bottom` docks a sheet to the bottom
+   * edge across the full width, with no panel or corner close of its own: the content draws its own
+   * surface (a `BottomSheet`) and its own close. Native always centres it.
    */
-  placement?: "center" | "side" | "top" | "fill";
+  placement?: "center" | "side" | "top" | "fill" | "bottom";
   /** Web only: where the dialog portals, for a contained renderer such as the story gallery. */
   portalContainer?: PortalContainer | null;
   /** The panel's widest: `default` 448, `form` 672, `reading` 768. */

@@ -226,9 +226,6 @@
     "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/components/loomarr/shell/phone-bottom-bar/phone-bottom-bar.tsx": {
-      "rawDialog": 2
-    },
     "apps/web/src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
       "flexStack": 2
     },

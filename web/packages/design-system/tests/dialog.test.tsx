@@ -273,6 +273,24 @@ describe("Dialog", () => {
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   });
 
+  // A phone's bottom sheet: docked to the bottom edge across the width, drawing its own surface and
+  // close.
+  it("docks to the bottom edge with no corner close of its own", async () => {
+    render(
+      <Dialog defaultOpen>
+        <DialogContent accessibilityLabel="More destinations" placement="bottom">
+          <button type="button">Settings</button>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const sheet = await screen.findByRole("dialog", { name: "More destinations" });
+    expect(sheet.style.bottom).toBe("0px");
+    expect(sheet.style.left).toBe("0px");
+    expect(sheet.style.right).toBe("0px");
+    expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
+  });
+
   // jsdom never matches `:focus-visible`, so it stands in for the browser here: focus that arrives by
   // the keyboard is visible, the way Chrome, Firefox and Safari decide it.
   it("rings the corner button while the browser marks its focus visible", async () => {

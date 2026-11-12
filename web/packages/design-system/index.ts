@@ -42,6 +42,8 @@ export {
   DialogTitle,
   DialogTrigger,
 } from "./src/dialog";
+export type { DockedPanelProps } from "./src/docked-panel";
+export { DockedPanel } from "./src/docked-panel";
 export { useFocusLook } from "./src/focus-look";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
