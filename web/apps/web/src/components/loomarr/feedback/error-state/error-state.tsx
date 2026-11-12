@@ -13,6 +13,7 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
     <Stack
       align="center"
       className={cn("border-onair-tint-30 bg-onair-tint-8 rounded-lg border p-8 text-center", className)}
+      flexShrink={0}
       gap="control"
       justify="center"
       role="alert"
