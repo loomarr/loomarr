@@ -172,8 +172,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	})
 	playoutRes = playoutresolve.New(playoutresolve.Config{
 		Engine: channelEngine, Now: time.Now,
-		Metrics:       deps.metrics,
-		DetectContext: rootCtx,
+		Metrics:  deps.metrics,
+		GoDetect: owner.goOnDemand,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.
 		Titles: st,

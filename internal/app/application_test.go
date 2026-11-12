@@ -65,20 +65,66 @@ func TestApplicationOwnsHandlerAndLifecycle(t *testing.T) {
 	}
 }
 
-func TestApplicationShutdownCanBeWaitedAgainAfterCallerTimeout(t *testing.T) {
+// A worker that ignores cancellation must not hold the generation open past the shutdown deadline:
+// a restart brings up its successor then, so this one's resources are stopped regardless, and
+// every later call reports the same outcome.
+func TestApplicationShutdownStopsResourcesAtTheDeadlineDespiteAStuckWorker(t *testing.T) {
 	lifecycle := newGenerationLifecycle(t.Context())
 	application := &Application{lifecycle: lifecycle}
 	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
 	lifecycle.goRun(func(context.Context) { <-release })
+	stopped := make(chan struct{})
+	lifecycle.addStop(func(context.Context) error { close(stopped); return nil })
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	if err := application.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Shutdown error = %v, want deadline exceeded", err)
 	}
-	close(release)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("the stop never ran: a stuck worker held the generation open past its deadline")
+	}
+	if err := application.Shutdown(t.Context()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second Shutdown error = %v, want the first outcome (deadline exceeded)", err)
+	}
+}
+
+// A probe a component starts on first use (the watermark self-check, encoder detection) is the
+// generation's work: shutdown waits for it before stopping resources, and a closing generation
+// starts none.
+func TestApplicationShutdownJoinsOnDemandWorkAndRefusesItAfterClosing(t *testing.T) {
+	lifecycle := newGenerationLifecycle(t.Context())
+	application := &Application{lifecycle: lifecycle}
+	var mu sync.Mutex
+	var events []string
+	record := func(event string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, event)
+	}
+	if !lifecycle.goOnDemand(func(ctx context.Context) {
+		<-ctx.Done()
+		time.Sleep(50 * time.Millisecond)
+		record("probe returned")
+	}) {
+		t.Fatal("an open generation refused on-demand work")
+	}
+	lifecycle.addStop(func(context.Context) error { record("resource stopped"); return nil })
+
 	if err := application.Shutdown(t.Context()); err != nil {
-		t.Fatalf("second Shutdown: %v", err)
+		t.Fatalf("Shutdown: %v", err)
+	}
+	mu.Lock()
+	got := append([]string(nil), events...)
+	mu.Unlock()
+	if want := []string{"probe returned", "resource stopped"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("shutdown order = %v, want %v", got, want)
+	}
+	if lifecycle.goOnDemand(func(context.Context) { t.Error("on-demand work ran after shutdown") }) {
+		t.Fatal("a closed generation accepted on-demand work")
 	}
 }
 
