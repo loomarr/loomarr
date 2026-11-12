@@ -28,19 +28,19 @@
       "tailwindClasses": 78
     },
     "src/components/loomarr/ai/intent-input/intent-input.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 21
     },
     "src/components/loomarr/ai/model-discover/model-discover.tsx": {
       "tailwindClasses": 53
     },
     "src/components/loomarr/ai/model-picker/model-picker.tsx": {
-      "tailwindClasses": 39
+      "tailwindClasses": 24
     },
     "src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
       "tailwindClasses": 70
     },
     "src/components/loomarr/ai/proposal-outlook/proposal-outlook.tsx": {
-      "tailwindClasses": 30
+      "tailwindClasses": 24
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
       "tailwindClasses": 164

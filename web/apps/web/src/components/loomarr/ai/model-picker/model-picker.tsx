@@ -1,6 +1,6 @@
 import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ModelPickerProps } from "./model-picker.type";
 
@@ -28,7 +28,7 @@ const ModelPicker = ({
   busy = false,
   className,
 }: ModelPickerProps) => (
-  <div className={cn("flex flex-col gap-3", className)}>
+  <Stack className={className} gap="control">
     {(gpuName || vramGiB) && (
       <p className="text-muted-foreground text-sm">
         Ranked for {gpuName ?? "this machine"}
@@ -36,7 +36,7 @@ const ModelPicker = ({
       </p>
     )}
 
-    <ul className="flex flex-col gap-2">
+    <Stack gap="inline" render="ul">
       {catalog.map((model: LLMModelView) => {
         const fit = FIT_LABEL[model.fit] ?? { text: model.fit, tone: "caution" as const };
         const isActive = model.tag === active;
@@ -47,13 +47,17 @@ const ModelPicker = ({
         const unusable = !model.runtimeOk || model.fit === "wont_fit";
 
         return (
-          <li
-            key={model.tag}
+          <Stack
+            align="start"
             className={cn(
-              "border-border bg-card flex items-start gap-3 rounded-md border px-3 py-2.5",
+              "border-border bg-card rounded-md border px-3 py-2.5",
               // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
               isActive && "bg-static-800",
             )}
+            direction="row"
+            gap="control"
+            key={model.tag}
+            render="li"
           >
             {/* A model that can't run reads as "here but unavailable" at a glance (§8.1) —
                 kept in the list on purpose ("why isn't X here?" is worse than a greyed row).
@@ -62,7 +66,7 @@ const ModelPicker = ({
                 below the WCAG AA contrast floor, which the a11y gate rejects (frontend-design
                 §7 — express state with color/semantics, never opacity over text). */}
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 text-sm font-medium">
+              <Stack align="center" className="text-sm font-medium" direction="row" gap="inline" render="p">
                 {model.label}
                 <span className="text-static-400 font-mono text-xs">{model.tag}</span>
                 {model.recommended && (
@@ -75,9 +79,9 @@ const ModelPicker = ({
                     active
                   </Badge>
                 )}
-              </p>
+              </Stack>
               <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>
-              <p className="mt-1 flex items-center gap-2 text-xs">
+              <Stack align="center" className="mt-1 text-xs" direction="row" gap="inline" render="p">
                 <Badge shape="square" tone={fit.tone}>
                   {fit.text}
                 </Badge>
@@ -88,7 +92,7 @@ const ModelPicker = ({
                     downloading{progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
                   </span>
                 )}
-              </p>
+              </Stack>
             </div>
 
             {model.pulled ? (
@@ -112,11 +116,11 @@ const ModelPicker = ({
                 {isPulling ? "Downloading…" : "Download"}
               </Action>
             )}
-          </li>
+          </Stack>
         );
       })}
-    </ul>
-  </div>
+    </Stack>
+  </Stack>
 );
 
 export { ModelPicker };

@@ -1,4 +1,5 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
+import { Stack } from "@loomarr/design-system";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
@@ -25,7 +26,7 @@ const describedDuration = (milliseconds: number, lowerBound = false) =>
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
 const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessment }) => (
-  <div className="text-muted-foreground flex flex-col gap-2">
+  <Stack className="text-muted-foreground" gap="inline">
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
       {(
         [
@@ -64,7 +65,7 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
       })}
       . Changes to your library or schedule can update this result.
     </p>
-  </div>
+  </Stack>
 );
 
 const ProposalOutlookDetails = ({
@@ -74,7 +75,7 @@ const ProposalOutlookDetails = ({
   assessment: Assessment;
   showDiagnostics?: boolean;
 }) => (
-  <section aria-label="What can play now" className="text-muted-foreground flex flex-col gap-2">
+  <Stack aria-label="What can play now" className="text-muted-foreground" gap="inline" render="section">
     <h3 className="text-foreground font-medium">What can play now</h3>
     <p>
       {value.programs > 0
@@ -112,7 +113,7 @@ const ProposalOutlookDetails = ({
         </div>
       </details>
     )}
-  </section>
+  </Stack>
 );
 
 const ProposalOutlook = ({
