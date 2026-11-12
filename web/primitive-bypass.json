@@ -505,7 +505,7 @@
       "flexStack": 1
     },
     "apps/web/src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "flexStack": 9
+      "flexStack": 8
     },
     "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "flexStack": 6
@@ -537,7 +537,13 @@
     "packages/ui/src/overlay/overlay.tsx": {
       "rnModal": 1
     },
+    "packages/ui/src/watching-surface/player-chrome/player-bottom-sheet/player-bottom-sheet.tsx": {
+      "rawDialog": 1
+    },
     "packages/ui/src/watching-surface/player-chrome/player-details/player-details.tsx": {
+      "rawDialog": 1
+    },
+    "packages/ui/src/watching-surface/player-chrome/player-menu/player-menu.tsx": {
       "rawDialog": 1
     },
     "packages/ui/src/watching-surface/player-chrome/player-sheet/player-sheet.tsx": {
