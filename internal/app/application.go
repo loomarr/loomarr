@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -92,9 +93,10 @@ func (a *Application) Quiesce(ctx context.Context) error {
 	return a.lifecycle.quiesce(ctx)
 }
 
-// Shutdown cancels generation-owned work, runs explicit stops in reverse construction order,
-// and waits for tracked workers. It is safe to call repeatedly or concurrently. A caller whose
-// context expires may call again with a fresh context to continue waiting for the same shutdown.
+// Shutdown cancels generation-owned work, waits for tracked workers, and runs explicit stops in
+// reverse construction order. The first call's context bounds the wait for workers: at its deadline
+// the stops run anyway and the still-running workers are reported. It is safe to call repeatedly or
+// concurrently; every call reports the same outcome.
 func (a *Application) Shutdown(ctx context.Context) error {
 	if a == nil || a.lifecycle == nil {
 		return nil
@@ -168,6 +170,25 @@ func (l *generationLifecycle) goRun(run func(context.Context)) {
 		defer l.wg.Done()
 		run(l.ctx)
 	}()
+}
+
+// goOnDemand starts generation-owned work that a component begins lazily, after construction: a
+// probe the first tune or programme triggers. Shutdown joins it like any worker. Unlike goRun it
+// refuses quietly once the generation is closing, reporting false, because a late request reaching
+// the component then is ordinary, not a wiring fault.
+func (l *generationLifecycle) goOnDemand(run func(context.Context)) bool {
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return false
+	}
+	l.wg.Add(1)
+	l.mu.Unlock()
+	go func() {
+		defer l.wg.Done()
+		run(l.ctx)
+	}()
+	return true
 }
 
 // startInteractiveOperation accepts request-triggered work into this application generation.
@@ -293,16 +314,36 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 }
 
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
-	<-l.quiesced
-	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
-	// Its last writes go to the resources below, so they are stopped only once it has returned.
-	l.wg.Wait()
-	var stopErrs []error
-	for _, stop := range slices.Backward(stops) {
-		if err := stop(ctx); err != nil {
-			stopErrs = append(stopErrs, err)
-		}
+	var errs []error
+	select {
+	case <-l.quiesced:
+		errs = append(errs, l.quiesceErr)
+	case <-ctx.Done():
+		errs = append(errs, fmt.Errorf("quiesce unfinished at the shutdown deadline: %w", ctx.Err()))
 	}
-	l.err = errors.Join(l.quiesceErr, errors.Join(stopErrs...))
+	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
+	// Its last writes go to the resources below, so they are stopped once it has returned, or at the
+	// deadline: the caller starts the next generation then, and this one's resources must not outlive it.
+	errs = append(errs, l.waitWorkers(ctx))
+	for _, stop := range slices.Backward(stops) {
+		errs = append(errs, stop(ctx))
+	}
+	l.err = errors.Join(errs...)
 	close(l.done)
+}
+
+// waitWorkers waits for the generation's workers until ctx ends. A worker still running then is
+// reported, not waited for.
+func (l *generationLifecycle) waitWorkers(ctx context.Context) error {
+	returned := make(chan struct{})
+	go func() {
+		l.wg.Wait()
+		close(returned)
+	}()
+	select {
+	case <-returned:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("generation workers still running at the shutdown deadline: %w", ctx.Err())
+	}
 }

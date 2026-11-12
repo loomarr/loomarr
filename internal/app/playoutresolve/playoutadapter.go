@@ -206,7 +206,7 @@ type Resolver struct {
 	inputsOnce     sync.Once
 	detectReady    atomic.Bool
 	detectedMu     sync.RWMutex
-	detectContext  context.Context
+	goDetect       func(func(context.Context)) bool
 	detected       encode.Encoder
 	maxChannels    atomic.Int64
 	// encodeHostBytes is the capability probe's measured per-encode host memory (0 = unmeasured).
@@ -241,8 +241,10 @@ type Config struct {
 	Now func() time.Time
 	// Metrics receives the filler rotation counters.
 	Metrics *metrics.Recorder
-	// DetectContext bounds the background encoder detection; it is the application's lifetime.
-	DetectContext context.Context
+	// GoDetect starts the background encoder detection as work its owner joins at shutdown, on a
+	// context the owner cancels then; it reports false, and starts nothing, once the owner is
+	// closing. Nil runs it unowned on the requesting context, detached from its cancellation.
+	GoDetect func(run func(context.Context)) bool
 	// Titles resolves a block's acquisition record for the grid's provenance line.
 	Titles TitleReader
 	// ClipPlays counts a filler clip having aired (V28).
@@ -295,7 +297,7 @@ func New(cfg Config) *Resolver {
 	return &Resolver{
 		engine: cfg.Engine, now: cfg.Now,
 		metrics:            cfg.Metrics,
-		detectContext:      cfg.DetectContext,
+		goDetect:           cfg.GoDetect,
 		titles:             cfg.Titles,
 		clipPlays:          cfg.ClipPlays,
 		airings:            cfg.Airings,
@@ -1766,15 +1768,16 @@ func (r *Resolver) reuseEncoderEvidence(ctx context.Context) {
 }
 
 // warmEncoderDetection starts the expensive host probe once without putting it on a viewer's
-// critical path. The composition root's lifetime wins over an individual request context so one
-// TV disconnecting cannot discard the result every later tune needs.
+// critical path. It runs as the owner's work, not the request's, so one TV disconnecting cannot
+// discard the result every later tune needs, and shutdown waits for it.
 func (r *Resolver) warmEncoderDetection(fallback context.Context) {
 	r.detectStart.Do(func() {
-		ctx := r.detectContext
-		if ctx == nil {
-			ctx = context.WithoutCancel(fallback)
+		detect := func(ctx context.Context) { r.detectedEncoder(ctx) }
+		if r.goDetect != nil {
+			r.goDetect(detect)
+			return
 		}
-		go r.detectedEncoder(ctx)
+		go detect(context.WithoutCancel(fallback))
 	})
 }
 

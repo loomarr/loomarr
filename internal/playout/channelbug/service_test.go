@@ -203,9 +203,9 @@ func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
 	events := &recordedEvents{}
 	c := &Service{dir: t.TempDir(), channels: staticChannelReader{channel: channelstore.Channel{}}, log: slog.New(slog.DiscardHandler),
 		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() encode.GPUFilters { return encode.GPUFilters{} },
-		events: events, lifetime: t.Context()}
+		events: events}
 	g := &watermarkGate{}
-	c.check(encode.EncoderVAAPI, g)
+	c.check(t.Context(), encode.EncoderVAAPI, g)
 
 	if g.works.Load() {
 		t.Fatal("a failed self-check left the watermark on")
