@@ -815,6 +815,67 @@ var namingMatrix = []namingRow{
 		"TV/Brine Rock/Brine Rock S01 Extras/Interview.mkv":    "skip",
 		"TV/Brine Rock/Season 1/Brine Rock S01E01.mkv":         "episode Brine Rock S1E1",
 	}},
+	// Re-score #9: a loose episode beside its show's folder is that show's; a show's absolute numbers
+	// in three digits; "Season N Episode M" with no season folder; a show folder's kind in brackets.
+	{id: "W89", files: map[string]string{
+		"TV/Holm Lane/Season 1/Holm Lane S01E01.mkv":        "episode Holm Lane S1E1",
+		"TV/Holm Lane S01E02.mkv":                           "episode Holm Lane S1E2",
+		"Media/Gorse Hill/Gorse Hill S01E01.mkv":            "episode Gorse Hill S1E1",
+		"Media/Gorse.Hill.S01E02.mkv":                       "episode Gorse Hill S1E2",
+		"Anime/Kaze no Tetsu/[Grp] Kaze no Tetsu - 02.mkv":  "episode Kaze no Tetsu S?E?",
+		"Anime/[Grp] Kaze no Tetsu - 01.mkv":                "episode Kaze no Tetsu S?E?",
+		"TV/Saga Two/Saga Two - 145.mkv":                    "episode Saga Two S?E?",
+		"TV/Saga Two/Saga Two - 146.mkv":                    "episode Saga Two S?E?",
+		"TV/Bellcote/Bellcote - Season 5 Episode 2.mkv":     "episode Bellcote S5E2",
+		"TV/Bellcote/Bellcote (Season 4, Episode 6).mkv":    "episode Bellcote S4E6",
+		"TV/Dunbar/Dunbar - Season 2 - Episode 4.mkv":       "episode Dunbar S2E4",
+		"TV/Dunbar/Dunbar.Season.3.Episode.1.mkv":           "episode Dunbar S3E1",
+		"TV/Copper Vale (TV Series)/Copper Vale S01E01.mkv": "episode Copper Vale S1E1",
+		"TV/Grey Coast (Miniseries)/Grey Coast S01E01.mkv":  "episode Grey Coast S1E1",
+		"TV/Brinkley (Mini-Series)/Brinkley S01E01.mkv":     "episode Brinkley S1E1",
+		"TV/Tolley [TV]/Tolley S01E01.mkv":                  "episode Tolley S1E1",
+	}},
+	// Re-score #9: extras a film's folder holds by other words; editions before the year; a
+	// season's extras pack; a scene's proof; "Ep.03"; a two-parter's part; "Harbor 24 - 103"; a
+	// show's specials folder by another name.
+	{id: "W90", files: map[string]string{
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv":                             "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/Ashgrove - Extended Scene.mkv":                   "skip",
+		"Movies/Ashgrove (2015)/Ashgrove - Easter Eggs.mkv":                      "skip",
+		"Movies/Ashgrove (2015)/Ashgrove - Credits.mkv":                          "skip",
+		"Movies/Ashgrove (2015)/Ashgrove - Intro.mkv":                            "skip",
+		"Movies/Mirefield.Extended.Edition.1985.mkv":                             "movie Mirefield 1985",
+		"Movies/Kilner Special Edition (2006).mkv":                               "movie Kilner 2006",
+		"Downloads/Corran.Hill.S04.Extras/Corran.Hill.S04.Bloopers.mkv":          "skip",
+		"Downloads/Hexworth.2011.1080p-GRP/hexworth.2011.1080p-grp.mkv":          "movie hexworth 2011",
+		"Downloads/Hexworth.2011.1080p-GRP/Proof/hexworth-proof.mkv":             "skip",
+		"Downloads/Nightjar.Ep.03.mkv":                                           "episode Nightjar S1E3",
+		"Kids/Puffin Patrol/Puffin Patrol 1x02.mp4":                              "episode Puffin Patrol S1E2",
+		"Kids/Puffin Patrol/Puffin Patrol - Big Rescue Part 2.mp4":               "episode Puffin Patrol S?E?",
+		"TV/Harbor 24 (2011)/Season 1/Harbor 24 - 103.mkv":                       "episode Harbor 24 2011 S1E3",
+		"TV/Thimble Street/Thimble Street S01E01.mkv":                            "episode Thimble Street S1E1",
+		"TV/Thimble Street/Christmas Specials/Thimble Street - 2005 Special.avi": "episode Thimble Street S?E?",
+	}},
+	// Re-score #9: a folder's two shows, each its own.
+	{id: "W91", files: map[string]string{
+		"TV/Kettle/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle/Kettle Run S01E01.mkv": "episode Kettle Run S1E1",
+		"TV/Kettle/Kettle Run S01E02.mkv": "episode Kettle Run S1E2",
+	}},
+	// Re-score #9's over-corrections: a show's folder whose files add a country; a film named by an
+	// edition's word; an episode titled "Credits" beside marked ones; a film with "Ep" in its name.
+	{id: "W92", files: map[string]string{
+		"TV/Brackley/Brackley US S01E01.mkv":                "episode Brackley S1E1",
+		"TV/Brackley/Brackley US S01E02.mkv":                "episode Brackley S1E2",
+		"Movies/The Final Cut (2004).mkv":                   "movie The Final Cut 2004",
+		"Movies/The Extended (2010).mkv":                    "movie The Extended 2010",
+		"Movies/Remastered (2011).mkv":                      "movie Remastered 2011",
+		"TV/Lowmoor/Lowmoor S01E01.mkv":                     "episode Lowmoor S1E1",
+		"TV/Lowmoor/Lowmoor - Credits.mkv":                  "episode Lowmoor S?E?",
+		"TV/Star Gate Row/Star Gate Row Origins S01E01.mkv": "episode Star Gate Row Origins S1E1",
+		"TV/Star Gate Row/Star Gate Row Beyond S01E01.mkv":  "episode Star Gate Row Beyond S1E1",
+		"Movies/Deep Ep (2018).mkv":                         "movie Deep Ep 2018",
+	}},
 	// Re-score #8's over-corrections: films kept with anime, a film recorded with no day, an episode
 	// titled by a kind's word and more, a film's folder with an extras folder of its own name.
 	{id: "W88", files: map[string]string{

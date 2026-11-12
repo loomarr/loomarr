@@ -64,7 +64,7 @@ var extrasDirs = map[string]bool{
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
 	"bonus": true, "bonus disc": true, "bonus material": true, "extras disc": true,
 	"backdrops": true, "sample": true, "special features": true, "bonus features": true, "clips": true,
-	"extra": true, "theme-music": true,
+	"extra": true, "theme-music": true, "proof": true, "proofs": true,
 }
 
 // extrasFolder says whether a folder named name in parent is an extras folder: named by its kind,
@@ -87,6 +87,17 @@ func extrasFolder(name, parent string) bool {
 	return false
 }
 
+// seasonExtrasFolder says whether a folder is a season's extras by its own name, wherever it is:
+// "Corran.Hill.S04.Extras", "Corran Hill Season 4 Extras".
+func seasonExtrasFolder(name string) bool {
+	words := strings.Fields(normName(name))
+	if len(words) < 3 || !extrasDirs[words[len(words)-1]] {
+		return false
+	}
+	head := strings.Join(words[:len(words)-1], " ")
+	return slices.ContainsFunc(words[1:len(words)-1], seasonToken.MatchString) || namedSeasonOf(head) > 0
+}
+
 // skippedDir reports whether a walk passes over a folder named name in parent (relative to the
 // root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or an
 // extras folder in a title's own folder (titled, as holdsTitle says), which a season folder's
@@ -97,7 +108,7 @@ func skippedDir(parent, name string, titled bool) bool {
 	lower := strings.ToLower(name)
 	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
 	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
-	return skippedDirs[lower] || prefixed ||
+	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) ||
 		(parent != "." && extrasFolder(name, parent) && titled && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
@@ -395,12 +406,22 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			marked++
 		}
 	}
-	// In a shows' catch-all, one marked episode says a show's folder.
-	notes.Episodes = marked >= 2 || marked == 1 && shows || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+	// In a shows' catch-all, one marked episode says a show's folder, as does one that names the
+	// folder's show: "Kids/Puffin Patrol/Puffin Patrol 1x02.mp4".
+	ownMarked := dir != w.root && slices.ContainsFunc(videoNames, func(name string) bool {
+		show := looseSeries(name)
+		return show != "" && sameWords(show, showFolderName(folder))
+	})
+	notes.Episodes = marked >= 2 || marked == 1 && (shows || ownMarked) || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
 		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
 	})
 	notes.Leading = leadingEpisodes(videoNames)
 	notes.Series = dir != w.root && namedSeries(folder, videoNames)
+	for _, e := range entries {
+		if e.IsDir() {
+			notes.Folders = append(notes.Folders, e.Name())
+		}
+	}
 	// A season folder's episodes name their show, not the season: it is never a dump.
 	notes.Dump = dir != w.root && seasonDirOf(w.rel(dir)) == "" && len(idsIn(filepath.Base(dir))) == 0 &&
 		dumpFolder(filepath.Base(dir), videoNames, showsFolderNames[folderKey(path.Base(path.Dir(w.rel(dir))))])
@@ -843,6 +864,7 @@ var extraKinds = [][]string{
 	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
 	{"audio", "commentary"}, {"blooper", "reel"}, {"tv", "spot"}, {"photo", "gallery"},
 	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"}, {"sample"}, {"sneak", "peek"},
+	{"extended", "scene"}, {"extended", "scenes"}, {"easter", "eggs"}, {"easter", "egg"}, {"credits"}, {"intro"},
 	{"recap"}, {"bonus"}, {"preview"}, {"trailers"}, {"teasers"}, {"featurettes"}, {"interviews"},
 	{"promos"}, {"previews"}, {"recaps"}, {"clips"}, {"extras"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
@@ -949,8 +971,11 @@ func siblingExtras(folder string, names []string) map[string]bool {
 		// show's files, a kind's word with more after it is a title's, "Hilltop - Scene of the Crime",
 		// and so is a dated name's, "Quillon Hall - 2018-04-02 - Recap": a day says an episode as its
 		// mark does. In a film's own folder, "… - Interview with Cast" is its extra.
+		// Beside a show's marked episodes, a word an episode is as often titled by, "Hilltop -
+		// Credits", "… - Recap", is its title: only a kind only an extra is named by is an extra.
 		if at < 0 || episodeMark.MatchString(name) || slices.ContainsFunc(words[at:], releaseYear) ||
-			at > 0 && !kindEnds(words[at:]) && (!titled || episodes) || airDateIn(stem(name)) != "" {
+			at > 0 && !kindEnds(words[at:]) && (!titled || episodes) || airDateIn(stem(name)) != "" ||
+			episodes && at > 0 && slices.Contains(titleKinds, words[at]) {
 			titles[key(words)] = true
 			// An episode's show is a title its extras name: "Cold Coast - Making Of" beside
 			// "Cold Coast S01E01".
@@ -984,6 +1009,9 @@ func siblingExtras(folder string, names []string) map[string]bool {
 	}
 	return out
 }
+
+// titleKinds are the kinds an episode is as often titled by: "Credits", "Recap", "Intro".
+var titleKinds = []string{"credits", "intro", "recap", "recaps", "preview", "previews", "bonus", "extra", "extras", "other", "theme", "clip", "clips", "scene", "short"}
 
 // strongExtraKinds are the kinds only an extra is named by; "Short", "Clip" or "Theme" after a
 // year may be a title's or an edition's.

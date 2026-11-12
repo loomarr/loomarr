@@ -177,7 +177,14 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    folder's title; a show's season folders are one show; a franchise's films are films;
 //	    "1x01" among films, "3 - 01" in Season 3, "(Season 1-3)", "Kausi 1", "Ep01" are read; a
 //	    film's or show's "<title> Extras" folder is its extras.
-const writeVersion = 50
+//	51: a loose episode beside its show's folder is that show's; "Season 5 Episode 2" names its
+//	    season wherever it is; "(TV Series)" and "(Miniseries)" are no part of a show's name; a
+//	    franchise's folder of two shows holds each as its own; three digits whose hundred is the
+//	    season are its episode; editions before a year are set aside; "Easter Eggs", "Credits"
+//	    and "Intro" are a film's extras, but an episode's titles beside marked episodes; a
+//	    season's extras folder and a scene's proof are skipped; "Christmas Specials" are season
+//	    0; "Saga Two" is a title, not a saga's folder.
+const writeVersion = 51
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

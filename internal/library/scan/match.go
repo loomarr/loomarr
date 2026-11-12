@@ -568,7 +568,9 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 			if !strings.Contains(name, "("+w+")") && !strings.Contains(name, "["+w+"]") {
 				whole = articleFirst(clean(words))
 			}
-			words = words[:j]
+			// An edition between the title and its year is the file's, not the title's:
+			// "Mirefield.Extended.Edition.1985", "Kilner Special Edition (2006)".
+			words = withoutEdition(words[:j])
 			break
 		}
 	}
@@ -579,6 +581,28 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 		year = after
 	}
 	return articleFirst(clean(words)), year, whole
+}
+
+// editionWords are the editions a release names after its title, in lower case.
+var editionWords = [][]string{
+	{"extended", "edition"}, {"extended", "cut"}, {"directors", "cut"}, {"director's", "cut"}, {"special", "edition"},
+	{"ultimate", "edition"}, {"collectors", "edition"}, {"collector's", "edition"}, {"anniversary", "edition"},
+	{"theatrical", "cut"}, {"remastered"}, {"unrated"}, {"extended"},
+}
+
+// withoutEdition is a title's words with an edition at their end taken off; a title that is
+// nothing but one, or but an article and one, keeps it: "Extended (2010)", "The Uncut (2004)".
+func withoutEdition(words []string) []string {
+	for _, edition := range editionWords {
+		n := len(words) - len(edition)
+		if n > 0 && slices.EqualFunc(words[n:], edition, strings.EqualFold) {
+			if n == 1 && slices.Contains([]string{"the", "a", "an"}, strings.ToLower(words[0])) {
+				return words
+			}
+			return words[:n]
+		}
+	}
+	return words
 }
 
 // trailingArticle matches a title Radarr and Plex sort by writing its article last: "Quiet Signal,
