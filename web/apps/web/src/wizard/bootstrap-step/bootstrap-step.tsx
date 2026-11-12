@@ -2,7 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -69,16 +69,18 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
             collapsed by JSX, so wrapping this sentence across the print width rendered as
             "Signed in as ⏎ fictional ⏎ …" with a stray gap around the name. Kept as ONE
             text node inside a <span> so the formatter cannot break it mid-sentence. */}
-        <Stack align="center" className="text-sm" direction="row" gap="inline" render="p">
+        <Stack align="center" direction="row" gap="inline" render="p">
           <Icon decorative glyph={icons.selected} size="compact" tone="primary" />
-          <span>Your admin account is ready. You&rsquo;re signed in as {ownerName}.</span>
+          <Text as="span" textRole="compact">
+            Your admin account is ready. You&rsquo;re signed in as {ownerName}.
+          </Text>
         </Stack>
         {/* Plain language over mechanism: "bootstrap runs once" is our word for it, not the
             operator's, and it states an internal constraint rather than what they can do. */}
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           There&rsquo;s only one owner account, so there&rsquo;s nothing more to do here. You can add other
           people from People once setup is finished.
-        </p>
+        </Text>
       </Stack>
     );
   }
@@ -86,7 +88,9 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
   if (taken) {
     return (
       <Stack gap="control">
-        <p className="text-sm">This Loomarr already has an owner account, so you can sign in instead.</p>
+        <Text as="p" textRole="compact">
+          This Loomarr already has an owner account, so you can sign in instead.
+        </Text>
         <Link to="/login" className="text-tune w-fit text-sm underline-offset-4 hover:underline">
           Sign in instead
         </Link>

@@ -3,7 +3,7 @@ import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Badge, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Badge, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -168,12 +168,18 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                     onChange={() => choose(option.value)}
                     className="accent-tune size-4 shrink-0"
                   />
-                  <span className="font-medium">{option.title}</span>
+                  <Text as="span" textRole="cardLabel">
+                    {option.title}
+                  </Text>
                 </Stack>
-                <span className="text-muted-foreground text-sm">{option.tagline}</span>
-                <Stack className="text-muted-foreground text-sm" gap="1" render="ul">
+                <Text as="span" textRole="compact" tone="secondary">
+                  {option.tagline}
+                </Text>
+                <Stack gap="1" render="ul">
                   {option.points.map((point) => (
-                    <li key={point}>{point}</li>
+                    <Text as="li" key={point} textRole="compact" tone="secondary">
+                      {point}
+                    </Text>
                   ))}
                 </Stack>
               </label>
@@ -183,19 +189,13 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
       </fieldset>
 
       {pinnedBy && (
-        <Stack
-          align="center"
-          className="text-muted-foreground text-sm"
-          direction="row"
-          gap="inline"
-          render="p"
-        >
+        <Stack align="center" direction="row" gap="inline" render="p">
           <Badge shape="square" icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}>
             set via environment
           </Badge>
-          <span>
+          <Text as="span" textRole="compact" tone="secondary">
             {pinnedBy} decides this, so it can&rsquo;t be changed here. Unset it to choose in the app.
-          </span>
+          </Text>
         </Stack>
       )}
 
@@ -211,10 +211,16 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
             results={patchResults}
             descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
-          <p id="server-public-url-requirement" className="text-muted-foreground mt-3 text-sm">
+          <Text
+            as="p"
+            className="mt-3"
+            id="server-public-url-requirement"
+            textRole="compact"
+            tone="secondary"
+          >
             Required for Loomarr playback. Your media server must be able to reach this address to fetch the
             guide and every channel stream.
-          </p>
+          </Text>
           {publicURLDirty && (
             <div className="mt-3">
               <Action disabled={patch.isPending} onPress={() => void savePublicURL()}>
@@ -265,10 +271,10 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
       {/* A failed save (the choice, the address or Tunarr's form) says so, as the other steps do. */}
       {patch.error != null && <ErrorState error={patch.error} />}
 
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         The playback engine can be changed later in Settings and overridden per channel.
         {value === PLAYOUT_INTERNAL && " The Loomarr address applies to the whole install."}
-      </p>
+      </Text>
     </Stack>
   );
 };

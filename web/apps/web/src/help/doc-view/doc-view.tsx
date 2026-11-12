@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Text,
 } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
@@ -71,45 +72,63 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
       remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
       components={{
         h1: ({ children }) => (
-          <h2 id={headingId(children)} className="text-xl font-semibold">
+          <Text as="h2" id={headingId(children)} textRole="title">
             {children}
-          </h2>
+          </Text>
         ),
         h2: ({ children }) => (
-          <h3 id={headingId(children)} className="mt-4 scroll-mt-20 text-lg font-semibold">
+          <Text as="h3" className="mt-4 scroll-mt-20" id={headingId(children)} strong textRole="headline">
             {children}
-          </h3>
+          </Text>
         ),
         h3: ({ children }) => (
-          <h4 id={headingId(children)} className="mt-3 scroll-mt-20 font-semibold">
+          <Text as="h4" className="mt-3 scroll-mt-20" id={headingId(children)} textRole="heading">
             {children}
-          </h4>
+          </Text>
         ),
-        p: ({ children }) => <p className="text-sm leading-relaxed">{children}</p>,
+        p: ({ children }) => (
+          <Text as="p" textRole="compact">
+            {children}
+          </Text>
+        ),
         ul: ({ children }) => (
-          <Stack className="ml-5 list-disc text-sm" gap="1.5" render="ul">
+          <Stack className="ml-5 list-disc" gap="1.5" render="ul">
             {children}
           </Stack>
         ),
         ol: ({ children }) => (
-          <Stack className="ml-5 list-decimal text-sm" gap="1.5" render="ol">
+          <Stack className="ml-5 list-decimal" gap="1.5" render="ol">
             {children}
           </Stack>
         ),
-        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        li: ({ children }) => (
+          <Text as="li" textRole="compact">
+            {children}
+          </Text>
+        ),
         code: ({ children }) => (
           <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
         pre: ({ children }) => (
-          <pre className="border-border bg-static-900 overflow-x-auto rounded-md border p-3 font-mono text-xs">
+          <Text
+            as="pre"
+            className="border-border bg-static-900 overflow-x-auto rounded-md border p-3"
+            textRole="mono"
+            tone="primary"
+          >
             {children}
-          </pre>
+          </Text>
         ),
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
         blockquote: ({ children }) => (
-          <blockquote className="border-static-700 text-muted-foreground border-l-2 pl-3 text-sm">
+          <Text
+            as="blockquote"
+            className="border-static-700 border-l-2 pl-3"
+            textRole="compact"
+            tone="secondary"
+          >
             {children}
-          </blockquote>
+          </Text>
         ),
         // Three link kinds: an INTERNAL cross-page link ("concepts",
         // "member-guide#section") is routed into the Help center (§13 — a raw href would

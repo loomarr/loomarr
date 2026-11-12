@@ -4,7 +4,16 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, SectionHeader, Stack, StatusDot, Surface, Tooltip } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  SectionHeader,
+  Stack,
+  StatusDot,
+  Surface,
+  Text,
+  Tooltip,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -36,19 +45,26 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
         ))}
       </div>
       <Stack className="px-4 pt-3.5" gap="1">
-        <span className="text-static-400 text-xs">{ideaReason(idea, empty, nowMs)}</span>
-        <h3 id={nameId} className="m-0 text-base leading-[1.3] font-semibold">
+        <Text as="span" textRole="hint" tone="secondary">
+          {ideaReason(idea, empty, nowMs)}
+        </Text>
+        <Text as="h3" id={nameId} textRole="heading">
           {idea.name}
-        </h3>
-        <p className="text-static-400 m-0 text-sm text-pretty">{idea.pitch}</p>
+        </Text>
+        <Text as="p" className="text-pretty" textRole="compact" tone="secondary">
+          {idea.pitch}
+        </Text>
       </Stack>
-      <Stack align="center" className="px-4 pt-2.5 text-xs" direction="row" gap="inline">
+      <Stack align="center" className="px-4 pt-2.5" direction="row" gap="inline">
         {/* The availability text beside it says what the dot does. */}
         <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" size="compact" />
-        <span>
+        <Text as="span" textRole="hint">
           {ideaCount(idea)}
-          <span className="text-static-400"> · {ideaAvailability(idea)}</span>
-        </span>
+          <Text as="span" textRole="hint" tone="secondary">
+            {" "}
+            · {ideaAvailability(idea)}
+          </Text>
+        </Text>
       </Stack>
       <div className="mt-auto p-4">
         {idea.requested ? (
@@ -145,7 +161,9 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
       >
         {hidden && (
           <>
-            <span className="text-static-400 text-xs">Hid {hidden.name}</span>
+            <Text as="span" textRole="hint" tone="secondary">
+              Hid {hidden.name}
+            </Text>
             <Action
               disabled={unhide.isPending}
               layout="text"
@@ -163,9 +181,14 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
         )}
       </SectionHeader>
       {ideas.length === 0 ? (
-        <p className="border-static-700 bg-static-900 text-static-400 m-0 rounded-lg border px-4 py-5 text-sm">
+        <Text
+          as="p"
+          className="border-static-700 bg-static-900 rounded-lg border px-4 py-5"
+          textRole="compact"
+          tone="secondary"
+        >
           That’s every idea for now. New ones appear as your library grows.
-        </p>
+        </Text>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(272px,1fr))] gap-3">
           {shown.map((idea) => (

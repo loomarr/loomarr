@@ -1,6 +1,6 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
@@ -64,12 +64,14 @@ const BackupPage = () => {
       ]}
       footer={
         <Stack gap="control">
-          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
-            <h2 className="font-medium">The image volume is separate</h2>
-            <p className="text-muted-foreground mt-1">
+          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4">
+            <Text as="h2" textRole="cardLabel">
+              The image volume is separate
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               This backup contains the database, including settings, channels, people, and generated secrets.
               It does not copy image files or operator-uploaded artwork.
-            </p>
+            </Text>
           </aside>
           <BackupPanel
             list={list.data.data}

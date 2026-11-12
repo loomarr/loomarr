@@ -1,4 +1,4 @@
-import { Action, ActivityIndicator, Stack, StatusWord } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Stack, StatusWord, Text } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { ServicesPanelProps } from "./services-panel.type";
@@ -46,16 +46,14 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
   return (
     <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
       <Stack align="baseline" className="border-border border-b px-4 py-3.5" direction="row" gap="2.5">
-        <h2 className="text-sm font-medium">Services</h2>
-        <Stack
-          align="center"
-          className="text-muted-foreground ml-auto font-mono text-xs"
-          direction="row"
-          gap="1.5"
-          render="span"
-        >
-          {refreshing ? <ActivityIndicator decorative size="compact" tone="inherit" /> : null}
-          checked every 30s · the same checks Settings runs
+        <Text as="h2" textRole="cardLabel">
+          Services
+        </Text>
+        <Stack align="center" className="ml-auto" direction="row" gap="1.5" render="span">
+          {refreshing ? <ActivityIndicator decorative size="compact" tone="secondary" /> : null}
+          <Text as="span" textRole="mono">
+            checked every 30s · the same checks Settings runs
+          </Text>
         </Stack>
       </Stack>
 
@@ -94,17 +92,21 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
             }
           >
             <Stack align="center" direction="row" gap="control">
-              <span className="w-32 shrink-0 text-sm">{serviceLabel(row.name)}</span>
-              <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+              <Text as="span" className="w-32 shrink-0" textRole="compact">
+                {serviceLabel(row.name)}
+              </Text>
+              <Text as="span" className="min-w-0 flex-1 truncate" textRole="mono">
                 {/* An unconfigured integration has no target. Saying so beats an empty cell,
                     which reads as a rendering bug rather than an answer. ⚠ A PASSING row with
                     no target is not unconfigured: TMDB has no target by design (#2734). */}
                 {row.target || (row.ok ? "" : "not configured")}
-              </span>
+              </Text>
               {/* The server's actionable detail ("connection refused"), under the row where a
                   failed check sits — the panel's job is to explain, not just to flag. */}
               {!row.ok && row.hint ? (
-                <p className="text-muted-foreground mt-1 basis-full text-xs">{row.hint}</p>
+                <Text as="p" className="mt-1 basis-full" textRole="hint" tone="secondary">
+                  {row.hint}
+                </Text>
               ) : null}
             </Stack>
           </PanelRow>

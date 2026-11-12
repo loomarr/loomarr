@@ -3,7 +3,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useGuideWindow } from "@loomarr/core/guide";
-import { Action, Disclosure, Stack } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
@@ -124,8 +124,12 @@ const ChannelProgramming = ({
   return (
     <Stack gap="section">
       <div>
-        <h2 className="text-lg font-semibold">Programming</h2>
-        <p className="text-muted-foreground text-sm">What this channel plays, and when.</p>
+        <Text as="h2" strong textRole="headline">
+          Programming
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          What this channel plays, and when.
+        </Text>
       </div>
 
       {/* Defaults summary (#1877 decision 1): how many fields below override a default. */}
@@ -197,7 +201,9 @@ const ChannelProgramming = ({
                 <Action disabled={rules.isApplying} onPress={rules.discard} variant="ghost">
                   Discard
                 </Action>
-                <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
+                <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+                  Unsaved changes
+                </Text>
               </Stack>
             )}
 
@@ -221,7 +227,9 @@ const ChannelProgramming = ({
             </div>
           </>
         ) : (
-          <p className="text-muted-foreground text-sm">Loading rule options…</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loading rule options…
+          </Text>
         )}
 
         {/* Auto-curate (§8.2) — the same "when does this change" question on a much slower
@@ -242,17 +250,17 @@ const ChannelProgramming = ({
         label="Preview schedule"
       >
         <Stack gap="4">
-          <p
-            className={cn(
-              "rounded-md px-2.5 py-1.5 text-xs",
-              // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
-              rules.isDirty ? "bg-tune-tint-15 text-tune" : "bg-muted text-muted-foreground",
-            )}
+          <Text
+            as="p"
+            className={cn("rounded-md px-2.5 py-1.5", rules.isDirty ? "bg-tune-tint-15" : "bg-muted")}
+            textRole="hint"
+            // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
+            tone={rules.isDirty ? "info" : "secondary"}
           >
             {rules.isDirty
               ? "Previewing the unsaved rules draft — Apply above to make this the live schedule."
               : "Showing the saved, on-air schedule."}
-          </p>
+          </Text>
           <ChannelProgrammingChanges
             channelId={channelId}
             draftPolicy={rules.isDirty ? rules.draft : undefined}

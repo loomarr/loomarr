@@ -1,7 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Disclosure, Stack } from "@loomarr/design-system";
+import { Disclosure, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { viewerIsAdmin } from "@/auth/me-query";
@@ -16,12 +16,14 @@ const publicURLKey = SettingKey.AccessPublicURL;
 
 const SsoNote = () => (
   <section className="border-border rounded-lg border p-4">
-    <h2 className="text-sm font-medium">How sign-in works with a provider</h2>
-    <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+    <Text as="h2" textRole="cardLabel">
+      How sign-in works with a provider
+    </Text>
+    <Text as="p" className="mt-1" textRole="compact" tone="secondary">
       Your provider proves who someone is. The People list decides whether they can get in — signing in with
       your provider does not create an account here, and it does not set anyone's role. Add people under
       People first, then they can sign in either way.
-    </p>
+    </Text>
   </section>
 );
 

@@ -3,7 +3,7 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
@@ -142,10 +142,10 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
         !proposal &&
         (aiUnconfigured || groundingUnconfigured ? (
           <div role="alert" className="border-border bg-muted/40 rounded-lg border p-4">
-            <p className="font-medium">
+            <Text as="p" textRole="cardLabel">
               {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
-            </p>
-            <p className="text-muted-foreground mt-1 text-sm">
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               {groundingUnconfigured
                 ? isAdmin
                   ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
@@ -153,7 +153,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                 : isAdmin
                   ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
-            </p>
+            </Text>
             <Stack align="center" className="mt-2" direction="row" gap="inline" wrap>
               {isAdmin &&
                 (groundingUnconfigured ? (
@@ -204,12 +204,16 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
           gap="control"
         >
           <div>
-            <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
-            <p className="text-muted-foreground mt-1 text-sm">
+            <Text as="h3" textRole="cardLabel">
+              {failureCopy?.title ?? "Something went wrong"}
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               {failureCopy?.message ?? "Loomarr couldn't finish this request."}
-            </p>
+            </Text>
             {failureCopy?.guidance && (
-              <p className="text-muted-foreground mt-1 text-sm">{failureCopy.guidance}</p>
+              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                {failureCopy.guidance}
+              </Text>
             )}
           </div>
           <Stack direction="row" gap="inline" wrap>
@@ -269,17 +273,19 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
           {(approve.error ?? deny.error) != null && (
-            <p className="text-onair-300 text-sm">
+            <Text as="p" textRole="compact" tone="danger">
               {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}
-            </p>
+            </Text>
           )}
           {proposal.status === "approved" && (
             <Stack align="start" gap="inline">
-              <p role="status" className="text-lock text-sm">
-                {user?.autoApprove
-                  ? "Created automatically using your account setting."
-                  : "This channel has already been created."}
-              </p>
+              <div role="status">
+                <Text as="p" textRole="compact" tone="success">
+                  {user?.autoApprove
+                    ? "Created automatically using your account setting."
+                    : "This channel has already been created."}
+                </Text>
+              </div>
               <Action onPress={startFresh} variant="outline">
                 Create another
               </Action>

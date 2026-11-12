@@ -3,7 +3,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Icon, icons, Stack } from "@loomarr/design-system";
+import { Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -139,16 +139,23 @@ const SettingsHome = () => {
                 <div id="settings-finder-results" className="mt-3" aria-live="polite">
                   {results.length === 0 ? (
                     <div className="border-border rounded-lg border border-dashed px-4 py-5">
-                      <p className="text-sm font-medium">No settings found</p>
-                      <p className="text-muted-foreground mt-1 text-sm">
+                      <Text as="p" textRole="cardLabel">
+                        No settings found
+                      </Text>
+                      <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                         Try a shorter phrase, a service name, or an exact key.
-                      </p>
+                      </Text>
                     </div>
                   ) : (
                     <div className="border-border bg-card overflow-hidden rounded-lg border">
-                      <p className="border-border text-muted-foreground border-b px-4 py-2 text-xs">
+                      <Text
+                        as="p"
+                        className="border-border border-b px-4 py-2"
+                        textRole="hint"
+                        tone="secondary"
+                      >
                         {results.length} {results.length === 1 ? "match" : "matches"}
-                      </p>
+                      </Text>
                       <nav aria-label="Settings search results" className="divide-border divide-y">
                         {results.slice(0, 10).map((result, index) => (
                           <DestinationAnchor
@@ -161,13 +168,18 @@ const SettingsHome = () => {
                             className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                           >
                             <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium">
+                              <Text as="span" className="block" textRole="cardLabel">
                                 {result.setting?.label || result.destination.label}
-                              </span>
-                              <span className="text-muted-foreground mt-0.5 block truncate text-xs">
+                              </Text>
+                              <Text
+                                as="span"
+                                className="mt-0.5 block truncate"
+                                textRole="hint"
+                                tone="secondary"
+                              >
                                 {result.groupLabel} · {result.destination.label}
                                 {result.setting ? ` · ${result.setting.key}` : ""}
-                              </span>
+                              </Text>
                             </span>
                             <Icon decorative glyph={icons.goForward} size="compact" tone="muted" />
                           </DestinationAnchor>

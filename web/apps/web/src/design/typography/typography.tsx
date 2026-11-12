@@ -26,34 +26,38 @@ const SIZE_USE: Record<string, string> = {
 const Typography = () => (
   <Stack className="p-6" gap="screen">
     <Stack gap="1" render="header">
-      <h1 className="text-xl font-semibold">Typography</h1>
-      <p className="text-muted-foreground max-w-2xl text-sm">
+      <Text as="h1" textRole="title">
+        Typography
+      </Text>
+      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
         Geist and Geist Mono, self-hosted (§2.2) — no webfont CDN, because the app must work on a LAN with no
         internet. Sizes come from the generated tokens; the samples below render at their real values.
-      </p>
+      </Text>
     </Stack>
 
     <Stack gap="control" render="section">
-      <h2 className="text-base font-semibold">The two families</h2>
+      <Text as="h2" textRole="heading">
+        The two families
+      </Text>
       <div className="grid gap-4 sm:grid-cols-2">
         <Stack className="border-border rounded-md border p-4" gap="inline">
           <div className="text-static-400 font-mono text-[11px]">Sans</div>
           <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
             Saturday Morning Cartoons
           </div>
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             Everything a person wrote or would say aloud: titles, descriptions, prose, buttons.
-          </p>
+          </Text>
         </Stack>
         <Stack className="border-border rounded-md border p-4" gap="inline">
           <div className="text-static-400 font-mono text-[11px]">Mono</div>
           <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
             CH 42 · 21:30–22:00
           </div>
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             <strong className="text-foreground">{MONO_RULE}</strong> Channel numbers, clock times, durations,
             ids, state badges — anything the system emitted rather than authored.
-          </p>
+          </Text>
         </Stack>
       </div>
     </Stack>
@@ -88,7 +92,9 @@ const Typography = () => (
     </Surface>
 
     <Stack gap="control" render="section">
-      <h2 className="text-base font-semibold">Scale</h2>
+      <Text as="h2" textRole="heading">
+        Scale
+      </Text>
       <Stack className="divide-border divide-y">
         {Object.entries(webType.size).map(([name, px]) => (
           <Stack align="baseline" className="py-3" direction="row" gap="4" key={name}>
@@ -103,15 +109,17 @@ const Typography = () => (
           </Stack>
         ))}
       </Stack>
-      <p className="text-muted-foreground max-w-2xl text-sm">
+      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
         Seven sizes, and nothing between them. A component reaching for an off-scale value is usually solving
         a spacing problem with type — the scale is short on purpose so that shows up as a decision rather than
         a drift.
-      </p>
+      </Text>
     </Stack>
 
     <Stack gap="control" render="section">
-      <h2 className="text-base font-semibold">Leading</h2>
+      <Text as="h2" textRole="heading">
+        Leading
+      </Text>
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(webType.leading).map(([name, value]) => (
           <Stack className="border-border rounded-md border p-4" gap="inline" key={name}>

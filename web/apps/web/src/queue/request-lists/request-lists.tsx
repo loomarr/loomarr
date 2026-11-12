@@ -218,17 +218,17 @@ const NeedsYouList = () => {
     <Stack className="max-w-reading mx-auto w-full" gap="section">
       {showApprovals && (
         <Stack aria-labelledby="needs-approvals" gap="control" render="section">
-          <h2 id="needs-approvals" className="text-lg font-semibold">
+          <Text as="h2" id="needs-approvals" strong textRole="headline">
             Waiting for your approval
-          </h2>
+          </Text>
           <ApprovalQueue onReviewingChange={setReviewing} />
         </Stack>
       )}
       {failed.length > 0 && (
         <Stack aria-labelledby="needs-failed" gap="control" render="section">
-          <h2 id="needs-failed" className="text-lg font-semibold">
+          <Text as="h2" id="needs-failed" strong textRole="headline">
             Couldn't be built
-          </h2>
+          </Text>
           <ListGroup aria-labelledby="needs-failed">
             {failed.map((e) =>
               failedRowFor(

@@ -1,7 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure, Stack } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
@@ -38,10 +38,14 @@ const InfoScreen = () => {
             <OnAirIndicator state={air.dot} />
             {/* The status is the info panel's heading (also what the reachability check
                 keys on — a real heading proves the screen composed). */}
-            <h2 className="text-lg font-semibold">{air.label}</h2>
+            <Text as="h2" strong textRole="headline">
+              {air.label}
+            </Text>
           </Stack>
         </Stack>
-        <p className="text-muted-foreground text-sm">{air.detail}</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          {air.detail}
+        </Text>
         {air.buildSchedule && isAdmin ? (
           <Action
             style={{ alignSelf: "flex-start" }}
@@ -70,15 +74,15 @@ const InfoScreen = () => {
           <ChannelBreaks channelId={id} />
         </div>
 
-        <p className="border-border border-t pt-3 text-sm">
-          <span className="font-medium">{`${ready} of ${pluralize(total, "title")} ready`}</span>
+        <Text as="p" className="border-border border-t pt-3" textRole="compact">
+          <Text as="span" textRole="cardLabel">{`${ready} of ${pluralize(total, "title")} ready`}</Text>
           {ready < total && (
-            <span className="text-muted-foreground">
+            <Text as="span" textRole="compact" tone="secondary">
               {" "}
               , the rest fill in as titles arrive, so the channel never goes dark.
-            </span>
+            </Text>
           )}
-        </p>
+        </Text>
 
         {/* The channel icon is what the family actually sees in the media server's guide,
             so it belongs on the info panel next to the number and status rather than behind

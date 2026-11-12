@@ -1,4 +1,4 @@
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import type { PlaceholderProps } from "./placeholder.type";
 
@@ -7,7 +7,9 @@ import type { PlaceholderProps } from "./placeholder.type";
 const Placeholder = ({ title, hint }: PlaceholderProps) => (
   <Stack className="h-full">
     <header className="border-border border-b px-6 py-4">
-      <h1 className="text-xl font-semibold">{title}</h1>
+      <Text as="h1" textRole="title">
+        {title}
+      </Text>
     </header>
     <div className="flex flex-1 items-center justify-center p-6">
       <StatePanel description={hint} kind="empty" title="Nothing here" />

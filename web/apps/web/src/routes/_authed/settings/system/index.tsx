@@ -1,4 +1,4 @@
-import { Icon, icons, Stack } from "@loomarr/design-system";
+import { Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import {
@@ -44,10 +44,12 @@ const SystemHome = () => (
           return (
             <section key={group.id} aria-labelledby={`system-group-${group.id}`}>
               <div className="mb-3">
-                <h2 id={`system-group-${group.id}`} className="text-base font-medium">
+                <Text as="h2" id={`system-group-${group.id}`} textRole="heading">
                   {group.label}
-                </h2>
-                <p className="text-muted-foreground mt-0.5 text-sm">{group.description}</p>
+                </Text>
+                <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+                  {group.description}
+                </Text>
               </div>
               <div className="grid gap-2 md:grid-cols-2">
                 {destinations.map((item) => (
@@ -57,10 +59,12 @@ const SystemHome = () => (
                     className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{item.label}</span>
-                      <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
+                      <Text as="span" className="block" textRole="cardLabel">
+                        {item.label}
+                      </Text>
+                      <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
                         {item.description}
-                      </span>
+                      </Text>
                     </span>
                     <Stack
                       className="text-muted-foreground group-hover:text-foreground mt-0.5 transition-colors"

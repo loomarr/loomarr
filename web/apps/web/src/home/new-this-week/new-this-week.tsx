@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import { SectionHeader, Stack } from "@loomarr/design-system";
+import { SectionHeader, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
@@ -73,17 +73,27 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         >
           <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
           <div className="min-w-0 flex-1">
-            <span className="text-static-400 block text-xs">New channel</span>
+            <Text as="span" className="block" textRole="hint" tone="secondary">
+              New channel
+            </Text>
             <span className="mt-0.5 block text-[15px] font-semibold break-words">
-              <span className="text-foreground font-mono">{lead.number}</span> {lead.name}
+              <Text as="span" textRole="mono" tone="primary">
+                {lead.number}
+              </Text>{" "}
+              {lead.name}
             </span>
-            <span className="text-static-400 mt-0.5 block text-xs">
+            <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
               {addedLine(lead, viewerName, timeZone)}
-            </span>
+            </Text>
           </div>
-          <span className="border-static-500 inline-flex h-7 shrink-0 items-center self-start rounded-md border px-2.5 text-xs font-medium">
+          <Text
+            as="span"
+            className="border-static-500 inline-flex h-7 shrink-0 items-center self-start rounded-md border px-2.5"
+            textRole="label"
+            tone="primary"
+          >
             Watch
-          </span>
+          </Text>
         </Link>
       ))}
       {titles.length > 0 && (
@@ -104,9 +114,13 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   seed={seedOf(t.key)}
                 />
               </div>
-              <span className="text-sm font-medium break-words">{t.name ?? t.key}</span>
+              <Text as="span" className="break-words" textRole="cardLabel">
+                {t.name ?? t.key}
+              </Text>
               {t.channels?.[0] && (
-                <span className="text-static-400 truncate text-xs">{t.channels[0].name}</span>
+                <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                  {t.channels[0].name}
+                </Text>
               )}
             </Stack>
           ))}

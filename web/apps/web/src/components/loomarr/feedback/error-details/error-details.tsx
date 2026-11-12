@@ -1,3 +1,4 @@
+import { Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ErrorDetailsProps } from "./error-details.type";
 
@@ -19,15 +20,20 @@ const ErrorDetails = ({ message, showLabel, hideLabel, className }: ErrorDetails
   if (!message) return null;
   return (
     <details className={cn("group", className)}>
-      <summary className="text-onair-300 cursor-pointer list-none text-xs hover:underline">
+      <Text as="summary" className="cursor-pointer list-none hover:underline" textRole="hint" tone="danger">
         <span className="group-open:hidden">{showLabel ?? "Show error"}</span>
         <span className="hidden group-open:inline">{hideLabel ?? "Hide error"}</span>
-      </summary>
+      </Text>
       {/* `whitespace-pre-wrap` keeps a multi-line error readable as written; `wrap-break-word`
           stops a long unbroken token (a URL, a stack frame) widening the whole container. */}
-      <pre className="border-onair/30 bg-onair/5 text-2xs text-onair-300 mt-1 max-w-prose overflow-x-auto rounded border p-2 font-mono wrap-break-word whitespace-pre-wrap">
+      <Text
+        as="pre"
+        className="border-onair/30 bg-onair/5 mt-1 max-w-prose overflow-x-auto rounded border p-2 wrap-break-word whitespace-pre-wrap"
+        textRole="mono"
+        tone="danger"
+      >
         {message}
-      </pre>
+      </Text>
     </details>
   );
 };

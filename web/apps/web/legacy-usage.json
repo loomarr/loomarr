@@ -109,31 +109,31 @@
       "tailwindClasses": 1
     },
     "src/components/loomarr/dashboard/activity-feed/activity-feed.tsx": {
-      "tailwindClasses": 28
+      "tailwindClasses": 20
     },
     "src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "tailwindClasses": 63
+      "tailwindClasses": 35
     },
     "src/components/loomarr/dashboard/service-control/service-control.tsx": {
-      "tailwindClasses": 30
+      "tailwindClasses": 21
     },
     "src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
-      "tailwindClasses": 27
+      "tailwindClasses": 16
     },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
-      "tailwindClasses": 22
+      "tailwindClasses": 17
     },
     "src/components/loomarr/feedback/error-state/error-state.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 13
     },
     "src/components/loomarr/feedback/field-help/field-help.tsx": {
       "tailwindClasses": 3
     },
     "src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
-      "tailwindClasses": 33
+      "tailwindClasses": 23
     },
     "src/components/loomarr/feedback/placeholder/placeholder.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 10
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
       "tailwindClasses": 53,
@@ -277,16 +277,16 @@
       "tailwindClasses": 24
     },
     "src/design/palette/palette.tsx": {
-      "tailwindClasses": 74
+      "tailwindClasses": 58
     },
     "src/design/spacing/spacing.tsx": {
-      "tailwindClasses": 118
+      "tailwindClasses": 100
     },
     "src/design/tokens/tokens.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 12
     },
     "src/design/typography/typography.tsx": {
-      "tailwindClasses": 73
+      "tailwindClasses": 57
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 144
@@ -420,23 +420,23 @@
       "tailwindClasses": 110
     },
     "src/help/doc-view/doc-view.tsx": {
-      "tailwindClasses": 52,
+      "tailwindClasses": 38,
       "rawButton": 1
     },
     "src/help/help-page/help-page.tsx": {
-      "tailwindClasses": 37
+      "tailwindClasses": 33
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
-      "tailwindClasses": 59
+      "tailwindClasses": 43
     },
     "src/home/home-page/home-page.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 13
     },
     "src/home/home-strip/home-strip.tsx": {
-      "tailwindClasses": 26
+      "tailwindClasses": 15
     },
     "src/home/new-this-week/new-this-week.tsx": {
-      "tailwindClasses": 62
+      "tailwindClasses": 50
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
@@ -455,25 +455,25 @@
       "tailwindClasses": 9
     },
     "src/queue/request-detail/request-detail.tsx": {
-      "tailwindClasses": 44
+      "tailwindClasses": 21
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 11
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 58
+      "tailwindClasses": 38
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 6
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "tailwindClasses": 26
+      "tailwindClasses": 15
     },
     "src/routes/_authed/channels/$id/info.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 22
     },
     "src/routes/_authed/channels/$id/route.tsx": {
-      "tailwindClasses": 68
+      "tailwindClasses": 59
     },
     "src/routes/_authed/filler/settings/route.tsx": {
       "tailwindClasses": 4
@@ -482,13 +482,13 @@
       "tailwindClasses": 10
     },
     "src/routes/_authed/settings/access.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 5
     },
     "src/routes/_authed/settings/advanced.tsx": {
       "tailwindClasses": 6
     },
     "src/routes/_authed/settings/index.tsx": {
-      "tailwindClasses": 51
+      "tailwindClasses": 41
     },
     "src/routes/_authed/settings/route.tsx": {
       "tailwindClasses": 5
@@ -497,16 +497,16 @@
       "tailwindClasses": 6
     },
     "src/routes/_authed/settings/system/backup.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 6
     },
     "src/routes/_authed/settings/system/database.tsx": {
       "tailwindClasses": 6
     },
     "src/routes/_authed/settings/system/index.tsx": {
-      "tailwindClasses": 49
+      "tailwindClasses": 40
     },
     "src/routes/_authed/settings/system/storage.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 6
     },
     "src/routes/join.tsx": {
       "tailwindClasses": 1
@@ -549,40 +549,31 @@
       "rawButton": 2
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 35
+      "tailwindClasses": 23
     },
     "src/suggest/intent-form/intent-form.tsx": {
-      "tailwindClasses": 7
+      "tailwindClasses": 5
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 60
+      "tailwindClasses": 38
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "tailwindClasses": 49
+      "tailwindClasses": 32
     },
     "src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 6
     },
     "src/wizard/bootstrap-step/bootstrap-step.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 8
     },
     "src/wizard/checklist-step/checklist-step.tsx": {
-      "tailwindClasses": 3
-    },
-    "src/wizard/connect-step/connect-step.tsx": {
-      "tailwindClasses": 2
-    },
-    "src/wizard/first-channel-step/first-channel-step.tsx": {
-      "tailwindClasses": 2
+      "tailwindClasses": 1
     },
     "src/wizard/playout-step/playout-step.tsx": {
-      "tailwindClasses": 42
+      "tailwindClasses": 31
     },
     "src/wizard/users-step/users-step.tsx": {
-      "tailwindClasses": 19
-    },
-    "src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 7
     }
   }
 }

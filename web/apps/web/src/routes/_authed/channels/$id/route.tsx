@@ -286,28 +286,21 @@ const ChannelDetailLayout = () => {
                 onSave={saveName}
               />
             ) : (
-              <h1 className="text-xl leading-tight font-semibold">{ch.name}</h1>
+              <Text as="h1" textRole="title">
+                {ch.name}
+              </Text>
             )}
-            <Stack
-              align="center"
-              className="text-muted-foreground text-sm"
-              direction="row"
-              gap="1.5"
-              render="span"
-            >
+            <Stack align="center" direction="row" gap="1.5" render="span">
               <span
                 aria-hidden
                 className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
               />
-              {airLine.text}
+              <Text as="span" textRole="compact" tone="secondary">
+                {airLine.text}
+              </Text>
             </Stack>
           </div>
-          <Stack
-            align="center"
-            className="text-muted-foreground ml-auto text-sm"
-            direction="row"
-            gap="inline"
-          >
+          <Stack align="center" className="ml-auto" direction="row" gap="inline">
             <Text as="span" shout textRole="data">
               Ch
             </Text>
@@ -325,7 +318,9 @@ const ChannelDetailLayout = () => {
                 onSave={saveNumber}
               />
             ) : (
-              <span className="text-foreground px-1.5 py-0.5 font-mono">{channelNumber(ch.number)}</span>
+              <Text as="span" className="px-1.5 py-0.5" textRole="data" tone="primary">
+                {channelNumber(ch.number)}
+              </Text>
             )}
           </Stack>
         </div>

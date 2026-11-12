@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
@@ -34,10 +34,12 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
     <section className={cn("border-border rounded-lg border p-4", className)}>
       <Stack align="center" direction="row" gap="control">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium">Restart Loomarr</h2>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <Text as="h2" textRole="cardLabel">
+            Restart Loomarr
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
             {dropWarning ?? "Sessions survive; nobody has to sign in again."}
-          </p>
+          </Text>
         </div>
         {cost.available ? (
           <Action
@@ -55,32 +57,34 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           what to do instead — hiding the control would leave an operator hunting for a
           feature the docs mention. */}
       {!cost.available && (
-        <p className="border-border text-muted-foreground mt-3 rounded-md border border-dashed p-3 text-sm">
+        <Text
+          as="p"
+          className="border-border mt-3 rounded-md border border-dashed p-3"
+          textRole="compact"
+          tone="secondary"
+        >
           This build can't restart itself. Restart the container or service the way you started it.
-        </p>
+        </Text>
       )}
 
       {error ? (
-        <Stack
-          align="start"
-          className="text-danger mt-3 text-sm"
-          direction="row"
-          gap="inline"
-          render="p"
-          role="alert"
-        >
-          <Stack className="mt-0.5" direction="row" render="span">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+        <div className="mt-3" role="alert">
+          <Stack align="start" direction="row" gap="inline">
+            <Stack className="mt-0.5" direction="row" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
+            </Stack>
+            <Text as="p" textRole="compact" tone="danger">
+              {error}
+            </Text>
           </Stack>
-          {error}
-        </Stack>
+        </div>
       ) : null}
 
       {confirming && (
         <Stack align="center" className="border-border mt-3 border-t pt-3" direction="row" gap="inline">
-          <p className="min-w-0 flex-1 text-sm">
+          <Text as="p" className="min-w-0 flex-1" textRole="compact">
             {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
-          </p>
+          </Text>
           <Action
             disabled={restarting}
             onPress={() => {
