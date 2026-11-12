@@ -6,10 +6,10 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import { Action, Icon, icons, LoadingStrip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { AiModelSettings } from "@/settings/ai-model-settings";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // The wizard's AI onboarding (config-design §6: "AI — skippable; includes the §8.1 model
@@ -36,12 +36,13 @@ const WizardAiBlock = () => {
   const status = unwrap(llm.data);
 
   // Local edits for the provider fields, saved as a group like every other checklist block.
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const { edits, setEdit, dropSaved } = useSettingsDraft();
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, { data }) => {
         await invalidateSettings(queryClient);
-        setEdits({});
+        // A refused provider field stays editable, beside the message the results give for it.
+        dropSaved(response, data.edits);
       },
     },
   });
@@ -70,12 +71,7 @@ const WizardAiBlock = () => {
     <div className="flex flex-col gap-4">
       {/* Provider choice + (for a hosted provider) its URL/key — the same fields Settings→AI
           shows, so the wizard offers the full Ollama-vs-external choice, not Ollama only. */}
-      <SettingsFields
-        entries={aiEntries}
-        values={edits}
-        onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
-        results={patchResults}
-      />
+      <SettingsFields entries={aiEntries} values={edits} onChange={setEdit} results={patchResults} />
 
       {patch.error != null && <ErrorState error={patch.error} />}
 

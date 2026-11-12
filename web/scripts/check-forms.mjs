@@ -7,7 +7,8 @@
 // what to show, which is a view setting, not a draft), and
 // the file does not import `@tanstack/react-form` (or `@/lib/app-form`). A search box or filter
 // (a setter named `setQuery`, `setFilter`, …) is not a form. Tests and stories are not production
-// code and are not counted.
+// code and are not counted. A settings draft buffered through `useSettingsDraft` is the one
+// sanctioned buffer that is not a TanStack form (see SETTINGS_DRAFT_HOOKS below).
 //
 // The committed ledger (hand-rolled-forms.json) is a ratchet:
 //   - the check fails when a file not in the ledger is a hand-rolled form;
@@ -88,11 +89,98 @@ const stateSetters = (program) => {
 const usesFormLibrary = (program) =>
   program.body.some((node) => node.type === "ImportDeclaration" && FORM_MODULES.includes(node.source.value));
 
+// The settings draft is the one sanctioned buffer that is not a TanStack form. Settings and the
+// setup wizard draw their fields from the settings registry (`SettingsFields`), so a field is a
+// registry row, not a named form field; what they share is the buffer of changed keys. That buffer
+// is `useSettingsDraft` (and the Settings layout's `useSettingsEdits`, built on it), imported from
+// the settings-draft or settings-edits module. A named rule, not a side effect: before it, such a
+// buffer passed only because its setter did not come from a `useState` in the file.
+//
+// The rule is two-sided. A settings-edit setter (`setEdit`, `setEdits`) destructured from the
+// sanctioned hook is the sanctioned buffer. One destructured from any other hook is a draft kept
+// somewhere this check cannot see into, so it counts like a `useState` setter and fails when an
+// input writes it. A `useState` in the file is judged as before; the rule excuses nothing else.
+const SETTINGS_DRAFT_HOOKS = new Set(["useSettingsDraft", "useSettingsEdits"]);
+const SETTINGS_DRAFT_MODULE = /(?:^|\/)settings-(?:draft|edits)$/;
+const DRAFT_SETTER = /^set(?:Edit|Edits)$/;
+
+// sanctionedHookNames: the local names of the settings-draft hooks the file imports from their module.
+const sanctionedHookNames = (program) => {
+  const names = new Set();
+  for (const node of program.body) {
+    if (node.type !== "ImportDeclaration" || !SETTINGS_DRAFT_MODULE.test(node.source.value)) continue;
+    for (const specifier of node.specifiers) {
+      if (specifier.type === "ImportSpecifier" && SETTINGS_DRAFT_HOOKS.has(specifier.imported.name)) {
+        names.add(specifier.local.name);
+      }
+    }
+  }
+  return names;
+};
+
+// draftHookCalls lists every `const { …, setEdit } = useSomething()`: the hook's name and the local
+// names its draft setters were bound to.
+const draftHookCalls = (program) => {
+  const calls = [];
+  walk(program, (node) => {
+    if (
+      node.type !== "VariableDeclarator" ||
+      node.id.type !== "ObjectPattern" ||
+      node.init?.type !== "CallExpression" ||
+      node.init.callee.type !== "Identifier" ||
+      !node.init.callee.name.startsWith("use") ||
+      node.init.callee.name === "useState"
+    ) {
+      return;
+    }
+    const setters = node.id.properties
+      .filter(
+        (property) =>
+          property.type === "ObjectProperty" &&
+          property.key.type === "Identifier" &&
+          DRAFT_SETTER.test(property.key.name) &&
+          property.value.type === "Identifier",
+      )
+      .map((property) => property.value.name);
+    if (setters.length > 0) calls.push({ hook: node.init.callee.name, setters });
+  });
+  return calls;
+};
+
+// usesSettingsDraft: the file buffers a settings draft through the sanctioned hook.
+const usesSettingsDraft = (source) => {
+  const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
+  const sanctioned = sanctionedHookNames(program);
+  const calls = draftHookCalls(program);
+  if (calls.some((call) => sanctioned.has(call.hook))) return true;
+  // A provider (settings-edits) calls the hook for its edits without naming a setter.
+  let called = false;
+  walk(program, (node) => {
+    if (
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      sanctioned.has(node.callee.name)
+    ) {
+      called = true;
+    }
+  });
+  return called;
+};
+
+// unsanctionedDraftSetters: settings-edit setters bound from a hook that is not the sanctioned one.
+const unsanctionedDraftSetters = (program) => {
+  const sanctioned = sanctionedHookNames(program);
+  return draftHookCalls(program)
+    .filter((call) => !sanctioned.has(call.hook))
+    .flatMap((call) => call.setters);
+};
+
 // isHandRolledForm: a state setter is reachable from an input's change handler.
 const isHandRolledForm = (source) => {
   const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
   if (usesFormLibrary(program)) return false;
   const setters = stateSetters(program);
+  for (const setter of unsanctionedDraftSetters(program)) setters.add(setter);
   if (setters.size === 0) return false;
   let found = false;
   walk(program, (node) => {
@@ -109,6 +197,15 @@ const measure = (directories = roots) =>
   directories
     .flatMap((directory) => productionFiles(directory))
     .filter((file) => isHandRolledForm(readFileSync(file, "utf8")))
+    .map((file) => relative(webRoot, file).split(sep).join("/"))
+    .sort();
+
+// settingsDraftUsers returns the sorted paths (relative to web/) of every file that buffers a
+// settings draft through the sanctioned hook.
+const settingsDraftUsers = (directories = roots) =>
+  directories
+    .flatMap((directory) => productionFiles(directory))
+    .filter((file) => usesSettingsDraft(readFileSync(file, "utf8")))
     .map((file) => relative(webRoot, file).split(sep).join("/"))
     .sort();
 
@@ -147,4 +244,4 @@ if (isMain) {
   }
 }
 
-export { compareToLedger, isHandRolledForm, measure, shrinkLedger };
+export { compareToLedger, isHandRolledForm, measure, settingsDraftUsers, shrinkLedger, usesSettingsDraft };

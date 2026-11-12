@@ -283,9 +283,14 @@ describe("wizard", () => {
     await userEvent.click(next);
 
     await vi.waitFor(() => expect(seq).toContain("patch"));
-    expect(patches.join()).toMatch(/filler\.home_country/);
-    expect(patches.join()).toMatch(/filler\.home_place/);
-    expect(patches.join()).toMatch(/filler\.language/);
+    // One write carrying exactly the three edited keys, and nothing the operator left alone.
+    expect(patches).toHaveLength(1);
+    expect(Object.keys(JSON.parse(patches[0] ?? "{}").edits).sort()).toEqual([
+      "filler.home_country",
+      "filler.home_place",
+      "filler.language",
+    ]);
+    expect(JSON.parse(patches[0] ?? "{}").edits["filler.language"]).toBe("es");
     expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
   });
 
