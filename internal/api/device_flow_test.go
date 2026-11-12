@@ -410,6 +410,20 @@ func TestDeviceApproveIsRateLimited(t *testing.T) {
 	}
 }
 
+// The guard is per address as well as per account: a second account on the same address gets no
+// fresh allowance of guesses.
+func TestDeviceApproveIsRateLimitedPerAddressAcrossAccounts(t *testing.T) {
+	t.Parallel()
+	srv := newDeviceHarness(t, auth.NewRateLimiter(0.01, 2)).Server
+	kid, boss := login(t, srv, "kid", "pw"), login(t, srv, "boss", "pw")
+	for range 2 {
+		postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, kid)
+	}
+	if code, _ := postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, boss); code != http.StatusTooManyRequests {
+		t.Fatalf("a second account on the spent address = %d, want 429", code)
+	}
+}
+
 // A device is listed for its owner and revoking it kills the token immediately.
 func TestDeviceListAndRevoke(t *testing.T) {
 	t.Parallel()

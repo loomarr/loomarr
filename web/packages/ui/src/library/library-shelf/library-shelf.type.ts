@@ -64,6 +64,8 @@ interface LibraryShelfProps {
   showTitles?: boolean;
   /** The Collections tab's content, in place of the search and the grid while it's chosen. */
   collections?: ReactNode;
+  /** The household's timezone, which times are told in; the device's while undefined. */
+  timeZone?: string;
 }
 
 export type { LibraryFilter, LibraryKind, LibraryShelfProps, LibraryShelfStatus, LibraryShelfTitle };
