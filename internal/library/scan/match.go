@@ -78,6 +78,12 @@ type Matcher struct {
 	Match func(ctx context.Context, itemID string, id mp.ExternalID) error
 }
 
+// matchRules leads what a title was searched as, and changes when what settles a title does, so
+// each title still waiting is searched once more under the new rules.
+//
+//	r2: a movie whose files name no year is settled by its name and length.
+const matchRules = "r2"
+
 // evidence is what the files say about a title beyond its name: a movie's length, a series'
 // episodes. A search result is checked against it.
 type evidence struct {
@@ -137,11 +143,11 @@ func (e evidence) fits(kind string, rec mp.Record) bool {
 	return true
 }
 
-// settles is whether a candidate agrees on everything: the name; the year (a series without one
-// in its folder name is checked without it); and the length or the episodes.
+// settles is whether a candidate agrees on everything: the name; the year (a title whose files name
+// none is checked without it); and the length or the episodes. A remake of about the same length
+// agrees as well, and two that agree wait for the maintainer.
 func (e evidence) settles(c librarystore.LibraryCandidate) bool {
-	yearOK := c.YearMatch || (c.Kind == string(mp.KindSeries) && e.year == 0)
-	return c.NameMatch && yearOK && c.LengthMatch
+	return c.NameMatch && (c.YearMatch || e.year == 0) && c.LengthMatch
 }
 
 // Run matches until ctx ends.
@@ -175,7 +181,7 @@ func (m *Matcher) Tick(ctx context.Context) error {
 	for _, need := range needs {
 		title, year, whole := searchQuery(need.Name, need.Year)
 		ev := evidence{year: year, whole: whole, length: m.length(ctx, need), episodes: m.episodes(ctx, need)}
-		searched := title + "|" + strconv.Itoa(year) + ev.key()
+		searched := matchRules + "|" + title + "|" + strconv.Itoa(year) + ev.key()
 		if title == "" || need.Searched == searched {
 			continue
 		}

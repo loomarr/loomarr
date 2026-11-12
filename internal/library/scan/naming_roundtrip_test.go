@@ -149,7 +149,12 @@ func roundTripCases() []roundTripCase {
 		if season != "" {
 			rel = "TV/" + sf.dir + "/" + season + "/" + name
 		}
-		add("shows", sf.dir+" / "+season+" / "+name, one(rel, "episode "+sf.show+" "+at+sf.ids), nil)
+		// A show whose folder gives no year takes the one its episode's name gives it.
+		show := sf.show
+		if y := fmt.Sprintf(" (%d) - ", rtShowYear); !strings.Contains(show, fmt.Sprint(rtShowYear)) && strings.Contains(name, y) {
+			show += " " + fmt.Sprint(rtShowYear)
+		}
+		add("shows", sf.dir+" / "+season+" / "+name, one(rel, "episode "+show+" "+at+sf.ids), nil)
 	}
 	for _, ep := range []struct{ s, e, last int }{{1, 2, 2}, {2, 5, 5}, {0, 3, 3}, {1, 2, 4}, {12, 101, 103}} {
 		marks := rtMarks(ep.s, ep.e, ep.last)

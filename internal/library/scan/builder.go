@@ -43,6 +43,9 @@ type seriesSeen struct {
 	// last is the highest episode number on disk in each season, from every file the pass
 	// identified before writing any.
 	last map[int]int
+	// years counts the years its episodes' file names give the show ("Show (1963) - S01E01"), from
+	// the same files.
+	years map[int]int
 
 	once       sync.Once
 	resolution resolution
@@ -175,7 +178,7 @@ func (b *builder) identify(file File) identity {
 	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
-			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{},
+			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}, years: map[int]int{},
 				sidecars: seriesFolderSidecars(filepath.Join(b.root, filepath.FromSlash(id.seriesDir)))}
 			b.series[id.seriesDir] = s
 		}
@@ -185,6 +188,9 @@ func (b *builder) identify(file File) identity {
 		}
 		if n := id.numbering(); n != nil && n.Episode > 0 {
 			s.last[n.Season] = max(s.last[n.Season], n.Episode, n.EpisodeEnd)
+		}
+		if year := showYearIn(path.Base(file.Rel)); year > 0 {
+			s.years[year]++
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
@@ -457,6 +463,12 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 		// "TV/Kids/Kettle Bay" is "Kettle Bay".
 		if facts.Name == "" && s.dir != "" {
 			facts.Name = showFolderName(filepath.Base(filepath.FromSlash(s.dir)))
+		}
+		// A show whose folder and NFO give no year takes the one its episodes' names agree on.
+		if _, named, _ := searchQuery(facts.Name, 0); facts.ProductionYear == 0 && named == 0 && len(s.years) == 1 {
+			for year := range s.years {
+				facts.ProductionYear = year
+			}
 		}
 		coverage["sources"] = inventory.CoverageEmpty
 		snapshot := inventory.Snapshot{

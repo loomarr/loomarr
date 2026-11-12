@@ -510,11 +510,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   runtime). `library_items.searched` notes what was searched, so a title is searched again only
   when its name or year changes, or once a movie's length is known. With no TMDB key nothing is
   searched or marked. A movie is matched by its search (decision 56) when exactly one result
-  agrees on all three, name, year and length; two that agree, or none, wait in Needs you
-  (decision 58). That match is an answer with `answered_by = search`, written as a `search`
+  agrees on all three, name, year and length; a movie whose files name no year is checked by
+  its name and length alone. Two that agree, or none, wait in Needs you (decision 58). That match is an answer with `answered_by = search`, written as a `search`
   record ranked below every id and below the maintainer's link, which replaces it. A series is
   matched the same way (decision 57) when exactly one result agrees on the name, the year when its
-  folder names one, and its episodes: every season on disk is in TMDB's layout (the `seasons` the
+  folder names one (or, failing that, every episode file that names the show with a year names
+  the same one: "Show (1963) - S01E01"), and its episodes: every season on disk is in TMDB's layout (the `seasons` the
   detail call already carries) with at least as many episodes as the highest number found there.
   Specials and unnumbered files are not checked. It is containment, not equality, so a show still
   airing or one missing episodes fits, and a show TMDB numbers differently from the files waits
