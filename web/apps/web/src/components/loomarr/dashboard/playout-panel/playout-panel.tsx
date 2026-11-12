@@ -124,7 +124,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
         </>
       }
     >
-      <div className="flex items-center gap-1.5">
+      <Stack align="center" direction="row" gap="1.5">
         <p className="truncate text-sm font-medium">{channelLabel(channel)}</p>
         {/* The raw id lives behind an (i) affordance — noise on the row, useful for a support
               request. The design-system Tooltip gives a prompt, styled
@@ -135,7 +135,7 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
             {`Channel id ${channel.channelId}`}
           </Action>
         </Tooltip>
-      </div>
+      </Stack>
       <p className="text-muted-foreground mt-0.5 truncate text-xs">
         {`${channel.target} · ${channel.mode}${channel.mode === "transcode" ? ` · ${channel.encoder}` : ""} · ${pluralize(channel.viewers, "viewer")}`}
       </p>

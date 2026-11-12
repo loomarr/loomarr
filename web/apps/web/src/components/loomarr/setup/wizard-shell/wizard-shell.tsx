@@ -52,13 +52,13 @@ const WizardShell = ({
       gap="section"
       render="aside"
     >
-      <div className="flex flex-col gap-1">
+      <Stack gap="1">
         <BrandLockup variant="compact" />
         <p className="mt-2 text-base font-semibold">Let's get you on the air</p>
         <p className="text-muted-foreground font-mono text-xs">First-run setup · saved as you go</p>
-      </div>
+      </Stack>
 
-      <ol aria-label="Setup steps" className="flex flex-col gap-1">
+      <Stack aria-label="Setup steps" gap="1" render="ol">
         {steps.map((step, i) => {
           const status = statusById[step.id] ?? "pending";
           const isCurrent = step.id === currentId;
@@ -109,7 +109,7 @@ const WizardShell = ({
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current
                 // step. The vertical guide line ties them to their parent.
-                <ul className="border-border mt-1 ml-[1.6rem] flex flex-col gap-0.5 border-l pl-3">
+                <Stack className="border-border mt-1 ml-[1.6rem] border-l pl-3" gap="0.5" render="ul">
                   {subItems.map((sub) => {
                     const active = sub.id === activeSubItem;
                     return (
@@ -130,21 +130,21 @@ const WizardShell = ({
                       </li>
                     );
                   })}
-                </ul>
+                </Stack>
               )}
             </li>
           );
         })}
-      </ol>
+      </Stack>
     </Stack>
 
     {/* Content column: the current step. Stacked above the static like the rail. */}
     <Stack className="relative z-10 min-w-0">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
-        <div className="flex flex-col gap-1">
+        <Stack gap="1">
           <h1 className="text-2xl font-semibold">{title}</h1>
           {description && <p className="text-muted-foreground text-sm">{description}</p>}
-        </div>
+        </Stack>
 
         <Card gap={20} padding={24}>
           {children}

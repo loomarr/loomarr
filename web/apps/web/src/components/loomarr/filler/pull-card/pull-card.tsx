@@ -149,7 +149,7 @@ const PullCard = ({
           <summary className="text-muted-foreground cursor-pointer">
             {pluralize(pull.rejected?.length ?? 0, "other candidate")} considered and excluded
           </summary>
-          <ul className="mt-2 flex flex-col gap-1">
+          <Stack className="mt-2" gap="1" render="ul">
             {(pull.rejected ?? []).map((candidate) => (
               <Stack direction="row" gap="inline" key={candidate.candidateId} render="li" wrap>
                 <span>{candidate.name}</span>
@@ -158,7 +158,7 @@ const PullCard = ({
                 </Text>
               </Stack>
             ))}
-          </ul>
+          </Stack>
         </details>
       )}
 
@@ -167,7 +167,7 @@ const PullCard = ({
           <summary className="text-muted-foreground cursor-pointer">
             {pluralize(skippedSources.length, "registered source")} not searched
           </summary>
-          <ul className="mt-2 flex flex-col gap-1">
+          <Stack className="mt-2" gap="1" render="ul">
             {skippedSources.map((source) => (
               <Stack direction="row" gap="inline" key={source.sourceId} render="li" wrap>
                 <span>{source.label || source.sourceId}</span>
@@ -176,7 +176,7 @@ const PullCard = ({
                 </Text>
               </Stack>
             ))}
-          </ul>
+          </Stack>
         </details>
       )}
 

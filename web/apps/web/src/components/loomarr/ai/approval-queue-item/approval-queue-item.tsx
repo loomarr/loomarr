@@ -236,14 +236,14 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <div className="border-caution-tint-40 bg-caution-tint-8 flex flex-col gap-1.5 rounded-md border px-3 py-2">
-          <p className="flex items-center gap-1.5 text-sm">
+        <Stack className="border-caution-tint-40 bg-caution-tint-8 rounded-md border px-3 py-2" gap="1.5">
+          <Stack align="center" className="text-sm" direction="row" gap="1.5" render="p">
             <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
             <span className="font-medium">
               {refused.length} {refused.length === 1 ? "title was" : "titles were"} left out
             </span>
-          </p>
-          <ul className="flex flex-col gap-0.5">
+          </Stack>
+          <Stack gap="0.5" render="ul">
             {refused.map((r) => (
               <li key={`refused-${r.item.name}-${r.item.tmdbId ?? ""}`} className="text-sm">
                 <span>{r.item.name}</span>{" "}
@@ -255,7 +255,7 @@ const ApprovalQueueItem = ({
                 </span>
               </li>
             ))}
-          </ul>
+          </Stack>
           <p className="text-muted-foreground text-xs">
             {raising
               ? `Approving raises this channel's audience limit to ${edit?.audience}, so titles rated up to ${edit?.audience} are included.`
@@ -283,7 +283,7 @@ const ApprovalQueueItem = ({
               </Action>
             </Surface>
           )}
-        </div>
+        </Stack>
       )}
 
       {/* Beside the refusals for the same reason: approving gets a channel that doesn't follow the
@@ -332,14 +332,14 @@ const ApprovalQueueItem = ({
                 renderFeedback={renderFeedback}
               />
             ) : (
-              <ul className="mt-2 flex flex-col gap-1.5">
+              <Stack className="mt-2" gap="1.5" render="ul">
                 {lineup?.map((it) => (
                   <PickRow key={`lib-${it.name}`} item={it} kind="lineup" renderFeedback={renderFeedback} />
                 ))}
                 {acquisitionItems?.map((it) => (
                   <PickRow key={`acq-${it.name}`} item={it} kind="acquire" renderFeedback={renderFeedback} />
                 ))}
-              </ul>
+              </Stack>
             ))}
         </div>
       )}

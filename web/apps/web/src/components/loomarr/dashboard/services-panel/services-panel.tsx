@@ -45,13 +45,19 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
 
   return (
     <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
-      <div className="border-border flex items-baseline gap-2.5 border-b px-4 py-3.5">
+      <Stack align="baseline" className="border-border border-b px-4 py-3.5" direction="row" gap="2.5">
         <h2 className="text-sm font-medium">Services</h2>
-        <span className="text-muted-foreground ml-auto flex items-center gap-1.5 font-mono text-xs">
+        <Stack
+          align="center"
+          className="text-muted-foreground ml-auto font-mono text-xs"
+          direction="row"
+          gap="1.5"
+          render="span"
+        >
           {refreshing ? <ActivityIndicator decorative size="compact" tone="inherit" /> : null}
           checked every 30s · the same checks Settings runs
-        </span>
-      </div>
+        </Stack>
+      </Stack>
 
       <ListGroup framed={false}>
         {[view.loomarr, ...rows].filter(Boolean).map((row) => (

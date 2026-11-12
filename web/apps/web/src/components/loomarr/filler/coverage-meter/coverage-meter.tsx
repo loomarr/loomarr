@@ -137,7 +137,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
       </Stack>
 
       {rungs.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ul">
           {rungs.map((rung) => {
             // Percentage of the widest rung, NOT of some invented total — see the header.
             const share = widest > 0 ? Math.round((rung.clips / widest) * 100) : 0;
@@ -160,7 +160,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
               </Stack>
             );
           })}
-        </ul>
+        </Stack>
       )}
 
       {/* Per-setting breakdown (§10 V51f) — WHICH setting is costing the clips.
@@ -171,13 +171,13 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           rather than reporting whichever predicate happened to run first. A cumulative funnel
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
-        <div className="border-border/60 flex flex-col gap-1.5 border-t pt-3">
+        <Stack className="border-border/60 border-t pt-3" gap="1.5">
           <Text as="span" textRole="mono">
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"
               : "These settings are ruling out every commercial:"}
           </Text>
-          <ul className="flex flex-col gap-1">
+          <Stack gap="1" render="ul">
             {criteria.map((c) => (
               <Stack
                 align="center"
@@ -204,8 +204,8 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 </Text>
               </Stack>
             ))}
-          </ul>
-        </div>
+          </Stack>
+        </Stack>
       )}
 
       <Stack align="center" direction="row" gap="inline" justify="between" wrap>

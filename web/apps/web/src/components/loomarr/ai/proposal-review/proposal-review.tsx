@@ -230,10 +230,10 @@ const ProposalReview = ({
         </Stack>
       )}
 
-      <div className="flex flex-col gap-1 text-sm">
+      <Stack className="text-sm" gap="1">
         <p>{availabilitySummary(selectedCount, selectedReady, selectedMissing)}</p>
         <ProposalOutlook assessment={assessment} pending={assessmentPending} showDetails={false} />
-      </div>
+      </Stack>
 
       {(revising || findingMore) && (
         <p role="status" className="text-muted-foreground text-sm">
@@ -347,7 +347,7 @@ const ProposalReview = ({
         <summary className="text-muted-foreground cursor-pointer font-medium">
           How these suggestions were chosen
         </summary>
-        <div className="text-muted-foreground mt-4 flex flex-col gap-5">
+        <Stack className="text-muted-foreground mt-4" gap="5">
           <Stack aria-label="Why these titles" gap="inline" render="section">
             <h3 className="text-foreground font-medium">Why these titles</h3>
             {status === "partially-edited" ? (
@@ -395,7 +395,7 @@ const ProposalReview = ({
           {(proposal.rationale || assessment || proposal.trace?.candidates?.length) && (
             <details className="border-border border-t pt-3">
               <summary className="w-fit cursor-pointer">Troubleshooting details</summary>
-              <div className="mt-3 flex flex-col gap-4">
+              <Stack className="mt-3" gap="4">
                 <p className="text-xs">
                   This shows how Loomarr handled the original suggestions, before any changes you made.
                 </p>
@@ -430,10 +430,10 @@ const ProposalReview = ({
                     </details>
                   </section>
                 ) : null}
-              </div>
+              </Stack>
             </details>
           )}
-        </div>
+        </Stack>
       </details>
     </section>
   );

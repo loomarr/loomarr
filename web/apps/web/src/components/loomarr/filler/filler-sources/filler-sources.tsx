@@ -230,7 +230,7 @@ const FillerSources = ({
 
   return (
     <Stack className={className} gap="section">
-      <div className="flex flex-wrap items-start gap-4">
+      <Stack align="start" direction="row" gap="4" wrap>
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold">Where filler comes from</h2>
           <p className="text-muted-foreground mt-1 max-w-xl text-sm">
@@ -241,7 +241,7 @@ const FillerSources = ({
         <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
         </span>
-      </div>
+      </Stack>
 
       {needsLocation && (
         <Stack
@@ -268,7 +268,7 @@ const FillerSources = ({
 
       {(localSources.length > 0 || renderLocalSetup) && (
         <section aria-labelledby="local-filler-sources" className="border-border/60 border-t pt-5">
-          <div className="flex items-start justify-between gap-4">
+          <Stack align="start" direction="row" gap="4" justify="between">
             <div className="min-w-0">
               <h3 id="local-filler-sources" className="font-medium">
                 Your files
@@ -278,7 +278,7 @@ const FillerSources = ({
               </p>
             </div>
             <span className="text-muted-foreground shrink-0 text-xs">{sourceSummary(localSources)}</span>
-          </div>
+          </Stack>
 
           {renderLocalSetup && <div className="mt-4">{renderLocalSetup}</div>}
           {localSources.length > 0 && (

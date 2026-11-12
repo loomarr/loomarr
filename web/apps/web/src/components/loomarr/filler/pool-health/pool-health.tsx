@@ -35,7 +35,7 @@ const Stat = ({
   note: string;
   tone?: "warn";
 }) => (
-  <div className="flex min-w-0 flex-col gap-0.5">
+  <Stack className="min-w-0" gap="0.5">
     <Text as="span" textRole="metadata">
       {label}
     </Text>
@@ -44,7 +44,7 @@ const Stat = ({
       {value}
     </span>
     <span className="text-muted-foreground text-xs">{note}</span>
-  </div>
+  </Stack>
 );
 
 const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {

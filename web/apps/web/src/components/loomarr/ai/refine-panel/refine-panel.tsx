@@ -101,7 +101,7 @@ const RefinePanel = ({
       </Stack>
 
       {(state === "idle" || state === "open") && (
-        <div className="flex flex-col gap-2.5">
+        <Stack gap="2.5">
           {generationFailed && (
             <Stack
               align="start"
@@ -114,11 +114,11 @@ const RefinePanel = ({
                 <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
               </Stack>
               {failureCopy ? (
-                <span className="flex flex-col gap-0.5">
+                <Stack gap="0.5" render="span">
                   <span className="font-medium">{failureCopy.title}</span>
                   <span>{failureCopy.message}</span>
                   <span>{failureCopy.guidance}</span>
-                </span>
+                </Stack>
               ) : (
                 <span>
                   Loomarr couldn't update this channel. Try again or describe the change another way.
@@ -158,7 +158,7 @@ const RefinePanel = ({
             </form.Field>
           </form>
           {refine.error != null && <ErrorState error={refine.error} />}
-        </div>
+        </Stack>
       )}
 
       {state === "running" && (
