@@ -106,7 +106,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	25: an episode its show's catalog can't number is marked, and one whose show has an answer is
 //	    numbered by the order picked (decision 53).
 //	26: a title sorts by its letters with the accents taken off ("À Nous" under A).
-const writeVersion = 26
+//	27: a show with no name of its own is named by its own folder, not the folders above it.
+const writeVersion = 27
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
