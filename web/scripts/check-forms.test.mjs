@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { compareToLedger, isHandRolledForm, shrinkLedger } from "./check-forms.mjs";
+import {
+  compareToLedger,
+  isHandRolledForm,
+  settingsDraftUsers,
+  shrinkLedger,
+  usesSettingsDraft,
+} from "./check-forms.mjs";
 
 const handRolled = `
   import { useState } from "react";
@@ -51,6 +57,93 @@ describe("isHandRolledForm, what is not a form", () => {
       };
     `;
     assert.equal(isHandRolledForm(select), false);
+  });
+});
+
+describe("the settings draft", () => {
+  const sanctioned = `
+    import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+    import { useSettingsDraft } from "@/settings/settings-draft";
+    export const Step = () => {
+      const { edits, setEdit } = useSettingsDraft();
+      return <SettingsFields entries={[]} onChange={setEdit} values={edits} />;
+    };
+  `;
+
+  it("is the sanctioned way to buffer edits, and is named, not merely unnoticed", () => {
+    assert.equal(isHandRolledForm(sanctioned), false);
+    assert.equal(usesSettingsDraft(sanctioned), true);
+    // The layout's buffer is the same hook underneath, and is sanctioned under its own name.
+    const layout = sanctioned
+      .replace("useSettingsDraft", "useSettingsEdits")
+      .replace("settings-draft", "settings-edits")
+      .replace("useSettingsDraft()", "useSettingsEdits()");
+    assert.equal(isHandRolledForm(layout), false);
+    assert.equal(usesSettingsDraft(layout), true);
+    // Renamed locally, still the hook's setter.
+    assert.equal(
+      isHandRolledForm(
+        sanctioned
+          .replace("setEdit }", "setEdit: setLocationEdit }")
+          .replace("={setEdit}", "={setLocationEdit}"),
+      ),
+      false,
+    );
+  });
+
+  it("flags the same buffer kept in useState", () => {
+    const hand = `
+      import { useState } from "react";
+      export const Step = () => {
+        const [edits, setEdits] = useState({});
+        return <SettingsFields onChange={(key, value) => setEdits({ ...edits, [key]: value })} values={edits} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(hand), true);
+    assert.equal(usesSettingsDraft(hand), false);
+  });
+
+  it("flags a draft setter from a hook that is not the sanctioned one", () => {
+    const lookalike = `
+      import { useSettingsDraft } from "./my-own-draft";
+      export const Step = () => {
+        const { edits, setEdit } = useSettingsDraft();
+        return <SettingsFields onChange={setEdit} values={edits} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(lookalike), true);
+    assert.equal(usesSettingsDraft(lookalike), false);
+    const other = lookalike.replace('"./my-own-draft"', '"@/settings/settings-draft"');
+    assert.equal(isHandRolledForm(other), false);
+    const another = other
+      .replace(/useSettingsDraft/g, "useDraft")
+      .replace("@/settings/settings-draft", "./draft");
+    assert.equal(isHandRolledForm(another), true);
+  });
+
+  it("does not excuse a hand-rolled input in a file that also uses the hook", () => {
+    const mixed = `${sanctioned.replace("export const Step", "const Step")}
+      export const Name = () => {
+        const [name, setName] = useState("");
+        return <Field onChangeText={setName} value={name} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(mixed), true);
+  });
+
+  it("is how Settings and every wizard step buffer their edits", () => {
+    const users = settingsDraftUsers();
+    for (const file of [
+      "apps/web/src/settings/settings-edits/settings-edits.tsx",
+      "apps/web/src/settings/settings-page/settings-page.tsx",
+      "apps/web/src/routes/wizard.tsx",
+      "apps/web/src/wizard/checklist-step/checklist-step.tsx",
+      "apps/web/src/wizard/library-step/library-step.tsx",
+      "apps/web/src/wizard/playout-step/playout-step.tsx",
+      "apps/web/src/wizard/wizard-ai-block/wizard-ai-block.tsx",
+    ]) {
+      assert.ok(users.includes(file), `${file} uses the settings draft`);
+    }
   });
 });
 

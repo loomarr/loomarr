@@ -3,11 +3,6 @@
   "files": [
     "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx",
     "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx",
-    "apps/web/src/routes/wizard.tsx",
-    "apps/web/src/wizard/checklist-step/checklist-step.tsx",
-    "apps/web/src/wizard/library-step/library-step.tsx",
-    "apps/web/src/wizard/playout-step/playout-step.tsx",
-    "apps/web/src/wizard/wizard-ai-block/wizard-ai-block.tsx",
     "packages/ui/src/commit-field/commit-field.tsx",
     "packages/ui/src/library/library-collection-editor/library-collection-editor.tsx",
     "packages/ui/src/library/library-settings/library-settings.tsx",

@@ -11,6 +11,7 @@ import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { cn } from "@/lib/utils";
 import { everyEditSaved } from "@/settings/saved-edits";
+import { type SettingsDraft, useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
 import type { PlayoutStepProps } from "./playout-step.type";
@@ -82,8 +83,10 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standing = checks.find((c) => c.name === "tunarr");
 
-  const [publicURLEdits, setPublicURLEdits] = useState<Record<string, string>>({});
-  const [tunarrEdits, setTunarrEdits] = useState<Record<string, string>>({});
+  const publicURL = useSettingsDraft();
+  const tunarrDraft = useSettingsDraft();
+  const publicURLEdits = publicURL.edits;
+  const tunarrEdits = tunarrDraft.edits;
   const [open, setOpen] = useState(true);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState<{ ok: boolean; hint?: string } | undefined>();
@@ -100,18 +103,18 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   // invalidated registry and advertises a Save action for an edit that no longer exists.
   // Resolves true only when every key was saved. A failed request resolves false too: it shows
   // as patch.error below, and the edits stay for a retry.
-  const saveEdits = async (edits: Record<string, string>, clear: () => void): Promise<boolean> => {
+  const saveEdits = async (draft: SettingsDraft): Promise<boolean> => {
+    const { edits } = draft;
     try {
       const response = await patch.mutateAsync({ data: { edits } });
-      if (!everyEditSaved(response, edits)) return false;
-      clear();
-      return true;
+      draft.dropSaved(response, edits);
+      return everyEditSaved(response, edits);
     } catch {
       return false;
     }
   };
-  const savePublicURL = () => saveEdits(publicURLEdits, () => setPublicURLEdits({}));
-  const saveTunarr = () => saveEdits(tunarrEdits, () => setTunarrEdits({}));
+  const savePublicURL = () => saveEdits(publicURL);
+  const saveTunarr = () => saveEdits(tunarrDraft);
   // Test evaluates PERSISTED settings, so unsaved edits must be written first or the operator
   // tests the OLD address right after typing a new one (the flavor-save bug, config-design §6).
   const test = async () => {
@@ -198,7 +201,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           <SettingsFields
             entries={publicURLEntries}
             values={publicURLEdits}
-            onChange={(key, v) => setPublicURLEdits((previous) => ({ ...previous, [key]: v }))}
+            onChange={publicURL.setEdit}
             results={patchResults}
             descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
@@ -240,7 +243,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           <SettingsFields
             entries={tunarrEntries}
             values={tunarrEdits}
-            onChange={(key, v) => setTunarrEdits((p) => ({ ...p, [key]: v }))}
+            onChange={tunarrDraft.setEdit}
             results={patchResults}
           />
           {tunarrDirty && (

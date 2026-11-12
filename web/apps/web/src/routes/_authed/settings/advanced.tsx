@@ -81,6 +81,7 @@ const AdvancedSettings = () => {
   );
 };
 
+// no-loader: reads only the settings list the Settings layout's loader ensured
 const Route = createFileRoute("/_authed/settings/advanced")({
   component: AdvancedSettings,
 });

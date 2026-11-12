@@ -11,7 +11,8 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { blockTitle } from "@/settings/provider-title";
-import { everyEditSaved, savedKeysOf } from "@/settings/saved-edits";
+import { everyEditSaved } from "@/settings/saved-edits";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, requiredChecks } from "../steps";
 import { WizardAiBlock } from "../wizard-ai-block";
@@ -73,7 +74,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
   const entries = useSettingsEntries();
   const status = setupApi.useSetupStatus();
 
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const { edits, setEdit, dropSaved, resetEdits } = useSettingsDraft();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -85,10 +86,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
         await invalidateSettings(queryClient);
         // Saved values are the new baseline. A 200 answers per key, so a rejected or pinned value
         // stays in the form, editable, beside the message the results give for it.
-        const saved = new Set(savedKeysOf(response, data.edits));
-        setEdits((previous) =>
-          Object.fromEntries(Object.entries(previous).filter(([key]) => !saved.has(key))),
-        );
+        dropSaved(response, data.edits);
       },
     },
   });
@@ -201,7 +199,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
                 <SettingsFields
                   entries={blockEntries}
                   values={edits}
-                  onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                  onChange={setEdit}
                   results={patchResults}
                   onEnvOverride={(key, enabled) => envOverride.mutate({ key, data: { enabled } })}
                 />
@@ -233,7 +231,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
           <Action disabled={patch.isPending} onPress={save}>
             {patch.isPending ? "Saving…" : "Save changes"}
           </Action>
-          <Action disabled={patch.isPending} onPress={() => setEdits({})} variant="ghost">
+          <Action disabled={patch.isPending} onPress={resetEdits} variant="ghost">
             Discard
           </Action>
         </div>

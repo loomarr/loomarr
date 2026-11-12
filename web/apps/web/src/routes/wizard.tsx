@@ -15,6 +15,7 @@ import { ErrorState } from "@/components/loomarr/feedback";
 import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { WizardShell } from "@/components/loomarr/setup/wizard-shell";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { BootstrapStep } from "@/wizard/bootstrap-step";
 import { ChecklistStep } from "@/wizard/checklist-step";
 import { FirstChannelStep } from "@/wizard/first-channel-step";
@@ -132,7 +133,11 @@ const WizardScreen = () => {
   );
   const persisted = (key: SettingKey) => locationEntries.find((entry) => entry.key === key)?.value;
   const persistedCountry = persisted(SettingKey.FillerHomeCountry) ?? "";
-  const [locationEdits, setLocationEdits] = useState<Partial<Record<SettingKey, string>>>({});
+  const {
+    edits: locationEdits,
+    setEdit: setLocationEdit,
+    resetEdits: resetLocationEdits,
+  } = useSettingsDraft();
   const liveCountry = locationEdits[SettingKey.FillerHomeCountry] ?? persistedCountry;
   const livePlace = locationEdits[SettingKey.FillerHomePlace] ?? persisted(SettingKey.FillerHomePlace) ?? "";
   const liveRadius =
@@ -242,7 +247,7 @@ const WizardScreen = () => {
               [SettingKey.FillerLocalRadiusKm]: liveRadius,
               [SettingKey.FillerLanguage]: liveLanguage,
             }}
-            onChange={(key, value) => setLocationEdits((previous) => ({ ...previous, [key]: value }))}
+            onChange={setLocationEdit}
             results={unwrap(locationPatch.data, (body) => body.results) ?? undefined}
             error={locationPatch.error?.detail}
             showHeading={false}
@@ -287,7 +292,7 @@ const WizardScreen = () => {
       ) {
         return;
       }
-      setLocationEdits({});
+      resetLocationEdits();
     }
     goTo("checklist");
   };
