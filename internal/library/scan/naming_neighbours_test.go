@@ -69,7 +69,7 @@ func TestNamingNeighbours(t *testing.T) {
 		for _, n := range namingNeighbours {
 			t.Run(row.id+"/"+n.name, func(t *testing.T) {
 				t.Parallel()
-				renamed := namingRow{id: row.id, files: map[string]string{}}
+				renamed := namingRow{id: row.id, root: row.root, files: map[string]string{}}
 				from := map[string]string{}
 				for rel, want := range row.files {
 					to := rel

@@ -259,7 +259,11 @@ func (w *walker) within(dir string) bool {
 type walker struct {
 	root     string
 	realRoot string
-	visited  map[string]bool
+	// shelf is the root's own name when it is a shelf of a kind or an audience's ("/media/TV",
+	// "/media/Movies", "/media/Kids"), "" otherwise: its folders are read as if under it
+	// (folderNotes.Root).
+	shelf   string
+	visited map[string]bool
 	// nfo is each folder's NFO and artwork files, kept while the walk is under it.
 	nfo map[string]map[string]Stat
 	// videos counts each folder's videos, kept alongside nfo.
@@ -285,7 +289,7 @@ func newWalker(root string, steps *atomic.Int64) *walker {
 		steps = new(atomic.Int64)
 	}
 	w := &walker{
-		root: filepath.Clean(root), visited: map[string]bool{},
+		root: filepath.Clean(root), shelf: rootShelf(root), visited: map[string]bool{},
 		nfo: map[string]map[string]Stat{}, videos: map[string]int{}, steps: steps, firstUnit: map[string]int{},
 		listed: map[string][]os.DirEntry{},
 	}
@@ -393,7 +397,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	if dir != w.root {
 		folder = filepath.Base(dir)
 	}
-	shows := dir != w.root && underShows(w.rel(dir))
+	shows := dir != w.root && underShows(path.Join(w.shelf, w.rel(dir)))
 	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
@@ -418,7 +422,8 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	})
 	notes.Leading = leadingEpisodes(folder, videoNames)
 	notes.Series = dir != w.root && namedSeries(folder, videoNames)
-	notes.Titled = dir != w.root && titledEpisodes(w.rel(dir), videoNames)
+	notes.Titled = dir != w.root && titledEpisodes(path.Join(w.shelf, w.rel(dir)), videoNames)
+	notes.Root = w.shelf
 	notes.Years = looseYears(videoNames)
 	for _, e := range entries {
 		if e.IsDir() {

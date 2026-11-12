@@ -34,6 +34,7 @@ type namingRow struct {
 	id    string            // the pattern, as the catalogue numbers it (A1, E5, ...)
 	files map[string]string // a file, relative to the root, and what it must become
 	nfo   map[string]string // sidecars: a path relative to the root and its content
+	root  string            // the root's own name, "" for one named as nothing ("TV" for /media/TV)
 }
 
 // namingToday is what the scanner makes today of each file it gets wrong, keyed "<row id> <file>".
@@ -1064,6 +1065,30 @@ var namingMatrix = []namingRow{
 		"Korean/Kettle.Love.E06.240302.1080p-NEXT.mp4":    "episode Kettle Love S1E6",
 		"Moon.Lane.E01.240105.720p-NEXT.mp4":              "episode Moon Lane S1E1",
 	}},
+	// Re-score #13: a root named as a shelf ("/media/TV", "/media/Movies") is one, as a folder of
+	// that name in a root is: a household that adds its shows and films as two roots keeps them
+	// apart by them.
+	{id: "W114", root: "TV", files: map[string]string{
+		"Hop Glen/Frost Morning.mp4":                "episode Hop Glen S?E?",
+		"Hop Glen/Lost Hat.mp4":                     "episode Hop Glen S?E?",
+		"Kettle Bay/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+	}},
+	{id: "W115", root: "Movies", files: map[string]string{
+		"Pale Orchard/Pale Orchard.mkv":           "movie Pale Orchard -",
+		"Season One (2012)/Season One (2012).mkv": "movie Season One 2012",
+		"Grid 4x4 (2015).mkv":                     "movie Grid 4x4 2015",
+		"Cinder Shelf/Quiet Ferry.mkv":            "movie Quiet Ferry -",
+		"Cinder Shelf/Copper Lark.mkv":            "movie Copper Lark -",
+	}},
+	{id: "W116", root: "Kids", files: map[string]string{
+		"Hop Pond/Frost Morning.mp4": "episode Hop Pond S?E?",
+		"Hop Pond/Big Carrot.mp4":    "episode Hop Pond S?E?",
+		"Tansy Fell/Tansy Fell.mp4":  "movie Tansy Fell -",
+	}},
+	{id: "W117", root: "Anime", files: map[string]string{
+		"[Grp] Hana Kettle - 05 [1080p].mkv": "episode Hana Kettle S?E?",
+		"[Grp] Hana Kettle - 06 [1080p].mkv": "episode Hana Kettle S?E?",
+	}},
 	// Re-score #13: a show's volume folder is its show's; Chinese "第05集" is its fifth episode.
 	{id: "W113", files: map[string]string{
 		"Kids/Puddle Ducks/01 - Rain.mp4":         "episode Puddle Ducks S1E1",
@@ -1272,7 +1297,7 @@ func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 // and a movie's edition too.
 func namingOutcomesWith(t *testing.T, row namingRow, grounded bool) map[string]string {
 	t.Helper()
-	h := newHarness(t)
+	h := newHarnessIn(t, filepath.Join(t.TempDir(), row.root))
 	for rel := range row.files {
 		h.file(rel, 10)
 	}

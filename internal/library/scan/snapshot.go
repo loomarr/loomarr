@@ -208,7 +208,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    episodes; "Show.E05.240301" is an episode; "第05集" loose beside its siblings is numbered;
 //	    a film's disc or version folder ("Disc 1/", "4K/") names no film; a doubled show folder,
 //	    a volume's ("Vol 2"), a "(TV)" tag and a bracketed day each join their show.
-const writeVersion = 55
+//	56: a root named as a shelf ("/media/TV", "/media/Movies", "/media/Kids", "/media/Anime") is
+//	    read as one, as a folder of that name in a root is.
+const writeVersion = 56
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
