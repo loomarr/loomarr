@@ -4,8 +4,9 @@
 //
 // A source is a hand-rolled form when it keeps a typed input's draft in `useState`: a `useState`
 // setter is called from an input's `onChangeText` or `onChange` (a select's `onValueChange` picks
-// what to show, which is a view setting, not a draft), and
-// the file does not import `@tanstack/react-form` (or `@/lib/app-form`). A search box or filter
+// what to show, which is a view setting, not a draft). Each input is judged on its own: a file that
+// also holds a TanStack form is not excused, since a field's `handleChange` is never a `useState`
+// setter and so never counts. A search box or filter
 // (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, and neither is a flag a
 // handler raises (`setOpen(true)`). Tests and stories are not production code and are not counted.
 // Two buffers are sanctioned that are not a TanStack form: a settings draft (`useSettingsDraft`) and
@@ -27,7 +28,6 @@ const roots = [join(webRoot, "apps", "web", "src"), join(webRoot, "packages", "u
 const ledgerPath = join(webRoot, "hand-rolled-forms.json");
 
 const INPUT_HANDLERS = new Set(["onChangeText", "onChange"]);
-const FORM_MODULES = ["@tanstack/react-form", "@/lib/app-form"];
 const NON_CHILD_KEYS = new Set([
   "loc",
   "start",
@@ -86,9 +86,6 @@ const stateSetters = (program) => {
   });
   return setters;
 };
-
-const usesFormLibrary = (program) =>
-  program.body.some((node) => node.type === "ImportDeclaration" && FORM_MODULES.includes(node.source.value));
 
 // Two buffers are sanctioned that are not a TanStack form. Each is a named rule, not a side effect:
 // before them, such a buffer passed only because its setter did not come from a `useState` in the
@@ -217,22 +214,25 @@ const unsanctionedDraftSetters = (program) => {
 // isHandRolledForm: a state setter is reachable from an input's change handler.
 const isHandRolledForm = (source) => {
   const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
-  if (usesFormLibrary(program)) return false;
   const setters = stateSetters(program);
   for (const setter of unsanctionedDraftSetters(program)) setters.add(setter);
   if (setters.size === 0) return false;
   let found = false;
   walk(program, (node) => {
     if (found || node.type !== "JSXAttribute" || !INPUT_HANDLERS.has(node.name.name)) return;
-    // `setOpen(true)` raises a flag; it carries nothing the viewer typed. An `onChange` prop on a
-    // component that is not an input (an editor that reports a changed list) often does it.
+    // `setOpen(true)` raises a flag and `setError(undefined)` clears what the last submit said;
+    // neither carries anything the viewer typed. An `onChange` prop on a component that is not an
+    // input (an editor that reports a changed list) often does the first.
     const flags = new Set();
     walk(node.value, (inner) => {
+      const argument = inner.type === "CallExpression" ? inner.arguments[0] : undefined;
       if (
         inner.type === "CallExpression" &&
         inner.callee.type === "Identifier" &&
         inner.arguments.length === 1 &&
-        inner.arguments[0].type === "BooleanLiteral"
+        (argument.type === "BooleanLiteral" ||
+          argument.type === "NullLiteral" ||
+          (argument.type === "Identifier" && argument.name === "undefined"))
       ) {
         flags.add(inner.callee);
       }
