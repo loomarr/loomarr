@@ -52,6 +52,7 @@ const ProposalReview = ({
   expansionAdded,
   assessment,
   assessmentPending = false,
+  assessmentTimeZone,
   edit,
   status = "draft",
   selfService = false,
@@ -445,7 +446,9 @@ const ProposalReview = ({
                     <p>{friendlyProposalRationale(proposal.rationale)}</p>
                   </section>
                 )}
-                {assessment && !assessmentPending && <ProposalOutlookDiagnostics assessment={assessment} />}
+                {assessment && !assessmentPending && (
+                  <ProposalOutlookDiagnostics assessment={assessment} timeZone={assessmentTimeZone} />
+                )}
                 {proposal.trace?.candidates?.length ? (
                   <section aria-label="Titles considered">
                     <Text as="h3" className="mb-2" textRole="cardLabel">

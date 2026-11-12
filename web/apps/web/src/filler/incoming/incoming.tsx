@@ -21,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -95,6 +96,7 @@ const StatusRows = ({
 const Incoming = () => {
   const queryClient = useQueryClient();
   const query = fillerApi.useFillerIncoming();
+  const timeZone = useHouseholdTimeZone();
   const body = unwrap(query.data, (value) => value);
   const [view, setView] = useState<IncomingView>();
   const [loadingGroup, setLoadingGroup] = useState<GroupName>();
@@ -385,7 +387,11 @@ const Incoming = () => {
               <Text as="p" textRole="hint" tone="secondary">
                 Updated {formatRelative(selected.updatedAt)}
               </Text>
-              <IncomingProcessingDetails key={selected.clipHash} processing={selected.processing} />
+              <IncomingProcessingDetails
+                key={selected.clipHash}
+                processing={selected.processing}
+                timeZone={timeZone}
+              />
             </div>
           </DialogContent>
         ) : null}

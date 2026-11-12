@@ -19,6 +19,17 @@ describe("preview time presets", () => {
     expect(nextWeekdayAt(2, 20, at(10, 12, 23))).toEqual(at(10, 17, 20));
   });
 
+  it("counts days and hours on the household's clock, not the device's", () => {
+    // 20:00 UTC on Friday 13 Nov 2026 is already Saturday 9 AM in Auckland (NZDT, UTC+13).
+    const now = new Date(Date.UTC(2026, 10, 13, 20, 0));
+    // Saturday 9 AM there is next week's, 9 AM on 21 Nov in Auckland = 20:00 UTC on 20 Nov.
+    expect(nextWeekdayAt(6, 9, now, "Pacific/Auckland")).toEqual(new Date(Date.UTC(2026, 10, 20, 20, 0)));
+    // Christmas 9 AM in Auckland is 20:00 UTC on Christmas Eve.
+    expect(nextMonthDayAt(11, 25, 9, now, "Pacific/Auckland")).toEqual(
+      new Date(Date.UTC(2026, 11, 24, 20, 0)),
+    );
+  });
+
   it("picks this year's date until it passes, then next year's", () => {
     expect(nextMonthDayAt(11, 25, 9, at(10, 14, 8))).toEqual(at(11, 25, 9));
     expect(nextMonthDayAt(9, 31, 20, at(10, 14, 8))).toEqual(new Date(2027, 9, 31, 20));

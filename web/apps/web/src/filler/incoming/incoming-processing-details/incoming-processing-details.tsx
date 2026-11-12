@@ -25,7 +25,7 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
   );
 };
 
-const ProcessingStage = ({ stage }: { stage: IncomingProcessingStageDTO }) => (
+const ProcessingStage = ({ stage, timeZone }: { stage: IncomingProcessingStageDTO; timeZone?: string }) => (
   <li className="border-border relative min-w-0 border-l pb-5 pl-4 last:pb-0">
     <span
       aria-hidden
@@ -42,7 +42,11 @@ const ProcessingStage = ({ stage }: { stage: IncomingProcessingStageDTO }) => (
     <Text as="p" className="mt-1 break-words" textRole="hint" tone="secondary">
       {stage.note}
     </Text>
-    <time dateTime={stage.at} title={new Date(stage.at).toLocaleString()} className="mt-1 block">
+    <time
+      dateTime={stage.at}
+      title={new Date(stage.at).toLocaleString(undefined, { timeZone })}
+      className="mt-1 block"
+    >
       <Text as="span" textRole="hint" tone="secondary">
         {formatRelative(stage.at)}
       </Text>
@@ -51,7 +55,15 @@ const ProcessingStage = ({ stage }: { stage: IncomingProcessingStageDTO }) => (
   </li>
 );
 
-const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcessingDTO }) => {
+// `timeZone` is the household's, so a step's full date on hover reads as the Guide tells times;
+// undefined is the device's own.
+const IncomingProcessingDetails = ({
+  processing,
+  timeZone,
+}: {
+  processing: IncomingProcessingDTO;
+  timeZone?: string;
+}) => {
   const [showSkipped, setShowSkipped] = useState(false);
   const skipped = processing.stages.filter((stage) => stage.outcome === "not_needed").length;
   const stages = showSkipped ? processing.stages : processing.stages.filter(visibleByDefault);
@@ -84,7 +96,7 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
             {keyedStages.map(({ key, stage }) => (
               // The ordered projection may contain identical stored occurrences. Its array
               // occurrence is part of the identity so content-derived keys do not collapse it.
-              <ProcessingStage key={key} stage={stage} />
+              <ProcessingStage key={key} stage={stage} timeZone={timeZone} />
             ))}
           </ol>
         ) : (
