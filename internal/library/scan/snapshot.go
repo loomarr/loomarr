@@ -229,7 +229,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    "DVD Rips", "Toddlers"); a show's own film beside its titled episodes leaves them its; a
 //	    bare "E01" in a show's folder, and a lone number in a named season's, are episodes; a
 //	    film's padded place, "03 Title", leaves its title; a camera's clip is its own video.
-const writeVersion = 60
+//	61: a show kept in several places (its folder, a second shelf's, loose downloads, a release's
+//	    batch folders) is one show when their names and years agree (joinShows); a film's copy
+//	    named by its cut, framing, colour or voice is a version, never skipped; ".m2t" is a
+//	    video; "Kame Ep 5" in a shelf is Kame's; a show's film leaves its named episodes its; a
+//	    release's language and a show folder's "DVD" leave the name; "Kame Specials - 01" is S0.
+const writeVersion = 61
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

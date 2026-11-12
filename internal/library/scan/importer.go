@@ -655,22 +655,24 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	moved := movedFrom(prev, found, inScope)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
+	var others []identity
 	for _, r := range rows {
 		if inScope(r.Path) || !r.MissingAt.IsZero() || r.Problem == ProblemDiscImage {
 			continue
 		}
 		if rel, err := filepath.Rel(root, r.Path); err == nil {
-			b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)})
+			others = append(others, b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)}))
 		}
 	}
 	// Every file is identified before any is written, so an episode's series knows each season on
-	// disk when the episode is described (decision 53).
+	// disk when the episode is described (decision 53), and a show kept in several places is one.
 	ids := make([]identity, len(walk.Files))
 	for i, file := range walk.Files {
 		if file.Problem == "" {
 			ids[i] = b.identify(file)
 		}
 	}
+	b.joinShows(ids, others)
 	// The walk is over; the writes below are the other half of step 1, and can take as long.
 	report.writing()
 	writingDir := ""

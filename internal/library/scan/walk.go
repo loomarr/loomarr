@@ -34,6 +34,8 @@ var videoExtensions = map[string]bool{
 	".vob": true, ".asf": true, ".3gp": true, ".m2v": true, ".xvid": true,
 	// Windows Media Center's recordings, 3D Matroska, camcorders' MPEG and phones' MPEG-4.
 	".wtv": true, ".dvr-ms": true, ".mk3d": true, ".mod": true, ".tod": true, ".mpeg4": true, ".3g2": true,
+	// HDV camcorders' and satellite receivers' transport streams.
+	".m2t": true, ".trp": true, ".tp": true,
 }
 
 // skippedDirs hold media-server and NAS by-products, snapshots and recycle bins, never media. A
@@ -1083,7 +1085,28 @@ func filmVersion(name, after string) bool {
 	}
 	rest := slices.DeleteFunc(slices.Clone(words), releaseToken)
 	unmarked := slices.DeleteFunc(slices.Clone(words), releaseMark.MatchString)
-	return len(rest) == 0 || editionOnly(rest) || editionOnly(unmarked)
+	// "- Final Cut", "- Open Matte", "- Black and White", "- English Dub", "- Workprint": words
+	// that say how a copy was cut, framed, coloured or voiced say which copy it is.
+	versioned := len(rest) > 0 && !slices.ContainsFunc(rest, func(w string) bool { return !versionWords[strings.ToLower(w)] })
+	return len(rest) == 0 || editionOnly(rest) || editionOnly(unmarked) || versioned
+}
+
+// versionWords are the words a household names a film's copy by: its cut, framing, colour, voice
+// or release. A label of these alone is a version, never an extra; any other word ("Animatic",
+// "Press Conference") makes it the film's extra.
+var versionWords = map[string]bool{
+	"cut": true, "edit": true, "version": true, "final": true, "alternate": true, "alt": true, "rough": true,
+	"workprint": true, "open": true, "matte": true, "black": true, "and": true, "white": true, "b&w": true,
+	"colorized": true, "colourized": true, "color": true, "colour": true, "theatrical": true, "original": true,
+	"home": true, "release": true, "uncut": true, "restored": true, "remaster": true, "remastered": true,
+	"redux": true, "censored": true, "uncensored": true, "broadcast": true, "tv": true, "cinema": true,
+	"director's": true, "directors": true, "extended": true, "special": true, "edition": true, "ultimate": true,
+	"dub": true, "dubbed": true, "sub": true, "subbed": true, "english": true, "language": true,
+	"french": true, "german": true, "spanish": true, "italian": true, "japanese": true, "hindi": true,
+	"tamil": true, "telugu": true, "korean": true, "mandarin": true, "cantonese": true, "dutch": true,
+	"widescreen": true, "fullscreen": true, "pan": true, "scan": true, "3d": true, "imax": true, "hdr": true,
+	"sdr": true, "dv": true, "dolby": true, "vision": true, "1st": true, "2nd": true, "us": true, "uk": true,
+	"international": true, "domestic": true, "television": true, "longer": true,
 }
 
 // titleKinds are the kinds an episode is as often titled by: "Credits", "Recap", "Intro".

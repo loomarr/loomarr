@@ -1105,6 +1105,11 @@ func showFolderIn(file File) string {
 	if shelved, _, ok := shelvedEpisode(name, dir); show == "" && ok {
 		show = shelved
 	}
+	// "Anime/Kame Ep 5.mkv" in a catch-all is Kame's: a shelf names no show, so the words before
+	// the episode's word are its show.
+	if m := episodeWord.FindStringIndex(plainStem(name)); show == "" && m != nil && m[0] > 0 && catchAllFolder(path.Base(dir)) {
+		show = showSpelling(strings.TrimSpace(plainStem(name)[:m[0]]))
+	}
 	show = looseKey(show)
 	// "Pembroke.Gate.S01E02" beside "Pembroke.Gate.2019.S01E01" is the 2019 show's: the one year
 	// its folder's episodes give it.
@@ -1318,8 +1323,20 @@ func showFolderName(folder string) string {
 			}
 		}
 	}
+	// "Peppy Cow DVD", "Peppy Cow DVDs", "Peppy Cow Boxset": the copy's words after the name.
+	for n := len(words); n > 1; n-- {
+		if !discWords[strings.ToLower(strings.Trim(words[n-1], "()[]-"))] {
+			if n < len(words) {
+				return strings.Trim(strings.Join(words[:n], " "), " -.(")
+			}
+			break
+		}
+	}
 	return name
 }
+
+// discWords are the words a show's copy is named by after its name.
+var discWords = map[string]bool{"dvd": true, "dvds": true, "bluray": true, "blu-ray": true, "boxset": true}
 
 // ownSeries is the show an episode's own name gives: before its mark (looseSeries), or a dated
 // release's before its day (datedShow).
@@ -1614,6 +1631,10 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		show = bare
 	}
 	show = showSpelling(show)
+	// "[Grp] Kame Specials - 01" and "[Grp] Kame OVA - 02" are Kame's season 0's.
+	if m := showSpecials.FindStringSubmatch(show); m != nil {
+		return strings.TrimSpace(m[1]), mp.Numbering{Season: 0, Episode: number}, true
+	}
 	if m := animeSeason.FindStringSubmatch(show); m != nil {
 		season := atoi(matched(m[2], m[3], m[4]))
 		return strings.TrimSpace(m[1]), mp.Numbering{Season: season, Episode: number}, true
@@ -2220,10 +2241,14 @@ func namedSeries(folder string, names []string) bool {
 	named := 0
 	for _, name := range names {
 		s := plainStem(name)
+		words := strings.Fields(normName(s))
+		// The show's own film kept with it, "Peppy Hog Movie (2019)", says nothing of its episodes.
+		if len(words) > len(own) && slices.Equal(words[:len(own)], own) && showFilm.MatchString(s) {
+			continue
+		}
 		if _, year, _ := searchQuery(s, 0); year != 0 || bracketYear.MatchString(s) {
 			return false
 		}
-		words := strings.Fields(normName(s))
 		// "Ironvale 2" and "Ironvale 3" beside "Ironvale" are a film's sequels: a show's episodes
 		// say more after its name.
 		sequel := len(words) == len(own)+1 && digits(words[len(own)])

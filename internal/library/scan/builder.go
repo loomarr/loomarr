@@ -27,6 +27,9 @@ type builder struct {
 	seen map[inventory.OriginKey]bool
 	// series is each series folder the pass found, and whether one of its episodes was written.
 	series map[string]*seriesSeen
+	// dirs are the folders, relative to the root, that hold a file the pass identified: a series'
+	// key that is none is a loose show's name (joinShows).
+	dirs map[string]bool
 }
 
 type seriesSeen struct {
@@ -145,12 +148,15 @@ func (id identity) airDate() string {
 func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
-		series: map[string]*seriesSeen{},
+		series: map[string]*seriesSeen{}, dirs: map[string]bool{},
 	}
 }
 
 func (b *builder) identify(file File) identity {
 	m := b.idx.byPath[file.Path]
+	for d := path.Dir(file.Rel); d != "." && !b.dirs[d]; d = path.Dir(d) {
+		b.dirs[d] = true
+	}
 	embedded, seriesDir := embeddedRecord(file)
 	// A file whose name says nothing of an episode is one when its own NFO says so: a scraper
 	// placed it ("Kettle Bay - Tidewater.mkv" beside an <episodedetails>).

@@ -426,7 +426,7 @@ var (
 	// "Tangled Web", "The Cam", "Mister Proper", "The German". It ends the title only where a
 	// release's words are plainly under way: after the year, before another release word, or last
 	// in a name written with dots.
-	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch|amzn|nf|dsnp|hmax|atvp|pcok|hulu|3d|hsbs|hou|sbs|mkv|mp4|avi|criterion)$`)
+	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch|hindi|tamil|telugu|malayalam|kannada|bengali|punjabi|marathi|eng|dual|amzn|nf|dsnp|hmax|atvp|pcok|hulu|3d|hsbs|hou|sbs|mkv|mp4|avi|criterion)$`)
 )
 
 // releaseToken says whether a word is a release's: a releaseMark, or a releaseWord.
