@@ -124,8 +124,11 @@ describe("Help page", () => {
     stubHelp();
     const router = renderAt("/help?page=quickstart&section=upgrading");
     await waitFor(() => expect(router.state.location.search).toEqual({ page: "upgrade" }));
-    expect(await screen.findByText("Pull the new image.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Upgrade", current: "page" })).toBeInTheDocument();
+    // The moved section's answer renders first, then the route's own read of the new page renders
+    // the same markdown again with fresh nodes, so a node found on the first render can be detached
+    // by the time it is asserted. Query the settled DOM instead of holding a node.
+    expect(await screen.findByRole("link", { name: "Upgrade", current: "page" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Pull the new image.")).toBeInTheDocument());
   });
 
   it("filters the page list", async () => {
