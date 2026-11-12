@@ -286,6 +286,13 @@ func embeddedRecord(file File) (mp.Record, string) {
 		rec.Parent = idsIn(path.Base(seriesDir))
 		return rec, seriesDir
 	}
+	// A file with no mark in a show's season folder ("Kettle Bay/Specials/Holiday Special.mkv") is
+	// one of its episodes: the catalog, or its own NFO, places it. A season folder with no show
+	// folder above it names no show, so a file there is still a movie.
+	if dir := path.Dir(file.Rel); dir != "." && path.Dir(dir) != "." && isSeasonFolder(dir) {
+		seriesDir := path.Dir(dir)
+		return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
+	}
 	// A movie is named by its file or its own folder. A folder further up is a collection or a
 	// series, and a tvdb id never names a movie.
 	rec := mp.Record{Source: src, Kind: mp.KindMovie}
