@@ -820,7 +820,8 @@ func extraName(lowerName string) bool {
 	if hidden || strings.HasPrefix(lowerName, "~") || base == "sample" || strings.HasPrefix(base, "sample-") ||
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) ||
 		siteName.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) ||
-		promoNames[strings.TrimSuffix(lowerName, filepath.Ext(lowerName))] || strings.HasSuffix(base, ".partial") {
+		promoNames[strings.TrimSuffix(lowerName, filepath.Ext(lowerName))] || strings.HasSuffix(base, ".partial") ||
+		otherKind.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) {
 		return true
 	}
 	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv"; and its proof after its year
@@ -865,6 +866,10 @@ var titledSample = regexp.MustCompile(`(?i:s\d{1,4}[ ._]?e\d{1,4})[ ._]-[ ._]Sam
 // leaves in a download: "RARBG.com.mp4", "www.Torrent.to.mkv". A suffix that is also a word needs
 // the "www.": "Trust.Me.mkv" and "Nine.To.mkv" are films.
 var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club))$`)
+
+// otherKind matches a name that ends in another kind of file's extension before a video's, as a
+// site's junk does to pass for one: "RARBG.txt.mp4", "Read Me.url.mkv", "setup.exe.avi".
+var otherKind = regexp.MustCompile(`\.(?:txt|nfo|url|lnk|exe|scr|bat|com|htm|html|pdf|jpg|jpeg|png|gif|torrent|zip|rar)$`)
 
 // releaseProof matches a release's proof clip, joined after its year, tags or group: "brigg
 // (2008)-proof", "brigg.2008.1080p.bluray.x264-grp-proof".

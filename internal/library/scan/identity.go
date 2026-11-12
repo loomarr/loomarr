@@ -307,9 +307,23 @@ func datedEpisode(file File) bool {
 // recordedFilm says whether a dated name loose at the top or in a catch-all is a film's recording:
 // its year in brackets ends what it names before its day, "Grey Harbour (1958) 2022-01-01".
 func recordedFilm(name, dir string) bool {
-	before := strings.TrimSpace(datedShow(name))
-	return (dir == "." || catchAllFolder(path.Base(dir))) && strings.HasSuffix(before, ")") && bracketYear.MatchString(before)
+	return (dir == "." || catchAllFolder(path.Base(dir))) && recordedTitle(name) != ""
 }
+
+// recordedTitle is a recorded film's name and year from its recording's, "" for none: the name
+// before its day ends with its year in brackets, or with its year and the channel it was on,
+// "Hallow Point (2009) - Channel 9 - 2023-12-24".
+func recordedTitle(name string) string {
+	before := strings.TrimSpace(datedShow(name))
+	if m := yearThenChannel.FindStringIndex(before); m != nil {
+		return strings.TrimSpace(before[:m[0]+len("(2009)")])
+	}
+	return ""
+}
+
+// yearThenChannel matches a film's year in brackets last, or before a channel's name after a dash:
+// "(2009)", "(2009) - Channel 9".
+var yearThenChannel = regexp.MustCompile(`\((?:19|20)\d{2}\)(?:\s*-\s*[^()]+)?$`)
 
 // recording matches a TV recorder's name for what it recorded, Windows Media Center's: its show,
 // its channel, and the day and time it began, "Larchmont Road_ITV_2022_11_02_20_00_00". Each is
@@ -869,7 +883,11 @@ func folderBeside(file File, dir, show string) string {
 func packShow(dir string) string {
 	base := path.Base(dir)
 	// A season's disc label, "DAPPLE_ROAD_SEASON1_DISC2" or "Saltwick Bay S1D2", is its show's.
+	// One in its show's own folder, "TV/Ashcombe/Ashcombe S1D1/", is that folder's.
 	if m := seasonDisc.FindStringSubmatch(base); m != nil && dir != "." {
+		if parent := path.Dir(dir); parent != "." && sameWords(showSpelling(m[1]), showFolderName(path.Base(parent))) {
+			return parent
+		}
 		return showKey(path.Dir(dir), showSpelling(m[1]))
 	}
 	words := strings.FieldsFunc(base, func(r rune) bool { return strings.ContainsRune(" ._", r) })
@@ -1406,6 +1424,10 @@ func stem(name string) string {
 // tag a name is not read so: "Show - 07" could be a title of its own.
 func looseAnime(name string) (string, mp.Numbering, bool) { return animeRelease(name, false) }
 
+// trailingEpisodeWord matches an episode's word last in a show's name, before the number it reads:
+// "Mizu no Oto Ep", "Mizu no Oto Episode".
+var trailingEpisodeWord = regexp.MustCompile(`(?i)[ ._-]+(?:ep|episode)\.?$`)
+
 // animeRelease is looseAnime for a file in an anime's folder too ("Anime/"), where a name is a
 // release's as if its group had tagged it: "Anime/Usagi Den 07 [1080p].mkv", "Anime/Kumo Tetsu - 07
 // (BD 1080p) [Grp].mkv", "Anime/Usagi.Den.08.1080p.mkv", read without its release's words.
@@ -1465,6 +1487,10 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 	if number == 0 || show == "" {
 		return "", mp.Numbering{}, false
 	}
+	// "Mizu no Oto Ep 05" is "Mizu no Oto"'s: the word before a number is the number's.
+	if bare := trailingEpisodeWord.ReplaceAllString(show, ""); strings.TrimSpace(bare) != "" {
+		show = bare
+	}
 	show = showSpelling(show)
 	if m := animeSeason.FindStringSubmatch(show); m != nil {
 		season := atoi(matched(m[2], m[3], m[4]))
@@ -1484,10 +1510,12 @@ var (
 
 // shelvedEpisode is the show and numbering a name gives as a show's file in a shows' catch-all,
 // "TV/Lower Wick 1-01.mkv": its season and episode apart by a dash. Anywhere else "1-01" may be a
-// title's.
+// title's. An anime's "Shiro Neko - 01-02", after a dash, a group's tag or on an anime's shelf, is
+// a batch of episodes from its first (animeRelease).
 func shelvedEpisode(name, dir string) (string, mp.Numbering, bool) {
 	m := dashedSeason.FindStringSubmatch(plainStem(name))
-	if m == nil || dir == "." || !showsFolderNames[folderKey(path.Base(dir))] || atoi(m[3]) == 0 {
+	if m == nil || dir == "." || !showsFolderNames[folderKey(path.Base(dir))] || atoi(m[3]) == 0 ||
+		strings.HasSuffix(strings.TrimSpace(m[1]), "-") || leadingTags.MatchString(m[1]) || animeFolderNames[folderKey(path.Base(dir))] {
 		return "", mp.Numbering{}, false
 	}
 	return showSpelling(m[1]), mp.Numbering{Season: atoi(m[2]), Episode: atoi(m[3])}, true
@@ -1549,6 +1577,10 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	// catch-all: its season folder's, or the first season's. A fansub's, "[Kumo] Show - Episode
 	// 17", is its number in the whole show (looseAnime).
 	if m := dashedEpisode.FindStringSubmatch(name); m != nil && !leadingTags.MatchString(name) {
+		return episode(atoi(m[1]))
+	}
+	// On an anime's shelf, an untagged "Mizu no Oto Ep 05" is as "Tsukishiro Kan Episode 09" is.
+	if m := episodeWord.FindStringSubmatch(name); m != nil && !leadingTags.MatchString(name) && inAnime(shelved(file, dir)) {
 		return episode(atoi(m[1]))
 	}
 	// So does a scene release's "larchmont.road.312.hdtv-lol": season 3, episode 12.

@@ -514,7 +514,13 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 		leadingYear, name = atoi(m[1]), name[len(m[0]):]
 	}
 	name = trackerPrefix.ReplaceAllString(name, "")
-	name = leadingTags.ReplaceAllString(name, "")
+	// A leading tag is a group's only when a title follows it: "[Carrow Fell] (2017)" is the title
+	// in brackets.
+	if bare := leadingTags.ReplaceAllString(name, ""); strings.IndexFunc(bare, unicode.IsLetter) >= 0 {
+		name = bare
+	} else {
+		name = strings.NewReplacer("[", "", "]", "", "{", "", "}", "").Replace(name)
+	}
 	name = strings.NewReplacer("【", "[", "】", "]", "「", "[", "」", "]").Replace(name)
 	// A copy a household made by hand: "Copy of Ashgrove (2015)".
 	if strings.HasPrefix(strings.ToLower(name), "copy of ") {
