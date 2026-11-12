@@ -12,6 +12,7 @@ import {
   FieldHint,
   Icon,
   icons,
+  Stack,
   StatusLabel,
   Surface,
   Text,
@@ -70,12 +71,12 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
 
 // A number box with its unit beside it: the bytes editor's MiB, or a registry-declared unit.
 const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => (
-  <div className="flex gap-2">
+  <Stack direction="row" gap="inline">
     {children}
     <span className="border-input text-muted-foreground flex h-10 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
       {unit}
     </span>
-  </div>
+  </Stack>
 );
 
 const SettingField = ({
@@ -178,7 +179,7 @@ const SettingField = ({
       const matched = presets.find((option) => option.value === value);
       const preset = editingCustomSchedule || !matched ? CUSTOM_PRESET : matched.value;
       return (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <CompactSelect
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
@@ -208,7 +209,7 @@ const SettingField = ({
               units={["days", "hours", "minutes"]}
             />
           )}
-        </div>
+        </Stack>
       );
     }
     if (entry.kind === SettingKind.cron) {
@@ -356,7 +357,7 @@ const SettingField = ({
         className,
       )}
     >
-      <div className="flex items-center gap-2">
+      <Stack align="center" direction="row" gap="inline">
         <Text as="label" htmlFor={id} textRole="label">
           {label}
         </Text>
@@ -447,10 +448,10 @@ const SettingField = ({
         {result?.status === SettingResultStatus.pinned && !pinned && (
           <StatusLabel tone="warn">Not saved: pinned</StatusLabel>
         )}
-      </div>
+      </Stack>
 
       {secretLocked ? (
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
             {entry.preview ?? "stored"}
           </span>
@@ -463,7 +464,7 @@ const SettingField = ({
           >
             Replace
           </Action>
-        </div>
+        </Stack>
       ) : (
         control()
       )}
@@ -489,9 +490,9 @@ const SettingField = ({
           tone="error"
           className={cn("flex items-start gap-1", inlineSwitch && "col-span-2")}
         >
-          <span className="mt-0.5 flex">
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
+          </Stack>
           {disabledReason}
         </FieldHint>
       )}

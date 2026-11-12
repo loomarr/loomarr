@@ -3,7 +3,7 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, Card, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack } from "@loomarr/design-system";
 import { seasonalModeLabel } from "@loomarr/ui";
 import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { eraOf } from "@/lib/era-dates";
@@ -183,7 +183,7 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
 
 const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "removed"; note?: string }) => (
   <li className="flex flex-col gap-0.5 text-sm">
-    <div className="flex items-baseline gap-2">
+    <Stack align="baseline" direction="row" gap="inline">
       <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
         {tone === "kept" && <Icon decorative glyph={icons.selected} size="compact" tone="muted" />}
         {tone === "added" && <Icon decorative glyph={icons.selected} size="compact" tone="success" />}
@@ -200,7 +200,7 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
       </span>
       {row.year ? <span className="text-static-400 font-mono text-xs">{row.year}</span> : null}
       {note && <span className="text-static-400 text-xs">{note}</span>}
-    </div>
+    </Stack>
     {/* Only on additions. A removal doesn't need the model's justification, and a kept
         title was the operator's pick in the first place — but "Adding: Predator" with no
         reason is the refine asking for trust it hasn't earned. */}
@@ -285,7 +285,13 @@ const RefineReview = ({
         </div>
       )}
 
-      <footer className="border-border flex justify-end gap-2 border-t pt-4">
+      <Stack
+        className="border-border border-t pt-4"
+        direction="row"
+        gap="inline"
+        justify="end"
+        render="footer"
+      >
         <Action disabled={busy} onPress={onDiscard} variant="ghost">
           Discard
         </Action>
@@ -294,7 +300,7 @@ const RefineReview = ({
             Apply changes
           </Action>
         )}
-      </footer>
+      </Stack>
     </Card>
   );
 };

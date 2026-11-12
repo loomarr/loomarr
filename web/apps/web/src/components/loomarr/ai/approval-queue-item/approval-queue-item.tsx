@@ -2,7 +2,7 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Rating } from "@loomarr/api/models/rating";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Action, Badge, Card, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
@@ -65,7 +65,14 @@ const PickRow = ({
 }) => {
   const window = seasonWindowLabel(item.seasonMin, item.seasonMax);
   return (
-    <li className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
+    <Stack
+      align="center"
+      className="border-border bg-card rounded-md border px-2.5 py-1.5 text-sm"
+      direction="row"
+      gap="inline"
+      render="li"
+      wrap
+    >
       <span className="font-medium">{item.name}</span>
       {item.year ? <span className="text-static-400 font-mono text-xs">{item.year}</span> : null}
       <Badge shape="square" tone={kind === "lineup" ? "lock" : "tune"}>
@@ -82,7 +89,7 @@ const PickRow = ({
         </Badge>
       )}
       {renderFeedback && <div className="ml-auto">{renderFeedback(item)}</div>}
-    </li>
+    </Stack>
   );
 };
 
@@ -135,7 +142,7 @@ const ApprovalQueueItem = ({
       {/* On a phone the actions go under the pitch; beside it they left it a word per line (#1785). */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <Stack align="center" direction="row" gap="inline" wrap>
             <p className="font-medium">{title}</p>
             {typeof acquisitions === "number" && acquisitions > 0 && (
               <Badge shape="square" tone="tune">{`${acquisitions} to acquire`}</Badge>
@@ -151,7 +158,7 @@ const ApprovalQueueItem = ({
                 Denied
               </Badge>
             )}
-          </div>
+          </Stack>
           {summary && <p className="text-muted-foreground mt-1 text-sm">{summary}</p>}
           {requestedBy && (
             <p className="text-static-400 mt-1 font-mono text-xs">{`Requested by ${requestedBy}`}</p>
@@ -204,7 +211,7 @@ const ApprovalQueueItem = ({
               />
             )}
           </form.AppField>
-          <div className="flex justify-end gap-2">
+          <Stack direction="row" gap="inline" justify="end">
             <Action
               disabled={busy}
               onPress={() => {
@@ -218,7 +225,7 @@ const ApprovalQueueItem = ({
             <Action disabled={busy} icon="close" onPress={() => void form.handleSubmit()} variant="outline">
               Deny
             </Action>
-          </div>
+          </Stack>
         </form>
       )}
 

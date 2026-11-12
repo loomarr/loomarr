@@ -1,7 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Combobox, type ComboboxOption, Icon, icons } from "@loomarr/design-system";
+import { Action, Combobox, type ComboboxOption, Icon, icons, Stack } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import type { LocationPickerProps } from "./location-picker.type";
@@ -145,7 +145,7 @@ const LocationPicker = ({
 
   return (
     <div className="max-w-2xl">
-      <div className="mb-1.5 flex items-center gap-2">
+      <Stack align="center" className="mb-1.5" direction="row" gap="inline">
         <label htmlFor={`${listID}-input`} className="text-sm font-medium">
           Location
         </label>
@@ -154,7 +154,7 @@ const LocationPicker = ({
             <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
           </span>
         )}
-      </div>
+      </Stack>
       <div className="flex flex-col gap-2 sm:flex-row">
         <div className="min-w-0 flex-1">
           <Combobox

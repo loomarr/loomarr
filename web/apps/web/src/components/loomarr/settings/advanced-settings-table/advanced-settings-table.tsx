@@ -1,7 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -64,8 +64,8 @@ const AdvancedSettingsTable = ({
   const rows = entries.filter((e) => matches(e, q));
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex flex-wrap items-center gap-3">
+    <Stack className={className} gap="control">
+      <Stack align="center" direction="row" gap="control" wrap>
         <div className="relative min-w-64 flex-1">
           <SearchField
             label="Search settings"
@@ -80,7 +80,7 @@ const AdvancedSettingsTable = ({
         <span className="text-muted-foreground font-mono text-xs">
           {`${rows.length} of ${entries.length} shown`}
         </span>
-      </div>
+      </Stack>
 
       <div className="border-border overflow-x-auto rounded-lg border">
         <div className="min-w-[780px]">
@@ -116,7 +116,7 @@ const AdvancedSettingsTable = ({
                 key={entry.key}
                 className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-b px-4 py-2 last:border-b-0"
               >
-                <div className="flex min-w-0 items-center gap-2">
+                <Stack align="center" className="min-w-0" direction="row" gap="inline">
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
                     why it carries an id. A table row already shows the name; a <label> beside
                     the input would duplicate it on screen for no one's benefit. */}
@@ -134,7 +134,7 @@ const AdvancedSettingsTable = ({
                       ADV
                     </span>
                   )}
-                </div>
+                </Stack>
                 {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
                 {pickerOwned ? (
@@ -186,7 +186,7 @@ const AdvancedSettingsTable = ({
           })}
         </div>
       </div>
-    </div>
+    </Stack>
   );
 };
 

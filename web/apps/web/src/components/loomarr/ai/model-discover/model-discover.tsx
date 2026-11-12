@@ -1,6 +1,6 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Badge } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Badge, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
@@ -43,10 +43,16 @@ const ModelDiscover = ({
       </div>
 
       {loading && (
-        <p className="text-muted-foreground flex items-center gap-2 text-xs">
+        <Stack
+          align="center"
+          className="text-muted-foreground text-xs"
+          direction="row"
+          gap="inline"
+          render="p"
+        >
           <ActivityIndicator decorative size="compact" tone="inherit" />
           Finding compatible models…
-        </p>
+        </Stack>
       )}
 
       {sourceError && (
@@ -68,14 +74,21 @@ const ModelDiscover = ({
       )}
 
       {visible && visible.length > 0 && (
-        <ul className="divide-border/60 border-border/60 flex flex-col divide-y rounded-md border">
+        <Stack className="divide-border/60 border-border/60 divide-y rounded-md border" render="ul">
           {visible.map((m: DiscoverModelView) => {
             const isPulling = pulling?.tag === m.pullRef;
             const progress = isPulling ? pulling?.percent : undefined;
             return (
-              <li key={m.id} className="flex items-center gap-3 px-3 py-2">
+              <Stack
+                align="center"
+                className="px-3 py-2"
+                direction="row"
+                gap="control"
+                key={m.id}
+                render="li"
+              >
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2">
+                  <Stack align="center" direction="row" gap="inline" render="p">
                     <span className="truncate text-sm font-medium" title={m.id}>
                       {m.label}
                     </span>
@@ -84,7 +97,7 @@ const ModelDiscover = ({
                         suggested
                       </Badge>
                     )}
-                  </p>
+                  </Stack>
                   {/* The note carries the fit in plain words ("fits comfortably" /
                       "fits, but tight on VRAM"), so no separate fit badge is needed. */}
                   <p className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -111,10 +124,10 @@ const ModelDiscover = ({
                     {isPulling ? "Getting…" : "Get"}
                   </Action>
                 </div>
-              </li>
+              </Stack>
             );
           })}
-        </ul>
+        </Stack>
       )}
 
       {!expanded && hiddenCount > 0 && (

@@ -1,5 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Field, FieldHint, Icon, icons, StatusLabel } from "@loomarr/design-system";
+import { Action, Field, FieldHint, Icon, icons, Stack, StatusLabel } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -46,10 +46,10 @@ const DatabaseMigration = ({
   if (!status.canMigrate) {
     return (
       <section className={cn("border-border rounded-lg border p-4", className)}>
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <h3 className="text-sm font-medium">Running on PostgreSQL</h3>
-        </div>
+        </Stack>
         <p className="text-muted-foreground mt-2 text-sm">
           Nothing to migrate. Back PostgreSQL up with your usual tooling. Loomarr does not try to own that,
           because an operator already running Postgres has a strategy better than anything it would invent.
@@ -61,11 +61,11 @@ const DatabaseMigration = ({
   return (
     <section className={cn("border-border rounded-lg border", className)}>
       <header className="border-border border-b p-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <Stack align="center" direction="row" gap="inline" wrap>
           <Icon decorative glyph={icons.database} size="compact" tone="info" />
           <h3 className="text-sm font-medium">Move to PostgreSQL</h3>
           <StatusLabel tone="ok">{status.backend}</StatusLabel>
-        </div>
+        </Stack>
         <p className="text-muted-foreground mt-1.5 text-sm">
           {step === null
             ? "Four steps. Your SQLite file is never deleted."
@@ -81,10 +81,10 @@ const DatabaseMigration = ({
 
       {envPinned ? (
         // An env pin wins at boot, so an atomic copy-and-switch cannot commit.
-        <div className="flex gap-3 p-4">
-          <span className="mt-0.5 flex">
+        <Stack className="p-4" direction="row" gap="control">
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.locked} size="compact" tone="success" />
-          </span>
+          </Stack>
           <div>
             <p className="text-sm">DATABASE_URL is pinned by the environment.</p>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -93,15 +93,22 @@ const DatabaseMigration = ({
               silently diverge from the database it keeps using.
             </p>
           </div>
-        </div>
+        </Stack>
       ) : (
         <>
-          <ol className="border-border flex flex-wrap items-center gap-x-2 gap-y-2 border-b px-4 py-3">
+          <Stack
+            align="center"
+            className="border-border border-b px-4 py-3"
+            direction="row"
+            gap="inline"
+            render="ol"
+            wrap
+          >
             {STEPS.map((s, i) => {
               const done = at > i;
               const current = at === i;
               return (
-                <li key={s.key} className="flex items-center gap-2">
+                <Stack align="center" direction="row" gap="inline" key={s.key} render="li">
                   <span
                     className={cn(
                       "text-2xs flex size-5 items-center justify-center rounded-full border font-mono",
@@ -125,20 +132,20 @@ const DatabaseMigration = ({
                       ›
                     </span>
                   )}
-                </li>
+                </Stack>
               );
             })}
-          </ol>
+          </Stack>
 
           <div className="p-4">
             {step === null && (
-              <div className="flex">
+              <Stack direction="row">
                 <Action onPress={() => onStepChange("connect")}>Move to PostgreSQL</Action>
-              </div>
+              </Stack>
             )}
 
             {step === "connect" && (
-              <div className="flex max-w-xl flex-col gap-3">
+              <Stack className="max-w-xl" gap="control">
                 <div className="flex flex-col gap-1.5">
                   <Field
                     aria-describedby="migration-dsn-doc"
@@ -164,14 +171,14 @@ const DatabaseMigration = ({
                 >
                   {pending === "preflight" ? "Running preflight…" : "Run preflight"}
                 </Action>
-              </div>
+              </Stack>
             )}
 
             {step === "preflight" && (
-              <div className="flex flex-col gap-3">
-                <ul className="flex flex-col gap-2">
+              <Stack gap="control">
+                <Stack gap="inline" render="ul">
                   {checks.map((c) => (
-                    <li key={c.name} className="flex items-start gap-2">
+                    <Stack align="start" direction="row" gap="inline" key={c.name} render="li">
                       <span
                         className={cn(
                           "text-2xs mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono",
@@ -187,25 +194,25 @@ const DatabaseMigration = ({
                           {c.detail}
                         </span>
                       </span>
-                    </li>
+                    </Stack>
                   ))}
-                </ul>
-                <div className="flex gap-2">
+                </Stack>
+                <Stack direction="row" gap="inline">
                   <Action disabled={!preflightPassed} onPress={() => onStepChange("backup")}>
                     Continue
                   </Action>
                   <Action onPress={() => onStepChange("connect")} variant="ghost">
                     Back
                   </Action>
-                </div>
+                </Stack>
                 {!preflightPassed && checks.length > 0 && (
                   <FieldHint>Every check has to pass. Fix the target and run preflight again.</FieldHint>
                 )}
-              </div>
+              </Stack>
             )}
 
             {step === "backup" && (
-              <div className="flex flex-col gap-3">
+              <Stack gap="control">
                 <p className="text-sm">
                   A backup is required, not suggested. It&rsquo;s the only thing that makes this reversible.
                   Loomarr writes it before touching either database.
@@ -215,7 +222,7 @@ const DatabaseMigration = ({
                     ? `${backup.path} · ${formatBytes(backup.bytes)} · written just now`
                     : "no backup yet for this migration"}
                 </p>
-                <div className="flex gap-2">
+                <Stack direction="row" gap="inline">
                   <Action disabled={pending === "backup"} onPress={onBackup}>
                     {pending === "backup" ? "Writing backup…" : "Back up now"}
                   </Action>
@@ -224,16 +231,16 @@ const DatabaseMigration = ({
                   <Action disabled={!backup || pending === "migrate"} onPress={onMigrate}>
                     {pending === "migrate" ? "Requesting restart…" : "Migrate and restart"}
                   </Action>
-                </div>
+                </Stack>
                 <p className="text-muted-foreground text-xs">
                   Loomarr will acknowledge the request, drain connections, close SQLite, copy and verify the
                   data, switch its boot configuration, and restart. This page reconnects automatically.
                 </p>
-              </div>
+              </Stack>
             )}
 
             {step === "reconnect" && (
-              <div className="flex flex-col gap-3">
+              <Stack gap="control">
                 <p className="text-tune font-mono text-xs">migration accepted · waiting for Loomarr</p>
                 <p className="text-sm">
                   The connection may disappear while Loomarr drains, copies, verifies, switches databases, and
@@ -243,19 +250,25 @@ const DatabaseMigration = ({
                   If any step fails, Loomarr comes back on SQLite and explains why. The SQLite file is never
                   deleted.
                 </p>
-              </div>
+              </Stack>
             )}
 
             {/* The failure copy is deliberately specific about what was NOT lost: the
                 operator's first question after a failed migration is whether their data
                 survived, and a generic "migration failed" leaves them to guess. */}
             {error && (
-              <p className="text-onair-300 mt-3 flex items-start gap-2 text-sm">
-                <span className="mt-0.5 flex">
+              <Stack
+                align="start"
+                className="text-onair-300 mt-3 text-sm"
+                direction="row"
+                gap="inline"
+                render="p"
+              >
+                <Stack className="mt-0.5" direction="row" render="span">
                   <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-                </span>
+                </Stack>
                 {error}
-              </p>
+              </Stack>
             )}
           </div>
         </>

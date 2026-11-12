@@ -1,5 +1,5 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { BackupPanelProps } from "./backup-panel.type";
 import { missingNights } from "./missing-nights";
@@ -33,10 +33,10 @@ const BackupPanel = ({
   if (!list.supported) {
     return (
       <section className={cn("border-border rounded-lg border p-4", className)}>
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <h2 className="text-sm font-medium">Backups</h2>
-        </div>
+        </Stack>
         <p className="text-muted-foreground mt-2 text-sm">
           This install runs on PostgreSQL, which Loomarr does not back up itself. Use{" "}
           <code className="font-mono text-xs">pg_dump</code> against the database and restore with{" "}
@@ -63,12 +63,19 @@ const BackupPanel = ({
       </div>
 
       {error ? (
-        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <span className="mt-0.5 flex">
+        <Stack
+          align="start"
+          className="text-danger mt-3 text-sm"
+          direction="row"
+          gap="inline"
+          render="p"
+          role="alert"
+        >
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
+          </Stack>
           {error}
-        </p>
+        </Stack>
       ) : null}
 
       {missing > 0 ? (
@@ -101,9 +108,13 @@ const BackupPanel = ({
       ) : (
         <ul className="mt-4 flex flex-col gap-1.5">
           {backups.map((b) => (
-            <li
+            <Stack
+              align="center"
+              className="border-border bg-muted/30 rounded-md border px-3 py-2"
+              direction="row"
+              gap="control"
               key={b.name}
-              className="border-border bg-muted/30 flex items-center gap-3 rounded-md border px-3 py-2"
+              render="li"
             >
               <span className="min-w-0 flex-1 truncate font-mono text-xs">{b.name}</span>
               <span className="text-muted-foreground shrink-0 font-mono text-xs">{formatBytes(b.bytes)}</span>
@@ -119,7 +130,7 @@ const BackupPanel = ({
               >
                 Download
               </Action>
-            </li>
+            </Stack>
           ))}
         </ul>
       )}
