@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { ChannelDrawer } from "@/channels/channel-drawer";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player/video-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
+import { copyText } from "@/lib/copy-text";
 import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { TunerOSD } from "../tuner-osd";
@@ -384,7 +385,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     level: player.ladder.onAir,
     sessionId: player.playbackSessionId,
   });
-  const copyDetails = (text: string) => void navigator.clipboard?.writeText(text);
+  const copyDetails = (text: string) => void copyText(text);
 
   // The number readout, top right of the frame, drawn by the chrome (it keeps it clear of the
   // watermark): the digits so far, dashed out to the longest channel number, over "Enter channel" or,
