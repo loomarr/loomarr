@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -63,9 +64,25 @@ func (r *RateLimiter) size() int {
 	return len(r.limiters)
 }
 
-// LoginRateKey is the key a sign-in or account-recovery attempt is throttled on: the client address
-// and the username.
-func LoginRateKey(clientIP, username string) string { return clientIP + "|" + username }
+// LoginRateKey is the key a sign-in or account-recovery attempt is throttled on: the client's
+// throttle source (ThrottleSource) and the username.
+func LoginRateKey(clientIP, username string) string { return ThrottleSource(clientIP) + "|" + username }
+
+// ThrottleSource is the source a client address is throttled as. An IPv4 address is itself. An IPv6
+// address is its /64, because a client is routinely handed the whole prefix and could otherwise take
+// a fresh address, and a fresh allowance, per attempt. Anything else is kept as given.
+func ThrottleSource(clientIP string) string {
+	addr, err := netip.ParseAddr(clientIP)
+	if err != nil {
+		return clientIP
+	}
+	addr = addr.WithZone("").Unmap()
+	if addr.Is4() {
+		return addr.String()
+	}
+	prefix, _ := addr.Prefix(64)
+	return prefix.String()
+}
 
 // SourceLimiter throttles attempts keyed by LoginRateKey on two buckets: one per key (one account
 // from one source), and one per client address across every username it tries. Rotating usernames

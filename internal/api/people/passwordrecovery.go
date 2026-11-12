@@ -77,7 +77,7 @@ func (s *Handlers) previewPasswordRecovery(
 	ctx context.Context,
 	in *passwordRecoveryBearerInput,
 ) (*previewPasswordRecoveryOutput, error) {
-	value, err := s.passwordRecovery.Preview(ctx, in.Body.Grant, s.origin.ClientIP(httpcore.RequestFrom(ctx)))
+	value, err := s.passwordRecovery.Preview(ctx, in.Body.Grant, auth.ThrottleSource(s.origin.ClientIP(httpcore.RequestFrom(ctx))))
 	if err != nil {
 		return nil, passwordRecoveryError(err)
 	}
@@ -98,7 +98,7 @@ func (s *Handlers) redeemPasswordRecovery(
 	in *redeemPasswordRecoveryInput,
 ) (*struct{}, error) {
 	if err := s.passwordRecovery.Redeem(
-		ctx, in.Body.Grant, in.Body.Password, s.origin.ClientIP(httpcore.RequestFrom(ctx)),
+		ctx, in.Body.Grant, in.Body.Password, auth.ThrottleSource(s.origin.ClientIP(httpcore.RequestFrom(ctx))),
 	); err != nil {
 		return nil, passwordRecoveryError(err)
 	}
