@@ -252,7 +252,6 @@
       "flexStack": 15
     },
     "apps/web/src/design/tokens/tokens.tsx": {
-      "rawTable": 1,
       "flexStack": 3
     },
     "apps/web/src/design/typography/typography.tsx": {
@@ -277,7 +276,6 @@
       "flexStack": 1
     },
     "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "rawTable": 1,
       "flexStack": 3
     },
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
@@ -387,7 +385,6 @@
       "flexStack": 9
     },
     "apps/web/src/help/doc-view/doc-view.tsx": {
-      "rawTable": 1,
       "flexStack": 3
     },
     "apps/web/src/help/help-page/help-page.tsx": {
@@ -493,7 +490,6 @@
       "flexStack": 2
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "rawTable": 1,
       "flexStack": 11
     },
     "apps/web/src/suggest/approval-queue/approval-queue.tsx": {
@@ -534,9 +530,6 @@
     },
     "apps/web/src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
       "flexStack": 3
-    },
-    "packages/ui/src/filler/defect-review/defect-review.tsx": {
-      "rawTable": 1
     },
     "packages/ui/src/overlay/overlay.tsx": {
       "rnModal": 1

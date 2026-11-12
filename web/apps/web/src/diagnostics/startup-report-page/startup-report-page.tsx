@@ -3,7 +3,16 @@ import type { HealthCheck } from "@loomarr/api/models/healthCheck";
 import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
 import { HealthReportState } from "@loomarr/api/models/healthReportState";
-import { StatusWord, type StatusWordKind } from "@loomarr/design-system";
+import {
+  StatusWord,
+  type StatusWordKind,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 
@@ -42,33 +51,37 @@ const CheckIdentity = ({ check }: { check: HealthCheck }) => (
 );
 
 const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
-  <tr className="border-border border-t align-top">
-    <th scope="row" className="px-4 py-3 text-left font-normal">
+  <TableRow>
+    <TableCell rowHeader verticalAlign="top">
       <span className="flex flex-col gap-0.5">
         <CheckIdentity check={check} />
       </span>
-    </th>
-    <td className="px-4 py-3">
+    </TableCell>
+    <TableCell verticalAlign="top">
       <Verdict word={checkWord(check.status)} />
-    </td>
-    <td className="text-muted-foreground px-4 py-3 text-xs">
-      <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
-        {dateTime(check.observedAt)}
-      </time>
-    </td>
-    <td className="text-muted-foreground px-4 py-3">
-      {check.detail || "—"}
-      {check.remediationRoute && (
-        <>
-          {/* A real separator, so the detail and its link never run together as text (#2734). */}
-          <span aria-hidden> · </span>
-          <a className="text-signal underline underline-offset-4" href={check.remediationRoute}>
-            Open
-          </a>
-        </>
-      )}
-    </td>
-  </tr>
+    </TableCell>
+    <TableCell verticalAlign="top">
+      <span className="text-muted-foreground text-xs">
+        <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
+          {dateTime(check.observedAt)}
+        </time>
+      </span>
+    </TableCell>
+    <TableCell verticalAlign="top">
+      <span className="text-muted-foreground">
+        {check.detail || "—"}
+        {check.remediationRoute && (
+          <>
+            {/* A real separator, so the detail and its link never run together as text (#2734). */}
+            <span aria-hidden> · </span>
+            <a className="text-signal underline underline-offset-4" href={check.remediationRoute}>
+              Open
+            </a>
+          </>
+        )}
+      </span>
+    </TableCell>
+  </TableRow>
 );
 
 const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
@@ -87,25 +100,20 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
         <span className="text-muted-foreground font-mono text-xs">{report.version}</span>
       </div>
       <div className="border-border border-t">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] text-sm">
-            <caption className="sr-only">Current health checks</caption>
-            <thead className="border-border bg-muted/30 text-muted-foreground border-t text-xs">
-              <tr>
-                {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
-                  <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {report.checks.map((check) => (
-                <HealthCheckRow key={check.key} check={check} />
+        <Table caption="Current health checks" framed={false} minWidth={704}>
+          <TableHeader>
+            <TableRow>
+              {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
+                <TableHeaderCell key={label}>{label}</TableHeaderCell>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {report.checks.map((check) => (
+              <HealthCheckRow key={check.key} check={check} />
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </section>
   );
