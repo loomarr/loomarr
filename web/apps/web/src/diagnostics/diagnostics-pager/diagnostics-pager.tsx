@@ -1,4 +1,4 @@
-import { Action, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Text, Tooltip } from "@loomarr/design-system";
 
 const DiagnosticsPager = ({
   label,
@@ -30,9 +30,13 @@ const DiagnosticsPager = ({
         Newer
       </Action>
     </Tooltip>
-    <Stack align="center" className="text-xs" render="span">
-      <strong className="text-foreground font-medium">Page {page}</strong>
-      <span className="text-muted-foreground">Up to 50 {itemLabel}</span>
+    <Stack align="center" render="span">
+      <Text as="strong" textRole="label" tone="primary">
+        Page {page}
+      </Text>
+      <Text as="span" textRole="hint" tone="secondary">
+        Up to 50 {itemLabel}
+      </Text>
     </Stack>
     <Tooltip content="Go further back in time">
       <Action disabled={!canGoOlder} icon="pageOlder" iconPlacement="end" onPress={onOlder} variant="ghost">

@@ -1,5 +1,5 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -30,11 +30,13 @@ const EncryptionSettings = () => {
     <section className="border-border rounded-lg border p-4">
       <Stack align="start" direction="row" gap="4" justify="between" wrap>
         <div>
-          <h2 className="text-sm font-medium">Database secret encryption</h2>
-          <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
+          <Text as="h2" textRole="cardLabel">
+            Database secret encryption
+          </Text>
+          <Text as="p" className="mt-1 max-w-2xl" textRole="compact" tone="secondary">
             Credentials saved in Loomarr are encrypted before they enter the database. Keep the installation
             key with your host or secrets manager—it is not included in database backups.
-          </p>
+          </Text>
         </div>
         {confirming ? (
           <ConfirmStep
@@ -69,24 +71,38 @@ const EncryptionSettings = () => {
         </div>
       )}
       {encryption != null && (
-        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+        <dl className="mt-4 grid gap-3 sm:grid-cols-3">
           <div>
-            <dt className="text-muted-foreground">Status</dt>
-            <dd className="font-medium">{encryption.enabled ? "Encrypted" : "Unavailable"}</dd>
+            <Text as="dt" textRole="compact" tone="secondary">
+              Status
+            </Text>
+            <Text as="dd" textRole="cardLabel">
+              {encryption.enabled ? "Encrypted" : "Unavailable"}
+            </Text>
           </div>
           <div>
-            <dt className="text-muted-foreground">Installation key fingerprint</dt>
-            <dd className="font-mono text-xs break-all">
+            <Text as="dt" textRole="compact" tone="secondary">
+              Installation key fingerprint
+            </Text>
+            <Text as="dd" className="break-all" textRole="mono" tone="primary">
               {encryption.installationKeyFingerprint || "Unavailable"}
-            </dd>
+            </Text>
           </div>
           <div>
-            <dt className="text-muted-foreground">Readable data keys</dt>
-            <dd className="font-medium">{encryption.dataKeyCount}</dd>
+            <Text as="dt" textRole="compact" tone="secondary">
+              Readable data keys
+            </Text>
+            <Text as="dd" textRole="cardLabel">
+              {encryption.dataKeyCount}
+            </Text>
           </div>
         </dl>
       )}
-      {message != null && <p className="text-muted-foreground mt-3 text-sm">{message}</p>}
+      {message != null && (
+        <Text as="p" className="mt-3" textRole="compact" tone="secondary">
+          {message}
+        </Text>
+      )}
     </section>
   );
 };

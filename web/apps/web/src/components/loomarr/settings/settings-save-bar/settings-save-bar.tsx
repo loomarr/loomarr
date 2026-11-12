@@ -1,4 +1,4 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { SettingsSaveBarProps } from "./settings-save-bar.type";
 
@@ -24,9 +24,9 @@ const SettingsSaveBar = ({
         className,
       )}
     >
-      <p className="flex-1 text-sm">
+      <Text as="p" className="flex-1" textRole="compact">
         {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
-      </p>
+      </Text>
       <Action disabled={saving} onPress={onDiscard} variant="ghost">
         Discard
       </Action>

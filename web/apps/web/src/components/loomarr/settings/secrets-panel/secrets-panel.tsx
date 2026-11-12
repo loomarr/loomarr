@@ -1,4 +1,4 @@
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { useCopied } from "@/lib/use-copied";
@@ -28,8 +28,12 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
             render="li"
           >
             <div>
-              <p className="text-sm font-medium">{secret.label}</p>
-              <p className="text-muted-foreground text-sm">{secret.purpose}</p>
+              <Text as="p" textRole="cardLabel">
+                {secret.label}
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                {secret.purpose}
+              </Text>
             </div>
 
             <Stack align="center" direction="row" gap="inline">

@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   Stack,
+  Text,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -90,9 +91,9 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
                   <form.AppField name="advancedCron">
                     {(field) => <field.TextField label="Cron expression" placeholder="0 */5 * * * *" />}
                   </form.AppField>
-                  <p className="text-muted-foreground text-xs">
+                  <Text as="p" textRole="hint" tone="secondary">
                     6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
-                  </p>
+                  </Text>
                 </Stack>
               )
             }

@@ -1,5 +1,5 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Field, FieldHint, Icon, icons, Stack, StatusLabel } from "@loomarr/design-system";
+import { Action, Field, FieldHint, Icon, icons, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -48,12 +48,14 @@ const DatabaseMigration = ({
       <section className={cn("border-border rounded-lg border p-4", className)}>
         <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
-          <h3 className="text-sm font-medium">Running on PostgreSQL</h3>
+          <Text as="h3" textRole="cardLabel">
+            Running on PostgreSQL
+          </Text>
         </Stack>
-        <p className="text-muted-foreground mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
           Nothing to migrate. Back PostgreSQL up with your usual tooling. Loomarr does not try to own that,
           because an operator already running Postgres has a strategy better than anything it would invent.
-        </p>
+        </Text>
       </section>
     );
   }
@@ -63,20 +65,22 @@ const DatabaseMigration = ({
       <header className="border-border border-b p-4">
         <Stack align="center" direction="row" gap="inline" wrap>
           <Icon decorative glyph={icons.database} size="compact" tone="info" />
-          <h3 className="text-sm font-medium">Move to PostgreSQL</h3>
+          <Text as="h3" textRole="cardLabel">
+            Move to PostgreSQL
+          </Text>
           <StatusLabel tone="ok">{status.backend}</StatusLabel>
         </Stack>
-        <p className="text-muted-foreground mt-1.5 text-sm">
+        <Text as="p" className="mt-1.5" textRole="compact" tone="secondary">
           {step === null
             ? "Four steps. Your SQLite file is never deleted."
             : `Step ${at + 1} of 4 · the switch happens only after an independent parity check.`}
-        </p>
+        </Text>
         {/* Why anyone would do this — and why they might not need to. Stating the SQLite
             constraint is the honest framing: Postgres is not "better", it buys replicas. */}
-        <p className="text-muted-foreground mt-2 text-xs">
+        <Text as="p" className="mt-2" textRole="hint" tone="secondary">
           SQLite: run exactly one instance: a second process writing the same file will corrupt it. PostgreSQL
           enables replicas, and is worth it if you already run Postgres and would rather back up one thing.
-        </p>
+        </Text>
       </header>
 
       {envPinned ? (
@@ -86,12 +90,14 @@ const DatabaseMigration = ({
             <Icon decorative glyph={icons.locked} size="compact" tone="success" />
           </Stack>
           <div>
-            <p className="text-sm">DATABASE_URL is pinned by the environment.</p>
-            <p className="text-muted-foreground mt-1 text-sm">
+            <Text as="p" textRole="compact">
+              DATABASE_URL is pinned by the environment.
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               In-app migration is unavailable because an environment variable always wins at boot. Change
               DATABASE_URL where Loomarr is launched and restart; Loomarr will not make a copy that can
               silently diverge from the database it keeps using.
-            </p>
+            </Text>
           </div>
         </Stack>
       ) : (
@@ -119,18 +125,17 @@ const DatabaseMigration = ({
                   >
                     {done ? <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> : i + 1}
                   </span>
-                  <span
-                    className={cn(
-                      "text-xs",
-                      current ? "text-foreground font-medium" : "text-muted-foreground",
-                    )}
+                  <Text
+                    as="span"
+                    textRole={current ? "label" : "hint"}
+                    tone={current ? "primary" : "secondary"}
                   >
                     {s.label}
-                  </span>
+                  </Text>
                   {i < STEPS.length - 1 && (
-                    <span className="text-muted-foreground text-xs" aria-hidden>
+                    <Text as="span" aria-hidden textRole="hint" tone="secondary">
                       ›
-                    </span>
+                    </Text>
                   )}
                 </Stack>
               );
@@ -188,12 +193,17 @@ const DatabaseMigration = ({
                       >
                         {c.ok ? "✓" : "✕"}
                       </span>
-                      <span className="text-sm">
+                      <Text as="span" textRole="compact">
                         {c.name}
-                        <span className={cn("ml-2", c.ok ? "text-muted-foreground" : "text-onair-300")}>
+                        <Text
+                          as="span"
+                          className="ml-2"
+                          textRole="compact"
+                          tone={c.ok ? "secondary" : "danger"}
+                        >
                           {c.detail}
-                        </span>
-                      </span>
+                        </Text>
+                      </Text>
                     </Stack>
                   ))}
                 </Stack>
@@ -213,15 +223,15 @@ const DatabaseMigration = ({
 
             {step === "backup" && (
               <Stack gap="control">
-                <p className="text-sm">
+                <Text as="p" textRole="compact">
                   A backup is required, not suggested. It&rsquo;s the only thing that makes this reversible.
                   Loomarr writes it before touching either database.
-                </p>
-                <p className="text-muted-foreground font-mono text-xs">
+                </Text>
+                <Text as="p" textRole="mono">
                   {backup
                     ? `${backup.path} · ${formatBytes(backup.bytes)} · written just now`
                     : "no backup yet for this migration"}
-                </p>
+                </Text>
                 <Stack direction="row" gap="inline">
                   <Action disabled={pending === "backup"} onPress={onBackup}>
                     {pending === "backup" ? "Writing backup…" : "Back up now"}
@@ -232,24 +242,26 @@ const DatabaseMigration = ({
                     {pending === "migrate" ? "Requesting restart…" : "Migrate and restart"}
                   </Action>
                 </Stack>
-                <p className="text-muted-foreground text-xs">
+                <Text as="p" textRole="hint" tone="secondary">
                   Loomarr will acknowledge the request, drain connections, close SQLite, copy and verify the
                   data, switch its boot configuration, and restart. This page reconnects automatically.
-                </p>
+                </Text>
               </Stack>
             )}
 
             {step === "reconnect" && (
               <Stack gap="control">
-                <p className="text-tune font-mono text-xs">migration accepted · waiting for Loomarr</p>
-                <p className="text-sm">
+                <Text as="p" textRole="mono" tone="info">
+                  migration accepted · waiting for Loomarr
+                </Text>
+                <Text as="p" textRole="compact">
                   The connection may disappear while Loomarr drains, copies, verifies, switches databases, and
                   restarts. Keep this page open; it will reconnect automatically.
-                </p>
-                <p className="text-muted-foreground text-xs">
+                </Text>
+                <Text as="p" textRole="hint" tone="secondary">
                   If any step fails, Loomarr comes back on SQLite and explains why. The SQLite file is never
                   deleted.
-                </p>
+                </Text>
               </Stack>
             )}
 
@@ -257,17 +269,13 @@ const DatabaseMigration = ({
                 operator's first question after a failed migration is whether their data
                 survived, and a generic "migration failed" leaves them to guess. */}
             {error && (
-              <Stack
-                align="start"
-                className="text-onair-300 mt-3 text-sm"
-                direction="row"
-                gap="inline"
-                render="p"
-              >
+              <Stack align="start" className="mt-3" direction="row" gap="inline" render="p">
                 <Stack className="mt-0.5" direction="row" render="span">
-                  <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+                  <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
                 </Stack>
-                {error}
+                <Text as="span" textRole="compact" tone="danger">
+                  {error}
+                </Text>
               </Stack>
             )}
           </div>

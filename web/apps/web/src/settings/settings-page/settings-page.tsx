@@ -2,7 +2,7 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -182,8 +182,14 @@ const SettingsPage = ({
     <div className={cn("flex flex-col", !embedded && "h-full")}>
       {embedded ? (
         <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          {description && <p className="text-muted-foreground mt-1 text-sm">{description}</p>}
+          <Text as="h2" textRole="title">
+            {title}
+          </Text>
+          {description && (
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              {description}
+            </Text>
+          )}
         </div>
       ) : (
         <PageHeader title={title} description={description} />
@@ -237,7 +243,9 @@ const SettingsPage = ({
                   }
                 >
                   {block.description && (
-                    <p className="text-muted-foreground text-sm leading-relaxed">{block.description}</p>
+                    <Text as="p" textRole="compact" tone="secondary">
+                      {block.description}
+                    </Text>
                   )}
                   <SettingsFields
                     entries={blockEntries}
@@ -260,8 +268,14 @@ const SettingsPage = ({
               )}
             >
               <div>
-                <h2 className="text-lg font-semibold">{block.title}</h2>
-                {block.description && <p className="text-muted-foreground text-sm">{block.description}</p>}
+                <Text as="h2" strong textRole="headline">
+                  {block.title}
+                </Text>
+                {block.description && (
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {block.description}
+                  </Text>
+                )}
               </div>
               <SettingsFields
                 entries={blockEntries}

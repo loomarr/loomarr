@@ -1,4 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Text } from "@loomarr/design-system";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
 import { cn } from "@/lib/utils";
 import type { InstallationLocationProps } from "./installation-location.type";
@@ -44,10 +45,12 @@ const InstallationLocation = ({
     >
       {showHeading && (
         <div>
-          <h2 className="text-lg font-semibold">Your area and language</h2>
-          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
+          <Text as="h2" strong textRole="headline">
+            Your area and language
+          </Text>
+          <Text as="p" className="mt-1 max-w-xl" textRole="compact" tone="secondary">
             Loomarr uses these to find commercials that fit your home.
-          </p>
+          </Text>
         </div>
       )}
 

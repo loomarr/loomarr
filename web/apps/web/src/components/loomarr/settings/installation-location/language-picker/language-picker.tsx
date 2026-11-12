@@ -1,4 +1,4 @@
-import { Combobox, Icon, icons, Stack } from "@loomarr/design-system";
+import { Combobox, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useId, useMemo, useState } from "react";
 import { languageName } from "@/lib/languages";
 import type { LanguagePickerProps } from "./language-picker.type";
@@ -33,9 +33,14 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
           Commercial language
         </label>
         {locked && lockedLabel && (
-          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
+          <Text
+            as="span"
+            className="bg-static-800 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5"
+            textRole="mono"
+            tone="secondary"
+          >
             <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
-          </span>
+          </Text>
         )}
       </Stack>
       <Combobox
@@ -51,9 +56,9 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
         placeholder="Search languages"
         value={value}
       />
-      <p className="text-muted-foreground mt-2 text-sm">
+      <Text as="p" className="mt-2" textRole="compact" tone="secondary">
         Loomarr skips commercials confidently spoken in another language. Wordless clips stay.
-      </p>
+      </Text>
     </div>
   );
 };

@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Text,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
@@ -27,7 +28,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
@@ -91,18 +91,18 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   const history = unwrap(query.data) as JobHistoryView | undefined;
 
   if (query.isLoading) {
-    return <p className="text-muted-foreground mt-4 text-xs">Loading execution history…</p>;
+    return (
+      <Text as="p" className="mt-4" textRole="hint" tone="secondary">
+        Loading execution history…
+      </Text>
+    );
   }
   if (query.error) {
     return (
-      <Stack
-        align="center"
-        className="text-destructive mt-4 text-xs"
-        direction="row"
-        gap="inline"
-        role="alert"
-      >
-        <span>Couldn’t load execution history.</span>
+      <Stack align="center" className="mt-4" direction="row" gap="inline" role="alert">
+        <Text as="span" textRole="hint" tone="danger">
+          Couldn’t load execution history.
+        </Text>
         <Action onPress={() => query.refetch()} variant="ghost">
           Retry
         </Action>
@@ -114,24 +114,38 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   return (
     <section className="border-border mt-4 border-t pt-3" aria-label="Execution history">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h3 className="text-xs font-medium">Past 24 hours</h3>
+        <Text as="h3" textRole="label" tone="primary">
+          Past 24 hours
+        </Text>
         {history.runCount === 0 ? (
-          <p className="text-muted-foreground text-xs">No completed runs.</p>
+          <Text as="p" textRole="hint" tone="secondary">
+            No completed runs.
+          </Text>
         ) : (
-          <dl className="flex flex-wrap gap-x-4 text-xs">
+          <dl className="flex flex-wrap gap-x-4">
             <Stack direction="row" gap="1">
-              <dt className="text-muted-foreground">Runs</dt>
-              <dd className="font-mono">{history.truncated ? `${history.runCount}+` : history.runCount}</dd>
+              <Text as="dt" textRole="hint" tone="secondary">
+                Runs
+              </Text>
+              <Text as="dd" textRole="mono" tone="primary">
+                {history.truncated ? `${history.runCount}+` : history.runCount}
+              </Text>
             </Stack>
             <Stack direction="row" gap="1">
-              <dt className="text-muted-foreground">Failed</dt>
-              <dd className={cn("font-mono", history.failureCount > 0 && "text-destructive")}>
+              <Text as="dt" textRole="hint" tone="secondary">
+                Failed
+              </Text>
+              <Text as="dd" textRole="mono" tone={history.failureCount > 0 ? "danger" : "primary"}>
                 {history.failureCount}
-              </dd>
+              </Text>
             </Stack>
             <Stack direction="row" gap="1">
-              <dt className="text-muted-foreground">Average</dt>
-              <dd className="font-mono">{executionDuration(history.averageDurationMs)}</dd>
+              <Text as="dt" textRole="hint" tone="secondary">
+                Average
+              </Text>
+              <Text as="dd" textRole="mono" tone="primary">
+                {executionDuration(history.averageDurationMs)}
+              </Text>
             </Stack>
           </dl>
         )}
@@ -143,11 +157,17 @@ const ExecutionHistory = ({ name }: { name: string }) => {
             const failed = run.result === "error";
             return (
               <li key={`${run.startedAt}-${run.trigger}`} className="px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
-                  <span className="font-medium">{run.trigger === "manual" ? "Manual" : "Scheduled"}</span>
-                  <span className="text-muted-foreground">{formatRelative(run.startedAt)}</span>
-                  <span className="text-muted-foreground font-mono">{executionDuration(run.durationMs)}</span>
+                  <Text as="span" textRole="label" tone="primary">
+                    {run.trigger === "manual" ? "Manual" : "Scheduled"}
+                  </Text>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {formatRelative(run.startedAt)}
+                  </Text>
+                  <Text as="span" textRole="mono">
+                    {executionDuration(run.durationMs)}
+                  </Text>
                 </div>
                 {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
               </li>
@@ -245,15 +265,20 @@ const TasksPage = () => {
                   size="compact"
                   tone="muted"
                 />
-                <span className="font-medium">{group.label}</span>
-                <span
-                  className="text-muted-foreground ml-auto text-xs"
+                <Text as="span" textRole="cardLabel">
+                  {group.label}
+                </Text>
+                <Text
+                  as="span"
+                  className="ml-auto"
                   style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  textRole="hint"
+                  tone="secondary"
                 >
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
                   {groupSummary(groupedJobs)}
-                </span>
+                </Text>
               </button>
 
               {groupOpen && (
@@ -288,7 +313,9 @@ const TasksPage = () => {
                                   <span style={{ display: "flex", flexShrink: 0 }} title={dot.label}>
                                     <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
                                   </span>
-                                  <span className="font-medium">{job.title}</span>
+                                  <Text as="span" textRole="cardLabel">
+                                    {job.title}
+                                  </Text>
                                   {job.paused && (
                                     <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">
                                       Paused
@@ -346,14 +373,16 @@ const TasksPage = () => {
                             {jobOpen && (
                               <TableRow id={`task-${job.name}`} tone="raised">
                                 <TableCell colSpan={5} verticalAlign="top">
-                                  <p className="text-muted-foreground max-w-prose text-sm">
+                                  <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
                                     {job.description}
-                                  </p>
+                                  </Text>
                                   {job.lastResult === "error" && (
                                     <ErrorDetails message={job.lastError} className="mt-2" />
                                   )}
                                   {job.disabledReason && (
-                                    <p className="text-muted-foreground mt-2 text-sm">{job.disabledReason}</p>
+                                    <Text as="p" className="mt-2" textRole="compact" tone="secondary">
+                                      {job.disabledReason}
+                                    </Text>
                                   )}
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (

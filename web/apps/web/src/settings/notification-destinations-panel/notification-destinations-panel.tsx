@@ -120,19 +120,27 @@ const FieldInput = ({
         />
       )}
       {error ? (
-        <p id={errorId} className="text-onair-300 text-sm" role="alert">
-          {error}
-        </p>
+        <div role="alert">
+          <Text as="p" id={errorId} textRole="compact" tone="danger">
+            {error}
+          </Text>
+        </div>
       ) : null}
       {field.sensitive && configured ? (
-        <Stack align="center" className="text-muted-foreground text-xs" direction="row" gap="inline" wrap>
-          <span>{cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}</span>
+        <Stack align="center" direction="row" gap="inline" wrap>
+          <Text as="span" textRole="hint" tone="secondary">
+            {cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}
+          </Text>
           <Action onPress={onClear} variant="ghost">
             {cleared ? "Keep saved value" : `Clear ${field.label}`}
           </Action>
         </Stack>
       ) : null}
-      {field.description ? <p className="text-muted-foreground text-xs">{field.description}</p> : null}
+      {field.description ? (
+        <Text as="p" textRole="hint" tone="secondary">
+          {field.description}
+        </Text>
+      ) : null}
     </div>
   );
 };
@@ -217,12 +225,12 @@ const ProviderForm = ({
       <Card gap={20} padding={20}>
         <Stack align="start" direction="row" gap="control" justify="between">
           <div>
-            <h3 className="font-semibold">
+            <Text as="h3" strong textRole="heading">
               {provider ? `Edit ${provider.label}` : `Add ${definition.name}`}
-            </h3>
-            <p className="text-muted-foreground mt-1 text-sm">
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               Enter the provider settings, choose events, and save.
-            </p>
+            </Text>
           </div>
           <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
             Close provider form
@@ -274,7 +282,9 @@ const ProviderForm = ({
         <form.Field name="events">
           {(field) => (
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 text-sm font-medium">Events *</legend>
+              <Text as="legend" className="mb-2" textRole="cardLabel">
+                Events *
+              </Text>
               {definition.events.map((event) => {
                 const inputId = `${idPrefix}-provider-event-${event}`;
                 return (
@@ -294,9 +304,11 @@ const ProviderForm = ({
                 );
               })}
               {field.state.meta.errors[0] ? (
-                <p className="text-onair-300 text-sm sm:col-span-2" role="alert">
-                  {field.state.meta.errors[0].message}
-                </p>
+                <div className="sm:col-span-2" role="alert">
+                  <Text as="p" textRole="compact" tone="danger">
+                    {field.state.meta.errors[0].message}
+                  </Text>
+                </div>
               ) : null}
             </fieldset>
           )}
@@ -441,10 +453,12 @@ const WebPushForm = ({
       <Card gap={20} padding={20}>
         <Stack align="start" direction="row" gap="control" justify="between">
           <div>
-            <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
-            <p className="text-muted-foreground mt-1 text-sm">
+            <Text as="h3" strong textRole="heading">
+              {provider ? `Edit ${provider.label}` : "Add Browser Push"}
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               Loomarr asks this browser for permission only when you enable it below.
-            </p>
+            </Text>
           </div>
           <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
             Close provider form
@@ -459,7 +473,9 @@ const WebPushForm = ({
         <form.Field name="events">
           {(field) => (
             <fieldset className="grid gap-2 sm:grid-cols-2">
-              <legend className="mb-2 text-sm font-medium">Events *</legend>
+              <Text as="legend" className="mb-2" textRole="cardLabel">
+                Events *
+              </Text>
               {definition.events.map((event) => {
                 const inputId = `${idPrefix}-provider-event-${event}`;
                 return (
@@ -479,16 +495,18 @@ const WebPushForm = ({
                 );
               })}
               {field.state.meta.errors[0] ? (
-                <p className="text-onair-300 text-sm sm:col-span-2" role="alert">
-                  {field.state.meta.errors[0].message}
-                </p>
+                <div className="sm:col-span-2" role="alert">
+                  <Text as="p" textRole="compact" tone="danger">
+                    {field.state.meta.errors[0].message}
+                  </Text>
+                </div>
               ) : null}
             </fieldset>
           )}
         </form.Field>
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           Locked-screen previews say only that Loomarr has a new notification. Open Loomarr to see details.
-        </p>
+        </Text>
         <Stack direction="row" gap="inline" wrap>
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
@@ -502,9 +520,11 @@ const WebPushForm = ({
           </Action>
         </Stack>
         {message ? (
-          <p className="text-sm" role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
-            {message}
-          </p>
+          <div role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
+            <Text as="p" textRole="compact">
+              {message}
+            </Text>
+          </div>
         ) : null}
       </Card>
     </form>
@@ -601,7 +621,9 @@ const ProviderRow = ({
         <Stack align="start" direction="row" gap="control" justify="between" wrap>
           <div>
             <Stack align="center" direction="row" gap="inline" wrap>
-              <h3 className="font-medium">{provider.label}</h3>
+              <Text as="h3" textRole="heading">
+                {provider.label}
+              </Text>
               <StatusLabel tone={provider.enabled ? "ok" : "off"}>
                 {provider.enabled ? "Enabled" : "Disabled"}
               </StatusLabel>
@@ -609,14 +631,16 @@ const ProviderRow = ({
                 {definition?.name ?? words(provider.type)}
               </Text>
             </Stack>
-            <p className="text-muted-foreground mt-1 text-sm">{provider.events.map(words).join(", ")}</p>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              {provider.events.map(words).join(", ")}
+            </Text>
             {provider.health ? (
-              <p className="text-muted-foreground mt-2 text-xs">
+              <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                 {provider.health.queuedCount} queued · {provider.health.terminalFailureCount} failed
                 {provider.health.lastFailureOutcome
                   ? ` · Last failure: ${words(provider.health.lastFailureOutcome)}`
                   : ""}
-              </p>
+              </Text>
             ) : null}
           </div>
           {!confirmingDelete ? (
@@ -652,8 +676,12 @@ const ProviderRow = ({
         {confirmingDelete ? (
           <div className="border-onair-tint-15 bg-onair-tint-15 mt-4 grid gap-3 rounded-md border p-3">
             <div>
-              <p className="text-sm">Delete {provider.label} and stop sending its notifications?</p>
-              <p className="text-onair-300 mt-1 text-xs">This can't be undone.</p>
+              <Text as="p" textRole="compact">
+                Delete {provider.label} and stop sending its notifications?
+              </Text>
+              <Text as="p" className="mt-1" textRole="hint" tone="danger">
+                This can't be undone.
+              </Text>
             </div>
             <div className="grid max-w-sm gap-1.5">
               <Field
@@ -692,9 +720,11 @@ const ProviderRow = ({
           <ErrorState className="mt-3" error={update.error ?? remove.error ?? test.error} />
         ) : null}
         {message ? (
-          <p className="mt-3 text-sm" role="status" aria-live="polite">
-            {message}
-          </p>
+          <div className="mt-3" role="status" aria-live="polite">
+            <Text as="p" textRole="compact">
+              {message}
+            </Text>
+          </div>
         ) : null}
       </Card>
     </li>
@@ -735,12 +765,12 @@ const NotificationDestinationsPanel = () => {
             <Icon decorative glyph={icons.notifications} size="compact" tone="inherit" />
           </span>
           <div>
-            <h2 id="notification-providers-title" className="text-lg font-semibold">
+            <Text as="h2" id="notification-providers-title" strong textRole="headline">
               Notification providers
-            </h2>
-            <p className="text-muted-foreground mt-1 text-sm">
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               Add SMTP, Slack, Discord, or another provider, then choose the events it receives.
-            </p>
+            </Text>
           </div>
         </Stack>
         {!adding ? (
@@ -751,17 +781,21 @@ const NotificationDestinationsPanel = () => {
       </Stack>
 
       {providersQuery.isLoading || typesQuery.isLoading ? (
-        <p className="text-muted-foreground text-sm">Loading providers…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading providers…
+        </Text>
       ) : null}
       {providersQuery.isError || typesQuery.isError ? (
-        <p className="text-destructive text-sm" role="alert">
-          Providers could not be loaded.
-        </p>
+        <div role="alert">
+          <Text as="p" textRole="compact" tone="danger">
+            Providers could not be loaded.
+          </Text>
+        </div>
       ) : null}
       {!providersQuery.isLoading && providers.length === 0 ? (
         <section
           aria-labelledby="notification-events-title"
-          className="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-sm"
+          className="border-border rounded-lg border border-dashed p-4"
         >
           <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} gap="inline">
             <Text as="p" id="notification-events-title" textRole="label">
@@ -844,9 +878,11 @@ const NotificationDestinationsPanel = () => {
       ) : null}
 
       {message ? (
-        <p className="text-sm" role="status" aria-live="polite">
-          {message}
-        </p>
+        <div role="status" aria-live="polite">
+          <Text as="p" textRole="compact">
+            {message}
+          </Text>
+        </div>
       ) : null}
     </section>
   );
