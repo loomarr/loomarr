@@ -167,9 +167,11 @@ func (s *Handlers) handleDeviceApprove(ctx context.Context, in *deviceApproveInp
 	}
 	// ⚠ THE guess-guard for this feature. The user code is deliberately short so a human can read it
 	// off a screen and type it, which means its safety comes from a narrow window plus a bounded
-	// number of attempts — not from length. Keyed per user so one account cannot grind codes, and
-	// per IP so a pool of accounts cannot either.
-	if s.deviceLimiter != nil && !s.deviceLimiter.Allow("approve|"+user.ID+"|"+s.origin.ClientIP(r)) {
+	// number of attempts — not from length. Two buckets: per address, so a pool of accounts cannot
+	// grind codes, then per account, so one account cannot either from many addresses. The address
+	// is asked first, so an attempt it refuses spends nothing from the account's.
+	if s.deviceLimiter != nil && (!s.deviceLimiter.Allow("approve|ip|"+s.origin.ClientIP(r)) ||
+		!s.deviceLimiter.Allow("approve|user|"+user.ID)) {
 		return nil, httpcore.TooManyRequests("Too many attempts",
 			"Too many pairing codes tried. Wait a moment and try again.")
 	}
