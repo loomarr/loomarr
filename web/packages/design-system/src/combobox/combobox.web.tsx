@@ -209,6 +209,9 @@ const Combobox = ({
       id={id}
       onKeyDown={onKeyDown}
       placeholder={placeholder}
+      // An inline list is always "open", but with nothing in it there is nothing expanded to report.
+      // Spread only then: passing undefined would blank Base UI's own value.
+      {...(inline && flat.length === 0 ? { "aria-expanded": false } : {})}
       style={
         inline
           ? {

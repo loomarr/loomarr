@@ -403,6 +403,7 @@ describe("Combobox inline (web)", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.getByRole("status").textContent).toBe("No matches for “zz”.");
     expect(input.getAttribute("aria-controls")).toBeNull();
+    expect(input.getAttribute("aria-expanded")).toBe("false");
     expect(input.getAttribute("aria-activedescendant")).toBeNull();
   });
 
