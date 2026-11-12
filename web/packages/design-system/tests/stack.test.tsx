@@ -1,8 +1,8 @@
+import { getTokens } from "@tamagui/core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { LoomarrProvider, Stack, type StackProps, spaceSteps } from "../index";
-import { loomarrConfig } from "../src/config";
 import { webSpace } from "../web-theme";
 
 const render = (node: React.ReactNode) =>
@@ -51,7 +51,9 @@ describe("Stack", () => {
         </Stack>,
       );
 
-    const css = loomarrConfig.getCSS();
+    // Every space token the provider registered, by the CSS variable it is emitted as.
+    const spaceByVariable = () =>
+      new Map(Object.values(getTokens().space).map((token) => [String(token.variable), token.val]));
     for (const [gap, px] of [
       ["4", 16],
       ["1", 4],
@@ -67,7 +69,7 @@ describe("Stack", () => {
       const variable =
         gapClass && markup.match(new RegExp(`\\._${gapClass}\\s*\\{gap:var\\((--t-space-[^)]+)\\)`))?.[1];
       expect(variable, `gap="${gap}"`).toBeDefined();
-      expect(css).toContain(`${variable}:${px}px`);
+      expect(spaceByVariable().get(`var(${variable})`), `gap="${gap}"`).toBe(px);
     }
   });
 
