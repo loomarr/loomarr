@@ -1,7 +1,7 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Action, Field, FieldHint, Icon, icons, StatusLabel, Toggle } from "@loomarr/design-system";
+import { Action, Field, FieldHint, Icon, icons, Stack, StatusLabel, Toggle } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -94,16 +94,22 @@ const PersonDetail = ({
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <section aria-labelledby="person-identity" className="flex flex-col gap-2">
+    <Stack className="p-6" gap="section">
+      <Stack aria-labelledby="person-identity" gap="inline" render="section">
         <h3 id="person-identity" className="font-semibold">
           Identity
         </h3>
-        <div className="flex flex-wrap items-center gap-2">
+        <Stack align="center" direction="row" gap="inline" wrap>
           {isSelf && <StatusLabel tone="notice">You</StatusLabel>}
           {user.disabled && <StatusLabel tone="error">Disabled</StatusLabel>}
-        </div>
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+        </Stack>
+        <Stack
+          align="center"
+          className="text-muted-foreground text-sm"
+          direction="row"
+          gap="inline"
+          render="p"
+        >
           {user.local ? (
             <Icon decorative glyph={icons.key} size="compact" tone="inherit" />
           ) : (
@@ -114,12 +120,14 @@ const PersonDetail = ({
             : user.offlineLogin
               ? "Media-server credentials · offline login ready"
               : "Media-server credentials · sign in once to enable offline login"}
-        </p>
-      </section>
+        </Stack>
+      </Stack>
 
-      <section
+      <Stack
         aria-labelledby="person-contact"
-        className="border-static-800 flex flex-col gap-3 border-t pt-6"
+        className="border-static-800 border-t pt-6"
+        gap="control"
+        render="section"
       >
         <div>
           <h3 id="person-contact" className="font-semibold">
@@ -131,20 +139,20 @@ const PersonDetail = ({
         </div>
 
         {user.contactAddress ? (
-          <div className="border-static-800 flex flex-col gap-2 rounded-md border p-3">
-            <div className="flex flex-wrap items-center gap-2">
+          <Stack className="border-static-800 rounded-md border p-3" gap="inline">
+            <Stack align="center" direction="row" gap="inline" wrap>
               <Icon decorative glyph={icons.mail} size="compact" tone="muted" />
               <span className="text-sm break-all">{user.contactAddress.email}</span>
               <StatusLabel tone={user.contactAddress.status === "verified" ? "ok" : "off"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
               </StatusLabel>
-            </div>
+            </Stack>
             <p className="text-muted-foreground text-xs">
               {user.contactAddress.status === "verified"
                 ? "Verified for local-password recovery."
                 : "Not recovery-capable until the person verifies possession."}
             </p>
-          </div>
+          </Stack>
         ) : (
           <p className="text-muted-foreground text-sm">
             No contact email. QR and direct account access still work.
@@ -152,11 +160,11 @@ const PersonDetail = ({
         )}
 
         {user.contactReplacement && (
-          <div className="border-suggest-700/50 bg-suggest-950/20 flex flex-col gap-2 rounded-md border p-3">
-            <div className="flex flex-wrap items-center gap-2">
+          <Stack className="border-suggest-700/50 bg-suggest-950/20 rounded-md border p-3" gap="inline">
+            <Stack align="center" direction="row" gap="inline" wrap>
               <span className="text-sm break-all">{user.contactReplacement.email}</span>
               <StatusLabel tone="pending">Pending replacement</StatusLabel>
-            </div>
+            </Stack>
             <p className="text-muted-foreground text-xs">
               The verified address above remains recovery-capable until this replacement is verified.
             </p>
@@ -168,7 +176,7 @@ const PersonDetail = ({
             >
               Cancel replacement
             </Action>
-          </div>
+          </Stack>
         )}
 
         {contactOpen ? (
@@ -191,7 +199,7 @@ const PersonDetail = ({
                 {contactError}
               </FieldHint>
             )}
-            <div className="flex flex-wrap gap-2">
+            <Stack direction="row" gap="inline" wrap>
               <Action disabled={contactSaving} submit>
                 Save email
               </Action>
@@ -205,10 +213,10 @@ const PersonDetail = ({
               >
                 Cancel
               </Action>
-            </div>
+            </Stack>
           </form>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <Stack direction="row" gap="inline" wrap>
             <Action disabled={contactSaving} onPress={openContact} variant="outline">
               {user.contactAddress ? "Change email" : "Add email"}
             </Action>
@@ -221,18 +229,20 @@ const PersonDetail = ({
                 Remove email
               </Action>
             )}
-          </div>
+          </Stack>
         )}
         {!contactOpen && contactError && (
           <FieldHint role="alert" tone="error">
             {contactError}
           </FieldHint>
         )}
-      </section>
+      </Stack>
 
-      <section
+      <Stack
         aria-labelledby="person-access"
-        className="border-static-800 flex flex-col gap-3 border-t pt-6"
+        className="border-static-800 border-t pt-6"
+        gap="control"
+        render="section"
       >
         <div>
           <h3 id="person-access" className="font-semibold">
@@ -251,7 +261,7 @@ const PersonDetail = ({
           />
           {isSelf && <FieldHint>You cannot change your own role.</FieldHint>}
         </div>
-      </section>
+      </Stack>
 
       <section
         aria-labelledby="person-requests"
@@ -298,9 +308,11 @@ const PersonDetail = ({
         />
       </section>
 
-      <section
+      <Stack
         aria-labelledby="person-sessions"
-        className="border-static-800 flex flex-col gap-3 border-t pt-6"
+        className="border-static-800 border-t pt-6"
+        gap="control"
+        render="section"
       >
         <div>
           <h3 id="person-sessions" className="font-semibold">
@@ -315,11 +327,13 @@ const PersonDetail = ({
           revoking={revoking}
           onRevoke={onRevokeSession}
         />
-      </section>
+      </Stack>
 
-      <section
+      <Stack
         aria-labelledby="person-password"
-        className="border-static-800 flex flex-col gap-3 border-t pt-6"
+        className="border-static-800 border-t pt-6"
+        gap="control"
+        render="section"
       >
         <div>
           <h3 id="person-password" className="font-semibold">
@@ -352,7 +366,7 @@ const PersonDetail = ({
                   {resetError}
                 </FieldHint>
               )}
-              <div className="flex flex-wrap gap-2">
+              <Stack direction="row" gap="inline" wrap>
                 <Action disabled={resetting} submit>
                   Set new password
                 </Action>
@@ -366,18 +380,20 @@ const PersonDetail = ({
                 >
                   Cancel
                 </Action>
-              </div>
+              </Stack>
             </form>
           ) : (
             <Action onPress={() => setResetOpen(true)} style={{ alignSelf: "flex-start" }} variant="outline">
               Reset password
             </Action>
           ))}
-      </section>
+      </Stack>
 
-      <section
+      <Stack
         aria-labelledby="person-danger"
-        className="border-onair-700 bg-onair-950/20 flex flex-col gap-3 rounded-lg border p-4"
+        className="border-onair-700 bg-onair-950/20 rounded-lg border p-4"
+        gap="control"
+        render="section"
       >
         <div>
           <h3 id="person-danger" className="text-onair-300 font-semibold">
@@ -399,8 +415,8 @@ const PersonDetail = ({
           {user.disabled ? "Enable account" : "Disable account"}
         </Action>
         {isSelf && <p className="text-static-400 text-xs">You cannot disable your own account.</p>}
-      </section>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

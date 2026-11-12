@@ -1,5 +1,5 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, type BadgeTone, Field } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Field, Stack } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
@@ -135,7 +135,7 @@ const ProposalReview = ({
 
   return (
     <section className={cn("mx-auto flex w-full max-w-3xl flex-col gap-5 py-2", className)}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between" render="header" wrap>
         <div className="min-w-0">
           {showWorkflowHeading ? (
             <>
@@ -151,7 +151,7 @@ const ProposalReview = ({
             {statusDisplay.label}
           </Badge>
         )}
-      </header>
+      </Stack>
 
       {editingBrief ? (
         <form
@@ -190,7 +190,7 @@ const ProposalReview = ({
               </dl>
             </details>
           )}
-          <div className="flex flex-wrap justify-end gap-2">
+          <Stack direction="row" gap="inline" justify="end" wrap>
             <Action onPress={() => setEditingBrief(false)} variant="ghost">
               Cancel
             </Action>
@@ -201,10 +201,17 @@ const ProposalReview = ({
                 </Action>
               )}
             </briefForm.Subscribe>
-          </div>
+          </Stack>
         </form>
       ) : (
-        <div className="border-border flex flex-wrap items-start justify-between gap-3 border-y py-3">
+        <Stack
+          align="start"
+          className="border-border border-y py-3"
+          direction="row"
+          gap="control"
+          justify="between"
+          wrap
+        >
           <p className="text-muted-foreground min-w-0 flex-1 text-sm">“{proposal.intent.description}”</p>
           {actionable && onRevise && (
             <div className="-my-1 shrink-0">
@@ -220,7 +227,7 @@ const ProposalReview = ({
               </Action>
             </div>
           )}
-        </div>
+        </Stack>
       )}
 
       <div className="flex flex-col gap-1 text-sm">
@@ -289,7 +296,7 @@ const ProposalReview = ({
           </div>
 
           {denying && !selfService ? (
-            <div className="flex flex-col gap-2">
+            <Stack gap="inline">
               <Field
                 autoFocus
                 disabled={controlsDisabled}
@@ -299,7 +306,7 @@ const ProposalReview = ({
                 placeholder="For example, ask for fewer new titles"
                 value={reason}
               />
-              <div className="flex flex-wrap justify-end gap-2">
+              <Stack direction="row" gap="inline" justify="end" wrap>
                 <Action disabled={controlsDisabled} onPress={() => setDenying(false)} variant="ghost">
                   Cancel
                 </Action>
@@ -311,10 +318,10 @@ const ProposalReview = ({
                 >
                   Not approved
                 </Action>
-              </div>
-            </div>
+              </Stack>
+            </Stack>
           ) : (
-            <div className="flex flex-wrap justify-end gap-2">
+            <Stack direction="row" gap="inline" justify="end" wrap>
               {onDeny && (
                 <Action
                   disabled={controlsDisabled}
@@ -327,7 +334,7 @@ const ProposalReview = ({
               <Action disabled={controlsDisabled || selectedCount === 0} icon="success" onPress={onApprove}>
                 Create channel
               </Action>
-            </div>
+            </Stack>
           )}
         </footer>
       )}
@@ -337,7 +344,7 @@ const ProposalReview = ({
           How these suggestions were chosen
         </summary>
         <div className="text-muted-foreground mt-4 flex flex-col gap-5">
-          <section aria-label="Why these titles" className="flex flex-col gap-2">
+          <Stack aria-label="Why these titles" gap="inline" render="section">
             <h3 className="text-foreground font-medium">Why these titles</h3>
             {status === "partially-edited" ? (
               <p>You changed the title list. Check any titles you added against your brief.</p>
@@ -373,7 +380,7 @@ const ProposalReview = ({
                 )}
               </>
             )}
-          </section>
+          </Stack>
 
           {assessmentPending ? (
             <p role="status">Updating what's ready to play…</p>
@@ -398,7 +405,7 @@ const ProposalReview = ({
                 {proposal.trace?.candidates?.length ? (
                   <section aria-label="Titles considered">
                     <h3 className="text-foreground mb-2 font-medium">Titles considered</h3>
-                    <ul className="divide-border flex flex-col divide-y">
+                    <Stack className="divide-border divide-y" render="ul">
                       {proposal.trace.candidates.map((candidate) => (
                         <li
                           key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
@@ -410,7 +417,7 @@ const ProposalReview = ({
                           <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
                         </li>
                       ))}
-                    </ul>
+                    </Stack>
                     <details className="mt-3">
                       <summary className="w-fit cursor-pointer text-xs">Raw search data</summary>
                       <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-md p-3 text-xs">

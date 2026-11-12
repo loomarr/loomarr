@@ -1,8 +1,7 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { useCopied } from "@/lib/use-copied";
-import { cn } from "@/lib/utils";
 import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 
 // Generated credentials (config-design §4), on Sonarr's model: values an operator must
@@ -16,19 +15,24 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
   const { copied, copy } = useCopied<SecretName>();
 
   return (
-    <ul className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control" render="ul">
       {secrets.map((secret) => {
         const value = revealed[secret.name];
         const isConfirming = confirming === secret.name;
 
         return (
-          <li key={secret.name} className="border-border bg-card flex flex-col gap-2 rounded-md border p-3">
+          <Stack
+            className="border-border bg-card rounded-md border p-3"
+            gap="inline"
+            key={secret.name}
+            render="li"
+          >
             <div>
               <p className="text-sm font-medium">{secret.label}</p>
               <p className="text-muted-foreground text-sm">{secret.purpose}</p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <Stack align="center" direction="row" gap="inline">
               <code className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5 font-mono text-sm">
                 {value ?? "••••••••••••••••"}
               </code>
@@ -45,7 +49,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                   {copied === secret.name ? "Copied" : "Copy"}
                 </Action>
               )}
-            </div>
+            </Stack>
 
             {isConfirming ? (
               <ConfirmStep
@@ -69,10 +73,10 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                 Regenerate
               </Action>
             )}
-          </li>
+          </Stack>
         );
       })}
-    </ul>
+    </Stack>
   );
 };
 

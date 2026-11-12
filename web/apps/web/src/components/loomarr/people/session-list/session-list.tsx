@@ -1,8 +1,7 @@
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
-import { Action, StatusLabel } from "@loomarr/design-system";
+import { Action, Stack, StatusLabel } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { SessionListProps } from "./session-list.type";
 
 // Session ids are opaque hashes, so this can't collide with a row's confirm.
@@ -39,8 +38,8 @@ const SessionList = ({
   }
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex items-center justify-between gap-3">
+    <Stack className={className} gap="control">
+      <Stack align="center" direction="row" gap="control" justify="between">
         <p className="text-muted-foreground text-sm">
           {`${pluralize(sessions.length, "active session")} for ${userName}`}
         </p>
@@ -49,7 +48,7 @@ const SessionList = ({
             Sign out everywhere
           </Action>
         )}
-      </div>
+      </Stack>
       {confirming === ALL && (
         <ConfirmStep
           confirmLabel="Sign out everywhere"
@@ -62,7 +61,7 @@ const SessionList = ({
         />
       )}
 
-      <ul className="flex flex-col gap-2">
+      <Stack gap="inline" render="ul">
         {sessions.map((s) =>
           // The confirm takes the row's place, as Delete channel's replaces its choices.
           confirming === s.id ? (
@@ -82,15 +81,20 @@ const SessionList = ({
               />
             </li>
           ) : (
-            <li
+            <Stack
+              align="center"
+              className="border-static-800 rounded-md border px-3 py-2"
+              direction="row"
+              gap="control"
+              justify="between"
               key={s.id}
-              className="border-static-800 flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+              render="li"
             >
               <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm">
+                <Stack align="center" className="text-sm" direction="row" gap="inline" render="p">
                   {`Signed in ${formatRelative(s.createdAt, now)}`}
                   {s.current && <StatusLabel tone="notice">This device</StatusLabel>}
-                </p>
+                </Stack>
                 <p className="text-static-400 text-xs">{`Expires ${formatUntil(s.expiresAt, now)}`}</p>
               </div>
               <Action
@@ -102,11 +106,11 @@ const SessionList = ({
               >
                 {s.current ? "Sign out (this device)" : "Sign out"}
               </Action>
-            </li>
+            </Stack>
           ),
         )}
-      </ul>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

@@ -1,6 +1,6 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -43,7 +43,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
   }, [query, role, status, users]);
 
   return (
-    <section aria-labelledby="people-roster-title" className="flex flex-col gap-3">
+    <Stack aria-labelledby="people-roster-title" gap="control" render="section">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div className="min-w-0 flex-1">
           <h2 id="people-roster-title" className="text-lg font-semibold">
@@ -128,7 +128,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
           ))}
         </ListGroup>
       )}
-    </section>
+    </Stack>
   );
 };
 

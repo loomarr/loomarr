@@ -1,4 +1,4 @@
-import { Action, StatusLabel } from "@loomarr/design-system";
+import { Action, Stack, StatusLabel } from "@loomarr/design-system";
 import type { InvitationRosterProps } from "./invitation-roster.type";
 
 const deliveryCopy = {
@@ -31,7 +31,7 @@ const outcomeHint = (outcome?: string) => {
 };
 
 const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: InvitationRosterProps) => (
-  <section aria-labelledby="invitation-roster-title" className="flex flex-col gap-3">
+  <Stack aria-labelledby="invitation-roster-title" gap="control" render="section">
     <div>
       <h2 id="invitation-roster-title" className="text-lg font-semibold">
         Invitations
@@ -69,7 +69,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
             <li key={value.id} className="border-border bg-card rounded-lg border p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <Stack align="center" direction="row" gap="inline" wrap>
                     <span className="font-medium">{name}</span>
                     <StatusLabel tone={value.role === "admin" ? "notice" : "off"}>
                       {value.role === "admin" ? "Admin" : "Member"}
@@ -84,7 +84,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                         {copy.label}
                       </StatusLabel>
                     )}
-                  </div>
+                  </Stack>
                   <p className="text-static-400 text-sm">
                     {value.contactAddress?.email ?? "Add a contact address before sending email."}
                   </p>
@@ -92,7 +92,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                 </div>
 
                 {pending && (
-                  <div className="flex flex-wrap gap-2">
+                  <Stack direction="row" gap="inline" wrap>
                     {canSend && (
                       <Action
                         accessibilityLabel={`${action} to ${name}`}
@@ -110,7 +110,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                     <Action onPress={() => onShare(value)} variant="ghost">
                       Share QR or link
                     </Action>
-                  </div>
+                  </Stack>
                 )}
               </div>
             </li>
@@ -118,7 +118,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
         })}
       </ul>
     )}
-  </section>
+  </Stack>
 );
 
 export { InvitationRoster };
