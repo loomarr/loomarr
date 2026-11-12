@@ -9,6 +9,7 @@ import { ConfirmStep } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { meQueryOptions } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useAppForm } from "@/lib/app-form";
@@ -218,6 +219,13 @@ const AccountScreen = () => {
 };
 
 const Route = createFileRoute("/_authed/account")({
+  // The viewer's own sessions, so the list is there with the page rather than "Loading sessions…".
+  // The page shows its own state for a failed read, so it is warmed.
+  loader: async ({ context: { queryClient } }) => {
+    const me = await queryClient.ensureQueryData(meQueryOptions());
+    if (me.status !== 200) return;
+    await queryClient.prefetchQuery(usersApi.getListUserSessionsQueryOptions(me.data.id));
+  },
   component: AccountScreen,
 });
 

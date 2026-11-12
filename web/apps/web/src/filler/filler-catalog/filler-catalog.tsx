@@ -1,6 +1,5 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import type { ListFillerRole } from "@loomarr/api/models/listFillerRole";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { Action } from "@loomarr/design-system";
@@ -13,7 +12,7 @@ import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
-import type { FillerSearch } from "../filler-search";
+import { CATALOG_PAGE_SIZE, catalogListParams, type FillerSearch } from "../filler-search";
 import { CatalogBulkBar } from "./catalog-bulk-bar";
 import { CatalogToolbar } from "./catalog-toolbar";
 import type { CatalogView } from "./catalog-view-toggle";
@@ -22,14 +21,6 @@ import { CompositeCatalogGroup } from "./composite-catalog-group";
 import type { FillerCatalogProps } from "./filler-catalog.type";
 import { useCatalogSelection } from "./use-catalog-selection";
 import { useClipSplit } from "./use-clip-split";
-
-// How many clips one page of the catalog holds (§10 V51d).
-//
-// ⚠ **ONE size for both the grid and the list**, deliberately. A per-view size would renumber the
-// pages under the operator the moment they switched rendering — page 3 of the grid and page 3 of
-// the list would be different clips — and `pageSize` is kept out of the URL for the same reason.
-// 60 divides evenly by the grid's 2/3/4 columns, so the last row is never a ragged single card.
-const CATALOG_PAGE_SIZE = 60;
 
 // FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
 // ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
@@ -114,18 +105,17 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
   // silently show the first hundred clips and call it the catalog.
   const clips = fillerApi.useListFiller(
-    {
-      ...(q ? { q } : {}),
-      ...(role ? { role: role as ListFillerRole } : {}),
-      ...(audience ? { audience: audience as never } : {}),
-      ...(taxon ? { taxon } : {}),
-      ...(unclassified ? { unclassified: true } : {}),
-      ...(withoutAxis ? { withoutAxis } : {}),
-      ...(untagged ? { untagged: true } : {}),
-      ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
-      limit: CATALOG_PAGE_SIZE,
-      ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
-    },
+    catalogListParams({
+      q,
+      role,
+      audience,
+      taxon,
+      unclassified,
+      withoutAxis,
+      untagged,
+      page,
+      parent: parentHash,
+    }),
     { query: { enabled: true } },
   );
   const parent = fillerApi.useListFiller(
