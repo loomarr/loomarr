@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -207,8 +207,12 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           wrap
         >
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{parentName || "Compilation segments"}</p>
-            <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
+            <Text as="p" textRole="cardLabel">
+              {parentName || "Compilation segments"}
+            </Text>
+            <Text as="p" textRole="hint" tone="secondary">
+              Airable clips filed from this compilation.
+            </Text>
           </div>
           <Action onPress={() => setFilters({ parent: undefined })} variant="outline">
             Back to top-level catalog
@@ -224,13 +228,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           gap="control"
           wrap
         >
-          <p className="min-w-0 flex-1 text-sm">
+          <Text as="p" className="min-w-0 flex-1" textRole="compact">
             {unclassified
               ? "Showing clips with no directly assigned taxonomy tags"
               : withoutAxis
                 ? `Showing clips without a directly assigned ${withoutAxis} tag`
                 : `Showing clips matching “${taxon}”, including descendants`}
-          </p>
+          </Text>
           <Action
             onPress={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
             variant="ghost"
@@ -248,14 +252,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           status line the way ingest does. Success NAVIGATES to the review route; only
           running/error render here. */}
       {splitJob && (
-        <p
-          role="status"
-          className={splitJob.status === "error" ? "text-onair-300 text-sm" : "text-muted-foreground text-sm"}
-        >
-          {splitJob.status === "error"
-            ? (splitJob.error ?? "Split detection failed.")
-            : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
-        </p>
+        <div role="status">
+          <Text as="p" textRole="compact" tone={splitJob.status === "error" ? "danger" : "secondary"}>
+            {splitJob.status === "error"
+              ? (splitJob.error ?? "Split detection failed.")
+              : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
+          </Text>
+        </div>
       )}
 
       {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
@@ -276,7 +279,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       />
 
       {rows === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading clips…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading clips…
+        </Text>
       ) : rows.length === 0 ? (
         <EmptyState
           title={filtered ? "No clips match" : "No clips yet"}
@@ -315,11 +320,11 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
               ("what's next?") — never both in one place. */}
           <Stack align="center" direction="row" gap="control">
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               {pageCount > 1
                 ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
                 : pluralize(total, "clip")}
-            </p>
+            </Text>
             {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
                 what is on screen — not the whole catalog. Selecting rows the operator
                 cannot see, then offering "Remove from catalog", is how a bulk action
@@ -379,9 +384,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               </Action>
               {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
                   announcement a screen-reader user gets a silently different list. */}
-              <p aria-live="polite" className="text-muted-foreground text-sm">
+              <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
                 Page {page.toLocaleString()} of {pageCount.toLocaleString()}
-              </p>
+              </Text>
               <Action disabled={page >= pageCount} onPress={() => goToPage(page + 1)} variant="outline">
                 Next
               </Action>

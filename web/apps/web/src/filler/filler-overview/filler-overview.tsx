@@ -155,18 +155,18 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
       <Stack align="start" direction="row" gap="control" justify="between">
         <div className="min-w-0">
           {title}
-          <p className="text-muted-foreground mt-1 text-sm">
+          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
             {coverage.level === "bumper_card"
               ? "Only a bumper card"
               : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
-          </p>
+          </Text>
         </div>
         <StatusLabel tone={badge.tone}>{badge.label}</StatusLabel>
       </Stack>
-      <p className="text-muted-foreground mt-3 text-xs">
+      <Text as="p" className="mt-3" textRole="hint" tone="secondary">
         {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
         {pluralize(coverage.brands, "brand")}
-      </p>
+      </Text>
     </Card>
   );
 };
@@ -182,8 +182,12 @@ const FillerOverview = () => {
   if (!readiness) {
     return (
       <Card aria-live="polite" padding={24}>
-        <p className="font-medium">Checking filler health…</p>
-        <p className="text-muted-foreground mt-1 text-sm">Finding out what's ready and what's on the way.</p>
+        <Text as="p" textRole="heading">
+          Checking filler health…
+        </Text>
+        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+          Finding out what's ready and what's on the way.
+        </Text>
       </Card>
     );
   }
@@ -201,14 +205,18 @@ const FillerOverview = () => {
           <div className="flex flex-col items-start gap-4 sm:flex-row">
             <div className="min-w-0 flex-1">
               <StatusLabel tone="warn">Action recommended</StatusLabel>
-              <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
-              <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
+              <Text as="h2" className="mt-3" textRole="title">
+                {action.title}
+              </Text>
+              <Text as="p" className="mt-1 max-w-3xl" textRole="compact" tone="secondary">
+                {action.description}
+              </Text>
               {/* Every destination behind the button is admin-only, so a member got a button
                   that bounced. They get the state and who can act on it instead. */}
               {isAdmin ? null : (
-                <p className="text-muted-foreground mt-2 text-sm">
+                <Text as="p" className="mt-2" textRole="compact" tone="secondary">
                   An admin can sort this out from Filler › Manage.
-                </p>
+                </Text>
               )}
             </div>
             {isAdmin ? (
@@ -231,10 +239,12 @@ const FillerOverview = () => {
         <Card alignItems="center" flexDirection="row" gap={10} padding={16}>
           <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
           <div className="min-w-0">
-            <h2 className="font-semibold">Filler is working on its own</h2>
-            <p className="text-muted-foreground text-sm">
+            <Text as="h2" textRole="heading">
+              Filler is working on its own
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               Loomarr is preparing clips automatically. Nothing needs your attention.
-            </p>
+            </Text>
           </div>
         </Card>
       )}
@@ -242,12 +252,12 @@ const FillerOverview = () => {
       <section aria-labelledby="coverage-heading">
         <Stack align="end" className="mb-3" direction="row" gap="control" justify="between" wrap>
           <div>
-            <h2 id="coverage-heading" className="text-lg font-semibold">
+            <Text as="h2" id="coverage-heading" textRole="headline" strong>
               Channel coverage
-            </h2>
-            <p className="text-muted-foreground text-sm">
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               See how much filler each channel has ready to play.
-            </p>
+            </Text>
           </div>
           <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
             Browse library
@@ -286,10 +296,12 @@ const FillerOverview = () => {
             )}
           </div>
         ) : (
-          <Card className="text-muted-foreground text-sm" padding={16}>
-            {readinessQuery.error
-              ? "Channel coverage is temporarily unavailable."
-              : "No live channels need filler coverage yet."}
+          <Card padding={16}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {readinessQuery.error
+                ? "Channel coverage is temporarily unavailable."
+                : "No live channels need filler coverage yet."}
+            </Text>
           </Card>
         )}
       </section>

@@ -1,6 +1,6 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { fillerSourceCountrySchema } from "@loomarr/core/schemas";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { LocationPicker } from "@/components/loomarr/settings/installation-location";
 import type { SourceActions } from "../use-source-actions";
@@ -28,9 +28,9 @@ const SourceLocationForm = ({ source, actions }: SourceLocationFormProps) => {
 
   return (
     <Stack className="border-border border-t pt-3" gap="control">
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Change this only when the source covers a different area from your location.
-      </p>
+      </Text>
       <LocationPicker
         value={{ country: country || (source.effectiveCountry ?? "") }}
         onChange={(location) => form.setFieldValue("country", location.country)}

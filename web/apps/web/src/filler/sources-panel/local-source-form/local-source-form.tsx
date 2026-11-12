@@ -47,7 +47,9 @@ const LocalSourceForm = () => {
 
   return (
     <Stack gap="control">
-      <p className="text-sm font-medium">Add a folder or library</p>
+      <Text as="p" textRole="cardLabel">
+        Add a folder or library
+      </Text>
       <form
         className="flex flex-wrap items-center gap-2"
         noValidate

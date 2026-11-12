@@ -65,13 +65,13 @@ const SourceStorageCard = () => {
     >
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div className="min-w-0 flex-1">
-          <h2 id="filler-storage-heading" className="text-sm font-medium">
+          <Text as="h2" id="filler-storage-heading" textRole="cardLabel">
             Storage
-          </h2>
-          <p className="mt-1 text-sm">
+          </Text>
+          <Text as="p" className="mt-1" textRole="compact">
             {formatBytes(storage.managedBytes)} used for filler · {formatBytes(storage.freeBytes)} free on
             this drive
-          </p>
+          </Text>
           <Text as="p" style={{ marginTop: 4 }} textRole="hint" tone={allowanceFull ? "warning" : "muted"}>
             {storage.pausedBy === "host_reserve"
               ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
@@ -109,36 +109,40 @@ const SourceStorageCard = () => {
       {storage.pausedBy === "host_reserve" ? (
         <div className="border-border mt-3 border-t pt-3">
           {cleanupPreviewQuery.isLoading ? (
-            <p aria-live="polite" className="text-muted-foreground text-sm">
+            <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
               Checking for old temporary downloads…
-            </p>
+            </Text>
           ) : cleanupPreview && cleanupPreview.items > 0 ? (
             <Stack align="center" direction="row" gap="control" justify="between" wrap>
-              <p className="text-muted-foreground text-sm">
+              <Text as="p" textRole="compact" tone="secondary">
                 {formatBytes(cleanupPreview.bytes)} in{" "}
                 {pluralize(cleanupPreview.items, "unfinished download")} is safe to remove. Clips in your
                 library stay untouched.
-              </p>
+              </Text>
               <Action disabled={cleanupStorage.isPending} onPress={() => cleanupStorage.mutate()}>
                 {cleanupStorage.isPending ? "Freeing space…" : `Free ${formatBytes(cleanupPreview.bytes)}`}
               </Action>
             </Stack>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               There are no old temporary downloads Loomarr can safely remove. Free space elsewhere on this
               drive or remove filler clips you no longer want.
-            </p>
+            </Text>
           )}
           {cleanupResult && cleanupResult.removedItems > 0 ? (
-            <p role="status" className="text-muted-foreground mt-2 text-xs">
-              Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
-              {formatBytes(cleanupResult.removedBytes)}.
-            </p>
+            <div role="status" className="mt-2">
+              <Text as="p" textRole="hint" tone="secondary">
+                Removed {pluralize(cleanupResult.removedItems, "temporary folder")} · freed{" "}
+                {formatBytes(cleanupResult.removedBytes)}.
+              </Text>
+            </div>
           ) : null}
           {cleanupPreviewQuery.error || cleanupStorage.error ? (
-            <p role="alert" className="text-destructive mt-2 text-sm">
-              Temporary files could not be checked or removed. Nothing in your library was changed.
-            </p>
+            <div role="alert" className="mt-2">
+              <Text as="p" textRole="compact" tone="danger">
+                Temporary files could not be checked or removed. Nothing in your library was changed.
+              </Text>
+            </div>
           ) : null}
         </div>
       ) : null}

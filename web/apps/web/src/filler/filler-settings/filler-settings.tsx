@@ -54,9 +54,15 @@ const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): str
 const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
   if (!storage) {
     return (
-      <p aria-live="polite" className="bg-muted/50 text-muted-foreground rounded-lg px-4 py-3 text-sm">
+      <Text
+        as="p"
+        aria-live="polite"
+        className="bg-muted/50 rounded-lg px-4 py-3"
+        textRole="compact"
+        tone="secondary"
+      >
         Checking this drive…
-      </p>
+      </Text>
     );
   }
   const pauseMessage = storagePauseMessage(storage.pausedBy);
@@ -68,18 +74,22 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
       role="status"
       className={
         pauseMessage || allowanceFull
-          ? "border-caution/40 bg-caution/5 rounded-lg border px-4 py-3 text-sm"
-          : "bg-muted/50 rounded-lg px-4 py-3 text-sm"
+          ? "border-caution/40 bg-caution/5 rounded-lg border px-4 py-3"
+          : "bg-muted/50 rounded-lg px-4 py-3"
       }
     >
-      <p className="font-medium">
+      <Text as="p" textRole="cardLabel">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
-      </p>
+      </Text>
       <Text as="p" style={{ marginTop: 4 }} textRole="body" tone={allowanceFull ? "warning" : "muted"}>
         {formatBytes(storage.managedBytes)} used · {formatBytes(storage.availableBytes)} available to Loomarr.
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
       </Text>
-      {pauseMessage ? <p className="text-caution-foreground mt-2">{pauseMessage}</p> : null}
+      {pauseMessage ? (
+        <Text as="p" className="mt-2" textRole="compact" tone="warning">
+          {pauseMessage}
+        </Text>
+      ) : null}
       {allowanceFull ? (
         <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} marginTop={12}>
           <Action
@@ -108,7 +118,9 @@ const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSectio
           <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
           All filler settings
         </Link>
-        <p className="text-muted-foreground mt-2 text-xs">Jump straight to another task.</p>
+        <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+          Jump straight to another task.
+        </Text>
       </div>
       <div className="w-full sm:w-64">
         <BrowserSelectControl
@@ -136,10 +148,12 @@ const FillerSettingsIndex = () => (
         <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
         Manage
       </Link>
-      <h2 className="mt-3 text-xl font-semibold">Filler settings</h2>
-      <p className="text-muted-foreground mt-1 text-sm">
+      <Text as="h2" className="mt-3" textRole="title">
+        Filler settings
+      </Text>
+      <Text as="p" className="mt-1" textRole="compact" tone="secondary">
         Change how Loomarr finds, prepares, stores, and plays short clips.
-      </p>
+      </Text>
     </div>
 
     {(
@@ -158,10 +172,12 @@ const FillerSettingsIndex = () => (
     ).map((group) => (
       <section key={group.id} aria-labelledby={`filler-settings-${group.id}`}>
         <div className="mb-3">
-          <h3 id={`filler-settings-${group.id}`} className="text-base font-medium">
+          <Text as="h3" id={`filler-settings-${group.id}`} textRole="heading">
             {group.label}
-          </h3>
-          <p className="text-muted-foreground mt-0.5 text-sm">{group.description}</p>
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+            {group.description}
+          </Text>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
@@ -172,10 +188,12 @@ const FillerSettingsIndex = () => (
               className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
             >
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">{item.label}</span>
-                <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
+                <Text as="span" className="block" textRole="cardLabel">
+                  {item.label}
+                </Text>
+                <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
                   {item.description}
-                </span>
+                </Text>
               </span>
               <Stack
                 className="text-muted-foreground group-hover:text-foreground mt-0.5 transition-colors"
@@ -249,12 +267,12 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
             ? "No enabled sources are currently downloading automatically."
             : `Across ${sourceCount} enabled ${sourceCount === 1 ? "source" : "sources"}, one full check can add up to ${fullCheckMax} ${fullCheckMax === 1 ? "clip" : "clips"}.`;
         return (
-          <p className="bg-muted/50 text-muted-foreground rounded-lg px-4 py-3 text-sm">
+          <Text as="p" className="bg-muted/50 rounded-lg px-4 py-3" textRole="compact" tone="secondary">
             {cadence} {round}{" "}
             <Link to="/filler/settings/$section" params={{ section: "storage" }} className="underline">
               Storage limits
             </Link>
-          </p>
+          </Text>
         );
       },
     },

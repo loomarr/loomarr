@@ -167,10 +167,14 @@ const DurationChoiceField = ({
             onChangeText={changeCustomValue}
             value={customValue}
           />
-          <span className="text-muted-foreground text-sm">{unit.words}</span>
+          <Text as="span" textRole="compact" tone="secondary">
+            {unit.words}
+          </Text>
         </Stack>
       )}
-      <p className="text-muted-foreground text-sm">{choice.help}</p>
+      <Text as="p" textRole="compact" tone="secondary">
+        {choice.help}
+      </Text>
     </div>
   );
 };
@@ -256,16 +260,18 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
             onChangeText={changeCustomValue}
             value={customValue}
           />
-          <span className="text-muted-foreground text-sm">breaks per program hour</span>
+          <Text as="span" textRole="compact" tone="secondary">
+            breaks per program hour
+          </Text>
         </Stack>
       )}
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         How often this channel pauses for filler. Manage the inherited value in{" "}
         <Link to="/settings/defaults" className="text-signal underline-offset-2 hover:underline">
           Channel defaults
         </Link>
         .
-      </p>
+      </Text>
     </div>
   );
 };
@@ -348,11 +354,13 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             Filler overview
           </Link>
         ) : null}
-        <h2 className="text-lg font-semibold">Filler</h2>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h2" textRole="headline" strong>
+          Filler
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           This channel picks its commercials and clips automatically. Only change these settings if it needs
           something different.
-        </p>
+        </Text>
       </div>
 
       {/* Saved truth comes before authoring. An operator should see whether this channel already
@@ -361,36 +369,42 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           sentences on this page are the web mock's. */}
       <Stack className="border-border bg-card rounded-lg border p-5" gap="control" render="section">
         <div>
-          <h3 className="text-base font-semibold">What this channel can play</h3>
-          <p className="text-muted-foreground text-sm">
+          <Text as="h3" textRole="heading">
+            What this channel can play
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             {poolSummary(coverage, poolPlaceLabel) ?? "Clips that fit this channel's settings right now."}
-          </p>
+          </Text>
         </div>
         {coverageQuery.isLoading ? (
-          <p className="text-muted-foreground text-sm">Checking saved coverage…</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Checking saved coverage…
+          </Text>
         ) : coverageQuery.error ? (
-          <p className="text-onair-300 text-sm">
+          <Text as="p" textRole="compact" tone="danger">
             Saved coverage could not be checked. Your existing channel settings are unchanged.
-          </p>
+          </Text>
         ) : coverage ? (
           <CoverageMeter coverage={coverage} />
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             Coverage becomes available after filler is configured for this install.
-          </p>
+          </Text>
         )}
       </Stack>
 
       <Stack className="border-border bg-card rounded-lg border p-5" gap="5" render="section">
         <div>
-          <h3 className="text-base font-semibold">Choose what fits</h3>
-          <p className="text-muted-foreground text-sm">
+          <Text as="h3" textRole="heading">
+            Choose what fits
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
             <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
               filler library
             </Link>
             .
-          </p>
+          </Text>
         </div>
 
         <BreakFrequencyField
@@ -463,13 +477,15 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
 
       {/* The live break — the ground-truth preview of the current draft. */}
       <Stack className="border-border bg-card rounded-lg border p-5" gap="inline" render="section">
-        <h3 className="text-base font-semibold">Preview break</h3>
+        <Text as="h3" textRole="heading">
+          Preview break
+        </Text>
         {previewError ? (
-          <p className="text-onair-300 text-sm">
+          <Text as="p" textRole="compact" tone="danger">
             Couldn't assemble a preview for this selection. Adjust the criteria and try again.
-          </p>
+          </Text>
         ) : entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             {isPreviewing ? (
               "Assembling preview…"
             ) : (
@@ -482,13 +498,13 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
                 .
               </>
             )}
-          </p>
+          </Text>
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
-            <p className="text-muted-foreground mt-2 text-sm">
+            <Text as="p" className="mt-2" textRole="compact" tone="secondary">
               {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
-            </p>
+            </Text>
           </div>
         )}
       </Stack>
@@ -508,7 +524,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           <Action disabled={isApplying} onPress={discard} variant="ghost">
             Discard
           </Action>
-          <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
+          <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+            Unsaved changes
+          </Text>
         </Stack>
       )}
 

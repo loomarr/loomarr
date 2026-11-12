@@ -3,7 +3,7 @@ import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, CompactSelect, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, CompactSelect, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { toast } from "sonner";
 import { useFillerInvalidate } from "../../use-filler-invalidate";
 
@@ -70,7 +70,9 @@ const CatalogBulkBar = ({ selected, onClear }: CatalogBulkBarProps) => {
       gap="control"
       wrap
     >
-      <span className="text-signal font-mono text-xs">{pluralize(selected.size, "clip")} selected</span>
+      <Text as="span" textRole="mono" tone="signal">
+        {pluralize(selected.size, "clip")} selected
+      </Text>
 
       {BULK_TAG_FIELDS.map((field) => (
         // The wrapper sizes the select to its longest choice instead of the whole bar.

@@ -1,5 +1,5 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
-import { Action, Disclosure, Stack } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { AutomaticDownloadsForm } from "../automatic-downloads-form";
@@ -64,9 +64,9 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
                 {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
               </Action>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">
+            <Text as="p" className="mt-1" textRole="hint" tone="secondary">
               Clips already downloaded stay in your library.
-            </p>
+            </Text>
           </div>
         )}
       </Stack>
