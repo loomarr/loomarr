@@ -617,6 +617,79 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 	}
 }
 
+// A file whose name is not UTF-8 can't be kept, but it is not lost in silence: the pass lists it,
+// as near its name as text allows, for the maintainer to rename. A pass over another folder keeps
+// it listed; one over its own folder, once it is renamed, drops it.
+func TestANameThatIsNotUTF8IsListed(t *testing.T) {
+	h := newHarness(t)
+	h.file("Movies/Kettle Bay (2001).mkv", 5)
+	bad := h.file("Movies/Ferrow Lane (1999)/Ferrow \xe9t\xe9 (1999).mkv", 5)
+	h.file("Other/Ashgrove (2015).mkv", 5)
+	h.run()
+	want := "Movies/Ferrow Lane (1999)/Ferrow �t� (1999).mkv"
+	if r := h.im.Progress().Roots; len(r) != 1 || !slices.Equal(r[0].Unreadable, []string{want}) {
+		t.Fatalf("roots = %+v, want the name listed", r)
+	}
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Join(h.root, "Other")}); err != nil {
+		t.Fatal(err)
+	}
+	if r := h.im.Progress().Roots; !slices.Equal(r[0].Unreadable, []string{want}) {
+		t.Fatalf("after a pass over another folder = %+v, want the name still listed", r[0].Unreadable)
+	}
+	if err := os.Rename(bad, filepath.Join(filepath.Dir(bad), "Ferrow Lane (1999).mkv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Dir(bad)}); err != nil {
+		t.Fatal(err)
+	}
+	if r := h.im.Progress().Roots; len(r[0].Unreadable) != 0 {
+		t.Fatalf("after renaming = %+v, want none listed", r[0].Unreadable)
+	}
+}
+
+// A file that comes back as it went, its size and time unchanged (a drive plugged back in after
+// its titles were let go), is present again at once and not opened again: its header is the one
+// read before. One that comes back changed is read again.
+func TestAFileBackAsItWentIsNotReadAgain(t *testing.T) {
+	h := newHarness(t)
+	var paths []string
+	for i := range 20 {
+		paths = append(paths, h.file("Show/Season 1/Show S01E"+twoDigits(i+1)+".mkv", 5))
+	}
+	h.run()
+	aside := filepath.Join(t.TempDir(), "aside")
+	for _, p := range paths[:2] {
+		if err := os.Rename(p, aside+filepath.Base(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	gone := fileOrigin(h.root, "Show/Season 1/Show S01E01.mkv")
+	if o := h.origin(h.item(gone), gone); o.MissingAt.IsZero() {
+		t.Fatal("the removal was not applied")
+	}
+	reads := h.reads.Load()
+	for _, p := range paths[:2] {
+		if err := os.Rename(aside+filepath.Base(p), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The second comes back with other bytes.
+	if err := os.WriteFile(paths[1], make([]byte, 6), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	if o := h.origin(h.item(gone), gone); !o.MissingAt.IsZero() {
+		t.Fatal("the file that came back is still missing")
+	}
+	if row := h.fileRow(paths[0]); row.Header != librarystore.LibraryHeaderRead || !row.MissingAt.IsZero() {
+		t.Errorf("returned file = %+v, want present with its header read", row)
+	}
+	if got := h.reads.Load() - reads; got != 1 {
+		t.Errorf("headers read = %d, want only the changed file's", got)
+	}
+}
+
 // A walk that would remove more than a tenth of a root's files is held; confirming applies it.
 // A small removal applies at once.
 func TestImportRemovalGuard(t *testing.T) {
@@ -719,6 +792,36 @@ func TestAnUnreadableFolderHoldsOnlyItself(t *testing.T) {
 	}
 	if r := h.im.Progress().Roots; r[0].State != RootIncomplete {
 		t.Errorf("state = %s", r[0].State)
+	}
+}
+
+// Problem files that are gone never count toward a hold: clearing out disc images the maintainer
+// couldn't play anyway leaves one deleted movie under the share a pass holds, so it goes missing.
+func TestGoneProblemFilesDontHoldARemoval(t *testing.T) {
+	h := newHarness(t)
+	for i := range 20 {
+		name := fmt.Sprintf("Juliet %02d", i)
+		h.file(name+"/"+name+".mkv", 10)
+	}
+	for i := range 15 {
+		h.file(fmt.Sprintf("Discs/Kilo %02d.iso", i), 10)
+	}
+	h.run()
+	for i := range 15 {
+		if err := os.Remove(filepath.Join(h.root, "Discs", fmt.Sprintf("Kilo %02d.iso", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(h.root, "Juliet 00", "Juliet 00.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	gone := fileOrigin(h.root, "Juliet 00/Juliet 00.mkv")
+	if o := h.origin(h.item(gone), gone); o.MissingAt.IsZero() {
+		t.Error("one deleted movie in 20 was held because 15 disc images went with it")
+	}
+	if r := h.im.Progress().Roots; r[0].State == RootHeld {
+		t.Errorf("roots = %+v, want nothing held", r)
 	}
 }
 

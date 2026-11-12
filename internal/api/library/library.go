@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -32,6 +33,7 @@ type LibraryRootService interface {
 	Progress() scan.Progress
 	Importing() scan.ProgressSnapshot
 	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
+	HeldTitles(ctx context.Context, root string) ([]string, int, error)
 	Details(ctx context.Context) (scan.Details, error)
 	Rescan() error
 	RefreshEverything(ctx context.Context) error
@@ -345,10 +347,12 @@ type libraryScanDTO struct {
 }
 
 type libraryHeldDTO struct {
-	Path     string `json:"path" doc:"The folder whose scan is waiting"`
-	Movies   int    `json:"movies" doc:"Movies the scan no longer found"`
-	Episodes int    `json:"episodes" doc:"Episodes the scan no longer found"`
-	Other    int    `json:"other" doc:"Extras the scan no longer found"`
+	Path       string   `json:"path" doc:"The folder whose scan is waiting"`
+	Movies     int      `json:"movies" doc:"Movies the scan no longer found"`
+	Episodes   int      `json:"episodes" doc:"Episodes the scan no longer found"`
+	Other      int      `json:"other" doc:"Extras the scan no longer found"`
+	Titles     []string `json:"titles" doc:"A few of the titles whose files it no longer found, by name: a show once for all its episodes"`
+	TitleCount int      `json:"titleCount" doc:"How many titles those files are in all"`
 }
 
 type libraryStatusOutput struct {
@@ -365,6 +369,7 @@ type libraryStatusOutput struct {
 		Problems       int               `json:"problems" doc:"Files Loomarr skips, such as disc images"`
 		NeedsYou       int               `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
 		Held           []libraryHeldDTO  `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Unreadable     []string          `json:"unreadable" doc:"Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"`
 		Hooks          []libraryHookDTO  `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
 		Details        libraryDetailsDTO `json:"details" doc:"How the titles' details are getting on"`
 	}
@@ -398,6 +403,12 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	b.Health, b.InUse, b.Offline, b.Empty, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.Empty, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
 	b.Held = heldView(counts.Held)
+	for i := range b.Held {
+		h := &b.Held[i]
+		if h.Titles, h.TitleCount, err = svc.HeldTitles(ctx, h.Path); err != nil {
+			return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+		}
+	}
 	b.Details = libraryDetailsDTO{Waiting: details.Waiting, Unreachable: details.State == scan.LookupsUnreachable}
 	if !details.RetryAt.IsZero() {
 		at := details.RetryAt
@@ -406,6 +417,12 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	b.Hooks = s.libraryHooksView()
 
 	p := svc.Progress()
+	b.Unreadable = []string{}
+	for _, r := range p.Roots {
+		for _, rel := range r.Unreadable {
+			b.Unreadable = append(b.Unreadable, path.Join(r.Root, rel))
+		}
+	}
 	b.Scan = libraryScanDTO{
 		Enabled: svc.Enabled(), ScanProgress: ScanProgressOf(svc.Importing()), ArrIncomplete: p.ArrIncomplete,
 	}

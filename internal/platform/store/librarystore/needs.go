@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
@@ -150,26 +151,40 @@ func (s *Store) LibraryNeeds(ctx context.Context) ([]LibraryNeed, error) {
 
 func (s *Store) LibraryCandidates(ctx context.Context, itemIDs []string) (map[string][]LibraryCandidate, error) {
 	out := map[string][]LibraryCandidate{}
-	for _, id := range itemIDs {
-		rows, err := s.h.QueryContext(ctx, s.ph(`SELECT kind, namespace, external_id, name, year, overview, poster,
-			name_match, year_match, length_match FROM library_candidates WHERE inventory_item_id = ? ORDER BY rank`), id)
-		if err != nil {
-			return nil, fmt.Errorf("library candidates: %w", err)
-		}
-		for rows.Next() {
-			var c LibraryCandidate
-			if err := rows.Scan(&c.Kind, &c.ID.Namespace, &c.ID.Value, &c.Name, &c.Year, &c.Overview, &c.Poster, &c.NameMatch,
-				&c.YearMatch, &c.LengthMatch); err != nil {
-				_ = rows.Close()
-				return nil, fmt.Errorf("library candidates: %w", err)
-			}
-			out[id] = append(out[id], c)
-		}
-		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+	for len(itemIDs) > 0 {
+		batch := itemIDs[:min(len(itemIDs), idsPerRead)]
+		itemIDs = itemIDs[len(batch):]
+		if err := s.readCandidates(ctx, batch, out); err != nil {
 			return nil, fmt.Errorf("library candidates: %w", err)
 		}
 	}
 	return out, nil
+}
+
+// readCandidates adds a batch of titles' candidates to out, each title's in rank order.
+func (s *Store) readCandidates(ctx context.Context, ids []string, out map[string][]LibraryCandidate) error {
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT inventory_item_id, kind, namespace, external_id, name, year, overview,
+		poster, name_match, year_match, length_match FROM library_candidates
+		WHERE inventory_item_id IN (`+strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ")+`)
+		ORDER BY inventory_item_id, rank`), args...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id string
+		var c LibraryCandidate
+		if err := rows.Scan(&id, &c.Kind, &c.ID.Namespace, &c.ID.Value, &c.Name, &c.Year, &c.Overview, &c.Poster,
+			&c.NameMatch, &c.YearMatch, &c.LengthMatch); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		out[id] = append(out[id], c)
+	}
+	return errors.Join(rows.Err(), rows.Close())
 }
 
 func (s *Store) SaveLibraryCandidates(ctx context.Context, itemID, searched string, candidates []LibraryCandidate) error {

@@ -17,6 +17,7 @@ const libraryStatus = (over: Partial<LibraryStatusOutputBody> = {}): LibraryStat
   problems: 0,
   needsYou: 0,
   held: [],
+  unreadable: [],
   hooks: [],
   details: { waiting: 0, unreachable: false },
   scan: {

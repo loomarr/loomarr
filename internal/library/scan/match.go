@@ -5,11 +5,13 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/width"
 
@@ -82,7 +84,8 @@ type Matcher struct {
 // each title still waiting is searched once more under the new rules.
 //
 //	r2: a movie whose files name no year is settled by its name and length.
-const matchRules = "r2"
+//	r3: names agree with their accents off, composed or not, and acronyms with their dots off.
+const matchRules = "r3"
 
 // evidence is what the files say about a title beyond its name: a movie's length, a series'
 // episodes. A search result is checked against it.
@@ -398,12 +401,89 @@ func posterURL(rec mp.Record) string {
 	return ""
 }
 
-// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
-var leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
+var (
+	// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
+	leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
+	// trackerPrefix matches the site a download names itself after, before the title:
+	// "www.TrackerNet.org - Ashgrove", "[www.TrackerNet.org] Ashgrove", "[ www.Torrent.Example ] -
+	// Ashgrove", and, with no "www.", a site's name with its domain and a dash: "Tracker.io -
+	// Ashgrove". The site ends at a bracket, a space, an underscore or a dash, never inside a dotted
+	// title.
+	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*(?:www\.(?:[a-z0-9-]+\.)+[a-z]{2,10}(?:\s*\][ ._]*(?:-[ ._]*)?|[ ._]*-[ ._]*|\s+|_+)|(?:[a-z0-9-]+\.)+(?:com|org|net|io|to|cc|me|tv|info|xyz|ru|se|nu|ws|club|lol|biz|co|example)\s*\]?[ ._]*-[ ._]*)`)
+	// indexPrefix matches a collection's place for a film, before its title: "01 - Ashgrove",
+	// "1. Ashgrove", "(1) Ashgrove". A number that starts a title, "10 Kettles", has none of these.
+	indexPrefix = regexp.MustCompile(`^\s*(?:\(\d{1,2}\)|\d{1,2}\.|\d{1,2}[ ._]+-)[ ._]+`)
+	// bracketNote matches a bracketed group after a title, which noteWords may say is a note on the
+	// release rather than part of its name: "(Dual Audio)", "[HD]", "(2016 Remaster)".
+	bracketNote = regexp.MustCompile(`[(\[]([^()\[\]]*)[)\]]`)
+	// noteWord is a word a bracketed note on a release is made of.
+	noteWord = regexp.MustCompile(`(?i)^(directors?|director's|cut|uncut|extended|unrated|theatrical|special|edition|version|remaster|remastered|restored|dual|audio|multi|subs?|subbed|dubbed|eng|english|hd|sd|fhd|imax|criterion|anniversary|complete|\d+(?:st|nd|rd|th))$`)
+	// releaseMark is a word only a release name carries after its title: a resolution, source, codec
+	// or rip. The title ends before the first.
+	releaseMark = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|blu-?ray|bdrip|brrip|web-?dl|webrip|hdtv|dvdrip|x26[45]|h\.?26[45]|hevc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|repack|camrip|hdcam|hdrip|hdts|telesync|dvdscr|vostfr|vost|fhd|dl)$`)
+	// releaseWord is a word a release name carries after its title that a title may carry too:
+	// "Tangled Web", "The Cam", "Mister Proper", "The German". It ends the title only where a
+	// release's words are plainly under way: after the year, before another release word, or last
+	// in a name written with dots.
+	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch|amzn|nf|dsnp|hmax|atvp|pcok|hulu|3d|hsbs|hou|sbs|mkv|mp4|avi)$`)
+)
 
-// releaseToken is a word a release name carries after the title: the quality, source, codec or
-// edition. The title ends before the first one after the year.
-var releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited)$`)
+// releaseToken says whether a word is a release's: a releaseMark, or a releaseWord.
+func releaseToken(w string) bool { return releaseMark.MatchString(w) || releaseWord.MatchString(w) }
+
+// releaseCut is where a name's title ends among its words: at its first releaseMark, or at a
+// releaseWord after the year, before another release word, or last in a name written with dots
+// ("Ashgrove.CAM").
+func releaseCut(words []string, dotted bool) int {
+	first := func(w string) string { return strings.SplitN(w, "-", 2)[0] }
+	for i, w := range words {
+		if i == 0 {
+			continue
+		}
+		w = first(w)
+		switch {
+		case releaseMark.MatchString(w):
+			return i
+		case !releaseWord.MatchString(w):
+			continue
+		case releaseYear(first(words[i-1])),
+			i+1 < len(words) && releaseToken(first(words[i+1])),
+			i+1 == len(words) && dotted:
+			return i
+		}
+	}
+	return len(words)
+}
+
+// releaseNote says whether a bracketed group's words are a note on the release ("Dual Audio",
+// "2016 Remaster", "HD"), not part of the title. A year alone is the title's year, kept.
+func releaseNote(inner string) bool {
+	words := strings.Fields(inner)
+	if len(words) == 0 || len(words) == 1 && yearToken.MatchString(words[0]) {
+		return false
+	}
+	for _, w := range words {
+		if !noteWord.MatchString(w) && !releaseToken(w) && !yearToken.MatchString(w) {
+			return false
+		}
+	}
+	return true
+}
+
+// dottedWords splits a word joined with dots into its words, "Lane.2019" and "Ferrow.Lane", where
+// the name is otherwise spaced. Letters written apart ("S.W.A.T.") and a number ("3.14") stay whole.
+func dottedWords(w string) []string {
+	parts := strings.Split(w, ".")
+	if len(parts) < 2 || slices.Contains(parts, "") {
+		return []string{w}
+	}
+	for _, p := range parts {
+		if letters := strings.IndexFunc(p, unicode.IsLetter) >= 0; letters && utf8.RuneCountInString(p) > 1 {
+			return parts
+		}
+	}
+	return []string{w}
+}
 
 var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
 
@@ -425,30 +505,54 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	// "½" and "…" stay as written.
 	name = width.Fold.String(name)
 	name = editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, " "), " ")
+	// A release's notes at its end say nothing of its title: "Ashgrove.CAM [1080p]" is
+	// "Ashgrove.CAM".
+	name = trimReleaseNotes(strings.TrimSpace(name))
 	// A leading year is the year: "(2015) Ashgrove". Any other leading tag is a release group's.
 	leadingYear := 0
 	if m := leadingYearTag.FindStringSubmatch(name); m != nil {
 		leadingYear, name = atoi(m[1]), name[len(m[0]):]
 	}
+	name = trackerPrefix.ReplaceAllString(name, "")
 	name = leadingTags.ReplaceAllString(name, "")
-	if !strings.Contains(name, " ") {
-		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
+	name = strings.NewReplacer("【", "[", "】", "]", "「", "[", "」", "]").Replace(name)
+	// A copy a household made by hand: "Copy of Ashgrove (2015)".
+	if strings.HasPrefix(strings.ToLower(name), "copy of ") {
+		name = name[len("copy of "):]
 	}
-	words := strings.FieldsFunc(name, func(r rune) bool {
-		return unicode.IsSpace(r) || strings.ContainsRune("()[]{}_", r)
-	})
-	// Release words follow the year, so one before the year is the title's: "Charlotte's Web (2006)".
-	firstYear := 0
-	for i, w := range words {
-		if i > 0 && releaseYear(strings.SplitN(w, "-", 2)[0]) {
-			firstYear = i
-			break
+	if loc := indexPrefix.FindStringIndex(name); loc != nil && strings.IndexFunc(name[loc[1]:], unicode.IsLetter) >= 0 {
+		name = name[loc[1]:]
+	}
+	// A name written with dots is one still when a bracketed note sits among them:
+	// "Ashgrove.2015.[1080p]".
+	dotted := !strings.Contains(name, " ")
+	name = bracketNote.ReplaceAllStringFunc(name, func(group string) string {
+		if releaseNote(group[1 : len(group)-1]) {
+			return " "
 		}
+		return group
+	})
+	if dotted {
+		name = strings.NewReplacer(".", " ", "_", " ", "+", " ").Replace(name)
 	}
-	cut := len(words)
-	for i, w := range words {
-		if i > firstYear && releaseToken.MatchString(strings.SplitN(w, "-", 2)[0]) {
-			cut = i
+	// A name joined only with dashes, "ferrow-lane-2019", is spaced where a year shows it is words.
+	if !strings.Contains(strings.TrimSpace(name), " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], func(w string) bool {
+		return releaseYear(strings.Trim(w, "()[]"))
+	}) {
+		name = strings.ReplaceAll(name, "-", " ")
+	}
+	var words []string
+	for _, w := range strings.FieldsFunc(name, func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune("()[]{}_", r)
+	}) {
+		words = append(words, dottedWords(w)...)
+	}
+	cut := releaseCut(words, dotted)
+	// A year among the release words, "Ashgrove 1080p 2015", is the year when the title gives none.
+	after := 0
+	for _, w := range words[cut:] {
+		if w = strings.SplitN(w, "-", 2)[0]; releaseYear(w) {
+			after = atoi(w)
 			break
 		}
 	}
@@ -456,22 +560,100 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	clean := func(words []string) string { return strings.Trim(strings.Join(words, " "), " -.") }
 	year = known
 	for j := len(words) - 1; j > 0; j-- {
-		// A year glued to a release group, "2015-GRP", is the year.
-		if w := strings.SplitN(words[j], "-", 2)[0]; releaseYear(w) {
+		// A year glued to a release group, "2015-GRP", or set between dashes, "-2015-", is the year.
+		if w := strings.SplitN(strings.TrimLeft(words[j], "-"), "-", 2)[0]; releaseYear(w) {
+			// A year with a title's words after it, "Back to 1985 Again" or "Class of 1999 Kettle", is
+			// the title's. A release's year has only its notes after it ("Ashgrove.2015.3D.HSBS",
+			// "Kettle Bay 2021 AMZN") or an edition, or is in brackets.
+			bracketed := strings.Contains(name, "("+w+")") || strings.Contains(name, "["+w+"]")
+			if !bracketed && titleWords(words[j+1:], name) {
+				continue
+			}
 			if year == 0 {
 				year, _ = strconv.Atoi(w)
 			}
 			if !strings.Contains(name, "("+w+")") && !strings.Contains(name, "["+w+"]") {
 				whole = articleFirst(clean(words))
 			}
-			words = words[:j]
+			// An edition between the title and its year is the file's, not the title's:
+			// "Mirefield.Extended.Edition.1985", "Kilner Special Edition (2006)".
+			words = withoutEdition(words[:j])
 			break
 		}
 	}
 	if year == 0 {
 		year = leadingYear
 	}
+	if year == 0 {
+		year = after
+	}
 	return articleFirst(clean(words)), year, whole
+}
+
+// editionWords are the editions a release names after its title, in lower case.
+var editionWords = [][]string{
+	{"extended", "edition"}, {"extended", "cut"}, {"directors", "cut"}, {"director's", "cut"}, {"special", "edition"},
+	{"ultimate", "edition"}, {"collectors", "edition"}, {"collector's", "edition"}, {"anniversary", "edition"},
+	{"theatrical", "cut"}, {"remastered"}, {"unrated"}, {"extended"},
+}
+
+// titleWords says whether words, the last of name's, run on a title: each a word written as name
+// writes its title's, "Again" ("again" in a name all in lower case), or a small one between them,
+// "of", "the", and not an edition or a release's word. A release's notes are in capitals or carry
+// digits: "AMZN", "3D".
+func titleWords(words []string, name string) bool {
+	if len(words) == 0 || editionOnly(words) {
+		return false
+	}
+	asTitle := func(w string) bool {
+		if strings.ContainsFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && r != '\'' }) {
+			return false
+		}
+		switch {
+		case name == strings.ToLower(name), name == strings.ToUpper(name):
+			return true
+		}
+		r, size := utf8.DecodeRuneInString(w)
+		return unicode.IsUpper(r) && w[size:] != "" && strings.ToLower(w[size:]) == w[size:]
+	}
+	titled := false
+	for _, w := range words {
+		switch {
+		case releaseToken(w):
+			return false
+		case smallWords[strings.ToLower(w)]:
+		case asTitle(w):
+			titled = true
+		default:
+			return false
+		}
+	}
+	return titled
+}
+
+// smallWords are the words a title keeps in lower case between its others.
+var smallWords = map[string]bool{"of": true, "the": true, "and": true, "a": true, "an": true, "in": true, "to": true, "on": true, "at": true}
+
+// editionOnly says whether words are an edition and nothing else: "Directors Cut", "Extended".
+func editionOnly(words []string) bool {
+	return slices.ContainsFunc(editionWords, func(edition []string) bool {
+		return slices.EqualFunc(words, edition, strings.EqualFold)
+	})
+}
+
+// withoutEdition is a title's words with an edition at their end taken off; a title that is
+// nothing but one, or but an article and one, keeps it: "Extended (2010)", "The Uncut (2004)".
+func withoutEdition(words []string) []string {
+	for _, edition := range editionWords {
+		n := len(words) - len(edition)
+		if n > 0 && slices.EqualFunc(words[n:], edition, strings.EqualFold) {
+			if n == 1 && slices.Contains([]string{"the", "a", "an"}, strings.ToLower(words[0])) {
+				return words
+			}
+			return words[:n]
+		}
+	}
+	return words
 }
 
 // trailingArticle matches a title Radarr and Plex sort by writing its article last: "Quiet Signal,
@@ -491,25 +673,45 @@ func sameName(a, b string) bool {
 	return a != "" && normName(a) == normName(b)
 }
 
+// Its letters are read as sortKey reads them, accents off and composed or not ("Amélie" is
+// "amelie"), and letters written apart are one word ("S.W.A.T." and "M*A*S*H" are "swat" and
+// "mash").
 func normName(s string) string {
-	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
+	s = strings.ReplaceAll(sortKey(s), "&", " and ")
+	var words []string
 	var b strings.Builder
-	space := false
+	flush := func() {
+		if b.Len() > 0 {
+			words = append(words, b.String())
+			b.Reset()
+		}
+	}
 	for _, r := range s {
 		switch {
 		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			if space && b.Len() > 0 {
-				b.WriteByte(' ')
-			}
 			b.WriteRune(r)
-			space = false
 		case r == '\'' || r == '’':
 			// "Harbor's" is "Harbors".
 		default:
-			space = true
+			flush()
 		}
 	}
-	return b.String()
+	flush()
+	// Single letters in a row are one word written apart.
+	var out []string
+	for i := 0; i < len(words); i++ {
+		j := i
+		for j < len(words) && utf8.RuneCountInString(words[j]) == 1 && unicode.IsLetter([]rune(words[j])[0]) {
+			j++
+		}
+		if j-i >= 2 {
+			out = append(out, strings.Join(words[i:j], ""))
+			i = j - 1
+			continue
+		}
+		out = append(out, words[i])
+	}
+	return strings.Join(out, " ")
 }
 
 // sameYear is whether a candidate's year agrees with the file's, a year apart at most: a release

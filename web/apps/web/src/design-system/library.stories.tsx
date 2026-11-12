@@ -118,7 +118,16 @@ const HeldRemoval: Story = {
     status: {
       health: "ok",
       scan: IDLE,
-      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+      held: [
+        {
+          path: "/media/movies",
+          movies: 2406,
+          episodes: 0,
+          other: 0,
+          titles: ["Amber Hollow", "Brightwater", "Calder Point"],
+          titleCount: 2406,
+        },
+      ],
       offline: [],
     },
   },

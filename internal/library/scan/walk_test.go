@@ -2,9 +2,11 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -224,11 +226,58 @@ func TestStep1CountsARootItsEarlyCountMissed(t *testing.T) {
 	}
 }
 
-// A movie takes ids from its own name or folder: not from a collection or series folder above it,
-// and never a tvdb id.
+// A root that holds a few big folders ("/media" with Movies and TV) is counted by what is in them:
+// step 1's bar moves a movie or show at a time, not 0, half, then full over hours.
+func TestStep1CountsAFewBigFoldersByWhatTheyHold(t *testing.T) {
+	root := t.TempDir()
+	for i := range 30 {
+		name := fmt.Sprintf("Lima %02d (2001)", i)
+		touch(t, root, "Movies/"+name+"/"+name+".mkv")
+	}
+	for i := range 20 {
+		touch(t, root, fmt.Sprintf("TV/Mike %02d/Season 01/Mike %02d S01E01.mkv", i, i))
+	}
+	touch(t, root, "readme.txt")
+	var mu sync.Mutex
+	seen := map[int]bool{}
+	var tr *Tracker
+	tr = NewTracker(nil, func(bool) {
+		s := tr.Snapshot(time.Now())
+		mu.Lock()
+		seen[s.Done] = true
+		mu.Unlock()
+	})
+	tr.Begin(StepWalking, 0)
+	report := &walkReport{tracker: tr, name: "media"}
+	walk, err := walkRoot(context.Background(), root, nil, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.Snapshot(time.Now()); got.Total != 51 {
+		t.Fatalf("step 1 total = %d, want 51: 30 movies, 20 shows and the loose file", got.Total)
+	}
+	report.writing()
+	for _, f := range walk.Files {
+		report.wrote(f.Top)
+	}
+	report.close()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 25 {
+		t.Errorf("step 1 moved through %d values, want it to move a folder at a time", len(seen))
+	}
+	if got := tr.Snapshot(time.Now()); got.Done != 51 {
+		t.Errorf("step 1 done = %d once written, want 51", got.Done)
+	}
+}
+
+// A movie takes ids from its own name or folder, the one above a part's own folder: not from a
+// collection or series folder above it, and never a tvdb id.
 func TestMovieIDsComeFromItsOwnFolder(t *testing.T) {
 	cases := map[string][]mp.ExternalID{
 		"Saga {tmdb-90000700}/November (2001)/November (2001).mkv":   nil,
+		"November (2001) {tmdb-90000703}/CD1/nov-a.avi":              {{Namespace: mp.NamespaceTMDB, Value: "90000703"}},
+		"Saga {tmdb-90000700}/November (2001)/CD1/nov-a.avi":         nil,
 		"Saga/November (2001) {tmdb-90000701}/November (2001).mkv":   {{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
 		"Saga/November (2001)/November (2001) {imdb-tt90000702}.mkv": {{Namespace: mp.NamespaceIMDB, Value: "tt90000702"}},
 		"Oscar {tvdb-90081192}/Oscar.mkv":                            nil,

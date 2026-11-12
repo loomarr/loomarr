@@ -80,6 +80,10 @@ interface LibraryHeldRemoval {
   movies: number;
   episodes: number;
   other: number;
+  /** A few of the titles those files are, by name: a show once for all its episodes. */
+  titles: readonly string[];
+  /** How many titles those files are in all. */
+  titleCount: number;
 }
 
 /** Whether an arr tells Loomarr about new downloads. */
@@ -96,6 +100,8 @@ interface LibrarySettingsProps {
   /** The latest few titles that became ready, last first, shown while the import runs. */
   readySoFar?: readonly LibraryReadyTitle[];
   held: readonly LibraryHeldRemoval[];
+  /** Files the scan can't keep because their names can't be read, by path: to rename. */
+  unreadable?: readonly string[];
   hooks: readonly LibraryHook[];
   /** How the titles' details are getting on; absent reads as nothing waiting. */
   details?: LibraryDetails;

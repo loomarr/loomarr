@@ -318,7 +318,7 @@ describe("LibraryShelf", () => {
       status: {
         health: "ok",
         scan: IDLE,
-        held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+        held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0, titles: [], titleCount: 0 }],
         offline: [],
       },
     });

@@ -180,6 +180,9 @@ type RootResult struct {
 	Empty bool
 	// Held is how many files the walk no longer found while they wait for confirmation.
 	Held int
+	// Unreadable are the files the walk could not keep because their names are not UTF-8, relative
+	// to the root, each as near its name as text allows: for the maintainer to rename.
+	Unreadable []string
 }
 
 // Progress is how the scanner's last passes ended, for the status endpoint. How far a running
@@ -356,6 +359,12 @@ func (im *Importer) importFolders(ctx context.Context, root string, dirs []strin
 	im.setProgress(func(p *Progress) {
 		for i := range p.Roots {
 			if p.Roots[i].Root == root {
+				// The names it could not read outside the folders it walked still stand.
+				for _, rel := range p.Roots[i].Unreadable {
+					if !under(filepath.Join(root, filepath.FromSlash(rel)), dirs) {
+						result.Unreadable = append(result.Unreadable, rel)
+					}
+				}
 				p.Roots[i] = result
 			}
 		}
@@ -621,6 +630,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	}
 	for _, path := range walk.Skipped {
 		im.log().Warn("library scan: a name is not UTF-8 and was skipped", "path", path)
+		result.Unreadable = append(result.Unreadable, strings.ToValidUTF8(relTo(root, path), "�"))
 	}
 	rows, err := im.Store.LibraryFiles(ctx, root)
 	if err != nil {
@@ -684,12 +694,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		id := ids[i]
 		row := librarystore.LibraryFile{Path: file.Path, Root: root, Size: file.Stat.Size, ModifiedNs: file.Stat.ModifiedNs,
 			Identity: id.digest, Kind: string(kindOf(id.kind)), Header: librarystore.LibraryHeaderPending, SeenAt: now}
-		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs && old.MissingAt.IsZero()
+		// The same bytes as the row recorded, whether the file stayed or came back as it went (a
+		// drive plugged in again after its titles were let go): the header read then is still its
+		// own. Only one that stayed is unchanged; one that came back is written present again.
+		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs
 		if sameBytes {
 			row.Header = old.Header
 		}
 		switch {
-		case sameBytes && old.Identity == id.digest && old.ItemID != "":
+		case sameBytes && old.MissingAt.IsZero() && old.Identity == id.digest && old.ItemID != "":
 			// Unchanged: never written, never opened again.
 			if prev[file.Path].Held {
 				save = append(save, old)
@@ -777,7 +790,14 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		// A confirmation is spent by the first complete walk of the whole root after it, held or
 		// not: it answers the removal the maintainer saw, never a later one.
 		confirmed := scope == nil && walk.Complete && im.takeConfirmed(root)
-		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
+		// Only importable files count toward the hold, as they do toward what the root holds.
+		importable := 0
+		for _, r := range removed {
+			if r.Problem == "" {
+				importable++
+			}
+		}
+		over := importable > holdAtLeast || (present > 0 && float64(importable) > holdShare*float64(present))
 		held := over && !confirmed
 		for _, r := range removed {
 			if held && r.Problem == "" {
@@ -791,7 +811,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			save = append(save, r)
 		}
 		if held {
-			result.State, result.Held = RootHeld, len(removed)
+			result.State, result.Held = RootHeld, importable
 		}
 	}
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {

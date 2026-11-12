@@ -6853,11 +6853,22 @@ components:
         path:
           description: The folder whose scan is waiting
           type: string
+        titleCount:
+          description: How many titles those files are in all
+          format: int64
+          type: integer
+        titles:
+          description: "A few of the titles whose files it no longer found, by name: a show once for all its episodes"
+          items:
+            type: string
+          type: array
       required:
         - path
         - movies
         - episodes
         - other
+        - titles
+        - titleCount
       type: object
     LibraryHookDTO:
       additionalProperties: false
@@ -7553,6 +7564,11 @@ components:
           description: Readable folders found but not yet in use
           format: int64
           type: integer
+        unreadable:
+          description: "Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"
+          items:
+            type: string
+          type: array
       required:
         - health
         - inUse
@@ -7565,6 +7581,7 @@ components:
         - problems
         - needsYou
         - held
+        - unreadable
         - hooks
         - details
       type: object

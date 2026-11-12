@@ -159,3 +159,93 @@ func TestAMovieInPartsPlaysEveryPart(t *testing.T) {
 		}
 	}
 }
+
+// A movie in parts is one title from its first pass, before any catalog names it, whether its
+// parts sit side by side or one to a folder ("CD1/", "Disc 2/"): one title for the maintainer to
+// answer, named as the movie, whose length is its parts' together. Its parts' shared mark is the
+// scanner's own and never listed as an id. A pass over one part's folder keeps it a part.
+func TestAMovieInPartsIsOneTitleBeforeAnyCatalog(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		files []string
+	}{
+		{"side by side", []string{"Ashgrove (2015)/Ashgrove (2015) - cd1.mkv", "Ashgrove (2015)/Ashgrove (2015) - cd2.mkv"}},
+		{"cd folders", []string{"Ashgrove (2015)/CD1/asg-a.avi", "Ashgrove (2015)/CD2/asg-b.avi"}},
+		{"disc folders", []string{"Ashgrove (2015)/Disc 1/Ashgrove.avi", "Ashgrove (2015)/Disc 2/Ashgrove.avi"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			var paths []string
+			for _, f := range c.files {
+				paths = append(paths, h.file(f, 10))
+			}
+			h.run()
+			check := func(when string) {
+				t.Helper()
+				page, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(page.Items) != 1 || page.Items[0].Name != "Ashgrove (2015)" || page.Items[0].Files != 2 {
+					t.Fatalf("%s: titles = %+v, want one Ashgrove (2015) of two files", when, page.Items)
+				}
+				it, err := h.st.LibraryItem(ctx, page.Items[0].ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(it.IDs) != 0 {
+					t.Errorf("%s: ids = %+v, want none listed", when, it.IDs)
+				}
+				parts, err := h.st.LibraryPlayingParts(ctx, it.ID)
+				if err != nil || len(parts) != 2 || parts[0].Path != paths[0] || parts[1].Path != paths[1] {
+					t.Errorf("%s: playing = %+v, %v; want both parts in order", when, parts, err)
+				}
+				length := (&Matcher{Inventory: h.inv}).length(ctx, librarystore.LibraryNeed{ID: it.ID, Kind: string(mp.KindMovie)})
+				if length != 2*1_320_000*time.Millisecond {
+					t.Errorf("%s: length = %v, want both parts' together", when, length)
+				}
+			}
+			check("first pass")
+			// A changed second part is written again on a pass over its folder alone.
+			if err := os.WriteFile(paths[1], make([]byte, 11), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.im.RunFolders(ctx, h.root, []string{filepath.Dir(paths[1])}); err != nil {
+				t.Fatal(err)
+			}
+			check("pass over one part's folder")
+		})
+	}
+}
+
+// Folders are a movie's parts only as a whole set named by their marks alone, each holding one
+// video: a show's season folders, a folder that merely starts with a mark, a lone "CD1" or one
+// holding two videos keep their videos as they were.
+func TestPartFoldersAreAWholeSetOfOneVideoEach(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		files []string
+	}{
+		{"a lone part folder", []string{"Ashgrove (2015)/CD1/asg-a.avi", "Ashgrove (2015)/Extras/asg-b.avi"}},
+		{"a part missing", []string{"Ashgrove (2015)/CD1/asg-a.avi", "Ashgrove (2015)/CD3/asg-b.avi"}},
+		{"words beside the mark", []string{"Ashgrove (2015)/Ashgrove CD1/asg-a.avi", "Ashgrove (2015)/Ashgrove CD2/asg-b.avi"}},
+		{"two videos in a part", []string{"Ashgrove (2015)/CD1/asg-a.avi", "Ashgrove (2015)/CD1/asg-c.avi", "Ashgrove (2015)/CD2/asg-b.avi"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			for _, f := range c.files {
+				h.file(f, 10)
+			}
+			w, err := walkRoot(context.Background(), h.root, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, f := range w.Files {
+				if f.Part != 0 {
+					t.Errorf("%s: part %d, want a whole file", f.Rel, f.Part)
+				}
+			}
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -120,7 +121,77 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	35: a movie in parts ("cd1", "cd2") notes each file's part, and every part of it plays.
 //	36: a show whose folder gives no year takes the one its episodes' names agree on
 //	    ("Show (1963) - S01E01").
-const writeVersion = 36
+//	37: a season folder's "101", "- 03", "3.05" and "E03" place its episodes; "10x10 (2018)" is a
+//	    title; DivX, Flash, OGM, RealMedia and VOB files are read; an episode titled "Each-Other" and
+//	    a catch-all's "Shorts" folder are not extras.
+//	38: a movie in parts is one title before any catalog names it, and its parts may each have a
+//	    folder of their own ("CD1/", "Disc 2/").
+//	39: season folders spelled out, in other languages, with notes or the show's initials, or with
+//	    a disc or codec folder inside, place their episodes; a NAS's snapshot and recycle folders, a
+//	    downloader's unfinished ones and a film's interviews and featurettes are skipped; a day
+//	    alone makes no show; a year after a dot, a dash or the release words is the year; release
+//	    notes, a collection's place and a tracker's name are not the title; "1x2", "S01Ep02",
+//	    "T01E02" and "Staffel 1 Folge 2" are marks.
+//	40: an extras folder outside a title's own folder is a folder of titles; a folder whose
+//	    episodes name several shows, none its own, names none; extras named in words beside a film
+//	    are skipped; "Show E01" in the show's folder, a year's folder in a show's, "Season
+//	    Specials", "1st Season", "Folge 1" and a fansub's "Show S2 - 03" place their episodes.
+//	41: a word a title may share with a release ("Tangled Web", "The Cam") ends it only where a
+//	    release's words are under way; a genre folder's one show is its episodes' own; a dated
+//	    release loose at the top or in a catch-all is its show's; "Capítulo 5", "Серия 9", "Cap.117"
+//	    and "第11話" are marks; a season pack in its show's folder, a fansub pack's folder and an
+//	    unmarked file beside a show's episodes are the show's; descriptive extras, Media Center
+//	    recordings and a Mac's share leavings are read as they are.
+//	42: an extra named by its kind is one beside its title, however it is named, and a title of its
+//	    own with none beside it; specials loose beside a show's season folders and episodes numbered
+//	    alone in a show's folder are its; "Complete Series" folders, "第1期", "시즌 1" and "Series 7
+//	    Club" are read as they mean; ".45 …" and "@Home …" are titles, not hidden folders.
+//	43: an extra of a title with an apostrophe in its name ("…'s … (2010)-trailer") is one.
+//	44: a show's episodes in its folder's unnamed or misspelt folders, or a copy of it ("Show
+//	    Complete/", "Show (Season 2)/"), are the show's; loose names written in lower case are
+//	    one show with their capitalised spelling; fansub numbers written " 19", " - E20", " -
+//	    Episode 17", " - 05.5" and " - 01-03" are episodes, as are a show's numbers alone in a
+//	    shows' catch-all; a film in its own folder in a films' catch-all is a film; "The Sample",
+//	    "Paper-Clip" and a title holding "Extra" are titles; genre folders are catch-alls.
+//	45: a miniseries' parts in a shows' catch-all are its episodes; "Title (Year) Trailer" alone,
+//	    and "Show - Making Of" beside its episode, are extras; a show's folder with one marked
+//	    episode holds episodes; "Promo", "TV Spot", "Blooper Reel" and galleries are extras.
+//	46: a file among films is a film unless "S01E01" or a show's season folder says otherwise;
+//	    every video in a show's folder in a shows' catch-all is an episode; names are read
+//	    without their release's notes at their end; a remake's and a sequel's folders are their
+//	    own shows; MakeMKV's, Media Center's, old scene and phone names; trackers' sites.
+//	47: a title named by its file keeps its release's notes in its name, as before 46; the
+//	    catalog's search sets them aside.
+//	48: catch-alls are films', shows' or mixed; a show's loose folder of named episodes is a
+//	    series; TV captures' parts are episodes; a site's promo, a sneak peek, a recap, a bonus
+//	    and a preview are extras; an anime's dashed number wins over one in its name, a dated
+//	    anime and a batch's folder are read; "S01E01" alone among films is a film.
+//	49: a film's parts, a file named as its own folder with its year, sequels and a saga's films
+//	    are films wherever they are; a season folder's "- 03" and "1.05" are its own; a "Show
+//	    Season 2" folder gives its season, as does "Season IV"; a season pack's release folder
+//	    stands for its show's folder; "Part 1 of 3" is a miniseries'; plural kinds, a trailer in
+//	    a film's folder, a day's file in a show's folder and a DVR's dated name are read.
+//	50: an extra's kind must end its name, and a dated name is an episode, so "Hilltop - Scene
+//	    of the Crime" and "Show - 2018-04-02 - Recap" play; an anime folder tags its releases;
+//	    a shows' catch-all's dated names are episodes; "movie.mkv" and "1.mkv" take their
+//	    folder's title; a show's season folders are one show; a franchise's films are films;
+//	    "1x01" among films, "3 - 01" in Season 3, "(Season 1-3)", "Kausi 1", "Ep01" are read; a
+//	    film's or show's "<title> Extras" folder is its extras.
+//	51: a loose episode beside its show's folder is that show's; "Season 5 Episode 2" names its
+//	    season wherever it is; "(TV Series)" and "(Miniseries)" are no part of a show's name; a
+//	    franchise's folder of two shows holds each as its own; three digits whose hundred is the
+//	    season are its episode; editions before a year are set aside; "Easter Eggs", "Credits"
+//	    and "Intro" are a film's extras, but an episode's titles beside marked episodes; a
+//	    season's extras folder and a scene's proof are skipped; "Christmas Specials" are season
+//	    0; "Saga Two" is a title, not a saga's folder.
+//	52: a shelf by letter ("TV/C/") or by what is watched ("To Watch/") names no show; files
+//	    numbered after a name they share ("Fizzy Fox 01", "Fizzy Cat - 02 - Paws", "01" beside
+//	    "02") are that show's episodes wherever they are; a group's tag last, "{Grp}" or "(Grp)"
+//	    first, tags a release; a fansub's "SP01" and "OVA 2" are season 0's; a year with a
+//	    title's words after it is the title's ("Back to 1985 Again"); a season's disc label
+//	    ("SHOW_S1_D1") holds its episodes; MakeMKV's "title00" and a recorded film are named by
+//	    their folder and film; "シーズン1" is a season folder.
+const writeVersion = 52
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -306,7 +377,10 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 		}
 	}
 	for _, id := range item.ExternalIDs {
-		it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		// A movie in parts' own mark only holds its parts together; no catalog knows it.
+		if id.Namespace != partsNamespace {
+			it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		}
 	}
 	for _, a := range facts.Artwork {
 		it.Art = append(it.Art, librarystore.LibraryArt{Kind: a.Kind, Season: a.Season, Ref: a.Ref})
@@ -369,7 +443,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 				}
 			}
 			return 0
-		}, func(i int) int64 { return files[i].src.SizeBytes })
+		}, func(i int) int64 { return files[i].src.SizeBytes }, func(i int) int64 { return files[i].src.DurationMs })
 	out := make([]librarystore.LibrarySource, len(files))
 	for i, f := range files {
 		out[i] = f.src
@@ -494,23 +568,58 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 	}
 }
 
+var (
+	// makeMKVTitle matches MakeMKV's mark for a title it ripped, at a name's end: "title_t00",
+	// "GILDED_MOOR_t01", and its older versions' "title00".
+	makeMKVTitle = regexp.MustCompile(`(?i)(?:^title_?t?|_t)\d{2}$`)
+	// discLabel matches the disc's place a disc's label ends in: "OSTREVIN D1", "OSTREVIN DISC 2".
+	discLabel = regexp.MustCompile(`(?i)[ ]+d(?:isc)?[ ]?\d$`)
+)
+
+// genericStem matches a file's name that says what it is, never which: "movie", "film", "video",
+// "main", "feature", "main feature", "1", "01".
+var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main[ ._-]?feature|the[ ._-]movie|\d{1,2})$`)
+
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
-// (part > 0) is named without its part mark.
+// (part > 0) is named without its part mark; one whose part has a folder of its own ("CD1/") is
+// named by the movie's folder, the one name all its parts share.
 func fallbackName(rel string, kind mp.Kind, part int) string {
 	clean := func(name string) string {
 		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
 	}
-	name := path.Base(rel)
-	if dot := strings.LastIndex(name, "."); dot > 0 {
-		name = name[:dot]
-	}
+	// The name keeps its release's notes, which the catalog's search sets aside; what the name is
+	// is read without them ("bc [1080p]" is the folder's initials).
+	name, plain := stem(path.Base(rel)), plainStem(path.Base(rel))
 	if part > 0 {
-		name = withoutPart(name)
+		name, plain = withoutPart(name), withoutPart(plain)
+		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
+			return clean(path.Base(path.Dir(dir)))
+		}
+	}
+	// A recorder names a film it recorded by the film, then its channel and when it began: "Iron
+	// Spire (2011)_Film4_2022_05_01_21_00_00" is "Iron Spire (2011)".
+	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain)) {
+		return clean(datedShow(plain))
+	}
+	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
+	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
+	if m := makeMKVTitle.FindStringSubmatchIndex(plain); m != nil && kind == mp.KindMovie {
+		label := strings.Trim(strings.ReplaceAll(plain[:m[0]], "_", " "), " ")
+		if dir := path.Dir(rel); (len(label) <= 3 || strings.EqualFold(label, "title")) && dir != "." && !catchAllFolder(path.Base(dir)) {
+			label = strings.ReplaceAll(path.Base(dir), "_", " ")
+		}
+		return clean(discLabel.ReplaceAllString(label, ""))
 	}
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
+		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
+		// So is one named by what it is rather than what it is called: "Pikestaff/movie.mkv",
+		// "Pikefen/1.mkv", "main.mkv", "feature.mkv".
+		if !catchAllFolder(folder) && (len(plain) > 1 && strings.EqualFold(plain, initials(folder)) || genericStem.MatchString(plain)) {
+			return folder
+		}
 		if _, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
 			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" {
 				return folder

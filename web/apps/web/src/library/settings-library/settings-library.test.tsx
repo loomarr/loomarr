@@ -81,7 +81,18 @@ describe("SettingsLibrary", () => {
     server.use(
       getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
       getLibraryStatusMockHandler(
-        libraryStatus({ held: [{ path: "/media/movies", movies: 3, episodes: 0, other: 0 }] }),
+        libraryStatus({
+          held: [
+            {
+              path: "/media/movies",
+              movies: 3,
+              episodes: 0,
+              other: 0,
+              titles: ["Amber Hollow", "Brightwater"],
+              titleCount: 3,
+            },
+          ],
+        }),
       ),
       http.post("*/v1/library/roots/confirm-removal", async ({ request }) => {
         confirmed = await request.json();
@@ -89,6 +100,9 @@ describe("SettingsLibrary", () => {
       }),
     );
     renderPage();
+
+    // The maintainer sees what they would let go before saying it.
+    expect(await screen.findByText(/That's Amber Hollow, Brightwater and 1 more\./)).toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole("button", { name: "They're gone, remove them" }));
     await waitFor(() => expect(confirmed).toEqual({ path: "/media/movies" }));
