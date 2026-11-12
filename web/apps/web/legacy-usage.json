@@ -320,29 +320,29 @@
       "tailwindClasses": 13
     },
     "src/filler/channel-filler/channel-filler.tsx": {
-      "tailwindClasses": 91
+      "tailwindClasses": 55
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
-      "tailwindClasses": 30
+      "tailwindClasses": 13
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
-      "tailwindClasses": 46,
+      "tailwindClasses": 32,
       "rawButton": 4
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 54
+      "tailwindClasses": 35
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "tailwindClasses": 122
+      "tailwindClasses": 81
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 58
+      "tailwindClasses": 44
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 6
     },
     "src/filler/filler-catalog/catalog-bulk-bar/catalog-bulk-bar.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 6
     },
     "src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "tailwindClasses": 12
@@ -351,76 +351,76 @@
       "tailwindClasses": 4
     },
     "src/filler/filler-catalog/clip-inspector-sheet/clip-inspector-sheet.tsx": {
-      "tailwindClasses": 4
+      "tailwindClasses": 2
     },
     "src/filler/filler-catalog/clip-more-details/clip-more-details.tsx": {
-      "tailwindClasses": 22
+      "tailwindClasses": 11
     },
     "src/filler/filler-catalog/composite-catalog-group/composite-catalog-group.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 4
     },
     "src/filler/filler-catalog/filler-catalog.tsx": {
-      "tailwindClasses": 41
+      "tailwindClasses": 26
     },
     "src/filler/filler-manage/filler-manage.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 13
     },
     "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 50
+      "tailwindClasses": 28
     },
     "src/filler/filler-page/filler-page.tsx": {
-      "tailwindClasses": 35
+      "tailwindClasses": 29
     },
     "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 103
+      "tailwindClasses": 80
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
-      "tailwindClasses": 14
+      "tailwindClasses": 8
     },
     "src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "tailwindClasses": 50
+      "tailwindClasses": 36
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 78
+      "tailwindClasses": 48
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
-      "tailwindClasses": 24
+      "tailwindClasses": 13
     },
     "src/filler/sources-panel/local-source-form/local-source-form.tsx": {
-      "tailwindClasses": 7
+      "tailwindClasses": 5
     },
     "src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
-      "tailwindClasses": 32
+      "tailwindClasses": 22
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "tailwindClasses": 32
+      "tailwindClasses": 22
     },
     "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
       "tailwindClasses": 1
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 11
     },
     "src/filler/sources-panel/source-location-form/source-location-form.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 3
     },
     "src/filler/sources-panel/source-preview-section/source-preview-section.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 4
     },
     "src/filler/sources-panel/source-settings/source-settings.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 4
     },
     "src/filler/sources-panel/source-status/source-status.tsx": {
-      "tailwindClasses": 27
+      "tailwindClasses": 16
     },
     "src/filler/sources-panel/source-storage-card/source-storage-card.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 16
     },
     "src/filler/split-review-page/split-review-page.tsx": {
-      "tailwindClasses": 56
+      "tailwindClasses": 37
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 182
+      "tailwindClasses": 110
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 52,

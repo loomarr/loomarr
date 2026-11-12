@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure, Stack } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 
 interface CompositeCatalogGroupProps {
@@ -38,7 +38,9 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
         onExpandedChange={setOpen}
       >
         {children.isFetching ? (
-          <span className="text-muted-foreground text-xs">Loading segments…</span>
+          <Text as="span" textRole="hint" tone="secondary">
+            Loading segments…
+          </Text>
         ) : (
           <Stack direction="row">
             <Action onPress={onManage} variant="outline">
@@ -47,11 +49,15 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
           </Stack>
         )}
         {children.error ? (
-          <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
+          <Text as="p" textRole="compact" tone="danger">
+            Segments could not be loaded.
+          </Text>
         ) : rows.length > 0 ? (
           <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
         ) : children.isFetching ? null : (
-          <p className="text-muted-foreground text-sm">No filed segments remain under this compilation.</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            No filed segments remain under this compilation.
+          </Text>
         )}
       </Disclosure>
     </Stack>

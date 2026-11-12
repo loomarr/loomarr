@@ -3,7 +3,7 @@ import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerPro
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Combobox, Stack } from "@loomarr/design-system";
+import { Action, Combobox, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -229,19 +229,23 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
       </form>
 
       {!enabled && (
-        <p className="text-muted-foreground mt-2 text-xs">Resume this service to find a source.</p>
+        <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+          Resume this service to find a source.
+        </Text>
       )}
 
       {selected && (
         <div className="bg-muted/35 mt-2 rounded-lg px-3 py-2">
           <Stack align="start" direction="row" gap="4" justify="between">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{selected.title}</p>
+              <Text as="p" className="truncate" textRole="cardLabel">
+                {selected.title}
+              </Text>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className="text-muted-foreground text-xs">
+              <Text as="span" textRole="hint" tone="secondary">
                 {selected.alreadyAdded ? "Already added" : targetLabel(selected)}
-              </span>
+              </Text>
               <Action onPress={cancelSelection} variant="ghost">
                 Cancel
               </Action>
@@ -256,19 +260,19 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
           {verified &&
             !selected.alreadyAdded &&
             (!selected.previewItems || selected.previewItems.length === 0) && (
-              <p className="text-muted-foreground mt-2 text-xs">
+              <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                 Loomarr checks a few new items at a time, and reviews every clip before it can play.
-              </p>
+              </Text>
             )}
         </div>
       )}
 
       {problem && (
-        <p className="text-onair-300 mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact" tone="danger">
           {problem.detail ??
             problem.title ??
             `${provider.label} is not responding right now. Try again in a moment.`}
-        </p>
+        </Text>
       )}
     </div>
   );

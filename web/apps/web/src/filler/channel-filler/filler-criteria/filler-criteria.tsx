@@ -180,7 +180,7 @@ const FillerCriteria = ({
           Geography
         </FieldLabel>
         {selection.geography == null ? (
-          <p className="text-muted-foreground text-xs" data-testid="geography-inherited">
+          <Text as="p" data-testid="geography-inherited" textRole="hint" tone="secondary">
             {installationGeography?.country
               ? `Following this installation (${installationGeography.country}${installationPlaceLabel ? ` · ${installationPlaceLabel}` : ""}).`
               : "No installation geography is configured; legacy unrestricted matching remains active."}{" "}
@@ -200,7 +200,7 @@ const FillerCriteria = ({
             >
               Set for this channel
             </button>
-          </p>
+          </Text>
         ) : (
           <>
             <Stack align="end" direction="row" gap="control" wrap>
@@ -244,7 +244,7 @@ const FillerCriteria = ({
                 />
               </div>
             </Stack>
-            <p className="text-muted-foreground text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               A blank place follows the installation's city; with no city, only national filler airs.{" "}
               <button
                 type="button"
@@ -257,7 +257,7 @@ const FillerCriteria = ({
               >
                 Follow installation geography
               </button>
-            </p>
+            </Text>
           </>
         )}
       </Stack>
@@ -270,7 +270,7 @@ const FillerCriteria = ({
         {/* An absent selection inherits the programming dates. Presence is meaningful: an empty
             scalar is explicit-any, and windows are a separate explicit representation. */}
         {inheriting && scopeLabel && (
-          <p className="text-muted-foreground text-xs" data-testid="era-inherited">
+          <Text as="p" data-testid="era-inherited" textRole="hint" tone="secondary">
             Following the channel&rsquo;s era ({scopeLabel}).{" "}
             <button
               type="button"
@@ -283,10 +283,10 @@ const FillerCriteria = ({
             >
               Use any era
             </button>
-          </p>
+          </Text>
         )}
         {explicitlyAny && scopeLabel && (
-          <p className="text-muted-foreground text-xs" data-testid="era-any">
+          <Text as="p" data-testid="era-any" textRole="hint" tone="secondary">
             Any era.{" "}
             <button
               type="button"
@@ -299,13 +299,13 @@ const FillerCriteria = ({
             >
               Follow the channel&rsquo;s era ({scopeLabel})
             </button>
-          </p>
+          </Text>
         )}
         {eraWindows !== undefined ? (
           <>
-            <p className="text-muted-foreground text-xs" data-testid="era-windows">
+            <Text as="p" data-testid="era-windows" textRole="hint" tone="secondary">
               Matching these date ranges only. Gaps remain excluded.
-            </p>
+            </Text>
             <YearRangeListField
               disabled={disabled}
               label="Era"
@@ -426,11 +426,11 @@ const FillerCriteria = ({
           Products & topics
         </FieldLabel>
         <Stack align="center" direction="row" gap="inline" wrap>
-          <span className="text-muted-foreground text-sm">
+          <Text as="span" textRole="compact" tone="secondary">
             {categories.length === 0
               ? "All products & topics"
               : `${categories.length} ${categories.length === 1 ? "tag" : "tags"} selected`}
-          </span>
+          </Text>
           <Action
             aria-expanded={choosingCategories}
             disabled={disabled}
@@ -483,9 +483,9 @@ const FillerCriteria = ({
           ))}
         </div>
         {rolesUnknown && (
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             Clip kinds unlock once this channel's coverage check loads.
-          </p>
+          </Text>
         )}
       </Stack>
     </div>

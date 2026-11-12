@@ -1,7 +1,7 @@
 import type { IncomingProcessingDTO } from "@loomarr/api/models/incomingProcessingDTO";
 import type { IncomingProcessingStageDTO } from "@loomarr/api/models/incomingProcessingStageDTO";
 import { formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, ProgressTrack, Stack } from "@loomarr/design-system";
+import { Action, ProgressTrack, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 
 const visibleByDefault = (stage: IncomingProcessingStageDTO) => stage.outcome !== "not_needed";
@@ -12,9 +12,13 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
   const label = measured ? `Current step: ${stage.progress}%` : "Current step in progress";
   return (
     <div className="mt-3 space-y-1.5">
-      <Stack align="center" className="text-xs" direction="row" gap="control" justify="between">
-        <span className="text-muted-foreground">Current step</span>
-        <span>{measured ? `${stage.progress}%` : "Working…"}</span>
+      <Stack align="center" direction="row" gap="control" justify="between">
+        <Text as="span" textRole="hint" tone="secondary">
+          Current step
+        </Text>
+        <Text as="span" textRole="hint" tone="primary">
+          {measured ? `${stage.progress}%` : "Working…"}
+        </Text>
       </Stack>
       <ProgressTrack percent={stage.progress} label={label} tone="tune" />
     </div>
@@ -28,16 +32,20 @@ const ProcessingStage = ({ stage }: { stage: IncomingProcessingStageDTO }) => (
       className="border-background bg-muted-foreground absolute top-1.5 -left-[0.3125rem] size-2.5 rounded-full border-2"
     />
     <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <span className="font-medium">{stage.label}</span>
-      <span className="text-muted-foreground text-xs">{stage.outcomeLabel}</span>
+      <Text as="span" textRole="cardLabel">
+        {stage.label}
+      </Text>
+      <Text as="span" textRole="hint" tone="secondary">
+        {stage.outcomeLabel}
+      </Text>
     </div>
-    <p className="text-muted-foreground mt-1 text-xs break-words">{stage.note}</p>
-    <time
-      dateTime={stage.at}
-      title={new Date(stage.at).toLocaleString()}
-      className="text-muted-foreground mt-1 block text-xs"
-    >
-      {formatRelative(stage.at)}
+    <Text as="p" className="mt-1 break-words" textRole="hint" tone="secondary">
+      {stage.note}
+    </Text>
+    <time dateTime={stage.at} title={new Date(stage.at).toLocaleString()} className="mt-1 block">
+      <Text as="span" textRole="hint" tone="secondary">
+        {formatRelative(stage.at)}
+      </Text>
     </time>
     <CurrentStageProgress stage={stage} />
   </li>
@@ -56,16 +64,20 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
   });
 
   return (
-    <details className="border-border rounded-lg border p-4 text-sm">
-      <summary className="cursor-pointer font-medium">Processing details</summary>
+    <details className="border-border rounded-lg border p-4">
+      <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+        Processing details
+      </Text>
       <div className="mt-4 space-y-4">
         {processing.attempts ? (
-          <p className="text-muted-foreground">
+          <Text as="p" textRole="compact" tone="secondary">
             This step was tried {processing.attempts} {processing.attempts === 1 ? "time" : "times"}.
-          </p>
+          </Text>
         ) : null}
         {processing.nextTryAt ? (
-          <p className="text-muted-foreground">Next try {formatUntil(processing.nextTryAt)}</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Next try {formatUntil(processing.nextTryAt)}
+          </Text>
         ) : null}
         {stages.length ? (
           <ol className="pl-1">
@@ -76,7 +88,9 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
             ))}
           </ol>
         ) : (
-          <p className="text-muted-foreground">No processing steps recorded yet.</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            No processing steps recorded yet.
+          </Text>
         )}
         {skipped ? (
           <Stack direction="row">

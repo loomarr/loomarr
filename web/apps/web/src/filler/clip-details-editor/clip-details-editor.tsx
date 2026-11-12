@@ -4,7 +4,7 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Chip, DateField, Field, Stack } from "@loomarr/design-system";
+import { Action, Chip, DateField, Field, Stack, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -169,9 +169,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       aria-label={`Edit details: ${clip.name}`}
       className="flex flex-col gap-4 outline-none"
     >
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Change a detail if it is wrong. You do not need to fill in everything.
-      </p>
+      </Text>
 
       {patch.error != null && <ErrorState error={patch.error} />}
 
@@ -240,7 +240,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       </div>
 
       <details className="border-border rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Location and broadcast details</summary>
+        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+          Location and broadcast details
+        </Text>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <form.Field name="geoScope">
@@ -308,10 +310,10 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               />
             )}
           </form.Field>
-          <p className="text-muted-foreground text-xs sm:col-span-2">
+          <Text as="p" className="sm:col-span-2" textRole="hint" tone="secondary">
             Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
             are not sure.
-          </p>
+          </Text>
         </div>
       </details>
 
@@ -320,19 +322,27 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
       <details className="border-border rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Topics and tags</summary>
+        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+          Topics and tags
+        </Text>
         <Stack className="mt-3" gap="control">
-          <p className="text-muted-foreground text-xs">Choose what this clip shows or advertises.</p>
+          <Text as="p" textRole="hint" tone="secondary">
+            Choose what this clip shows or advertises.
+          </Text>
           {vocab.error != null && <ErrorState error={vocab.error} />}
           {vocabTaxa == null ? (
-            <p className="text-muted-foreground text-sm">Loading the tag vocabulary…</p>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loading the tag vocabulary…
+            </Text>
           ) : (
             AXES.map((axis) => {
               const inAxis = flattenAxis(vocabTaxa, axis);
               if (inAxis.length === 0) return null;
               return (
                 <Stack gap="1.5" key={axis}>
-                  <span className="text-muted-foreground text-xs">{AXIS_LABEL[axis]}</span>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {AXIS_LABEL[axis]}
+                  </Text>
                   <Stack direction="row" gap="1.5" wrap>
                     {inAxis.map(({ taxon: t, depth }) => {
                       const on = tags.includes(t.slug);
@@ -352,11 +362,15 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
 
       {derivedTags.length > 0 ? (
         <section className="border-border bg-surface/40 rounded-md border p-3" aria-label="Derived matches">
-          <p className="text-sm font-medium">Derived matches — read only</p>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <Text as="p" textRole="cardLabel">
+            Derived matches — read only
+          </Text>
+          <Text as="p" className="mt-1" textRole="hint" tone="secondary">
             Inherited from the observed facts above and updated automatically when the hierarchy changes.
-          </p>
-          <p className="mt-2 text-sm break-words">{derivedLabels.join(", ")}</p>
+          </Text>
+          <Text as="p" className="mt-2 break-words" textRole="compact">
+            {derivedLabels.join(", ")}
+          </Text>
         </section>
       ) : null}
 

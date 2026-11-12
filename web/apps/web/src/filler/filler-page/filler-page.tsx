@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Card, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -66,7 +66,9 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
       <Stack className="h-full min-h-0">
         <FillerHeader />
         <div className="min-h-0 flex-1 p-6" role="status">
-          <p className="text-muted-foreground text-sm">Loading filler…</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loading filler…
+          </Text>
         </div>
       </Stack>
     );
@@ -163,13 +165,15 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             padding={16}
           >
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Automatic fetching is paused</p>
-              <p className="text-muted-foreground mt-0.5 text-sm">
+              <Text as="p" textRole="cardLabel">
+                Automatic fetching is paused
+              </Text>
+              <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
                 {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
                 {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
                 add clips yourself. Remove clips you no longer want or raise this limit to restart automatic
                 downloads.
-              </p>
+              </Text>
             </div>
             {isAdmin ? (
               <Action

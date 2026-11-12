@@ -15,6 +15,7 @@ import {
   Icon,
   icons,
   Stack,
+  Text,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -195,7 +196,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               </Stack>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">
+              <Text as="p" textRole="cardLabel">
                 {statusQuery.isError
                   ? "Web search status is unavailable"
                   : !enabled
@@ -205,20 +206,20 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                       : status?.state === "degraded"
                         ? "Web search needs a check"
                         : "Web search ready"}
-              </p>
-              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+              </Text>
+              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                 {statusQuery.isError
                   ? "Loomarr couldn't check web search. Public-source lookups can still run."
                   : !enabled
                     ? "Existing clip details stay in place."
                     : "Web search is used only when the selected public sources don't find enough information."}
-              </p>
+              </Text>
               {configured && status ? (
-                <p className="text-muted-foreground mt-2 text-xs">
+                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                   {providerLabel(status.provider)} · {status.requestCount} of {status.requestLimit} searches
                   this month
                   {checked ? ` · Last checked ${checked}` : ""}
-                </p>
+                </Text>
               ) : null}
             </div>
           </Stack>
@@ -226,24 +227,24 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       ) : null}
 
       <details className="border-border rounded-lg border p-4">
-        <summary className="cursor-pointer text-sm font-medium">
+        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
           <span>Where Loomarr looks</span>
-          <span className="text-muted-foreground ml-2 font-normal">
+          <Text as="span" className="ml-2" textRole="compact" tone="secondary">
             ·{" "}
             {enabled
               ? `${enabledSourceCount} of ${structuredSources.length} sources on`
               : `${enabledSourceCount} selected`}
-          </span>
-        </summary>
+          </Text>
+        </Text>
         <div className="mt-5 space-y-6">
           <section className="space-y-3" aria-labelledby="clip-detail-sources-heading">
             <div>
-              <h3 id="clip-detail-sources-heading" className="text-sm font-medium">
+              <Text as="h3" id="clip-detail-sources-heading" textRole="cardLabel">
                 Public sources
-              </h3>
-              <p className="text-muted-foreground mt-1 text-xs">
+              </Text>
+              <Text as="p" className="mt-1" textRole="hint" tone="secondary">
                 All are on by default. Turn off any source you don't want Loomarr to use.
-              </p>
+              </Text>
             </div>
             <div className="divide-border border-border divide-y rounded-lg border">
               {structuredSources.map((entry) => {
@@ -257,9 +258,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     justify="between"
                     key={entry.key}
                   >
-                    <span id={labelID} className="text-sm font-medium">
+                    <Text as="span" id={labelID} textRole="cardLabel">
                       {entry.label}
-                    </span>
+                    </Text>
                     <SettingField
                       compact
                       labelledBy={labelID}
@@ -273,7 +274,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               })}
             </div>
             {!enabled ? (
-              <p className="text-muted-foreground text-xs">Turn on automatic lookups to use these sources.</p>
+              <Text as="p" textRole="hint" tone="secondary">
+                Turn on automatic lookups to use these sources.
+              </Text>
             ) : null}
           </section>
 
@@ -305,10 +308,12 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       {!configured ? (
         <div className="bg-muted/40 flex flex-col gap-3 rounded-lg p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-medium">Web search is optional</p>
-            <p className="text-muted-foreground mt-1 text-sm">
+            <Text as="p" textRole="cardLabel">
+              Web search is optional
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               Add it if you want Loomarr to search more broadly when these sources come up short.
-            </p>
+            </Text>
           </div>
           <div className="shrink-0 self-start sm:self-auto">
             <Action disabled={!enabled || statusQuery.isLoading || statusQuery.isError} onPress={openSetup}>
@@ -319,9 +324,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       ) : null}
 
       {message ? (
-        <p aria-live="polite" className={success ? "text-lock text-sm" : "text-caution-foreground text-sm"}>
+        <Text as="p" aria-live="polite" textRole="compact" tone={success ? "success" : "warning"}>
           {message}
-        </p>
+        </Text>
       ) : null}
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -334,7 +339,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           </DialogHeader>
           <div className="space-y-6 p-6">
             <fieldset className="space-y-3">
-              <legend className="text-sm font-medium">Choose a provider</legend>
+              <Text as="legend" textRole="cardLabel">
+                Choose a provider
+              </Text>
               <label className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 flex cursor-pointer items-start gap-3 rounded-lg border p-4">
                 <input
                   type="radio"
@@ -344,12 +351,18 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   onChange={() => form.setFieldValue("provider", "brave")}
                 />
                 <span>
-                  <span className="block text-sm font-medium">Brave Search</span>
-                  <span className="text-muted-foreground mt-1 block text-xs">Recommended hosted option.</span>
+                  <Text as="span" className="block" textRole="cardLabel">
+                    Brave Search
+                  </Text>
+                  <Text as="span" className="mt-1 block" textRole="hint" tone="secondary">
+                    Recommended hosted option.
+                  </Text>
                 </span>
               </label>
               <details className="border-border rounded-lg border p-4">
-                <summary className="cursor-pointer text-sm font-medium">Advanced / self-hosted</summary>
+                <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+                  Advanced / self-hosted
+                </Text>
                 <label className="mt-4 flex cursor-pointer items-start gap-3">
                   <input
                     type="radio"
@@ -359,10 +372,12 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     onChange={() => form.setFieldValue("provider", "searxng")}
                   />
                   <span>
-                    <span className="block text-sm font-medium">SearXNG</span>
-                    <span className="text-muted-foreground mt-1 block text-xs">
+                    <Text as="span" className="block" textRole="cardLabel">
+                      SearXNG
+                    </Text>
+                    <Text as="span" className="mt-1 block" textRole="hint" tone="secondary">
                       Use a server you operate.
-                    </span>
+                    </Text>
                   </span>
                 </label>
               </details>
@@ -406,9 +421,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
             )}
 
             {message ? (
-              <p aria-live="polite" className="text-caution-foreground text-sm">
+              <Text as="p" aria-live="polite" textRole="compact" tone="warning">
                 {message}
-              </p>
+              </Text>
             ) : null}
             <Stack className="border-border border-t pt-4" direction="row" gap="inline" justify="end">
               <Action disabled={busy} onPress={() => setOpen(false)} variant="ghost">

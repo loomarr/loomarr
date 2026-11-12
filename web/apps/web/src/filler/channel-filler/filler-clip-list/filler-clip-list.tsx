@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
 
@@ -71,8 +71,12 @@ const FillerClipList = ({
   return (
     <Stack gap="inline">
       <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-muted-foreground text-xs">{hint}</p>
+        <Text as="p" textRole="cardLabel">
+          {label}
+        </Text>
+        <Text as="p" textRole="hint" tone="secondary">
+          {hint}
+        </Text>
       </div>
 
       {/* ⚠ **The clamp said nothing at all before this.** `filler.pod_max` caps how many clips one
@@ -83,10 +87,10 @@ const FillerClipList = ({
           actually happens: the pins are a priority pool the assembler draws from per break, so
           which ones appear varies by break rather than the list being truncated. */}
       {cap !== undefined && cap > 0 && ids.length > cap && (
-        <p className="text-signal text-xs" data-testid="pod-max-clamp">
+        <Text as="p" data-testid="pod-max-clamp" textRole="hint" tone="signal">
           A break plays at most {cap} {cap === 1 ? "clip" : "clips"}, so only some of these {ids.length}{" "}
           appear in any one break. Raise the limit in Filler settings to fit more.
-        </p>
+        </Text>
       )}
 
       {ids.length > 0 && (
@@ -111,22 +115,24 @@ const FillerClipList = ({
                 <div className="min-w-0 flex-1">
                   {gone ? (
                     <>
-                      <span className="text-onair-300 truncate text-sm font-medium">
+                      <Text as="span" className="truncate" textRole="cardLabel" tone="danger">
                         This clip is no longer in your catalog
-                      </span>
+                      </Text>
                       {/* The hash still shown, small and secondary: it is the only handle an
                           operator has if they want to work out WHICH clip this was. */}
-                      <span className="text-static-400 ml-2 truncate font-mono text-xs">
+                      <Text as="span" className="ml-2 truncate" textRole="mono">
                         {id.slice(0, 12)}…
-                      </span>
+                      </Text>
                     </>
                   ) : (
                     <>
-                      <span className="truncate text-sm font-medium">{clip?.name ?? id}</span>
+                      <Text as="span" className="truncate" textRole="cardLabel">
+                        {clip?.name ?? id}
+                      </Text>
                       {clip ? (
-                        <span className="text-static-400 ml-2 font-mono text-xs">
+                        <Text as="span" className="ml-2" textRole="mono">
                           {formatClipDuration(clip.durationMs)}
-                        </span>
+                        </Text>
                       ) : null}
                     </>
                   )}
