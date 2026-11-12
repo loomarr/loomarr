@@ -9,7 +9,7 @@
     "storybook": "EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY=touch STORYBOOK_ENABLED=true expo start",
     "doctor": "expo-doctor",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/*.test.mjs && vitest run",
     "bundle": "expo export --platform android --output-dir dist/android && expo export --platform ios --output-dir dist/ios"
   },
   "dependencies": {
@@ -47,8 +47,11 @@
   "devDependencies": {
     "@loomarr/fixtures": "workspace:*",
     "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "expo-doctor": "1.21.5",
-    "typescript": "7.0.2"
+    "jsdom": "30.0.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   },
   "expo": {
     "autolinking": {
