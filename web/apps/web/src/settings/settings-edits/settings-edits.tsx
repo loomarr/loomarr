@@ -1,6 +1,7 @@
 import type { SettingResult } from "@loomarr/api/models/settingResult";
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { useSettingsDraft } from "../settings-draft";
 
 // The Settings edit buffer, owned by the LAYOUT rather than a page (config-design §5, V9).
 //
@@ -28,22 +29,25 @@ type SettingsEditsValue = {
 const SettingsEditsContext = createContext<SettingsEditsValue | undefined>(undefined);
 
 const SettingsEditsProvider = ({ children }: { children: ReactNode }) => {
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  // The buffer itself is the shared settings draft; this layout adds the save's per-key results.
+  const draft = useSettingsDraft();
   const [results, setResults] = useState<SettingResult[]>([]);
+  const { edits, clearEdits } = draft;
+  const draftSetEdit = draft.setEdit;
+  const draftReset = draft.resetEdits;
 
-  const setEdit = useCallback((key: string, value: string) => {
-    setEdits((prev) => ({ ...prev, [key]: value }));
-    setResults((previous) => previous.filter((result) => result.key !== key));
-  }, []);
+  const setEdit = useCallback(
+    (key: string, value: string) => {
+      draftSetEdit(key, value);
+      setResults((previous) => previous.filter((result) => result.key !== key));
+    },
+    [draftSetEdit],
+  );
 
   const resetEdits = useCallback(() => {
-    setEdits({});
+    draftReset();
     setResults([]);
-  }, []);
-  const clearEdits = useCallback((keys: readonly string[]) => {
-    const cleared = new Set(keys);
-    setEdits((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !cleared.has(key))));
-  }, []);
+  }, [draftReset]);
 
   const value = useMemo(
     () => ({ edits, results, setEdit, setResults, clearEdits, resetEdits }),

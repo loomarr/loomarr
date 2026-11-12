@@ -1,4 +1,11 @@
-import { Combobox, type ComboboxOption, Screen, Surface, Text } from "@loomarr/design-system";
+import {
+  Combobox,
+  type ComboboxGroup,
+  type ComboboxOption,
+  Screen,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 
@@ -97,6 +104,47 @@ const Workshop = ({ disabled = false, invalid = false }: { disabled?: boolean; i
   </Screen>
 );
 
+const found: readonly ComboboxGroup[] = [
+  { id: "channels", label: "Channels", options: [{ label: "90s Action", trailing: "#42", value: "c1" }] },
+  {
+    id: "library",
+    label: "In your library",
+    options: [
+      { label: "The Velvet Cartographer", trailing: "1995", value: "l1" },
+      { label: "Pelican Point Motel", description: "A motel at the end of the line", value: "l2" },
+    ],
+  },
+  { id: "tmdb", label: "Discover", options: [{ label: "Harbour Lights", trailing: "1997", value: "t1" }] },
+];
+
+// Inline and grouped: always open, no popup, the panel carrying the header (a leading mark, a key
+// hint) around a bare field. The command palette's shape; Home and End jump to the ends.
+const InlinePalette = ({ empty = false, fill = false }: { empty?: boolean; fill?: boolean }) => {
+  const [text, setText] = useState(empty ? "zzz" : "a");
+  return (
+    <div style={{ height: fill ? 420 : undefined, width: 560 }}>
+      <Combobox
+        autoHighlight="always"
+        emptyText={text ? `No matches for “${text}”.` : "Type to search."}
+        endAdornment={
+          <Text density="pointer" textRole="metadata" tone="secondary">
+            Esc
+          </Text>
+        }
+        fill={fill}
+        groups={empty ? [] : found}
+        inline
+        inputValue={text}
+        label="Search"
+        listLabel="Search results"
+        onInputValueChange={setText}
+        onSelect={(option) => setText(option.label)}
+        placeholder="Search titles, channels, help…"
+      />
+    </div>
+  );
+};
+
 const meta = {
   title: "Loomarr Components/Combobox",
   component: Workshop,
@@ -105,6 +153,9 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
+const Inline: Story = { render: () => <InlinePalette /> };
+const InlineEmpty: Story = { render: () => <InlinePalette empty /> };
+const InlineFill: Story = { render: () => <InlinePalette fill /> };
 const Invalid: Story = { args: { invalid: true } };
 const Disabled: Story = { args: { disabled: true } };
 const Light: Story = { globals: { theme: "light" } };
@@ -117,4 +168,4 @@ const Open: Story = {
 };
 
 export default meta;
-export { Default, Disabled, Invalid, Light, Open };
+export { Default, Disabled, Inline, InlineEmpty, InlineFill, Invalid, Light, Open };

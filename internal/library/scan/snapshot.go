@@ -106,7 +106,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	25: an episode its show's catalog can't number is marked, and one whose show has an answer is
 //	    numbered by the order picked (decision 53).
 //	26: a title sorts by its letters with the accents taken off ("À Nous" under A).
-const writeVersion = 26
+//	27: a show with no name of its own is named by its own folder, not the folders above it.
+const writeVersion = 27
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -226,10 +227,20 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 	if item.Kind != kindMovie && item.Kind != kindSeries && item.Kind != kindEpisode {
 		return librarystore.LibraryItem{}, false
 	}
-	// Present beats missing, then newer beats older; the key breaks a tie, so the pick is stable.
+	// Present beats missing, then a copy grounded in the catalog beats one known only by its name
+	// (two copies of one title, one with an NFO naming its TMDB id: the title is named by that one,
+	// whichever copy was written last), then newer beats older; the key breaks a tie, so the pick is
+	// stable.
+	grounded := func(o inventory.ItemOrigin) bool {
+		listed := readOriginExtension(o.Observation.Extension).Listed
+		return listed != nil && listed.Catalog.String() != ""
+	}
 	better := func(o, than inventory.ItemOrigin) bool {
 		if o.MissingAt.IsZero() != than.MissingAt.IsZero() {
 			return o.MissingAt.IsZero()
+		}
+		if g := grounded(o); g != grounded(than) {
+			return g
 		}
 		if !o.Observation.ObservedAt.Equal(than.Observation.ObservedAt) {
 			return o.Observation.ObservedAt.After(than.Observation.ObservedAt)

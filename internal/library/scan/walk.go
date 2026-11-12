@@ -238,6 +238,9 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	defer delete(w.videos, dir)
 
 	top := dir == w.root
+	if top {
+		w.report.counted(len(entries))
+	}
 	for i, e := range entries {
 		if top {
 			// The entries before this one are listed.
@@ -337,6 +340,23 @@ func relDir(rel string) string {
 		return rel[:i]
 	}
 	return "."
+}
+
+// counted is the root's top-level entries as the walk lists them. The count made before the walk
+// can come back empty (a listing late past readableTimeout) or be stale (an entry added or removed
+// since), so step 1's total takes the walk's count: a root counted as nothing would otherwise read
+// full while every one of its files is still to come.
+func (r *walkReport) counted(n int) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || n == r.entries {
+		return
+	}
+	r.tracker.Grow(StepWalking, n-r.entries)
+	r.entries = n
 }
 
 // listed reports n of the root's top-level entries listed by the walk.

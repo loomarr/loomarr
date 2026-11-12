@@ -105,7 +105,9 @@ describe("DefectReview", () => {
     expect(text).not.toContain("m1");
     expect(text).toContain("41 clips left to label");
     expect(text).toContain("player");
-    expect(Array.from(host.querySelectorAll('[role="row"]'))).toHaveLength(2);
+    // The header row and one row for the one era band that has scores.
+    expect(text).toContain("Scores against your labels");
+    expect(Array.from(host.querySelectorAll("tr"))).toHaveLength(2);
   });
 
   it("labels the clip it shows, and holds still while a label saves", () => {

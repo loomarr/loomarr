@@ -1,7 +1,10 @@
+import * as authApi from "@loomarr/api/endpoints/auth";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { Disclosure } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { EncryptionSettings } from "@/settings/encryption-settings";
 import { PairedDevices } from "@/settings/paired-devices";
@@ -124,6 +127,16 @@ const AccessSettings = () => {
 
 const Route = createFileRoute("/_authed/settings/access")({
   component: AccessSettings,
+  // The paired devices and the encryption status each part of the page reads for itself and
+  // answers for when it fails, so they are warmed (a prefetch never rejects). The settings list is
+  // the layout's. Admin-only, like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await Promise.all([
+      queryClient.prefetchQuery(authApi.getDeviceListQueryOptions()),
+      queryClient.prefetchQuery(systemApi.getSystemEncryptionStatusQueryOptions({ query: { retry: false } })),
+    ]);
+  },
 });
 
 export { Route };
