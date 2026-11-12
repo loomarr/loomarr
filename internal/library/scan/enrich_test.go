@@ -15,14 +15,17 @@ import (
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-// fakeCatalog answers fetches from a table; an unknown key is not found, and err fails every fetch.
+// fakeCatalog answers fetches from a table; an unknown key is not found, err fails every fetch, and
+// errFor fails the fetch of one id.
 type fakeCatalog struct {
 	records map[string]mp.Record
 	err     error
+	errFor  map[string]error
 	fetched []string
 }
 
@@ -47,6 +50,9 @@ func (f *fakeCatalog) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
 	f.fetched = append(f.fetched, string(ref.Kind)+":"+ref.ID.Value)
 	if f.err != nil {
 		return mp.Record{}, f.err
+	}
+	if err := f.errFor[ref.ID.Value]; err != nil {
+		return mp.Record{}, err
 	}
 	rec, ok := f.records[ref.ID.Value]
 	if !ok {
@@ -140,6 +146,84 @@ func TestEnricherWritesTheCatalogsDetails(t *testing.T) {
 	e.Now = func() time.Time { return time.Now().Add(enrichRetry + time.Minute) }
 	if err := e.Tick(ctx); err != nil || len(catalog.fetched) != before+1 {
 		t.Fatalf("after the hold the title was not fetched: %v, %v", catalog.fetched[before:], err)
+	}
+}
+
+// A title whose details can't be looked up is never silent: the Library says how many wait, why,
+// and when the next try is. A catalog that can't be used (no key, a key turned down, out of reach)
+// holds no title back, so every one is looked up as soon as it's fixed; a title the catalog
+// answers badly for waits on its own, and the rest go on.
+func TestDetailsSayWhyTitlesWait(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	h.file("Juliet (2016) {tmdb-90000204}/Juliet (2016) {tmdb-90000204}.mkv", 10)
+	h.file("Kilo (2017) {tmdb-90000205}/Kilo (2017) {tmdb-90000205}.mkv", 10)
+	h.file("Lima (2018) {tmdb-90000206}/Lima (2018) {tmdb-90000206}.mkv", 10)
+	h.run()
+	now := time.Now()
+	catalog := &fakeCatalog{records: map[string]mp.Record{}}
+	e := &Enricher{Store: h.st, Provider: catalog, Now: func() time.Time { return now }}
+	lib := &Library{Enricher: e, Now: func() time.Time { return now }}
+	details := func() Details {
+		t.Helper()
+		d, err := lib.Details(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+
+	nextTick := now.Add(EnrichInterval)
+	if got := details(); got.Waiting != 3 || got.State != LookupsOK || !got.RetryAt.IsZero() {
+		t.Fatalf("before any lookup: %+v, want 3 waiting, ok, no retry", got)
+	}
+
+	// As the TMDB provider says it with no key set.
+	catalog.err = fmt.Errorf("tmdb: %w", mp.ErrNotConfigured)
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsNoKey || !got.RetryAt.IsZero() {
+		t.Fatalf("with no key: %+v, want 3 waiting, no_key, no retry", got)
+	}
+
+	catalog.err = &httpx.StatusError{Method: "GET", Path: "/3/movie/90000204", Status: 401}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsKeyRefused || !got.RetryAt.Equal(nextTick) {
+		t.Fatalf("with the key turned down: %+v, want 3 waiting, key_refused, retry at the next tick", got)
+	}
+
+	catalog.err = &httpx.StatusError{Method: "GET", Path: "/3/movie/90000204", Status: 503}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsUnreachable || !got.RetryAt.Equal(nextTick) {
+		t.Fatalf("with the catalog down: %+v, want 3 waiting, unreachable, retry at the next tick", got)
+	}
+
+	// The catalog is back but answers one title badly: that one waits its retry, held, and the
+	// other two are looked up in the same tick, held back by nothing that came before.
+	catalog.err = nil
+	catalog.errFor = map[string]error{"90000204": errors.New("a record that doesn't parse")}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	held := now.Add(enrichRetry).Truncate(time.Millisecond)
+	if got := details(); got.Waiting != 1 || got.State != LookupsOK || !got.RetryAt.Equal(held) {
+		t.Fatalf("with one title answered badly: %+v, want 1 waiting, ok, retry at its hold %v", got, held)
+	}
+
+	// Past its hold it is looked up, and nothing waits.
+	catalog.errFor = nil
+	now = now.Add(enrichRetry + time.Minute)
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 0 || got.State != LookupsOK || !got.RetryAt.IsZero() {
+		t.Fatalf("once looked up: %+v, want nothing waiting, ok, no retry", got)
 	}
 }
 
