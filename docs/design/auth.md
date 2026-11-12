@@ -32,7 +32,11 @@ and revocable (`GET /v1/users/{id}/sessions`, `DELETE /v1/sessions/{hash}`); dis
 them at once; `SESSION_TTL` slides. `cookie.secure=auto|always|never`. Mutating routes also require
 `X-Loomarr-Csrf: 1`. Login is rate-limited by client IP. Forwarding headers (`X-Forwarded-For`,
 `X-Forwarded-Proto`) are trusted only when `security.trust_proxy=true`; otherwise the socket peer is
-used, so a direct client cannot forge its way past the throttle or downgrade its cookie.
+used, so a direct client cannot forge its way past the throttle or downgrade its cookie. With the
+setting on, `X-Forwarded-For` is read only when the socket peer is a proxy (loopback, private or
+link-local), and the client is the right-most hop that is not itself such an address, because a
+proxy appends the address it saw and everything to its left is the client's own claim. A proxy on a
+public address is not honored: every client then shares the proxy's throttle key.
 
 **Machine access.** The generated `API_TOKEN` authenticates scripts through `Authorization: Bearer`
 and is the break-glass admin when no user can sign in.

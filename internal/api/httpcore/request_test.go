@@ -1,30 +1,80 @@
 package httpcore
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 )
 
-// The login rate-limiter keys on ClientIP. When Loomarr is NOT behind a trusted proxy,
-// X-Forwarded-For is attacker-controlled: honoring it would let a direct client rotate the header
-// per request and defeat the per-IP throttle (§11, S-2). So the default is to key on the socket
-// peer and ignore the header; only trust_proxy=true honors it.
-func TestClientIPHonorsForwardedForOnlyWhenProxyTrusted(t *testing.T) {
-	req := func() *http.Request {
-		r, _ := http.NewRequest(http.MethodPost, "/v1/auth/login", nil)
-		r.RemoteAddr = "203.0.113.9:44321"
-		r.Header.Set("X-Forwarded-For", "198.51.100.7, 10.0.0.1")
-		return r
+// The login rate-limiter keys on ClientIP. X-Forwarded-For is attacker-controlled unless a
+// trusted proxy wrote it: honoring it from a direct client would let that client rotate the header
+// per request and defeat the per-IP throttle (§11, S-2).
+func clientIPRequest(peer string, forwardedFor ...string) *http.Request {
+	r, _ := http.NewRequest(http.MethodPost, "/v1/auth/login", nil)
+	r.RemoteAddr = peer
+	for _, v := range forwardedFor {
+		r.Header.Add("X-Forwarded-For", v)
 	}
+	return r
+}
 
-	untrusted := Origin{TrustProxy: false}.ClientIP(req())
-	if untrusted != "203.0.113.9" {
-		t.Fatalf("trust_proxy off: want socket peer 203.0.113.9, got %q — a spoofed XFF would bypass the login rate limit", untrusted)
+func TestClientIPIgnoresForwardedForWithoutTrustProxy(t *testing.T) {
+	got := Origin{TrustProxy: false}.ClientIP(clientIPRequest("10.0.0.2:44321", "198.51.100.7"))
+	if got != "10.0.0.2" {
+		t.Fatalf("trust_proxy off: want the socket peer 10.0.0.2, got %q", got)
 	}
+}
 
-	trusted := Origin{TrustProxy: true}.ClientIP(req())
-	if trusted != "198.51.100.7" {
-		t.Fatalf("trust_proxy on: want first forwarded hop 198.51.100.7, got %q", trusted)
+// A client that connects directly is not a proxy, so its X-Forwarded-For is its own claim even
+// when trust_proxy is on (a published port next to the proxy's).
+func TestClientIPDirectClientCannotChooseItsKey(t *testing.T) {
+	for _, forged := range []string{"198.51.100.7", "198.51.100.7, 10.0.0.1", "10.0.0.1", "not-an-ip"} {
+		got := Origin{TrustProxy: true}.ClientIP(clientIPRequest("203.0.113.9:44321", forged))
+		if got != "203.0.113.9" {
+			t.Errorf("direct client sending %q: key = %q, want its own address 203.0.113.9", forged, got)
+		}
+	}
+}
+
+// Proxies append the peer they saw, so the right-most hop that is not itself a proxy is the
+// address the nearest trusted proxy actually observed.
+func TestClientIPTrustedProxyUsesRightMostUntrustedHop(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		peer string
+		xff  []string
+		want string
+	}{
+		{"loopback proxy, one hop", "127.0.0.1:5000", []string{"203.0.113.9"}, "203.0.113.9"},
+		{"ipv6 loopback proxy", "[::1]:5000", []string{"203.0.113.9"}, "203.0.113.9"},
+		{"private proxy, client forged a left hop", "10.0.0.2:5000", []string{"198.51.100.7, 203.0.113.9"}, "203.0.113.9"},
+		{"chain of two proxies", "10.0.0.2:5000", []string{"203.0.113.9, 172.18.0.4"}, "203.0.113.9"},
+		{"header split over two lines", "10.0.0.2:5000", []string{"198.51.100.7", "203.0.113.9"}, "203.0.113.9"},
+		{"no header", "10.0.0.2:5000", nil, "10.0.0.2"},
+		{"all hops are proxies", "10.0.0.2:5000", []string{"192.168.1.20, 10.0.0.9"}, "192.168.1.20"},
+		{"unparseable hop falls back to the peer", "10.0.0.2:5000", []string{"203.0.113.9, garbage"}, "10.0.0.2"},
+		{"mapped and padded forms normalize", "10.0.0.2:5000", []string{"::ffff:203.0.113.9"}, "203.0.113.9"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (Origin{TrustProxy: true}).ClientIP(clientIPRequest(tc.peer, tc.xff...)); got != tc.want {
+				t.Errorf("ClientIP = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The attack: one real client behind the proxy rotates the first hop on every attempt. The key
+// must not move, or the login throttle never fills.
+func TestClientIPSpoofedLeftMostHopCannotRotateTheKey(t *testing.T) {
+	origin := Origin{TrustProxy: true}
+	keys := map[string]bool{}
+	for i := range 50 {
+		forged := fmt.Sprintf("198.51.100.%d", i+1)
+		// nginx's $proxy_add_x_forwarded_for appends the peer it saw to what the client sent.
+		keys[origin.ClientIP(clientIPRequest("10.0.0.2:5000", forged+", 203.0.113.9"))] = true
+	}
+	if len(keys) != 1 || !keys["203.0.113.9"] {
+		t.Fatalf("keys = %v, want exactly {203.0.113.9}", keys)
 	}
 }
 

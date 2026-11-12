@@ -3,6 +3,7 @@ package httpcore
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -113,23 +114,58 @@ func (o Origin) Cookie(r *http.Request, name, value, path string, sameSite http.
 	}
 }
 
-// ClientIP returns the address the login rate-limiter keys on. X-Forwarded-For is honored only when
-// `security.trust_proxy` is set (§11): without a proxy, the socket peer is the real client and the
-// header is attacker-controlled, so trusting it would let a direct client rotate XFF per request
-// and defeat the per-IP throttle. Behind a proxy the peer is the proxy, so the first forwarded hop
-// is the real client and trusting it is correct — and correct only there.
+// ClientIP returns the address the login rate-limiter keys on, in a normalized form so one address
+// has one key. X-Forwarded-For is read only when `security.trust_proxy` is set (§11) and the socket
+// peer is itself a proxy (isTrustedProxy): otherwise the header is the client's own claim, and
+// honoring it would let a client rotate it per request and defeat the per-IP throttle.
+//
+// Proxies append the address they saw to the header, so the left of the list is whatever the client
+// sent. The walk starts at the right, skips hops that are proxies, and takes the first one that is
+// not. A hop that is not an address ends the walk at the peer, and a chain made only of proxies
+// yields its left-most hop (a client on the proxy's own network).
 func (o Origin) ClientIP(r *http.Request) string {
-	if o.TrustProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if i := strings.IndexByte(xff, ','); i >= 0 {
-				return strings.TrimSpace(xff[:i])
-			}
-			return strings.TrimSpace(xff)
+	peer, ok := peerAddr(r.RemoteAddr)
+	if !ok {
+		return r.RemoteAddr
+	}
+	if !o.TrustProxy || !isTrustedProxy(peer) {
+		return peer.String()
+	}
+	var hops []string
+	for _, line := range r.Header.Values("X-Forwarded-For") {
+		for hop := range strings.SplitSeq(line, ",") {
+			hops = append(hops, strings.TrimSpace(hop))
 		}
 	}
-	host := r.RemoteAddr
-	if i := strings.LastIndexByte(host, ':'); i >= 0 {
-		host = host[:i]
+	client := peer
+	for i := len(hops) - 1; i >= 0; i-- {
+		addr, err := netip.ParseAddr(hops[i])
+		if err != nil {
+			return peer.String()
+		}
+		client = addr.WithZone("").Unmap()
+		if !isTrustedProxy(client) {
+			break
+		}
 	}
-	return host
+	return client.String()
+}
+
+// peerAddr parses a socket address ("host:port", IPv6 bracketed) into a normalized address.
+func peerAddr(remote string) (netip.Addr, bool) {
+	if ap, err := netip.ParseAddrPort(remote); err == nil {
+		return ap.Addr().WithZone("").Unmap(), true
+	}
+	if addr, err := netip.ParseAddr(remote); err == nil {
+		return addr.WithZone("").Unmap(), true
+	}
+	return netip.Addr{}, false
+}
+
+// isTrustedProxy reports whether addr may be a reverse proxy in front of Loomarr: loopback, or a
+// private or link-local address, which is where a proxy on the same host, a Docker network or a
+// LAN sits. `security.trust_proxy` is a switch, not a list, so this is the whole trust boundary
+// and a proxy on a public address is not honored.
+func isTrustedProxy(addr netip.Addr) bool {
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast()
 }
