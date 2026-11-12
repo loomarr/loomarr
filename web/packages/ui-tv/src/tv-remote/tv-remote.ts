@@ -1,5 +1,5 @@
 import { tvPressIsLongSelectRelease } from "../favourite-navigation";
-import type { TvWatchingRemoteEvent, TvWatchingRemoteState } from "../watching-navigation";
+import type { TvWatchingFocus, TvWatchingRemoteEvent, TvWatchingRemoteState } from "../watching-navigation";
 import {
   DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
@@ -51,8 +51,8 @@ const createTvRemote = ({
     for (const listener of listeners) listener();
   };
 
-  const dispatch = (event: TvWatchingRemoteEvent) => {
-    const { handled, intent, state: next } = reduceTvWatchingRemote(state, event, durationMs);
+  const dispatch = (event: TvWatchingRemoteEvent, focus: TvWatchingFocus = "picture") => {
+    const { handled, intent, state: next } = reduceTvWatchingRemote(state, event, durationMs, focus);
     setState(next);
     onEvent(event, { handled, intent });
   };
@@ -69,12 +69,12 @@ const createTvRemote = ({
     dispose: cancelExpiry,
     getSnapshot: () => state,
     leaveWatching: () => setState(initialTvWatchingRemoteState),
-    nativeKey: (eventType, eventKeyAction, watching) => {
+    nativeKey: (eventType, eventKeyAction, watching, focus = "picture") => {
       if (eventType === "longSelect") longSelectAtMs = clock.now();
       if (!watching) return;
       const event = tvWatchingRemoteEventFromNative(eventType, clock.now(), eventKeyAction);
       // OK on Watching arrives as the surface's own press (`select`), not here, so it counts once.
-      if (event && event.key !== "select") dispatch(event);
+      if (event && event.key !== "select") dispatch(event, focus);
     },
     select: () => {
       if (!consumeLongSelectRelease()) dispatch({ key: "select" });
