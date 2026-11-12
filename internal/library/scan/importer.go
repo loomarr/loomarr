@@ -121,6 +121,8 @@ type Importer struct {
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int
+	// nfoRoots are the NFOs read for whether they say their file is an episode.
+	nfoRoots nfoRoots
 
 	// run serializes every write to the Library: a pass's walk and import, and each header read's
 	// write. The header stage waits for playback without it, so a pass is never held up by a viewer

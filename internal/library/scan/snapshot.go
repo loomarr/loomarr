@@ -114,7 +114,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	30: a release folder names its show by the words before its season ("Kettle.Bay.S02.1080p").
 //	31: a movie whose file name has no year is named by its folder's, when that has one.
 //	32: a season folder inside a season folder ("Show/Season 1/Season 1") files under the show.
-const writeVersion = 32
+const writeVersion = 33
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -129,7 +129,9 @@ func identityDigest(file File, m managed, embedded mp.Record, reader int, series
 		Embedded       mp.Record
 		Sidecars       map[string]Stat
 		SeriesSidecars map[string]Stat `json:",omitempty"`
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars})
+		// Notes can number a file differently when a file beside it comes or goes.
+		Notes folderNotes `json:",omitzero"`
+	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }

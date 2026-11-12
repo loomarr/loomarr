@@ -4,7 +4,9 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -32,7 +34,7 @@ var videoExtensions = map[string]bool{
 // folder is skipped by its prefix.
 var skippedDirs = map[string]bool{
 	"trickplay": true, "extrafanart": true, ".actors": true, "@eadir": true,
-	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true,
+	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "incomplete": true,
 }
 
 // discDirs are disc structures, which are not imported but listed as problems.
@@ -44,20 +46,37 @@ var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 var extrasDirs = map[string]bool{
 	"extras": true, "featurettes": true, "behind the scenes": true, "deleted scenes": true,
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
-	"backdrops": true, "sample": true, "special features": true, "bonus features": true,
+	"backdrops": true, "sample": true, "special features": true, "bonus features": true, "clips": true,
+	"extra": true, "theme-music": true,
 }
 
-// skippedDir reports whether a walk passes over a folder named name: a by-product, a recycle bin, a
-// hidden folder, or (below the top of the root) an extras folder. A disc structure is not walked
-// either, but is listed as a problem.
-func skippedDir(name string, belowTop bool) bool {
+// skippedDir reports whether a walk passes over a folder named name in parent (relative to the
+// root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or
+// (below the top of the root) an extras folder, which a season folder's "Specials" is (Emby's). A
+// disc structure is not walked either, but is listed as a problem.
+func skippedDir(parent, name string) bool {
 	lower := strings.ToLower(name)
-	return skippedDirs[lower] || strings.HasPrefix(lower, ".") || (belowTop && extrasDirs[lower])
+	return skippedDirs[lower] || strings.HasPrefix(lower, ".") ||
+		(parent != "." && extrasDirs[lower]) ||
+		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
 
-// extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv"; it is skipped.
+// relTo is path relative to root with forward slashes, "." for the root itself.
+func relTo(root, p string) string {
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return filepath.ToSlash(p)
+	}
+	return filepath.ToSlash(rel)
+}
+
+// extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv", once any number
+// after them is dropped ("-trailer2"); it is skipped. A trailer or a sample is also marked with a
+// dot, an underscore or a dash and a space (Jellyfin's).
 var extrasSuffixes = []string{
-	"-trailer", "-featurette", "-behindthescenes", "-deleted", "-interview", "-scene", "-short", "-sample", "-other",
+	"-trailer", ".trailer", "_trailer", "- trailer", "-sample", ".sample", "_sample", "- sample",
+	"-featurette", "-behindthescenes", "-deleted", "-deletedscene", "-interview", "-scene", "-short",
+	"-clip", "-extra", "-other",
 }
 
 // extrasStems are extras' whole names, as a release's "sample.mkv" or a folder's "trailer.mkv".
@@ -81,6 +100,9 @@ type File struct {
 	Sidecars map[string]Stat
 	// Sole is whether it is its folder's only video, so the folder's own sidecars are its.
 	Sole bool
+	// Notes are what its folder's videos say of it together: whether they number themselves after
+	// a name they share.
+	Notes folderNotes
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
 	// Top is which of the root's top-level entries the file is under, counted as the walk lists
@@ -146,15 +168,15 @@ func (w *walker) within(dir string) bool {
 	if rel == "." {
 		return false
 	}
-	at := w.root
-	for i, seg := range strings.Split(rel, "/") {
+	at, parent := w.root, "."
+	for _, seg := range strings.Split(rel, "/") {
 		if _, err := os.Stat(filepath.Join(at, ".ignore")); err == nil {
 			return true
 		}
-		if skippedDir(seg, i > 0) || discDirs[strings.ToLower(seg)] {
+		if skippedDir(parent, seg) || discDirs[strings.ToLower(seg)] {
 			return true
 		}
-		at = filepath.Join(at, seg)
+		at, parent = filepath.Join(at, seg), path.Join(parent, seg)
 	}
 	return false
 }
@@ -217,7 +239,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		return nil
 	}
 	nfos := map[string]Stat{}
-	videos := 0
+	var videoNames []string
 	for _, e := range entries {
 		if e.Name() == ".ignore" {
 			return nil
@@ -226,7 +248,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			continue
 		}
 		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraName(lower) {
-			videos++
+			videoNames = append(videoNames, e.Name())
 		}
 		switch {
 		case isNFO(e.Name()) || localart.IsImage(e.Name()):
@@ -242,9 +264,10 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 	}
-	w.nfo[dir], w.videos[dir] = nfos, videos
+	w.nfo[dir], w.videos[dir] = nfos, len(videoNames)
 	defer delete(w.nfo, dir)
 	defer delete(w.videos, dir)
+	notes := notesOf(videoNames)
 
 	top := dir == w.root
 	if top {
@@ -281,7 +304,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 		switch {
-		case isDir && skippedDir(e.Name(), w.rel(dir) != "."):
+		case isDir && skippedDir(w.rel(dir), e.Name()):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
 		case isDir:
@@ -299,7 +322,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 			w.out.Files = append(w.out.Files, File{
 				Path: path, Rel: w.rel(path), Stat: st,
-				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Top: w.top,
+				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Notes: notes, Top: w.top,
 			})
 		}
 	}
@@ -488,13 +511,7 @@ func (w *walker) problem(path string, st Stat, problem string) {
 	w.out.Files = append(w.out.Files, File{Path: path, Rel: w.rel(path), Stat: st, Problem: problem, Top: w.top})
 }
 
-func (w *walker) rel(path string) string {
-	rel, err := filepath.Rel(w.root, path)
-	if err != nil {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
-}
+func (w *walker) rel(path string) string { return relTo(w.root, path) }
 
 // sidecars is the files that describe the media file named name in dir: its own <stem>.nfo and a
 // movie folder's movie.nfo; its own "<stem>-poster.jpg" and kin; and, when it is the folder's only
@@ -597,14 +614,23 @@ func (f File) art() []string {
 // extraName reports whether a video file's lower-cased name marks it as no title: an extra, a
 // sample, or a hidden file such as a Mac's "._" shadow of a real one.
 func extraName(lowerName string) bool {
-	stem := strings.TrimSuffix(lowerName, filepath.Ext(lowerName))
-	if strings.HasPrefix(lowerName, ".") || extrasStems[stem] || strings.HasPrefix(stem, "sample-") {
+	base := strings.TrimRight(strings.TrimSuffix(lowerName, filepath.Ext(lowerName)), "0123456789")
+	if strings.HasPrefix(lowerName, ".") || extrasStems[base] || strings.HasPrefix(base, "sample-") ||
+		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
 		return true
 	}
 	for _, suffix := range extrasSuffixes {
-		if strings.HasSuffix(stem, suffix) {
+		if strings.HasSuffix(base, suffix) {
 			return true
 		}
 	}
 	return false
 }
+
+var (
+	// creditless matches an anime's creditless opening or ending, "NCOP1", "NCED2v2": an extra.
+	creditless = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])nc(?:op|ed)\d*(?:v\d+)?(?:[^a-z0-9]|$)`)
+	// animeOpening matches a release's opening or ending in its episode's place, " - OP", " - ED2":
+	// an extra, when a release group's tag says the name is a release's.
+	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:op|ed)\d*(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
+)

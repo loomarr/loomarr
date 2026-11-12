@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 
+	"golang.org/x/text/width"
+
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
@@ -370,7 +372,10 @@ func posterURL(rec mp.Record) string {
 
 // releaseToken is a word a release name carries after the title: the quality, source, codec or
 // edition. The title ends before the first.
-var releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited)$`)
+// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
+var leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
+
+var releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited)$`)
 
 var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
 
@@ -388,7 +393,16 @@ func releaseYear(word string) bool {
 // whole is the name with that word kept, when it was not bracketed: "Lantern Keeper 1984" is a film
 // of 1984 or a film called that, and only the catalog can say which, so a hit may match either.
 func searchQuery(name string, known int) (title string, year int, whole string) {
+	// Full-width letters and digits ("ＦＥＲＲＯＷ（２０１９）") are searched as the plain ones; "³",
+	// "½" and "…" stay as written.
+	name = width.Fold.String(name)
 	name = editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, " "), " ")
+	// A leading year is the year: "(2015) Ashgrove". Any other leading tag is a release group's.
+	leadingYear := 0
+	if m := leadingYearTag.FindStringSubmatch(name); m != nil {
+		leadingYear, name = atoi(m[1]), name[len(m[0]):]
+	}
+	name = leadingTags.ReplaceAllString(name, "")
 	if !strings.Contains(name, " ") {
 		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
 	}
@@ -406,18 +420,34 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	clean := func(words []string) string { return strings.Trim(strings.Join(words, " "), " -.") }
 	year = known
 	for j := len(words) - 1; j > 0; j-- {
-		if w := words[j]; releaseYear(w) {
+		// A year glued to a release group, "2015-GRP", is the year.
+		if w := strings.SplitN(words[j], "-", 2)[0]; releaseYear(w) {
 			if year == 0 {
 				year, _ = strconv.Atoi(w)
 			}
 			if !strings.Contains(name, "("+w+")") && !strings.Contains(name, "["+w+"]") {
-				whole = clean(words)
+				whole = articleFirst(clean(words))
 			}
 			words = words[:j]
 			break
 		}
 	}
-	return clean(words), year, whole
+	if year == 0 {
+		year = leadingYear
+	}
+	return articleFirst(clean(words)), year, whole
+}
+
+// trailingArticle matches a title Radarr and Plex sort by writing its article last: "Quiet Signal,
+// The".
+var trailingArticle = regexp.MustCompile(`(?i)^(.+), (the|a|an)$`)
+
+// articleFirst is a title with its article back in front: "Quiet Signal, The" is "The Quiet Signal".
+func articleFirst(title string) string {
+	if m := trailingArticle.FindStringSubmatch(title); m != nil {
+		return m[2] + " " + m[1]
+	}
+	return title
 }
 
 // sameName is whether two names say the same title, ignoring case, punctuation and "&" for "and".
