@@ -371,7 +371,7 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	// End generation-owned work and long-lived SSE streams before draining HTTP. Request
 	// contexts are independent, so the accepted migration response can still finish.
 	cancelRoot()
-	drainErr := drainGeneration(shutdownCtx, srv.Shutdown, application.Quiesce, application.Shutdown)
+	drainErr := drainGeneration(shutdownCtx, generationFinalizeBudget, srv.Shutdown, application.Quiesce, application.Shutdown)
 	if drainErr != nil {
 		// A drain that timed out is worth reporting, but on a restart it must not abort
 		// the loop: the generation is finished either way, and refusing to come back up
@@ -413,8 +413,16 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	return false, nil
 }
 
+// generationFinalizeBudget is how long a generation's workers have to unwind before its resources
+// are stopped regardless (Application.Shutdown).
+const generationFinalizeBudget = 15 * time.Second
+
+// drainGeneration quiesces the generation and drains HTTP within ctx, then finalizes it on a budget
+// of its own: a client holding a response open to the drain deadline must not leave the workers no
+// time to unwind before the resources under them stop.
 func drainGeneration(
 	ctx context.Context,
+	finalizeBudget time.Duration,
 	drainHTTP func(context.Context) error,
 	quiesce func(context.Context) error,
 	finalize func(context.Context) error,
@@ -423,7 +431,10 @@ func drainGeneration(
 	if quiesce != nil {
 		quiesceErr = quiesce(ctx)
 	}
-	return errors.Join(quiesceErr, drainHTTP(ctx), finalize(ctx))
+	httpErr := drainHTTP(ctx)
+	finalizeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeBudget)
+	defer cancel()
+	return errors.Join(quiesceErr, httpErr, finalize(finalizeCtx))
 }
 
 type databaseMigrationState struct {
