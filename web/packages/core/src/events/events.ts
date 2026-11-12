@@ -35,7 +35,7 @@ const SOURCE_CLOSED = 2;
 // The browser retries a dropped connection by itself, but a refused response closes an
 // EventSource for good: a proxy's 502 while the server restarts for an update is enough. This
 // stream opens a new one in its place, with the same listeners, so it outlives a restart. Each
-// source that connects fires "open", which is how openFrameStream hears a reconnect.
+// source that connects fires "open", which is how openFrameStream hears each open.
 const browserEventStreamFactory: EventStreamFactory = (url) => {
   const listeners: [string, (event: EventStreamMessage) => void][] = [];
   let source: EventSource;
@@ -192,20 +192,18 @@ const dispatchFrame = <T extends EventType>(
 // `onFrame`. Same-origin with cookie auth (withCredentials). Malformed frames are ignored
 // (latency bus, never load-bearing). Returns a close fn.
 //
-// `onReconnect` runs each time the stream opens again after its first open. The frames sent while
-// it was down are gone, so the caller reads the truth again rather than trusting what it shows.
+// `onOpen` runs each time the stream opens, the first time included. Frames sent before it opened
+// were never heard: those of a drop, and those after a read the page made before subscribing (a
+// route loader reads before the layout opens the stream). So the caller reads the truth again
+// rather than trusting what it shows.
 const openFrameStream = (
   onFrame: FrameHandler,
   url: string = EVENTS_URL,
   createStream: EventStreamFactory = browserEventStreamFactory,
-  onReconnect?: () => void,
+  onOpen?: () => void,
 ): (() => void) => {
   const es = createStream(url);
-  let opened = false;
-  es.addEventListener("open", () => {
-    if (opened) onReconnect?.();
-    opened = true;
-  });
+  es.addEventListener("open", () => onOpen?.());
   for (const type of EVENT_TYPES) {
     es.addEventListener(type, (ev) => {
       try {
@@ -251,19 +249,19 @@ const invalidateForFrame = async <T extends EventType>(
 // Awaiting it before clearing staged edits is what keeps a saved field from flashing its old value.
 const invalidateSettings = (qc: QueryClient): Promise<void> => invalidateForFrame(qc, "settings", {});
 
-// invalidateAfterReconnect refetches everything a frame could have changed: every prefix in the
-// table, whatever its `when`, because which frames were missed while the stream was down is not
+// invalidateMissedFrames refetches everything a frame could have changed: every prefix in the
+// table, whatever its `when`, because which frames went unheard before the stream opened is not
 // known. A scan that started or finished in the gap is why a frozen bar or a stale "All caught
-// up" cannot outlast the reconnect.
-const invalidateAfterReconnect = async (qc: QueryClient): Promise<void> => {
+// up" cannot outlast the open. Only the reads on screen refetch; the rest wait for their next use.
+const invalidateMissedFrames = async (qc: QueryClient): Promise<void> => {
   const prefixes = new Set(EVENT_TYPES.flatMap((type) => EVENT_INVALIDATIONS[type].prefixes));
   await Promise.all([...prefixes].map((prefix) => invalidateByPrefix(qc, prefix)));
 };
 
 // useLoomarrEvents opens the stream for the app's lifetime and applies the invalidation table
 // to every frame; `onFrame` (e.g. the provider fanning payloads out to screens) runs after the
-// invalidation and is read through a ref so updating it never reconnects the stream. When the
-// stream comes back after a drop, every read a frame feeds refetches.
+// invalidation and is read through a ref so updating it never reconnects the stream. Each time the
+// stream opens, first or after a drop, every read a frame feeds refetches.
 const useLoomarrEvents = (onFrame?: FrameHandler): void => {
   const qc = useQueryClient();
   const onFrameRef = useRef(onFrame);
@@ -277,7 +275,7 @@ const useLoomarrEvents = (onFrame?: FrameHandler): void => {
       },
       undefined,
       undefined,
-      () => void invalidateAfterReconnect(qc),
+      () => void invalidateMissedFrames(qc),
     );
   }, [qc]);
 };
@@ -289,9 +287,9 @@ export {
   EVENT_TYPES,
   EVENTS_URL,
   eventHandlerName,
-  invalidateAfterReconnect,
   invalidateByPrefix,
   invalidateForFrame,
+  invalidateMissedFrames,
   invalidateSettings,
   isFrameFed,
   listAndDetail,
