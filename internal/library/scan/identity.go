@@ -363,6 +363,37 @@ func seriesFolder(rel string) string {
 	return dir
 }
 
+// seasonToken is a word in a release folder's name that starts what it holds of a show: "S02",
+// "S01-S03".
+var seasonToken = regexp.MustCompile(`(?i)^s\d{1,2}(?:-s?\d{1,2})?$`)
+
+// showFolderName is a show's name from its folder: the folder's own name, less its ids, or, for a
+// release folder, its words before what the folder holds of the show ("Kettle.Bay.S02.1080p-GRP" and
+// "Kettle Bay Complete Series (2010-2015)" are "Kettle Bay").
+func showFolderName(folder string) string {
+	name := strings.TrimSpace(embeddedID.ReplaceAllString(folder, ""))
+	spaced := name
+	if !strings.Contains(spaced, " ") {
+		spaced = strings.NewReplacer(".", " ", "_", " ").Replace(spaced)
+	}
+	words := strings.Fields(spaced)
+	for i := 1; i < len(words); i++ {
+		w, next := strings.ToLower(words[i]), ""
+		if i+1 < len(words) {
+			next = strings.ToLower(strings.Trim(words[i+1], "()[]"))
+		}
+		holds := seasonToken.MatchString(w) ||
+			((w == "season" || w == "series" || w == "staffel" || w == "saison") && digits(next)) ||
+			(w == "complete" && (next == "series" || next == "season" || next == "seasons"))
+		if holds {
+			if show := strings.Trim(strings.Join(words[:i], " "), " -."); show != "" {
+				return show
+			}
+		}
+	}
+	return name
+}
+
 // looseSeries is the show an episode with no series folder names before its episode mark:
 // "Example.Show.S01E02.mkv" is "Example Show", so loose episodes of two shows are two shows.
 // With nothing before the mark it is the root, "": a season folder never names a show.
