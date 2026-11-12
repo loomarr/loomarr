@@ -182,10 +182,9 @@ describe("ProposalReview", () => {
 
     expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
-    expect(screen.getByText("Finding more suggestions… Your selected titles won’t change.")).toHaveAttribute(
-      "role",
-      "status",
-    );
+    expect(
+      screen.getByText("Finding more suggestions… Your selected titles won’t change.").parentElement,
+    ).toHaveAttribute("role", "status");
 
     expect(onRevise).toHaveBeenCalledWith({
       description: "90s action movies",

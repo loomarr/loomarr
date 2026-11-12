@@ -1,3 +1,4 @@
+import { Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PageHeaderProps } from "./page-header.type";
 
@@ -13,8 +14,14 @@ const PageHeader = ({ title, description, status, actions, className, ...rest }:
     {...rest}
   >
     <div className="min-w-0 flex-1">
-      <h1 className="text-xl font-semibold">{title}</h1>
-      {description ? <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{description}</p> : null}
+      <Text as="h1" textRole="title">
+        {title}
+      </Text>
+      {description ? (
+        <Text as="p" className="mt-1 max-w-3xl" textRole="compact" tone="secondary">
+          {description}
+        </Text>
+      ) : null}
       {status}
     </div>
     {actions ? (

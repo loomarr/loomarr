@@ -46,12 +46,12 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
     <Stack aria-labelledby="people-roster-title" gap="control" render="section">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div className="min-w-0 flex-1">
-          <h2 id="people-roster-title" className="text-lg font-semibold">
+          <Text as="h2" id="people-roster-title" strong textRole="headline">
             People
-          </h2>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Select a person to manage access, requests, and sessions.
-          </p>
+          </Text>
         </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_9rem_9rem] lg:w-auto">
           <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
@@ -85,8 +85,12 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
         />
       ) : filtered.length === 0 ? (
         <div className="border-border bg-card rounded-lg border p-6 text-center">
-          <p className="font-medium">No matching people</p>
-          <p className="text-muted-foreground text-sm">Try another name, role, or status.</p>
+          <Text as="p" textRole="cardLabel">
+            No matching people
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            Try another name, role, or status.
+          </Text>
         </div>
       ) : (
         <ListGroup aria-labelledby="people-roster-title">

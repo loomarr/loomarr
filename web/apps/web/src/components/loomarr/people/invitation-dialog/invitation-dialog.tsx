@@ -15,6 +15,7 @@ import {
   FieldHint,
   Stack,
   StatusLabel,
+  Text,
   Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
@@ -311,12 +312,12 @@ const InvitationDialog = ({
           ) : terminal ? (
             <div className="space-y-4">
               <div className="border-border bg-static-900 rounded-lg border p-5">
-                <p className="font-medium">
+                <Text as="p" textRole="cardLabel">
                   Invitation {invitation.status === "revoked" ? "revoked" : invitation.status}
-                </p>
-                <p className="text-muted-foreground mt-1 text-sm">
+                </Text>
+                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                   This invitation can no longer issue a QR code or copied link.
-                </p>
+                </Text>
               </div>
               <DialogFooter>
                 <Action onPress={() => changeOpen(false)}>Done</Action>
@@ -339,19 +340,21 @@ const InvitationDialog = ({
                     </StatusLabel>
                     <StatusLabel tone="pending">Expires {expiryLabel(grant.expiresAt)}</StatusLabel>
                   </Stack>
-                  <p className="text-sm">
+                  <Text as="p" textRole="compact">
                     Ask {invitationName(invitation)} to scan this code, or copy the same private link.
-                  </p>
-                  <p className="text-muted-foreground text-xs">
+                  </Text>
+                  <Text as="p" textRole="hint" tone="secondary">
                     Regenerating replaces every outstanding invitation link, including links already emailed.
-                  </p>
+                  </Text>
                 </div>
               </div>
 
               {emailProblem && (
-                <p role="alert" className="border-destructive/50 rounded-lg border p-3 text-sm">
-                  The invitation is ready, but email could not be queued. Share this QR code or copied link.
-                </p>
+                <div role="alert" className="border-destructive/50 rounded-lg border p-3">
+                  <Text as="p" textRole="compact">
+                    The invitation is ready, but email could not be queued. Share this QR code or copied link.
+                  </Text>
+                </div>
               )}
               {problem != null && <ErrorState error={problem} className="p-4" />}
 
@@ -401,11 +404,13 @@ const InvitationDialog = ({
           ) : (
             <div className="space-y-4">
               <div className="border-border bg-static-900 rounded-lg border p-5">
-                <p className="font-medium">{busy ? "Preparing a private link…" : "Ready to share"}</p>
-                <p className="text-muted-foreground mt-1 text-sm">
+                <Text as="p" textRole="cardLabel">
+                  {busy ? "Preparing a private link…" : "Ready to share"}
+                </Text>
+                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                   Generating a new link invalidates every earlier copied, QR, or email link for this
                   invitation.
-                </p>
+                </Text>
               </div>
               {problem != null && <ErrorState error={problem} className="p-4" />}
               <DialogFooter>

@@ -67,14 +67,20 @@ const PickRow = ({
   return (
     <Stack
       align="center"
-      className="border-border bg-card rounded-md border px-2.5 py-1.5 text-sm"
+      className="border-border bg-card rounded-md border px-2.5 py-1.5"
       direction="row"
       gap="inline"
       render="li"
       wrap
     >
-      <span className="font-medium">{item.name}</span>
-      {item.year ? <span className="text-static-400 font-mono text-xs">{item.year}</span> : null}
+      <Text as="span" textRole="cardLabel">
+        {item.name}
+      </Text>
+      {item.year ? (
+        <Text as="span" textRole="mono" tone="secondary">
+          {item.year}
+        </Text>
+      ) : null}
       <Badge shape="square" tone={kind === "lineup" ? "lock" : "tune"}>
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
@@ -143,7 +149,9 @@ const ApprovalQueueItem = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <div className="min-w-0 flex-1">
           <Stack align="center" direction="row" gap="inline" wrap>
-            <p className="font-medium">{title}</p>
+            <Text as="p" textRole="cardLabel">
+              {title}
+            </Text>
             {typeof acquisitions === "number" && acquisitions > 0 && (
               <Badge shape="square" tone="tune">{`${acquisitions} to acquire`}</Badge>
             )}
@@ -159,11 +167,24 @@ const ApprovalQueueItem = ({
               </Badge>
             )}
           </Stack>
-          {summary && <p className="text-muted-foreground mt-1 text-sm">{summary}</p>}
-          {requestedBy && (
-            <p className="text-static-400 mt-1 font-mono text-xs">{`Requested by ${requestedBy}`}</p>
+          {summary && (
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              {summary}
+            </Text>
           )}
-          {denied && denyReason && <p className="text-onair-300 mt-1 text-sm">{denyReason}</p>}
+          {requestedBy && (
+            <Text
+              as="p"
+              className="mt-1"
+              textRole="mono"
+              tone="secondary"
+            >{`Requested by ${requestedBy}`}</Text>
+          )}
+          {denied && denyReason && (
+            <Text as="p" className="mt-1" textRole="compact" tone="danger">
+              {denyReason}
+            </Text>
+          )}
         </div>
 
         {!denied && !denying && (
@@ -237,26 +258,28 @@ const ApprovalQueueItem = ({
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
         <Stack className="border-caution-tint-40 bg-caution-tint-8 rounded-md border px-3 py-2" gap="1.5">
-          <Stack align="center" className="text-sm" direction="row" gap="1.5" render="p">
+          <Stack align="center" direction="row" gap="1.5" render="p">
             <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
-            <span className="font-medium">
+            <Text as="span" textRole="cardLabel">
               {refused.length} {refused.length === 1 ? "title was" : "titles were"} left out
-            </span>
+            </Text>
           </Stack>
           <Stack gap="0.5" render="ul">
             {refused.map((r) => (
-              <li key={`refused-${r.item.name}-${r.item.tmdbId ?? ""}`} className="text-sm">
-                <span>{r.item.name}</span>{" "}
-                <span className="text-muted-foreground">
+              <li key={`refused-${r.item.name}-${r.item.tmdbId ?? ""}`}>
+                <Text as="span" textRole="compact">
+                  {r.item.name}
+                </Text>{" "}
+                <Text as="span" textRole="compact" tone="secondary">
                   {/* The reason is spelled out rather than shown as a code: the reviewer's
                       next action (raise the limit, or accept the shorter lineup) depends on
                       knowing it was the audience rule and not a missing file. */}
                   — rated {r.item.officialRating || "unknown"}
-                </span>
+                </Text>
               </li>
             ))}
           </Stack>
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             {raising
               ? `Approving raises this channel's audience limit to ${edit?.audience}, so titles rated up to ${edit?.audience} are included.`
               : `${
@@ -266,7 +289,7 @@ const ApprovalQueueItem = ({
                 } Approving adds everything else.${
                   canRaise ? "" : " To include these, raise the audience limit after the channel is created."
                 }`}
-          </p>
+          </Text>
           {/* #3012: one button, the lowest limit that lets these in (named by the server). It
               rides the approval like any other edit, so it applies when the channel is created;
               pressing it again takes it back. */}

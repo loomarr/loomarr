@@ -1,6 +1,6 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Badge, Stack } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
@@ -36,27 +36,25 @@ const ModelDiscover = ({
   return (
     <div className={cn("flex flex-col gap-2.5", className)}>
       <div>
-        <p className="text-muted-foreground text-sm font-medium">Need a different model?</p>
-        <p className="text-muted-foreground mt-0.5 text-xs">
+        <Text as="p" textRole="cardLabel" tone="secondary">
+          Need a different model?
+        </Text>
+        <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
           These fit your hardware and can generate lineups. Download one to add it to the list above.
-        </p>
+        </Text>
       </div>
 
       {loading && (
-        <Stack
-          align="center"
-          className="text-muted-foreground text-xs"
-          direction="row"
-          gap="inline"
-          render="p"
-        >
+        <Stack align="center" className="text-muted-foreground" direction="row" gap="inline" render="p">
           <ActivityIndicator decorative size="compact" tone="inherit" />
-          Finding compatible models…
+          <Text as="span" textRole="hint" tone="secondary">
+            Finding compatible models…
+          </Text>
         </Stack>
       )}
 
       {sourceError && (
-        <p className="text-muted-foreground text-xs">
+        <Text as="p" textRole="hint" tone="secondary">
           Couldn't reach the model catalog.{" "}
           <a
             href="https://huggingface.co/models?library=gguf&sort=downloads"
@@ -66,11 +64,13 @@ const ModelDiscover = ({
           >
             Browse on huggingface.co ↗
           </a>
-        </p>
+        </Text>
       )}
 
       {results && results.length === 0 && !loading && !sourceError && (
-        <p className="text-muted-foreground text-xs">No other compatible models found right now.</p>
+        <Text as="p" textRole="hint" tone="secondary">
+          No other compatible models found right now.
+        </Text>
       )}
 
       {visible && visible.length > 0 && (
@@ -100,7 +100,12 @@ const ModelDiscover = ({
                   </Stack>
                   {/* The note carries the fit in plain words ("fits comfortably" /
                       "fits, but tight on VRAM"), so no separate fit badge is needed. */}
-                  <p className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                  <Text
+                    as="p"
+                    className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5"
+                    textRole="hint"
+                    tone="secondary"
+                  >
                     <span>{m.note}</span>
                     <span aria-hidden className="text-static-400">
                       ·
@@ -112,7 +117,7 @@ const ModelDiscover = ({
                         {progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
                       </span>
                     )}
-                  </p>
+                  </Text>
                 </div>
                 <div className="shrink-0">
                   <Action

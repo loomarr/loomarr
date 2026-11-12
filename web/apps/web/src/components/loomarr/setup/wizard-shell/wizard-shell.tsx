@@ -1,4 +1,4 @@
-import { Action, Card, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -54,8 +54,12 @@ const WizardShell = ({
     >
       <Stack gap="1">
         <BrandLockup variant="compact" />
-        <p className="mt-2 text-base font-semibold">Let's get you on the air</p>
-        <p className="text-muted-foreground font-mono text-xs">First-run setup · saved as you go</p>
+        <Text as="p" className="mt-2" textRole="heading">
+          Let's get you on the air
+        </Text>
+        <Text as="p" textRole="mono" tone="secondary">
+          First-run setup · saved as you go
+        </Text>
       </Stack>
 
       <Stack aria-label="Setup steps" gap="1" render="ol">
@@ -84,12 +88,18 @@ const WizardShell = ({
                   i + 1
                 )}
               </span>
-              <span
-                className={cn("text-sm", isCurrent ? "text-foreground font-medium" : "text-muted-foreground")}
+              <Text
+                as="span"
+                textRole={isCurrent ? "cardLabel" : "compact"}
+                tone={isCurrent ? "primary" : "secondary"}
               >
                 {step.title}
-              </span>
-              {status === "skipped" && <span className="text-static-400 ml-auto text-xs">skipped</span>}
+              </Text>
+              {status === "skipped" && (
+                <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+                  skipped
+                </Text>
+              )}
             </>
           );
           return (
@@ -142,8 +152,14 @@ const WizardShell = ({
     <Stack className="relative z-10 min-w-0">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
         <Stack gap="1">
-          <h1 className="text-2xl font-semibold">{title}</h1>
-          {description && <p className="text-muted-foreground text-sm">{description}</p>}
+          <Text as="h1" strong textRole="display">
+            {title}
+          </Text>
+          {description && (
+            <Text as="p" textRole="compact" tone="secondary">
+              {description}
+            </Text>
+          )}
         </Stack>
 
         <Card gap={20} padding={24}>

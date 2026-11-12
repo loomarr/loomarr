@@ -3,7 +3,7 @@ import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, Card, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { seasonalModeLabel } from "@loomarr/ui";
 import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { eraOf } from "@/lib/era-dates";
@@ -101,21 +101,23 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
       <h3 className="text-2xs text-static-400">{`Programming · ${deltas.length}`}</h3>
       <Stack gap="1.5" render="ul">
         {deltas.map((d) => (
-          <li key={d.label} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="text-muted-foreground">{d.label}</span>
+          <li key={d.label} className="flex flex-wrap items-baseline gap-x-2">
+            <Text as="span" textRole="compact" tone="secondary">
+              {d.label}
+            </Text>
             {d.pinned ? (
-              <span className="text-static-400">
+              <Text as="span" textRole="compact" tone="secondary">
                 keeping <span className="text-foreground">{d.from}</span>, you set this; the AI suggested{" "}
                 {d.to}
-              </span>
+              </Text>
             ) : (
-              <span>
+              <Text as="span" textRole="compact">
                 <span className="text-static-400 line-through">{d.from}</span>
                 <span className="text-muted-foreground mx-1" aria-hidden>
                   →
                 </span>
                 <span className="text-foreground">{d.to}</span>
-              </span>
+              </Text>
             )}
           </li>
         ))}
@@ -182,30 +184,39 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
 };
 
 const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "removed"; note?: string }) => (
-  <Stack className="text-sm" gap="0.5" render="li">
+  <Stack gap="0.5" render="li">
     <Stack align="baseline" direction="row" gap="inline">
       <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
         {tone === "kept" && <Icon decorative glyph={icons.selected} size="compact" tone="muted" />}
         {tone === "added" && <Icon decorative glyph={icons.selected} size="compact" tone="success" />}
         {tone === "removed" && <Icon decorative glyph={icons.remove} size="compact" tone="danger" />}
       </span>
-      <span
-        className={cn(
-          tone === "kept" && "text-static-400",
-          tone === "added" && "text-foreground",
-          tone === "removed" && "text-onair-300 line-through",
-        )}
+      <Text
+        as="span"
+        className={cn(tone === "removed" && "line-through")}
+        textRole="compact"
+        tone={tone === "kept" ? "secondary" : tone === "removed" ? "danger" : "primary"}
       >
         {row.name}
-      </span>
-      {row.year ? <span className="text-static-400 font-mono text-xs">{row.year}</span> : null}
-      {note && <span className="text-static-400 text-xs">{note}</span>}
+      </Text>
+      {row.year ? (
+        <Text as="span" textRole="mono" tone="secondary">
+          {row.year}
+        </Text>
+      ) : null}
+      {note && (
+        <Text as="span" textRole="hint" tone="secondary">
+          {note}
+        </Text>
+      )}
     </Stack>
     {/* Only on additions. A removal doesn't need the model's justification, and a kept
         title was the operator's pick in the first place — but "Adding: Predator" with no
         reason is the refine asking for trust it hasn't earned. */}
     {tone === "added" && row.rationale && (
-      <p className="text-muted-foreground pl-6 text-xs">{friendlyTitleRationale(row.rationale)}</p>
+      <Text as="p" className="pl-6" textRole="hint" tone="secondary">
+        {friendlyTitleRationale(row.rationale)}
+      </Text>
     )}
   </Stack>
 );
@@ -265,16 +276,20 @@ const RefineReview = ({
   return (
     <Card gap={16} padding={20}>
       <header>
-        <h2 className="text-lg font-semibold">Refined lineup</h2>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h2" strong textRole="headline">
+          Refined lineup
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           {noChanges
             ? "No changes. Your channel already matches."
             : "Review what changes before applying it."}
-        </p>
+        </Text>
       </header>
 
       {noChanges ? (
-        <p className="text-sm">The suggestions are already on this channel.</p>
+        <Text as="p" textRole="compact">
+          The suggestions are already on this channel.
+        </Text>
       ) : (
         <Stack gap="4">
           <Group title="Keeping" rows={kept} tone="kept" />

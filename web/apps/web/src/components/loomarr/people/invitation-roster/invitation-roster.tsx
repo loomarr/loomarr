@@ -1,4 +1,4 @@
-import { Action, Stack, StatusLabel } from "@loomarr/design-system";
+import { Action, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import type { InvitationRosterProps } from "./invitation-roster.type";
 
 const deliveryCopy = {
@@ -33,10 +33,12 @@ const outcomeHint = (outcome?: string) => {
 const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: InvitationRosterProps) => (
   <Stack aria-labelledby="invitation-roster-title" gap="control" render="section">
     <div>
-      <h2 id="invitation-roster-title" className="text-lg font-semibold">
+      <Text as="h2" id="invitation-roster-title" strong textRole="headline">
         Invitations
-      </h2>
-      <p className="text-muted-foreground text-sm">Invitations you've sent and whether they arrived.</p>
+      </Text>
+      <Text as="p" textRole="compact" tone="secondary">
+        Invitations you've sent and whether they arrived.
+      </Text>
     </div>
 
     {invitations === undefined ? (
@@ -46,8 +48,10 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
         aria-label="Loading invitations"
       />
     ) : invitations.length === 0 ? (
-      <div className="border-border bg-card text-muted-foreground rounded-lg border p-5 text-sm">
-        No invitations yet. Directly created and imported people continue to appear below.
+      <div className="border-border bg-card rounded-lg border p-5">
+        <Text as="p" textRole="compact" tone="secondary">
+          No invitations yet. Directly created and imported people continue to appear below.
+        </Text>
       </div>
     ) : (
       <ul className="grid gap-3">
@@ -70,7 +74,9 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 space-y-2">
                   <Stack align="center" direction="row" gap="inline" wrap>
-                    <span className="font-medium">{name}</span>
+                    <Text as="span" textRole="cardLabel">
+                      {name}
+                    </Text>
                     <StatusLabel tone={value.role === "admin" ? "notice" : "off"}>
                       {value.role === "admin" ? "Admin" : "Member"}
                     </StatusLabel>
@@ -85,10 +91,14 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                       </StatusLabel>
                     )}
                   </Stack>
-                  <p className="text-static-400 text-sm">
+                  <Text as="p" textRole="compact" tone="secondary">
                     {value.contactAddress?.email ?? "Add a contact address before sending email."}
-                  </p>
-                  {hint && <p className="text-muted-foreground max-w-3xl text-sm">{hint}</p>}
+                  </Text>
+                  {hint && (
+                    <Text as="p" className="max-w-3xl" textRole="compact" tone="secondary">
+                      {hint}
+                    </Text>
+                  )}
                 </div>
 
                 {pending && (
