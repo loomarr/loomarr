@@ -25,18 +25,20 @@ const fakes = vi.hoisted(() => {
     catalogLists: [] as AbortSignal[],
     emptySnapshot,
     guide: {
-      dispose: vi.fn(),
+      dispose: vi.fn(() => void fakes.lifetimes.push("guide:dispose")),
       getSnapshot: () => emptySnapshot,
-      refresh: vi.fn(async () => undefined),
+      refresh: vi.fn(async () => void fakes.lifetimes.push("guide:use")),
       subscribe: () => () => undefined,
     },
+    // The order the guide and my-channels controllers are made, used and disposed in.
+    lifetimes: [] as string[],
     guideOptions: [] as { resolveWindow?: (at: Date) => unknown }[],
     guideWindow: vi.fn((window: unknown) => window),
     myChannels: {
-      dispose: () => undefined,
+      dispose: () => void fakes.lifetimes.push("myChannels:dispose"),
       getSnapshot: () => emptySnapshot,
       recordTune: undefined as unknown as (channelId: string) => Promise<void>,
-      refresh: async () => undefined,
+      refresh: async () => void fakes.lifetimes.push("myChannels:use"),
       subscribe: () => () => undefined,
     },
     playback: {
@@ -83,13 +85,17 @@ vi.mock("@loomarr/core/events", () => ({
 vi.mock("@loomarr/core/guide", () => ({
   createGuideController: (options: { resolveWindow?: (at: Date) => unknown }) => {
     fakes.guideOptions.push(options);
+    fakes.lifetimes.push("guide:create");
     return fakes.guide;
   },
   createGuideSourcePort: () => ({}),
   guideWindow: fakes.guideWindow,
 }));
 vi.mock("@loomarr/core/my-channels", () => ({
-  createMyChannelsController: () => fakes.myChannels,
+  createMyChannelsController: () => {
+    fakes.lifetimes.push("myChannels:create");
+    return fakes.myChannels;
+  },
   createMyChannelsPort: () => ({}),
 }));
 vi.mock("@loomarr/core/client-diagnostics", () => ({
@@ -177,6 +183,7 @@ const mountClient = async (
   const recordTune = vi.fn().mockResolvedValue(undefined);
   fakes.myChannels.recordTune = recordTune;
   let client!: PairedClient;
+  let options = extra;
   const Probe = () => {
     client = usePairedClient({
       credential,
@@ -184,7 +191,7 @@ const mountClient = async (
       initialTune: "first",
       lastChannel,
       session,
-      ...extra,
+      ...options,
     });
     return null;
   };
@@ -200,7 +207,12 @@ const mountClient = async (
         type: event,
       } as PlayerTransportEvent);
     });
-  return { client: () => client, recordTune, root, settle };
+  // The host passes new options (a new last-channel store, say) without the credential changing.
+  const rerender = (next: Partial<Parameters<typeof usePairedClient>[0]>) => {
+    options = { ...options, ...next };
+    return act(async () => root.render(createElement(Probe)));
+  };
+  return { client: () => client, recordTune, rerender, root, settle };
 };
 
 beforeEach(() => {
@@ -221,6 +233,7 @@ afterEach(() => {
   fakes.catalogHeld = false;
   fakes.catalogLists.length = 0;
   fakes.guideOptions.length = 0;
+  fakes.lifetimes.length = 0;
   fakes.playbackSessionIds.length = 0;
   fakes.playbackTransports.length = 0;
   fakes.requests.length = 0;
@@ -409,6 +422,61 @@ describe("paired client", () => {
       expect(appListeners.size).toBe(0);
       expect(fakes.guide.dispose).toHaveBeenCalledTimes(1);
       expect(fakes.transport.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("when the host changes an option but not the credential", () => {
+    // Replays the controllers' lifetimes: any use of one after it was disposed (and before a new one
+    // was made) is a disposed controller still being handed out.
+    const usesAfterDispose = (name: string) => {
+      let live = false;
+      const dead: number[] = [];
+      fakes.lifetimes.forEach((entry, index) => {
+        if (!entry.startsWith(`${name}:`)) return;
+        const step = entry.slice(name.length + 1);
+        if (step === "create") live = true;
+        else if (step === "dispose") live = false;
+        else if (!live) dead.push(index);
+      });
+      return dead;
+    };
+
+    it("keeps handing out a guide and my channels that are still alive", async () => {
+      const { client, rerender, root } = await mountClient(undefined, {
+        load: () => Promise.resolve(undefined),
+        save: () => Promise.resolve(),
+      });
+
+      // A new store rebuilds the player; the guide and my channels read only the paired request.
+      await rerender({
+        lastChannel: { load: () => Promise.resolve(undefined), save: () => Promise.resolve() },
+      });
+      await act(async () => fakes.streams.at(-1)?.handlers.onChannel());
+      await act(async () => {
+        await client().guide.refresh();
+        await client().myChannels.refresh();
+      });
+
+      expect(usesAfterDispose("guide")).toEqual([]);
+      expect(usesAfterDispose("myChannels")).toEqual([]);
+      await act(async () => root.unmount());
+    });
+  });
+
+  describe("when the transport is rebuilt under a live diagnostics reporter", () => {
+    it("keeps the reporter and subscribes it to the new transport", async () => {
+      const { rerender, root } = await mountClient({ platform: "ios" });
+      const previous = fakes.transport;
+
+      // New marks build a new transport; the reporter reads only the paired request.
+      fakes.transport = { ...previous, subscribe: vi.fn(() => () => undefined) } as typeof previous;
+      await rerender({ marks: { enabled: true } as never });
+
+      expect(fakes.reporterDisposed).not.toHaveBeenCalled();
+      expect(fakes.playback.dispose).not.toHaveBeenCalled();
+      expect(fakes.transport.subscribe).toHaveBeenCalledWith(fakes.playback.transportEvent);
+      await act(async () => root.unmount());
+      expect(fakes.reporterDisposed).toHaveBeenCalledTimes(1);
     });
   });
 
