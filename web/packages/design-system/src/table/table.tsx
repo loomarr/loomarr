@@ -68,14 +68,8 @@ const TableHeaderCell = ({ align = "start", children, width }: TableHeaderCellPr
       role="columnheader"
     >
       {isPlain(children) ? (
-        // Dense: the plain caption, which fits a narrow column better than tracked capitals.
-        <Text
-          density={density}
-          shout={!dense}
-          textRole={dense ? "caption" : "mono"}
-          tone="secondary"
-          tracking={dense ? undefined : 0.06}
-        >
+        // Sentence case, as the caps rule keeps capitals for channel numbers, clocks and provenance.
+        <Text density={density} textRole={dense ? "caption" : "mono"} tone="secondary">
           {children}
         </Text>
       ) : (

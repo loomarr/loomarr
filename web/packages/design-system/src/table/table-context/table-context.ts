@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { Density } from "../tokens";
+import type { Density } from "../../tokens";
 
 // What a table tells its cells: the density to set text at, and whether it is the dense one.
 type TableContextValue = { dense: boolean; density: Density };
