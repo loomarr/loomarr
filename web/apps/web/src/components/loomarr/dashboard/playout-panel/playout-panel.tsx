@@ -2,7 +2,7 @@ import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Card, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Card, Stack, Tooltip } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { PlayoutPanelProps } from "./playout-panel.type";
@@ -54,7 +54,13 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
       : `Software encoding · ${capability.encoder} · ${capacity}`;
 
   return (
-    <div className="border-border bg-static-900/40 flex items-center justify-between gap-3 border-b px-4 py-2.5">
+    <Stack
+      align="center"
+      className="border-border bg-static-900/40 border-b px-4 py-2.5"
+      direction="row"
+      gap="control"
+      justify="between"
+    >
       <div className="min-w-0">
         <p className="text-2xs text-muted-foreground">Encoder</p>
         <p className="text-muted-foreground mt-0.5 text-sm">{summary}</p>
@@ -77,7 +83,7 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
           LLM sharing VRAM
         </Badge>
       )}
-    </div>
+    </Stack>
   );
 };
 
@@ -142,14 +148,20 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
 
   return (
     <Card flexShrink={0} overflow="hidden">
-      <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3">
+      <Stack
+        align="center"
+        className="border-border border-b px-4 py-3"
+        direction="row"
+        gap="control"
+        justify="between"
+      >
         <h2 className="text-base font-semibold">{title}</h2>
         {!loading && status != null && (
           <Badge shape="square" tone="neutral">
             {status.running ? "Loomarr" : "Tunarr"}
           </Badge>
         )}
-      </div>
+      </Stack>
 
       {loading && <p className="text-muted-foreground px-4 py-6 text-sm">Reading playout status…</p>}
 

@@ -4,7 +4,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { Action, Card, FieldHint, StatusLabel } from "@loomarr/design-system";
+import { Action, Card, FieldHint, Stack, StatusLabel } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -86,7 +86,7 @@ const AccountScreen = () => {
   const [confirmingSession, setConfirmingSession] = useState<string>();
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="Your account"
         description="Your sign-in, your password, and the devices holding a session."
@@ -94,9 +94,14 @@ const AccountScreen = () => {
 
       <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
         <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
-          <div className="bg-muted flex size-10 items-center justify-center rounded-full font-medium">
+          <Stack
+            align="center"
+            className="bg-muted size-10 rounded-full font-medium"
+            direction="row"
+            justify="center"
+          >
             {(user?.name ?? "?").slice(0, 2).toUpperCase()}
-          </div>
+          </Stack>
           <div className="min-w-0">
             <p className="font-medium">{user?.name}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
@@ -122,19 +127,19 @@ const AccountScreen = () => {
               <p className="text-muted-foreground text-sm">
                 This is a local Loomarr account, so Loomarr stores the password and you can change it here.
               </p>
-              <div className="flex flex-col gap-2">
+              <Stack gap="inline">
                 {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
                   <form.AppField key={name} name={name}>
                     {(field) => <field.TextField autoComplete={autoComplete} label={label} type="password" />}
                   </form.AppField>
                 ))}
-              </div>
+              </Stack>
               {serverError && (
                 <FieldHint role="alert" tone="error">
                   {serverError}
                 </FieldHint>
               )}
-              <div className="flex items-center gap-3">
+              <Stack align="center" direction="row" gap="control">
                 <Action disabled={changePassword.isPending} submit>
                   Change password
                 </Action>
@@ -142,7 +147,7 @@ const AccountScreen = () => {
                 <span className="text-static-400 text-xs">
                   changing it signs you out everywhere, including here
                 </span>
-              </div>
+              </Stack>
             </form>
           ) : (
             <p className="text-muted-foreground text-sm">
@@ -214,7 +219,7 @@ const AccountScreen = () => {
           </ul>
         </Card>
       </div>
-    </div>
+    </Stack>
   );
 };
 

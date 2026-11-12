@@ -1,4 +1,4 @@
-import { Action, Card, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -47,7 +47,11 @@ const WizardShell = ({
 
     {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
-    <aside className="border-border bg-card relative z-10 flex flex-col gap-6 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0">
+    <Stack
+      className="border-border bg-card relative z-10 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0"
+      gap="section"
+      render="aside"
+    >
       <div className="flex flex-col gap-1">
         <BrandLockup variant="compact" />
         <p className="mt-2 text-base font-semibold">Let's get you on the air</p>
@@ -132,10 +136,10 @@ const WizardShell = ({
           );
         })}
       </ol>
-    </aside>
+    </Stack>
 
     {/* Content column: the current step. Stacked above the static like the rail. */}
-    <div className="relative z-10 flex min-w-0 flex-col">
+    <Stack className="relative z-10 min-w-0">
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold">{title}</h1>
@@ -146,13 +150,13 @@ const WizardShell = ({
           {children}
         </Card>
 
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           {onBack && (
             <Action disabled={busy} onPress={onBack} variant="ghost">
               Back
             </Action>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <Stack align="center" className="ml-auto" direction="row" gap="inline">
             {onSkip && (
               <Action disabled={busy} onPress={onSkip} variant="outline">
                 Skip for now
@@ -163,10 +167,10 @@ const WizardShell = ({
                 {nextLabel}
               </Action>
             )}
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       </div>
-    </div>
+    </Stack>
   </main>
 );
 

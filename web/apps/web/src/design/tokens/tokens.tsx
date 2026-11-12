@@ -1,4 +1,4 @@
-import { Table, TableBody, TableCell, TableRow } from "@loomarr/design-system";
+import { Stack, Table, TableBody, TableCell, TableRow } from "@loomarr/design-system";
 import { webTokenSet } from "@loomarr/design-system/web-theme";
 
 // Tokens — the complete web token set, as data (§2.5, §5.1a).
@@ -30,7 +30,7 @@ const asRows = (group: TokenGroup, prefix = ""): [string, TokenLeaf][] => {
 const isColor = (v: TokenLeaf) => typeof v === "string" && v.startsWith("#");
 
 const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
-  <section className="flex flex-col gap-2">
+  <Stack gap="inline" render="section">
     <h2 className="font-mono text-base font-semibold">{name}</h2>
     <Table caption={`${name} tokens`} minWidth={384}>
       <TableBody>
@@ -52,7 +52,7 @@ const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
         ))}
       </TableBody>
     </Table>
-  </section>
+  </Stack>
 );
 
 const Tokens = () => {
@@ -60,7 +60,7 @@ const Tokens = () => {
   const total = groups.reduce((n, [, g]) => n + asRows(g).length, 0);
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <Stack className="p-6" gap="screen">
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Tokens</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
@@ -72,7 +72,7 @@ const Tokens = () => {
       {groups.map(([name, group]) => (
         <GroupTable key={name} name={name} group={group} />
       ))}
-    </div>
+    </Stack>
   );
 };
 

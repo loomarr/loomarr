@@ -1,7 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure, Stack } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
@@ -31,16 +31,16 @@ const InfoScreen = () => {
     <>
       {/* The page opens on a picture (#2753): the title backdrop, else generated channel art. */}
       <ChannelHero channelId={id} channel={{ name: ch.name, number: ch.number }} />
-      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
-        <div className="flex items-center gap-3">
+      <Stack className="border-border bg-card rounded-lg border p-5" gap="control" render="section">
+        <Stack align="center" direction="row" gap="control">
           <span className="font-mono text-3xl leading-none tabular-nums">{channelNumber(ch.number)}</span>
-          <div className="flex items-center gap-2">
+          <Stack align="center" direction="row" gap="inline">
             <OnAirIndicator state={air.dot} />
             {/* The status is the info panel's heading (also what the reachability check
                 keys on — a real heading proves the screen composed). */}
             <h2 className="text-lg font-semibold">{air.label}</h2>
-          </div>
-        </div>
+          </Stack>
+        </Stack>
         <p className="text-muted-foreground text-sm">{air.detail}</p>
         {air.buildSchedule && isAdmin ? (
           <Action
@@ -93,7 +93,7 @@ const InfoScreen = () => {
             isAdmin={isAdmin}
           />
         </div>
-      </section>
+      </Stack>
 
       {/* The On-screen logo (#1659): admin-only like Programming and Filler, autosaving
           policy.watermark like the Programming fields. Members never see it. */}

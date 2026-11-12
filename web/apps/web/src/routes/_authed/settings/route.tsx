@@ -1,4 +1,5 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { Stack } from "@loomarr/design-system";
 import { createFileRoute, Outlet, useChildMatches, useLocation } from "@tanstack/react-router";
 import { AdminOnly } from "@/auth/admin-only";
 import { viewerIsAdmin } from "@/auth/me-query";
@@ -58,13 +59,13 @@ const SettingsLayout = () => {
     // belongs to the layout, so switching pages re-renders the outlet without unmounting the
     // edits. Held one level lower (inside a page) it died on every tab switch.
     <SettingsEditsProvider>
-      <div className="flex h-full flex-col">
+      <Stack className="h-full">
         {showContextNav ? (
           <SettingsContextNav section={pathname.startsWith("/settings/system") ? "This server" : undefined} />
         ) : null}
         <div className="min-w-0 flex-1 overflow-hidden">{page}</div>
         <SettingsSaveBarHost />
-      </div>
+      </Stack>
     </SettingsEditsProvider>
   );
 };

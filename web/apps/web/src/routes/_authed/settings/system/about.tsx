@@ -1,4 +1,5 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
+import { Stack } from "@loomarr/design-system";
 import { AboutPage as About } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -20,7 +21,7 @@ const AboutPage = () => {
   const v = version.data.data;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader title="About" description="Loomarr, and the services it's built on." />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <About
@@ -30,7 +31,7 @@ const AboutPage = () => {
           version={aboutVersion(v)}
         />
       </div>
-    </div>
+    </Stack>
   );
 };
 

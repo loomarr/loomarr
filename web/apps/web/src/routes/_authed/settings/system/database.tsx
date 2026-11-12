@@ -1,6 +1,7 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import type { DatabaseCheck } from "@loomarr/api/models/databaseCheck";
 import { unwrap } from "@loomarr/api/unwrap";
+import { Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
@@ -96,7 +97,7 @@ const DatabasePage = () => {
     view.error ?? migrate.error?.detail ?? backup.error?.detail ?? preflight.error?.detail ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="Database"
         description="Which database Loomarr stores everything in, and how to move to another one."
@@ -118,7 +119,7 @@ const DatabasePage = () => {
           envPinned={envPinned}
         />
       </div>
-    </div>
+    </Stack>
   );
 };
 

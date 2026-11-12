@@ -5,7 +5,7 @@ import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
-import { Action, Badge, Card, Surface } from "@loomarr/design-system";
+import { Action, Badge, Card, Stack, Surface } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -25,10 +25,10 @@ import { useRequests } from "@/queue/use-requests";
 // is shown as the API's own problem message rather than an empty page.
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
-  <section className="flex flex-col gap-2">
+  <Stack gap="inline" render="section">
     <h2 className="text-lg font-semibold">{title}</h2>
     {children}
-  </section>
+  </Stack>
 );
 
 // Dates read relative here as they do in the lists ("25d ago"), never as a locale timestamp (#2738).
@@ -94,7 +94,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const approvedAt = when(proposal?.approvedAt);
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack className="h-full">
       <PageHeader
         title={journey.intent.description}
         description={`Requested ${when(journey.createdAt)}`}
@@ -125,11 +125,11 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         }
       />
       <div className="max-w-reading mx-auto flex w-full flex-1 flex-col gap-6 overflow-auto p-6">
-        <div className="flex flex-wrap items-center gap-2">
+        <Stack align="center" direction="row" gap="inline" wrap>
           <Badge shape="square" tone={status.tone}>
             {status.line}
           </Badge>
-        </div>
+        </Stack>
 
         {/* The same live surface the Guide shows while generating: stage line, titles as they are
             chosen, count and time. It hands off to the failure card above or the decision and
@@ -222,12 +222,16 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
 
         {acquisitions.length > 0 && (
           <Section title="Titles being added">
-            <ul className="flex flex-col gap-2">
+            <Stack gap="inline" render="ul">
               {acquisitions.map(({ item, title }, index) => (
-                <li
+                <Stack
+                  align="center"
                   // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
                   key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
-                  className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2.5"
+                  className="border-border bg-card rounded-md border px-3 py-2.5"
+                  direction="row"
+                  gap="control"
+                  render="li"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {item.name}
@@ -264,14 +268,14 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                       Try again
                     </Action>
                   )}
-                </li>
+                </Stack>
               ))}
-            </ul>
+            </Stack>
             {retryTitle.error != null && <ErrorState error={retryTitle.error} />}
           </Section>
         )}
       </div>
-    </div>
+    </Stack>
   );
 };
 

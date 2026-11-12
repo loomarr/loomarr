@@ -1,6 +1,6 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import { pickCount, progressLine } from "@loomarr/core/requests";
-import { ActivityIndicator, Badge } from "@loomarr/design-system";
+import { ActivityIndicator, Badge, Stack } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
@@ -55,9 +55,9 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   return (
     <div className={cn("border-border bg-muted/35 flex items-start gap-3 rounded-lg border p-4", className)}>
       {!complete && (
-        <span className="mt-0.5 flex">
+        <Stack className="mt-0.5" direction="row" render="span">
           <ActivityIndicator decorative size="compact" tone="suggest" />
-        </span>
+        </Stack>
       )}
       <div className="min-w-0 flex-1">
         <p role="status" aria-live="polite" className="text-sm font-medium">
@@ -65,11 +65,11 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
         </p>
         {progress && progress.picks.length > 0 && (
           <>
-            <ul aria-label="Titles chosen so far" className="mt-2 flex flex-col">
+            <Stack aria-label="Titles chosen so far" className="mt-2" render="ul">
               {progress.picks.map((pick) => (
                 <PickRow key={pick.key} pick={pick} />
               ))}
-            </ul>
+            </Stack>
             <p className="text-muted-foreground mt-1 text-xs">
               {count}
               {seconds !== undefined ? ` · ${seconds} s` : ""}

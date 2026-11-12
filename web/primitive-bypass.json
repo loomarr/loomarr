@@ -84,13 +84,10 @@
       "flexStack": 4
     },
     "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "flexStack": 4
-    },
-    "apps/web/src/components/loomarr/dashboard/service-control/service-control.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/feedback/error-state/error-state.tsx": {
       "flexStack": 1
@@ -99,10 +96,10 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/feedback/placeholder/placeholder.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
       "flexStack": 3
@@ -186,22 +183,22 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/connection-block/connection-block.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/setup/login-form/login-form.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/login-shell/login-shell.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
-      "flexStack": 7
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "flexStack": 10
+      "flexStack": 6
     },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "flexStack": 10
+      "flexStack": 9
     },
     "apps/web/src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
       "flexStack": 2
@@ -213,22 +210,22 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/design/palette/palette.tsx": {
-      "flexStack": 11
+      "flexStack": 5
     },
     "apps/web/src/design/spacing/spacing.tsx": {
       "flexStack": 15
     },
     "apps/web/src/design/tokens/tokens.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/design/typography/typography.tsx": {
-      "flexStack": 10
+      "flexStack": 2
     },
     "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "flexStack": 8
@@ -318,79 +315,49 @@
       "flexStack": 3
     },
     "apps/web/src/help/help-page/help-page.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
-      "flexStack": 6
+      "flexStack": 2
     },
     "apps/web/src/home/home-page/home-page.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/home/home-strip/home-strip.tsx": {
       "flexStack": 2
     },
     "apps/web/src/home/new-this-week/new-this-week.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/lib/app-form/app-form.tsx": {
       "flexStack": 1
     },
     "apps/web/src/people/users-page/users-page.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/queue/request-detail/request-detail.tsx": {
-      "flexStack": 7
-    },
-    "apps/web/src/queue/request-lists/request-lists.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/routes/_authed/account.tsx": {
-      "flexStack": 8
+      "flexStack": 4
     },
     "apps/web/src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "flexStack": 2
     },
     "apps/web/src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "flexStack": 4
-    },
-    "apps/web/src/routes/_authed/channels/$id/info.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
-      "flexStack": 8
-    },
-    "apps/web/src/routes/_authed/filler/settings/route.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/routes/_authed/requests/_tabs.tsx": {
-      "flexStack": 1
+      "flexStack": 5
     },
     "apps/web/src/routes/_authed/settings/access.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/routes/_authed/settings/advanced.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/routes/_authed/settings/index.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/routes/_authed/settings/route.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/routes/_authed/settings/system/about.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/routes/_authed/settings/system/backup.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/routes/_authed/settings/system/database.tsx": {
       "flexStack": 1
     },
     "apps/web/src/routes/_authed/settings/system/index.tsx": {
-      "flexStack": 3
-    },
-    "apps/web/src/routes/wizard.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/settings/ai-model-settings/ai-model-settings.tsx": {
       "flexStack": 2

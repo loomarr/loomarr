@@ -1,5 +1,6 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
@@ -62,7 +63,7 @@ const BackupPage = () => {
         },
       ]}
       footer={
-        <div className="flex flex-col gap-3">
+        <Stack gap="control">
           <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
             <h2 className="font-medium">The image volume is separate</h2>
             <p className="text-muted-foreground mt-1">
@@ -78,7 +79,7 @@ const BackupPage = () => {
             pending={backUpNow.isPending}
             error={error}
           />
-        </div>
+        </Stack>
       }
     />
   );
