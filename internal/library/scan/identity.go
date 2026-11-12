@@ -290,9 +290,10 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// A file with no mark in a show's season folder ("Kettle Bay/Specials/Holiday Special.mkv") is
 	// one of its episodes: the catalog, or its own NFO, places it. A season folder with no show
 	// folder above it names no show, so a file there is still a movie.
-	if dir := path.Dir(file.Rel); dir != "." && path.Dir(dir) != "." && isSeasonFolder(dir) {
-		seriesDir := path.Dir(dir)
-		return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
+	if dir := path.Dir(file.Rel); dir != "." && isSeasonFolder(dir) {
+		if seriesDir := aboveSeasons(dir); seriesDir != "." {
+			return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
+		}
 	}
 	// A movie is named by its file or its own folder. A folder further up is a collection or a
 	// series, and a tvdb id never names a movie.
@@ -333,6 +334,16 @@ func isSeasonFolder(dir string) bool {
 	return m != nil && path.Dir(dir) != "." && sameWords(m[1], path.Base(path.Dir(dir)))
 }
 
+// aboveSeasons is the folder above a season folder and any season folders it sits in
+// ("Show/Season 1/Season 1" is "Show", as an archive unpacked into its own name leaves it); "." is
+// the root, for season folders with no show folder above them.
+func aboveSeasons(dir string) string {
+	for dir != "." && isSeasonFolder(dir) {
+		dir = path.Dir(dir)
+	}
+	return dir
+}
+
 // sameWords says whether two names have the same words, whatever their case and separators.
 func sameWords(a, b string) bool {
 	words := func(s string) string {
@@ -351,8 +362,8 @@ func seriesFolder(rel string) string {
 		return looseSeries(path.Base(rel))
 	}
 	if isSeasonFolder(dir) {
-		if parent := path.Dir(dir); parent != "." {
-			return parent
+		if show := aboveSeasons(dir); show != "." {
+			return show
 		}
 		return looseSeries(path.Base(rel))
 	}

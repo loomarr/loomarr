@@ -190,6 +190,11 @@ var namingMatrix = []namingRow{
 	// A folder named for a show's season with no show folder above it is the show's own folder, named
 	// by its words before the season.
 	{id: "K10", files: map[string]string{"Ferrow Lane Season 2/Ferrow Lane S02E01.mkv": "episode Ferrow Lane S2E1"}},
+	// An archive unpacked into a folder of its own name leaves a season folder in a season folder.
+	{id: "K12", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Season 1/Kettle Bay S01E01.mkv":  "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Specials/Specials/Kettle Bay - Recap.mkv": "episode Kettle Bay S?E?",
+	}},
 	// A show whose own name has a season-like word keeps it.
 	{id: "K11", files: map[string]string{
 		"TV/Season of Ash/Season 1/Season of Ash S01E01.mkv": "episode Season of Ash S1E1",
