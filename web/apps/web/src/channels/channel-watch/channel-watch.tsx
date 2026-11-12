@@ -514,18 +514,16 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     ) : sheet === "info" && info && placement !== "menu" ? (
       sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
     ) : sheet === "channels" && drawer ? (
-      <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
-        <ChannelDrawer
-          channels={drawer.channels}
-          tunedId={osdChannel.id}
-          favourites={drawer.favourites}
-          recent={drawer.recent}
-          nowPercent={drawer.nowPercent}
-          onTune={player.tune}
-          onFavourite={drawer.onFavourite}
-          onClose={closeSheet}
-        />
-      </div>
+      <ChannelDrawer
+        channels={drawer.channels}
+        tunedId={osdChannel.id}
+        favourites={drawer.favourites}
+        recent={drawer.recent}
+        nowPercent={drawer.nowPercent}
+        onTune={player.tune}
+        onFavourite={drawer.onFavourite}
+        onClose={closeSheet}
+      />
     ) : undefined;
 
   // A stream that stopped has nothing for the playbar to stand on, so Retry and the way out take the
