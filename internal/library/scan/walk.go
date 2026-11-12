@@ -829,7 +829,12 @@ func extraName(lowerName string) bool {
 	if strings.HasSuffix(base, "-sample") || releaseProof.MatchString(base) {
 		return true
 	}
-	// Otherwise it follows a release's own words: "Movie (2001) sample", "Kettle Bay S01E02 -
+	// An episode's title set apart by a spaced dash after its mark, "Thornbury S01E07 - Sample", is
+	// the episode's in any case: a release joins its sample to its name ("….x264-grp.sample").
+	if before, ok := strings.CutSuffix(base, " - sample"); ok && episodeMark.MatchString(before) {
+		return false
+	}
+	// Otherwise it follows a release's own words: "Movie (2001) sample", "Kettle Bay S01E02
 	// sample", "kettle.bay.s01e02.720p.hdtv.x264-grp.sample"; "The Last Sample", "The.Last.Sample"
 	// and "Free Sample" are titles.
 	for _, sep := range []string{".", "_", " "} {
@@ -1094,7 +1099,8 @@ func strongExtraKind(words []string) bool {
 var (
 	// creditless matches an anime's creditless opening or ending, "NCOP1", "NCED2v2": an extra.
 	creditless = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])nc(?:op|ed)\d*(?:v\d+)?(?:[^a-z0-9]|$)`)
-	// animeOpening matches a release's opening or ending in its episode's place, " - OP", " - ED2":
-	// an extra, when a release group's tag says the name is a release's.
-	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:op|ed|pv|cm|menu|preview)\d*(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
+	// animeOpening matches a release's extra in its episode's place, " - OP", " - ED2", " -
+	// Creditless OP", " - Clean ED", " - Menu 01", " - Preview 03", " - Picture Drama 01", " -
+	// Trailer": an extra, when a release group's tag says the name is a release's.
+	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:(?:creditless|clean|textless|non[ ._-]?credit)[ ._]+)?(?:op|ed|opening|ending|pv|cm|menu|preview|trailer|teaser|spot|picture[ ._]+drama)(?:[ ._]*\d+)?(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
 )

@@ -1098,6 +1098,38 @@ var namingMatrix = []namingRow{
 		"Anime/【Grp】Kettle Hana 第05集 [1080p].mp4": "episode Kettle Hana S1E5",
 		"Anime/【Grp】Kettle Hana 第06集 [1080p].mp4": "episode Kettle Hana S1E6",
 	}},
+	// Re-score #15: a show and its remake loose together are two shows when both number an episode
+	// alike; a yearless copy beside a dated one with episodes of its own joins it.
+	{id: "W122", files: map[string]string{
+		"Downloads/Blue.Fen.S01E01.mkv":      "episode Blue Fen S1E1",
+		"Downloads/Blue.Fen.S01E02.mkv":      "episode Blue Fen S1E2",
+		"Downloads/Blue.Fen.2020.S01E01.mkv": "episode Blue Fen 2020 S1E1",
+		"Torrents/Grey.Moss.S01E02.mkv":      "episode Grey Moss 2021 S1E2",
+		"Torrents/Grey.Moss.2021.S01E01.mkv": "episode Grey Moss 2021 S1E1",
+	}},
+	// Re-score #15: a show's film kept with it is a film; an anime's OVA folder is its specials.
+	{id: "W123", files: map[string]string{
+		"Anime/Kaito Run/Kaito Run - 01.mkv":                                 "episode Kaito Run S?E?",
+		"Anime/Kaito Run/Kaito Run Movie 1 - Red Sky (2010).mkv":             "movie Kaito Run Movie 1 - Red Sky 2010",
+		"Anime/Kaito Run/OVA/Kaito Run OVA 1.mkv":                            "episode Kaito Run S0E1",
+		"TV/Westerly/Season 1/Westerly S01E01.mkv":                           "episode Westerly S1E1",
+		"TV/Westerly/Westerly Movie/Westerly Movie (2012).mkv":               "movie Westerly Movie 2012",
+		"TV/Movie Mossway/Season 1/Movie Mossway S01E01.mkv":                 "episode Movie Mossway S1E1",
+		"TV/Flicker Film/Season 1/Flicker Film - S01E02 - Finale (2019).mkv": "episode Flicker Film S1E2",
+	}},
+	// Re-score #15: a show's folder of episodes named by their titles at an unlabelled root's top
+	// is a show's, three or more of them; a shelf of home videos is not, nor a pair of films.
+	{id: "W124", files: map[string]string{
+		"Bumbleton/Hats.mp4":          "episode Bumbleton S?E?",
+		"Bumbleton/Coats.mp4":         "episode Bumbleton S?E?",
+		"Bumbleton/Boots.mp4":         "episode Bumbleton S?E?",
+		"Home Videos/Beach Trip.mp4":  "movie Beach Trip -",
+		"Home Videos/Birthday.mp4":    "movie Birthday -",
+		"Home Videos/First Steps.mp4": "movie First Steps -",
+		"Pellmore/Pellmore.mkv":       "movie Pellmore -",
+		"Pellmore/Pellmore 2.mkv":     "movie Pellmore 2 -",
+		"Pellmore/Pellmore 3.mkv":     "movie Pellmore 3 -",
+	}},
 	// Re-score #14: a show's volume folders inside its own folder hold its episodes, named by the
 	// show and a title, wherever the show's folder is.
 	{id: "W118", files: map[string]string{

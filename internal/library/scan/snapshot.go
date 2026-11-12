@@ -214,7 +214,13 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    the title; a recorded film with its channel is the film; "SITE.txt.mp4" is junk; a
 //	    season's disc folder in its show's folder is that show's; an anime's "Ep 05" and
 //	    "01-02" batch read as the show's.
-const writeVersion = 57
+//	58: an episode titled after a spaced dash ("S01E04 - sample") is kept in any case; a show's
+//	    specials' folder named by it, and an anime's "OVA", are its season 0; an anime release's
+//	    creditless, clean, menu, preview and trailer extras are skipped; a recording named by its
+//	    day first is its show's on a shows' shelf; a show and its remake numbering an episode alike
+//	    stay two; a show's film kept with it is a film; three title-named videos with only
+//	    catch-alls above are a show's.
+const writeVersion = 58
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

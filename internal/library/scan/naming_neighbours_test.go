@@ -51,9 +51,6 @@ var namingNeighboursToday = map[string]string{
 	// "CAM" last is a release's word in a name written with dots (releaseCut); spaced, it may be
 	// the title's.
 	"W14 spaces Movies/Ashgrove.CAM.avi": "movie Ashgrove CAM -",
-	// An episode titled "Sample" is told from a release's sample by its capital: in lower case,
-	// "thornbury s01e07 - sample" is the sample a release names so.
-	"W79 lower TV/Thornbury/Season I/Thornbury S01E07 - Sample.mkv": "skip",
 	// "Ep" apart from its number is an episode's after a dash or a dot; spaced, "Band EP 2" is a
 	// record's.
 	"W90 spaces Downloads/Nightjar.Ep.03.mkv": "movie Nightjar Ep 03 -",
