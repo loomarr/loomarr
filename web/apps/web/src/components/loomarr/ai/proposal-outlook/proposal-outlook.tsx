@@ -1,5 +1,5 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
@@ -76,7 +76,9 @@ const ProposalOutlookDetails = ({
   showDiagnostics?: boolean;
 }) => (
   <Stack aria-label="What can play now" className="text-muted-foreground" gap="inline" render="section">
-    <h3 className="text-foreground font-medium">What can play now</h3>
+    <Text as="h3" textRole="cardLabel">
+      What can play now
+    </Text>
     <p>
       {value.programs > 0
         ? `${value.programs} playable ${value.programs === 1 ? "episode or movie" : "episodes or movies"} from ${value.scheduledTitles} ${value.scheduledTitles === 1 ? "title" : "titles"}.`
@@ -123,15 +125,19 @@ const ProposalOutlook = ({
 }: ProposalOutlookProps) => {
   if (pending)
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        Checking this lineup against your library…
-      </p>
+      <div role="status">
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking this lineup against your library…
+        </Text>
+      </div>
     );
   if (!value)
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        A schedule preview isn't available yet. You can still review the titles.
-      </p>
+      <div role="status">
+        <Text as="p" textRole="compact" tone="secondary">
+          A schedule preview isn't available yet. You can still review the titles.
+        </Text>
+      </div>
     );
   const lowerBound = value.windowLimited || value.unknownTitles > 0;
   const repeatDuration =
@@ -151,7 +157,9 @@ const ProposalOutlook = ({
           : `${sentenceCase(programmingDuration)} of programming.`;
   return (
     <section aria-label="Channel outlook" className="text-sm">
-      <p className={value.thin ? "text-caution" : "text-muted-foreground"}>{summary}</p>
+      <Text as="p" textRole="compact" tone={value.thin ? "warning" : "secondary"}>
+        {summary}
+      </Text>
       {showDetails && (
         <details className="mt-2">
           <summary className="text-muted-foreground cursor-pointer">Schedule details</summary>

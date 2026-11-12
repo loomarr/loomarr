@@ -1,5 +1,5 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip, Stack } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
@@ -29,10 +29,12 @@ const PasswordRecoveryRequest = ({
           <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
         </Stack>
         <div className="space-y-2">
-          <h1 className="font-display text-2xl font-semibold">Check your email</h1>
-          <p className="text-muted-foreground text-sm">
+          <Text as="h1" strong textRole="display">
+            Check your email
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             If that account can be recovered here, Loomarr sent a reset link to its verified address.
-          </p>
+          </Text>
         </div>
         <SignInLink />
       </div>
@@ -52,11 +54,13 @@ const PasswordRecoveryRequest = ({
         <Stack className="mx-auto w-fit" direction="row" render="span">
           <Icon decorative glyph={icons.mail} size="touch" tone="primary" />
         </Stack>
-        <h1 className="font-display text-2xl font-semibold">Forgot your password?</h1>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h1" strong textRole="display">
+          Forgot your password?
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           Enter your Loomarr username. We’ll email a reset link when this local account has a verified
           address.
-        </p>
+        </Text>
       </div>
 
       {error ? <ErrorState error={error} /> : null}
@@ -70,10 +74,10 @@ const PasswordRecoveryRequest = ({
       </Action>
 
       <div className="border-border space-y-2 border-t pt-4 text-center">
-        <p className="text-muted-foreground text-xs">
+        <Text as="p" textRole="hint" tone="secondary">
           Emby or Jellyfin owns imported-account passwords. Change yours there, then sign in here once to
           refresh Loomarr’s offline verifier.
-        </p>
+        </Text>
         <SignInLink />
       </div>
     </form>
@@ -116,10 +120,12 @@ const PasswordRecoveryReset = ({
           <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
         </Stack>
         <div className="space-y-2">
-          <h1 className="font-display text-2xl font-semibold">Password reset</h1>
-          <p className="text-muted-foreground text-sm">
+          <Text as="h1" strong textRole="display">
+            Password reset
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Your new Loomarr password is ready. Every existing session has been signed out.
-          </p>
+          </Text>
         </div>
         <SignInLink />
       </div>
@@ -130,10 +136,12 @@ const PasswordRecoveryReset = ({
       <ErrorState error={error} />
     ) : (
       <div className="space-y-3 text-center">
-        <h1 className="font-display text-2xl font-semibold">Reset link unavailable</h1>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h1" strong textRole="display">
+          Reset link unavailable
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           This link is missing, expired, revoked, or already used. Request a new one from the sign-in page.
-        </p>
+        </Text>
         <SignInLink />
       </div>
     );
@@ -155,8 +163,12 @@ const PasswordRecoveryReset = ({
         <Stack className="mx-auto w-fit" direction="row" render="span">
           <Icon decorative glyph={icons.key} size="touch" tone="primary" />
         </Stack>
-        <h1 className="font-display text-2xl font-semibold">Create a new password</h1>
-        <p className="text-muted-foreground text-sm">This reset link expires {expiry}.</p>
+        <Text as="h1" strong textRole="display">
+          Create a new password
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          This reset link expires {expiry}.
+        </Text>
       </div>
 
       {error ? <ErrorState error={error} /> : null}

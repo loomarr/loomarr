@@ -1,7 +1,17 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
-import { Action, Field, FieldHint, Icon, icons, Stack, StatusLabel, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Field,
+  FieldHint,
+  Icon,
+  icons,
+  Stack,
+  StatusLabel,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -96,30 +106,26 @@ const PersonDetail = ({
   return (
     <Stack className="p-6" gap="section">
       <Stack aria-labelledby="person-identity" gap="inline" render="section">
-        <h3 id="person-identity" className="font-semibold">
+        <Text as="h3" id="person-identity" textRole="heading">
           Identity
-        </h3>
+        </Text>
         <Stack align="center" direction="row" gap="inline" wrap>
           {isSelf && <StatusLabel tone="notice">You</StatusLabel>}
           {user.disabled && <StatusLabel tone="error">Disabled</StatusLabel>}
         </Stack>
-        <Stack
-          align="center"
-          className="text-muted-foreground text-sm"
-          direction="row"
-          gap="inline"
-          render="p"
-        >
+        <Stack align="center" className="text-muted-foreground" direction="row" gap="inline" render="p">
           {user.local ? (
             <Icon decorative glyph={icons.key} size="compact" tone="inherit" />
           ) : (
             <Icon decorative glyph={icons.server} size="compact" tone="inherit" />
           )}
-          {user.local
-            ? "Loomarr-local credentials"
-            : user.offlineLogin
-              ? "Media-server credentials · offline login ready"
-              : "Media-server credentials · sign in once to enable offline login"}
+          <Text as="span" textRole="compact" tone="secondary">
+            {user.local
+              ? "Loomarr-local credentials"
+              : user.offlineLogin
+                ? "Media-server credentials · offline login ready"
+                : "Media-server credentials · sign in once to enable offline login"}
+          </Text>
         </Stack>
       </Stack>
 
@@ -130,44 +136,48 @@ const PersonDetail = ({
         render="section"
       >
         <div>
-          <h3 id="person-contact" className="font-semibold">
+          <Text as="h3" id="person-contact" textRole="heading">
             Contact
-          </h3>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Optional account messages only. Email never replaces this person's sign-in name.
-          </p>
+          </Text>
         </div>
 
         {user.contactAddress ? (
           <Stack className="border-static-800 rounded-md border p-3" gap="inline">
             <Stack align="center" direction="row" gap="inline" wrap>
               <Icon decorative glyph={icons.mail} size="compact" tone="muted" />
-              <span className="text-sm break-all">{user.contactAddress.email}</span>
+              <Text as="span" className="break-all" textRole="compact">
+                {user.contactAddress.email}
+              </Text>
               <StatusLabel tone={user.contactAddress.status === "verified" ? "ok" : "off"}>
                 {user.contactAddress.status === "verified" ? "Verified" : "Unverified"}
               </StatusLabel>
             </Stack>
-            <p className="text-muted-foreground text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               {user.contactAddress.status === "verified"
                 ? "Verified for local-password recovery."
                 : "Not recovery-capable until the person verifies possession."}
-            </p>
+            </Text>
           </Stack>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             No contact email. QR and direct account access still work.
-          </p>
+          </Text>
         )}
 
         {user.contactReplacement && (
           <Stack className="border-suggest-700/50 bg-suggest-950/20 rounded-md border p-3" gap="inline">
             <Stack align="center" direction="row" gap="inline" wrap>
-              <span className="text-sm break-all">{user.contactReplacement.email}</span>
+              <Text as="span" className="break-all" textRole="compact">
+                {user.contactReplacement.email}
+              </Text>
               <StatusLabel tone="pending">Pending replacement</StatusLabel>
             </Stack>
-            <p className="text-muted-foreground text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               The verified address above remains recovery-capable until this replacement is verified.
-            </p>
+            </Text>
             <Action
               disabled={contactSaving}
               onPress={() => void runContactAction(onCancelContactReplacement)}
@@ -191,9 +201,9 @@ const PersonDetail = ({
             <contactForm.AppField name="email">
               {(field) => <field.TextField autoComplete="off" label="Contact email" type="email" />}
             </contactForm.AppField>
-            <p className="text-muted-foreground text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               Saving creates an unverified address. Invitation or verification delivery will prove possession.
-            </p>
+            </Text>
             {contactError && (
               <FieldHint role="alert" tone="error">
                 {contactError}
@@ -245,10 +255,12 @@ const PersonDetail = ({
         render="section"
       >
         <div>
-          <h3 id="person-access" className="font-semibold">
+          <Text as="h3" id="person-access" textRole="heading">
             Access
-          </h3>
-          <p className="text-muted-foreground text-sm">Role changes take effect immediately.</p>
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            Role changes take effect immediately.
+          </Text>
         </div>
         <Stack gap="1.5">
           <BrowserSelectControl
@@ -270,16 +282,18 @@ const PersonDetail = ({
         render="section"
       >
         <div>
-          <h3 id="person-requests" className="font-semibold">
+          <Text as="h3" id="person-requests" textRole="heading">
             Requests
-          </h3>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Control how much this person may acquire and approve.
-          </p>
+          </Text>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-end gap-4">
           <div>
-            <p className="text-sm">Pending acquisitions</p>
+            <Text as="p" textRole="compact">
+              Pending acquisitions
+            </Text>
             <p className="text-muted-foreground font-mono text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
           </div>
           <Field
@@ -317,10 +331,12 @@ const PersonDetail = ({
         render="section"
       >
         <div>
-          <h3 id="person-sessions" className="font-semibold">
+          <Text as="h3" id="person-sessions" textRole="heading">
             Sessions
-          </h3>
-          <p className="text-muted-foreground text-sm">Review and end active sign-ins.</p>
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            Review and end active sign-ins.
+          </Text>
         </div>
         <SessionList
           userName={user.name}
@@ -338,14 +354,14 @@ const PersonDetail = ({
         render="section"
       >
         <div>
-          <h3 id="person-password" className="font-semibold">
+          <Text as="h3" id="person-password" textRole="heading">
             Password
-          </h3>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             {user.local
               ? "Set a replacement Loomarr password and end every session."
               : "Change this password in the connected media server. Loomarr stores a non-reversible Argon2id verifier for offline login and refreshes it after a successful provider sign-in."}
-          </p>
+          </Text>
         </div>
         {user.local &&
           onResetPassword &&
@@ -398,14 +414,14 @@ const PersonDetail = ({
         render="section"
       >
         <div>
-          <h3 id="person-danger" className="text-onair-300 font-semibold">
+          <Text as="h3" id="person-danger" textRole="heading" tone="danger">
             Danger zone
-          </h3>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             {user.disabled
               ? "Enable this account so the person can sign in again."
               : "Disable this account and end every active session immediately."}
-          </p>
+          </Text>
         </div>
         <Action
           disabled={busy || isSelf}
@@ -416,7 +432,11 @@ const PersonDetail = ({
         >
           {user.disabled ? "Enable account" : "Disable account"}
         </Action>
-        {isSelf && <p className="text-static-400 text-xs">You cannot disable your own account.</p>}
+        {isSelf && (
+          <Text as="p" textRole="hint" tone="secondary">
+            You cannot disable your own account.
+          </Text>
+        )}
       </Stack>
     </Stack>
   );

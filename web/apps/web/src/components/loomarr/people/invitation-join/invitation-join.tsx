@@ -1,5 +1,5 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip, Stack, StatusLabel } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -42,10 +42,12 @@ const InvitationJoin = ({
       <ErrorState error={error} />
     ) : (
       <div className="space-y-2 text-center">
-        <h1 className="font-display text-2xl font-semibold">Invitation unavailable</h1>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h1" strong textRole="display">
+          Invitation unavailable
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           This invitation is missing, expired, revoked, or already used. Ask an administrator for a new one.
-        </p>
+        </Text>
       </div>
     );
   }
@@ -65,8 +67,12 @@ const InvitationJoin = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <h1 className="font-display text-2xl font-semibold">Join Loomarr</h1>
-        <p className="text-muted-foreground text-sm">Review the account below before activating it.</p>
+        <Text as="h1" strong textRole="display">
+          Join Loomarr
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          Review the account below before activating it.
+        </Text>
       </div>
 
       <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
@@ -75,34 +81,42 @@ const InvitationJoin = ({
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
           </Stack>
           <div className="min-w-0 flex-1">
-            <p className="text-muted-foreground text-xs">Invited identity</p>
-            <p className="font-medium break-words">{identity}</p>
+            <Text as="p" textRole="hint" tone="secondary">
+              Invited identity
+            </Text>
+            <Text as="p" className="break-words" textRole="cardLabel">
+              {identity}
+            </Text>
           </div>
           <StatusLabel tone={preview.role === "admin" ? "error" : "off"}>
             {preview.role === "admin" ? "Admin" : "Member"}
           </StatusLabel>
         </Stack>
         {preview.role === "admin" ? (
-          <Stack className="text-onair-300 text-sm" direction="row" gap="inline" render="p">
+          <Stack className="text-onair-300" direction="row" gap="inline" render="p">
             <Stack className="mt-0.5" direction="row" render="span">
               <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
             </Stack>
-            This account will have administrator access to people, settings, and approvals.
+            <Text as="span" textRole="compact" tone="danger">
+              This account will have administrator access to people, settings, and approvals.
+            </Text>
           </Stack>
         ) : null}
-        <Stack className="text-muted-foreground text-sm" direction="row" gap="inline" render="p">
+        <Stack className="text-muted-foreground" direction="row" gap="inline" render="p">
           <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
           </Stack>
-          This invitation expires {expires}.
+          <Text as="span" textRole="compact" tone="secondary">
+            This invitation expires {expires}.
+          </Text>
         </Stack>
       </div>
 
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         {library
           ? "Sign in with the current username and password for this Emby or Jellyfin account. The provider must verify it before Loomarr activates access."
           : "Create a Loomarr password for this reserved local account. Activation happens only when you submit this form."}
-      </p>
+      </Text>
 
       {error ? <ErrorState error={error} /> : null}
 

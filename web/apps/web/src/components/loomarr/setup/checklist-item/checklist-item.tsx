@@ -1,5 +1,5 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
+import { ActivityIndicator, Icon, icons, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -28,8 +28,14 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
       {ICON[status].node}
     </span>
     <div className="min-w-0 flex-1">
-      <p className="text-sm font-medium">{name}</p>
-      {status === "fail" && hint && <p className="text-muted-foreground mt-0.5 text-sm">{hint}</p>}
+      <Text as="p" textRole="cardLabel">
+        {name}
+      </Text>
+      {status === "fail" && hint && (
+        <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+          {hint}
+        </Text>
+      )}
     </div>
     {status === "fail" && docHref && (
       // Route into the Help center — the docHref ("troubleshooting#tunarr") is parsed

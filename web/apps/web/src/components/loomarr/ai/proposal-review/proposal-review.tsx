@@ -1,5 +1,5 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, type BadgeTone, Field, Stack } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Field, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
@@ -139,11 +139,17 @@ const ProposalReview = ({
         <div className="min-w-0">
           {showWorkflowHeading ? (
             <>
-              <h2 className="text-lg font-semibold">Review your channel</h2>
-              <p className="mt-1 text-base font-medium">{proposal.channelName || "Your new channel"}</p>
+              <Text as="h2" strong textRole="headline">
+                Review your channel
+              </Text>
+              <Text as="p" className="mt-1" textRole="cardLabel">
+                {proposal.channelName || "Your new channel"}
+              </Text>
             </>
           ) : (
-            <h2 className="text-lg font-semibold">{proposal.channelName || "Your new channel"}</h2>
+            <Text as="h2" strong textRole="headline">
+              {proposal.channelName || "Your new channel"}
+            </Text>
           )}
         </div>
         {statusDisplay && (
@@ -176,15 +182,21 @@ const ProposalReview = ({
             )}
           </briefForm.Field>
           {requestDetails.length > 0 && (
-            <details className="text-sm">
-              <summary className="text-muted-foreground w-fit cursor-pointer">
-                Other request details ({requestDetails.length})
+            <details>
+              <summary className="w-fit cursor-pointer">
+                <Text as="span" textRole="compact" tone="secondary">
+                  Other request details ({requestDetails.length})
+                </Text>
               </summary>
               <dl className="bg-background/60 mt-2 grid gap-x-4 gap-y-1.5 rounded-md p-3 sm:grid-cols-[auto_1fr]">
                 {requestDetails.map(([label, value]) => (
                   <div key={label} className="contents">
-                    <dt className="text-muted-foreground font-medium">{label}</dt>
-                    <dd>{value}</dd>
+                    <Text as="dt" textRole="cardLabel" tone="secondary">
+                      {label}
+                    </Text>
+                    <Text as="dd" textRole="compact">
+                      {value}
+                    </Text>
                   </div>
                 ))}
               </dl>
@@ -212,7 +224,9 @@ const ProposalReview = ({
           justify="between"
           wrap
         >
-          <p className="text-muted-foreground min-w-0 flex-1 text-sm">“{proposal.intent.description}”</p>
+          <Text as="p" className="min-w-0 flex-1" textRole="compact" tone="secondary">
+            “{proposal.intent.description}”
+          </Text>
           {actionable && onRevise && (
             <div className="-my-1 shrink-0">
               <Action
@@ -230,36 +244,48 @@ const ProposalReview = ({
         </Stack>
       )}
 
-      <Stack className="text-sm" gap="1">
-        <p>{availabilitySummary(selectedCount, selectedReady, selectedMissing)}</p>
+      <Stack gap="1">
+        <Text as="p" textRole="compact">
+          {availabilitySummary(selectedCount, selectedReady, selectedMissing)}
+        </Text>
         <ProposalOutlook assessment={assessment} pending={assessmentPending} showDetails={false} />
       </Stack>
 
       {(revising || findingMore) && (
-        <p role="status" className="text-muted-foreground text-sm">
-          {findingMore
-            ? "Finding more suggestions… Your selected titles won’t change."
-            : "Updating suggestions… Your current lineup will stay here until the new one is ready."}
-        </p>
+        <div role="status">
+          <Text as="p" textRole="compact" tone="secondary">
+            {findingMore
+              ? "Finding more suggestions… Your selected titles won’t change."
+              : "Updating suggestions… Your current lineup will stay here until the new one is ready."}
+          </Text>
+        </div>
       )}
 
       {revisionError && !revising && !findingMore && (
-        <p role="alert" className="border-onair/40 bg-onair/5 rounded-md border px-3 py-2 text-sm">
-          We couldn't update the suggestions. Your current lineup is unchanged.
-        </p>
+        <div role="alert" className="border-onair/40 bg-onair/5 rounded-md border px-3 py-2">
+          <Text as="p" textRole="compact">
+            We couldn't update the suggestions. Your current lineup is unchanged.
+          </Text>
+        </div>
       )}
 
       {expansionAdded === 0 && !revising && !findingMore && !revisionError && (
-        <p role="status" className="text-muted-foreground text-sm">
-          Loomarr didn’t find any new strong matches this time. Your existing options are still here.
-        </p>
+        <div role="status">
+          <Text as="p" textRole="compact" tone="secondary">
+            Loomarr didn’t find any new strong matches this time. Your existing options are still here.
+          </Text>
+        </div>
       )}
 
       {partialTheme && (
-        <p role="status" className="text-caution text-sm">
-          <span className="font-medium">Some titles may be a loose match.</span> Remove anything that does not
-          fit, or edit the brief.
-        </p>
+        <div role="status">
+          <Text as="p" textRole="compact" tone="warning">
+            <Text as="span" textRole="cardLabel" tone="warning">
+              Some titles may be a loose match.
+            </Text>{" "}
+            Remove anything that does not fit, or edit the brief.
+          </Text>
+        </div>
       )}
 
       <ProposalEdit
@@ -290,13 +316,13 @@ const ProposalReview = ({
           render="footer"
         >
           <div>
-            <p className="text-sm font-medium">
+            <Text as="p" textRole="cardLabel">
               {selectedCount === 0
                 ? "Choose at least one title"
                 : selectedMissing > 0
                   ? `Loomarr will add ${selectedMissing} missing ${selectedMissing === 1 ? "title" : "titles"}.`
                   : "Everything selected is already in your library."}
-            </p>
+            </Text>
           </div>
 
           {denying && !selfService ? (
@@ -344,12 +370,16 @@ const ProposalReview = ({
       )}
 
       <details className="border-border border-t pt-3 text-sm">
-        <summary className="text-muted-foreground cursor-pointer font-medium">
-          How these suggestions were chosen
+        <summary className="cursor-pointer">
+          <Text as="span" textRole="cardLabel" tone="secondary">
+            How these suggestions were chosen
+          </Text>
         </summary>
         <Stack className="text-muted-foreground mt-4" gap="5">
           <Stack aria-label="Why these titles" gap="inline" render="section">
-            <h3 className="text-foreground font-medium">Why these titles</h3>
+            <Text as="h3" textRole="cardLabel">
+              Why these titles
+            </Text>
             {status === "partially-edited" ? (
               <p>You changed the title list. Check any titles you added against your brief.</p>
             ) : proposal.manual ? (
@@ -396,34 +426,42 @@ const ProposalReview = ({
             <details className="border-border border-t pt-3">
               <summary className="w-fit cursor-pointer">Troubleshooting details</summary>
               <Stack className="mt-3" gap="4">
-                <p className="text-xs">
+                <Text as="p" textRole="hint" tone="secondary">
                   This shows how Loomarr handled the original suggestions, before any changes you made.
-                </p>
+                </Text>
                 {proposal.rationale && (
                   <section>
-                    <h3 className="text-foreground mb-1 font-medium">Suggestion summary</h3>
+                    <Text as="h3" className="mb-1" textRole="cardLabel">
+                      Suggestion summary
+                    </Text>
                     <p>{friendlyProposalRationale(proposal.rationale)}</p>
                   </section>
                 )}
                 {assessment && !assessmentPending && <ProposalOutlookDiagnostics assessment={assessment} />}
                 {proposal.trace?.candidates?.length ? (
                   <section aria-label="Titles considered">
-                    <h3 className="text-foreground mb-2 font-medium">Titles considered</h3>
+                    <Text as="h3" className="mb-2" textRole="cardLabel">
+                      Titles considered
+                    </Text>
                     <Stack className="divide-border divide-y" render="ul">
                       {proposal.trace.candidates.map((candidate) => (
                         <li
                           key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
                           className="py-2"
                         >
-                          <p className="text-foreground font-medium">
+                          <Text as="p" textRole="cardLabel">
                             {friendlyCandidateName(candidate.name)}
-                          </p>
+                          </Text>
                           <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
                         </li>
                       ))}
                     </Stack>
                     <details className="mt-3">
-                      <summary className="w-fit cursor-pointer text-xs">Raw search data</summary>
+                      <summary className="w-fit cursor-pointer">
+                        <Text as="span" textRole="hint">
+                          Raw search data
+                        </Text>
+                      </summary>
                       <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-md p-3 text-xs">
                         {JSON.stringify(proposal.trace, null, 2)}
                       </pre>

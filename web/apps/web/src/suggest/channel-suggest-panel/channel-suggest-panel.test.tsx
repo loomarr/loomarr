@@ -875,11 +875,9 @@ describe("ChannelSuggestPanel", () => {
     });
     view.rerenderPanel();
 
-    expect(
-      await screen.findByText(
-        "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
-      ),
-    ).toHaveAttribute("role", "status");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
+    );
     expect(screen.getByText("1 option")).toBeVisible();
     expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
   });

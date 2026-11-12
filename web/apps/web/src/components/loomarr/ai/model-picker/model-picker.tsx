@@ -1,6 +1,6 @@
 import type { LLMModelView } from "@loomarr/api/models/lLMModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Stack } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ModelPickerProps } from "./model-picker.type";
 
@@ -30,10 +30,10 @@ const ModelPicker = ({
 }: ModelPickerProps) => (
   <Stack className={className} gap="control">
     {(gpuName || vramGiB) && (
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Ranked for {gpuName ?? "this machine"}
         {vramGiB ? ` · ${formatGiB(vramGiB)} VRAM` : ""}.
-      </p>
+      </Text>
     )}
 
     <Stack gap="inline" render="ul">
@@ -66,9 +66,13 @@ const ModelPicker = ({
                 below the WCAG AA contrast floor, which the a11y gate rejects (frontend-design
                 §7 — express state with color/semantics, never opacity over text). */}
             <div className="min-w-0 flex-1">
-              <Stack align="center" className="text-sm font-medium" direction="row" gap="inline" render="p">
-                {model.label}
-                <span className="text-static-400 font-mono text-xs">{model.tag}</span>
+              <Stack align="center" direction="row" gap="inline" render="p">
+                <Text as="span" textRole="cardLabel">
+                  {model.label}
+                </Text>
+                <Text as="span" textRole="mono" tone="secondary">
+                  {model.tag}
+                </Text>
                 {model.recommended && (
                   <Badge shape="square" tone="signal">
                     recommended
@@ -80,17 +84,25 @@ const ModelPicker = ({
                   </Badge>
                 )}
               </Stack>
-              <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>
-              <Stack align="center" className="mt-1 text-xs" direction="row" gap="inline" render="p">
+              <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+                {model.why}
+              </Text>
+              <Stack align="center" className="mt-1" direction="row" gap="inline" render="p">
                 <Badge shape="square" tone={fit.tone}>
                   {fit.text}
                 </Badge>
-                <span className="text-static-400">~{formatGiB(model.approxVramGiB)}</span>
-                {!model.runtimeOk && <span className="text-onair-300">needs a newer Ollama</span>}
+                <Text as="span" textRole="hint" tone="secondary">
+                  ~{formatGiB(model.approxVramGiB)}
+                </Text>
+                {!model.runtimeOk && (
+                  <Text as="span" textRole="hint" tone="danger">
+                    needs a newer Ollama
+                  </Text>
+                )}
                 {isPulling && (
-                  <span className="text-tune">
+                  <Text as="span" textRole="hint" tone="info">
                     downloading{progress !== undefined ? ` ${formatPercentPoints(progress)}` : "…"}
-                  </span>
+                  </Text>
                 )}
               </Stack>
             </div>

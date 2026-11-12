@@ -10,6 +10,7 @@ import {
   icons,
   Stack,
   StatusLabel,
+  Text,
   Toggle,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
@@ -123,11 +124,13 @@ const ImportDialog = ({
           {!available ? (
             <Stack align="start" className="overflow-auto px-6 pb-6" gap="4">
               <div className="border-border bg-static-900 rounded-lg border p-4">
-                <p className="font-medium">Connect a media server first</p>
-                <p className="text-muted-foreground mt-1 text-sm">
+                <Text as="p" textRole="cardLabel">
+                  Connect a media server first
+                </Text>
+                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                   Add Emby or Jellyfin under Connections. Once Loomarr can reach it, its accounts will be
                   available here for explicit import.
-                </p>
+                </Text>
               </div>
               <Action accessibilityRole="link" render={<a href="/settings/connections" />} variant="outline">
                 Open Connections settings
@@ -172,8 +175,12 @@ const ImportDialog = ({
                   />
                 ) : visible.length === 0 ? (
                   <div className="border-border bg-card rounded-lg border p-6 text-center">
-                    <p className="font-medium">No matching accounts</p>
-                    <p className="text-muted-foreground text-sm">Try another name or account filter.</p>
+                    <Text as="p" textRole="cardLabel">
+                      No matching accounts
+                    </Text>
+                    <Text as="p" textRole="compact" tone="secondary">
+                      Try another name or account filter.
+                    </Text>
                   </div>
                 ) : (
                   <div className="border-border bg-card overflow-hidden rounded-lg border">
@@ -185,9 +192,9 @@ const ImportDialog = ({
                       justify="between"
                       wrap
                     >
-                      <p aria-live="polite" className="text-muted-foreground text-sm">
+                      <Text aria-live="polite" as="p" textRole="compact" tone="secondary">
                         {selectedIds.length} selected · {visibleImportable.length} importable shown
-                      </p>
+                      </Text>
                       <Action
                         disabled={visibleImportable.length === 0 || importing}
                         onPress={toggleVisible}
@@ -212,21 +219,20 @@ const ImportDialog = ({
                               disabled={candidate.imported || importing}
                               onCheckedChange={() => toggle(candidate.id)}
                             />
-                            <label
-                              htmlFor={id}
-                              className="min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none"
-                            >
+                            <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer py-2">
                               <Stack align="center" direction="row" gap="inline" render="span" wrap>
-                                <span className="font-medium">{candidate.name}</span>
+                                <Text as="span" textRole="cardLabel">
+                                  {candidate.name}
+                                </Text>
                                 {candidate.imported && <StatusLabel tone="ok">Already imported</StatusLabel>}
                                 {candidate.disabled && (
                                   <StatusLabel tone="error">Disabled on server</StatusLabel>
                                 )}
                                 {candidate.isAdmin && <StatusLabel tone="notice">Server admin</StatusLabel>}
                               </Stack>
-                              <span className="text-static-400 mt-1 block text-xs">
+                              <Text as="span" className="mt-1 block" textRole="hint" tone="secondary">
                                 Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
-                              </span>
+                              </Text>
                             </label>
                           </li>
                         );
@@ -235,23 +241,27 @@ const ImportDialog = ({
                   </div>
                 )}
 
-                <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
+                <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 sm:grid-cols-2">
                   <div>
-                    <Stack align="center" className="font-medium" direction="row" gap="inline" render="p">
+                    <Stack align="center" direction="row" gap="inline" render="p">
                       <Icon decorative glyph={icons.verified} size="compact" tone="success" />
-                      Passwords stay private
+                      <Text as="span" textRole="cardLabel">
+                        Passwords stay private
+                      </Text>
                     </Stack>
-                    <p className="text-muted-foreground mt-1">
+                    <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                       Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only a
                       non-reversible Argon2id verifier for outage access and refreshes it after later provider
                       sign-ins.
-                    </p>
+                    </Text>
                   </div>
                   <div>
-                    <p className="font-medium">Sync existing accounts</p>
-                    <p className="text-muted-foreground mt-1">
+                    <Text as="p" textRole="cardLabel">
+                      Sync existing accounts
+                    </Text>
+                    <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                       Refresh imported names and disabled state. Sync never provisions an unselected account.
-                    </p>
+                    </Text>
                     <Stack className="mt-3" direction="row">
                       <Action
                         disabled={syncing || importing}

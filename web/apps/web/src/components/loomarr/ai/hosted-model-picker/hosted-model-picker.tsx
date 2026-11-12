@@ -1,6 +1,6 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Action, Badge, Stack } from "@loomarr/design-system";
+import { Action, Badge, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -74,9 +74,13 @@ const ModelRow = ({
       render="li"
     >
       <div className="min-w-0 flex-1">
-        <Stack align="center" className="text-sm font-medium" direction="row" gap="inline" render="p" wrap>
-          {model.label}
-          <span className="text-static-400 font-mono text-xs">{model.id}</span>
+        <Stack align="center" direction="row" gap="inline" render="p" wrap>
+          <Text as="span" textRole="cardLabel">
+            {model.label}
+          </Text>
+          <Text as="span" textRole="mono" tone="secondary">
+            {model.id}
+          </Text>
           {model.recommended && (
             <Badge shape="square" tone="signal">
               recommended
@@ -91,11 +95,15 @@ const ModelRow = ({
             </Badge>
           )}
         </Stack>
-        {model.why && <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>}
+        {model.why && (
+          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+            {model.why}
+          </Text>
+        )}
         {unusable && !model.why && (
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
             Loomarr requires advertised tool-calling to ground suggestions safely.
-          </p>
+          </Text>
         )}
       </div>
       <Action
@@ -149,19 +157,27 @@ const HostedModelPicker = ({
         return (
           <Stack gap="inline" key={hp.key}>
             <Stack align="baseline" direction="row" gap="inline" justify="between">
-              <p className="text-sm font-medium">
+              <Text as="p" textRole="cardLabel">
                 {hp.label}
-                {hp.active && <span className="text-muted-foreground ml-2 text-xs">(in use)</span>}
-              </p>
+                {hp.active && (
+                  <Text as="span" className="ml-2" textRole="hint" tone="secondary">
+                    (in use)
+                  </Text>
+                )}
+              </Text>
               {hp.modelsLive ? (
-                <span className="text-static-400 text-xs">live models</span>
+                <Text as="span" textRole="hint" tone="secondary">
+                  live models
+                </Text>
               ) : (
-                <span className="text-static-400 text-xs">suggested</span>
+                <Text as="span" textRole="hint" tone="secondary">
+                  suggested
+                </Text>
               )}
             </Stack>
 
             {!hp.keyConfigured && (
-              <p className="text-muted-foreground text-sm">
+              <Text as="p" textRole="compact" tone="secondary">
                 {hp.key === "openrouter"
                   ? "Add your OpenRouter key above and save to use the suggested model and load live options."
                   : "Add this provider's URL + key above and save to load its models."}
@@ -178,13 +194,13 @@ const HostedModelPicker = ({
                     </a>
                   </>
                 )}
-              </p>
+              </Text>
             )}
 
             {hp.keyConfigured && models.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
+              <Text as="p" textRole="compact" tone="secondary">
                 No models returned. Check the key and base URL above, then Test again.
-              </p>
+              </Text>
             ) : models.length > 0 && isSearching ? (
               <>
                 <SearchField
@@ -196,11 +212,15 @@ const HostedModelPicker = ({
                   value={query}
                 />
                 {!normalizedQuery ? (
-                  <p className="text-muted-foreground text-sm">Start typing to find a model.</p>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    Start typing to find a model.
+                  </Text>
                 ) : matchingModels.length === 0 ? (
-                  <p role="status" className="text-muted-foreground text-sm">
-                    No models match “{query.trim()}”.
-                  </p>
+                  <div role="status">
+                    <Text as="p" textRole="compact" tone="secondary">
+                      No models match “{query.trim()}”.
+                    </Text>
+                  </div>
                 ) : (
                   <Stack gap="inline" render="ul">
                     {matchingModels.map((model) => (
@@ -217,16 +237,18 @@ const HostedModelPicker = ({
                   </Stack>
                 )}
                 {matchingModels.length === 20 && (
-                  <p className="text-muted-foreground text-xs">
+                  <Text as="p" textRole="hint" tone="secondary">
                     Showing the first 20 matches. Keep typing to narrow them.
-                  </p>
+                  </Text>
                 )}
               </>
             ) : models.length > 0 ? (
               <>
                 {primary && (
                   <>
-                    <p className="text-signal text-xs font-medium">Safe default</p>
+                    <Text as="p" textRole="label" tone="signal">
+                      Safe default
+                    </Text>
                     <ul>
                       <ModelRow
                         model={primary}
@@ -241,9 +263,9 @@ const HostedModelPicker = ({
                 )}
                 {alternatives.length > 0 && (
                   <>
-                    <p className="text-muted-foreground mt-1 text-xs font-medium">
+                    <Text as="p" className="mt-1" textRole="label">
                       {primary ? "Strong alternatives" : "Available models"}
-                    </p>
+                    </Text>
                     <Stack gap="inline" render="ul">
                       {alternatives.map((model) => (
                         <ModelRow
@@ -260,7 +282,9 @@ const HostedModelPicker = ({
                 )}
                 {current && (
                   <>
-                    <p className="text-muted-foreground mt-1 text-xs font-medium">Currently active</p>
+                    <Text as="p" className="mt-1" textRole="label">
+                      Currently active
+                    </Text>
                     <ul>
                       <ModelRow
                         model={current}
