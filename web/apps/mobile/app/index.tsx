@@ -372,6 +372,18 @@ const WatchingScreen = ({
         <View style={{ flex: 1, justifyContent: "center" }}>
           <StatePanel density="touch" kind="loading" title="Loading channels" />
         </View>
+      ) : snapshot.catalog.length === 0 ? (
+        // Nothing on air to tune (#3836): the Guide's own empty state, with the way back Leave would
+        // have been, since Leave lives in the chrome and Watching has no tab bar.
+        <View style={{ flex: 1, justifyContent: "center" }}>
+          <StatePanel
+            action={{ label: "Back to the Guide", onPress: onLeave }}
+            density="touch"
+            description="No playable channels are available yet."
+            kind="empty"
+            title="No channels on air"
+          />
+        </View>
       ) : null}
     </View>
   );
@@ -399,11 +411,14 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     session,
   });
   const { controller, guide, myChannelsSnapshot, snapshot } = client;
-  // Opening Watching with nothing tuned yet resumes the channel the device last watched.
+  // Opening Watching with nothing tuned yet resumes the channel the device last watched, or, on a
+  // device that has watched nothing, the lineup's first channel (#3836): Watching has nothing to show
+  // without a channel, and its Leave is in the chrome a channel brings.
   const { restoredChannelId } = snapshot;
+  const openingChannelId = restoredChannelId ?? (snapshot.channel ? undefined : snapshot.catalog[0]?.id);
   useEffect(() => {
-    if (active === "watching" && restoredChannelId) void controller.tuneChannel(restoredChannelId);
-  }, [active, controller, restoredChannelId]);
+    if (active === "watching" && openingChannelId) void controller.tuneChannel(openingChannelId);
+  }, [active, controller, openingChannelId]);
   // Requests loads with the app so an admin's tab badge counts before they open it.
   const requests = usePairedRequests({ credential, session });
   const haptic = useHaptic();
