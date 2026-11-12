@@ -4,7 +4,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, Field, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Field, Stack, Toggle } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
@@ -318,7 +318,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-3", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <div>
           <h3 className="font-medium">Titles</h3>
         </div>
@@ -334,7 +334,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             Reset changes
           </Action>
         )}
-      </div>
+      </Stack>
 
       <ul aria-label="Titles" className="border-border rounded-md border px-3">
         {picks.map((pick) => (
@@ -379,7 +379,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
 
       {editable &&
         (adding ? (
-          <div className="flex flex-col gap-2">
+          <Stack gap="inline">
             <SearchCommand
               query={query}
               onQueryChange={setQuery}
@@ -416,7 +416,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             >
               Cancel
             </Action>
-          </div>
+          </Stack>
         ) : (
           <Action
             disabled={disabled}
@@ -465,7 +465,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             ))}
           </ul>
           {onFindMore && (
-            <div className="mt-2 flex">
+            <Stack className="mt-2" direction="row">
               <Action
                 disabled={disabled || findingMore}
                 icon={findingMore ? "loading" : undefined}
@@ -474,7 +474,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
               >
                 {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
               </Action>
-            </div>
+            </Stack>
           )}
         </details>
       )}

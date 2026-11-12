@@ -1,5 +1,5 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip, StatusLabel } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, StatusLabel } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -63,10 +63,10 @@ const InvitationJoin = ({
       </div>
 
       <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex">
+        <Stack align="start" direction="row" gap="control">
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
-          </span>
+          </Stack>
           <div className="min-w-0 flex-1">
             <p className="text-muted-foreground text-xs">Invited identity</p>
             <p className="font-medium break-words">{identity}</p>
@@ -74,21 +74,21 @@ const InvitationJoin = ({
           <StatusLabel tone={preview.role === "admin" ? "error" : "off"}>
             {preview.role === "admin" ? "Admin" : "Member"}
           </StatusLabel>
-        </div>
+        </Stack>
         {preview.role === "admin" ? (
-          <p className="text-onair-300 flex gap-2 text-sm">
-            <span className="mt-0.5 flex">
+          <Stack className="text-onair-300 text-sm" direction="row" gap="inline" render="p">
+            <Stack className="mt-0.5" direction="row" render="span">
               <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
-            </span>
+            </Stack>
             This account will have administrator access to people, settings, and approvals.
-          </p>
+          </Stack>
         ) : null}
-        <p className="text-muted-foreground flex gap-2 text-sm">
-          <span className="mt-0.5 flex">
+        <Stack className="text-muted-foreground text-sm" direction="row" gap="inline" render="p">
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
-          </span>
+          </Stack>
           This invitation expires {expires}.
-        </p>
+        </Stack>
       </div>
 
       <p className="text-muted-foreground text-sm">

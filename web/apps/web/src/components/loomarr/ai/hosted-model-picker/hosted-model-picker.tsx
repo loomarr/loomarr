@@ -1,6 +1,6 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Action, Badge } from "@loomarr/design-system";
+import { Action, Badge, Stack } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -61,16 +61,20 @@ const ModelRow = ({
           : "Use this";
 
   return (
-    <li
+    <Stack
+      align="start"
       className={cn(
-        "border-border bg-card flex items-start gap-3 rounded-md border px-3 py-2.5",
+        "border-border bg-card rounded-md border px-3 py-2.5",
         primary && !isActive && "border-signal-tint-30 bg-signal-tint-5",
         // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
         isActive && "bg-static-800",
       )}
+      direction="row"
+      gap="control"
+      render="li"
     >
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+        <Stack align="center" className="text-sm font-medium" direction="row" gap="inline" render="p" wrap>
           {model.label}
           <span className="text-static-400 font-mono text-xs">{model.id}</span>
           {model.recommended && (
@@ -86,7 +90,7 @@ const ModelRow = ({
               active
             </Badge>
           )}
-        </p>
+        </Stack>
         {model.why && <p className="text-muted-foreground mt-0.5 text-sm">{model.why}</p>}
         {unusable && !model.why && (
           <p className="text-muted-foreground mt-0.5 text-sm">
@@ -102,7 +106,7 @@ const ModelRow = ({
       >
         {action}
       </Action>
-    </li>
+    </Stack>
   );
 };
 
@@ -143,8 +147,8 @@ const HostedModelPicker = ({
           : [];
 
         return (
-          <div key={hp.key} className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between gap-2">
+          <Stack gap="inline" key={hp.key}>
+            <Stack align="baseline" direction="row" gap="inline" justify="between">
               <p className="text-sm font-medium">
                 {hp.label}
                 {hp.active && <span className="text-muted-foreground ml-2 text-xs">(in use)</span>}
@@ -154,7 +158,7 @@ const HostedModelPicker = ({
               ) : (
                 <span className="text-static-400 text-xs">suggested</span>
               )}
-            </div>
+            </Stack>
 
             {!hp.keyConfigured && (
               <p className="text-muted-foreground text-sm">
@@ -198,7 +202,7 @@ const HostedModelPicker = ({
                     No models match “{query.trim()}”.
                   </p>
                 ) : (
-                  <ul className="flex flex-col gap-2">
+                  <Stack gap="inline" render="ul">
                     {matchingModels.map((model) => (
                       <ModelRow
                         key={model.id}
@@ -210,7 +214,7 @@ const HostedModelPicker = ({
                         onSelect={onSelect}
                       />
                     ))}
-                  </ul>
+                  </Stack>
                 )}
                 {matchingModels.length === 20 && (
                   <p className="text-muted-foreground text-xs">
@@ -240,7 +244,7 @@ const HostedModelPicker = ({
                     <p className="text-muted-foreground mt-1 text-xs font-medium">
                       {primary ? "Strong alternatives" : "Available models"}
                     </p>
-                    <ul className="flex flex-col gap-2">
+                    <Stack gap="inline" render="ul">
                       {alternatives.map((model) => (
                         <ModelRow
                           key={model.id}
@@ -251,7 +255,7 @@ const HostedModelPicker = ({
                           onSelect={onSelect}
                         />
                       ))}
-                    </ul>
+                    </Stack>
                   </>
                 )}
                 {current && (
@@ -280,7 +284,7 @@ const HostedModelPicker = ({
                 {isSearching ? "Back to recommendations" : "Find another model"}
               </Action>
             )}
-          </div>
+          </Stack>
         );
       })}
     </div>

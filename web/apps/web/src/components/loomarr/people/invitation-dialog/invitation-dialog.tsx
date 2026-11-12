@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   FieldHint,
+  Stack,
   StatusLabel,
   Toggle,
 } from "@loomarr/design-system";
@@ -332,12 +333,12 @@ const InvitationDialog = ({
                   />
                 </div>
                 <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
+                  <Stack direction="row" gap="inline" wrap>
                     <StatusLabel tone={invitation.role === "admin" ? "notice" : "off"}>
                       {invitation.role === "admin" ? "Administrator" : "Member"}
                     </StatusLabel>
                     <StatusLabel tone="pending">Expires {expiryLabel(grant.expiresAt)}</StatusLabel>
-                  </div>
+                  </Stack>
                   <p className="text-sm">
                     Ask {invitationName(invitation)} to scan this code, or copy the same private link.
                   </p>
@@ -364,7 +365,7 @@ const InvitationDialog = ({
                 >
                   Revoke invitation
                 </Action>
-                <div className="flex flex-wrap gap-2">
+                <Stack direction="row" gap="inline" wrap>
                   <Action
                     disabled={busy}
                     icon="refresh"
@@ -394,7 +395,7 @@ const InvitationDialog = ({
                   >
                     {copied ? "Copied" : "Copy link"}
                   </Action>
-                </div>
+                </Stack>
               </DialogFooter>
             </div>
           ) : (

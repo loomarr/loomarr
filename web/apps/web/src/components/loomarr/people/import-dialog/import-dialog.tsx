@@ -8,6 +8,7 @@ import {
   DialogTitle,
   Icon,
   icons,
+  Stack,
   StatusLabel,
   Toggle,
 } from "@loomarr/design-system";
@@ -176,7 +177,14 @@ const ImportDialog = ({
                   </div>
                 ) : (
                   <div className="border-border bg-card overflow-hidden rounded-lg border">
-                    <div className="border-static-800 flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+                    <Stack
+                      align="center"
+                      className="border-static-800 border-b px-4 py-2"
+                      direction="row"
+                      gap="inline"
+                      justify="between"
+                      wrap
+                    >
                       <p aria-live="polite" className="text-muted-foreground text-sm">
                         {selectedIds.length} selected · {visibleImportable.length} importable shown
                       </p>
@@ -187,7 +195,7 @@ const ImportDialog = ({
                       >
                         {allVisiblePicked ? "Clear visible" : "Select visible"}
                       </Action>
-                    </div>
+                    </Stack>
                     <ul>
                       {visible.map((candidate) => {
                         const id = `${searchId}-${candidate.id}`;
@@ -208,14 +216,14 @@ const ImportDialog = ({
                               htmlFor={id}
                               className="min-w-0 flex-1 cursor-pointer py-2 text-sm leading-none"
                             >
-                              <span className="flex flex-wrap items-center gap-2">
+                              <Stack align="center" direction="row" gap="inline" render="span" wrap>
                                 <span className="font-medium">{candidate.name}</span>
                                 {candidate.imported && <StatusLabel tone="ok">Already imported</StatusLabel>}
                                 {candidate.disabled && (
                                   <StatusLabel tone="error">Disabled on server</StatusLabel>
                                 )}
                                 {candidate.isAdmin && <StatusLabel tone="notice">Server admin</StatusLabel>}
-                              </span>
+                              </Stack>
                               <span className="text-static-400 mt-1 block text-xs">
                                 Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
                               </span>
@@ -229,10 +237,10 @@ const ImportDialog = ({
 
                 <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 text-sm sm:grid-cols-2">
                   <div>
-                    <p className="flex items-center gap-2 font-medium">
+                    <Stack align="center" className="font-medium" direction="row" gap="inline" render="p">
                       <Icon decorative glyph={icons.verified} size="compact" tone="success" />
                       Passwords stay private
-                    </p>
+                    </Stack>
                     <p className="text-muted-foreground mt-1">
                       Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only a
                       non-reversible Argon2id verifier for outage access and refreshes it after later provider
@@ -244,7 +252,7 @@ const ImportDialog = ({
                     <p className="text-muted-foreground mt-1">
                       Refresh imported names and disabled state. Sync never provisions an unselected account.
                     </p>
-                    <div className="mt-3 flex">
+                    <Stack className="mt-3" direction="row">
                       <Action
                         disabled={syncing || importing}
                         onPress={() => void syncExisting()}
@@ -252,7 +260,7 @@ const ImportDialog = ({
                       >
                         {syncing ? "Syncing…" : "Sync existing"}
                       </Action>
-                    </div>
+                    </Stack>
                   </div>
                 </div>
               </div>

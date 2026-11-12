@@ -1,4 +1,4 @@
-import { Combobox, Icon, icons } from "@loomarr/design-system";
+import { Combobox, Icon, icons, Stack } from "@loomarr/design-system";
 import { useEffect, useId, useMemo, useState } from "react";
 import { languageName } from "@/lib/languages";
 import type { LanguagePickerProps } from "./language-picker.type";
@@ -28,7 +28,7 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
 
   return (
     <div className="max-w-2xl">
-      <div className="mb-1.5 flex items-center gap-2">
+      <Stack align="center" className="mb-1.5" direction="row" gap="inline">
         <label htmlFor={`${listID}-input`} className="text-sm font-medium">
           Commercial language
         </label>
@@ -37,7 +37,7 @@ const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel 
             <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
           </span>
         )}
-      </div>
+      </Stack>
       <Combobox
         autoHighlight
         disabled={locked}
