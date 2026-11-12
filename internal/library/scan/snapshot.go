@@ -113,7 +113,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	29: a file with no episode mark in a show's season folder ("Specials") is one of its episodes.
 //	30: a release folder names its show by the words before its season ("Kettle.Bay.S02.1080p").
 //	31: a movie whose file name has no year is named by its folder's, when that has one.
-const writeVersion = 31
+//	32: a season folder inside a season folder ("Show/Season 1/Season 1") files under the show.
+const writeVersion = 32
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
