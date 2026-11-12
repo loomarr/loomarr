@@ -215,6 +215,17 @@ describe("LibrarySettings", () => {
     },
   );
 
+  it("tells the retry time on the household's clock, whatever the device's", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      details: { waiting: 12, unreachable: false, retryAt: "2026-11-02T02:40:00Z" },
+      timeZone: "Pacific/Auckland",
+    });
+    expect(host.textContent).toContain("Trying again at 3:40 PM");
+    cleanup();
+  });
+
   // A key problem is never the household's to fix: nothing is tried again, and nothing is said.
   it("says nothing of waiting titles when no retry is due", () => {
     const { host, cleanup } = render({
