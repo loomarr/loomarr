@@ -5,9 +5,6 @@
       "rawDialog": 1,
       "flexStack": 6
     },
-    "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/channels/guide-page/guide-page.tsx": {
       "flexStack": 2
     },
@@ -81,7 +78,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
       "flexStack": 2
@@ -111,7 +108,7 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "flexStack": 5
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
       "flexStack": 1
@@ -207,7 +204,7 @@
       "flexStack": 2
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/help/help-page/help-page.tsx": {
       "flexStack": 1
@@ -250,9 +247,6 @@
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
       "flexStack": 5
-    },
-    "apps/web/src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "flexStack": 2
     },
     "apps/web/src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
       "flexStack": 1
