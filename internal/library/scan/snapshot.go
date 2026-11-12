@@ -120,7 +120,10 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	35: a movie in parts ("cd1", "cd2") notes each file's part, and every part of it plays.
 //	36: a show whose folder gives no year takes the one its episodes' names agree on
 //	    ("Show (1963) - S01E01").
-const writeVersion = 36
+//	37: a season folder's "101", "- 03", "3.05" and "E03" place its episodes; "10x10 (2018)" is a
+//	    title; DivX, Flash, OGM, RealMedia and VOB files are read; an episode titled "Each-Other" and
+//	    a catch-all's "Shorts" folder are not extras.
+const writeVersion = 37
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

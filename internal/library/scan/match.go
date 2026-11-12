@@ -485,7 +485,6 @@ func sameName(a, b string) bool {
 	return a != "" && normName(a) == normName(b)
 }
 
-//
 // Its letters are read as sortKey reads them, accents off and composed or not ("Amélie" is
 // "amelie"), and letters written apart are one word ("S.W.A.T." and "M*A*S*H" are "swat" and
 // "mash").

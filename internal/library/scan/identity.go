@@ -291,6 +291,10 @@ func numberingIn(name string) (mp.Numbering, bool) {
 	more, n, at := moreEpisodesS, mp.Numbering{Season: atoi(group(1)), Episode: atoi(group(2))}, m[5]
 	if m[2] < 0 {
 		more, n, at = moreEpisodesX, mp.Numbering{Season: atoi(group(3)), Episode: atoi(group(4))}, m[9]
+		// A name that opens with "10x10" and then its year in brackets is a title: "10x10 (2018)".
+		if m[6] == 0 && titleYearNext.MatchString(name[m[9]:]) {
+			return mp.Numbering{}, false
+		}
 	}
 	// Each further episode is the next one on, in the same season: a file runs through its last.
 	last := n.Episode
@@ -552,6 +556,14 @@ var (
 	partOf = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(\d{1,3})[ ._-]*of[ ._-]*(\d{1,3})(?:[^0-9a-z]|$)`)
 	// leadingNumber matches a name that starts with its episode's number: "05 - Tidewater".
 	leadingNumber = regexp.MustCompile(`^(\d{1,3})(?:[ ._-]|$)`)
+	// titleYearNext matches a year in brackets straight after a name's first words.
+	titleYearNext = regexp.MustCompile(`^[ ._]*[(\[](?:19|20)\d{2}[)\]]`)
+	// seasonDotEpisode matches a season and episode written "3.05".
+	seasonDotEpisode = regexp.MustCompile(`(?:^|[ _-])(\d{1,2})\.(\d{2})(?:[ ._-]|$)`)
+	// bareEpisode matches an episode written "E03" with no season before it.
+	bareEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])e(\d{1,3})(?:[ ._-]|$)`)
+	// dashedTwoDigits matches a dash and a two-digit number: "Kettle Bay - 03".
+	dashedTwoDigits = regexp.MustCompile(`[ ._]-[ ._]*\d{2}(?:[ ._-]|$)`)
 	// seasonNumber is a season folder's number: "Season 2", "S02", "Kettle Bay Series 2".
 	seasonNumber = regexp.MustCompile(`(?i)(?:season|series|staffel|saison|temporada|stagione|^s)[ ._-]*(\d+)`)
 	// leadingTags are a release group's bracketed tags before a name: "[Kumo] ", "[Kumo][Show]".
@@ -623,9 +635,29 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		return episode(atoi(m[1]))
 	}
 	if m := leadingNumber.FindStringSubmatch(name); inSeason && m != nil {
+		// "101 - Tidewater" in Season 1 is its first episode, when every numbered name in the folder
+		// is in its hundred; "101" among "99" and "100" is the hundred and first.
+		if n := atoi(m[1]); season > 0 && file.Notes.Hundreds == season {
+			return episode(n % 100)
+		}
 		return episode(atoi(m[1]))
 	}
-	return numberAfterShow(name, showFolderName(show), file.Notes.Numbered)
+	if inSeason && season > 0 {
+		// "Kettle Bay - 3.05" in Season 3, and "Kettle Bay E03" in any season.
+		if m := seasonDotEpisode.FindStringSubmatch(name); m != nil && atoi(m[1]) == season {
+			return episode(atoi(m[2]))
+		}
+		if m := bareEpisode.FindStringSubmatch(name); m != nil {
+			return episode(atoi(m[1]))
+		}
+	}
+	n, ok := numberAfterShow(name, showFolderName(show), file.Notes.Numbered)
+	// A two-digit number after a dash in a season folder ("Kettle Bay - 03" in Season 2) is the
+	// season's episode: an anime's number across its show is three digits, as Sonarr writes it.
+	if ok && n.Absolute > 0 && inSeason && season > 0 && dashedTwoDigits.MatchString(name) {
+		return episode(n.Absolute)
+	}
+	return n, ok
 }
 
 // numberAfterShow reads a number after a show's name: "Kettle Bay - 013" and "Kettle Bay 013" are
@@ -688,6 +720,9 @@ type folderNotes struct {
 	// Numbered is a folder two or more of whose videos number themselves after a name they share
 	// ("kb 101", "kb 201").
 	Numbered bool
+	// Hundreds is the hundred every video named by a leading number shares ("101 - Tidewater", "102
+	// - Low Water" share 1), and 0 when they share none, or one is under 100 or a whole hundred.
+	Hundreds int
 }
 
 // notesOf reads a folder's notes from the names of its videos.
@@ -701,6 +736,20 @@ func notesOf(names []string) folderNotes {
 	var notes folderNotes
 	for _, n := range prefixes {
 		notes.Numbered = notes.Numbered || n >= 2
+	}
+	// Every name that starts with a number starts with one in the same hundred: "101", "102".
+	for _, name := range names {
+		m := leadingNumber.FindStringSubmatch(stem(name))
+		if m == nil {
+			continue
+		}
+		n := atoi(m[1])
+		switch hundreds := n / 100; {
+		case n < 100 || n%100 == 0 || (notes.Hundreds != 0 && notes.Hundreds != hundreds):
+			return folderNotes{Numbered: notes.Numbered}
+		default:
+			notes.Hundreds = hundreds
+		}
 	}
 	return notes
 }

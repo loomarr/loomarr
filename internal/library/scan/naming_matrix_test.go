@@ -276,6 +276,33 @@ var namingMatrix = []namingRow{
 		files: map[string]string{"TV/Kettle Bay/Kettle Bay - Tidewater.mkv": "episode Kettle Bay S1E2"},
 		nfo: map[string]string{"TV/Kettle Bay/Kettle Bay - Tidewater.nfo": "<episodedetails><title>Tidewater</title>" +
 			"<season>1</season><episode>2</episode></episodedetails>"}},
+
+	// V. Found by the 2026-11-11 re-score's probes.
+	{id: "V1", files: map[string]string{"Movies/10x10 (2018)/10x10 (2018).mkv": "movie 10x10 2018"}},
+	{id: "V2", files: map[string]string{"TV/Kettle Bay/Season 1/101 - Tidewater.mkv": "episode Kettle Bay S1E1"}},
+	{id: "V3", files: map[string]string{
+		"TV/Kettle Bay/Season 1/101 - Tidewater.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Season 1/102 - Low Water.mkv": "episode Kettle Bay S1E2",
+	}},
+	{id: "V4", files: map[string]string{"TV/Kettle Bay/Season 2/Kettle Bay - 03 - Tidewater.mkv": "episode Kettle Bay S2E3"}},
+	{id: "V5", files: map[string]string{"TV/Kettle Bay/Season 3/Kettle Bay - 3.05 - Tidewater.mkv": "episode Kettle Bay S3E5"}},
+	{id: "V6", files: map[string]string{"TV/Kettle Bay/Season 2/Kettle Bay E03.mkv": "episode Kettle Bay S2E3"}},
+	{id: "V7", files: map[string]string{
+		"Movies/Ferrow Lane (2019).divx":   "movie Ferrow Lane 2019",
+		"Movies/Kettle Run (2003).flv":     "movie Kettle Run 2003",
+		"Movies/Low Orchard (2017).ogm":    "movie Low Orchard 2017",
+		"Movies/Tinder Hollow (2012).rmvb": "movie Tinder Hollow 2012",
+		"Movies/Marrow Point (2001).VOB":   "movie Marrow Point 2001",
+	}},
+	{id: "V8", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Kettle Bay - S01E04 - Each-Other.mkv":       "episode Kettle Bay S1E4",
+		"TV/Kettle Bay/Season 1/Kettle Bay - S01E05 - Behind-the-Scene.mkv": "episode Kettle Bay S1E5",
+		"TV/Kettle Bay/Season 1/Kettle Bay - S01E01-sample.mkv":             "skip",
+	}},
+	{id: "V9", files: map[string]string{
+		"Movies/Shorts/Lantern Keeper (2010)/Lantern Keeper (2010).mkv": "movie Lantern Keeper 2010",
+		"Movies/Ashgrove (2015)/Shorts/Ashgrove Reel.mkv":               "skip",
+	}},
 }
 
 func TestNamingMatrix(t *testing.T) {

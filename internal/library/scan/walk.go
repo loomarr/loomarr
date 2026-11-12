@@ -24,10 +24,13 @@ const (
 	ProblemInvalid = "invalid_facts"
 )
 
-// videoExtensions are the containers the scanner imports.
+// videoExtensions are the containers the scanner imports: every one ffmpeg reads that a library
+// keeps films and episodes in, old rips' among them (DivX, Flash, OGM, RealMedia, a lone VOB).
 var videoExtensions = map[string]bool{
 	".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".ts": true, ".m2ts": true, ".mts": true,
 	".mov": true, ".wmv": true, ".mpg": true, ".mpeg": true, ".webm": true,
+	".divx": true, ".flv": true, ".f4v": true, ".ogm": true, ".ogv": true, ".rmvb": true, ".rm": true,
+	".vob": true, ".asf": true, ".3gp": true, ".m2v": true,
 }
 
 // skippedDirs hold media-server and NAS by-products and recycle bins, never media. A ".trash-<uid>"
@@ -52,12 +55,13 @@ var extrasDirs = map[string]bool{
 
 // skippedDir reports whether a walk passes over a folder named name in parent (relative to the
 // root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or
-// (below the top of the root) an extras folder, which a season folder's "Specials" is (Emby's). A
+// (below the top of the root) an extras folder, which a season folder's "Specials" is (Emby's). An
+// extras folder in a catch-all ("Movies/Shorts") is a collection of titles, not a title's extras. A
 // disc structure is not walked either, but is listed as a problem.
 func skippedDir(parent, name string) bool {
 	lower := strings.ToLower(name)
 	return skippedDirs[lower] || strings.HasPrefix(lower, ".") ||
-		(parent != "." && extrasDirs[lower]) ||
+		(parent != "." && extrasDirs[lower] && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
 
@@ -202,7 +206,7 @@ type walker struct {
 	top int
 	// firstUnit is each top-level folder counted by its own entries, by path: its first unit.
 	firstUnit map[string]int
-	out Walk
+	out       Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
 }
@@ -680,13 +684,19 @@ func extraName(lowerName string) bool {
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
 		return true
 	}
+	// An episode's own title can end in a word the extras' marks are made of ("S01E04 - Each-Other",
+	// "Behind-the-Scene", "Cut-Short"): those three don't mark a file with an episode's mark.
+	episode := episodeMark.MatchString(lowerName)
 	for _, suffix := range extrasSuffixes {
-		if strings.HasSuffix(base, suffix) {
+		if strings.HasSuffix(base, suffix) && (!episode || !titleWordSuffixes[suffix]) {
 			return true
 		}
 	}
 	return false
 }
+
+// titleWordSuffixes are the extras' marks that are also everyday words a hyphenated title ends in.
+var titleWordSuffixes = map[string]bool{"-other": true, "-scene": true, "-short": true}
 
 var (
 	// creditless matches an anime's creditless opening or ending, "NCOP1", "NCED2v2": an extra.
