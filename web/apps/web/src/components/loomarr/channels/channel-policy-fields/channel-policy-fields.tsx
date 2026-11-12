@@ -389,9 +389,9 @@ const ChannelPolicyFields = ({
             onChange(resetField(policy, "dates"));
           }}
         >
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             Movie release and series premiere filter titles; episode airing filters individual episodes.
-          </p>
+          </Text>
           {(
             [
               ["Movie release", "movieRelease"],

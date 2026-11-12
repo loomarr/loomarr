@@ -131,8 +131,12 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           <StatusDot tone={level.tone} label="" />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-medium">{level.label}</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">{level.hint}</p>
+          <Text as="p" textRole="cardLabel" tone="primary">
+            {level.label}
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
+            {level.hint}
+          </Text>
         </div>
       </Stack>
 
@@ -143,7 +147,9 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             const share = widest > 0 ? Math.round((rung.clips / widest) * 100) : 0;
             return (
               <Stack align="center" direction="row" gap="inline" key={rung.level} render="li">
-                <span className="w-44 shrink-0 truncate text-xs">{RUNG_LABEL[rung.level] ?? rung.level}</span>
+                <Text as="span" className="w-44 shrink-0 truncate" textRole="hint" tone="primary">
+                  {RUNG_LABEL[rung.level] ?? rung.level}
+                </Text>
                 <span className="bg-static-800 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
                   <span
                     className={cn(
@@ -179,15 +185,10 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           </Text>
           <Stack gap="1" render="ul">
             {criteria.map((c) => (
-              <Stack
-                align="center"
-                className="text-xs"
-                direction="row"
-                gap="inline"
-                key={c.criterion}
-                render="li"
-              >
-                <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
+              <Stack align="center" direction="row" gap="inline" key={c.criterion} render="li">
+                <Text as="span" className="w-44 min-w-0 truncate" textRole="hint" tone="primary">
+                  {CRITERION_LABEL[c.criterion] ?? c.criterion}
+                </Text>
                 <Text
                   as="span"
                   className="shrink-0 tabular-nums"

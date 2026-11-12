@@ -1,4 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
+import { Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
@@ -92,19 +93,19 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       ) : null}
     </div>
 
-    <span className="text-static-400 hidden font-mono text-xs md:inline">
+    <Text as="span" className="hidden md:inline" textRole="mono">
       {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
-    </span>
-    <span className="text-static-400 hidden font-mono text-xs tabular-nums md:inline">
+    </Text>
+    <Text as="span" className="hidden tabular-nums md:inline" textRole="mono">
       {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
-    </span>
-    <span className="text-static-400 hidden font-mono text-xs lg:inline">
+    </Text>
+    <Text as="span" className="hidden lg:inline" textRole="mono">
       {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}
-    </span>
+    </Text>
 
-    <span className="text-static-400 font-mono text-xs tabular-nums">
+    <Text as="span" className="tabular-nums" textRole="mono">
       {formatClipDuration(clip.durationMs)}
-    </span>
+    </Text>
 
     {/* The same three-branch rule the card renders — shared, because the `playsCounted:false`
         branch is a claim about what this install can OBSERVE, and two copies drift. */}

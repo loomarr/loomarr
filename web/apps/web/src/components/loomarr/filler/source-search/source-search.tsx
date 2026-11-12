@@ -140,7 +140,11 @@ const SourceSearch = ({
         </Action>
       </form>
 
-      {error && <p className="text-onair-300 text-sm">{error}</p>}
+      {error && (
+        <Text as="p" textRole="compact" tone="danger">
+          {error}
+        </Text>
+      )}
 
       {results.length > 0 && (
         <>
@@ -213,18 +217,30 @@ const SourceSearch = ({
                       </Action>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
-                      <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
+                      <Text
+                        as="span"
+                        className="flex shrink-0 items-center gap-1"
+                        textRole="compact"
+                        tone="signal"
+                      >
                         <ActivityIndicator decorative size="compact" tone="inherit" />
                         Downloading…
-                      </span>
+                      </Text>
                     ) : acquisition === "success" ? (
-                      <span className="text-signal flex shrink-0 items-center gap-1 text-sm">
+                      <Text
+                        as="span"
+                        className="flex shrink-0 items-center gap-1"
+                        textRole="compact"
+                        tone="signal"
+                      >
                         <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
                         Added · being checked
-                      </span>
+                      </Text>
                     ) : acquisition === "error" ? (
                       <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-onair-300 text-sm">Couldn’t add</span>
+                        <Text as="span" textRole="compact" tone="danger">
+                          Couldn’t add
+                        </Text>
                         <Action disabled={queueing != null} onPress={() => onQueue(clip)} variant="ghost">
                           {queueing === clip.id ? "Queueing…" : "Try again"}
                         </Action>
@@ -264,9 +280,9 @@ const SourceSearch = ({
       )}
 
       {/* This is prose, not machine metadata, so it must not use the monospace caption role. */}
-      <p className="text-muted-foreground text-xs">
+      <Text as="p" textRole="hint" tone="secondary">
         Searching doesn’t download anything. Choose Queue download when you find a clip you want.
-      </p>
+      </Text>
     </Stack>
   );
 };

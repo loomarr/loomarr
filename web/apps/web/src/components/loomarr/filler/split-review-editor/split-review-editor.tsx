@@ -15,6 +15,7 @@ import {
   icons,
   Stack,
   StatusLabel,
+  Text,
   Tooltip,
 } from "@loomarr/design-system";
 import { useRef, useState } from "react";
@@ -267,9 +268,9 @@ const SplitReviewEditor = ({
       </Stack>
 
       {draft.length === 0 && (
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           You removed every clip. Go back to keep the original recording, or restore a clip before continuing.
-        </p>
+        </Text>
       )}
 
       <Stack
@@ -283,9 +284,9 @@ const SplitReviewEditor = ({
           Back
         </Action>
         <Stack align="center" direction="row" gap="control">
-          <span className="text-muted-foreground font-mono text-sm tabular-nums">
+          <Text as="span" className="tabular-nums" textRole="mono">
             {pluralize(draft.length, "clip")}
-          </span>
+          </Text>
           <Action disabled={!confirmable || confirming} onPress={() => onConfirm(toWire(draft))}>
             {confirming ? "Keeping clips…" : "Keep clips"}
           </Action>
@@ -317,9 +318,9 @@ const SplitReviewEditor = ({
                 >
                   Previous
                 </Action>
-                <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                <Text as="span" className="tabular-nums" textRole="mono">
                   {selectedIndex + 1} / {draft.length}
-                </span>
+                </Text>
                 <Action
                   accessibilityLabel="Next clip"
                   disabled={selectedIndex === draft.length - 1}
@@ -404,17 +405,21 @@ const SegmentSummaryRow = ({
           </span>
           <span className="min-w-0 flex-1">
             <Stack align="center" direction="row" gap="inline" render="span">
-              <span className="text-muted-foreground font-mono text-xs tabular-nums">#{n}</span>
-              <span className="truncate text-sm font-medium">{segment.name || "Unnamed clip"}</span>
+              <Text as="span" className="tabular-nums" textRole="mono">
+                #{n}
+              </Text>
+              <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
+                {segment.name || "Unnamed clip"}
+              </Text>
             </Stack>
-            <span
-              className={cn(
-                "mt-1 block font-mono text-xs tabular-nums",
-                valid ? "text-muted-foreground" : "text-onair-300",
-              )}
+            <Text
+              as="span"
+              className="mt-1 block tabular-nums"
+              textRole="mono"
+              tone={valid ? "secondary" : "danger"}
             >
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
-            </span>
+            </Text>
             <Stack align="center" className="mt-1.5" direction="row" gap="1.5" render="span" wrap>
               {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
               {segment.audience ? (
@@ -557,10 +562,10 @@ const SegmentInspector = ({
         </p>
       ) : null}
       {segment.unsplittable ? (
-        <p className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
+        <Text as="p" className="bg-onair-tint-15 rounded-sm px-2 py-1.5" textRole="compact" tone="danger">
           Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next clip,
           or remove it.
-        </p>
+        </Text>
       ) : null}
       {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
         <p role="status" className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
@@ -570,8 +575,10 @@ const SegmentInspector = ({
       ) : null}
 
       {segment.suggestedEra ? (
-        <Stack align="center" className="text-sm" direction="row" gap="inline" wrap>
-          <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
+        <Stack align="center" direction="row" gap="inline" wrap>
+          <Text as="span" textRole="compact" tone="primary">
+            Loomarr thinks this may be from around {segment.suggestedEra}.
+          </Text>
           <Action
             onPress={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
             variant="outline"
@@ -585,9 +592,14 @@ const SegmentInspector = ({
       ) : null}
 
       <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
-        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
+        <Text
+          as="summary"
+          className="flex cursor-pointer list-none items-center gap-2"
+          textRole="cardLabel"
+          tone="primary"
+        >
           <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
-        </summary>
+        </Text>
         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
           <Field
             id={`seg-name-${position}`}
@@ -619,25 +631,41 @@ const SegmentInspector = ({
       </details>
 
       {hasDetails ? (
-        <details className="px-1 text-sm">
-          <summary className="text-muted-foreground cursor-pointer">Details</summary>
-          <div className="text-muted-foreground mt-2 space-y-2">
-            {namingMessage ? <p>{namingMessage}</p> : null}
-            {!segment.language && languageMessage ? (
-              <p title={segment.languageNote}>{languageMessage}</p>
+        <details className="px-1">
+          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
+            Details
+          </Text>
+          <div className="mt-2 space-y-2">
+            {namingMessage ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                {namingMessage}
+              </Text>
             ) : null}
-            {segment.dupOf ? <p>{`Looks like a clip already in your library: ${segment.dupOf}`}</p> : null}
+            {!segment.language && languageMessage ? (
+              <p className="text-muted-foreground text-sm" title={segment.languageNote}>
+                {languageMessage}
+              </p>
+            ) : null}
+            {segment.dupOf ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                {`Looks like a clip already in your library: ${segment.dupOf}`}
+              </Text>
+            ) : null}
             {segment.boundaryConfidence ? (
-              <p className="font-mono text-xs">
+              <Text as="p" textRole="mono">
                 {`Cut confidence ${segment.boundaryConfidence}%`}
                 {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
                 {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
-              </p>
+              </Text>
             ) : null}
             {segment.transcript ? (
-              <pre className="bg-static-800 max-h-48 overflow-auto rounded-sm p-3 font-mono text-xs whitespace-pre-wrap">
+              <Text
+                as="pre"
+                className="bg-static-800 max-h-48 overflow-auto rounded-sm p-3 whitespace-pre-wrap"
+                textRole="mono"
+              >
                 {segment.transcript}
-              </pre>
+              </Text>
             ) : null}
           </div>
         </details>

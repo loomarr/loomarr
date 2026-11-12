@@ -104,9 +104,9 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
       {q.isError ? (
         // A failure must NOT read as "you have none" — that would send the operator off to
         // create a collection they may already have.
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           Couldn't load your collections. Check the media server connection in Settings.
-        </p>
+        </Text>
       ) : (
         <fieldset className="flex flex-col gap-2" aria-label="Only these collections">
           {selected.length > 0 && (
@@ -115,12 +115,14 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                 <Stack
                   key={id}
                   align="center"
-                  className="border-border bg-muted/40 rounded-md border px-2 py-1 text-sm"
+                  className="border-border bg-muted/40 rounded-md border px-2 py-1"
                   direction="row"
                   gap="1.5"
                   render="li"
                 >
-                  <span>{labelOf(id)}</span>
+                  <Text as="span" textRole="compact" tone="primary">
+                    {labelOf(id)}
+                  </Text>
                   <Action
                     compact
                     icon="close"
@@ -179,9 +181,9 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
             </Stack>
           ) : collections.length === 0 && !q.isPending ? (
             // A real answer, not a failure: a library is connected but nothing is shelved.
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               You have no collections yet. Make one in your media server and it will show up here.
-            </p>
+            </Text>
           ) : (
             <Action
               icon="plus"

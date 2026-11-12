@@ -66,7 +66,7 @@ const PodTimeline = ({
   return (
     <Stack className={className} gap="inline">
       <Stack align="center" direction="row" gap="inline" wrap>
-        <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
+        <Text as="span" textRole="hint" tone="secondary">{`Pod · ${formatClipDuration(total)}`}</Text>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
           <Badge shape="square" tone="neutral">

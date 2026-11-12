@@ -1,6 +1,6 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { useRef, useState } from "react";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -51,12 +51,14 @@ const SegmentPreview = ({
   const player = failed ? (
     <Stack
       align="center"
-      className="bg-static-900 text-muted-foreground aspect-video rounded-md p-6 text-center text-sm"
+      className="bg-static-900 aspect-video rounded-md p-6"
       direction="row"
       justify="center"
       role="alert"
     >
-      This preview couldn’t be played. The original recording may be unavailable.
+      <Text as="span" className="text-center" textRole="compact" tone="secondary">
+        This preview couldn’t be played. The original recording may be unavailable.
+      </Text>
     </Stack>
   ) : (
     <VideoPlayer

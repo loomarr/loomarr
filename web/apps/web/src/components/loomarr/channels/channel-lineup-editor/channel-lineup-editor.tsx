@@ -149,19 +149,27 @@ const SortableLineupRow = ({
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
         <Stack align="center" className="min-w-0" direction="row" gap="inline" wrap>
-          <span className="truncate text-sm font-medium">{entry.name}</span>
-          {entry.year ? <span className="text-static-400 font-mono text-xs">{entry.year}</span> : null}
+          <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
+            {entry.name}
+          </Text>
+          {entry.year ? (
+            <Text as="span" textRole="mono" tone="secondary">
+              {entry.year}
+            </Text>
+          ) : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
         </Stack>
         {isSeries && onSeasonChange && (
           <div className="col-[2/-1] flex flex-wrap items-center gap-1.5 @md:mt-1.5">
-            <span className="text-muted-foreground text-xs">Seasons</span>
+            <Text as="span" textRole="hint" tone="secondary">
+              Seasons
+            </Text>
             {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
             <Stack align="center" direction="row" gap="1.5" render="span">
               {seasonInput("seasonMin", entry.seasonMin, "1")}
-              <span className="text-muted-foreground text-xs" aria-hidden>
+              <Text aria-hidden as="span" textRole="hint" tone="secondary">
                 –
-              </span>
+              </Text>
               {seasonInput("seasonMax", entry.seasonMax, "latest")}
             </Stack>
           </div>
@@ -271,10 +279,12 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   return (
     <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
       <div>
-        <h2 className="text-lg font-semibold">Lineup</h2>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h2" strong textRole="headline">
+          Lineup
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           Add, remove, and reorder the titles this channel plays. Changes save immediately.
-        </p>
+        </Text>
       </div>
 
       {feedback.error && <ErrorState error={feedback.error} onRetry={feedback.retry} className="p-4" />}
@@ -304,9 +314,14 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
       )}
 
       {entries.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm">
+        <Text
+          as="p"
+          className="border-border rounded-md border border-dashed px-3 py-6 text-center"
+          textRole="compact"
+          tone="secondary"
+        >
           Nothing in the lineup yet. Add a title below.
-        </p>
+        </Text>
       ) : (
         <>
           {/* The rows' Keep / Less / Never / Surprise share one note here, not one per row (#2744). */}

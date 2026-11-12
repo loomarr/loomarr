@@ -151,10 +151,12 @@ const ChannelIconField = ({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">Channel icon</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">
+          <Text as="p" textRole="cardLabel" tone="primary">
+            Channel icon
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
             What your household sees in the media server's guide.
-          </p>
+          </Text>
         </div>
         {isAdmin && (
           <Action
@@ -186,7 +188,9 @@ const ChannelIconField = ({
             )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
             <div>
-              <p className="text-sm font-medium">From your titles</p>
+              <Text as="p" textRole="cardLabel" tone="primary">
+                From your titles
+              </Text>
               {suggestions.isLoading && (
                 <Stack
                   align="center"
@@ -200,20 +204,22 @@ const ChannelIconField = ({
                 </Stack>
               )}
               {tmdbUnconfigured && (
-                <p className="text-muted-foreground mt-2 text-xs">
+                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                   Set up a TMDB connection in Settings to suggest icons from this channel's titles.
-                </p>
+                </Text>
               )}
               {!suggestions.isLoading && !tmdbUnconfigured && suggestions.error && (
-                <p className="text-muted-foreground mt-2 text-xs">Couldn't load suggestions right now.</p>
+                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+                  Couldn't load suggestions right now.
+                </Text>
               )}
               {!suggestions.isLoading &&
                 !tmdbUnconfigured &&
                 !suggestions.error &&
                 suggestionList.length === 0 && (
-                  <p className="text-muted-foreground mt-2 text-xs">
+                  <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                     No posters found for this channel's titles yet.
-                  </p>
+                  </Text>
                 )}
               {suggestionList.length > 0 && (
                 <ul className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-8">
@@ -275,8 +281,14 @@ const ChannelIconField = ({
                 />
                 {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
               </Stack>
-              <p className="text-static-400 mt-1 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
-              {uploadError && <p className="text-onair-300 mt-1 text-xs">{uploadError}</p>}
+              <Text as="p" className="mt-1" textRole="hint" tone="secondary">
+                PNG, JPEG, WebP, or GIF, up to 2 MB.
+              </Text>
+              {uploadError && (
+                <Text as="p" className="mt-1" textRole="hint" tone="danger">
+                  {uploadError}
+                </Text>
+              )}
             </div>
 
             {/* (c) Paste a direct image URL. */}
@@ -319,7 +331,11 @@ const ChannelIconField = ({
                   {savingUrl ? "Setting…" : "Set"}
                 </Action>
               </Stack>
-              {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
+              {urlError && (
+                <Text as="p" className="mt-1" textRole="hint" tone="danger">
+                  {urlError}
+                </Text>
+              )}
             </div>
           </Stack>
         </div>

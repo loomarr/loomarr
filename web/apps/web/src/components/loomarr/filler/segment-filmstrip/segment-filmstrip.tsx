@@ -1,5 +1,5 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Stack, Tooltip } from "@loomarr/design-system";
+import { Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -59,12 +59,16 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
     >
       <Stack align="end" className="mb-3" direction="row" gap="inline" justify="between" wrap>
         <div>
-          <h2 className="text-sm font-medium">Clips Loomarr found</h2>
-          <p className="text-muted-foreground text-xs">Choose a clip to preview it and make changes.</p>
+          <Text as="h2" textRole="cardLabel" tone="primary">
+            Clips Loomarr found
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            Choose a clip to preview it and make changes.
+          </Text>
         </div>
-        <span className="text-muted-foreground font-mono text-xs tabular-nums">
+        <Text as="span" className="tabular-nums" textRole="mono">
           {segments.length} clips · {formatMmSs(reelEnd)}
-        </span>
+        </Text>
       </Stack>
 
       <section className="overflow-x-auto pb-2" aria-label="Detected clip timeline">
