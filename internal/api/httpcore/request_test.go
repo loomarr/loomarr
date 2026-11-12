@@ -36,9 +36,11 @@ func TestClientIPDirectClientCannotChooseItsKey(t *testing.T) {
 	}
 }
 
-// Proxies append the peer they saw, so the right-most hop that is not itself a proxy is the
-// address the nearest trusted proxy actually observed.
-func TestClientIPTrustedProxyUsesRightMostUntrustedHop(t *testing.T) {
+// A proxy appends the peer it saw, so the right-most hop is the address the trusted proxy actually
+// observed. Only that one hop is trusted: a hop to its left was written by whoever sent the request,
+// and a private address cannot be told apart from a LAN client, so a second proxy in a chain is
+// keyed as the client (a stricter throttle, never a forgeable one).
+func TestClientIPTrustedProxyUsesRightMostHop(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		peer string
@@ -48,10 +50,11 @@ func TestClientIPTrustedProxyUsesRightMostUntrustedHop(t *testing.T) {
 		{"loopback proxy, one hop", "127.0.0.1:5000", []string{"203.0.113.9"}, "203.0.113.9"},
 		{"ipv6 loopback proxy", "[::1]:5000", []string{"203.0.113.9"}, "203.0.113.9"},
 		{"private proxy, client forged a left hop", "10.0.0.2:5000", []string{"198.51.100.7, 203.0.113.9"}, "203.0.113.9"},
-		{"chain of two proxies", "10.0.0.2:5000", []string{"203.0.113.9, 172.18.0.4"}, "203.0.113.9"},
+		{"chain of two proxies keys on the inner proxy", "10.0.0.2:5000", []string{"203.0.113.9, 172.18.0.4"}, "172.18.0.4"},
 		{"header split over two lines", "10.0.0.2:5000", []string{"198.51.100.7", "203.0.113.9"}, "203.0.113.9"},
 		{"no header", "10.0.0.2:5000", nil, "10.0.0.2"},
-		{"all hops are proxies", "10.0.0.2:5000", []string{"192.168.1.20, 10.0.0.9"}, "192.168.1.20"},
+		{"LAN client behind the proxy", "10.0.0.2:5000", []string{"192.168.1.20"}, "192.168.1.20"},
+		{"LAN client forged a left hop", "10.0.0.2:5000", []string{"198.51.100.7, 192.168.1.20"}, "192.168.1.20"},
 		{"unparseable hop falls back to the peer", "10.0.0.2:5000", []string{"203.0.113.9, garbage"}, "10.0.0.2"},
 		{"mapped and padded forms normalize", "10.0.0.2:5000", []string{"::ffff:203.0.113.9"}, "203.0.113.9"},
 	} {
@@ -75,6 +78,16 @@ func TestClientIPSpoofedLeftMostHopCannotRotateTheKey(t *testing.T) {
 	}
 	if len(keys) != 1 || !keys["203.0.113.9"] {
 		t.Fatalf("keys = %v, want exactly {203.0.113.9}", keys)
+	}
+
+	// The same attack from a client on the LAN: its own address is private, like a proxy's.
+	keys = map[string]bool{}
+	for i := range 50 {
+		forged := fmt.Sprintf("198.51.100.%d", i+1)
+		keys[origin.ClientIP(clientIPRequest("10.0.0.2:5000", forged+", 192.168.1.20"))] = true
+	}
+	if len(keys) != 1 || !keys["192.168.1.20"] {
+		t.Fatalf("LAN client: keys = %v, want exactly {192.168.1.20}", keys)
 	}
 }
 

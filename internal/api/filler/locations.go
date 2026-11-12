@@ -140,7 +140,7 @@ func (s *Handlers) locationSuggestion(ctx context.Context, _ *struct{}) (*locati
 
 // effectiveLocationClientAddress returns the address the approximate location suggestion looks up:
 // the client as httpcore.Origin.ClientIP finds it, so X-Forwarded-For counts only from a proxy and
-// only its right-most hop that is not a proxy, never the left-most one a client wrote itself.
+// only its right-most hop, the address that proxy saw, never one a client could have written.
 func effectiveLocationClientAddress(request *http.Request, origin httpcore.Origin) (netip.Addr, bool) {
 	address, err := netip.ParseAddr(origin.ClientIP(request))
 	if err != nil {
