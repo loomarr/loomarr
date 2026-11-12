@@ -225,7 +225,9 @@ const stubWizard = (opts: {
 };
 
 const renderAt = (initialPath: string) => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // staleTime as the app sets it (lib/query-client): a page opened by a route's loader reads what
+  // the loader fetched instead of asking again on mount.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } });
   const router = createRouter({
     routeTree,
     context: { queryClient },
@@ -294,6 +296,8 @@ describe("wizard", () => {
     expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
   });
 
+  // The route's loader waits for the settings registry, so a signed-in operator's wizard opens on
+  // the derived step without ever painting a step it then moves off.
   it("waits for the settings registry before deriving the wizard path", async () => {
     stubWizard({
       authed: true,
@@ -304,10 +308,10 @@ describe("wizard", () => {
     });
     renderAt("/wizard");
 
-    expect(await screen.findByLabelText("Checking your setup")).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /create your admin account/i })).not.toBeInTheDocument();
   });
 
   it("surfaces a settings-list failure with an idempotent retry instead of stranding the wizard", async () => {
@@ -316,7 +320,9 @@ describe("wizard", () => {
       setupCompleted: false,
       backend: "internal",
       publicUrl: "",
-      settingsFailures: 1,
+      // The loader's read fails, and so does the page's own on mount (a failed query is not fresh);
+      // "Try again" is the third and answers.
+      settingsFailures: 2,
     });
     renderAt("/wizard");
 

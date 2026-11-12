@@ -1,6 +1,6 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, LoadingStrip, Toggle } from "@loomarr/design-system";
+import { Action, LoadingStrip, Stack, Toggle } from "@loomarr/design-system";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -32,21 +32,21 @@ const UsersStep = () => {
     // Most often "no media server configured" — that's a reason to skip, not a failure
     // to agonize over, so the copy points at the exit.
     return (
-      <div className="flex flex-col gap-3">
+      <Stack gap="control">
         <ErrorState error={candidates.error} onRetry={() => candidates.refetch()} />
         <p className="text-muted-foreground text-sm">
           You can skip this and import people later from Settings → Users.
         </p>
-      </div>
+      </Stack>
     );
   }
 
   if (candidates.isLoading) {
     return (
-      <p className="text-muted-foreground flex items-center gap-2 text-sm">
+      <Stack align="center" className="text-muted-foreground text-sm" direction="row" gap="inline" render="p">
         <LoadingStrip decorative width={32} />
         Looking up your media-server accounts…
-      </p>
+      </Stack>
     );
   }
 
@@ -67,13 +67,17 @@ const UsersStep = () => {
         Anyone you don't import is refused even with correct media-server credentials.
       </p>
 
-      <ul className="flex flex-col gap-2">
+      <Stack gap="inline" render="ul">
         {rows.map((c) => {
           const id = `candidate-${c.id}`;
           return (
-            <li
+            <Stack
+              align="center"
+              className="border-border bg-card rounded-md border px-3 py-2.5"
+              direction="row"
+              gap="control"
               key={c.id}
-              className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2.5"
+              render="li"
             >
               <div className="flex-1">
                 <Toggle
@@ -86,10 +90,10 @@ const UsersStep = () => {
               </div>
               {c.isAdmin && <span className="text-static-400 text-xs">server admin</span>}
               {c.imported && <span className="text-lock text-xs">imported</span>}
-            </li>
+            </Stack>
           );
         })}
-      </ul>
+      </Stack>
 
       {importUsers.error != null && <ErrorState error={importUsers.error} />}
 

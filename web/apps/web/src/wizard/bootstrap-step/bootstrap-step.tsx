@@ -2,7 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -64,33 +64,33 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
   // same identity to pick this step, so the two cannot disagree.
   if (ownerName !== undefined) {
     return (
-      <div className="flex flex-col gap-3">
+      <Stack gap="control">
         {/* ⚠ Whitespace here is CONTENT. A newline between text and an inline element is
             collapsed by JSX, so wrapping this sentence across the print width rendered as
             "Signed in as ⏎ fictional ⏎ …" with a stray gap around the name. Kept as ONE
             text node inside a <span> so the formatter cannot break it mid-sentence. */}
-        <p className="flex items-center gap-2 text-sm">
+        <Stack align="center" className="text-sm" direction="row" gap="inline" render="p">
           <Icon decorative glyph={icons.selected} size="compact" tone="primary" />
           <span>Your admin account is ready. You&rsquo;re signed in as {ownerName}.</span>
-        </p>
+        </Stack>
         {/* Plain language over mechanism: "bootstrap runs once" is our word for it, not the
             operator's, and it states an internal constraint rather than what they can do. */}
         <p className="text-muted-foreground text-sm">
           There&rsquo;s only one owner account, so there&rsquo;s nothing more to do here. You can add other
           people from People once setup is finished.
         </p>
-      </div>
+      </Stack>
     );
   }
 
   if (taken) {
     return (
-      <div className="flex flex-col gap-3">
+      <Stack gap="control">
         <p className="text-sm">This Loomarr already has an owner account, so you can sign in instead.</p>
         <Link to="/login" className="text-tune w-fit text-sm underline-offset-4 hover:underline">
           Sign in instead
         </Link>
-      </div>
+      </Stack>
     );
   }
 

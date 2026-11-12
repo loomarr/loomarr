@@ -14,6 +14,7 @@ const FillerSettingsLayout = () => (
   </SettingsEditsProvider>
 );
 
+// no-loader: only gates the Settings pages to admins and wraps their outlet
 const Route = createFileRoute("/_authed/filler/settings")({
   beforeLoad: async ({ context }) => {
     const me = await context.queryClient.ensureQueryData(meQueryOptions());

@@ -3,7 +3,7 @@ import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Badge, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, Icon, icons, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -155,7 +155,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                   pinnedBy && "cursor-not-allowed opacity-60",
                 )}
               >
-                <span className="flex items-center gap-2">
+                <Stack align="center" direction="row" gap="inline" render="span">
                   {/* ⚠ Visible, not `sr-only`. Hiding it made the control unreachable for
                       anything driving the real input (Playwright's .check() timed out on it),
                       and a hidden radio also gives a sighted keyboard user no focus ring to
@@ -169,7 +169,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                     className="accent-tune size-4 shrink-0"
                   />
                   <span className="font-medium">{option.title}</span>
-                </span>
+                </Stack>
                 <span className="text-muted-foreground text-sm">{option.tagline}</span>
                 <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
                   {option.points.map((point) => (
@@ -183,14 +183,20 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
       </fieldset>
 
       {pinnedBy && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Stack
+          align="center"
+          className="text-muted-foreground text-sm"
+          direction="row"
+          gap="inline"
+          render="p"
+        >
           <Badge shape="square" icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}>
             set via environment
           </Badge>
           <span>
             {pinnedBy} decides this, so it can&rsquo;t be changed here. Unset it to choose in the app.
           </span>
-        </p>
+        </Stack>
       )}
 
       {/* Internal playout publishes absolute tuner/guide/stream URLs from this registry key.

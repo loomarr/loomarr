@@ -2,7 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, Stack } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -33,7 +33,7 @@ const SignInFirst = ({ code }: { code: string }) => {
         Sign in first, then we'll bring you straight back here to finish adding your device.
       </p>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
-      <div className="mt-8 flex justify-center">
+      <Stack className="mt-8" direction="row" justify="center">
         <Action
           accessibilityRole="link"
           density="touch"
@@ -41,7 +41,7 @@ const SignInFirst = ({ code }: { code: string }) => {
         >
           Sign in
         </Action>
-      </div>
+      </Stack>
     </div>
   );
 };
@@ -179,11 +179,11 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
                 <p className="text-caution text-md">
                   Couldn't reach Loomarr. Check your connection and try again.
                 </p>
-                <div className="mt-3 flex justify-center">
+                <Stack className="mt-3" direction="row" justify="center">
                   <Action onPress={retry} variant="outline">
                     Try again
                   </Action>
-                </div>
+                </Stack>
               </div>
             );
           })()

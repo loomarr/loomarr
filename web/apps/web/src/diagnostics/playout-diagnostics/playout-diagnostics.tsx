@@ -9,6 +9,7 @@ import {
   Icon,
   icons,
   PressableRow,
+  Stack,
   StatusDot,
   type StatusTone,
   Surface,
@@ -139,7 +140,7 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <Stack align="center" direction="row" gap="inline" wrap>
         <Surface backgroundColor="transparent" borderWidth={0} flexBasis={192} flexGrow={1} minWidth={0}>
           <SearchField
             label="Search Process output"
@@ -168,7 +169,7 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         <Action icon="download" onPress={() => void download()} variant="outline">
           Download output
         </Action>
-      </div>
+      </Stack>
       {(query.data.truncated || query.data.discarded > 0) && (
         <p className="text-caution flex items-center gap-1 text-xs">
           <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Output is truncated;{" "}
@@ -206,7 +207,7 @@ const ProcessDetail = ({
       className="border-border bg-card space-y-4 rounded-lg border p-4"
       aria-label="Selected media process"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <Stack align="start" direction="row" gap="inline" justify="between" wrap>
         <div>
           <h3 className="font-medium">{run.purpose}</h3>
           <p className="text-muted-foreground text-xs">Started {formatTime(run.startedAt)}</p>
@@ -215,7 +216,7 @@ const ProcessDetail = ({
           <StatusDot tone={tone(run.status)} label={run.status} />
           {run.status}
         </span>
-      </div>
+      </Stack>
       <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <span className="text-muted-foreground text-xs">Run ID</span>
@@ -224,7 +225,7 @@ const ProcessDetail = ({
         {run.channelId && (
           <div>
             <span className="text-muted-foreground text-xs">Channel</span>
-            <div className="flex">
+            <Stack direction="row">
               <CopyValue label="Channel" value={run.channelId} />
               {onOpenChannel && (
                 <Action
@@ -236,7 +237,7 @@ const ProcessDetail = ({
                   Open Channel
                 </Action>
               )}
-            </div>
+            </Stack>
           </div>
         )}
         {run.jobId && (
@@ -347,7 +348,7 @@ const PlayoutDiagnostics = ({
   };
   return (
     <section className="space-y-4" aria-labelledby="media-processes-title">
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <Stack align="start" direction="row" gap="inline" justify="between" wrap>
         <div>
           <h2 id="media-processes-title" className="text-lg font-medium">
             Media processes
@@ -356,7 +357,7 @@ const PlayoutDiagnostics = ({
             FFmpeg and streaming activity connected to the logs you are investigating.
           </p>
         </div>
-      </div>
+      </Stack>
       <div className="border-border bg-card grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
         <CompactSelect<DiagnosticsSearch["processRange"]>
           label="Process time range"
@@ -468,13 +469,13 @@ const PlayoutDiagnostics = ({
                         selected={selected?.id === run.id}
                       >
                         <div className="grid w-full gap-1 text-left">
-                          <span className="flex items-center justify-between gap-2">
+                          <Stack align="center" direction="row" gap="inline" justify="between" render="span">
                             <strong className="truncate text-sm">{run.purpose}</strong>
                             <span className="inline-flex items-center gap-1 text-xs">
                               <StatusDot tone={tone(run.status)} label={run.status} />
                               {run.status}
                             </span>
-                          </span>
+                          </Stack>
                           <span className="text-muted-foreground truncate text-xs">
                             {run.target ?? run.id}
                           </span>

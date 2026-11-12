@@ -97,6 +97,20 @@ const WatchScreen = () => {
 };
 
 const Route = createFileRoute("/_authed/watch/$id")({
+  // The channel list and the on-air line the player tunes from. Surfing changes `$id` and must not
+  // wait on the target's own read: ChannelWatch paints the target from the list, so when the list
+  // has it the channel's detail is only started. A link to a channel the list does not hold (or a
+  // list that failed) waits on the detail, so the page opens on the channel or its error.
+  loader: async ({ context: { queryClient }, params: { id } }) => {
+    const [list] = await Promise.all([
+      queryClient.fetchQuery(channelsApi.getListChannelsQueryOptions()).catch(() => undefined),
+      queryClient.prefetchQuery(channelsApi.getChannelsNowNextQueryOptions({ query: { staleTime: 15_000 } })),
+    ]);
+    const listed = list?.status === 200 && list.data.channels?.some((channel) => channel.id === id);
+    const detail = queryClient.prefetchQuery(channelsApi.getGetChannelQueryOptions(id));
+    if (listed) return;
+    await detail;
+  },
   component: WatchScreen,
 });
 

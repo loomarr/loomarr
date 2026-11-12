@@ -1,6 +1,6 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Disclosure, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Disclosure, Icon, icons, LoadingStrip, Stack } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import type { MovieCollectionChoicesProps } from "./movie-collection-choices.type";
 
@@ -61,9 +61,11 @@ const MovieCollectionChoices = ({
   }
 
   return (
-    <section
+    <Stack
       aria-label="Movie collections"
-      className="border-border flex flex-col gap-2 rounded-md border p-3"
+      className="border-border rounded-md border p-3"
+      gap="inline"
+      render="section"
     >
       <div>
         <h3 className="text-sm font-medium">Complete a collection</h3>
@@ -85,7 +87,7 @@ const MovieCollectionChoices = ({
 
         return (
           <div key={collection.tmdbId} className="bg-static-900/50 rounded-md px-3 py-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{collection.name}</p>
                 <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -107,7 +109,7 @@ const MovieCollectionChoices = ({
                   Add all films
                 </Action>
               )}
-            </div>
+            </Stack>
 
             <ChooseFilms collectionName={collection.name}>
               <ul className="divide-border border-border divide-y border-t">
@@ -115,7 +117,14 @@ const MovieCollectionChoices = ({
                   const key = provisionKey(member);
                   const selected = selectedKeys.has(key);
                   return (
-                    <li key={key} className="flex items-center gap-3 py-2.5">
+                    <Stack
+                      align="center"
+                      className="py-2.5"
+                      direction="row"
+                      gap="control"
+                      key={key}
+                      render="li"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm">{member.name}</p>
                         <p className="text-muted-foreground mt-0.5 text-xs">
@@ -141,7 +150,7 @@ const MovieCollectionChoices = ({
                           </Action>
                         )
                       )}
-                    </li>
+                    </Stack>
                   );
                 })}
               </ul>
@@ -149,7 +158,7 @@ const MovieCollectionChoices = ({
           </div>
         );
       })}
-    </section>
+    </Stack>
   );
 };
 

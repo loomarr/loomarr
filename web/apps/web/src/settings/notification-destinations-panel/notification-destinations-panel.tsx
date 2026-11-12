@@ -11,6 +11,7 @@ import {
   Field,
   Icon,
   icons,
+  Stack,
   StatusLabel,
   Surface,
   Text,
@@ -124,12 +125,12 @@ const FieldInput = ({
         </p>
       ) : null}
       {field.sensitive && configured ? (
-        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
+        <Stack align="center" className="text-muted-foreground text-xs" direction="row" gap="inline" wrap>
           <span>{cleared ? "Will be cleared when saved." : "Configured — leave blank to keep it."}</span>
           <Action onPress={onClear} variant="ghost">
             {cleared ? "Keep saved value" : `Clear ${field.label}`}
           </Action>
-        </div>
+        </Stack>
       ) : null}
       {field.description ? <p className="text-muted-foreground text-xs">{field.description}</p> : null}
     </div>
@@ -214,7 +215,7 @@ const ProviderForm = ({
       }}
     >
       <Card gap={20} padding={20}>
-        <div className="flex items-start justify-between gap-3">
+        <Stack align="start" direction="row" gap="control" justify="between">
           <div>
             <h3 className="font-semibold">
               {provider ? `Edit ${provider.label}` : `Add ${definition.name}`}
@@ -226,7 +227,7 @@ const ProviderForm = ({
           <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
             Close provider form
           </Action>
-        </div>
+        </Stack>
 
         {error != null ? <ErrorState error={error} /> : null}
 
@@ -315,7 +316,7 @@ const ProviderForm = ({
           }}
         </form.Field>
 
-        <div className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" wrap>
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
               <Action disabled={pending || submitting} submit>
@@ -326,7 +327,7 @@ const ProviderForm = ({
           <Action onPress={onCancel} variant="outline">
             Cancel
           </Action>
-        </div>
+        </Stack>
       </Card>
     </form>
   );
@@ -438,7 +439,7 @@ const WebPushForm = ({
       }}
     >
       <Card gap={20} padding={20}>
-        <div className="flex items-start justify-between gap-3">
+        <Stack align="start" direction="row" gap="control" justify="between">
           <div>
             <h3 className="font-semibold">{provider ? `Edit ${provider.label}` : "Add Browser Push"}</h3>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -448,7 +449,7 @@ const WebPushForm = ({
           <Action icon="close" layout="icon" onPress={onCancel} variant="ghost">
             Close provider form
           </Action>
-        </div>
+        </Stack>
         {error != null ? <ErrorState error={error} /> : null}
         <form.AppField name="label">
           {(field) => (
@@ -488,7 +489,7 @@ const WebPushForm = ({
         <p className="text-muted-foreground text-sm">
           Locked-screen previews say only that Loomarr has a new notification. Open Loomarr to see details.
         </p>
-        <div className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" wrap>
           <form.Subscribe selector={(state) => state.isSubmitting}>
             {(submitting) => (
               <Action disabled={pending || enabling || submitting} submit>
@@ -499,7 +500,7 @@ const WebPushForm = ({
           <Action onPress={onCancel} variant="outline">
             Cancel
           </Action>
-        </div>
+        </Stack>
         {message ? (
           <p className="text-sm" role={message.includes("could not") ? "alert" : "status"} aria-live="polite">
             {message}
@@ -597,9 +598,9 @@ const ProviderRow = ({
   return (
     <li>
       <Card padding={16}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <Stack align="start" direction="row" gap="control" justify="between" wrap>
           <div>
-            <div className="flex flex-wrap items-center gap-2">
+            <Stack align="center" direction="row" gap="inline" wrap>
               <h3 className="font-medium">{provider.label}</h3>
               <StatusLabel tone={provider.enabled ? "ok" : "off"}>
                 {provider.enabled ? "Enabled" : "Disabled"}
@@ -607,7 +608,7 @@ const ProviderRow = ({
               <Text textRole="compact" tone="secondary">
                 {definition?.name ?? words(provider.type)}
               </Text>
-            </div>
+            </Stack>
             <p className="text-muted-foreground mt-1 text-sm">{provider.events.map(words).join(", ")}</p>
             {provider.health ? (
               <p className="text-muted-foreground mt-2 text-xs">
@@ -619,7 +620,7 @@ const ProviderRow = ({
             ) : null}
           </div>
           {!confirmingDelete ? (
-            <div className="flex flex-wrap gap-2">
+            <Stack direction="row" gap="inline" wrap>
               <Action onPress={() => setEditing(true)} variant="outline">
                 Edit
               </Action>
@@ -645,9 +646,9 @@ const ProviderRow = ({
               <Action onPress={() => setConfirmingDelete(true)} variant="ghost">
                 Delete
               </Action>
-            </div>
+            </Stack>
           ) : null}
-        </div>
+        </Stack>
         {confirmingDelete ? (
           <div className="border-onair-tint-15 bg-onair-tint-15 mt-4 grid gap-3 rounded-md border p-3">
             <div>
@@ -665,7 +666,7 @@ const ProviderRow = ({
                 value={deleteConfirmation}
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <Stack direction="row" gap="inline" wrap>
               <Action
                 disabled={deleteConfirmation !== provider.label || remove.isPending}
                 onPress={() => void deleteProvider().catch(() => undefined)}
@@ -684,7 +685,7 @@ const ProviderRow = ({
               >
                 Cancel
               </Action>
-            </div>
+            </Stack>
           </div>
         ) : null}
         {update.error != null || remove.error != null || test.error != null ? (
@@ -728,8 +729,8 @@ const NotificationDestinationsPanel = () => {
 
   return (
     <section className="grid gap-4" aria-labelledby="notification-providers-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
+        <Stack direction="row" gap="control">
           <span className="bg-signal/10 text-signal flex size-9 shrink-0 items-center justify-center rounded-lg">
             <Icon decorative glyph={icons.notifications} size="compact" tone="inherit" />
           </span>
@@ -741,13 +742,13 @@ const NotificationDestinationsPanel = () => {
               Add SMTP, Slack, Discord, or another provider, then choose the events it receives.
             </p>
           </div>
-        </div>
+        </Stack>
         {!adding ? (
           <Action icon="plus" onPress={() => setAdding(true)}>
             Add provider
           </Action>
         ) : null}
-      </div>
+      </Stack>
 
       {providersQuery.isLoading || typesQuery.isLoading ? (
         <p className="text-muted-foreground text-sm">Loading providers…</p>

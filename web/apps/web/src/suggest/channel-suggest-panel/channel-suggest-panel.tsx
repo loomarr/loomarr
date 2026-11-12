@@ -3,7 +3,7 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
@@ -154,7 +154,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                   ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Stack align="center" className="mt-2" direction="row" gap="inline" wrap>
               {isAdmin &&
                 (groundingUnconfigured ? (
                   <Action
@@ -177,7 +177,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                   Build it manually instead
                 </Action>
               )}
-            </div>
+            </Stack>
           </div>
         ) : (
           <ErrorState error={run.error} />
@@ -198,9 +198,10 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
           independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && !proposal && (
-        <div
+        <Stack
           role="alert"
-          className="max-w-form border-border bg-muted/35 mx-auto flex w-full flex-col gap-3 rounded-lg border p-4"
+          className="max-w-form border-border bg-muted/35 mx-auto w-full rounded-lg border p-4"
+          gap="control"
         >
           <div>
             <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
@@ -211,7 +212,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
               <p className="text-muted-foreground mt-1 text-sm">{failureCopy.guidance}</p>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <Stack direction="row" gap="inline" wrap>
             {run.actions.includes("edit") && (
               <Action onPress={editFailedDescription} variant={failureNeedsEdit ? undefined : "outline"}>
                 {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
@@ -232,8 +233,8 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
             <Action onPress={flow.buildManually} tone="suggest">
               Build it manually instead
             </Action>
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       )}
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
@@ -273,7 +274,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
             </p>
           )}
           {proposal.status === "approved" && (
-            <div className="flex flex-col items-start gap-2">
+            <Stack align="start" gap="inline">
               <p role="status" className="text-lock text-sm">
                 {user?.autoApprove
                   ? "Created automatically using your account setting."
@@ -282,7 +283,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
               <Action onPress={startFresh} variant="outline">
                 Create another
               </Action>
-            </div>
+            </Stack>
           )}
         </div>
       )}

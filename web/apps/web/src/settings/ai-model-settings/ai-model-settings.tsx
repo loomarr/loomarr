@@ -4,7 +4,7 @@ import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView"
 import type { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SystemLLMStatus } from "@loomarr/api/models/systemLLMStatus";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Disclosure, RadioGroup, RadioItem, Surface, Text } from "@loomarr/design-system";
+import { Action, Disclosure, RadioGroup, RadioItem, Stack, Surface, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -41,7 +41,7 @@ const HostedLineup = ({
     : [];
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       {select.error != null && <ErrorState error={select.error} />}
       <HostedModelPicker
         providers={providers}
@@ -49,7 +49,7 @@ const HostedLineup = ({
         busy={select.isPending}
         onSelect={(sel) => select.mutate({ data: sel })}
       />
-    </div>
+    </Stack>
   );
 };
 
@@ -99,7 +99,15 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
 };
 
 const TmdbNotice = ({ configured }: { configured: boolean }) => (
-  <section className="border-border bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3">
+  <Stack
+    align="center"
+    className="border-border bg-muted/40 rounded-md border p-3"
+    direction="row"
+    gap="control"
+    justify="between"
+    render="section"
+    wrap
+  >
     <div>
       <p className="text-sm font-medium">
         {configured ? "TMDB key configured" : "TMDB grounding is still needed"}
@@ -119,7 +127,7 @@ const TmdbNotice = ({ configured }: { configured: boolean }) => (
         Connect TMDB
       </Action>
     )}
-  </section>
+  </Stack>
 );
 
 type VisionOption = { choice: VisionChoice; label: string; detail: string };
@@ -147,9 +155,11 @@ const VisionPicker = ({
   const shown = expanded ? options : current ? [...guided, current] : guided;
 
   return (
-    <section
+    <Stack
       aria-labelledby="role-vision"
-      className="border-border flex flex-col gap-2 rounded-md border p-3"
+      className="border-border rounded-md border p-3"
+      gap="inline"
+      render="section"
     >
       <div>
         <h3 id="role-vision" className="text-sm font-medium">
@@ -200,7 +210,7 @@ const VisionPicker = ({
           {expanded ? "Show guided choices" : `Show all ${options.length} choices`}
         </Action>
       )}
-    </section>
+    </Stack>
   );
 };
 
@@ -325,7 +335,12 @@ const AiModelSettings = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-labelledby="role-lineup" className="border-border flex flex-col gap-3 border-t pt-4">
+      <Stack
+        aria-labelledby="role-lineup"
+        className="border-border border-t pt-4"
+        gap="control"
+        render="section"
+      >
         <div>
           <h3 id="role-lineup" className="text-base font-semibold">
             Choose a lineup model
@@ -335,7 +350,7 @@ const AiModelSettings = ({
           </p>
         </div>
         {lineup}
-      </section>
+      </Stack>
       {tmdbConfigured !== undefined && <TmdbNotice configured={tmdbConfigured} />}
       <VisionSection
         status={status}

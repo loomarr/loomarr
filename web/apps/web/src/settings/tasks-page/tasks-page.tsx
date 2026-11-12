@@ -8,6 +8,7 @@ import {
   Action,
   Icon,
   icons,
+  Stack,
   StatusDot,
   type StatusTone,
   StatusWord,
@@ -94,12 +95,18 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   }
   if (query.error) {
     return (
-      <div className="text-destructive mt-4 flex items-center gap-2 text-xs" role="alert">
+      <Stack
+        align="center"
+        className="text-destructive mt-4 text-xs"
+        direction="row"
+        gap="inline"
+        role="alert"
+      >
         <span>Couldn’t load execution history.</span>
         <Action onPress={() => query.refetch()} variant="ghost">
           Retry
         </Action>
-      </div>
+      </Stack>
     );
   }
   if (!history) return null;
