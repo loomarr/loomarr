@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelCyclePreviewProps } from "./channel-cycle-preview.type";
+import { nextMonthDayAt, nextWeekdayAt } from "./time-presets";
 
 // One import provides both the type and const: orval derives the union from the frozen object,
 // so the switchable values and the type that constrains them cannot drift.
@@ -26,25 +27,6 @@ interface TimePreset {
   label: string;
   at: () => string;
 }
-
-const nextWeekdayAt = (weekday: number, hour: number): Date => {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  const delta = (weekday - d.getDay() + 7) % 7;
-  d.setDate(d.getDate() + (delta === 0 && d.getHours() >= hour ? 7 : delta));
-  return d;
-};
-
-const nextMonthDayAt = (month: number, day: number, hour: number): Date => {
-  const now = new Date();
-  let year = now.getFullYear();
-  let d = new Date(year, month, day, hour, 0, 0, 0);
-  if (d.getTime() < now.getTime()) {
-    year += 1;
-    d = new Date(year, month, day, hour, 0, 0, 0);
-  }
-  return d;
-};
 
 const TIME_PRESETS: TimePreset[] = [
   { label: "Now", at: () => "" },
