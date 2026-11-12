@@ -425,7 +425,7 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 		// A show with no name of its own is named by its own folder, not the folders it sits in:
 		// "TV/Kids/Kettle Bay" is "Kettle Bay".
 		if facts.Name == "" && s.dir != "" {
-			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(filepath.Base(filepath.FromSlash(s.dir)), ""))
+			facts.Name = showFolderName(filepath.Base(filepath.FromSlash(s.dir)))
 		}
 		coverage["sources"] = inventory.CoverageEmpty
 		snapshot := inventory.Snapshot{
