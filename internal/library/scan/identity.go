@@ -956,8 +956,10 @@ var (
 
 // plainStem is a file's name without its extension and the release's notes at its end:
 // "Kettle Bay - Part One [1080p] (WEB).mkv" is "Kettle Bay - Part One".
-func plainStem(name string) string {
-	s := stem(name)
+func plainStem(name string) string { return trimReleaseNotes(stem(name)) }
+
+// trimReleaseNotes is a name without the release's bracketed notes at its end.
+func trimReleaseNotes(s string) string {
 	for {
 		loc := releaseNotes.FindStringIndex(s)
 		if loc == nil || loc[0] == 0 {

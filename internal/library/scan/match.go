@@ -505,6 +505,9 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	// "½" and "…" stay as written.
 	name = width.Fold.String(name)
 	name = editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, " "), " ")
+	// A release's notes at its end say nothing of its title: "Ashgrove.CAM [1080p]" is
+	// "Ashgrove.CAM".
+	name = trimReleaseNotes(strings.TrimSpace(name))
 	// A leading year is the year: "(2015) Ashgrove". Any other leading tag is a release group's.
 	leadingYear := 0
 	if m := leadingYearTag.FindStringSubmatch(name); m != nil {

@@ -160,7 +160,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    every video in a show's folder in a shows' catch-all is an episode; names are read
 //	    without their release's notes at their end; a remake's and a sequel's folders are their
 //	    own shows; MakeMKV's, Media Center's, old scene and phone names; trackers' sites.
-const writeVersion = 46
+//	47: a title named by its file keeps its release's notes in its name, as before 46; the
+//	    catalog's search sets them aside.
+const writeVersion = 47
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -554,17 +556,19 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	clean := func(name string) string {
 		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
 	}
-	name := plainStem(path.Base(rel))
+	// The name keeps its release's notes, which the catalog's search sets aside; what the name is
+	// is read without them ("bc [1080p]" is the folder's initials).
+	name, plain := stem(path.Base(rel)), plainStem(path.Base(rel))
 	if part > 0 {
-		name = withoutPart(name)
+		name, plain = withoutPart(name), withoutPart(plain)
 		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
 			return clean(path.Base(path.Dir(dir)))
 		}
 	}
 	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
 	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
-	if m := makeMKVTitle.FindStringSubmatchIndex(name); m != nil && kind == mp.KindMovie {
-		label := strings.Trim(strings.ReplaceAll(name[:m[0]], "_", " "), " ")
+	if m := makeMKVTitle.FindStringSubmatchIndex(plain); m != nil && kind == mp.KindMovie {
+		label := strings.Trim(strings.ReplaceAll(plain[:m[0]], "_", " "), " ")
 		if dir := path.Dir(rel); (len(label) <= 3 || strings.EqualFold(label, "title")) && dir != "." && !catchAllFolder(path.Base(dir)) {
 			label = strings.ReplaceAll(path.Base(dir), "_", " ")
 		}
@@ -573,7 +577,7 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
 		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
-		if !catchAllFolder(folder) && len(name) > 1 && strings.EqualFold(name, initials(folder)) {
+		if !catchAllFolder(folder) && len(plain) > 1 && strings.EqualFold(plain, initials(folder)) {
 			return folder
 		}
 		if _, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
