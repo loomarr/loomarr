@@ -18,7 +18,7 @@
     "@loomarr/design-system": "workspace:*"
   },
   "peerDependencies": {
-    "expo-constants": "58.0.15",
+    "expo-constants": "58.0.16",
     "expo-file-system": "58.0.13",
     "react": ">=19 <20",
     "react-native": ">=0.88 <0.89",
@@ -27,7 +27,7 @@
   "devDependencies": {
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "expo-constants": "58.0.15",
+    "expo-constants": "58.0.16",
     "expo-file-system": "58.0.13",
     "jsdom": "30.0.1",
     "react": "19.3.0",

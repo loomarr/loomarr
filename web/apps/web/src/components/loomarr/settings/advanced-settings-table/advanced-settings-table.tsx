@@ -99,7 +99,9 @@ const AdvancedSettingsTable = ({
           )}
 
           {rows.map((entry) => {
-            const home = destinationForOwner(entry.owner);
+            // A key this page owns has no other home: a link back to this page says nothing.
+            const owner = destinationForOwner(entry.owner);
+            const home = owner?.id === "advanced" ? undefined : owner;
             const prov = PROVENANCE[entry.provenance] ?? {
               label: entry.provenance.toUpperCase(),
               className: "bg-static-800 text-static-400",
@@ -157,7 +159,9 @@ const AdvancedSettingsTable = ({
                     {home.label}
                   </a>
                 ) : (
-                  <span className="text-muted-foreground truncate text-xs">{entry.group}</span>
+                  // A key with no page but this one: say so in words, not the server's group id
+                  // or a link to the page already open (#3411). The group stays searchable.
+                  <span className="text-muted-foreground truncate text-xs">Only here</span>
                 )}
                 <span className={cn("text-2xs w-fit rounded-sm px-1.5 py-0.5 font-mono", prov.className)}>
                   {prov.label}

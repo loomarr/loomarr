@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { parse } from "@babel/parser";
 
 // The caps rule (#2778, decided 2026-11-08): capitals are an accent, kept for channel numbers,
-// clocks, provenance chips and the player's NOW/NEXT chips. Everything else is sentence case, and
+// clocks and provenance chips (the player's NOW/NEXT chips became plain "Now" and "Next" labels in
+// variant J, #3449). Everything else is sentence case, and
 // where capitals are drawn they come from the Text primitive's `shout`, not from a CSS class. This
 // scans the web app and every package's source for a new use, so one fails here rather than in
 // review.
@@ -20,7 +21,7 @@ const WEB = fileURLToPath(new URL("..", import.meta.url));
 const ALLOWED = [
   // The Text primitive: `shout` is implemented here.
   "packages/design-system/src/primitives/",
-  // The player band's channel number block ("CH") and its NOW/NEXT chips.
+  // The player band's channel number block ("CH").
   "packages/ui/src/watching-surface/player-chrome/channel-band/",
   // The Info sheet's "Up next" chip.
   "packages/ui/src/watching-surface/player-chrome/player-info/",
@@ -139,7 +140,7 @@ describe("caps rule (#2778)", () => {
     );
   });
 
-  it("draws capitals only for channel numbers, clocks, provenance and the NOW/NEXT chips", () => {
+  it("draws capitals only for channel numbers, clocks and provenance", () => {
     const offenders = sources
       .filter(({ path }) => !allowed(path))
       .flatMap(({ path, code }) => violations(code, path).map((rule) => `${path}: ${rule}`));

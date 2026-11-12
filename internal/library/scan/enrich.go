@@ -151,7 +151,9 @@ func (e *Enricher) tick(ctx context.Context, refresh bool) error {
 		if err != nil {
 			return err
 		}
-		due.New, due.Stale = 0, e.staleShare(total)
+		// Records the change feed named come before the oldest, and are not new titles: they
+		// are no part of an import's step 3.
+		due.New, due.Changed, due.Stale = 0, enrichNewBatch, e.staleShare(total)
 		if stale, err = e.Store.DueLibraryCatalog(ctx, due); err != nil {
 			return err
 		}
