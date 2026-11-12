@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  Text,
 } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
@@ -44,10 +45,12 @@ const Verdict = ({ word }: { word: StatusWordKind | undefined }) =>
 
 const CheckIdentity = ({ check }: { check: HealthCheck }) => (
   <>
-    <span className="font-medium">{check.label}</span>
-    <span className="text-muted-foreground text-xs">
+    <Text as="span" textRole="cardLabel">
+      {check.label}
+    </Text>
+    <Text as="span" textRole="hint" tone="secondary">
       {check.required ? "Required" : "Optional"} · {check.mode === "continuous" ? "Monitored" : "Startup"}
-    </span>
+    </Text>
   </>
 );
 
@@ -62,11 +65,11 @@ const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
       <Verdict word={checkWord(check.status)} />
     </TableCell>
     <TableCell verticalAlign="top">
-      <span className="text-muted-foreground text-xs">
-        <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
+      <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
+        <Text as="span" textRole="hint" tone="secondary">
           {dateTime(check.observedAt)}
-        </time>
-      </span>
+        </Text>
+      </time>
     </TableCell>
     <TableCell verticalAlign="top">
       <span className="text-muted-foreground">
@@ -93,12 +96,16 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
         <div className="min-w-0 flex-1">
-          <p className="text-lg font-medium">
+          <Text as="p" textRole="headline">
             <Verdict word={stateWord(report.state)} />
-          </p>
-          <p className="text-muted-foreground text-xs">Continuously monitored</p>
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            Continuously monitored
+          </Text>
         </div>
-        <span className="text-muted-foreground font-mono text-xs">{report.version}</span>
+        <Text as="span" textRole="mono">
+          {report.version}
+        </Text>
       </div>
       <div className="border-border border-t">
         <Table caption="Current health checks" framed={false} minWidth={704}>
@@ -141,7 +148,9 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
       {currentHealth ? (
         <CurrentHealthCard report={currentHealth} />
       ) : (
-        <p className="text-muted-foreground text-sm">Checking app health…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking app health…
+        </Text>
       )}
     </div>
   );

@@ -17,6 +17,7 @@ import {
   icons,
   LoadingStrip,
   Stack,
+  Text,
   Toggle,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
@@ -211,13 +212,15 @@ const SupportBundle = ({
             <section className="border-border bg-muted/20 rounded-lg border p-4" aria-label="Report scope">
               <Stack align="start" direction="row" gap="control" justify="between" wrap>
                 <div>
-                  <h3 className="font-medium">Recent diagnostic evidence</h3>
-                  <p className="text-muted-foreground mt-1 text-sm">
+                  <Text as="h3" textRole="heading">
+                    Recent diagnostic evidence
+                  </Text>
+                  <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                     {events ? "Application and player logs" : ""}
                     {events && processes ? " plus " : ""}
                     {processes ? "related process details" : ""}
                     {processOutput ? " and retained output" : ""}.
-                  </p>
+                  </Text>
                 </div>
                 <form.Field name="range">
                   {(field) => (
@@ -240,16 +243,18 @@ const SupportBundle = ({
                 <Stack className="mt-0.5" direction="row" render="span">
                   <Icon decorative glyph={icons.verified} size="compact" tone="success" />
                 </Stack>
-                <p className="text-muted-foreground text-xs">
+                <Text as="p" textRole="hint" tone="secondary">
                   Secrets, URL credentials, and local paths are redacted again while the report is built.
-                </p>
+                </Text>
               </Stack>
             </section>
 
             {busy === "preview" && (
-              <p className="text-muted-foreground inline-flex items-center gap-2 text-sm" role="status">
-                <LoadingStrip decorative width={32} /> Reviewing the selected evidence…
-              </p>
+              <div role="status">
+                <Text as="p" className="inline-flex items-center gap-2" textRole="compact" tone="secondary">
+                  <LoadingStrip decorative width={32} /> Reviewing the selected evidence…
+                </Text>
+              </div>
             )}
 
             {preview && (
@@ -258,49 +263,73 @@ const SupportBundle = ({
                 aria-label="Troubleshooting report summary"
               >
                 <Stack align="baseline" direction="row" gap="inline" justify="between" wrap>
-                  <h3 className="font-medium">What will be included</h3>
+                  <Text as="h3" textRole="heading">
+                    What will be included
+                  </Text>
                   <span className="font-mono text-sm">About {formatBytes(preview.estimatedBytes)}</span>
                 </Stack>
-                <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
-                    <dt className="text-muted-foreground">Logs</dt>
-                    <dd className="font-medium">{counts?.events ?? 0}</dd>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Logs
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.events ?? 0}
+                    </Text>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">Processes</dt>
-                    <dd className="font-medium">{counts?.processes ?? 0}</dd>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Processes
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.processes ?? 0}
+                    </Text>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">Outputs</dt>
-                    <dd className="font-medium">{counts?.processOutputs ?? 0}</dd>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Outputs
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.processOutputs ?? 0}
+                    </Text>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">Redactions</dt>
-                    <dd className="font-medium">{counts?.redactions ?? 0}</dd>
+                    <Text as="dt" textRole="compact" tone="secondary">
+                      Redactions
+                    </Text>
+                    <Text as="dd" textRole="cardLabel">
+                      {counts?.redactions ?? 0}
+                    </Text>
                   </div>
                 </dl>
                 {warnings.length > 0 ? (
-                  <p className="border-caution/30 bg-caution/5 rounded-md border p-3 text-sm">
+                  <Text
+                    as="p"
+                    className="border-caution/30 bg-caution/5 rounded-md border p-3"
+                    textRole="compact"
+                  >
                     Some evidence is limited: {warnings.join(", ")}.
-                  </p>
+                  </Text>
                 ) : (
-                  <p className="text-muted-foreground text-xs">
+                  <Text as="p" textRole="hint" tone="secondary">
                     No evidence limits were reached in this review.
-                  </p>
+                  </Text>
                 )}
               </section>
             )}
 
             <details className="border-border rounded-lg border p-4">
-              <summary className="cursor-pointer text-sm font-medium">
+              <Text as="summary" className="cursor-pointer" textRole="cardLabel">
                 <span className="mr-2 inline-flex align-middle">
                   <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
                 </span>{" "}
                 Customize report
-              </summary>
+              </Text>
               <div className="mt-4 space-y-4">
                 <fieldset>
-                  <legend className="mb-2 text-sm font-medium">Evidence types</legend>
+                  <Text as="legend" className="mb-2" textRole="cardLabel">
+                    Evidence types
+                  </Text>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {EVIDENCE_TYPES.map(([label, kind]) => (
                       <div key={kind} className="border-border rounded-md border px-3">
@@ -314,7 +343,9 @@ const SupportBundle = ({
                   </div>
                 </fieldset>
                 <div>
-                  <h4 className="mb-2 text-sm font-medium">Exact identifiers</h4>
+                  <Text as="h4" className="mb-2" textRole="cardLabel">
+                    Exact identifiers
+                  </Text>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {CORRELATION_FIELDS.map(([label, key]) => (
                       <form.AppField key={key} name={key}>
@@ -325,14 +356,16 @@ const SupportBundle = ({
                 </div>
                 {preview && (
                   <details>
-                    <summary className="text-muted-foreground cursor-pointer text-sm">Files included</summary>
-                    <ul className="mt-2 grid gap-1 font-mono text-xs sm:grid-cols-2">
+                    <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
+                      Files included
+                    </Text>
+                    <Text as="ul" className="mt-2 grid gap-1 sm:grid-cols-2" textRole="mono" tone="primary">
                       {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
                         (name) => (
                           <li key={name}>{name}</li>
                         ),
                       )}
-                    </ul>
+                    </Text>
                   </details>
                 )}
               </div>
@@ -340,12 +373,11 @@ const SupportBundle = ({
           </div>
 
           {error && (
-            <p
-              role="alert"
-              className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
-            >
-              {error}
-            </p>
+            <div role="alert" className="border-destructive/40 bg-destructive/10 rounded-md border p-3">
+              <Text as="p" textRole="compact" tone="danger">
+                {error}
+              </Text>
+            </div>
           )}
 
           <DialogFooter>

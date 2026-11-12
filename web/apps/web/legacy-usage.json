@@ -202,35 +202,35 @@
       "tailwindClasses": 15
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
-      "tailwindClasses": 78
+      "tailwindClasses": 66
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
-      "tailwindClasses": 62
+      "tailwindClasses": 38
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
-      "tailwindClasses": 90
+      "tailwindClasses": 54
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 12
     },
     "src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 12
     },
     "src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
-      "tailwindClasses": 30
+      "tailwindClasses": 21
     },
     "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
-      "tailwindClasses": 19
+      "tailwindClasses": 15
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 87,
+      "tailwindClasses": 80,
       "rawButton": 2
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 7
     },
     "src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 11
     },
     "src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
       "tailwindClasses": 27
@@ -289,29 +289,29 @@
       "tailwindClasses": 73
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 195
+      "tailwindClasses": 144
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,
       "rawButton": 1
     },
     "src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 6
     },
     "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "tailwindClasses": 36
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 143
+      "tailwindClasses": 102
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 2
     },
     "src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "tailwindClasses": 45
+      "tailwindClasses": 31
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 98
+      "tailwindClasses": 66
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 13
@@ -518,34 +518,34 @@
       "tailwindClasses": 5
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 30
+      "tailwindClasses": 12
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 14
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 97
+      "tailwindClasses": 54
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 57
+      "tailwindClasses": 34
     },
     "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 48
+      "tailwindClasses": 28
     },
     "src/settings/settings-context-nav/settings-context-nav.tsx": {
       "tailwindClasses": 39
     },
     "src/settings/settings-page/settings-page.tsx": {
-      "tailwindClasses": 32
+      "tailwindClasses": 21
     },
     "src/settings/settings-save-bar-host/settings-save-bar-host.tsx": {
       "tailwindClasses": 2
     },
     "src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 3
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 108,
+      "tailwindClasses": 79,
       "rawButton": 2
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {

@@ -73,9 +73,14 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
 const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => (
   <Stack direction="row" gap="inline">
     {children}
-    <span className="border-input text-muted-foreground flex h-10 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
+    <Text
+      as="span"
+      className="border-input flex h-10 w-16 shrink-0 items-center justify-center rounded-md border"
+      textRole="compact"
+      tone="secondary"
+    >
       {unit}
-    </span>
+    </Text>
   </Stack>
 );
 
@@ -337,7 +342,9 @@ const SettingField = ({
     return (
       <div className={cn("min-w-0", className)}>
         {secretLocked ? (
-          <span className="text-muted-foreground font-mono text-xs">{entry.preview ?? "stored"}</span>
+          <Text as="span" textRole="mono">
+            {entry.preview ?? "stored"}
+          </Text>
         ) : (
           control()
         )}
@@ -518,11 +525,14 @@ const SettingField = ({
           screen readers; the transition is frozen under reduced-motion. Only for a value a
           PERSON set: an env pin or built-in default has no author to name. */}
       {entry.updatedAt && (
-        <p
+        <Text
+          as="p"
           className={cn(
-            "text-muted-foreground pointer-events-none text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
+            "pointer-events-none opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
             inlineSwitch && "col-span-2",
           )}
+          textRole="hint"
+          tone="secondary"
         >
           {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
           {entry.updatedByYou
@@ -530,7 +540,7 @@ const SettingField = ({
             : entry.updatedBy
               ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
               : `Changed ${formatAgo(entry.updatedAt)}`}
-        </p>
+        </Text>
       )}
 
       {problem && (

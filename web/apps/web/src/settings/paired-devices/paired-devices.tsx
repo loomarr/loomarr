@@ -1,7 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field, Stack } from "@loomarr/design-system";
+import { Action, Field, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -74,17 +74,19 @@ const ApproveDevice = () => {
 
   return (
     <section className="border-border rounded-lg border p-4">
-      <h2 className="text-sm font-medium">Add a TV or streaming box</h2>
-      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+      <Text as="h2" textRole="cardLabel">
+        Add a TV or streaming box
+      </Text>
+      <Text as="p" className="mt-1" textRole="compact" tone="secondary">
         Open Loomarr on the device. It will show a short code — type it here to let it sign in as you. The
         device acts with your access and role, and you can remove it at any time.
-      </p>
+      </Text>
       {/* The address to put ON the television. This panel is for an operator already in Settings;
           the device itself cannot direct anyone here, so it names the short route instead. */}
-      <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+      <Text as="p" className="mt-1" textRole="compact" tone="secondary">
         Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and is
         easier to reach from a phone.
-      </p>
+      </Text>
       <form
         className="mt-3 flex flex-wrap items-start gap-2"
         noValidate
@@ -119,15 +121,15 @@ const ApproveDevice = () => {
         </form.Subscribe>
       </form>
       {approve.isError ? (
-        <p className="text-destructive mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact" tone="danger">
           That code is wrong or has expired. Codes last ten minutes — check the device and try again.
-        </p>
+        </Text>
       ) : null}
       {approved ? (
-        <p className="mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact">
           <span className="font-medium">{approved}</span> is approved. It should start playing in a few
           seconds.
-        </p>
+        </Text>
       ) : null}
     </section>
   );
@@ -148,8 +150,12 @@ const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () =>
       wrap
     >
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium">{name}</p>
-        <p className="text-muted-foreground text-xs">Last used {relativeAge(device.lastSeenAt)}</p>
+        <Text as="p" className="truncate" textRole="cardLabel">
+          {name}
+        </Text>
+        <Text as="p" textRole="hint" tone="secondary">
+          Last used {relativeAge(device.lastSeenAt)}
+        </Text>
       </div>
       {confirming ? (
         <ConfirmStep
@@ -189,10 +195,12 @@ const PairedDevices = () => {
     <>
       <ApproveDevice />
       <section className="border-border rounded-lg border p-4">
-        <h2 className="text-sm font-medium">Your devices</h2>
-        <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+        <Text as="h2" textRole="cardLabel">
+          Your devices
+        </Text>
+        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
           Devices signed in as you. Removing one signs it out immediately; your other devices keep working.
-        </p>
+        </Text>
         {query.isError ? <ErrorState error={query.error} /> : null}
         {!query.isError && devices.length === 0 ? (
           <EmptyState description="Approve a code above to add your first TV." title="No devices yet" />

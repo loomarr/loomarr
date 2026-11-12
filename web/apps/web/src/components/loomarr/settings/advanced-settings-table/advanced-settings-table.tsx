@@ -1,7 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -77,9 +77,9 @@ const AdvancedSettingsTable = ({
         </div>
         {/* The count is the feedback that a search DID something — without it, a query that
             matches nothing looks identical to a page that failed to load. */}
-        <span className="text-muted-foreground font-mono text-xs">
+        <Text as="span" textRole="mono">
           {`${rows.length} of ${entries.length} shown`}
-        </span>
+        </Text>
       </Stack>
 
       <div className="border-border overflow-x-auto rounded-lg border">
@@ -93,9 +93,9 @@ const AdvancedSettingsTable = ({
           </div>
 
           {rows.length === 0 && (
-            <p className="text-muted-foreground px-4 py-6 text-center text-sm">
+            <Text as="p" className="px-4 py-6 text-center" textRole="compact" tone="secondary">
               {`No setting matches “${query}”.`}
-            </p>
+            </Text>
           )}
 
           {rows.map((entry) => {
@@ -120,9 +120,15 @@ const AdvancedSettingsTable = ({
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
                     why it carries an id. A table row already shows the name; a <label> beside
                     the input would duplicate it on screen for no one's benefit. */}
-                  <span id={`${entry.key}-label`} className="truncate font-mono text-xs">
+                  <Text
+                    as="span"
+                    className="truncate"
+                    id={`${entry.key}-label`}
+                    textRole="mono"
+                    tone="primary"
+                  >
                     {entry.key}
-                  </span>
+                  </Text>
                   {/* ADV marks a key that is hidden behind its home page's disclosure. It belongs
                     HERE especially: this is the surface someone reaches precisely because the
                     key was not where they looked, and "it's advanced" is the answer. */}
@@ -138,9 +144,9 @@ const AdvancedSettingsTable = ({
                 {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
                 {pickerOwned ? (
-                  <span className="text-muted-foreground truncate font-mono text-xs">
+                  <Text as="span" className="truncate" textRole="mono">
                     {(values[entry.key] ?? entry.value) || "Not selected"}
-                  </span>
+                  </Text>
                 ) : (
                   <SettingField
                     entry={entry}
@@ -161,7 +167,9 @@ const AdvancedSettingsTable = ({
                 ) : (
                   // A key with no page but this one: say so in words, not the server's group id
                   // or a link to the page already open (#3411). The group stays searchable.
-                  <span className="text-muted-foreground truncate text-xs">Only here</span>
+                  <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                    Only here
+                  </Text>
                 )}
                 <span className={cn("text-2xs w-fit rounded-sm px-1.5 py-0.5 font-mono", prov.className)}>
                   {prov.label}

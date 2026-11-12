@@ -1,7 +1,7 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Combobox, type ComboboxOption, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Combobox, type ComboboxOption, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import type { LocationPickerProps } from "./location-picker.type";
@@ -150,9 +150,14 @@ const LocationPicker = ({
           Location
         </label>
         {locked && lockedLabel && (
-          <span className="bg-static-800 text-2xs text-static-400 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono">
+          <Text
+            as="span"
+            className="bg-static-800 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5"
+            textRole="mono"
+            tone="secondary"
+          >
             <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
-          </span>
+          </Text>
         )}
       </Stack>
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -198,7 +203,7 @@ const LocationPicker = ({
         )}
       </div>
       {evidence?.approximate && (
-        <p className="text-muted-foreground mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
           Approximate location from your network. You can choose a more specific place above.
           {evidence.attribution && (
             <>
@@ -208,14 +213,20 @@ const LocationPicker = ({
               </a>
             </>
           )}
-        </p>
+        </Text>
       )}
       {visibleError && (
-        <p className="text-destructive mt-2 text-sm" role="alert">
-          {visibleError}
-        </p>
+        <div className="mt-2" role="alert">
+          <Text as="p" textRole="compact" tone="danger">
+            {visibleError}
+          </Text>
+        </div>
       )}
-      {!value.country && !visibleError && <p className="text-muted-foreground mt-2 text-sm">{emptyHint}</p>}
+      {!value.country && !visibleError && (
+        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
+          {emptyHint}
+        </Text>
+      )}
     </div>
   );
 };

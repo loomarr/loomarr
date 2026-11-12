@@ -35,14 +35,16 @@ const BackupPanel = ({
       <section className={cn("border-border rounded-lg border p-4", className)}>
         <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
-          <h2 className="text-sm font-medium">Backups</h2>
+          <Text as="h2" textRole="cardLabel">
+            Backups
+          </Text>
         </Stack>
-        <p className="text-muted-foreground mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
           This install runs on PostgreSQL, which Loomarr does not back up itself. Use{" "}
           <code className="font-mono text-xs">pg_dump</code> against the database and restore with{" "}
           <code className="font-mono text-xs">pg_restore</code>, on whatever schedule you already run for your
           other databases.
-        </p>
+        </Text>
       </section>
     );
   }
@@ -51,11 +53,13 @@ const BackupPanel = ({
     <section className={cn("border-border rounded-lg border p-4", className)}>
       <Stack align="start" direction="row" gap="4">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium">Backups</h2>
-          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+          <Text as="h2" textRole="cardLabel">
+            Backups
+          </Text>
+          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
             A backup is the whole instance: settings, channels, people, and the generated secrets. Treat the
             file as a credential.
-          </p>
+          </Text>
         </div>
         <Action disabled={pending} icon="download" onPress={onBackUpNow}>
           {pending ? "Backing up..." : "Back up now"}
@@ -63,18 +67,13 @@ const BackupPanel = ({
       </Stack>
 
       {error ? (
-        <Stack
-          align="start"
-          className="text-danger mt-3 text-sm"
-          direction="row"
-          gap="inline"
-          render="p"
-          role="alert"
-        >
+        <Stack align="start" className="mt-3" direction="row" gap="inline" render="p" role="alert">
           <Stack className="mt-0.5" direction="row" render="span">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+            <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
           </Stack>
-          {error}
+          <Text as="span" textRole="compact" tone="danger">
+            {error}
+          </Text>
         </Stack>
       ) : null}
 
@@ -102,9 +101,14 @@ const BackupPanel = ({
       ) : null}
 
       {backups.length === 0 ? (
-        <p className="border-border text-muted-foreground mt-4 rounded-md border border-dashed p-4 text-center text-sm">
+        <Text
+          as="p"
+          className="border-border mt-4 rounded-md border border-dashed p-4 text-center"
+          textRole="compact"
+          tone="secondary"
+        >
           No backups yet. One is written on the schedule below, or take the first one now.
-        </p>
+        </Text>
       ) : (
         <Stack className="mt-4" gap="1.5" render="ul">
           {backups.map((b) => (
@@ -116,12 +120,16 @@ const BackupPanel = ({
               key={b.name}
               render="li"
             >
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">{b.name}</span>
-              <span className="text-muted-foreground shrink-0 font-mono text-xs">{formatBytes(b.bytes)}</span>
-              <span className="text-muted-foreground shrink-0 font-mono text-xs">
+              <Text as="span" className="min-w-0 flex-1 truncate" textRole="mono" tone="primary">
+                {b.name}
+              </Text>
+              <Text as="span" className="shrink-0" textRole="mono">
+                {formatBytes(b.bytes)}
+              </Text>
+              <Text as="span" className="shrink-0" textRole="mono">
                 {/* writtenAt is Unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
                 {formatRelative(b.writtenAt * 1000)}
-              </span>
+              </Text>
               <Action
                 accessibilityLabel={`Download ${b.name}`}
                 icon="download"
@@ -135,13 +143,13 @@ const BackupPanel = ({
         </Stack>
       )}
 
-      <p className="text-muted-foreground mt-3 font-mono text-xs">
+      <Text as="p" className="mt-3" textRole="mono">
         {/* The raw cron rather than a friendly label: the default (03:30) matches no preset,
             so describeCron would render "Custom" — which tells the operator nothing. */}
         {list.schedule} into {list.dir} · keeps{" "}
         {list.retain > 0 ? pluralize(list.retain, "backup") : "every backup"} · restore is a command-line
         operation
-      </p>
+      </Text>
     </section>
   );
 };
