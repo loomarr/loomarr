@@ -175,12 +175,12 @@ func TestSeerrQueueStatus(t *testing.T) {
 func TestSeerrQueueStatus_MovieAndSeriesSharingATMDBID(t *testing.T) {
 	ms := testkit.NewSeerr(t)
 	t.Cleanup(ms.Close)
-	ms.Processing = []testkit.SeerrMedia{{TMDBID: 1399, MediaType: "movie", Status: 3}}
+	ms.Processing = []testkit.SeerrMedia{{TMDBID: 90001399, MediaType: "movie", Status: 3}}
 	r := NewSeerr(ms.URL, "k")
 
 	items, err := r.QueueStatus(context.Background(), []provision.Title{
-		{MediaType: provision.Movie, TMDBID: 1399},
-		{MediaType: provision.Series, TMDBID: 1399},
+		{MediaType: provision.Movie, TMDBID: 90001399},
+		{MediaType: provision.Series, TMDBID: 90001399},
 	})
 	if err != nil {
 		t.Fatalf("QueueStatus: %v", err)
@@ -189,9 +189,9 @@ func TestSeerrQueueStatus_MovieAndSeriesSharingATMDBID(t *testing.T) {
 		t.Fatalf("got %d items, want 2", len(items))
 	}
 	if !items[0].Grabbed || items[0].Status != "Downloading" {
-		t.Errorf("movie 1399 = %+v, want grabbed Downloading", items[0])
+		t.Errorf("movie 90001399 = %+v, want grabbed Downloading", items[0])
 	}
 	if items[1].Grabbed || items[1].Status != "" {
-		t.Errorf("series 1399 = %+v, want not grabbed (only the movie is processing)", items[1])
+		t.Errorf("series 90001399 = %+v, want not grabbed (only the movie is processing)", items[1])
 	}
 }

@@ -131,12 +131,12 @@ func TestArr_QueueStatus_SeriesCountsMissingKeepProgress(t *testing.T) {
 // actually moving rather than whichever record the arr listed last.
 func TestArr_QueueStatus_SeriesAggregatesEpisodeRecords(t *testing.T) {
 	stub := newArrStub(t, "series")
-	stub.lookupID = 7
+	stub.lookupID = 90000007
 	stub.queueRecords = []map[string]any{
-		{"id": 1, "seriesId": 7, "size": 100, "sizeleft": 10, "status": "downloading", "timeleft": "00:01:00"},
-		{"id": 2, "seriesId": 7, "size": 100, "sizeleft": 90, "status": "downloading", "timeleft": "00:09:00"},
-		{"id": 3, "seriesId": 7, "size": 100, "sizeleft": 100, "status": "warning", "timeleft": ""},
-		{"id": 4, "seriesId": 8, "size": 100, "sizeleft": 0, "status": "completed"},
+		{"id": 90000001, "seriesId": 90000007, "size": 100, "sizeleft": 10, "status": "downloading", "timeleft": "00:01:00"},
+		{"id": 90000002, "seriesId": 90000007, "size": 100, "sizeleft": 90, "status": "downloading", "timeleft": "00:09:00"},
+		{"id": 90000003, "seriesId": 90000007, "size": 100, "sizeleft": 100, "status": "warning", "timeleft": ""},
+		{"id": 90000004, "seriesId": 90000008, "size": 100, "sizeleft": 0, "status": "completed"},
 	}
 	a := arrFor("series", stub.server.URL, "", "")
 

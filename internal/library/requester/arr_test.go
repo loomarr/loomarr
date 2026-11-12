@@ -286,20 +286,20 @@ func TestArr_Cancel_DeletesQueueRecord(t *testing.T) {
 // record of that series and leaves other series' downloads alone.
 func TestArr_Cancel_Series_DeletesEveryEpisodeRecord(t *testing.T) {
 	stub := newArrStub(t, "series")
-	stub.lookupID = 7
+	stub.lookupID = 90000007
 	stub.queueRecords = []map[string]any{
-		{"id": 101, "seriesId": 7},
-		{"id": 102, "seriesId": 7},
-		{"id": 200, "seriesId": 8},
-		{"id": 103, "seriesId": 7},
+		{"id": 90000101, "seriesId": 90000007},
+		{"id": 90000102, "seriesId": 90000007},
+		{"id": 90000200, "seriesId": 90000008},
+		{"id": 90000103, "seriesId": 90000007},
 	}
 	a := arrFor("series", stub.server.URL, "", "")
 
-	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Series, TVDBID: 81189, Name: "S"}); err != nil {
+	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Series, TVDBID: 90081189, Name: "S"}); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(stub.deletedIDs, []int{101, 102, 103}) {
-		t.Errorf("deleted queue ids = %v, want [101 102 103]", stub.deletedIDs)
+	if want := []int{90000101, 90000102, 90000103}; !slices.Equal(stub.deletedIDs, want) {
+		t.Errorf("deleted queue ids = %v, want %v", stub.deletedIDs, want)
 	}
 }
 
