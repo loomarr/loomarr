@@ -171,7 +171,13 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    Season 2" folder gives its season, as does "Season IV"; a season pack's release folder
 //	    stands for its show's folder; "Part 1 of 3" is a miniseries'; plural kinds, a trailer in
 //	    a film's folder, a day's file in a show's folder and a DVR's dated name are read.
-const writeVersion = 49
+//	50: an extra's kind must end its name, and a dated name is an episode, so "Hilltop - Scene
+//	    of the Crime" and "Show - 2018-04-02 - Recap" play; an anime folder tags its releases;
+//	    a shows' catch-all's dated names are episodes; "movie.mkv" and "1.mkv" take their
+//	    folder's title; a show's season folders are one show; a franchise's films are films;
+//	    "1x01" among films, "3 - 01" in Season 3, "(Season 1-3)", "Kausi 1", "Ep01" are read; a
+//	    film's or show's "<title> Extras" folder is its extras.
+const writeVersion = 50
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -556,6 +562,10 @@ var (
 	discLabel = regexp.MustCompile(`(?i)[ ]+d(?:isc)?[ ]?\d$`)
 )
 
+// genericStem matches a file's name that says what it is, never which: "movie", "film", "video",
+// "main", "feature", "main feature", "1", "01".
+var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main[ ._-]?feature|the[ ._-]movie|\d{1,2})$`)
+
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
@@ -586,7 +596,9 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
 		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
-		if !catchAllFolder(folder) && len(plain) > 1 && strings.EqualFold(plain, initials(folder)) {
+		// So is one named by what it is rather than what it is called: "Pikestaff/movie.mkv",
+		// "Pikefen/1.mkv", "main.mkv", "feature.mkv".
+		if !catchAllFolder(folder) && (len(plain) > 1 && strings.EqualFold(plain, initials(folder)) || genericStem.MatchString(plain)) {
 			return folder
 		}
 		if _, fileYear, _ := searchQuery(name, 0); fileYear == 0 {

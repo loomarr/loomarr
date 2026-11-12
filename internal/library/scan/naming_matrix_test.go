@@ -759,6 +759,75 @@ var namingMatrix = []namingRow{
 		"Recorded TV/Wexcombe - Hedge (2023-01-02 21-00).ts":             "episode Wexcombe 2023-01-02",
 		"Anime/[Kumo] Hoshi Kettle 第03話 [1080p].mkv":                     "episode Hoshi Kettle S?E?",
 	}},
+	// An episode whose title holds an extra's word is the episode: the kind must end the name, and
+	// a dated name is an episode as a marked one is.
+	{id: "W84", files: map[string]string{
+		"TV/Hilltop/Season 1/Hilltop S01E01.mkv":                             "episode Hilltop S1E1",
+		"TV/Hilltop/Season 1/Hilltop - Scene of the Crime.mkv":               "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Short Circuit.mkv":                    "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Other Worlds.mkv":                     "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Extra Time.mkv":                       "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Theme Park.mkv":                       "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Clip Show.mkv":                        "episode Hilltop S?E?",
+		"TV/Night Talk/Night Talk S01E01.mkv":                                "episode Night Talk S1E1",
+		"TV/Night Talk/Night Talk - 2023-05-13 - Interview with Jo Fern.mkv": "episode Night Talk 2023-05-13",
+		"TV/Night Talk/Night.Talk.2023.05.15.Preview.Special.720p.mkv":       "episode Night Talk 2023-05-15",
+		"TV/Quillon Hall/Quillon Hall S01E01.mkv":                            "episode Quillon Hall S1E1",
+		"TV/Quillon Hall/Quillon Hall - 2018-04-02 - Recap.mkv":              "episode Quillon Hall 2018-04-02",
+		"Movies/Glimmerdale (2012)/Glimmerdale (2012).mkv":                   "movie Glimmerdale 2012",
+		"Movies/Glimmerdale (2012)/Glimmerdale (2012) - Trailer 2.mkv":       "skip",
+		"Movies/Glimmerdale (2012)/Glimmerdale (2012) - Deleted Scenes.mkv":  "skip",
+	}},
+	// Anime under "Anime/" with its group's tag last or none; DVR recordings named by show and day.
+	{id: "W85", files: map[string]string{
+		"Anime/Kumo Tetsu - 07 (BD 1080p) [Grp].mkv":   "episode Kumo Tetsu S?E?",
+		"Anime/Usagi Den - 06 [Grp][1080p].mkv":        "episode Usagi Den S?E?",
+		"Anime/Usagi Den 07 [1080p].mkv":               "episode Usagi Den S?E?",
+		"Anime/Usagi.Den.08.1080p.mkv":                 "episode Usagi Den S?E?",
+		"Recordings/Harbour Watch 2022-01-05 21-00.ts": "episode Harbour Watch 2022-01-05",
+		"Recordings/Harbour Watch 2022-01-12 21-00.ts": "episode Harbour Watch 2022-01-12",
+		"Recorded TV/Ferry Talk 2022-01-05.ts":         "episode Ferry Talk 2022-01-05",
+		"TV Recordings/Harbour Light - 20220105.ts":    "episode Harbour Light 2022-01-05",
+		"Hana.Ame.Ep01.1080p.mkv":                      "episode Hana Ame S1E1",
+	}},
+	// A generic file name takes its folder's title; a show's seasons in folders of their own are
+	// one show; a franchise's films named after it are films.
+	{id: "W86", files: map[string]string{
+		"Movies/Pikestaff/movie.mkv":             "movie Pikestaff -",
+		"Movies/Pikemoor (2004)/1.mkv":           "movie Pikemoor 2004",
+		"Pikefen/film.mkv":                       "movie Pikefen -",
+		"Owlpen Season 1/Owlpen 1x01.avi":        "episode Owlpen S1E1",
+		"Owlpen Season 2/Owlpen 2x01.avi":        "episode Owlpen S2E1",
+		"TV/Owlbeck Season 1/Owlbeck 01.mkv":     "episode Owlbeck S1E1",
+		"TV/Owlbeck Season 2/Owlbeck 01.mkv":     "episode Owlbeck S2E1",
+		"Wren Lake/Wren Lake and the Stone.avi":  "movie Wren Lake and the Stone -",
+		"Wren Lake/Wren Lake and the Cup.avi":    "movie Wren Lake and the Cup -",
+		"Wren Lake/Wren Lake and the Prince.avi": "movie Wren Lake and the Prince -",
+		"Movies/Thorn Hill 1x01.avi":             "episode Thorn Hill S1E1",
+	}},
+	// A season folder's "3 - 01" and "2-03"; a season run in brackets; Finnish seasons; a season's
+	// extras folder named by the show.
+	{id: "W87", files: map[string]string{
+		"TV/Bramley Court/Season 3/Bramley Court - 3 - 01.mkv": "episode Bramley Court S3E1",
+		"TV/Cobble Way/Season 2/2-03.mkv":                      "episode Cobble Way S2E3",
+		"TV/Brine Sea (Season 1-3)/Brine Sea S02E01.mkv":       "episode Brine Sea S2E1",
+		"TV/Satama/Kausi 1/Jakso 7.mkv":                        "episode Satama S1E7",
+		"TV/Brine Rock/Brine Rock S01 Extras/Interview.mkv":    "skip",
+		"TV/Brine Rock/Season 1/Brine Rock S01E01.mkv":         "episode Brine Rock S1E1",
+	}},
+	// Re-score #8's over-corrections: films kept with anime, a film recorded with no day, an episode
+	// titled by a kind's word and more, a film's folder with an extras folder of its own name.
+	{id: "W88", files: map[string]string{
+		"Anime/Kumo Tetsu (2016)/Kumo Tetsu (2016).mkv":            "movie Kumo Tetsu 2016",
+		"Anime/Hoshizora The Movie (2015).mkv":                     "movie Hoshizora The Movie 2015",
+		"Recordings/Gravel Moor (2019).ts":                         "movie Gravel Moor 2019",
+		"TV/Hilltop/Season 2/Hilltop S02E01.mkv":                   "episode Hilltop S2E1",
+		"TV/Hilltop/Season 2/Hilltop - Trailer Park.mkv":           "episode Hilltop S?E?",
+		"TV/Hilltop/Season 2/Hilltop - Interview with a Ghost.mkv": "episode Hilltop S?E?",
+		"Movies/Sallowmere (2008)/Sallowmere (2008).mkv":           "movie Sallowmere 2008",
+		"Movies/Sallowmere (2008)/Sallowmere Extras/Cast.mkv":      "skip",
+		"Movies/Kettlewick (2013)/The Movie.mkv":                   "movie Kettlewick 2013",
+	}},
 	// Re-score #7's over-corrections: a film named by a kind in its own folder, a day's home video,
 	// a show's folder holding one video named as the show, a DVR-less dated film, a pack with ids.
 	{id: "W83", files: map[string]string{

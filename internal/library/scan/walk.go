@@ -67,6 +67,26 @@ var extrasDirs = map[string]bool{
 	"extra": true, "theme-music": true,
 }
 
+// extrasFolder says whether a folder named name in parent is an extras folder: named by its kind,
+// "Extras", or by its title then its kind, "Brine Rock/Brine Rock S01 Extras".
+func extrasFolder(name, parent string) bool {
+	if extrasDirs[strings.ToLower(name)] {
+		return true
+	}
+	words := strings.Fields(normName(name))
+	if len(words) < 2 || !extrasDirs[words[len(words)-1]] || parent == "." {
+		return false
+	}
+	// The title is its show's, or its film's without its year: "Sallowmere (2008)/Sallowmere Extras".
+	title, _, _ := searchQuery(path.Base(parent), 0)
+	for _, own := range [][]string{showWordsOf(path.Base(parent)), strings.Fields(normName(title))} {
+		if len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own) {
+			return true
+		}
+	}
+	return false
+}
+
 // skippedDir reports whether a walk passes over a folder named name in parent (relative to the
 // root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or an
 // extras folder in a title's own folder (titled, as holdsTitle says), which a season folder's
@@ -78,7 +98,7 @@ func skippedDir(parent, name string, titled bool) bool {
 	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
 	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
 	return skippedDirs[lower] || prefixed ||
-		(parent != "." && extrasDirs[lower] && titled && !catchAllFolder(path.Base(parent))) ||
+		(parent != "." && extrasFolder(name, parent) && titled && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
 
@@ -212,7 +232,7 @@ func (w *walker) within(dir string) bool {
 			return true
 		}
 		titled := false
-		if extrasDirs[strings.ToLower(seg)] {
+		if extrasFolder(seg, parent) {
 			entries, _ := os.ReadDir(at)
 			titled = holdsTitle(parent, entries)
 		}
@@ -852,6 +872,21 @@ func extraKindAt(words []string) int {
 	return last
 }
 
+// kindEnds says whether a name's words from its extra's kind are that kind alone, with a count or a
+// release's words after it: "Trailer 2", "Deleted Scenes", "trailer 1080p"; "Scene of the Crime"
+// and "Clip Show" are titles. A kind first, "Featurette Costumes", is a household's extra named by
+// what it shows, read beside its title (siblingExtras).
+func kindEnds(words []string) bool {
+	for _, kind := range extraKinds {
+		bare := func(w string) string { return strings.TrimRight(w, "0123456789") }
+		if len(words) < len(kind) || !slices.EqualFunc(words[:len(kind)], kind, func(w, k string) bool { return bare(w) == k }) {
+			continue
+		}
+		return !slices.ContainsFunc(words[len(kind):], func(w string) bool { return !digits(w) && !releaseToken(w) })
+	}
+	return false
+}
+
 // episodeExtra matches Jellyfin's mark for an episode's own extra, joined to its name with a dash:
 // "Kettle Bay - S01E02-trailer", "… - Tidewater-deleted". " - Trailer", spaced, is the episode's
 // title.
@@ -899,6 +934,7 @@ func siblingExtras(folder string, names []string) map[string]bool {
 	}
 	var kinds []marked
 	out := map[string]bool{}
+	episodes := slices.ContainsFunc(names, episodeMark.MatchString)
 	for _, name := range names {
 		words := extraWords(name)
 		at := extraKindAt(words)
@@ -909,8 +945,12 @@ func siblingExtras(folder string, names []string) map[string]bool {
 			out[name] = true
 			continue
 		}
-		// A kind's word before the title's year is the title's: "Ferry Extra (1982) 1080p".
-		if at < 0 || episodeMark.MatchString(name) || slices.ContainsFunc(words[at:], releaseYear) {
+		// A kind's word before the title's year is the title's: "Ferry Extra (1982) 1080p". Among a
+		// show's files, a kind's word with more after it is a title's, "Hilltop - Scene of the Crime",
+		// and so is a dated name's, "Quillon Hall - 2018-04-02 - Recap": a day says an episode as its
+		// mark does. In a film's own folder, "… - Interview with Cast" is its extra.
+		if at < 0 || episodeMark.MatchString(name) || slices.ContainsFunc(words[at:], releaseYear) ||
+			at > 0 && !kindEnds(words[at:]) && (!titled || episodes) || airDateIn(stem(name)) != "" {
 			titles[key(words)] = true
 			// An episode's show is a title its extras name: "Cold Coast - Making Of" beside
 			// "Cold Coast S01E01".
