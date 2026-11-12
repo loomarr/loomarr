@@ -476,6 +476,7 @@ const SettingField = ({
           <Stack
             align="center"
             className="border-input text-muted-foreground h-9 rounded-md border px-3 font-mono text-sm"
+            direction="row"
             flexBasis="0%"
             flexGrow={1}
             render="span"
