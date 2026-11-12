@@ -58,7 +58,7 @@ func NewSeerr(t testing.TB) *Seerr {
 		}
 		results := make([]item, 0, len(s.Processing))
 		for _, m := range s.Processing {
-			results = append(results, item{TMDBID: m.TMDBID, MediaType: m.MediaType, Status: m.Status})
+			results = append(results, item(m))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
