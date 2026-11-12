@@ -78,3 +78,15 @@ jobs:
           path: web/apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7
+      # Route timing (#3399) shares this job's runner, SPA build and Chromium. A timing budget has
+      # no quarantine: it is a ratchet that only moves down.
+      - name: Route timing budgets (Chromium)
+        run: make route-timing-e2e-host
+      - name: Keep route timing failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: route-timing-failures
+          path: web/apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -23,7 +23,14 @@ const entry = (over: Partial<SettingEntry> = {}): SettingEntry =>
 
 const ENTRIES: SettingEntry[] = [
   entry(),
-  entry({ key: "job.workers", group: "advanced", value: "2", provenance: "env", advanced: true }),
+  entry({
+    key: "job.workers",
+    owner: "settings.advanced",
+    group: "advanced",
+    value: "2",
+    provenance: "env",
+    advanced: true,
+  }),
   entry({
     key: "tunarr.url",
     group: "connections.tunarr",
@@ -71,6 +78,15 @@ describe("AdvancedSettingsTable", () => {
     await userEvent.type(screen.getByLabelText("Search settings"), "job.workers");
     expect(screen.getByText("job.workers")).toBeInTheDocument();
     expect(screen.queryByText("library.url")).not.toBeInTheDocument();
+  });
+
+  // A key with no page but this one says so in words: never the server's group id, never a link
+  // back to the page already open (#3411). A key with a page links there.
+  it("names a key with no page of its own in words", () => {
+    render(<Harness />);
+    expect(screen.getByText("Only here")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Advanced settings" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Connections" }).length).toBeGreaterThan(0);
   });
 
   it("matches on the group", async () => {

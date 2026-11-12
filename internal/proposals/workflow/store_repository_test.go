@@ -346,6 +346,50 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	}
 }
 
+func TestStoreWorkflowClaimAbandonsAJobThatKeepsKillingItsWorker(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	clock := time.Date(2026, time.November, 11, 9, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return clock }, testIntentHash)
+	if err := st.CreateJob(ctx, proposalstore.Job{
+		ID: "crasher", Kind: "suggest", Status: "queued", CreatedBy: "alice",
+		IntentJSON: `{"description":"Noir"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion,
+		Deadline: clock, CreatedAt: clock, UpdatedAt: clock,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Each claim's worker dies before reporting; the lease expires and the next claim recovers it.
+	for attempt := 1; attempt <= MaxInterruptedAttempts; attempt++ {
+		works, err := workflow.Claim(ctx, clock, time.Minute, 1)
+		if err != nil || len(works) != 1 || works[0].Attempt != attempt {
+			t.Fatalf("claim %d = (%+v, %v)", attempt, works, err)
+		}
+		clock = clock.Add(2 * time.Minute)
+	}
+
+	works, err := workflow.Claim(ctx, clock, time.Minute, 1)
+	if err != nil || len(works) != 0 {
+		t.Fatalf("claim after %d interruptions = (%+v, %v), want the Job abandoned", MaxInterruptedAttempts, works, err)
+	}
+	job, err := st.GetJob(ctx, "crasher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "failed" || job.FailureCode != string(FailureGenerationFailed) || !strings.Contains(job.LastError, "interrupted") {
+		t.Fatalf("abandoned Job = status %q code %q last_error %q", job.Status, job.FailureCode, job.LastError)
+	}
+	if again, err := workflow.Claim(ctx, clock.Add(time.Hour), time.Minute, 1); err != nil || len(again) != 0 {
+		t.Fatalf("claim after abandonment = (%+v, %v), want nothing", again, err)
+	}
+}
+
 func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
 	t.Parallel()
 
