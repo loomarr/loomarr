@@ -106,6 +106,21 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(files) != 2 || files[0].Path != "/media/show/e1.mkv" || files[1].SeriesID != "s1" {
 		t.Fatalf("series files = %+v, %v", files, err)
 	}
+	// Many titles' files are one read: each title its own present files, in path order, and a
+	// title with none (or no such title) has none.
+	many, err := st.LibraryItemsFiles(ctx, []string{"s1", "m1", "gone", "nobody"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string][]string{}
+	for id, fs := range many {
+		for _, f := range fs {
+			paths[id] = append(paths[id], f.Path)
+		}
+	}
+	if want := map[string][]string{"s1": {"/media/show/e1.mkv", "/media/show/e2.mkv"}, "m1": {"/media/100.mkv"}}; !reflect.DeepEqual(paths, want) {
+		t.Fatalf("many titles' files = %v, want %v", paths, want)
+	}
 
 	// A file Loomarr moved away goes missing at once, unheld; a missing one keeps when it went.
 	held := file("/media/show/e2.mkv", "e2", "s1", LibraryHeaderPending)

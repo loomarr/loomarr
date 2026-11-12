@@ -279,6 +279,9 @@ type LibraryItemStore interface {
 	LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error)
 	// LibraryItemFiles lists an item's present files (a series' episodes), in path order.
 	LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error)
+	// LibraryItemsFiles is LibraryItemFiles for many items at once, by item id: one read for a
+	// list, not one per title. An item with no present file has no entry.
+	LibraryItemsFiles(ctx context.Context, ids []string) (map[string][]LibraryFile, error)
 	// RecheckLibraryItemFiles puts the header of an item's present, importable files (a series'
 	// episodes) back to pending, so the scanner reads them again, and lists them.
 	RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error)
@@ -492,29 +495,58 @@ func (s *Store) scanLibraryItems(ctx context.Context, query string, args ...any)
 }
 
 func (s *Store) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
+	files, err := s.LibraryItemsFiles(ctx, []string{id})
+	return files[id], err
+}
+
+// idsPerRead keeps one read's id list well inside either engine's bound on a query's parameters.
+const idsPerRead = 500
+
+func (s *Store) LibraryItemsFiles(ctx context.Context, ids []string) (map[string][]LibraryFile, error) {
+	out := map[string][]LibraryFile{}
+	for len(ids) > 0 {
+		batch := ids[:min(len(ids), idsPerRead)]
+		ids = ids[len(batch):]
+		if err := s.readItemsFiles(ctx, batch, out); err != nil {
+			return nil, fmt.Errorf("list library item files: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// readItemsFiles adds the present files of a batch of items to out. A file counts toward its own
+// item and its series, whichever of them the batch names.
+func (s *Store) readItemsFiles(ctx context.Context, ids []string, out map[string][]LibraryFile) error {
+	in := strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ")
+	args := make([]any, 0, 2*len(ids))
+	named := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		args, named[id] = append(args, id), true
+	}
+	args = append(args, args...)
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
 		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
-		FROM library_files WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
-		ORDER BY path`), id, id)
+		FROM library_files WHERE (inventory_item_id IN (`+in+`) OR inventory_series_id IN (`+in+`))
+		AND missing_at_ms = 0 AND problem = '' ORDER BY path`), args...)
 	if err != nil {
-		return nil, fmt.Errorf("list library item files: %w", err)
+		return err
 	}
-	var out []LibraryFile
 	for rows.Next() {
 		var f LibraryFile
 		var seen, missing int64
 		if err := rows.Scan(&f.Path, &f.Root, &f.Size, &f.ModifiedNs, &f.Identity, &f.Kind, &f.Header, &f.Problem,
 			&f.Held, &seen, &missing, &f.ItemID, &f.SeriesID); err != nil {
 			_ = rows.Close()
-			return nil, fmt.Errorf("list library item files: %w", err)
+			return err
 		}
 		f.SeenAt = time.UnixMilli(seen).UTC()
-		out = append(out, f)
+		for _, id := range []string{f.ItemID, f.SeriesID} {
+			if id != "" && named[id] {
+				out[id] = append(out[id], f)
+			}
+		}
 	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, fmt.Errorf("list library item files: %w", err)
-	}
-	return out, nil
+	return errors.Join(rows.Err(), rows.Close())
 }
 
 // likeEscape escapes LIKE's wildcards so a search matches them literally.
