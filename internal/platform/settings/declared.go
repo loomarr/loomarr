@@ -99,27 +99,6 @@ func audioLanguagePresets() []Preset {
 	return out
 }
 
-// autoSplitConfidenceRange bounds `filler.autosplit.min_confidence` to 50–95 (§10 V43).
-// The lower bound is load-bearing: an ungrounded era is capped below 50, so no reachable
-// threshold can accept a cut on the strength of an invented era.
-//
-// ⚠ The number is repeated here rather than imported: `settings` must not depend on `filler`
-// (the dependency runs the other way — the tagger reads settings). `filler`'s own test pins the
-// relationship, so a divergence fails there rather than going unnoticed.
-//
-// The lower bound is a usability floor: below 50 the threshold admits clips whose tags did not
-// fully verify, which makes Incoming an empty room and the catalog a surprise.
-func autoSplitConfidenceRange(v any) error {
-	n, ok := v.(int)
-	if !ok {
-		return fmt.Errorf("want a whole number")
-	}
-	if n < 50 || n > 95 {
-		return fmt.Errorf("want 50-95 (got %d) — below 50 accepts cuts whose tags did not verify; above 95 accepts no ordinary grounded proposal", n)
-	}
-	return nil
-}
-
 // positiveLimit rejects a zero or negative cap.
 //
 // ⚠ Zero is refused rather than treated as "unlimited". A limit key silently meaning its own
@@ -1152,13 +1131,6 @@ func declared() []Setting {
 			Kind: KindBool, Default: true,
 			Doc:    "Cut up recordings of several ads without asking when Loomarr is sure of every cut.",
 			Detail: "Accept the cuts automatically when Loomarr is confident about every one of them. Anything less certain still waits for you under Filler → Incoming.",
-		},
-		{
-			// This threshold governs cut acceptance only; it has no catalog-publication effect.
-			Key: "filler.autosplit.min_confidence", Label: "Confidence required to accept cuts", EnvVar: "FILLER_AUTOSPLIT_MIN_CONFIDENCE",
-			Group: GroupFiller, Kind: KindInt, Default: 85, Validate: autoSplitConfidenceRange,
-			Doc:      "How sure Loomarr must be about every advert it found inside a recording before cutting it up without asking (50–95).",
-			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		{
 			// ⚠ ONE key doing two jobs on purpose. It selects which clips the split job even

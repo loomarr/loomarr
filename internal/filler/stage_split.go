@@ -18,19 +18,15 @@ import (
 
 // The SPLIT stage (§10 V51b): a compilation is cut into the adverts it holds.
 //
-// Detection is `Splitter.Propose` and the gate is `AutoConfirmable`. The probe rung decides a clip
-// is a candidate (it sets `is_composite`), and the pieces are SPAWNED, so each segment runs the
-// whole ladder for itself instead of waiting for cron jobs to notice it.
+// Detection is `Splitter.Propose` and the gate is `CertifiedStructureMaterializable` (§10 V67): a
+// reel is cut unattended only from a complete-timeline plan an immutable structure authority
+// certified. The probe rung decides a clip is a candidate (it sets `is_composite`), and the pieces
+// are SPAWNED, so each segment runs the whole ladder for itself instead of waiting for cron jobs to
+// notice it.
 //
-// ⚠ **`filler.autosplit.enabled` now defaults ON** (maintainer decision, V51b). The gate it turns
-// on is strict: `SuggestedEra > 0` disqualifies at every threshold and `MaxAutoSplitConfidence`
-// remains the ceiling. Segments it holds back keep their proposal and appear in Incoming with
-// `AutoSplitReject`'s reason recorded, so "why did this not auto-cut?" is answerable without
-// reading the log.
-//
-// ⚠ **The gate is PER SEGMENT (V54).** The confident cuts are filed and the doubtful ones stay
-// behind in a shrunken proposal, so a reel of 52 becomes 47 clips and 5 cuts to review; one
-// doubtful segment must not send all 52 back.
+// ⚠ **`filler.autosplit.enabled` defaults ON** (maintainer decision, V51b). Segments the gate holds
+// back keep their proposal and appear in Incoming with `AutoSplitReject`'s reason recorded, so "why
+// did this not auto-cut?" is answerable without reading the log.
 
 // SplitStageStore is the slice of the store the split stage reads.
 //
@@ -53,31 +49,26 @@ type SplitStage struct {
 	// nil ⇒ propose only.
 	vision *SegmentVision
 	// structureRuntime returns the long-reel runtime currently in force. nil is the zero runtime:
-	// no assessment, no shadow, every proposal held.
+	// no assessment, every proposal held.
 	structureRuntime func() StructureRuntime
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
 }
 
-// StructureRuntime is ONE long-reel policy: the assessment, the gate that may materialize from it,
-// and the shadow that records the comparison under that gate's identity. They are built together
-// and swapped together.
+// StructureRuntime is ONE long-reel policy: the assessment and the gate that may materialize from
+// it. They are built together and swapped together.
 //
 // ⚠ **A split reads it ONCE (#1659).** The two long-reel files apply live, so the runtime can be
 // replaced while a split is in flight. Reading each part at its point of use would let one pass
-// assess under the old authority and gate or record under the new one — a shadow row attributed
-// to a policy that never judged the proposal. A decision persisted under an older authority is
+// assess under the old authority and gate under the new one. A decision persisted under an older authority is
 // still re-verified by the gate, so it fails closed as uncertified rather than materializing.
 type StructureRuntime struct {
 	// Decisioner independently assesses the complete retained source once. nil leaves detector
 	// structure in place and makes no provider request.
 	Decisioner split.CompleteTimelineDecisioner
 	// Materialization verifies the only gate that can materialize held children. A nil policy
-	// holds the proposal; compatibility is never application authority.
+	// holds the proposal.
 	Materialization *StructureMaterializationPolicy
-	// Shadow durably records the compatibility comparison beside the complete-plan gate. It is
-	// diagnostic only and never authorizes child materialization.
-	Shadow StructureSplitShadowObserver
 }
 
 // NewSplitStage builds the stage. Without `WithAutoConfirm` it PROPOSES ONLY, which is the safe
@@ -106,21 +97,18 @@ func (s *SplitStage) WithAutoConfirm(pol AutoSplitPolicy, minClipDuration func()
 	return s
 }
 
-// WithSegmentVision attaches the split-time grounder that answers the auto-confirm gate (§10 V54).
-//
-// ⚠ **Without this, `filler.autosplit.enabled` is default-ON and cannot fire.** `AutoConfirmable`
-// refuses any segment with neither `Audience` nor `Category`, and the split-time grounder is the
-// only thing that fills them: text classification at split time was removed in V51g (§10) because
-// it cost 3× the pass budget and classified nothing but a generated name.
+// WithSegmentVision attaches the split-time grounder that reads each segment's audience, category
+// and era from its frames (§10 V54); the children a split spawns inherit them. Text classification
+// at split time was removed in V51g (§10) because it cost 3× the pass budget and classified nothing
+// but a generated name.
 //
 // ⚠ **It grounds from PIXELS, not from the segment's name, and that is the whole difference.** The
 // removed classifier read `"… part 7"` and grounded nothing, which is why speeding it up would not
 // have helped. Frames from the segment's own span exist at split time and carry a real signal — the
 // same signal the `vision` rung reads, through the same prompt and the same `groundVisionTags`, so
-// the gate is fed by the vocabulary that judges it.
+// a child's tags come from the vocabulary that judges every other clip.
 //
-// nil ⇒ propose only, exactly as a nil `autoConfirm` does. A missing grounder must never mean
-// "confirm without one".
+// nil leaves the segments ungrounded; the children still run the whole ladder, `vision` included.
 func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 	s.vision = v
 	return s
@@ -128,9 +116,7 @@ func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 
 // WithStructureRuntime attaches the source of the long-reel runtime in force. Merely attaching an
 // assessment cannot authorize child materialization; the complete-plan gate still requires an
-// immutable structure authority. A shadow recording failure is an error rather than a log-only
-// omission: unattended materialization must not erase the disagreement evidence by consuming its
-// proposal.
+// immutable structure authority.
 func (s *SplitStage) WithStructureRuntime(current func() StructureRuntime) *SplitStage {
 	s.structureRuntime = current
 	return s
@@ -639,12 +625,7 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 	//
 	// ⚠ **PER SEGMENT (V54).** One doubtful cut in 52 must not send all 52 back, or the operator's
 	// work never shrinks.
-	legacy, part := s.splitPartitions(*p, rt.Materialization)
-	if rt.Shadow != nil {
-		if err := rt.Shadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
-			return StageResult{}, err
-		}
-	}
+	part := CertifiedStructureMaterializable(*p, s.autoConfirm, rt.Materialization, s.minClipFloor())
 	if part.Reject != AutoSplitOK {
 		// A whole-proposal refusal — disabled splitting, an incomplete certified plan, or nothing
 		// detected. Certified holds must be persisted too: a reviewable proposal without its
@@ -736,12 +717,6 @@ func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, 
 	return err
 }
 
-func (s *SplitStage) splitPartitions(proposal SplitProposal, materialization *StructureMaterializationPolicy) (SplitPartition, SplitPartition) {
-	compatibility := AutoConfirmable(proposal, s.autoConfirm, s.minClipFloor())
-	application := CertifiedStructureMaterializable(proposal, s.autoConfirm, materialization, s.minClipFloor())
-	return compatibility, application
-}
-
 // minClipFloor resolves the clip-duration floor, defaulting to zero (no floor check).
 func (s *SplitStage) minClipFloor() time.Duration {
 	if s.minClipDuration == nil {
@@ -776,16 +751,6 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 		if rt.Decisioner != nil && p.StructureDecision == nil {
 			out[p.ClipHash] = struct{}{}
 			continue
-		}
-		if rt.Shadow != nil {
-			pending, shadowErr := rt.Shadow.NeedsStructureSplitObservation(ctx, p)
-			if shadowErr != nil {
-				return nil, shadowErr
-			}
-			if pending {
-				out[p.ClipHash] = struct{}{}
-				continue
-			}
 		}
 		kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
 		if len(kept) != len(p.Segments) || discarded.duplicates > 0 || discarded.short > 0 {

@@ -63,12 +63,6 @@ func testFillerRetention(t *testing.T, newStore NewStoreFunc) {
 	report("live", research.ProducerObservation, "vision", -1, long)
 	report("gone", "context-model:m", "1", 0, long)
 
-	exec(`INSERT INTO filler_split_proposals (id, clip_hash, segments_json, created_at) VALUES ('sp-live', 'reel', '[]', ?)`, long)
-	for _, d := range []struct{ proposal, id string }{{"sp-live", "kept-shadow"}, {"sp-gone", "gone-shadow"}} {
-		exec(`INSERT INTO filler_split_shadow_decisions (id, proposal_id, clip_hash, policy_version, decision_json, observed_at)
-			VALUES (?, ?, 'reel', 'v1', '{}', ?)`, d.id, d.proposal, long)
-	}
-
 	// Model calls: a settled window call and its evaluation go; a reserved evaluation, an open call
 	// and its evaluation, and a recent settled one stay.
 	evaluation := func(id, state string, at int64) {
@@ -127,10 +121,10 @@ func testFillerRetention(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 1 month + 1 pass + 1 ready event + 2 reports + 1 shadow + 1 call + 2 evaluations + 1 artifact
+	// 1 month + 1 pass + 1 ready event + 2 reports + 1 call + 2 evaluations + 1 artifact
 	// + 1 commit + 2 pulls + 1 run + 1 fact + 1 tag + 1 airing + 1 variant pair.
-	if n != 18 {
-		t.Errorf("purged %d rows, want 18", n)
+	if n != 17 {
+		t.Errorf("purged %d rows, want 17", n)
 	}
 	for query, want := range map[string]int{
 		`SELECT count(*) FROM filler_research_web_usage WHERE month = '2026-10'`:                           1,
@@ -140,8 +134,6 @@ func testFillerRetention(t *testing.T, newStore NewStoreFunc) {
 		`SELECT count(*) FROM filler_ready_events`:                                                         2,
 		`SELECT count(*) FROM filler_context_reports WHERE clip_hash = 'live'`:                             2,
 		`SELECT count(*) FROM filler_context_reports WHERE producer = 'observation'`:                       1,
-		`SELECT count(*) FROM filler_split_shadow_decisions WHERE id = 'kept-shadow'`:                      1,
-		`SELECT count(*) FROM filler_split_shadow_decisions`:                                               1,
 		`SELECT count(*) FROM filler_structure_window_call_ledger WHERE request_sha256 = 'kept-open-call'`: 1,
 		`SELECT count(*) FROM filler_structure_window_call_ledger`:                                         1,
 		`SELECT count(*) FROM filler_inference_evaluations WHERE id LIKE 'kept-%'`:                         3,

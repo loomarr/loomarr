@@ -82,7 +82,6 @@ var (
 	FillerDefectsJudgeLookCents         = IntKey{"filler.defects.judge_look_cents"}
 	FillerDefectsJudgeDailyCents        = IntKey{"filler.defects.judge_daily_cents"}
 	FillerAutosplitEnabled              = BoolKey{"filler.autosplit.enabled"}
-	FillerAutosplitMinConfidence        = IntKey{"filler.autosplit.min_confidence"}
 	FillerAutosplitMaxDuration          = DurationKey{"filler.autosplit.max_duration"}
 	FillerStructureWindowAuthorityPath  = StringKey{"filler.structure_window_authority_path"}
 	FillerStructureWindowDeploymentPath = StringKey{"filler.structure_window_deployment_path"}

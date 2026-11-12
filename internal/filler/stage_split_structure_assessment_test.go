@@ -73,7 +73,7 @@ func TestSplitStagePersistsCompleteTimelineDecisionOnceAndProjectsItsCuts(t *tes
 
 // The long-reel files apply live (#1659), so the runtime can be swapped mid-split. Here it is
 // swapped on EVERY read: a stage that read each part at its point of use would assess under one
-// runtime and record the shadow under the other.
+// runtime and gate under the other.
 func TestSplitStageNeverMixesTwoStructureRuntimesInOneSplit(t *testing.T) {
 	st := newSplitMemStore()
 	hash := seedCompilation(st, "comps/swapped-runtime.mp4", 60_000)
@@ -89,38 +89,33 @@ func TestSplitStageNeverMixesTwoStructureRuntimesInOneSplit(t *testing.T) {
 		t.Fatal(err)
 	}
 	artifact := structureDecisionArtifact(t, proposal.Source, 30_000, false)
-	type runtime struct {
-		decisioner *capturedStructureDecisioner
-		shadow     *splitShadowCapture
-	}
-	runtimes := [2]runtime{
-		{&capturedStructureDecisioner{artifact: artifact}, &splitShadowCapture{}},
-		{&capturedStructureDecisioner{artifact: artifact}, &splitShadowCapture{}},
+	runtimes := [2]*capturedStructureDecisioner{
+		{artifact: artifact},
+		{artifact: artifact},
 	}
 	reads := 0
 	stage := filler.NewSplitStage(splitter, st).WithStructureRuntime(func() filler.StructureRuntime {
 		rt := runtimes[reads%2]
 		reads++
-		return filler.StructureRuntime{Decisioner: rt.decisioner, Shadow: rt.shadow}
+		return filler.StructureRuntime{Decisioner: rt}
 	})
 
 	if _, err := stage.Run(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
 	first, second := runtimes[0], runtimes[1]
-	if reads != 1 || len(first.decisioner.media) != 1 || first.shadow.calls != 1 ||
-		len(second.decisioner.media) != 0 || second.shadow.calls != 0 {
-		t.Fatalf("one split read the runtime %d times; assessed by first=%d second=%d, shadowed by first=%d second=%d",
-			reads, len(first.decisioner.media), len(second.decisioner.media), first.shadow.calls, second.shadow.calls)
+	if reads != 1 || len(first.media) != 1 || len(second.media) != 0 {
+		t.Fatalf("one split read the runtime %d times; assessed by first=%d second=%d",
+			reads, len(first.media), len(second.media))
 	}
 
 	// The next split takes the swapped runtime whole. The persisted decision is not reassessed.
 	if _, err := stage.Run(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
-	if reads != 2 || second.shadow.calls != 1 || first.shadow.calls != 1 || len(second.decisioner.media) != 0 {
-		t.Fatalf("second split: reads=%d shadowed by first=%d second=%d, reassessed=%d",
-			reads, first.shadow.calls, second.shadow.calls, len(second.decisioner.media))
+	if reads != 2 || len(first.media) != 1 || len(second.media) != 0 {
+		t.Fatalf("second split: reads=%d, assessed by first=%d second=%d",
+			reads, len(first.media), len(second.media))
 	}
 }
 

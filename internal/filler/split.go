@@ -47,7 +47,7 @@ const (
 // `MinSegmentMs` is for, and it does not become configurable.
 //
 // ⚠ **Why the catalog floor belongs at DETECTION and not only in the gate (§10 V34, V54).** It was
-// only in `AutoConfirmable`, which returns on the first failing segment — so one sub-floor fragment
+// only in the V43 auto-confirm gate, which returned on the first failing segment — so one sub-floor fragment
 // sank the whole reel. A real commercial compilation is *made of* such fragments: measured
 // 2026-08-11 on an 82-segment archive.org reel, **39 were under the 10s floor**, shortest 3.1s
 // (station IDs, inter-ad bumpers). Auto-split had therefore never fired on any real reel, and the
@@ -139,13 +139,12 @@ func evidenceToken(src split.BoundarySource) string {
 // boundaryScore is how much Loomarr trusts WHERE this segment was cut — 0–100.
 //
 // ⚠ **It answers a different question from `Clip.Confidence`.** That one asks "do we know what this
-// is?"; this asks "did we cut in the right place?". Different evidence, different field, and the
-// gate reads this one and never writes that one.
+// is?"; this asks "did we cut in the right place?". Different evidence, different field. The review
+// editor shows it beside each cut; it authorizes nothing (§10 V67).
 //
 // ⚠ **It cannot see a single tag field, and that is structural rather than incidental.** No
 // `SuggestedEra`, `Era`, `Looked`, `Category` or `Tags` is in scope here, so a tag fact can never
-// move this number — which is what keeps `AutoConfirmable`'s refusals absolute instead of being
-// laundered into a score (the objection `autosplit.go` records).
+// move this number.
 //
 // Within a boundary the best evidence wins; across the two the WORST does, because a cut is only as
 // trustworthy as its weaker end. Segment facts then cap it.
@@ -279,8 +278,8 @@ type SplitProposal struct {
 	// Source binds detection and confirmation to one exact derivative. It is internal durable
 	// state rather than review UI; zero is a pre-V66 proposal that resolves through legacy rules.
 	Source split.SourceAsset `json:"-"`
-	// Structure is the V67 exact-source, complete-timeline assessment. nil is a legacy proposal or
-	// a V34 shadow proposal that has not reached structure reduction yet.
+	// Structure is the V67 exact-source, complete-timeline assessment. nil is a proposal that has
+	// not reached structure reduction yet.
 	Structure *split.Assessment `json:"-"`
 	// StructureDecision retains the independent complete-video assessments and their replayable
 	// provider-neutral reduction. It cannot authorize publication by itself.

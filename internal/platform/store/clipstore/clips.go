@@ -477,7 +477,6 @@ var clipReferences = []clipReference{
 	{"filler_acquisition_artifacts", "clip_hash", rekeyMove},
 	// Screening verdicts, enrichment, research and their cost ledgers judge the content. A Ready
 	// clip re-encoded from its master keeps them; its new evidence is screened again on its own.
-	{"filler_split_shadow_decisions", "clip_hash", rekeyMove},
 	{"filler_enrichment_axes", "clip_hash", rekeyMove},
 	{"filler_enrichment_passes", "clip_hash", rekeyMove},
 	{"filler_context_reports", "clip_hash", rekeyMove},

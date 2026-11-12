@@ -301,7 +301,6 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
         SettingKey.FillerTranscribeEnabled,
         SettingKey.FillerVisionEnabled,
         SettingKey.FillerAutosplitEnabled,
-        SettingKey.FillerAutosplitMinConfidence,
         SettingKey.FillerAutosplitMaxDuration,
       ],
     },

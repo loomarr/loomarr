@@ -87,9 +87,6 @@ func (s *sqlStore) PurgeSpentFillerRecords(ctx context.Context, now time.Time) (
 			clipGone("filler_airings"), []any{airedMs}},
 		{"clip variant pairs", `DELETE FROM filler_clip_variants WHERE ` + gone("filler_clip_variants.a_hash") +
 			` AND NOT EXISTS (SELECT 1 FROM clips c WHERE c.hash = filler_clip_variants.b_hash)`, nil},
-		{"split shadow decisions", `DELETE FROM filler_split_shadow_decisions WHERE observed_at < ?
-			AND NOT EXISTS (SELECT 1 FROM filler_split_proposals p WHERE p.id = filler_split_shadow_decisions.proposal_id)`,
-			[]any{decision}},
 		{"structure window calls", `DELETE FROM filler_structure_window_call_ledger
 			WHERE state = 'settled' AND requested_at < ?`, []any{call}},
 		{"inference evaluations", `DELETE FROM filler_inference_evaluations WHERE state <> ? AND created_at < ?

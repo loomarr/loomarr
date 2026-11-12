@@ -247,22 +247,3 @@ tables:
         when unlocked.
       claim_expires_at: When the lock lapses if not renewed, in Unix seconds. 0 when unlocked.
 
-  - name: filler_split_shadow_decisions
-    about: >
-      A side-by-side record, made while a new splitting rule is being trialled, of what the current rule
-      and the new certified rule would each do with one split proposal. Kept after the proposal itself is
-      gone; rows are never changed.
-    retention: >
-      Kept while the proposal exists; once it is gone, the nightly housekeeping task deletes the
-      decision 180 days after it was made.
-    columns:
-      id: Identifies the decision, derived from its content.
-      proposal_id: The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed.
-      clip_hash: The compilation reel (clips.hash).
-      source_sha256: SHA-256 of the reel's source file. Empty when not known.
-      assessment_sha256: SHA-256 of the structure assessment the new rule used. Empty when there was none.
-      policy_version: Version of the splitting policy compared.
-      decision_json: >
-        The full decision as JSON. For each rule (legacy and certified) it holds a verdict and the spans it
-        would confirm, hold (with a reason) or discard.
-      observed_at: When the comparison was made, in Unix seconds.
