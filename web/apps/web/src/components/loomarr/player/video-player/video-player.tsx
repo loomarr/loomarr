@@ -87,7 +87,6 @@ const VideoPlayer = ({
   attach,
   onChannelStep,
   fill = false,
-  pictureTop,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -266,17 +265,6 @@ const VideoPlayer = ({
             display: "block",
             height: "100%",
             width: "100%",
-            // Pinned under the top row: the picture starts `pictureTop` down and sits at the top of
-            // the room left, never centred in it.
-            ...(fill && pictureTop !== undefined
-              ? {
-                  height: `calc(100% - ${pictureTop}px)`,
-                  left: 0,
-                  objectPosition: "center top",
-                  position: "absolute",
-                  top: pictureTop,
-                }
-              : null),
           }}
           autoPlay={autoPlay}
           muted={muted}

@@ -18,7 +18,8 @@ case "$lane" in
     lane_label="unsharded"
     "$make_bin" -C "$ROOT" rust-test-worker eval-contract
     ;;
-  certification-[12]/2)
+  certification-[1-9]/[1-9])
+    # go-shard.sh owns the lane count (the reviewed manifest) and refuses a lane outside it.
     if [[ -n "${GOFLAGS:-}" ]]; then
       echo "go-test-lane: lane-scoped GOFLAGS are owned by the runner" >&2
       exit 2
@@ -37,7 +38,7 @@ case "$lane" in
     lane_label="$lane"
     ;;
   *)
-    echo "go-test-lane: invalid lane '$lane' (want 1/2, 2/2, certification-1/2, certification-2/2, or empty for the full local suite)" >&2
+    echo "go-test-lane: invalid lane '$lane' (want 1/2, 2/2, certification-<lane>/<count> from scripts/go-certification-lanes.tsv, or empty for the full local suite)" >&2
     exit 2
     ;;
 esac

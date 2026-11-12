@@ -138,7 +138,8 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   `vote_average` is the episode's community rating. Language and country are the installation's
   `metadata.language` and `metadata.country`; a country other than the US is refused. The change
   feed reads `/movie/changes` and `/tv/changes` and answers within TMDB's 14-day window; an older
-  cursor is `ErrUnsupported` and the caller refetches. Keywords per item are capped at 40.
+  cursor is `ErrUnsupported`, and `scan.ChangeFollower` leaves it to the refresh (see Catalog
+  details). Keywords per item are capped at 40.
 - **Local artwork** (`metadataprovider/localart`) is a sidecar too, found by one listing of the media's
   folder in Kodi's naming: a movie's `<file>-poster.jpg` (and `-fanart`, `-clearlogo`, `-banner`,
   `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
@@ -172,11 +173,20 @@ are credited. A person an NFO or the media server names without an id is kept by
 An episode's cast is its show's. `scan.Filmographer` keeps a filmography (`library_filmography`,
 decision 50) from the catalog provider for each person linked in its namespace who directed or
 created a title, is
-among a title's ten top-billed actors, or is credited on three or more titles. It is fetched when
-they first qualify and monthly after, and people no title credits any more are removed each hour.
+among a title's ten top-billed actors, or is credited on three or more titles. Only listed titles
+count: one with a present file. A removed title keeps its credits through the retention window, but
+qualifies nobody. A filmography is fetched when its person first qualifies, and monthly after.
+Each hour, people no title credits any more are removed. A person credited only on titles no
+longer listed has their filmography dropped and is fetched first if one of those titles returns
+(#3229).
 The household's metadata language
 (`metadata.language`, decision 21) defaults to the media server's; changing it fetches every
-catalog record again.
+catalog record again. Outside English, an overview or tagline TMDB has no translation for is filled
+from its US English text: a movie, series or collection takes the `translations` on its detail
+call, and a season, episode order or episode with an empty overview is read once more in `en-US`.
+The record marks that text `en-US` (`OverviewLanguage`, `TaglineLanguage`), so any source's text in
+the household's language wins over it, and a refresh after TMDB gains a translation replaces it
+(#3231).
 
 ## Media folders
 
@@ -202,7 +212,15 @@ catalog record again.
   longer reports, and only a folder that is neither in use, typed by hand nor named by any mapping
   disappears. Every folder is re-checked on each pass, within 5 s, so an offline NAS shows as
   "Loomarr can't open this folder" rather than hanging the page.
-- `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
+- **An empty folder is a warning, not health.** A share that isn't mounted leaves its mount point an
+  empty folder, which opens fine. The same check that tests readability records whether the folder
+  held anything (`library_roots.empty`). An empty folder can still be added; its card says "This
+  folder is empty — is the drive connected?" with Check again, and the headline says "Up to date",
+  never "All caught up". A pass that finds a folder's state changed (offline or back, emptied or
+  filled) publishes the empty `library_roots` frame, and Settings → Library reads its folders and
+  status again.
+- `GET /v1/library/status` reports `needs_folders`, `folder_offline`, `folder_empty` or `ok`, with
+  counts.
 
 ## Scanner
 
@@ -230,7 +248,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   Needs you link splits the copy out again; the founding origin never leaves.
 - **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
   its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
-  either changed, and reads its header only when its bytes changed.
+  either changed, and reads its header only when its bytes changed. An episode's inputs include
+  its series folder's own `tvshow.nfo` and folder art (`poster.jpg`, `season01-poster.jpg` and the
+  like). The pass stats those from the series folder itself, so a full walk and a folder pass over
+  one season digest the same. Editing `tvshow.nfo` or replacing the show's poster rewrites the
+  episodes, and through them the show, with no episode file touched (#3226).
 - **While an arr fails to list:**
   - new and changed files in the roots it manages wait, rather than being written with what its
     absence would leave;
@@ -267,6 +289,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  A file is recorded under one path: a folder reached through a link is listed under its real
+  place in the root, whichever path a walk or a folder pass took to reach it. A video link to a
+  file the walk records itself is skipped, unless its target lies in a folder walks skip (#3227).
   A video's trickplay file beside it (Emby's `<name>.bif`, decision 61) is referenced in
   `library_trickplay`, never read or imported. It joins the file's sidecars without a stat, so
   its appearing or going changes the identity digest at no cost to the walk. Only the `.bif`
@@ -411,8 +436,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   kind and id, and the importer reads it when it writes a title. A title not cached yet is written
   without it and its key noted as wanted, and `library_items.catalog` names the row each title's
   details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
-  a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
-  out. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
+  a tick), then the records TMDB changed (up to 200 a tick), then a share of the oldest, so the
+  whole cache is fetched again within 90 days, spread out. `scan.ChangeFollower` reads TMDB's change
+  feed nightly from where it last read through (`library_catalog_feeds`, so a restart picks up
+  there) and marks the cached records it names `changed`, so a corrected poster, overview or
+  rating arrives within a day instead of at the refresh; saving a record clears the mark. Its first
+  read only starts the cursor. A cursor older than the feed's 14-day window moves on to now without
+  marking anything, and the 90-day refresh catches up; a failed read keeps it, and the next hour
+  asks again (#3225). Changed records are not new titles, so they are no part of step 3. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
   write at once instead of up to a minute later, with the status reading caught up in between. A
   woken lookup fetches only the titles never fetched: the share of the oldest is sized for one
   tick a minute, so it stays with the tick. Wakes made while a lookup runs fold into one. The
@@ -715,6 +746,11 @@ Loomarr builds no search index (decision [0003](decisions/0003-federated-search.
   through `/search/keyword`; people through `/search/person` (one exact match); a network through TMDB's
   daily network-id export. Malformed, unresolved or ambiguous qualifiers fail the call instead of
   broadening it. Mixed movie and series discovery splits the TMDB pool between types.
+- **An owned discovery hit carries the Library's own evidence** (#3006). After ownership backfill,
+  one read of `library_tags` and `library_credits` over the owned ids attaches the asked keywords
+  a title's tags hold and the asked people its credits name, filling only what TMDB left empty
+  (TMDB can attribute a keyword only for a one-keyword query). Only the matched term rides, never
+  the title's whole tag or cast list, so the prompt grows only for titles that match.
 - `GET /v1/movie-collections` expands up to 24 movie keys into their TMDB collection rosters for review;
   it never builds a lineup by itself.
 - Channel, proposal and help filtering stay client-side at household scale.

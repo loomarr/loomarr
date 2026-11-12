@@ -7,8 +7,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { ideaReason } from "@loomarr/core/requests";
-import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Badge, ChoiceCard, Field, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, ChoiceCard, Field } from "@loomarr/design-system";
 import { AiReconnectBanner } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { useState } from "react";
@@ -41,9 +40,10 @@ const lineupBadge = (item: ProposalItem) =>
   );
 
 // ManualChannelBuilder — the manual/AI-off channel creation path (#1817, decision G2; approved
-// mock #1872). Starter templates fill a name/description only (no template→facet mapping, per
-// the maintainer); library facets (from the existing GET /v1/discovery/ideas, #1665/#1720) and
-// direct library/TMDB search feed ONE lineup. "Continue to review" is this component's only
+// mock #1872). Library facets (from the existing GET /v1/discovery/ideas, #1665/#1720) and direct
+// library/TMDB search feed ONE lineup. It offers no starter templates: they were the AI path's four
+// example chips again, and filled only a name and a description that build nothing without AI
+// (#2746, #3411). "Continue to review" is this component's only
 // write: POST /v1/discovery/manual-channel re-grounds the picks and returns a job id, which the
 // caller hands to the EXISTING ChannelSuggestPanel/ProposalReview — the same submit → review →
 // approve/deny gate the AI path uses. Nothing here creates a channel by itself.
@@ -58,7 +58,7 @@ const ManualChannelBuilder = ({
 }: ManualChannelBuilderProps) => {
   const fromIdea = initialIdea !== undefined;
   const submit = discoveryApi.useSubmitManualChannel();
-  // The name, the description a template or idea fills in, and the one lineup the picks build.
+  // The name, the description an idea fills in, and the one lineup the picks build.
   const form = useAppForm({
     defaultValues: {
       name: initialIdea?.name ?? "",
@@ -74,7 +74,6 @@ const ManualChannelBuilder = ({
   const { name, description, lineup } = useStore(form.store, (state) => state.values);
   const setLineup = (next: ProposalItem[] | ((prev: ProposalItem[]) => ProposalItem[])) =>
     form.setFieldValue("lineup", next);
-  const [templateId, setTemplateId] = useState<string>();
   const [activeFacetId, setActiveFacetId] = useState<string>();
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -96,18 +95,6 @@ const ManualChannelBuilder = ({
   const aiReconnected = useAiReconnect(isAdmin && offersAi && !keepManual);
 
   const lineupKeys = new Set(lineup.map(provisionKey).filter((key) => key !== ""));
-
-  const applyTemplate = (id: string) => {
-    const template = CHANNEL_TEMPLATES.find((t) => t.id === id);
-    if (!template) return;
-    if (templateId === id) {
-      setTemplateId(undefined);
-      return;
-    }
-    setTemplateId(id);
-    form.setFieldValue("name", template.label);
-    form.setFieldValue("description", template.description);
-  };
 
   const addItem = (item: ProposalItem) => {
     const key = provisionKey(item);
@@ -158,7 +145,7 @@ const ManualChannelBuilder = ({
       <p className="text-muted-foreground text-sm">
         {fromIdea
           ? `Starting from the "${initialIdea.name}" idea. Everything below is already library-grounded — edit the lineup before requesting.`
-          : "No AI service is connected yet, so Loomarr can't generate suggestions. Start from a template, build from your library below, or search for titles directly — you'll choose every title before anything is created."}
+          : "No AI service is connected yet, so Loomarr can't generate suggestions. Build from your library below, or search for titles directly — you'll choose every title before anything is created."}
       </p>
 
       {aiReconnected && !keepManual && (
@@ -183,25 +170,6 @@ const ManualChannelBuilder = ({
           />
         )}
       </form.Field>
-
-      {!fromIdea && (
-        <div>
-          <p className="text-sm font-medium">Starter templates</p>
-          <ul className="mt-2 flex flex-col gap-2">
-            {CHANNEL_TEMPLATES.map((template) => (
-              <li key={template.id}>
-                <ChoiceCard
-                  description={template.description}
-                  leading={<Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />}
-                  onPress={() => applyTemplate(template.id)}
-                  selected={templateId === template.id}
-                  title={template.label}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {!fromIdea && (
         <div>

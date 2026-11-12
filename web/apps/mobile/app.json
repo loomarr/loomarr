@@ -4,7 +4,7 @@
     "slug": "loomarr-mobile-prototype",
     "scheme": "loomarr-prototype",
     "version": "0.0.1",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "ios": {
@@ -42,7 +42,8 @@
       ],
       "../../scripts/with-memory-safe-android-build.cjs",
       "../../scripts/with-loomarr-fonts.cjs",
-      "expo-secure-store"
+      "expo-secure-store",
+      ["expo-screen-orientation", { "initialOrientation": "PORTRAIT_UP" }]
     ],
     "experiments": {
       "typedRoutes": true

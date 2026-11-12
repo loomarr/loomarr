@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 )
 
@@ -12,9 +11,10 @@ import (
 const stateChecksMigration = 166
 
 func TestStateChecksMigration(t *testing.T) {
+	t.Parallel()
 	// Foreign keys on, as production opens SQLite: a rebuild that left the attempts pointing at a
 	// dropped table, or cascaded through it, fails here.
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "state-checks.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, stateChecksMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

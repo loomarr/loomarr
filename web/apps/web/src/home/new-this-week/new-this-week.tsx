@@ -38,8 +38,8 @@ const freshChannels = (channels: readonly ChannelDTO[], since: number) =>
 
 // NewThisWeek — Home's "New this week" (#1822 evidence): the channels that arrived this week, then
 // the newest titles and the channel each landed on (#1663). Titles carry no poster yet, so every
-// poster is the restrained line motif, with the landing channel's monogram when one is known
-// (#1822 evidence: "a restrained line motif with a channel monogram where available").
+// poster is the generated art: the landing channel's monogram when one is known, else the title's
+// own letters, so none is blank (#2762).
 const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisWeekProps) => {
   const fresh = freshChannels(channels, since);
   if (titles.length === 0 && fresh.length === 0) return null;

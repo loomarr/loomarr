@@ -173,6 +173,26 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  // An unmounted share leaves its mount point an empty folder: it opens, so it isn't offline, but
+  // nothing in it is the library's.
+  it("asks whether the drive is connected for an empty folder, and never says all is caught up", () => {
+    const { host, props, cleanup } = render({
+      health: "folder_empty",
+      folders: [{ ...TV_IN_USE, empty: true }],
+    });
+    expect(host.textContent).toContain("This folder is empty — is the drive connected?");
+    expect(host.textContent).not.toContain("Loomarr can open this folder");
+    expect(host.textContent).toContain("Up to date");
+    expect(host.textContent).not.toContain("All caught up");
+    act(() =>
+      Array.from(host.querySelectorAll("button, [role=button]"))
+        .find((n) => n.textContent === "Check again")
+        ?.click(),
+    );
+    expect(props.onCheckAgain).toHaveBeenCalled();
+    cleanup();
+  });
+
   it("says nothing of being caught up beside an offline folder while no import runs", () => {
     const { host, cleanup } = render({ health: "folder_offline", folders: [MOVIES, TV_IN_USE] });
     expect(host.textContent).toContain("Can't reach your Movies folder");

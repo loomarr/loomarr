@@ -153,6 +153,10 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
     prefixes: ["/v1/library/items", "/v1/library/needs"],
     fed: [listAndDetail("/v1/library/items"), /^\/v1\/library\/needs$/],
   },
+  // A media folder stopped or started opening, or emptied or filled (a share unmounted or mounted
+  // again), found by a scan pass rather than by anything done on screen: the folders' cards and
+  // the status read again, so a warning appears and clears without a reload.
+  library_roots: { prefixes: ["/v1/library/roots", "/v1/library/status"] },
 };
 
 // isFrameFed: does an SSE frame keep this query current? The client gives such a read
