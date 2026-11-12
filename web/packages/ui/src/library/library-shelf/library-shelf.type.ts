@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type {
+  LibraryDetails,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryScan,
@@ -34,6 +35,8 @@ interface LibraryShelfStatus {
   offline: readonly string[];
   /** Something in Needs you is waiting, so the line can't say every title's ready. */
   needsYou?: boolean;
+  /** How the titles' details are getting on; absent reads as nothing waiting. */
+  details?: LibraryDetails;
 }
 
 interface LibraryShelfProps {

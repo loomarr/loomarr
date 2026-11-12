@@ -46,11 +46,13 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 			Store:        defaults.Store,
 			Auth:         sessionAuth(mgr, "break-glass-token"),
 			Log:          defaults.Log,
-			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:     mgr,
-			Passwords:    auth.NewPasswordService(defaults.Store, func() string { return "u-new" }, time.Now),
-			UserSync:     auth.NewUserSync(lib, defaults.Store, time.Now),
 			CookieSecure: "false",
+			People: api.PeopleOptions{
+				Login:     auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:  mgr,
+				Passwords: auth.NewPasswordService(defaults.Store, func() string { return "u-new" }, time.Now),
+				UserSync:  auth.NewUserSync(lib, defaults.Store, time.Now),
+			},
 		})
 	})
 	return &authFlowHarness{apiHarness: base}

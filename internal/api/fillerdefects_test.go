@@ -91,7 +91,7 @@ func TestFillerDefectReport_AdminReadsAndLabelsMeasuredClips(t *testing.T) {
 	harness := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			FillerDefects: defectfloor.NewDefectReports(st, time.Now),
+			Filler: api.FillerOptions{Defects: defectfloor.NewDefectReports(st, time.Now)},
 		})
 	})
 

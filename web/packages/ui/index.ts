@@ -36,6 +36,7 @@ export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
 export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
 export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
+export { useUiForm } from "./src/form-kit";
 export type {
   GuideArtworkRenderer,
   GuideChannelWindow,

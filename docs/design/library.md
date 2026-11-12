@@ -456,8 +456,19 @@ step 5). Nothing reads the scanner's origins until the cutover.
   titles never fetched, not at the refresh. Series are at version 5, which lists their other
   episode orders by name, kind and size (decision 53). A record that changed forgets the identity digest of
   its titles' present files (a series' episodes too) and passes over their folders, so they are
-  written again with it. A title TMDB does not know is cached empty until the refresh. A failed
-  fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
+  written again with it. A title TMDB does not know is cached empty until the refresh. A fetch
+  that fails for one title alone (an answer that doesn't parse, a 4xx other than a refused key)
+  holds that title back for 6 hours, and the next title goes on. A fetch that says TMDB can't be
+  used now (no key, a key turned down, out of reach, rate-limited, a 5xx) holds nothing back: the
+  tick stops, and every title is tried at the next one, so none waits hours after TMDB is fixed.
+  Titles waiting on a retry are never silent. `GET /v1/library/status` carries `details`
+  (`waiting`, `unreachable`, and `retryAt`). The Library's line says "12 titles are waiting on
+  details — trying again at 3:40 PM", and Settings → Library's Keeping up to date row says the same
+  count over "Can't reach TMDB — trying again at 3:40 PM" (or "Trying again at 3:40 PM"). Neither
+  is said while step 3 is looking titles up, and "All caught up" is not said beside them. A key
+  problem (none, or one turned down) is never shown: a release build ships its own key, so the
+  household has nothing to do about it. The server's log says it instead — a change of state is
+  logged once, a warning when TMDB can't be used, never a debug line per title.
   A release build ships its own key (decision 51), stamped from the `TMDB_BUNDLED_KEY` release
   secret into `buildinfo` as the `tmdb.api_key` default. A household's own key wins. Settings
   lists the shipped key as `builtIn`, never as set, and never previews it. Only a dev or source

@@ -58,7 +58,7 @@ func newScanHarness(t *testing.T, sonarrFolders ...string) (*apiHarness, *scan.L
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib = newScanLibrary(t, defaults.Store, sonarrFolders...)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, LibraryRoots: lib,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Library: api.LibraryOptions{Roots: lib},
 		})
 	})
 	return h, lib

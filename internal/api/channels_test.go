@@ -179,14 +179,16 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 	ltv := &fakeLiveTVSvc{}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Channels: chSvc,
-			LiveTV:   ltv,
-			// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
-			// (channeledit asks the binder) matches production wiring.
-			Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Setup: api.SetupOptions{LiveTV: ltv},
+			Channels: api.ChannelsOptions{
+				Service: chSvc,
+				// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
+				// (channeledit asks the binder) matches production wiring.
+				Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
+			},
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
@@ -202,8 +204,8 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Sto
 	chSvc := &fakeChannelSvc{}
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: approval.New(st, chSvc, nil, log),
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: api.ChannelsOptions{Service: chSvc, Binder: approval.New(st, chSvc, nil, log)},
 		// In particular: tunarr.url is unconfigured.
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})
@@ -891,11 +893,11 @@ func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, records.S
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Channels: &fakeChannelSvc{},
-		Suggest:  fs,
+		Store:     st,
+		Auth:      testAuthorizer{},
+		Log:       slog.New(slog.DiscardHandler),
+		Channels:  api.ChannelsOptions{Service: &fakeChannelSvc{}},
+		Proposals: api.ProposalsOptions{Suggest: fs},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -1405,7 +1407,8 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
+		Channels:     api.ChannelsOptions{Service: channelSvc, TunerRescanner: rescanner},
+		Playout:      api.PlayoutOptions{Service: playback},
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	}))
 	t.Cleanup(srv.Close)
@@ -1475,13 +1478,14 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+		Channels: api.ChannelsOptions{Service: &fakeChannelSvc{}, TunerRescanner: rescanner},
+		Playout:  api.PlayoutOptions{Service: playback},
+		Setup: api.SetupOptions{BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
 			return httpcore.BackendCheckpoint{
 				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 				PublishedInternal: true,
 			}, nil
-		},
+		}},
 	}))
 	t.Cleanup(srv.Close)
 
@@ -1983,10 +1987,10 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
+		Guide: api.GuideOptions{Reader: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
 			"ch-live": {Now: &guideapi.NowNextEntry{Title: "On Now"}, Next: &guideapi.NowNextEntry{Title: "Up Next", Gap: true}},
 			"ch-new":  {Now: &guideapi.NowNextEntry{Title: "Internal Now"}},
-		}},
+		}}},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -2025,9 +2029,9 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
+		Guide: api.GuideOptions{Reader: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
 			"ch-internal": {{Title: "Playing locally"}},
-		}},
+		}}},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

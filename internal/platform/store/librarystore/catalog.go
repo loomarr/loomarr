@@ -65,6 +65,13 @@ type LibraryFilePath struct {
 	Path string
 }
 
+// LibraryCatalogWaiting is the movies and series still waiting for their details.
+type LibraryCatalogWaiting struct {
+	Titles int
+	// NextRetry is when the first one held back by a failed fetch is tried again; zero when none is.
+	NextRetry time.Time
+}
+
 // LibraryCatalogStore caches what catalogs say about the scanner's titles (#2151, decision 20).
 // The walk reads it; only the enricher fetches.
 type LibraryCatalogStore interface {
@@ -95,6 +102,9 @@ type LibraryCatalogStore interface {
 	LibraryCatalogFeedRead(ctx context.Context, provider string) (time.Time, bool, error)
 	// SaveLibraryCatalogFeedRead records that provider's change feed was read through at.
 	SaveLibraryCatalogFeedRead(ctx context.Context, provider string, at time.Time) error
+	// LibraryCatalogWaiting counts the movies and series never fetched, and when the first of
+	// them held back by a failed fetch is tried again (zero when none is held past now).
+	LibraryCatalogWaiting(ctx context.Context, now time.Time) (LibraryCatalogWaiting, error)
 	// RewriteLibraryCatalogFiles forgets the identity digest of every present file of each title
 	// whose details come from key (a series' episodes too; for an episode key, each episode that
 	// has its id), so the scanner writes them again, and lists them.
@@ -235,6 +245,21 @@ func (s *Store) CountDueLibraryCatalog(ctx context.Context, due LibraryCatalogDu
 		return 0, fmt.Errorf("count due library catalog: %w", err)
 	}
 	return n, nil
+}
+
+func (s *Store) LibraryCatalogWaiting(ctx context.Context, now time.Time) (LibraryCatalogWaiting, error) {
+	var out LibraryCatalogWaiting
+	var next sql.NullInt64
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*), MIN(CASE WHEN retry_at_ms > ? THEN retry_at_ms END)
+		FROM library_catalog WHERE fetched_at_ms = 0 AND kind IN ('movie', 'series')`), now.UnixMilli()).
+		Scan(&out.Titles, &next)
+	if err != nil {
+		return out, fmt.Errorf("library catalog waiting: %w", err)
+	}
+	if next.Valid {
+		out.NextRetry = time.UnixMilli(next.Int64).UTC()
+	}
+	return out, nil
 }
 
 func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error) {
