@@ -276,7 +276,8 @@ const KeepingUp = ({
 };
 
 // Scan now and Refresh everything (Emby and Jellyfin's Scan library and Replace all metadata).
-// Scan now is a pass now; Refresh everything is Update details for every title, so it asks first.
+// Scan now starts one pass at once, with no question; Refresh everything is Update details for
+// every title, which is slow on a big library, so it asks first.
 const ScanActions = ({
   scan,
   onRescan,
