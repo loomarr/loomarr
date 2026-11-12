@@ -105,10 +105,14 @@ const createGuideController = ({
         snapshot.selection?.anchorMs ?? now(),
       );
     },
+    // Re-reads the page the viewer is on (a channel event, a reconnect and a tune all refresh), so
+    // only a viewer at the live window follows now. Paging never goes before live, so a page that
+    // starts after the live window is one the viewer chose; once now reaches it, live takes over.
     refresh: async (preferredChannelId) => {
       const at = now();
+      const live = resolveWindow(at);
       await loadWindow(
-        resolveWindow(at),
+        full && full.fromMs > live.from ? { from: full.fromMs, to: full.toMs } : live,
         preferredChannelId ?? snapshot.selection?.channelId,
         snapshot.selection?.anchorMs ?? at,
       );
