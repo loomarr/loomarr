@@ -294,13 +294,15 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
 	<-l.quiesced
+	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
+	// Its last writes go to the resources below, so they are stopped only once it has returned.
+	l.wg.Wait()
 	var stopErrs []error
 	for _, stop := range slices.Backward(stops) {
 		if err := stop(ctx); err != nil {
 			stopErrs = append(stopErrs, err)
 		}
 	}
-	l.wg.Wait()
 	l.err = errors.Join(l.quiesceErr, errors.Join(stopErrs...))
 	close(l.done)
 }
