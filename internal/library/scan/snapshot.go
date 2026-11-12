@@ -252,7 +252,10 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	65: a kids' show numbered after its name ("Gumdrop Garage 1") with none named so alone is a
 //	    show; an anime's film in its release's folder is a film; a count after a year ("Part 2",
 //	    "Week 1") runs on a title; "S01E02.Trailer" is the episode's extra.
-const writeVersion = 65
+//	66: a disc's MakeMKV titles number no episode; a show's yearless seasons apart from its dated
+//	    ones stay another show's; "Show.E11.1080p.WEB" is an episode anywhere; a year after an
+//	    anime's padded number is the release's; a folder's American days settle its others.
+const writeVersion = 66
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

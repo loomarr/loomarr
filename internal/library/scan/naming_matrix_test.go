@@ -1228,6 +1228,25 @@ var namingMatrix = []namingRow{
 		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
 		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
 	}},
+	// Re-score #23: a disc's MakeMKV titles number no episode; a show's yearless seasons apart from
+	// its dated ones are another show's; a web release's "Show.E11.1080p" is an episode anywhere; a
+	// year after an anime's padded number is the release's; a folder's American days settle its
+	// others.
+	{id: "W138", files: map[string]string{
+		"TV/Kite Shore/Kite Shore Disc 1/Kite Shore Disc 1_t01.mkv": "episode Kite Shore S?E?",
+		"TV/Kite Shore/Kite Shore Disc 1/Kite Shore Disc 1_t02.mkv": "episode Kite Shore S?E?",
+		"TV/Kite Shore/KITE_SHORE_DISC_3/KITE_SHORE_DISC_3_t00.mkv": "episode Kite Shore S?E?",
+		"TV/Moss Ridge/Season 6/Moss Ridge S06E01.mkv":              "episode Moss Ridge S6E1",
+		"TV/Moss Ridge (2019)/Season 1/Moss Ridge S01E01.mkv":       "episode Moss Ridge 2019 S1E1",
+		"Downloads/Moss.Ridge.S05E01.mkv":                           "episode Moss Ridge S5E1",
+		"Downloads/Moss.Ridge.2019.S01E02.mkv":                      "episode Moss Ridge 2019 S1E2",
+		"TV/Hoshi.no.Kaze.E11.1080p.WEB.mkv":                        "episode Hoshi no Kaze S1E11",
+		"Downloads/Hoshi.no.Kaze.E12.1080p.WEB.mkv":                 "episode Hoshi no Kaze S1E12",
+		"Anime/[Grp] Kaze Tori - 03 (1080p) [2019].mkv":             "episode Kaze Tori S?E?",
+		"Anime/[Grp] Kaze Tori - 06 (2019).mkv":                     "episode Kaze Tori S?E?",
+		"TV/Late Hour/Late Hour 05-06-2023.mkv":                     "episode Late Hour 2023-05-06",
+		"TV/Late Hour/Late Hour 03-14-2023.mkv":                     "episode Late Hour 2023-03-14",
+	}},
 	// Re-score #22: a kids' show numbered after its name with none named so alone is a show; an
 	// anime's film in its release's folder is a film; a count after a year runs on a title; an
 	// episode's trailer joined with a dot is its extra.

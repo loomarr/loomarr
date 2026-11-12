@@ -238,7 +238,11 @@ var (
 
 // airDateIn is the day a file's name says its episode aired, YYYY-MM-DD; "" for none. A day that
 // never was, such as "2024-02-30" or a number that only looks like one, is none.
-func airDateIn(name string) string {
+func airDateIn(name string) string { return airDateOrdered(name, false) }
+
+// airDateOrdered is airDateIn with a day written "05-06-2023" read month first when monthFirst: its
+// folder's other days say America's order ("03-14-2023" beside it, folderNotes.MonthFirst).
+func airDateOrdered(name string, monthFirst bool) string {
 	pad := func(s string) string {
 		if len(s) == 1 {
 			return "0" + s
@@ -254,7 +258,7 @@ func airDateIn(name string) string {
 			day, same = m[10]+"-"+m[8]+"-"+m[6], m[7] == m[9]
 			// Day first as Plex writes it; a month that can't be one is America's month first,
 			// "03-14-2024".
-			if atoi(m[8]) > 12 {
+			if atoi(m[8]) > 12 || monthFirst && atoi(m[6]) <= 12 {
 				day = m[10] + "-" + m[6] + "-" + m[8]
 			}
 		}
@@ -263,6 +267,21 @@ func airDateIn(name string) string {
 		}
 	}
 	return ""
+}
+
+// monthFirstDays reads folderNotes.MonthFirst from a folder's videos' names.
+func monthFirstDays(names []string) bool {
+	american, european := false, false
+	for _, name := range names {
+		for _, m := range airDateMark.FindAllStringSubmatch(stem(name), -1) {
+			if m[1] != "" {
+				continue
+			}
+			american = american || atoi(m[8]) > 12
+			european = european || atoi(m[6]) > 12
+		}
+	}
+	return american && !european
 }
 
 // datedEpisode says whether a file its name dates is a show's episode: one in a season folder, or
@@ -619,7 +638,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// A daily or weekly show names its episodes by the day they aired, in the show's folder: the
 	// day, not a season and number, says which episode it is (season.go's byAirDate). A dated file
 	// loose at the root's top belongs to the show a release's name gives, and to none otherwise.
-	if day := airDateIn(name); day != "" && datedEpisode(file) {
+	if day := airDateOrdered(name, file.Notes.MonthFirst); day != "" && datedEpisode(file) {
 		rec := mp.Record{Source: src, Kind: mp.KindEpisode, Descriptive: &mp.Descriptive{PremiereDate: day}}
 		seriesDir := seriesFolderOf(file)
 		rec.Parent = idsIn(path.Base(seriesDir))
@@ -1532,8 +1551,9 @@ var (
 	// bareEpisode matches an episode written "E03" with no season before it.
 	bareEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])e(\d{1,4})(?:[ ._-]|$)`)
 	// dramaRelease matches a Korean drama's release, its episode then the day it aired as YYMMDD:
-	// "Kettle.Love.E05.240301.1080p". It says an episode wherever it is.
-	dramaRelease = regexp.MustCompile(`(?i)[ ._-]e(\d{2,4})[ ._-]\d{6}(?:[ ._-]|$)`)
+	// "Kettle.Love.E05.240301.1080p"; or a web release's episode then its notes,
+	// "Hoshi.no.Kaze.E11.1080p.WEB". It says an episode wherever it is.
+	dramaRelease = regexp.MustCompile(`(?i)[ ._-]e(\d{2,4})[ ._-](?:\d{6}|\d{3,4}p|web(?:-?dl|rip)?|hdtv|x26[45]|hevc)(?:[ ._-]|$)`)
 	// nightMark matches a miniseries' night after its name and a dash: "Ash Vale (2008) - Night 2".
 	nightMark = regexp.MustCompile(`(?i)[ ._]+-[ ._]+night[ ._]*(\d{1,2})(?:[^0-9]|$)`)
 	// spelledEpisode matches a name, then an episode's word and its number: "Rook Hall Mini E01",
@@ -1670,7 +1690,9 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		if m == nil {
 			m = animeNumber.FindStringSubmatch(bare)
 		}
-		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1])) {
+		// A year after a padded dashed number is the release's, "[Grp] Kaze Tori - 03 (2019)": a film
+		// is never numbered so.
+		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && !strings.HasPrefix(m[2], "0")) {
 			m = nil
 		}
 		if m != nil && (tagged || m[2] != "" || grouped && strings.HasPrefix(m[3], "0")) && !yearToken.MatchString(matched(m[2], m[3])) {
@@ -1792,6 +1814,11 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		season, namedFolder = n, true
 	}
 	episode := func(e int) (mp.Numbering, bool) { return mp.Numbering{Season: season, Episode: e}, e > 0 }
+	// MakeMKV's title, "Kite Shore Disc 1_t01", numbers its disc's titles, never the show's episodes:
+	// every title on disc 1 would claim the first. Its length or the catalog places it.
+	if makeMKVTitle.MatchString(name) {
+		return mp.Numbering{}, false
+	}
 	// "Bellcote - Season 5 Episode 2" and "Dunbar.Season.3.Episode.1" name their season too, which
 	// is theirs before the folder's.
 	if m := seasonEpisodeWords.FindStringSubmatch(name); m != nil {
@@ -2251,6 +2278,9 @@ type folderNotes struct {
 	// Folders are the folder's own folders, by name in order: a loose episode beside its show's
 	// folder ("TV/Holm Lane S01E02.mkv" by "TV/Holm Lane/") is that show's.
 	Folders []string
+	// MonthFirst is a folder whose videos' days written with the year last are America's, month
+	// first: one of them can be read no other way ("03-14-2023"), and none is day first ("14-03-2023").
+	MonthFirst bool
 	// Years are the year the folder's loose episodes give each show they name with one, by its
 	// name (normName): "Pembroke.Gate.2019.S01E01" gives "pembroke gate" 2019. A show two of them
 	// give two years is two shows, and has none.
@@ -2270,6 +2300,7 @@ func looseYears(names []string) map[string]int {
 	}
 	seen := map[episode]bool{}
 	clash := map[string]bool{}
+	seasons := map[string]map[bool][]int{}
 	for _, name := range names {
 		n, ok := numberingIn(name)
 		if !ok {
@@ -2283,6 +2314,17 @@ func looseYears(names []string) map[string]int {
 		seen[e] = true
 		if other := (episode{title: e.title, dated: !dated, season: e.season, number: e.number}); seen[other] {
 			clash[e.title] = true
+		}
+		if seasons[e.title] == nil {
+			seasons[e.title] = map[bool][]int{}
+		}
+		seasons[e.title][dated] = append(seasons[e.title][dated], n.Season)
+	}
+	// So is one whose seasons with and without the year are apart: "Moss.Ridge.S05E01" beside
+	// "Moss.Ridge.2019.S01E01" is the original's, not the remake's.
+	for title, s := range seasons {
+		if seasonsApart(s[false], s[true]) {
+			clash[title] = true
 		}
 	}
 	for _, name := range names {
@@ -2301,6 +2343,17 @@ func looseYears(names []string) map[string]int {
 		return nil
 	}
 	return years
+}
+
+// seasonsApart says whether a show's seasons kept without its year are no run of those kept with
+// it: one more than a season before or after them. "S01" beside "S02 (2016)" run on as one show's;
+// "S06" beside "S01 (2019)" are an original's and its remake's.
+func seasonsApart(yearless, dated []int) bool {
+	if len(yearless) == 0 || len(dated) == 0 {
+		return false
+	}
+	lo, hi := slices.Min(dated), slices.Max(dated)
+	return slices.ContainsFunc(yearless, func(s int) bool { return s < lo-1 || s > hi+1 })
 }
 
 // leadingEpisodes says whether a folder's videos are a show's numbered by their place alone: two or
