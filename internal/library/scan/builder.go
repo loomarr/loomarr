@@ -49,6 +49,9 @@ type seriesSeen struct {
 	// years counts the years its episodes' file names give the show ("Show (1963) - S01E01"), from
 	// the same files.
 	years map[int]int
+	// named counts the names its episodes' file names give the show before their marks, by
+	// normName: "Unit S9 S01E01" gives "unit s9".
+	named map[string]int
 
 	once       sync.Once
 	resolution resolution
@@ -192,7 +195,7 @@ func (b *builder) identify(file File) identity {
 	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
-			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}, years: map[int]int{},
+			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}, years: map[int]int{}, named: map[string]int{},
 				sidecars: seriesFolderSidecars(filepath.Join(b.root, filepath.FromSlash(id.seriesDir)))}
 			b.series[id.seriesDir] = s
 		}
@@ -202,6 +205,9 @@ func (b *builder) identify(file File) identity {
 		}
 		if n := id.numbering(); n != nil && n.Episode > 0 {
 			s.last[n.Season] = max(s.last[n.Season], n.Episode, n.EpisodeEnd)
+		}
+		if own := looseSeries(path.Base(file.Rel)); own != "" {
+			s.named[normName(own)]++
 		}
 		if year := showYearIn(path.Base(file.Rel)); year > 0 {
 			s.years[year]++
@@ -481,7 +487,14 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 		// A show with no name of its own is named by its own folder, not the folders it sits in:
 		// "TV/Kids/Kettle Bay" is "Kettle Bay".
 		if facts.Name == "" && s.dir != "" {
-			facts.Name = showFolderName(filepath.Base(filepath.FromSlash(s.dir)))
+			base := filepath.Base(filepath.FromSlash(s.dir))
+			facts.Name = showFolderName(base)
+			// A show its own episodes name as its folder does, "Unit S9/Unit S9 S01E01.mkv" or
+			// "Brockle 1x1/Brockle 1x1 S01E01.mkv", is called so: what reads as a season's mark after
+			// the name is the name's.
+			if whole := strings.TrimSpace(embeddedID.ReplaceAllString(base, "")); whole != facts.Name && s.named[normName(whole)] > 0 {
+				facts.Name = whole
+			}
 		}
 		// A show whose folder and NFO give no year takes the one its episodes' names agree on.
 		if _, named, _ := searchQuery(facts.Name, 0); facts.ProductionYear == 0 && named == 0 && len(s.years) == 1 {

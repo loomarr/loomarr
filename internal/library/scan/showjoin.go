@@ -104,6 +104,9 @@ func (b *builder) joinShows(ids, others []identity) {
 		for year, n := range s.years {
 			home.years[year] += n
 		}
+		for name, n := range s.named {
+			home.named[name] += n
+		}
 		if len(home.ids) == 0 {
 			home.ids = s.ids
 		}

@@ -558,8 +558,10 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// as a saga's films do: "Movies/Reed Wood/Reed Wood - Episode 1.mkv" beside "… Episode 2".
 	// So does a season's pack there, "Movies/Lumen Bay Season 1/01.mkv", and a folder's video named by
 	// its episode's word and number alone, "Movies/Fennick Bank/Episode 1.mkv": no film is called so.
+	// So does an episode's word and its number padded as an episode's is, with no year: "Gannet
+	// Hope Ep01"; a saga's "Kettle Wars Episode 4 (1977)" is a film.
 	if dir := path.Dir(file.Rel); amongFilms(shelved(file, dir)) && !inShowsSeason(dir) && !miniseriesAmongFilms(file) &&
-		!seasonAmongFilms(file) &&
+		!seasonAmongFilms(file) && (!paddedEpisode.MatchString(plainStem(name)) || yearAnywhere.MatchString(plainStem(name))) &&
 		(!sxxeyy.MatchString(file.Rel) && !crossMark.MatchString(name) || catchAllFolder(path.Base(seriesFolderOf(file)))) {
 		return movieRecord(src, segments), ""
 	}
@@ -646,6 +648,17 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// Christmas Buzz (2015)" beside "Busy Bees 101".
 	dir := path.Dir(file.Rel)
 	special := file.Notes.Numbered && showTitled(name, path.Base(dir))
+	// So is one of two or more loose in a catch-all that name one show before a dash: "Kids/Hob
+	// Duck - Big Pond.mp4" beside "Kids/Hob Duck - Wet Feet.mp4".
+	if dashedOf(file) != "" {
+		seriesDir := seriesFolderOf(file)
+		return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
+	}
+	// So is one in a season's pack, "Movies/Hob Saga Season 1/Hob Saga - Pilot.mkv".
+	if dir != "." && packShow(dir) != "" && !namedInFull(file, dir) {
+		seriesDir := seriesFolderOf(file)
+		return mp.Record{Source: src, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}, seriesDir
+	}
 	if dir != "." && (file.Notes.Episodes || file.Notes.Series || file.Notes.Titled || special || underShows(shelved(file, dir))) &&
 		!file.Notes.Dump && !catchAllFolder(path.Base(dir)) {
 		seriesDir := seriesFolderOf(file)
@@ -715,6 +728,10 @@ func seasonAmongFilms(file File) bool {
 // episodeOnly matches a name that is an episode's word and number and nothing else: "Episode 1",
 // "Ep.02", "Folge 3".
 var episodeOnly = regexp.MustCompile(`(?i)^(?:episode|ep|e|folge|episodio|episódio|épisode|aflevering|avsnitt|afsnit|odcinek|cap[ií]tulo)[ ._-]*(\d{1,4})$`)
+
+// paddedEpisode matches an episode's word and its number padded with a zero at a name's end, after
+// the show's name: "Gannet Hope Ep01", "Gannet Hope - Episode 03".
+var paddedEpisode = regexp.MustCompile(`(?i)\S[ ._-]+(?:ep|episode)[ ._]?0\d{1,2}$`)
 
 // cjkEpisodeOnly matches a name that is a Japanese, Chinese or Korean episode's number alone:
 // "第1話", "第05集", "第3回", "1화".
@@ -955,6 +972,13 @@ func folderBeside(file File, dir, show string) string {
 	return ""
 }
 
+// namedInFull says whether a file's own name gives its show as the folder dir is named, whole:
+// "TV/Unit S9/Unit S9 S01E01.mkv" is "Unit S9"'s, whose "S9" is its name and no season's.
+func namedInFull(file File, dir string) bool {
+	own := looseSeries(path.Base(file.Rel))
+	return own != "" && sameWords(own, strings.TrimSpace(embeddedID.ReplaceAllString(path.Base(dir), "")))
+}
+
 // packShow is the show a season pack's release folder, or a complete series' copy, stands for:
 // "Downloads/Bramble.House.S02.720p.WEB-DL/" and "Owlpen Season 1/" stand for "Bramble House" and
 // "Owlpen", kept by name as their loose episodes are; one in a folder that names something,
@@ -1119,6 +1143,10 @@ func showFolderIn(file File) string {
 	if m := episodeWord.FindStringIndex(plainStem(name)); show == "" && m != nil && m[0] > 0 && catchAllFolder(path.Base(dir)) {
 		show = showSpelling(strings.TrimSpace(plainStem(name)[:m[0]]))
 	}
+	// And "Kids/Hob Duck - Big Pond.mp4" beside "… - Wet Feet.mp4" is Hob Duck's (dashedOf).
+	if shared := dashedOf(file); show == "" && shared != "" && dir == path.Dir(file.Rel) {
+		show = shared
+	}
 	// So, loose at the top or in a catch-all, is "Bramblecourt E01" beside "Bramblecourt E02".
 	if m := spelledEpisode.FindStringSubmatch(plainStem(name)); show == "" && m != nil &&
 		(dir == "." || catchAllFolder(path.Base(dir))) && file.Notes.Spelled &&
@@ -1158,7 +1186,8 @@ func showFolderIn(file File) string {
 			// "Hollyhock Lane (Complete Series)/S04/" is a copy of the show's, kept as its other
 			// releases are.
 			above := showFolderAbove(show)
-			if pack := packShow(above); pack != "" && (path.Dir(above) == "." || catchAllFolder(path.Base(path.Dir(above)))) {
+			if pack := packShow(above); pack != "" && (path.Dir(above) == "." || catchAllFolder(path.Base(path.Dir(above)))) &&
+				!namedInFull(file, above) {
 				return pack
 			}
 			return above
@@ -1193,7 +1222,7 @@ func showFolderIn(file File) string {
 	// 720p.WEB-DL/", stands for the show's folder beside it, so the show's other seasons, in their
 	// own packs or its folder ("TV/Kettle Lane/"), are one show with it; as does a season's folder
 	// named by its show, "Owlpen Season 1/" beside "Owlpen Season 2/".
-	if show := packShow(dir); show != "" {
+	if show := packShow(dir); show != "" && !namedInFull(file, dir) {
 		return show
 	}
 	return dir
@@ -2165,6 +2194,10 @@ type folderNotes struct {
 	// Titled is a folder on an audience's shelf whose videos are a show's episodes named by their
 	// titles alone (titledEpisodes): "Kids/Hop Pond/Frost Morning.mp4" beside "Big Carrot.mp4".
 	Titled bool
+	// Dashed are the shows a catch-all's loose videos name before a dash, two or more apiece with
+	// no year or number: "Kids/Hob Duck - Big Pond.mp4" beside "Kids/Hob Duck - Wet Feet.mp4" are
+	// Hob Duck's (dashedShows), keyed by normName.
+	Dashed map[string]string
 	// Folders are the folder's own folders, by name in order: a loose episode beside its show's
 	// folder ("TV/Holm Lane S01E02.mkv" by "TV/Holm Lane/") is that show's.
 	Folders []string
@@ -2352,6 +2385,60 @@ func titledEpisodes(rel string, names []string) bool {
 		}
 	}
 	return true
+}
+
+// dashedShows reads folderNotes.Dashed for a folder, rel to the root as the shelf predicates read
+// it, from its videos' names. Only a catch-all's or a root's top is read: in a show's own folder
+// its name is the folder's (namedSeries), and among films a franchise's films are named so.
+func dashedShows(rel string, names []string) map[string]string {
+	if rel != "." && !catchAllFolder(path.Base(rel)) || amongFilms(rel) {
+		return nil
+	}
+	count, spelled := map[string]int{}, map[string]string{}
+	for _, name := range names {
+		show, ok := dashedShow(name)
+		if !ok {
+			continue
+		}
+		key := normName(show)
+		count[key]++
+		spelled[key] = show
+	}
+	var out map[string]string
+	for key, n := range count {
+		if n >= 2 {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[key] = spelled[key]
+		}
+	}
+	return out
+}
+
+// dashedShow is the show a name gives before a spaced dash, with a title after it and no year,
+// episode's mark or number: "Hob Duck - Big Pond" is "Hob Duck".
+func dashedShow(name string) (string, bool) {
+	s := plainStem(name)
+	at := showTitleDash.FindStringIndex(s)
+	if at == nil || episodeMark.MatchString(s) || strings.ContainsFunc(s, unicode.IsDigit) || leadingTags.MatchString(s) {
+		return "", false
+	}
+	show, title := strings.TrimSpace(s[:at[0]]), strings.TrimSpace(s[at[1]:])
+	if show == "" || strings.IndexFunc(title, unicode.IsLetter) < 0 {
+		return "", false
+	}
+	return show, true
+}
+
+// dashedOf is the show a file loose among a catch-all's videos is one of by folderNotes.Dashed,
+// "" for none.
+func dashedOf(file File) string {
+	show, ok := dashedShow(path.Base(file.Rel))
+	if !ok || file.Notes.Dashed == nil {
+		return ""
+	}
+	return file.Notes.Dashed[normName(show)]
 }
 
 // showTitled says whether a file's name is its folder's show, a dash and a title: "Busy Bees -

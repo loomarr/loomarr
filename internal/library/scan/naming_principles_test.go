@@ -148,6 +148,35 @@ func TestPrincipleTaggedShowsStayApart(t *testing.T) {
 	}
 }
 
+// TestPrincipleFilmTitleShape: a film's title and year read the same whatever shape its name takes:
+// the year after the title or before it, an edition's words after the year however they are
+// written, a language's code, as Radarr, scene groups and households write them.
+func TestPrincipleFilmTitleShape(t *testing.T) {
+	shapes := []string{
+		"%[1]s (%[2]d)", "%[1]s.%[2]d.1080p", "%[1]s %[2]d 720p WEB",
+		"%[2]d - %[1]s", "%[2]d.%[1]s", "%[2]d_%[1]s", "(%[2]d) %[1]s", "[%[2]d] %[1]s",
+	}
+	for _, edition := range []string{"Theatrical", "Final.Cut", "Restored", "Redux", "Fan.Edit", "Uncensored", "Hybrid",
+		"Colorized", "Open.Matte", "Directors.Cut", "THEATRICAL", "Rus.Eng", "Extended.Edition"} {
+		shapes = append(shapes, "%[1]s."+"%[2]d."+edition+".1080p")
+	}
+	for _, film := range []string{"Gloam Moss", "Station 7", "Larkfield Junction"} {
+		files := map[string]string{}
+		for i, shape := range shapes {
+			name := fmt.Sprintf(shape, film, 2011)
+			if strings.Contains(shape, ".%[2]d") || strings.HasPrefix(shape, "%[2]d.") {
+				name = fmt.Sprintf(shape, strings.ReplaceAll(film, " ", "."), 2011)
+			}
+			if strings.HasPrefix(shape, "%[2]d_") {
+				name = fmt.Sprintf(shape, strings.ReplaceAll(film, " ", "_"), 2011)
+			}
+			// Each its own folder, so no two are one film's versions.
+			files[fmt.Sprintf("Movies/Shape %02d/%s.mkv", i, name)] = fmt.Sprintf("movie %s 2011", film)
+		}
+		t.Run(strings.Fields(film)[0], func(t *testing.T) { principleRead(t, files) })
+	}
+}
+
 // TestPrincipleFilmVersionIsKept: a film's copy beside it, named by how it was cut, framed,
 // coloured or voiced, is the film, never skipped; only a label that says an extra is one.
 func TestPrincipleFilmVersionIsKept(t *testing.T) {

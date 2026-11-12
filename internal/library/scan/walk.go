@@ -434,6 +434,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	notes.Leading = leadingEpisodes(folder, videoNames)
 	notes.Series = dir != w.root && namedSeries(folder, videoNames)
 	notes.Titled = dir != w.root && titledEpisodes(path.Join(w.shelf, w.rel(dir)), videoNames)
+	notes.Dashed = dashedShows(path.Join(w.shelf, w.rel(dir)), videoNames)
 	notes.Root = w.shelf
 	notes.Years = looseYears(videoNames)
 	for _, e := range entries {
@@ -1109,7 +1110,9 @@ var versionWords = map[string]bool{
 	"tamil": true, "telugu": true, "korean": true, "mandarin": true, "cantonese": true, "dutch": true,
 	"widescreen": true, "fullscreen": true, "pan": true, "scan": true, "3d": true, "imax": true, "hdr": true,
 	"sdr": true, "dv": true, "dolby": true, "vision": true, "1st": true, "2nd": true, "us": true, "uk": true,
-	"international": true, "domestic": true, "television": true, "longer": true,
+	"international": true, "domestic": true, "television": true, "longer": true, "hybrid": true, "fan": true,
+	"rus": true, "eng": true, "ukr": true, "ger": true, "fre": true, "spa": true, "ita": true, "jpn": true,
+	"kor": true, "multi": true,
 }
 
 // titleKinds are the kinds an episode is as often titled by: "Credits", "Recap", "Intro".

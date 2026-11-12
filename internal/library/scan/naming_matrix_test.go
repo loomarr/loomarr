@@ -1228,6 +1228,23 @@ var namingMatrix = []namingRow{
 		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
 		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
 	}},
+	// Re-score #20: loose "Show - Title" files sharing a show are its episodes; a show named with an
+	// S-number keeps it; one titled file in a show's season pack is its; a disc label's "WS", a
+	// war's span of years, a "1x1" in a show's name and a film's language codes leave its title.
+	{id: "W135", files: map[string]string{
+		"Kids/Hob Duck - Big Pond.mp4":                  "episode Hob Duck S?E?",
+		"Kids/Hob Duck - Wet Feet.mp4":                  "episode Hob Duck S?E?",
+		"Kids/Hob Duck - Bread Day.mp4":                 "episode Hob Duck S?E?",
+		"TV/Hob Goose - Big Pond.mp4":                   "episode Hob Goose S?E?",
+		"TV/Hob Goose - Wet Feet.mp4":                   "episode Hob Goose S?E?",
+		"TV/Unit S9/Unit S9 S01E01.mkv":                 "episode Unit S9 S1E1",
+		"TV/Unit S9/Unit S9 S01E02.mkv":                 "episode Unit S9 S1E2",
+		"TV/Squad S7/Season 1/Squad S7 S01E01.mkv":      "episode Squad S7 S1E1",
+		"Movies/Hob Saga Season 1/Hob Saga - Pilot.mkv": "episode Hob Saga S?E?",
+		"Rips/GLOAM_RISE_WS/title_t00.mkv":              "movie GLOAM RISE -",
+		"Movies/Gannet Hope Ep01.mkv":                   "episode Gannet Hope S1E1",
+		"Movies/Gannet Wars 1939-1945.mkv":              "movie Gannet Wars 1939-1945 -",
+	}},
 	// Re-score #19: a file's own <movie> NFO makes the film of a file only its shows' shelf placed.
 	{id: "W134", files: map[string]string{
 		"TV/Odd/abc123.mkv": "movie Velvet Ash 2004",
