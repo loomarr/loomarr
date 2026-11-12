@@ -116,6 +116,9 @@ describe("Menu (web)", () => {
         .getAllByRole("menuitem")
         .map((item) => item.textContent),
     ).toEqual(["Delete", "Cancel"]);
+    // A defaultOpen menu moves focus into itself a frame after mount; keys pressed before then
+    // land on the body and the menu never sees them.
+    await waitFor(() => expect(screen.getByRole("menu").contains(document.activeElement)).toBe(true));
     await userEvent.keyboard("{ArrowDown}{Enter}");
     expect(onDelete).toHaveBeenCalledOnce();
   });

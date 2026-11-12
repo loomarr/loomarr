@@ -1,6 +1,7 @@
 export { LibrarySettings, LibraryWizardStep } from "./library-settings";
 export type {
   LibraryAuthority,
+  LibraryDetails,
   LibraryFolder,
   LibraryHealth,
   LibraryHeldRemoval,

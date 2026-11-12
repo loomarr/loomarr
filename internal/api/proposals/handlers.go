@@ -58,7 +58,7 @@ type Deps struct {
 	Store    Store
 	Suggest  Submitter
 	Approver Approver
-	// The Proposal* names match the api.Options fields they are copied from.
+	// The Proposal* fields are copied from api.ProposalsOptions (Outlook, Workflow, Progress).
 	ProposalOutlook  ProposalOutlook
 	ProposalWorkflow ProposalWorkflow
 	ProposalProgress ProposalProgress

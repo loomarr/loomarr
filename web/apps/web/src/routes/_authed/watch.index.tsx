@@ -11,7 +11,7 @@ const Route = createFileRoute("/_authed/watch/")({
   beforeLoad: async ({ context }) => {
     const channels = unwrap(
       await context.queryClient
-        .ensureQueryData(channelsApi.getListChannelsQueryOptions({ query: { staleTime: 30_000 } }))
+        .ensureQueryData(channelsApi.getListChannelsQueryOptions())
         .catch(() => undefined),
     )?.channels;
     if (channels && channels.length > 0) {

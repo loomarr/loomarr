@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { blockTitle } from "@/settings/provider-title";
+import { everyEditSaved, savedKeysOf } from "@/settings/saved-edits";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, requiredChecks } from "../steps";
 import { WizardAiBlock } from "../wizard-ai-block";
@@ -79,10 +80,15 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, { data }) => {
         // Field values AND the server checklist (a saved key can flip a check) refetch together.
         await invalidateSettings(queryClient);
-        setEdits({}); // saved values are the new baseline
+        // Saved values are the new baseline. A 200 answers per key, so a rejected or pinned value
+        // stays in the form, editable, beside the message the results give for it.
+        const saved = new Set(savedKeysOf(response, data.edits));
+        setEdits((previous) =>
+          Object.fromEntries(Object.entries(previous).filter(([key]) => !saved.has(key))),
+        );
       },
     },
   });
@@ -120,11 +126,13 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
   // (here: empty) values, which reads as "set a media server flavor" right after you
   // picked one. Save first when dirty, so Test always checks what's on screen. `edits`
   // captured before the save clears it; onError leaves the edits for the operator to retry.
+  // If the server rejected any value, the test is skipped: it would only judge the old settings.
   const test = async (check: string) => {
     setTesting(check);
     try {
       if (Object.keys(edits).length > 0) {
-        await patch.mutateAsync({ data: { edits } });
+        const saved = await patch.mutateAsync({ data: { edits } });
+        if (!everyEditSaved(saved, edits)) return;
       }
       const res = await runTest.mutateAsync({ data: { check } });
       if (res.status === 200)

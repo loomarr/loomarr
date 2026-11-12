@@ -6,7 +6,7 @@ import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { BrandLockup } from "../brand-lockup";
-import type { AppShellProps, NavItem, WatchNavItem } from "./app-shell.type";
+import type { AppShellProps, NavItem, NavTo, WatchNavItem } from "./app-shell.type";
 
 // Lazy, not a static import: PhoneBottomBar is @loomarr/design-system's only consumer of
 // TabBar/BottomSheet, which only ever render below `md`. A static import here made AppShell —
@@ -333,4 +333,8 @@ const AppShell = ({
   );
 };
 
-export { AppShell };
+// The paths of the main nav for a role, for warming their routes. Read from the authored lists
+// above so the warmed set cannot drift from what the rail shows.
+const navPaths = (isAdmin: boolean): NavTo[] => (isAdmin ? ADMIN_NAV : MEMBER_NAV).map((item) => item.to);
+
+export { AppShell, navPaths };

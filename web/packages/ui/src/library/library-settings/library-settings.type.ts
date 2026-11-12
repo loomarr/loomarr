@@ -56,6 +56,16 @@ interface LibraryScan {
   quiet: boolean;
 }
 
+/** How the titles' details are getting on. */
+interface LibraryDetails {
+  /** Movies and series whose details haven't been looked up yet. */
+  waiting: number;
+  /** TMDB didn't answer the last lookup. */
+  unreachable: boolean;
+  /** When looking up is tried again, ISO; absent when nothing waits on a retry. */
+  retryAt?: string;
+}
+
 /** A title that became ready while the import runs (decision 29). */
 interface LibraryReadyTitle {
   id: string;
@@ -87,6 +97,8 @@ interface LibrarySettingsProps {
   readySoFar?: readonly LibraryReadyTitle[];
   held: readonly LibraryHeldRemoval[];
   hooks: readonly LibraryHook[];
+  /** How the titles' details are getting on; absent reads as nothing waiting. */
+  details?: LibraryDetails;
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;
@@ -124,6 +136,7 @@ type LibraryWizardStepProps = Pick<
 
 export type {
   LibraryAuthority,
+  LibraryDetails,
   LibraryFolder,
   LibraryHealth,
   LibraryHeldRemoval,

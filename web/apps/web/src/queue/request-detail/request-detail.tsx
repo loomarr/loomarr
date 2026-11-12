@@ -79,7 +79,8 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
 
   const journey = unwrap(query.data, (body) => body);
   if (query.error != null) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  if (!journey) return <p className="text-muted-foreground p-6 text-sm">Loading…</p>;
+  // The route's loader ensured the request, so it is here before this page mounts.
+  if (!journey) return null;
 
   const status = requestStatus(journey, titles);
   // Only what is still outstanding: a title that has landed is part of the channel, so listing it

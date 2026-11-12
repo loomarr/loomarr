@@ -1,15 +1,16 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
 import { Action, Badge, Icon, icons } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { cn } from "@/lib/utils";
+import { everyEditSaved } from "@/settings/saved-edits";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
 import type { PlayoutStepProps } from "./playout-step.type";
@@ -97,17 +98,16 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   // Keep rejected values editable, but drop drafts once every submitted key is durably
   // saved. Otherwise SettingsFields keeps preferring the stale local copy over the freshly
   // invalidated registry and advertises a Save action for an edit that no longer exists.
-  const saveEdits = async (edits: Record<string, string>, clear: () => void) => {
-    const response = await patch.mutateAsync({ data: { edits } });
-    const results = unwrap(response, (body) => body.results) ?? [];
-    const submitted = Object.keys(edits);
-    if (
-      submitted.length > 0 &&
-      submitted.every((key) =>
-        results.some((result) => result.key === key && result.status === SettingResultStatus.saved),
-      )
-    ) {
+  // Resolves true only when every key was saved. A failed request resolves false too: it shows
+  // as patch.error below, and the edits stay for a retry.
+  const saveEdits = async (edits: Record<string, string>, clear: () => void): Promise<boolean> => {
+    try {
+      const response = await patch.mutateAsync({ data: { edits } });
+      if (!everyEditSaved(response, edits)) return false;
       clear();
+      return true;
+    } catch {
+      return false;
     }
   };
   const savePublicURL = () => saveEdits(publicURLEdits, () => setPublicURLEdits({}));
@@ -117,7 +117,8 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const test = async () => {
     setTesting(true);
     try {
-      if (tunarrDirty) await saveTunarr();
+      // A rejected value stays in the form and the test is skipped: it would judge the old address.
+      if (tunarrDirty && !(await saveTunarr())) return;
       const res = await runTest.mutateAsync({ data: { check: "tunarr" } });
       if (res.status === 200) setTested({ ok: res.data.ok, hint: res.data.hint });
     } catch {
@@ -251,6 +252,9 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           )}
         </ConnectionBlock>
       )}
+
+      {/* A failed save (the choice, the address or Tunarr's form) says so, as the other steps do. */}
+      {patch.error != null && <ErrorState error={patch.error} />}
 
       <p className="text-muted-foreground text-sm">
         The playback engine can be changed later in Settings and overridden per channel.

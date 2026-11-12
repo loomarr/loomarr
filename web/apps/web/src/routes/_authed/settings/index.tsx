@@ -1,3 +1,8 @@
+import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as jobsApi from "@loomarr/api/endpoints/jobs";
+import * as notificationsApi from "@loomarr/api/endpoints/notifications";
+import * as systemApi from "@loomarr/api/endpoints/system";
 import { Icon, icons } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -12,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRouteContent } from "@/lib/use-route-content";
@@ -181,6 +187,21 @@ const SettingsHome = () => {
 
 const Route = createFileRoute("/_authed/settings/")({
   component: SettingsHome,
+  // The reads behind each card's status word (see `useSettingsStatus`). A card whose check fails
+  // settles without a problem, so these are warmed rather than awaited into an error view: a
+  // prefetch never rejects. The admin-only reads are skipped for a member, as the page skips them.
+  loader: async ({ context: { queryClient } }) => {
+    const isAdmin = await viewerIsAdmin(queryClient);
+    await Promise.all([
+      queryClient.prefetchQuery(
+        notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } }),
+      ),
+      isAdmin ? queryClient.prefetchQuery(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
+      isAdmin ? queryClient.prefetchQuery(jobsApi.getJobsListQueryOptions()) : undefined,
+      isAdmin ? queryClient.prefetchQuery(systemApi.getSystemBackupsListQueryOptions()) : undefined,
+      isAdmin ? queryClient.prefetchQuery(fillerApi.getFillerReadinessQueryOptions()) : undefined,
+    ]);
+  },
 });
 
 export { Route };
