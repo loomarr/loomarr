@@ -186,7 +186,7 @@ const UsersPage = () => {
         }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack className="min-h-0 overflow-auto p-6" flexBasis="0%" flexGrow={1} gap="6">
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
         {invitations.error != null && (
@@ -273,7 +273,7 @@ const UsersPage = () => {
             </DialogContent>
           )}
         </Dialog>
-      </div>
+      </Stack>
     </Stack>
   );
 };

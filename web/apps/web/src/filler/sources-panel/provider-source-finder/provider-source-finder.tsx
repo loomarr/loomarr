@@ -242,14 +242,14 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
                 {selected.title}
               </Text>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <Stack align="center" direction="row" flexShrink={0} gap="inline">
               <Text as="span" textRole="hint" tone="secondary">
                 {selected.alreadyAdded ? "Already added" : targetLabel(selected)}
               </Text>
               <Action onPress={cancelSelection} variant="ghost">
                 Cancel
               </Action>
-            </div>
+            </Stack>
           </Stack>
           <SourceContentPreview
             provider={provider}

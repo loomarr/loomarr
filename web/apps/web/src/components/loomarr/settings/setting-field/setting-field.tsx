@@ -473,9 +473,15 @@ const SettingField = ({
 
       {secretLocked ? (
         <Stack align="center" direction="row" gap="inline">
-          <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
+          <Stack
+            align="center"
+            className="border-input text-muted-foreground h-9 rounded-md border px-3 font-mono text-sm"
+            flexBasis="0%"
+            flexGrow={1}
+            render="span"
+          >
             {entry.preview ?? "stored"}
-          </span>
+          </Stack>
           <Action
             onPress={() => {
               setReplacing(true);

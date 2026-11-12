@@ -9,7 +9,14 @@ interface SettingsContextNavProps {
 // every leaf a predictable route back to the task home without making all settings look equally
 // important again.
 const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
-  <div className="border-border flex min-h-11 shrink-0 items-center justify-between gap-3 border-b px-4 sm:px-6">
+  <Stack
+    align="center"
+    className="border-border min-h-11 border-b px-4 sm:px-6"
+    direction="row"
+    flexShrink={0}
+    gap="control"
+    justify="between"
+  >
     <nav aria-label="Settings location" className="min-w-0">
       <Stack align="center" className="min-w-0 text-sm" direction="row" gap="inline" render="ol">
         <li>
@@ -40,7 +47,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
       <span className="hidden sm:inline">Find another setting</span>
       <span className="sm:hidden">Find</span>
     </Link>
-  </div>
+  </Stack>
 );
 
 export { SettingsContextNav };

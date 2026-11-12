@@ -150,7 +150,7 @@ const WizardShell = ({
 
     {/* Content column: the current step. Stacked above the static like the rail. */}
     <Stack className="relative z-10 min-w-0">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
+      <Stack className="mx-auto w-full max-w-2xl px-6 py-8 md:py-12" flexBasis="0%" flexGrow={1} gap="6">
         <Stack gap="1">
           <Text as="h1" strong textRole="display">
             {title}
@@ -185,7 +185,7 @@ const WizardShell = ({
             )}
           </Stack>
         </Stack>
-      </div>
+      </Stack>
     </Stack>
   </main>
 );

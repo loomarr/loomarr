@@ -126,7 +126,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           </>
         }
       />
-      <div className="max-w-reading mx-auto flex w-full flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack className="max-w-reading mx-auto w-full overflow-auto p-6" flexBasis="0%" flexGrow={1} gap="6">
         <Stack align="center" direction="row" gap="inline" wrap>
           <Badge shape="square" tone={status.tone}>
             {status.line}
@@ -306,7 +306,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             {retryTitle.error != null && <ErrorState error={retryTitle.error} />}
           </Section>
         )}
-      </div>
+      </Stack>
     </Stack>
   );
 };

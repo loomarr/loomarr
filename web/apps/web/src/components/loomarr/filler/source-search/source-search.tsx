@@ -205,7 +205,7 @@ const SourceSearch = ({
                     )}
                   </div>
 
-                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                  <Stack align="center" className="ml-auto" direction="row" flexShrink={0} gap="1">
                     {onPreview && (
                       <Action
                         accessibilityLabel={`Preview: ${clip.title || clip.id}`}
@@ -237,14 +237,14 @@ const SourceSearch = ({
                         Added · being checked
                       </Text>
                     ) : acquisition === "error" ? (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <Stack align="center" direction="row" flexShrink={0} gap="inline">
                         <Text as="span" textRole="compact" tone="danger">
                           Couldn’t add
                         </Text>
                         <Action disabled={queueing != null} onPress={() => onQueue(clip)} variant="ghost">
                           {queueing === clip.id ? "Queueing…" : "Try again"}
                         </Action>
-                      </div>
+                      </Stack>
                     ) : (
                       <Action
                         // The row's own link carries the title, so the button names what it acts on
@@ -257,7 +257,7 @@ const SourceSearch = ({
                         {queueing === clip.id ? "Queueing…" : "Queue download"}
                       </Action>
                     )}
-                  </div>
+                  </Stack>
                 </Stack>
               );
             })}

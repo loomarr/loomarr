@@ -36,9 +36,11 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
   if (!visible) return null;
 
   return (
-    <div
+    <Stack
+      align="center"
+      justify="center"
       className={cn(
-        "bg-background/70 fixed inset-0 z-50 flex items-center justify-center backdrop-blur-[2px]",
+        "bg-background/70 fixed inset-0 z-50 backdrop-blur-[2px]",
         // Transparent to pointer events ONLY once the app is usable again, so a stray
         // click during the confirmation moment cannot land on a control behind it.
         restarting || failed ? "cursor-progress" : "pointer-events-none",
@@ -76,7 +78,7 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
           </Text>
         </div>
       </Stack>
-    </div>
+    </Stack>
   );
 };
 
