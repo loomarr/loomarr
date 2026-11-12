@@ -89,8 +89,10 @@ test("a first-time admin can shape the suggested channel before creating it", as
   await expect(page.getByText("Parallax Garden", { exact: true })).toBeVisible();
 
   // Close means "come back later", not "throw this away". The durable Job and
-  // its local title delta restore together when the panel is reopened.
+  // its local title delta restore together when the panel is reopened. Close lands on Requests
+  // (the flow is its own route, #2887), so reopen it through the Guide's door as before.
   await page.getByRole("button", { name: "Close" }).click();
+  await page.goto("/guide");
   await page.getByRole("button", { name: "Add a channel" }).click();
   await expect(page.getByRole("heading", { name: "Review your channel" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Include The Velvet Cartographer" })).not.toBeChecked();

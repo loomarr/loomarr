@@ -32,6 +32,8 @@ const catalogDecision = (disposition: string, reason: string) => {
     over_ceiling: "Outside the audience limit",
     never: "Excluded by your preferences",
     validation_dropped: "Did not pass the final title checks",
+    rationale_rejects: "Considered, but its own reason ruled it out",
+    tone_mismatch: "Doesn't match the mood you asked for",
   };
   return reasons[reason] ?? "Not included in the suggestions";
 };

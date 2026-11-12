@@ -251,6 +251,8 @@ const iconography = {
 const playerChrome = {
   // Solid surfaces and one hairline: nothing is translucent, lit or blurred.
   surface: semanticThemes.dark.surface.canvas,
+  // The band, its film strip and preview cards, and what the keys open (§9.1, variant J).
+  band: semanticThemes.dark.surface.raised,
   surfaceRaised: semanticThemes.dark.surface.elevated,
   surfaceHover: semanticThemes.dark.surface.focus,
   hairline: "rgba(255, 255, 255, 0.16)",
@@ -320,6 +322,8 @@ const typography = {
     data: { size: 14, lineHeight: 21, weight: "400" },
     reading: { size: 16, lineHeight: 24, weight: "400" },
     channelNumber: { size: 28, lineHeight: 32, weight: "650" },
+    // The player band's channel block (§9.2, variant J): the number fills a 96px block.
+    bandNumber: { size: 48, lineHeight: 52, weight: "650" },
     code: { size: 36, lineHeight: 43, weight: "400" },
     // The compact card (#1659 web mock), a pointer-density design. At touch and TV each role
     // takes its nearest existing role's size (title → label, label → caption, meta and channel
@@ -353,6 +357,8 @@ const typography = {
     data: { size: 17, lineHeight: 25, weight: "400" },
     reading: { size: 17, lineHeight: 25, weight: "400" },
     channelNumber: { size: 30, lineHeight: 34, weight: "650" },
+    // A phone's 56px block: three digits step down to `guideNumber` to keep a margin.
+    bandNumber: { size: 30, lineHeight: 34, weight: "650" },
     code: { size: 40, lineHeight: 48, weight: "400" },
     cardTitle: { size: 15, lineHeight: 21, weight: "600" },
     cardLabel: { size: 14, lineHeight: 20, weight: "500" },
@@ -381,6 +387,7 @@ const typography = {
     data: { size: 24, lineHeight: 30, weight: "400" },
     reading: { size: 24, lineHeight: 36, weight: "400" },
     channelNumber: { size: 38, lineHeight: 43, weight: "650" },
+    bandNumber: { size: 48, lineHeight: 52, weight: "650" },
     code: { size: 52, lineHeight: 62, weight: "400" },
     cardTitle: { size: 18, lineHeight: 25, weight: "600" },
     cardLabel: { size: 17, lineHeight: 26, weight: "500" },

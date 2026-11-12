@@ -2,7 +2,7 @@ import { type Density, Icon, icons, playerChrome, Text, useFocusLook } from "@lo
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 
 // Playback details (§9.5): the one place technical terms are allowed. Mono values for what the player
 // really knows, one row each, and Copy details for a bug report. A row the player has no figure for
@@ -59,6 +59,7 @@ const CopyKey = ({ density, onPress }: { density: Density; onPress: () => void }
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={copied ? icons.success : icons.copy} size="compact" />
@@ -147,6 +148,7 @@ const PlayerDetailsPanel = ({ onClose, ...body }: PlayerDetailsProps & { onClose
               outlineWidth: 2,
               transition: "background-color 120ms ease",
             }),
+            ...nativeFocus(focused),
           }}
         >
           <Icon color={playerChrome.text} decorative glyph={icons.close} size="compact" />

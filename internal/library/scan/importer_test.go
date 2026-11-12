@@ -234,6 +234,38 @@ func TestImportWritesOnceAndSkipsUnchanged(t *testing.T) {
 // Library → Items lists the movie and the series a pass wrote, with the series counting its
 // episodes and a skipped trailer counting toward nothing; once headers are read nothing is getting
 // ready.
+// Each pass records whether a root held anything, so a share that comes unmounted (its mount point
+// left empty) shows on the folder's card, and one mounted again clears it.
+func TestImportRecordsAnEmptyRoot(t *testing.T) {
+	h := newHarness(t)
+	h.im.Disk = OSDisk{}
+	changed := 0
+	h.im.RootsChanged = func() { changed++ }
+	empty := func() bool {
+		all, err := h.st.LibraryRoots(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return StatusOf(all).Empty == 1
+	}
+
+	h.run()
+	if !empty() {
+		t.Fatal("a pass over an empty root did not record it as empty")
+	}
+	h.file("Movies/Golf (2013)/Golf (2013).mkv", 10)
+	h.run()
+	if empty() {
+		t.Fatal("a pass over a root with a film in it still records it as empty")
+	}
+	// The harness's root was recorded readable and not empty, so both passes changed it, and the
+	// folders' screen heard each; a pass that changes nothing says nothing.
+	h.run()
+	if changed != 2 {
+		t.Fatalf("RootsChanged heard %d changes, want 2 (emptied, filled)", changed)
+	}
+}
+
 func TestImportListsMoviesAndSeries(t *testing.T) {
 	h := newHarness(t)
 	h.file("Alpha Movie (2001) {tmdb-90000603}/Alpha Movie (2001).mkv", 10)
@@ -399,6 +431,87 @@ func TestImportSidecarChangeRewritesIdentityOnly(t *testing.T) {
 	}
 	if item.Sources[0].Origins[0].Observation.Coverage["streams"] != inventory.CoveragePresent {
 		t.Errorf("identity rewrite dropped header facts: %+v", item.Sources[0].Origins[0].Observation.Coverage)
+	}
+}
+
+// A folder reached through a symlink that sorts first is recorded under its real path (#3227): a
+// full walk, a folder pass naming the real folder, and another full walk leave one row per file,
+// never marked missing. A video link to a video inside the root is the target, not a second file.
+func TestImportSymlinkedFolderKeepsOnePath(t *testing.T) {
+	h := newHarness(t)
+	h.file("Z-Real/Zulu.mkv", 10)
+	h.file("Movie/Movie.mkv", 12)
+	if err := os.Symlink(filepath.Join(h.root, "Z-Real"), filepath.Join(h.root, "A-Link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(h.root, "Movie", "Movie.mkv"), filepath.Join(h.root, "Movie Link.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	check := func(step string) {
+		t.Helper()
+		rows, err := h.st.LibraryFiles(context.Background(), h.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, r := range rows {
+			if !r.MissingAt.IsZero() {
+				t.Errorf("%s: %s marked missing", step, r.Path)
+			}
+			paths = append(paths, r.Path)
+		}
+		slices.Sort(paths)
+		want := []string{filepath.Join(h.root, "Movie", "Movie.mkv"), filepath.Join(h.root, "Z-Real", "Zulu.mkv")}
+		if !slices.Equal(paths, want) {
+			t.Fatalf("%s: rows %v, want %v", step, paths, want)
+		}
+	}
+	h.run()
+	check("full walk")
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Join(h.root, "Z-Real")}); err != nil {
+		t.Fatal(err)
+	}
+	check("folder pass on the real folder")
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Join(h.root, "A-Link")}); err != nil {
+		t.Fatal(err)
+	}
+	check("folder pass on the link")
+	h.run()
+	check("second full walk")
+}
+
+// A show's own tvshow.nfo is part of each episode's identity (#3226): giving it a TMDB id grounds
+// the show on the next pass, a full walk or a folder pass over one season, with no episode file
+// touched and no header read again.
+func TestImportSeriesNFOChangeRewritesTheShow(t *testing.T) {
+	for _, pass := range []string{"full", "season folder"} {
+		t.Run(pass, func(t *testing.T) {
+			h := newHarness(t)
+			h.file("Example Show (2001)/Season 1/Example Show S01E01.mkv", 10)
+			h.run()
+			origin := seriesOrigin(h.root, "Example Show (2001)")
+			if ids := h.item(origin).ExternalIDs; len(ids) != 0 {
+				t.Fatalf("show ids before tvshow.nfo = %+v", ids)
+			}
+
+			doc := `<tvshow><title>Example Show</title><uniqueid type="tmdb" default="true">90000621</uniqueid></tvshow>`
+			if err := os.WriteFile(filepath.Join(h.root, "Example Show (2001)", "tvshow.nfo"), []byte(doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			h.reads.Store(0)
+			if pass == "full" {
+				h.run()
+			} else if err := h.im.RunFolders(context.Background(), h.root,
+				[]string{filepath.Join(h.root, "Example Show (2001)", "Season 1")}); err != nil {
+				t.Fatal(err)
+			}
+			if item := h.item(origin); !hasID(item.ExternalIDs, "tmdb", "90000621") {
+				t.Fatalf("show after tvshow.nfo = %+v", item)
+			}
+			if h.reads.Load() != 0 {
+				t.Errorf("a tvshow.nfo change read %d headers", h.reads.Load())
+			}
+		})
 	}
 }
 
@@ -986,6 +1099,50 @@ func TestHeaderWaitHoldsUpNoPass(t *testing.T) {
 		if r := h.fileRow(path); r.Header != librarystore.LibraryHeaderRead {
 			t.Errorf("%s header = %q after playback, want read", filepath.Base(path), r.Header)
 		}
+	}
+	if n := h.reads.Load(); n != 2 {
+		t.Errorf("header reads = %d, want 2", n)
+	}
+}
+
+// A pass made while the header stage waits finds the files the stage already holds still pending,
+// and queues them again. The stage takes none of them twice: step 2 counts each file once however
+// many passes run, rather than growing by the library's size with each (a 33k-file library read
+// 81k, and held every pass's queue until the stage's own ran out).
+func TestPassesDuringAStageDoNotCountItsFilesAgain(t *testing.T) {
+	h := newHarness(t)
+	var live atomic.Bool
+	live.Store(true)
+	h.im.Busy = live.Load
+	h.file("Bravo (2007)/Bravo.mkv", 10)
+	h.file("Charlie (2008)/Charlie.mkv", 10)
+	ctx := context.Background()
+	full := make(chan error, 1)
+	go func() { full <- h.im.Run(ctx) }()
+	for deadline := time.Now().Add(5 * time.Second); !h.paused(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the header stage never waited for playback")
+		}
+	}
+
+	for range 3 {
+		if err := h.im.Run(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := h.im.Tracker.Snapshot(time.Now()); got.Step != StepReading || got.Total != 2 {
+		t.Errorf("step %v total = %d after three passes, want reading 2", got.Step, got.Total)
+	}
+	h.im.mu.Lock()
+	held := len(h.im.handoff)
+	h.im.mu.Unlock()
+	if held != 0 {
+		t.Errorf("%d files waiting to be handed over that the stage already holds, want 0", held)
+	}
+
+	live.Store(false)
+	if err := <-full; err != nil {
+		t.Fatal(err)
 	}
 	if n := h.reads.Load(); n != 2 {
 		t.Errorf("header reads = %d, want 2", n)

@@ -237,7 +237,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	measurer := playoutRes.NewMeasurer(
 		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.SetMeasurer(measurer, st)
-	go measurer.Run(rootCtx)
+	owner.goRun(measurer.Run)
 	playoutResolverSvc = playoutRes
 
 	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every

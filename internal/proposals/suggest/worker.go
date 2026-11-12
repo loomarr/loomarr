@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -289,9 +290,22 @@ func (s *Service) drainOnce(ctx context.Context, sem chan struct{}) {
 		}
 		go func() {
 			defer func() { <-sem }()
+			defer s.recoverWorkflow(ctx, work)
 			s.runWorkflow(ctx, work)
 		}()
 	}
+}
+
+// recoverWorkflow turns a panic in one Job into that Job's failure. Without it a single bad
+// suggestion takes the whole server down, and the claim loop then re-runs the same Job on restart.
+func (s *Service) recoverWorkflow(ctx context.Context, work workflow.Work) {
+	recovered := recover()
+	if recovered == nil {
+		return
+	}
+	s.log.Error("suggestion job panicked", "job", work.JobID, "attempt", work.Attempt,
+		"panic", recovered, "stack", string(debug.Stack()))
+	s.failWorkflow(ctx, work, fmt.Errorf("suggestion panicked: %v", recovered), 0, false)
 }
 
 func (s *Service) runWorkflow(ctx context.Context, work workflow.Work) {
