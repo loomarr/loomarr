@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -219,6 +220,7 @@ type libraryScanStatus struct {
 		Titles     []string `json:"titles"`
 		TitleCount int      `json:"titleCount"`
 	} `json:"held"`
+	Unreadable []string `json:"unreadable"`
 }
 
 func scanStatus(t *testing.T, resp *http.Response, want int) libraryScanStatus {
@@ -257,7 +259,8 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
-	if !st.Scan.Enabled || st.Scan.Step != "idle" || st.Scan.LastScanAt == nil || st.Files != 5 || len(st.Held) != 0 {
+	if !st.Scan.Enabled || st.Scan.Step != "idle" || st.Scan.LastScanAt == nil || st.Files != 5 || len(st.Held) != 0 ||
+		st.Unreadable == nil || len(st.Unreadable) != 0 {
 		t.Fatalf("after first scan %+v", st)
 	}
 
@@ -266,12 +269,19 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.WriteFile(filepath.Join(movies, "Foxtrot \xe9.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := lib.Scanner.Importer.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
 	st = scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
 	if len(st.Held) != 1 || st.Held[0].Path != movies || st.Held[0].Movies != 2 || st.Held[0].Episodes != 0 {
 		t.Fatalf("held %+v", st.Held)
+	}
+	// A name that is not UTF-8 is listed for renaming, as near its name as text allows.
+	if want := []string{filepath.Join(movies, "Foxtrot �.mkv")}; !slices.Equal(st.Unreadable, want) {
+		t.Fatalf("unreadable = %q, want %q", st.Unreadable, want)
 	}
 	// The maintainer sees which titles they would let go.
 	if got := st.Held[0]; strings.Join(got.Titles, ",") != "Alpha,Bravo" || got.TitleCount != 2 {

@@ -32,6 +32,7 @@ const SettingsLibrary = () => {
         folders={body.roots}
         health={health}
         held={current.held}
+        unreadable={current.unreadable}
         hooks={current.hooks}
         details={current.details}
         scan={current.scan}

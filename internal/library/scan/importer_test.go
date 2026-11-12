@@ -617,6 +617,36 @@ func TestImportArrIdentityThroughPathMap(t *testing.T) {
 	}
 }
 
+// A file whose name is not UTF-8 can't be kept, but it is not lost in silence: the pass lists it,
+// as near its name as text allows, for the maintainer to rename. A pass over another folder keeps
+// it listed; one over its own folder, once it is renamed, drops it.
+func TestANameThatIsNotUTF8IsListed(t *testing.T) {
+	h := newHarness(t)
+	h.file("Movies/Kettle Bay (2001).mkv", 5)
+	bad := h.file("Movies/Ferrow Lane (1999)/Ferrow \xe9t\xe9 (1999).mkv", 5)
+	h.file("Other/Ashgrove (2015).mkv", 5)
+	h.run()
+	want := "Movies/Ferrow Lane (1999)/Ferrow �t� (1999).mkv"
+	if r := h.im.Progress().Roots; len(r) != 1 || !slices.Equal(r[0].Unreadable, []string{want}) {
+		t.Fatalf("roots = %+v, want the name listed", r)
+	}
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Join(h.root, "Other")}); err != nil {
+		t.Fatal(err)
+	}
+	if r := h.im.Progress().Roots; !slices.Equal(r[0].Unreadable, []string{want}) {
+		t.Fatalf("after a pass over another folder = %+v, want the name still listed", r[0].Unreadable)
+	}
+	if err := os.Rename(bad, filepath.Join(filepath.Dir(bad), "Ferrow Lane (1999).mkv")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.im.RunFolders(context.Background(), h.root, []string{filepath.Dir(bad)}); err != nil {
+		t.Fatal(err)
+	}
+	if r := h.im.Progress().Roots; len(r[0].Unreadable) != 0 {
+		t.Fatalf("after renaming = %+v, want none listed", r[0].Unreadable)
+	}
+}
+
 // A file that comes back as it went, its size and time unchanged (a drive plugged back in after
 // its titles were let go), is present again at once and not opened again: its header is the one
 // read before. One that comes back changed is read again.

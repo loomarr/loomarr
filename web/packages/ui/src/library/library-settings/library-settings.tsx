@@ -17,7 +17,16 @@ import { useUiForm } from "../../form-kit";
 import { ModalOverlay } from "../../overlay";
 import { useCommittedDraft } from "../../use-committed-draft";
 import { LibraryPoster, Twirl } from "../library-poster";
-import { detailsWaiting, folderName, heldNames, heldTitle, joinNames, scanHeadline } from "../library-words";
+import {
+  detailsWaiting,
+  folderName,
+  heldNames,
+  heldTitle,
+  joinNames,
+  scanHeadline,
+  unreadableNames,
+  unreadableTitle,
+} from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
@@ -320,6 +329,7 @@ const LibraryStatus = ({
   scan,
   readySoFar,
   held,
+  unreadable = [],
   hooks,
   details,
   checking,
@@ -334,6 +344,7 @@ const LibraryStatus = ({
   | "scan"
   | "readySoFar"
   | "held"
+  | "unreadable"
   | "hooks"
   | "details"
   | "checking"
@@ -347,7 +358,7 @@ const LibraryStatus = ({
   // What needs the maintainer leads. An import still running for the other folders keeps its bar,
   // step, file and time left below it; "All caught up" is never said beside something that isn't.
   // An empty folder is said on its own card; here it only keeps "All caught up" from being said.
-  const alerted = (health !== "ok" && health !== "folder_empty") || held.length > 0;
+  const alerted = (health !== "ok" && health !== "folder_empty") || held.length > 0 || unreadable.length > 0;
   const importing = health !== "needs_folders" && scan.step !== "idle";
   // Titles stuck waiting for details are said under Keeping up to date, and keep "All caught up"
   // from being said too.
@@ -381,6 +392,18 @@ const LibraryStatus = ({
             .join(" ")}
         </Callout>
       ))}
+      {unreadable.length > 0 ? (
+        <Callout
+          actions={
+            <Action onPress={onRescan} tone="primary">
+              Check again
+            </Action>
+          }
+          title={unreadableTitle(unreadable)}
+        >
+          {unreadableNames(unreadable)}
+        </Callout>
+      ) : null}
       {health === "folder_offline"
         ? offline.map((folder) => (
             <Callout
@@ -646,6 +669,7 @@ const LibrarySettings = ({
   scan,
   readySoFar,
   held,
+  unreadable,
   hooks,
   details,
   checking,
@@ -666,6 +690,7 @@ const LibrarySettings = ({
         health={health}
         details={details}
         held={held}
+        unreadable={unreadable}
         hooks={hooks}
         onCheckAgain={onCheckAgain}
         onConfirmRemoval={onConfirmRemoval}

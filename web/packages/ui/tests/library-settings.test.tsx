@@ -414,6 +414,27 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  it("asks for files whose names it can't read to be renamed", () => {
+    const { host, props, button, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      unreadable: [
+        "/media/movies/Ferrow �t� (1999).mkv",
+        "/media/tv/Kettle Bay/Kettle� 01.mkv",
+        "/media/tv/a�.mkv",
+        "/media/tv/b�.mkv",
+      ],
+    });
+    expect(host.textContent).toContain("4 files have names Loomarr can't read");
+    expect(host.textContent).toContain(
+      "Rename Ferrow �t� (1999).mkv, Kettle� 01.mkv, a�.mkv and 1 more using ordinary letters, then check again.",
+    );
+    expect(host.textContent).not.toContain("All caught up");
+    act(() => button("Check again").click());
+    expect(props.onRescan).toHaveBeenCalled();
+    cleanup();
+  });
+
   it("says what the folder watch and an arr are waiting for", () => {
     const { host, cleanup } = render({
       health: "folder_offline",

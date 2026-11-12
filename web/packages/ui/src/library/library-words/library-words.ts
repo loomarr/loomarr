@@ -42,6 +42,18 @@ const heldNames = (held: LibraryHeldRemoval) => {
   return `That's ${joinNames(names)}.`;
 };
 
+// "2 files have names Loomarr can't read".
+const unreadableTitle = (paths: readonly string[]) =>
+  `${count(paths.length, "file has a name", "files have names")} Loomarr can't read`;
+
+// "Rename Ferrow �t� (1999).mkv and Kettle�.mkv using ordinary letters, then check again." Each
+// file by its own name: the folder it sits in is plain.
+const unreadableNames = (paths: readonly string[]) => {
+  const names = paths.slice(0, 3).map((p) => p.split("/").pop() ?? p);
+  const rest = paths.length - names.length;
+  return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check again.`;
+};
+
 // The three steps of adding media, as the maintainer reads them.
 const STEP_NAMES: Record<Exclude<LibraryScan["step"], "idle">, string> = {
   walking: "Looking through your folders",
@@ -149,4 +161,13 @@ const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan) 
   return { title, line: `${title} — ${retry}`, reason };
 };
 
-export { detailsWaiting, folderName, heldNames, heldTitle, joinNames, scanHeadline };
+export {
+  detailsWaiting,
+  folderName,
+  heldNames,
+  heldTitle,
+  joinNames,
+  scanHeadline,
+  unreadableNames,
+  unreadableTitle,
+};

@@ -180,6 +180,9 @@ type RootResult struct {
 	Empty bool
 	// Held is how many files the walk no longer found while they wait for confirmation.
 	Held int
+	// Unreadable are the files the walk could not keep because their names are not UTF-8, relative
+	// to the root, each as near its name as text allows: for the maintainer to rename.
+	Unreadable []string
 }
 
 // Progress is how the scanner's last passes ended, for the status endpoint. How far a running
@@ -356,6 +359,12 @@ func (im *Importer) importFolders(ctx context.Context, root string, dirs []strin
 	im.setProgress(func(p *Progress) {
 		for i := range p.Roots {
 			if p.Roots[i].Root == root {
+				// The names it could not read outside the folders it walked still stand.
+				for _, rel := range p.Roots[i].Unreadable {
+					if !under(filepath.Join(root, filepath.FromSlash(rel)), dirs) {
+						result.Unreadable = append(result.Unreadable, rel)
+					}
+				}
 				p.Roots[i] = result
 			}
 		}
@@ -621,6 +630,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	}
 	for _, path := range walk.Skipped {
 		im.log().Warn("library scan: a name is not UTF-8 and was skipped", "path", path)
+		result.Unreadable = append(result.Unreadable, strings.ToValidUTF8(relTo(root, path), "�"))
 	}
 	rows, err := im.Store.LibraryFiles(ctx, root)
 	if err != nil {

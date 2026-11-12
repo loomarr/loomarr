@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -368,6 +369,7 @@ type libraryStatusOutput struct {
 		Problems       int               `json:"problems" doc:"Files Loomarr skips, such as disc images"`
 		NeedsYou       int               `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
 		Held           []libraryHeldDTO  `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Unreadable     []string          `json:"unreadable" doc:"Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"`
 		Hooks          []libraryHookDTO  `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
 		Details        libraryDetailsDTO `json:"details" doc:"How the titles' details are getting on"`
 	}
@@ -415,6 +417,12 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	b.Hooks = s.libraryHooksView()
 
 	p := svc.Progress()
+	b.Unreadable = []string{}
+	for _, r := range p.Roots {
+		for _, rel := range r.Unreadable {
+			b.Unreadable = append(b.Unreadable, path.Join(r.Root, rel))
+		}
+	}
 	b.Scan = libraryScanDTO{
 		Enabled: svc.Enabled(), ScanProgress: ScanProgressOf(svc.Importing()), ArrIncomplete: p.ArrIncomplete,
 	}

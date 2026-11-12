@@ -7564,6 +7564,11 @@ components:
           description: Readable folders found but not yet in use
           format: int64
           type: integer
+        unreadable:
+          description: "Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"
+          items:
+            type: string
+          type: array
       required:
         - health
         - inUse
@@ -7576,6 +7581,7 @@ components:
         - problems
         - needsYou
         - held
+        - unreadable
         - hooks
         - details
       type: object
