@@ -170,6 +170,30 @@ func TestSeerrQueueStatus(t *testing.T) {
 	}
 }
 
+// Seerr pages /media. A household with more titles in flight than one page holds must still see
+// the ones past it as downloading, not as merely requested.
+func TestSeerrQueueStatus_ReadsEveryPage(t *testing.T) {
+	ms := testkit.NewSeerr(t)
+	t.Cleanup(ms.Close)
+	for i := range 450 {
+		ms.Processing = append(ms.Processing, testkit.SeerrMedia{TMDBID: 90200000 + i, MediaType: "movie", Status: 3})
+	}
+	r := NewSeerr(ms.URL, "k")
+
+	items, err := r.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Movie, TMDBID: 90200000},
+		{MediaType: provision.Movie, TMDBID: 90200449},
+	})
+	if err != nil {
+		t.Fatalf("QueueStatus: %v", err)
+	}
+	for _, it := range items {
+		if !it.Grabbed || it.Status != "Downloading" {
+			t.Errorf("%s = %+v, want grabbed Downloading", it.Key, it)
+		}
+	}
+}
+
 // TMDB numbers movies and TV separately, so a movie and a series can share an id. Only the
 // title of the kind Seerr reports as processing is grabbed.
 func TestSeerrQueueStatus_MovieAndSeriesSharingATMDBID(t *testing.T) {

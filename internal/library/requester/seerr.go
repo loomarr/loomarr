@@ -153,13 +153,64 @@ func seerrMediaType(t provision.Title) string {
 }
 
 type seerrMediaPage struct {
+	PageInfo struct {
+		Results int `json:"results"`
+	} `json:"pageInfo"`
 	Results []seerrMediaItem `json:"results"`
 }
 
+// seerrMediaPageSize is how many records one /media page asks for, and seerrMediaMaxPages caps the
+// walk, so a server that ignores `skip` and answers every page with the first cannot loop forever.
+// 50 pages of 200 is 10,000 titles in flight, far past any household.
+const (
+	seerrMediaPageSize = 200
+	seerrMediaMaxPages = 50
+)
+
+// processingMedia reads every page of GET /api/v1/media?filter=processing: Seerr pages it, and a
+// title past the first page is as much in flight as one on it.
+func (s *Seerr) processingMedia(ctx context.Context) ([]seerrMediaItem, error) {
+	var all []seerrMediaItem
+	for page := range seerrMediaMaxPages {
+		url := fmt.Sprintf("%s/api/v1/media?filter=processing&take=%d&skip=%d",
+			s.baseURL(), seerrMediaPageSize, page*seerrMediaPageSize)
+		got, err := s.mediaPage(ctx, url)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, got.Results...)
+		if len(got.Results) < seerrMediaPageSize || len(all) >= got.PageInfo.Results {
+			break
+		}
+	}
+	return all, nil
+}
+
+func (s *Seerr) mediaPage(ctx context.Context, url string) (seerrMediaPage, error) {
+	var page seerrMediaPage
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return page, err
+	}
+	req.Header.Set("X-Api-Key", s.apiKey())
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return page, fmt.Errorf("seerr media: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := httpx.CheckStatus(resp); err != nil {
+		return page, fmt.Errorf("seerr media: %w", err)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		return page, fmt.Errorf("seerr media: decode: %w", err)
+	}
+	return page, nil
+}
+
 // QueueStatus implements provisionbackstop.QueueStatuser for the Seerr provider (§18.1). Unlike the arr
-// (one /queue fetch + one lookup per title), Seerr answers the whole in-flight set in ONE call:
-// GET /api/v1/media?filter=processing returns every media item Seerr considers in progress. We
-// index those by TMDB id and, for each requested title, map the enum to a coarse QueueItem.
+// (one /queue fetch + one lookup per title), Seerr answers the whole in-flight set in one paged
+// read: GET /api/v1/media?filter=processing lists every media item Seerr considers in progress. We
+// index those by kind + TMDB id and, for each requested title, map the enum to a coarse QueueItem.
 //
 // Because Seerr surfaces no byte percentage (see seerrMediaItem), Progress stays 0 for a
 // downloading title and the meaning rides the Status LABEL ("Downloading" / "Partly available") —
@@ -167,27 +218,14 @@ type seerrMediaPage struct {
 // misleading "0% of a known download". A title not in the processing set is returned Grabbed=false
 // (still merely `requested`, or already available — the library scan owns that transition).
 func (s *Seerr) QueueStatus(ctx context.Context, titles []provision.Title) ([]QueueItem, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL()+"/api/v1/media?filter=processing&take=200", nil)
+	processing, err := s.processingMedia(ctx)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Api-Key", s.apiKey())
-	resp, err := s.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("seerr media: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if err := httpx.CheckStatus(resp); err != nil {
-		return nil, fmt.Errorf("seerr media: %w", err)
-	}
-	var page seerrMediaPage
-	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-		return nil, fmt.Errorf("seerr media: decode: %w", err)
-	}
 
 	// Index the processing set by media kind + TMDB id → status.
-	byTMDB := make(map[seerrMediaKey]int, len(page.Results))
-	for _, m := range page.Results {
+	byTMDB := make(map[seerrMediaKey]int, len(processing))
+	for _, m := range processing {
 		if m.TMDBID != 0 {
 			byTMDB[seerrMediaKey{m.MediaType, m.TMDBID}] = m.Status
 		}
