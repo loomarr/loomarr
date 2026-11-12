@@ -366,6 +366,75 @@ var namingMatrix = []namingRow{
 		"Movies/Lantern (2010)/theme.mp4":                              "skip",
 		"Movies/Marrow (2011).xvid":                                    "movie Marrow 2011",
 	}},
+	// An extras folder is a title's only in the title's own folder: under a genre or age folder it
+	// is a folder of titles.
+	{id: "W17", files: map[string]string{
+		"Movies/Kids/Shorts/Lantern Keeper (2010)/Lantern Keeper (2010).mkv": "movie Lantern Keeper 2010",
+		"Movies/Kids/Other/Ferrow Lane (2019).mkv":                           "movie Ferrow Lane 2019",
+		"Movies/Comedy/Clips/Kettle Comic (2018).mkv":                        "movie Kettle Comic 2018",
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv":                         "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/Extras/Ashgrove Reel.mkv":                    "skip",
+	}},
+	{id: "W18", files: map[string]string{
+		"TV/Cartoons/Shorts/Kettle Bay/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Marrow Point/Season 1/Marrow Point S01E01.mkv":             "episode Marrow Point S1E1",
+		"TV/Marrow Point/Extras/Marrow Point Reel.mkv":                 "skip",
+	}},
+	// A folder whose episodes name several shows, none its own, is a dump of them.
+	{id: "W19", files: map[string]string{
+		"Torrents/Kettle Bay S01E01.mkv":  "episode Kettle Bay S1E1",
+		"Torrents/Ferrow Lane S02E03.mkv": "episode Ferrow Lane S2E3",
+		"Pile/Kettle Bay S01E02.mkv":      "episode Kettle Bay S1E2",
+		"Pile/Ferrow Lane S02E04.mkv":     "episode Ferrow Lane S2E4",
+	}},
+	{id: "W20", files: map[string]string{
+		"TV/Kettle Bay (US)/Kettle.Bay.US.S01E01.mkv": "episode Kettle Bay US S1E1",
+		"TV/Kettle Bay (US)/KB S01E02.mkv":            "episode Kettle Bay US S1E2",
+	}},
+	// Extras a household named in words, beside the film.
+	{id: "W21", files: map[string]string{
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019).mkv":             "movie Ferrow Lane 2019",
+		"Movies/Ferrow Lane (2019)/Gag Reel.mkv":                       "skip",
+		"Movies/Ferrow Lane (2019)/Making Of.mkv":                      "skip",
+		"Movies/Ferrow Lane (2019)/Trailer 2.mkv":                      "skip",
+		"Movies/Ferrow Lane (2019)/Featurette - Costumes.mkv":          "skip",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) - Teaser.mkv":    "skip",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019)-Trailer 2.mkv":   "skip",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) - Making Of.mkv": "skip",
+		"Movies/Ferrow.Lane.Uncut.2019.mkv":                            "movie Ferrow Lane 2019",
+		"Movies/Ashgrove-(2015).mkv":                                   "movie Ashgrove 2015",
+		"Movies/Plex Versions/Optimized for TV/Ashgrove (2015).mp4":    "skip",
+	}},
+	{id: "W22", files: map[string]string{
+		"TV/Kettle Bay/Season 2/Kettle Bay - S02E05 - Behind the Scenes.mkv": "episode Kettle Bay S2E5",
+	}},
+	// Episodes with no season folder or full mark, and seasons as other folders name them.
+	{id: "W23", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle Bay E02.mkv": "episode Kettle Bay S1E2",
+	}},
+	{id: "W24", files: map[string]string{"TV/Evening Ledger/Evening Ledger E1523.mkv": "episode Evening Ledger S1E1523"}},
+	{id: "W25", files: map[string]string{"TV/Kettle Bay/Season Specials/Kettle Bay S00E02.mkv": "episode Kettle Bay S0E2"}},
+	{id: "W26", files: map[string]string{"TV/Kettle Bay/Special/Kettle Bay S00E01.mkv": "episode Kettle Bay S0E1"}},
+	{id: "W27", files: map[string]string{"TV/Kettle Bay/Seasons 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "W28", files: map[string]string{"TV/Kettle Bay/1st Season/Kettle Bay 06.mkv": "episode Kettle Bay S1E6"}},
+	{id: "W29", files: map[string]string{"TV/Kettle Bay/2019/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "W30", files: map[string]string{"TV/Das Kettle Haus/Staffel 1/Folge 1.mkv": "episode Das Kettle Haus S1E1"}},
+	{id: "W31", files: map[string]string{"TV/Kettle Huset/Säsong 1/Avsnitt 2.mkv": "episode Kettle Huset S1E2"}},
+	// A daily show's year folders, and its days written America's way.
+	{id: "W32", files: map[string]string{
+		"TV/Evening Ledger/2024/Evening Ledger 2024-03-14.mkv": "episode Evening Ledger 2024-03-14",
+		"TV/Evening Ledger/2023/Evening Ledger 2023-11-02.mkv": "episode Evening Ledger 2023-11-02",
+		"TV/Evening Ledger/Evening Ledger 03-15-2024.mkv":      "episode Evening Ledger 2024-03-15",
+	}},
+	// A fansub show's name that ends in its season.
+	{id: "W33", files: map[string]string{
+		"[Kumo] Sora no Kettle S2 - 03 [1080p].mkv":        "episode Sora no Kettle S2E3",
+		"[Kumo] Ferrow Gakuen 2nd Season - 05 [1080p].mkv": "episode Ferrow Gakuen S2E5",
+		"[Kumo] Ferrow Gakuen - PV1 [1080p].mkv":           "skip",
+	}},
+	// A catch-all's "Part 2 of 3" is a film's, not an episode of a show named "Movies".
+	{id: "W34", files: map[string]string{"Movies/Ferrow Lane Part 2 of 3 (2010).mkv": "movie Ferrow Lane Part 2 of 3 2010"}},
 	// Episode marks as other apps and languages write them, and one file of several.
 	{id: "W15", files: map[string]string{
 		"TV/Kettle Bay/Kettle Bay 1x2.avi":               "episode Kettle Bay S1E2",

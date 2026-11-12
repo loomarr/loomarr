@@ -417,7 +417,7 @@ var (
 	noteWord = regexp.MustCompile(`(?i)^(directors?|director's|cut|uncut|extended|unrated|theatrical|special|edition|version|remaster|remastered|restored|dual|audio|multi|subs?|subbed|dubbed|eng|english|hd|sd|fhd|imax|criterion|anniversary|\d+(?:st|nd|rd|th))$`)
 	// releaseToken is a word a release name carries after the title: the quality, source, codec,
 	// language or edition. The title ends before the first.
-	releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited|cam|camrip|hdcam|hdrip|hdts|telesync|dvdscr|screener|multi|vostfr|vost|subbed|dubbed|hd|fhd)$`)
+	releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|uncut|remastered|imax|internal|limited|cam|camrip|hdcam|hdrip|hdts|telesync|dvdscr|screener|multi|vostfr|vost|subbed|dubbed|hd|fhd)$`)
 )
 
 // releaseNote says whether a bracketed group's words are a note on the release ("Dual Audio",
@@ -490,7 +490,9 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
 	}
 	// A name joined only with dashes, "ferrow-lane-2019", is spaced where a year shows it is words.
-	if !strings.Contains(name, " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], releaseYear) {
+	if !strings.Contains(name, " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], func(w string) bool {
+		return releaseYear(strings.Trim(w, "()[]"))
+	}) {
 		name = strings.ReplaceAll(name, "-", " ")
 	}
 	var words []string

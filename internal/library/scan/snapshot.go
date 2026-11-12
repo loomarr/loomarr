@@ -131,7 +131,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    alone makes no show; a year after a dot, a dash or the release words is the year; release
 //	    notes, a collection's place and a tracker's name are not the title; "1x2", "S01Ep02",
 //	    "T01E02" and "Staffel 1 Folge 2" are marks.
-const writeVersion = 39
+//	40: an extras folder outside a title's own folder is a folder of titles; a folder whose
+//	    episodes name several shows, none its own, names none; extras named in words beside a film
+//	    are skipped; "Show E01" in the show's folder, a year's folder in a show's, "Season
+//	    Specials", "1st Season", "Folge 1" and a fansub's "Show S2 - 03" place their episodes.
+const writeVersion = 40
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

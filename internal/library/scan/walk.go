@@ -41,7 +41,7 @@ var videoExtensions = map[string]bool{
 var skippedDirs = map[string]bool{
 	"trickplay": true, "extrafanart": true, ".actors": true,
 	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "incomplete": true,
-	"#snapshot": true, "system volume information": true,
+	"#snapshot": true, "system volume information": true, "plex versions": true,
 }
 
 // skippedPrefixes begin the names of folders skippedDirs skips by their prefix.
@@ -50,9 +50,9 @@ var skippedPrefixes = []string{".", "@", "_unpack_", "_failed_"}
 // discDirs are disc structures, which are not imported but listed as problems.
 var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 
-// extrasDirs are the Kodi/Jellyfin folders that hold a title's extras and theme videos. Below the top
-// of a root they are skipped: only movies and episodes become titles (0047). At the top they are
-// titles' own folders, such as a show named "Shorts".
+// extrasDirs are the Kodi/Jellyfin folders that hold a title's extras and theme videos. In a title's
+// own folder they are skipped: only movies and episodes become titles (0047). Elsewhere they are
+// folders of titles: a show named "Shorts" at the top, "Movies/Kids/Shorts" or "TV/Cartoons/Clips".
 var extrasDirs = map[string]bool{
 	"extras": true, "featurettes": true, "behind the scenes": true, "deleted scenes": true,
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
@@ -61,15 +61,38 @@ var extrasDirs = map[string]bool{
 }
 
 // skippedDir reports whether a walk passes over a folder named name in parent (relative to the
-// root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or
-// (below the top of the root) an extras folder, which a season folder's "Specials" is (Emby's). An
-// extras folder in a catch-all ("Movies/Shorts") is a collection of titles, not a title's extras. A
-// disc structure is not walked either, but is listed as a problem.
-func skippedDir(parent, name string) bool {
+// root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or an
+// extras folder in a title's own folder (titled, as holdsTitle says), which a season folder's
+// "Specials" is (Emby's). An extras folder in a catch-all ("Movies/Shorts") or a folder of folders
+// ("Movies/Kids/Shorts") is a collection of titles, not a title's extras. A disc structure is not
+// walked either, but is listed as a problem.
+func skippedDir(parent, name string, titled bool) bool {
 	lower := strings.ToLower(name)
 	return skippedDirs[lower] || slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) }) ||
-		(parent != "." && extrasDirs[lower] && !catchAllFolder(path.Base(parent))) ||
+		(parent != "." && extrasDirs[lower] && titled && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
+}
+
+// holdsTitle says whether a folder, rel to the root with its entries, is a title's own: a season
+// folder, one named as a title is with its year ("Ashgrove (2015)"), or one holding a video, a
+// disc or a season folder. An extras folder in it is that title's extras.
+func holdsTitle(rel string, entries []fs.DirEntry) bool {
+	if rel == "." {
+		return false
+	}
+	if title, year, _ := searchQuery(path.Base(rel), 0); isSeasonFolder(rel) || title != "" && year != 0 {
+		return true
+	}
+	for _, e := range entries {
+		lower := strings.ToLower(e.Name())
+		switch {
+		case e.IsDir() && (discDirs[lower] || isSeasonFolder(path.Join(rel, e.Name()))):
+			return true
+		case !e.IsDir() && (videoExtensions[filepath.Ext(lower)] && !extraName(lower) || filepath.Ext(lower) == ".iso"):
+			return true
+		}
+	}
+	return false
 }
 
 // relTo is path relative to root with forward slashes, "." for the root itself.
@@ -196,7 +219,12 @@ func (w *walker) within(dir string) bool {
 		if _, err := os.Stat(filepath.Join(at, ".ignore")); err == nil {
 			return true
 		}
-		if skippedDir(parent, seg) || discDirs[strings.ToLower(seg)] {
+		titled := false
+		if extrasDirs[strings.ToLower(seg)] {
+			entries, _ := os.ReadDir(at)
+			titled = holdsTitle(parent, entries)
+		}
+		if skippedDir(parent, seg, titled) || discDirs[strings.ToLower(seg)] {
 			return true
 		}
 		at, parent = filepath.Join(at, seg), path.Join(parent, seg)
@@ -329,6 +357,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 	}
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
+	notes.Dump = dir != w.root && dumpFolder(filepath.Base(dir), videoNames)
 	// A folder holding one video, named by a part mark alone, may be one part of a movie whose
 	// parts each have a folder: the movie's folder is the set.
 	folderPart := 0
@@ -354,6 +383,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		w.report.counted(units)
 	}
 	first, inTop := w.firstUnit[dir]
+	titled := holdsTitle(w.rel(dir), entries)
 	for i, e := range entries {
 		// The units before this one are listed.
 		switch {
@@ -389,7 +419,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 		switch {
-		case isDir && skippedDir(w.rel(dir), e.Name()):
+		case isDir && skippedDir(w.rel(dir), e.Name(), titled):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
 		case isDir:
@@ -713,8 +743,12 @@ func extraName(lowerName string) bool {
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
 		return true
 	}
+	whole := strings.TrimSuffix(lowerName, filepath.Ext(lowerName))
+	if !episodeMark.MatchString(lowerName) && (plainExtra.MatchString(whole) || dashedExtra.MatchString(whole)) {
+		return true
+	}
 	// An episode's own title can end in a word the extras' marks are made of ("S01E04 - Each-Other",
-	// "Behind-the-Scene", "Cut-Short"): those three don't mark a file with an episode's mark.
+	// "Behind-the-Scene", "Cut-Short"): those don't mark a file with an episode's mark.
 	episode := episodeMark.MatchString(lowerName)
 	for _, suffix := range extrasSuffixes {
 		if strings.HasSuffix(base, suffix) && (!episode || !titleWordSuffixes[suffix]) {
@@ -724,13 +758,23 @@ func extraName(lowerName string) bool {
 	return false
 }
 
-// titleWordSuffixes are the extras' marks that are also everyday words a hyphenated title ends in.
-var titleWordSuffixes = map[string]bool{"-other": true, "-scene": true, "-short": true}
+// titleWordSuffixes are the extras' marks that are also everyday words a hyphenated title ends in,
+// or an episode's own title after its mark ("S02E05 - Behind the Scenes").
+var titleWordSuffixes = map[string]bool{
+	"-other": true, "-scene": true, "-short": true, "- behind the scenes": true, "- interview": true,
+	"- featurette": true, "- deleted scene": true, "- deleted scenes": true,
+}
 
 var (
 	// creditless matches an anime's creditless opening or ending, "NCOP1", "NCED2v2": an extra.
 	creditless = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])nc(?:op|ed)\d*(?:v\d+)?(?:[^a-z0-9]|$)`)
 	// animeOpening matches a release's opening or ending in its episode's place, " - OP", " - ED2":
 	// an extra, when a release group's tag says the name is a release's.
-	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:op|ed)\d*(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
+	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:op|ed|pv|cm|menu|preview)\d*(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
+	// plainExtra matches an extra a household named in words, alone or before a dash: "Gag Reel",
+	// "Making Of", "Trailer 2", "Featurette - Costumes", "Creditless Opening".
+	plainExtra = regexp.MustCompile(`(?i)^(?:gag reel|making of|commentary|behind the scenes|bloopers|outtakes|teaser|trailer|featurette|deleted scenes?|interview|creditless (?:opening|ending))(?:[ ._]*\d*)(?:[ ._]+-[ ._]+.*)?$`)
+	// dashedExtra matches an extra named after its film: "Ashgrove (2015) - Teaser", "Ashgrove (2015)
+	// - Making Of", "Ashgrove (2015)-Trailer 2".
+	dashedExtra = regexp.MustCompile(`(?i)[ ._]*-[ ._]*(?:teaser|making of|gag reel|bloopers|outtakes|commentary|trailer)(?:[ ._]*\d*)$`)
 )
