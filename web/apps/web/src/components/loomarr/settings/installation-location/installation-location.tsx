@@ -1,5 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
 import { cn } from "@/lib/utils";
 import type { InstallationLocationProps } from "./installation-location.type";
@@ -37,11 +37,10 @@ const InstallationLocation = ({
   const radiusResult = results?.find((result) => result.key === RADIUS_KEY && result.status !== "saved");
 
   return (
-    <section
-      className={cn(
-        "flex flex-col gap-4",
-        card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
-      )}
+    <Stack
+      className={cn(card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6")}
+      gap="4"
+      render="section"
     >
       {showHeading && (
         <div>
@@ -84,7 +83,7 @@ const InstallationLocation = ({
           lockedLabel="set via environment"
         />
       )}
-    </section>
+    </Stack>
   );
 };
 

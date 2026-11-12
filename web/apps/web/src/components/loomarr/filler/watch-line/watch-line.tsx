@@ -1,4 +1,4 @@
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
@@ -31,7 +31,7 @@ const SR: Record<WatchHealth, string> = {
 };
 
 const WatchLine = ({ status, health, className }: WatchLineProps) => (
-  <p className={cn("mt-2 flex min-w-0 items-center gap-2", className)}>
+  <Stack align="center" className={cn("mt-2", className)} direction="row" gap="inline" render="p">
     <span
       className={cn(
         "size-1.75 shrink-0 rounded-full",
@@ -47,7 +47,7 @@ const WatchLine = ({ status, health, className }: WatchLineProps) => (
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}
     <span className="sr-only">{SR[health]}</span>
-  </p>
+  </Stack>
 );
 
 export { WatchLine };

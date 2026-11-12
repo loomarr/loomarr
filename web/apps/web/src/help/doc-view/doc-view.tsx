@@ -12,7 +12,6 @@ import {
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "@/lib/utils";
 import type { DocViewProps } from "./doc-view.type";
 
 // An internal doc link is a relative one: not an absolute URL, and not a bare same-page
@@ -67,7 +66,7 @@ const remarkDropHtmlComments = () => dropComments;
 // prose plugin: the design system already defines type scale and color, and a generic
 // typography reset would fight it.
 const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
-  <article className={cn("flex flex-col gap-4", className)}>
+  <Stack className={className} gap="4" render="article">
     <Markdown
       remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
       components={{
@@ -179,7 +178,7 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
     >
       {markdown}
     </Markdown>
-  </article>
+  </Stack>
 );
 
 export { DocView };

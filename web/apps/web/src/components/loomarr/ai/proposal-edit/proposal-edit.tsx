@@ -78,11 +78,12 @@ const PickRow = ({
   const season = seasonLabel(pick.item);
 
   return (
-    <li
-      className={cn(
-        "border-border flex items-start gap-3 border-b px-1 py-3 last:border-b-0",
-        !included && "opacity-55",
-      )}
+    <Stack
+      align="start"
+      className={cn("border-border border-b px-1 py-3 last:border-b-0", !included && "opacity-55")}
+      direction="row"
+      gap="control"
+      render="li"
     >
       {editable && onToggle && pick.key !== "" && (
         <Toggle
@@ -149,7 +150,7 @@ const PickRow = ({
           Add
         </Action>
       )}
-    </li>
+    </Stack>
   );
 };
 
@@ -325,7 +326,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-3", className)}>
+    <Stack className={className} gap="control">
       <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h3" textRole="heading">
@@ -503,7 +504,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
           value={note}
         />
       )}
-    </div>
+    </Stack>
   );
 };
 

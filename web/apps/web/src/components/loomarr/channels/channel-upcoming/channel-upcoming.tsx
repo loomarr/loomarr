@@ -4,7 +4,6 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
 import { Badge, Stack, Surface, Text } from "@loomarr/design-system";
 import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
-import { cn } from "@/lib/utils";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
 // ChannelUpcoming — the viewer-facing "what's on later" strip (P7 / plan finding 5): the
@@ -32,7 +31,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
   // and a red NOW badge on the one airing. Every row keeps its time, so the NOW row still says
   // when it started.
   return (
-    <section className={cn("flex flex-col gap-1.5", className)}>
+    <Stack className={className} gap="1.5" render="section">
       <h3 className="text-2xs text-muted-foreground mb-1 font-normal">What's on</h3>
       {entries.length === 0 ? (
         // The API deliberately lowers no guide, an empty schedule, and a backend read failure to
@@ -88,7 +87,7 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
           })}
         </Stack>
       )}
-    </section>
+    </Stack>
   );
 };
 

@@ -36,12 +36,7 @@ const ChannelDangerZone = ({
   };
 
   return (
-    <div
-      className={cn(
-        "border-onair-tint-15 bg-onair-tint-15 flex flex-col gap-4 rounded-lg border p-4",
-        className,
-      )}
-    >
+    <Stack className={cn("border-onair-tint-15 bg-onair-tint-15 rounded-lg border p-4", className)} gap="4">
       <div>
         <Text as="h3" textRole="heading" tone="danger">
           Danger zone
@@ -153,7 +148,7 @@ const ChannelDangerZone = ({
           </Stack>
         )}
       </Stack>
-    </div>
+    </Stack>
   );
 };
 

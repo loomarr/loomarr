@@ -86,9 +86,11 @@ const RefinePanel = ({
   return (
     // The web mock's card: always open, a one-line input and "Suggest changes". The running and
     // review states below are today's; the mock draws neither.
-    <section
+    <Stack
       aria-labelledby={headingId}
-      className={cn("border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4", className)}
+      className={cn("border-border bg-card rounded-lg border p-4", className)}
+      gap="2.5"
+      render="section"
     >
       <Stack align="center" direction="row" gap="inline" wrap>
         <Icon decorative glyph={icons.suggest} size="compact" tone="suggest" />
@@ -200,7 +202,7 @@ const RefinePanel = ({
           onDiscard={close}
         />
       )}
-    </section>
+    </Stack>
   );
 };
 
