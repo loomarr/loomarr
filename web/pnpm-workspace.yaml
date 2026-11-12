@@ -24,6 +24,10 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
+  # Waived 2026-11-12 (maintainer): expo-doctor fails Shared clients on 58.0.24 the moment Expo
+  # publishes 58.0.25 (16:40Z), blocking every client PR. Same dependency set as 58.0.24.
+  # Drop this line once 58.0.25 is a day old.
+  - expo@58.0.25
 
 # dependency-cruiser intentionally leaves transpilers optional. Declare the
 # analyzer-only compatible compiler beside it so pnpm's isolated linker makes
