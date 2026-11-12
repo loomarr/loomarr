@@ -224,6 +224,7 @@ export {
 } from "./src/surf-rail";
 export type { BackHandlerSource } from "./src/use-client-destination";
 export { useClientDestination } from "./src/use-client-destination";
+export { useCommittedDraft } from "./src/use-committed-draft";
 export type { WallTileProps } from "./src/wall-tile";
 export { WallTile } from "./src/wall-tile";
 export type {
