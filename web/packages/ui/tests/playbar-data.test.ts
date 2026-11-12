@@ -1,7 +1,8 @@
-import type { GuideAiringLayout } from "@loomarr/core/guide";
+import type { GuideAiringLayout, GuideLayout } from "@loomarr/core/guide";
+import type { PlayerSnapshot } from "@loomarr/player";
 import { describe, expect, it } from "vitest";
 
-import { playbarFromTimeline } from "../index";
+import { playbarFromTimeline, playerChromeFromGuide } from "../index";
 
 type Airing = GuideAiringLayout["source"];
 
@@ -316,5 +317,57 @@ describe("playbarFromTimeline", () => {
     expect(info?.facts).toBeUndefined();
     expect(info?.synopsis).toBeUndefined();
     expect(info?.upNext).toBeUndefined();
+  });
+});
+
+describe("playerChromeFromGuide", () => {
+  // A guide holding one channel's row: only what the reader looks at, not the row's geometry.
+  const layout = (airings: Airing[]) =>
+    ({
+      channels: [
+        {
+          airings: airings.map((source) => ({ source })),
+          source: { airings, channelId: "ch-7", decade: 1990, name: "Coast 90s", number: 7 },
+        },
+      ],
+    }) as unknown as GuideLayout;
+  const tuned: PlayerSnapshot = {
+    catalog: [],
+    channel: { id: "ch-7", inAppPlayable: true, name: "Coast 90s", number: 7 },
+    livePlayback: { lagSeconds: 120, mode: "behind", noticeRevision: 0, viewerTimeMs: at(-2) },
+    recentChannelIds: [],
+    status: "playing",
+  };
+
+  it("reads the tuned channel's guide row as its timeline, at the frame on screen", () => {
+    const data = playerChromeFromGuide({
+      layout: layout([programme("a", -10, 20, { rating: "TV-PG" }), programme("b", 20, 50)]),
+      nowMs: NOW,
+      snapshot: tuned,
+    });
+
+    expect(data?.band).toMatchObject({
+      channelName: "Coast 90s",
+      channelNumber: "7",
+      clockMs: at(-2),
+      decade: 1990,
+      next: { name: "Programme b", startMs: at(20) },
+      rating: "TV-PG",
+      title: "Programme a",
+    });
+    expect(data?.band.behindLabel).toBeDefined();
+    expect(data?.segments.map((s) => s.id)).toEqual(["a", "b"]);
+    expect(data?.window.nowMs).toBe(NOW);
+  });
+
+  it("is the channel alone before the guide holds its row, and nothing before a tune", () => {
+    expect(playerChromeFromGuide({ layout: undefined, nowMs: NOW, snapshot: tuned })?.band).toEqual({
+      channelName: "Coast 90s",
+      channelNumber: "7",
+      clockMs: at(-2),
+      station: undefined,
+    });
+    const idle: PlayerSnapshot = { catalog: [], recentChannelIds: [], status: "idle" };
+    expect(playerChromeFromGuide({ layout: layout([]), nowMs: NOW, snapshot: idle })).toBeUndefined();
   });
 });

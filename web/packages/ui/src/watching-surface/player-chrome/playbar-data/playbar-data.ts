@@ -3,10 +3,13 @@ import {
   formatGuideEpisode,
   formatProgrammeTitle,
   type GuideAiringLayout,
+  type GuideLayout,
   guideBreakProgramme,
   guideFillerNowLabel,
 } from "@loomarr/core/guide";
+import type { PlayerSnapshot } from "@loomarr/player";
 
+import { watchingScheduleTimeMs } from "../../watching-surface-state";
 import type {
   PlaybarSegment,
   PlaybarSpot,
@@ -85,9 +88,12 @@ const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
     id: airing.scheduleBlockId,
     kind: "programme",
     line: line || undefined,
+    ...(airing.logoImage ? { logo: airing.logoImage } : {}),
     name,
     startMs: airing.startMs,
-    stillUri: airing.thumbImage?.src ?? (airing.thumbUrl || undefined),
+    // The programme's fanart is what the strip and its card show (§9.2, variant J); a thumbnail when
+    // the Library holds none.
+    stillUri: airing.backdropImage?.src ?? airing.thumbImage?.src ?? (airing.thumbUrl || undefined),
     stopMs: airing.stopMs,
     synopsis: airing.description?.trim() || undefined,
   };
@@ -126,6 +132,8 @@ const programmeOf = (airing: TimelineAiring) => {
   const art = {
     ...(airing.logoImage ? { logo: airing.logoImage } : {}),
     ...(airing.backdropImage ? { backdrop: airing.backdropImage } : {}),
+    // The rating rides with the programme: Leave wears it while the controls are up (§9.3).
+    ...(airing.rating ? { rating: airing.rating } : {}),
   };
   return segment.kind === "programme"
     ? { ...art, line: segment.line, name: segment.name }
@@ -176,6 +184,7 @@ const bandOf = (
       title: shown.name,
       ...("logo" in shown ? { logo: shown.logo } : {}),
       ...("backdrop" in shown ? { backdrop: shown.backdrop } : {}),
+      ...("rating" in shown ? { rating: shown.rating } : {}),
     };
   }
   const { line, name, ...art } = programmeOf(airing);
@@ -283,4 +292,36 @@ const playbarFromTimeline = ({ airings, channel, live, nowMs, playheadMs }: Play
   return { band, info: infoOf(airings, atPlayhead, band, playheadMs), segments, startOverMs, window };
 };
 
-export { playbarFromTimeline };
+interface PlayerChromeFromGuideArgs {
+  /** The client's guide, which holds the tuned channel's row of airings. */
+  layout: GuideLayout | undefined;
+  snapshot: PlayerSnapshot;
+  /** The live edge: the server's clock where the client has it, else this device's. */
+  nowMs: number;
+}
+
+/**
+ * The chrome's data on a native client (§9), read through the same `playbarFromTimeline` as the web:
+ * the tuned channel's guide row is its timeline, and the frame on screen is the playhead. Undefined
+ * until a channel is tuned.
+ */
+const playerChromeFromGuide = ({ layout, nowMs, snapshot }: PlayerChromeFromGuideArgs) => {
+  const { channel, livePlayback } = snapshot;
+  if (!channel) return undefined;
+  const row = layout?.channels.find((candidate) => candidate.source.channelId === channel.id);
+  return playbarFromTimeline({
+    airings: row?.airings.map((airing) => airing.source) ?? [],
+    channel: {
+      ...(row?.source.decade === undefined ? {} : { decade: row.source.decade }),
+      name: channel.name,
+      number: String(channel.number),
+    },
+    live: livePlayback ? { lagSeconds: livePlayback.lagSeconds, mode: livePlayback.mode } : LIVE,
+    nowMs,
+    playheadMs: watchingScheduleTimeMs(snapshot, nowMs),
+  });
+};
+
+const LIVE: PlayerLiveState = { lagSeconds: 0, mode: "live" };
+
+export { playbarFromTimeline, playerChromeFromGuide };

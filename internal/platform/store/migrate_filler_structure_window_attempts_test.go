@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 )
 
@@ -11,7 +10,7 @@ import (
 func TestStructureWindowCallAttemptsMigrationKeepsRowsAsAttemptOneSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "window-attempts.db"))
+	s, err := openSQLite(ctx, sqliteFileAt(t, 144, storeConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

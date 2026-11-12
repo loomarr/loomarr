@@ -1,3 +1,4 @@
+import { createChannelAudioSource } from "@loomarr/core/channel-audio";
 import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
 import { openEventStream } from "@loomarr/core/events";
 import { createGuideController, createGuideSourcePort, guideWindow } from "@loomarr/core/guide";
@@ -86,6 +87,7 @@ const usePairedClient = ({
     catalogRefresher.getState,
   );
   const version = useMemo(() => createServerVersionSource(request), [request]);
+  const channelAudio = useMemo(() => createChannelAudioSource(request), [request]);
   const guide = useMemo(
     () =>
       createGuideController({
@@ -221,6 +223,7 @@ const usePairedClient = ({
 
   return {
     catalogState,
+    channelAudio,
     controller,
     guide,
     guideSnapshot,
