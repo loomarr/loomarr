@@ -25,8 +25,11 @@ import type {
 
 const EVENTS_URL = "/v1/events";
 
-// How long the browser stream waits before opening a new EventSource in place of a closed one.
+// How long the browser stream waits before opening a new EventSource in place of a closed one: 3s
+// after the first refusal, twice as long after each one in a row, never more than a minute. A
+// server that is down for a while is asked about once a minute rather than every 3 seconds.
 const STREAM_REOPEN_MS = 3000;
+const STREAM_REOPEN_MAX_MS = 60_000;
 
 // EventSource.CLOSED, by value: a stand-in source in a test may not carry the constant, and an
 // undefined one would make every error look like a source closed for good.
@@ -35,21 +38,27 @@ const SOURCE_CLOSED = 2;
 // The browser retries a dropped connection by itself, but a refused response closes an
 // EventSource for good: a proxy's 502 while the server restarts for an update is enough. This
 // stream opens a new one in its place, with the same listeners, so it outlives a restart. Each
-// source that connects fires "open", which is how openFrameStream hears each open.
+// source that connects fires "open", which is how openFrameStream hears each open, and which
+// starts the wait over.
 const browserEventStreamFactory: EventStreamFactory = (url) => {
   const listeners: [string, (event: EventStreamMessage) => void][] = [];
   let source: EventSource;
   let closed = false;
   let reopen: ReturnType<typeof setTimeout> | undefined;
+  let wait = STREAM_REOPEN_MS;
   const attach = (type: string, listener: (event: EventStreamMessage) => void) =>
     source.addEventListener(type, (event) => listener(event as MessageEvent<string>));
   const connect = () => {
     source = new EventSource(url, { withCredentials: true });
     for (const [type, listener] of listeners) attach(type, listener);
     const current = source;
+    current.addEventListener("open", () => {
+      wait = STREAM_REOPEN_MS;
+    });
     current.addEventListener("error", () => {
       if (closed || current.readyState !== SOURCE_CLOSED) return;
-      reopen = setTimeout(connect, STREAM_REOPEN_MS);
+      reopen = setTimeout(connect, wait);
+      wait = Math.min(wait * 2, STREAM_REOPEN_MAX_MS);
     });
   };
   connect();
