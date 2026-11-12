@@ -375,10 +375,14 @@ const surf = {
   ],
   tunedId: "12",
 };
-const Surfing: Story = { args: { readout: { digits: "12", name: "Game Night" }, surf } };
+const Surfing: Story = { args: { readout: { digits: "12", name: "Game Night", quiet: true }, surf } };
 const TelevisionSurfing: Story = {
   ...Television,
-  args: { ...Television.args, readout: { digits: "12", name: "Game Night" }, surf } as Story["args"],
+  args: {
+    ...Television.args,
+    readout: { digits: "12", name: "Game Night", quiet: true },
+    surf,
+  } as Story["args"],
 };
 
 // The channel's watermark is burned into the picture and never moves. The chrome steps around it
@@ -600,7 +604,7 @@ const portraitArgs = {
 const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
 // Flipping on an upright phone: three cards where the band was, the readout where the toolbar was.
 const PortraitSurfing: Story = {
-  args: { ...portraitArgs, readout: { digits: "12", name: "Game Night" }, surf },
+  args: { ...portraitArgs, readout: { digits: "12", name: "Game Night", quiet: true }, surf },
   render: (args) => <PhoneFrame {...args} />,
 };
 // Nothing covers an upright phone's picture, so its line sits at the picture's own foot, smaller.

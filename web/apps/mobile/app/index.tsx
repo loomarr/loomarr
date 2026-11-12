@@ -347,7 +347,11 @@ const WatchingScreen = ({
             {...(surf && snapshot.channel
               ? {
                   // While flipping the band is down, so the readout names the channel (§9.2).
-                  readout: { digits: String(snapshot.channel.number), name: snapshot.channel.name },
+                  readout: {
+                    digits: String(snapshot.channel.number),
+                    name: snapshot.channel.name,
+                    quiet: true,
+                  },
                   surf,
                 }
               : {})}

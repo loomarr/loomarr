@@ -178,7 +178,7 @@ interface PlayerChromeProps {
    * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
    * the channel they reach and, on a remote, the auto-tune countdown.
    */
-  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string; quiet?: boolean };
   /**
    * Flipping channels (§9.2, variant J): the row of channel cards takes the band's place and the
    * utilities step away, with the controls up. Every flip tunes at once (§9.4); the app sets this

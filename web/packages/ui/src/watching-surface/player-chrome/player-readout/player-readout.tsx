@@ -22,6 +22,11 @@ interface PlayerReadoutProps {
   top: number;
   /** Distance from the frame's right edge: the chrome's side margin (an upright phone's is narrower). */
   right?: number;
+  /**
+   * Drawn, not announced: a flip's readout, whose tune the player already announces. A second
+   * status saying the same channel would be read out twice.
+   */
+  quiet?: boolean;
 }
 
 const PlayerReadout = ({
@@ -30,11 +35,13 @@ const PlayerReadout = ({
   digits,
   missed = false,
   name,
+  quiet = false,
   right = 48,
   top,
 }: PlayerReadoutProps) => (
   <View
-    role="status"
+    aria-hidden={quiet || undefined}
+    role={quiet ? undefined : "status"}
     style={{
       alignItems: "flex-end",
       backgroundColor: playerChrome.tooltip,

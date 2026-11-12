@@ -142,7 +142,10 @@ describe("WatchingSurface", () => {
     // and the readout names it.
     render(() => surface({ snapshot: { ...playing, channel: six }, surfCards }));
     expect(host.querySelector('[data-testid="channel-card-lit"]')?.textContent).toBe("6NatureWatching now");
-    expect(host.querySelector('[role="status"]')?.textContent).toBe("6Nature");
+    // Drawn, not announced: the tune is announced already, and a second status would say it twice.
+    const quiet = Array.from(host.querySelectorAll('[aria-hidden="true"]')).map((el) => el.textContent);
+    expect(quiet).toContain("6Nature");
+    expect(host.querySelector('[role="status"]')?.textContent).not.toBe("6Nature");
     expect(host.querySelector('[data-testid="band-channel-block"]')).toBeNull();
 
     act(() => vi.advanceTimersByTime(1_200));

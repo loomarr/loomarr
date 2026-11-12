@@ -521,7 +521,10 @@ describe("ChannelWatch — full-bleed route", () => {
     const cards = await screen.findByRole("list", { name: "Channels" });
     expect(within(cards).getByText("Watching now")).toBeInTheDocument();
     expect(within(cards).getByText("A heist film")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("42Late Night Noir");
+    // Drawn, not announced: the tuner's own status announces the tune, and a second would repeat it.
+    const quiet = Array.from(document.querySelectorAll('[aria-hidden="true"]')).map((el) => el.textContent);
+    expect(quiet).toContain("42Late Night Noir");
+    expect(screen.queryAllByRole("status").map((el) => el.textContent)).not.toContain("42Late Night Noir");
     // Leave steps away while flipping.
     expect(screen.queryByRole("button", { name: "Leave" })).not.toBeInTheDocument();
   });

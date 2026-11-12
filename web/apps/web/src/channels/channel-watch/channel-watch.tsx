@@ -429,7 +429,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   const readout = entry.digits
     ? { digits: entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–"), missed: entry.missed }
     : surf
-      ? { digits: String(osdChannel.number), name: osdChannel.name }
+      ? { digits: String(osdChannel.number), name: osdChannel.name, quiet: true }
       : undefined;
   // The channel's bug is burned into the picture; the chrome keeps out of its corner (§9.6, #2772).
   const watermark = watermarkOf(channel.policy?.watermark);

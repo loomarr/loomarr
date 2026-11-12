@@ -351,6 +351,7 @@ const WatchingSurface = ({
               density="tv"
               digits={String(snapshot.channel.number)}
               name={snapshot.channel.name}
+              quiet
               top={EDGE.top}
             />
           ) : null}
