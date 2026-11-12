@@ -79,7 +79,9 @@ type Matcher struct {
 // evidence is what the files say about a title beyond its name: a movie's length, a series'
 // episodes. A search result is checked against it.
 type evidence struct {
-	year     int
+	year int
+	// whole is the name read with its year-like word as part of the title (searchQuery).
+	whole    string
 	length   time.Duration
 	episodes map[int]int
 }
@@ -169,8 +171,8 @@ func (m *Matcher) Tick(ctx context.Context) error {
 	// failed counts the searches in a row that failed.
 	done, failed := 0, 0
 	for _, need := range needs {
-		title, year := searchQuery(need.Name, need.Year)
-		ev := evidence{year: year, length: m.length(ctx, need), episodes: m.episodes(ctx, need)}
+		title, year, whole := searchQuery(need.Name, need.Year)
+		ev := evidence{year: year, whole: whole, length: m.length(ctx, need), episodes: m.episodes(ctx, need)}
 		searched := title + "|" + strconv.Itoa(year) + ev.key()
 		if title == "" || need.Searched == searched {
 			continue
@@ -235,7 +237,7 @@ func (m *Matcher) candidates(ctx context.Context, need librarystore.LibraryNeed,
 		}
 		c := librarystore.LibraryCandidate{
 			Kind: hit.Kind, ID: libraryID(hit.ID), Name: hit.Name, Year: hit.Year, Overview: hit.Overview,
-			NameMatch: sameName(hit.Name, title), YearMatch: sameYear(hit.Year, ev.year),
+			NameMatch: sameName(hit.Name, title) || sameName(hit.Name, ev.whole), YearMatch: sameYear(hit.Year, ev.year),
 		}
 		if rec, ok := m.details(ctx, hit); ok {
 			c.Poster = posterURL(rec)
@@ -372,10 +374,20 @@ var releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?
 
 var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
 
+// releaseYear is whether a year-like word could be a release's year: none is dated after next year,
+// so "Harbor Lights 2049" is a title.
+func releaseYear(word string) bool {
+	year, _ := strconv.Atoi(word)
+	return yearToken.MatchString(word) && year <= time.Now().Year()+1
+}
+
 // searchQuery is what a title nothing grounds is searched for: its name up to the release words,
 // and its year. known is a year already known (from a sidecar); otherwise the last year-like word
 // after the first one is the year ("Harbor Lights 2049 (2017)").
-func searchQuery(name string, known int) (string, int) {
+//
+// whole is the name with that word kept, when it was not bracketed: "Lantern Keeper 1984" is a film
+// of 1984 or a film called that, and only the catalog can say which, so a hit may match either.
+func searchQuery(name string, known int) (title string, year int, whole string) {
 	name = editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, " "), " ")
 	if !strings.Contains(name, " ") {
 		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
@@ -391,17 +403,21 @@ func searchQuery(name string, known int) (string, int) {
 		}
 	}
 	words = words[:cut]
-	year := known
+	clean := func(words []string) string { return strings.Trim(strings.Join(words, " "), " -.") }
+	year = known
 	for j := len(words) - 1; j > 0; j-- {
-		if yearToken.MatchString(words[j]) {
+		if w := words[j]; releaseYear(w) {
 			if year == 0 {
-				year, _ = strconv.Atoi(words[j])
+				year, _ = strconv.Atoi(w)
+			}
+			if !strings.Contains(name, "("+w+")") && !strings.Contains(name, "["+w+"]") {
+				whole = clean(words)
 			}
 			words = words[:j]
 			break
 		}
 	}
-	return strings.Trim(strings.Join(words, " "), " -."), year
+	return clean(words), year, whole
 }
 
 // sameName is whether two names say the same title, ignoring case, punctuation and "&" for "and".

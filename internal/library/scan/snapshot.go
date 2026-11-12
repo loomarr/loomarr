@@ -493,8 +493,8 @@ func fallbackName(rel string, kind mp.Kind) string {
 	}
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))
-		if _, fileYear := searchQuery(name, 0); fileYear == 0 {
-			if title, year := searchQuery(folder, 0); year != 0 && title != "" {
+		if _, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
+			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" {
 				return folder
 			}
 		}
