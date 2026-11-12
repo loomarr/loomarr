@@ -60,7 +60,7 @@ const isTextStep = (step: number) => step <= 15;
 // the -300 rule stops being a sentence someone has to have read and becomes a column you can
 // see failing.
 const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textHex: string }) => (
-  <div className="flex flex-col gap-1">
+  <Stack gap="1">
     <div className="text-2xs text-static-400">{`${accent} tints`}</div>
     <Stack direction="row" gap="inline" wrap>
       {tintSteps.map((step) => {
@@ -76,7 +76,7 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // make this page fail the a11y gate for a violation it was only demonstrating. The
           // measured ratio is still printed for every step, so the scope of the rule stays
           // visible without being enacted.
-          <div key={step} className="flex min-w-24 flex-col gap-1">
+          <Stack className="min-w-24" gap="1" key={step}>
             <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
             <Stack
               align="center"
@@ -93,11 +93,11 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
               )}
             </Stack>
             <Verdict value={r} />
-          </div>
+          </Stack>
         );
       })}
     </Stack>
-  </div>
+  </Stack>
 );
 
 const Palette = () => {
@@ -109,14 +109,14 @@ const Palette = () => {
 
   return (
     <Stack className="p-6" gap="screen">
-      <header className="flex flex-col gap-1">
+      <Stack gap="1" render="header">
         <h1 className="text-xl font-semibold">Palette</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
           The broadcast accents, drawn from the SMPTE bars. Every hex and every ratio on this page is read
           from the generated tokens and measured with the same function the CI contrast gate uses — so what
           you see here is what the build enforces.
         </p>
-      </header>
+      </Stack>
 
       <Stack gap="control" render="section">
         <h2 className="text-base font-semibold">Accents</h2>
@@ -127,8 +127,8 @@ const Palette = () => {
         </div>
       </Stack>
 
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
+      <Stack gap="4" render="section">
+        <Stack gap="1">
           <h2 className="text-base font-semibold">Tints, and the badge rule</h2>
           <p className="text-muted-foreground max-w-2xl text-sm">
             A tint is an alpha wash, not a fixed hex:{" "}
@@ -138,7 +138,7 @@ const Palette = () => {
             <code className="font-mono text-xs">-300</code> stop instead — the swatches below show which,
             measured rather than asserted.
           </p>
-        </div>
+        </Stack>
         {accentRows.map(([name, a]) => (
           <TintRamp key={name} accent={name} hex={a.base} textHex={a.on} />
         ))}
@@ -149,7 +149,7 @@ const Palette = () => {
           segment, a progress bar), never for accent text, and today nothing uses them that way. This page is
           where that stops being an unwritten assumption.
         </p>
-      </section>
+      </Stack>
 
       <Stack gap="control" render="section">
         <h2 className="text-base font-semibold">Statics</h2>

@@ -60,7 +60,7 @@ const UsersStep = () => {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       {/* The shell's step description already covers "only the accounts you pick can sign
           in"; this adds the part that surprises people (§11) rather than repeating it. */}
       <p className="text-muted-foreground text-sm">
@@ -112,7 +112,7 @@ const UsersStep = () => {
       {importable.length === 0 && (
         <p className="text-muted-foreground text-xs">Everyone on your media server is imported.</p>
       )}
-    </div>
+    </Stack>
   );
 };
 

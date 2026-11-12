@@ -72,7 +72,7 @@ const Block = ({
   children: React.ReactNode;
 }) => (
   <Disclosure defaultExpanded={defaultOpen} description={hint} label={title}>
-    <div className="flex flex-col gap-4">{children}</div>
+    <Stack gap="4">{children}</Stack>
   </Disclosure>
 );
 
@@ -241,7 +241,7 @@ const ChannelProgramming = ({
         description="Check what airs at a specific time and which rule wins."
         label="Preview schedule"
       >
-        <div className="flex flex-col gap-4">
+        <Stack gap="4">
           <p
             className={cn(
               "rounded-md px-2.5 py-1.5 text-xs",
@@ -263,7 +263,7 @@ const ChannelProgramming = ({
             lineupKeys={lineupKeys}
             draftPolicy={rules.isDirty ? rules.draft : undefined}
           />
-        </div>
+        </Stack>
       </Disclosure>
     </Stack>
   );

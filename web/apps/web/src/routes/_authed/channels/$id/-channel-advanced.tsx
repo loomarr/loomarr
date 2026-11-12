@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { humanizeRelaxation } from "@loomarr/core/format";
-import { CompactSelect } from "@loomarr/design-system";
+import { CompactSelect, Stack } from "@loomarr/design-system";
 
 // relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
 // a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own
@@ -66,11 +66,11 @@ const ChannelAdvanced = ({
       {/* Programming rules that were eased (the relaxation ladder). */}
       <span className="text-muted-foreground">Rules loosened</span>
       {applied.length > 0 ? (
-        <ul className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ul">
           {applied.map((step) => (
             <li key={`${step.kind}:${step.from}->${step.to}`}>{relaxationSentence(step)}</li>
           ))}
-        </ul>
+        </Stack>
       ) : (
         <span>Running exactly as specified. Nothing had to be eased.</span>
       )}
@@ -84,7 +84,7 @@ const ChannelAdvanced = ({
           <span className="text-muted-foreground self-start pt-2" id="channel-playout-backend-label">
             Streamed by
           </span>
-          <div className="flex flex-col gap-1">
+          <Stack gap="1">
             <CompactSelect
               aria-labelledby="channel-playout-backend-label"
               id="channel-playout-backend"
@@ -106,7 +106,7 @@ const ChannelAdvanced = ({
             <p className="text-muted-foreground text-xs">
               Applies the next time someone tunes in. Anyone watching now keeps their stream.
             </p>
-          </div>
+          </Stack>
         </>
       )}
 

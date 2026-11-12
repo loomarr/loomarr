@@ -165,7 +165,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
       </div>
       {mode === SourceAutomaticDownloadsInputMode.custom && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
+          <Stack gap="1.5">
             <span className="text-sm">Look for new clips</span>
             <BrowserSelectControl
               appearance="field"
@@ -180,17 +180,17 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
               options={SCHEDULE_OPTIONS}
               value={editingCustomSchedule ? "custom" : downloadSchedulePreset(everySeconds)}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
+          </Stack>
+          <Stack gap="1.5">
             <span className="text-sm">Add up to</span>
             <NumberField
               accessibilityLabel="Clips per source check"
               amount={maxPerCheck}
               onAmount={(amount) => setMaxPerCheck(Math.min(1000, Math.max(amount, 1)))}
             />
-          </div>
+          </Stack>
           {editingCustomSchedule && (
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Stack className="sm:col-span-2" gap="1.5">
               <span className="text-sm">Custom schedule</span>
               <Stack direction="row" gap="inline">
                 <NumberField
@@ -219,7 +219,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                   />
                 </div>
               </Stack>
-            </div>
+            </Stack>
           )}
         </div>
       )}

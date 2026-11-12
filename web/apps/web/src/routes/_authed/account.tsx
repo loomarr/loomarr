@@ -104,12 +104,12 @@ const AccountScreen = () => {
           </Stack>
           <div className="min-w-0">
             <p className="font-medium">{user?.name}</p>
-            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            <Stack align="center" className="mt-0.5" direction="row" gap="1.5" wrap>
               <StatusLabel tone="off">{isLocal ? "Local account" : "Media-server account"}</StatusLabel>
               <StatusLabel tone={user?.role === "admin" ? "notice" : "off"}>
                 {user?.role === "admin" ? "Admin" : "Member"}
               </StatusLabel>
-            </div>
+            </Stack>
           </div>
         </Card>
 

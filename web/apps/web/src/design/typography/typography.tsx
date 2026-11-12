@@ -25,13 +25,13 @@ const SIZE_USE: Record<string, string> = {
 
 const Typography = () => (
   <Stack className="p-6" gap="screen">
-    <header className="flex flex-col gap-1">
+    <Stack gap="1" render="header">
       <h1 className="text-xl font-semibold">Typography</h1>
       <p className="text-muted-foreground max-w-2xl text-sm">
         Geist and Geist Mono, self-hosted (§2.2) — no webfont CDN, because the app must work on a LAN with no
         internet. Sizes come from the generated tokens; the samples below render at their real values.
       </p>
-    </header>
+    </Stack>
 
     <Stack gap="control" render="section">
       <h2 className="text-base font-semibold">The two families</h2>
@@ -91,7 +91,7 @@ const Typography = () => (
       <h2 className="text-base font-semibold">Scale</h2>
       <Stack className="divide-border divide-y">
         {Object.entries(webType.size).map(([name, px]) => (
-          <div key={name} className="flex items-baseline gap-4 py-3">
+          <Stack align="baseline" className="py-3" direction="row" gap="4" key={name}>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px]">{name}</span>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px] tabular-nums">
               {`${px}px`}
@@ -100,7 +100,7 @@ const Typography = () => (
               Channels play what's ready
             </span>
             <span className="text-muted-foreground hidden shrink-0 text-xs sm:block">{SIZE_USE[name]}</span>
-          </div>
+          </Stack>
         ))}
       </Stack>
       <p className="text-muted-foreground max-w-2xl text-sm">

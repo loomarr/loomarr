@@ -21,7 +21,7 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
 
   return (
     <Card>
-      <section aria-label={`Split ${clip.name} into clips`} className="flex flex-col gap-4 p-4">
+      <Stack aria-label={`Split ${clip.name} into clips`} className="p-4" gap="4" render="section">
         <Stack align="start" direction="row" gap="control">
           <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.alert} size="default" tone="primary" />
@@ -50,7 +50,7 @@ const ConfirmSplitDialog = ({ clip, onConfirm, onClose }: ConfirmSplitDialogProp
             Find the clips
           </Action>
         </Stack>
-      </section>
+      </Stack>
     </Card>
   );
 };

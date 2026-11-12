@@ -192,7 +192,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
             {lineup.length === 0 ? (
               <p className="text-muted-foreground text-sm">Nothing from your library was proposed.</p>
             ) : (
-              <ul className="flex flex-col gap-1 text-sm">
+              <Stack className="text-sm" gap="1" render="ul">
                 {lineup.map((item, index) => (
                   // A title can repeat within a proposal, so the id alone is not a unique key.
                   // biome-ignore lint/suspicious/noArrayIndexKey: the lineup is a fixed, ordered snapshot
@@ -201,7 +201,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
                     {item.year ? <span className="text-muted-foreground"> ({item.year})</span> : null}
                   </li>
                 ))}
-              </ul>
+              </Stack>
             )}
           </Section>
         )}

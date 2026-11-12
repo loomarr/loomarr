@@ -14,12 +14,12 @@ import { cn } from "@/lib/utils";
 // FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
 // control (mirrors ChannelPolicyFields). Help on hover keeps the criteria form compact.
 const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: string; help: string }) => (
-  <div className="flex items-center gap-1.5">
+  <Stack align="center" direction="row" gap="1.5">
     <Text as="label" htmlFor={htmlFor} textRole="label">
       {children}
     </Text>
     <FieldHelp label={children}>{help}</FieldHelp>
-  </div>
+  </Stack>
 );
 
 // ⚠ The hardcoded category mirror is GONE (§10 V45a). Categories are now the PRODUCT-axis taxa of the
@@ -175,7 +175,7 @@ const FillerCriteria = ({
     // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
     // (checkbox row) span both columns.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <Stack className="sm:col-span-2" gap="1.5">
         <FieldLabel help="Country is a hard boundary. A place also limits local clips to TV stations near it; timezone is never used as location.">
           Geography
         </FieldLabel>
@@ -260,10 +260,10 @@ const FillerCriteria = ({
             </p>
           </>
         )}
-      </div>
+      </Stack>
       {/* Era — two commit-on-blur year inputs, the same idiom as the program-scope era.
           Blank on either side means unbounded, not 0. Spans both columns (nested 2-up row). */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <Stack className="sm:col-span-2" gap="1.5">
         <FieldLabel help="Match commercials from this era. Left blank, it follows the channel's own era.">
           Era
         </FieldLabel>
@@ -399,10 +399,10 @@ const FillerCriteria = ({
             Follow the channel&rsquo;s era ({scopeLabel})
           </Action>
         )}
-      </div>
+      </Stack>
 
       {/* Audience — the empty value is "any audience". */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <Stack className="sm:col-span-2" gap="1.5">
         <FieldLabel
           htmlFor="filler-audience"
           help="Keep breaks age-appropriate: kids' cartoons get kids' ads."
@@ -417,11 +417,11 @@ const FillerCriteria = ({
           options={AUDIENCE_OPTIONS}
           value={selection.audience ?? ""}
         />
-      </div>
+      </Stack>
 
       {/* Product/topic tags — a multi-select over the live product-axis hierarchy. No selection
           means any product/topic, the widest pool. */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <Stack className="sm:col-span-2" gap="1.5">
         <FieldLabel help="Narrow by what a clip is about. A broad tag such as Food includes every descendant; none selected draws from all products and topics.">
           Products & topics
         </FieldLabel>
@@ -441,7 +441,7 @@ const FillerCriteria = ({
           </Action>
         </Stack>
         {(choosingCategories || categories.length > 0) && (
-          <div className="flex flex-wrap gap-1.5">
+          <Stack direction="row" gap="1.5" wrap>
             {productCategories
               .filter((c) => choosingCategories || categories.includes(c.slug))
               .map((c) => {
@@ -458,13 +458,13 @@ const FillerCriteria = ({
                   </Chip>
                 );
               })}
-          </div>
+          </Stack>
         )}
-      </div>
+      </Stack>
 
       {/* Roles — checkboxes over the playable clip roles. A channel that chose none shows the
           server's default ticked: every role except political ads and news (#2037). */}
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <Stack className="sm:col-span-2" gap="1.5">
         <FieldLabel help="Which clips a break may use. Political ads and news stay off until you tick them; a nearby station's own news airs with its station IDs.">
           Clip kinds
         </FieldLabel>
@@ -487,7 +487,7 @@ const FillerCriteria = ({
             Clip kinds unlock once this channel's coverage check loads.
           </p>
         )}
-      </div>
+      </Stack>
     </div>
   );
 };

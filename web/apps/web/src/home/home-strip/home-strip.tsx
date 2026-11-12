@@ -1,4 +1,4 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { HomeStripProps } from "./home-strip.type";
 
@@ -26,22 +26,22 @@ const HomeStrip = ({ state, isAdmin, onRetry }: HomeStripProps) => {
 
   if (state === "error") {
     return (
-      <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
+      <Stack align="start" className="max-w-[460px] py-10" gap="4" render="section">
         <h2 className="m-0 text-lg font-semibold">Couldn’t load your channels.</h2>
         <Action onPress={onRetry}>Try again</Action>
-      </section>
+      </Stack>
     );
   }
 
   if (state === "empty") {
     return (
-      <section className="flex max-w-[460px] flex-col items-start gap-4 py-10">
+      <Stack align="start" className="max-w-[460px] py-10" gap="4" render="section">
         <h2 className="m-0 text-lg font-semibold">Your first channel starts here</h2>
         <p className="text-static-400 m-0">{isAdmin ? "Create" : "Request"} a channel to start watching.</p>
         <Action accessibilityRole="link" render={<Link to="/requests/new" />}>
           {isAdmin ? "Add your first channel" : "Request a channel"}
         </Action>
-      </section>
+      </Stack>
     );
   }
 

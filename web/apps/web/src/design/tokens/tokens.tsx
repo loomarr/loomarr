@@ -61,14 +61,14 @@ const Tokens = () => {
 
   return (
     <Stack className="p-6" gap="screen">
-      <header className="flex flex-col gap-1">
+      <Stack gap="1" render="header">
         <h1 className="text-xl font-semibold">Tokens</h1>
         <p className="text-muted-foreground max-w-2xl text-sm">
           {`All ${total} generated tokens, read from the same data `}
           <code className="font-mono text-xs">theme.css</code>
           {" is built from. If it is not on this page, it does not exist at build time."}
         </p>
-      </header>
+      </Stack>
       {groups.map(([name, group]) => (
         <GroupTable key={name} name={name} group={group} />
       ))}

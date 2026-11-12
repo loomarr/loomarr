@@ -34,7 +34,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       <p className="text-muted-foreground text-sm">
         Pick a starting point. You can edit it before Loomarr builds anything. Since you're an admin, you can
         approve your own lineup and watch it go on the air.
@@ -73,7 +73,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
       >
         Finish setup without a channel
       </Action>
-    </div>
+    </Stack>
   );
 };
 

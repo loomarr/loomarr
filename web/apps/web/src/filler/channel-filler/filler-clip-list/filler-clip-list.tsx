@@ -90,7 +90,7 @@ const FillerClipList = ({
       )}
 
       {ids.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ul">
           {ids.map((id) => {
             const clip = resolve(id);
             // ⚠ **A resolved-and-missing id is a DEAD override, not a clip with a long name.**
@@ -148,7 +148,7 @@ const FillerClipList = ({
               </Stack>
             );
           })}
-        </ul>
+        </Stack>
       )}
 
       {adding ? (

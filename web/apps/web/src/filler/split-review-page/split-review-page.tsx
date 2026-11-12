@@ -5,7 +5,7 @@ import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageEx
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -138,7 +138,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
     // without one renders flush against the sidebar.
-    <div className="flex flex-col gap-4 p-6">
+    <Stack className="p-6" gap="4">
       <div>
         {/* This route sits outside the Filler header and tabs, so it names its way back: to
             wherever review was opened (#1817, decided on #1908). The Settings index's "← Manage"
@@ -182,7 +182,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
         onConfirm={(segments) => confirm.mutate({ proposalId, data: { segments } })}
         onBack={() => void navigate({ to: backTo })}
       />
-    </div>
+    </Stack>
   );
 };
 

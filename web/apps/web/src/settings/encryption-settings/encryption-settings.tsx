@@ -1,5 +1,5 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -28,7 +28,7 @@ const EncryptionSettings = () => {
 
   return (
     <section className="border-border rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <Stack align="start" direction="row" gap="4" justify="between" wrap>
         <div>
           <h2 className="text-sm font-medium">Database secret encryption</h2>
           <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-relaxed">
@@ -57,7 +57,7 @@ const EncryptionSettings = () => {
             {rotate.isPending ? "Rotating…" : "Rotate data key"}
           </Action>
         )}
-      </div>
+      </Stack>
       {status.error != null && (
         <div className="mt-3">
           <ErrorState error={status.error} />

@@ -9,6 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Stack,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -85,14 +86,14 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
           <form.Subscribe selector={(state) => state.values.choice === CUSTOM_VALUE}>
             {(advanced) =>
               advanced && (
-                <div className="flex flex-col gap-1.5">
+                <Stack gap="1.5">
                   <form.AppField name="advancedCron">
                     {(field) => <field.TextField label="Cron expression" placeholder="0 */5 * * * *" />}
                   </form.AppField>
                   <p className="text-muted-foreground text-xs">
                     6-field, seconds first (e.g. <code>0 */5 * * * *</code> = every 5 minutes).
                   </p>
-                </div>
+                </Stack>
               )
             }
           </form.Subscribe>

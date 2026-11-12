@@ -3,7 +3,7 @@ import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerPro
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Combobox } from "@loomarr/design-system";
+import { Action, Combobox, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -234,7 +234,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
 
       {selected && (
         <div className="bg-muted/35 mt-2 rounded-lg px-3 py-2">
-          <div className="flex items-start justify-between gap-4">
+          <Stack align="start" direction="row" gap="4" justify="between">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{selected.title}</p>
             </div>
@@ -246,7 +246,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
                 Cancel
               </Action>
             </div>
-          </div>
+          </Stack>
           <SourceContentPreview
             provider={provider}
             canonicalUrl={selected.canonicalUrl}

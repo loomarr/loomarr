@@ -35,13 +35,13 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           <div key={key} className="border-static-700 bg-static-800 aspect-[2/3] rounded-[6px] border" />
         ))}
       </div>
-      <div className="flex flex-col gap-1 px-4 pt-3.5">
+      <Stack className="px-4 pt-3.5" gap="1">
         <span className="text-static-400 text-xs">{ideaReason(idea, empty, nowMs)}</span>
         <h3 id={nameId} className="m-0 text-base leading-[1.3] font-semibold">
           {idea.name}
         </h3>
         <p className="text-static-400 m-0 text-sm text-pretty">{idea.pitch}</p>
-      </div>
+      </Stack>
       <Stack align="center" className="px-4 pt-2.5 text-xs" direction="row" gap="inline">
         {/* The availability text beside it says what the dot does. */}
         <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" size="compact" />

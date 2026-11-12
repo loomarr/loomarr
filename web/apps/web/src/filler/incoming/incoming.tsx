@@ -237,7 +237,7 @@ const Incoming = () => {
   const helpTask = view.needsHelp.rows[helpIndex];
 
   return (
-    <section aria-labelledby="incoming-heading" className="flex flex-col gap-7">
+    <Stack aria-labelledby="incoming-heading" gap="7" render="section">
       <div>
         <h2 id="incoming-heading" className="text-2xl font-semibold">
           {summary}
@@ -379,7 +379,7 @@ const Incoming = () => {
           </DialogContent>
         ) : null}
       </Dialog>
-    </section>
+    </Stack>
   );
 };
 

@@ -2,6 +2,7 @@ import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import type { ClipEnrichmentFactDTOAxis } from "@loomarr/api/models/clipEnrichmentFactDTOAxis";
 import type { ClipEnrichmentFactDTOEvidence } from "@loomarr/api/models/clipEnrichmentFactDTOEvidence";
 import { formatBytes } from "@loomarr/core/format";
+import { Stack } from "@loomarr/design-system";
 
 const ENRICHMENT_AXIS_LABEL: Record<ClipEnrichmentFactDTOAxis, string> = {
   role: "Type",
@@ -130,12 +131,12 @@ const ClipMoreDetails = ({ clip }: ClipMoreDetailsProps) => {
             <dd>
               <ul className="mt-1 space-y-1">
                 {clip.enrichment.facts.map((fact) => (
-                  <li key={fact.axis} className="flex justify-between gap-4">
+                  <Stack direction="row" gap="4" justify="between" key={fact.axis} render="li">
                     <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
                     <span className="text-muted-foreground text-right">
                       {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
                     </span>
-                  </li>
+                  </Stack>
                 ))}
               </ul>
             </dd>

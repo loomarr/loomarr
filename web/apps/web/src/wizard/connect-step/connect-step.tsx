@@ -1,5 +1,5 @@
 import { humanizeSettingKey } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ChecklistItem } from "@/components/loomarr/setup/checklist-item";
 import type { ConnectStepProps } from "./connect-step.type";
@@ -13,7 +13,7 @@ const ConnectStep = ({ check, cta, onConnect, isPending = false, error, children
   const connected = check?.ok === true;
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       <div className="text-muted-foreground text-sm">{children}</div>
 
       {error != null && <ErrorState error={error} />}
@@ -35,7 +35,7 @@ const ConnectStep = ({ check, cta, onConnect, isPending = false, error, children
       >
         {isPending ? "Working…" : connected ? "Run again" : cta}
       </Action>
-    </div>
+    </Stack>
   );
 };
 

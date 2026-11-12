@@ -56,9 +56,12 @@ const DiagnosticsPage = ({
           />
         }
       />
-      <nav
-        className="border-border flex gap-1 overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
+      <Stack
         aria-label="Diagnostics views"
+        className="border-border overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
+        direction="row"
+        gap="1"
+        render="nav"
       >
         {tabs.map(({ id, label, icon }) => (
           <button
@@ -81,7 +84,7 @@ const DiagnosticsPage = ({
             {label}
           </button>
         ))}
-      </nav>
+      </Stack>
       {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
           positioned, and without a positioned scroller it stretches the document instead of
           scrolling in here (#3404, #2724). */}

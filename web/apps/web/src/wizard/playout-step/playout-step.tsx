@@ -132,7 +132,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       {/* ⚠ REAL RADIOS, inside a real <fieldset>. These are mutually exclusive answers to one
           question, so assistive tech should announce the question (the legend), the group,
           and which option is chosen — none of which a list of <button>s conveys. An earlier
@@ -171,11 +171,11 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                   <span className="font-medium">{option.title}</span>
                 </Stack>
                 <span className="text-muted-foreground text-sm">{option.tagline}</span>
-                <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
+                <Stack className="text-muted-foreground text-sm" gap="1" render="ul">
                   {option.points.map((point) => (
                     <li key={point}>{point}</li>
                   ))}
-                </ul>
+                </Stack>
               </label>
             );
           })}
@@ -269,7 +269,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
         The playback engine can be changed later in Settings and overridden per channel.
         {value === PLAYOUT_INTERNAL && " The Loomarr address applies to the whole install."}
       </p>
-    </div>
+    </Stack>
   );
 };
 

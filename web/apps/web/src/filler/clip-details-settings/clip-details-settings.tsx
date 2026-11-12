@@ -249,9 +249,13 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               {structuredSources.map((entry) => {
                 const labelID = `clip-detail-source-${entry.key.replaceAll(".", "-")}`;
                 return (
-                  <div
+                  <Stack
+                    align="center"
+                    className="min-h-12 px-3 py-2.5"
+                    direction="row"
+                    gap="4"
+                    justify="between"
                     key={entry.key}
-                    className="flex min-h-12 items-center justify-between gap-4 px-3 py-2.5"
                   >
                     <span id={labelID} className="text-sm font-medium">
                       {entry.label}
@@ -264,7 +268,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                       onChange={(value) => setEdit(entry.key, value)}
                       disabledReason={!enabled ? "Turn on automatic clip details first." : undefined}
                     />
-                  </div>
+                  </Stack>
                 );
               })}
             </div>

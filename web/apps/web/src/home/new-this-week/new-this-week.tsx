@@ -91,7 +91,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         // as a container query so it holds whatever chrome shares the viewport.
         <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5 @max-[284px]:grid-cols-1">
           {titles.slice(0, POSTERS).map((t) => (
-            <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
+            <Stack className="min-w-0" gap="1.5" key={t.key}>
               <div
                 data-home-poster-art=""
                 className="border-static-700 aspect-[2/3] w-full overflow-hidden rounded-md border"
@@ -108,7 +108,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
               {t.channels?.[0] && (
                 <span className="text-static-400 truncate text-xs">{t.channels[0].name}</span>
               )}
-            </div>
+            </Stack>
           ))}
         </div>
       )}
