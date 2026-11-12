@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"slices"
 	"strconv"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -55,6 +56,55 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
 	}
 	return b.byEntry(ctx, s, in, res)
+}
+
+// byAbsolute places an episode its file numbers across the whole show ("Show - 013") by its series'
+// catalog: the seasons, specials aside, in order, each as long as the catalog says, hold the
+// episodes one after another, so the 13th of a show of two 12-episode seasons is season 2's 1st.
+// It is then described by that season's entry, as a name's "S02E01" would be. With no series
+// record cached yet, or one too short to hold it, res is returned as it was.
+func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, abs int) resolution {
+	if s == nil {
+		return res
+	}
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.catalog.String() == "" || series.record.Descriptive == nil {
+		return res
+	}
+	season, episode, ok := absoluteAt(series.record.Descriptive.Seasons, abs)
+	if !ok {
+		return res
+	}
+	at := mp.Numbering{Season: season, Episode: episode, Absolute: abs}
+	records := make([]mp.Record, 0, len(in.Records))
+	for _, r := range in.Records {
+		if r.Source.Basis == mp.BasisEmbeddedID {
+			r.Numbering = &at
+		}
+		records = append(records, r)
+	}
+	in.Records = records
+	res.resolved = b.im.Resolver.Resolve(in)
+	res.catalog = librarystore.LibraryCatalogKey{
+		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
+		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(season),
+	}
+	return b.byEntry(ctx, s, in, res)
+}
+
+// absoluteAt is where the abs-th episode of a show sits in its seasons, specials aside.
+func absoluteAt(seasons []mp.SeasonSize, abs int) (int, int, bool) {
+	sorted := slices.SortedFunc(slices.Values(seasons), func(a, b mp.SeasonSize) int { return a.Number - b.Number })
+	for _, size := range sorted {
+		if size.Number <= 0 || size.Episodes <= 0 {
+			continue
+		}
+		if abs <= size.Episodes {
+			return size.Number, abs, true
+		}
+		abs -= size.Episodes
+	}
+	return 0, 0, false
 }
 
 // byEntry describes the episode by the entry of res.catalog's record (a season, or an episode
