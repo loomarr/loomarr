@@ -563,6 +563,11 @@ func embeddedRecord(file File) (mp.Record, string) {
 		(!sxxeyy.MatchString(file.Rel) && !crossMark.MatchString(name) || catchAllFolder(path.Base(seriesFolderOf(file)))) {
 		return movieRecord(src, segments), ""
 	}
+	// A camera's or phone's clip, "MVI_1001", "IMG_2041", "GOPR0032", is a video of its own: its
+	// number counts the camera's shots, never a show's episodes.
+	if cameraClip.MatchString(plainStem(name)) {
+		return movieRecord(src, segments), ""
+	}
 	// A part of a whole set, "Grimwold CD1" beside "Grimwold CD2", is a film's wherever it is: a
 	// shows' folder's parts are no set (walk.go), and "Part 1 of 3" is a miniseries' (partIn).
 	if dir := path.Dir(file.Rel); file.Part > 0 && !sxxeyy.MatchString(name) && !inShowsSeason(dir) {
@@ -687,6 +692,10 @@ func miniseriesAmongFilms(file File) bool {
 	return file.Notes.Spelled && year == 0 && !catchAllFolder(path.Base(path.Dir(file.Rel)))
 }
 
+// cameraClip matches a camera's or phone's own name for a clip: "MVI_1001", "IMG_2041",
+// "DSC01234", "GOPR0032", "GH010032", "VID_20230308_101500", "PXL_20230308_101500123".
+var cameraClip = regexp.MustCompile(`(?i)^(?:mvi|img|dsc[fn]?|vid|mov|pxl|gopr|gh\d{2}|gx\d{2}|dji|mah|clip)[ _-]?\d{4,}(?:[ _-]\d+)*$`)
+
 // seasonAmongFilms says whether a file in a folder of its own among films is a show's episode by
 // the folder's structure: the folder is a season's pack ("Lumen Bay Season 1", "Fennick.Cove.S02"),
 // or the file is named by an episode's word and number alone ("Episode 1", "Ep 02").
@@ -700,7 +709,7 @@ func seasonAmongFilms(file File) bool {
 
 // episodeOnly matches a name that is an episode's word and number and nothing else: "Episode 1",
 // "Ep.02", "Folge 3".
-var episodeOnly = regexp.MustCompile(`(?i)^(?:episode|ep|folge|episodio|episódio|épisode|aflevering|avsnitt|afsnit|odcinek|cap[ií]tulo)[ ._-]*\d{1,4}$`)
+var episodeOnly = regexp.MustCompile(`(?i)^(?:episode|ep|e|folge|episodio|episódio|épisode|aflevering|avsnitt|afsnit|odcinek|cap[ií]tulo)[ ._-]*(\d{1,4})$`)
 
 // showFilm matches a show's film named by the word after the show's name: "Kaito Run Movie 1",
 // "Westerly Movie", "Westerly: The Movie", "Hana Kettle Gekijouban".
@@ -1772,6 +1781,10 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	if m := episodeWord.FindStringSubmatch(name); m != nil {
 		return episode(atoi(m[1]))
 	}
+	// "Hollow Sea/E01.mkv": a name that is its episode's mark alone is its folder's show's.
+	if m := episodeOnly.FindStringSubmatch(name); m != nil {
+		return episode(atoi(m[1]))
+	}
 	if m := cjkEpisode.FindStringSubmatch(name); m != nil {
 		return episode(atoi(matched(m[1], m[2])))
 	}
@@ -1779,7 +1792,7 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		return episode(atoi(m[1]))
 	}
 	// So do a show's episodes numbered alone in its own folder ("Ocean Halls/01 - The Deep.mkv").
-	if m := leadingNumber.FindStringSubmatch(name); (inSeason || file.Notes.Leading) && m != nil {
+	if m := leadingNumber.FindStringSubmatch(name); (inSeason || namedFolder || file.Notes.Leading) && m != nil {
 		// "101 - Tidewater" in Season 1 is its first episode, when every numbered name in the folder
 		// is in its hundred; "101" among "99" and "100" is the hundred and first.
 		if n := atoi(m[1]); season > 0 && file.Notes.Hundreds == season {
@@ -1997,9 +2010,83 @@ func catchAllFolder(name string) bool {
 	return catchAllNames[key] || showsFolderNames[key] || filmsFolderNames[key] || alphabetFolder.MatchString(key)
 }
 
-// folderKey is a folder's name as the catch-all lists read it: its words, in lower case.
+// folderKey is a folder's name as the catch-all lists read it: its words, in lower case. A name
+// the lists don't hold is read by its words when every one of them is a shelf's (shelfWords): one
+// with a films' word is a films' shelf ("Christmas Movies", "Movies - Kids", "Movies2"), one with
+// a shows' word a shows' ("TV Show", "TV 2"), and any other a catch-all ("DVD Rips", "Westerns").
 func folderKey(name string) string {
-	return strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(strings.ToLower(name))), " ")
+	key := strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(strings.ToLower(name))), " ")
+	if knownKey(key) {
+		return key
+	}
+	words := strings.Fields(strings.ReplaceAll(key, "-", " "))
+	if joined := strings.Join(words, " "); knownKey(joined) {
+		return joined
+	}
+	// "Toddlers" and "Kids & Family" are an audience's shelf, as "Kids" is.
+	if !slices.ContainsFunc(words, func(w string) bool { return !audienceWords[w] }) && len(words) > 0 {
+		return "kids"
+	}
+	// A copy's word alone, "4K/" or "BluRay/" in a film's folder, is its version's folder.
+	if !slices.ContainsFunc(words, func(w string) bool { return !copyWords[w] }) {
+		return key
+	}
+	kind := "misc"
+	for i, w := range words {
+		// "Movies2" and "TV 2" are a second shelf of their kind.
+		if m := shelfNumber.FindStringSubmatch(w); m != nil && m[1] != "" {
+			w = m[1]
+		} else if m != nil && i > 0 {
+			continue
+		}
+		switch shelfWords[w] {
+		case "":
+			return key
+		case "films":
+			kind = "movies"
+		case "shows":
+			if kind != "movies" {
+				kind = "tv"
+			}
+		}
+	}
+	if len(words) == 0 {
+		return key
+	}
+	return kind
+}
+
+// knownKey says whether a folder's key is on a shelf list.
+func knownKey(key string) bool {
+	return catchAllNames[key] || showsFolderNames[key] || filmsFolderNames[key] || animeFolderNames[key] ||
+		audienceNames[key] || contentShelves[key]
+}
+
+// audienceWords are the words an audience's shelf is named by.
+var audienceWords = map[string]bool{
+	"kids": true, "children": true, "family": true, "toddler": true, "toddlers": true, "&": true, "and": true,
+	"childrens": true, "children's": true, "kid's": true, "kids'": true,
+}
+
+// copyWords name one copy's kind, as a film's version folder is named.
+var copyWords = map[string]bool{"dvd": true, "bluray": true, "blu": true, "ray": true, "hd": true, "4k": true, "uhd": true}
+
+// shelfNumber matches a shelf's word with its number after it, "movies2", or the number alone.
+var shelfNumber = regexp.MustCompile(`^([a-z]*?)\d{1,2}$`)
+
+// shelfWords are the words a household's shelf is named by, and the kind each says: a films',
+// a shows', or neither (an audience, a genre, a disc's or a copy's word).
+var shelfWords = map[string]string{
+	"movies": "films", "movie": "films", "films": "films", "film": "films", "cinema": "films", "kino": "films",
+	"filme": "films", "filmes": "films", "filmer": "films", "feature": "films", "features": "films",
+	"tv": "shows", "shows": "shows", "show": "shows", "series": "shows", "television": "shows",
+	"kids": "any", "children": "any", "family": "any", "toddler": "any", "toddlers": "any", "christmas": "any",
+	"holiday": "any", "classic": "any", "classics": "any", "westerns": "any", "western": "any", "disney": "any",
+	"pixar": "any", "horror": "any", "action": "any", "animated": "any", "animation": "any", "cartoon": "any",
+	"dvd": "any", "dvds": "any", "rips": "any", "ripped": "any", "bluray": "any", "blu": "any", "ray": "any",
+	"blurays": "any", "hd": "any", "4k": "any", "uhd": "any", "old": "any", "my": "any", "all": "any", "and": "any",
+	"&": "any", "sci": "any", "fi": "any", "scifi": "any", "drama": "any", "thriller": "any", "thrillers": "any",
+	"musicals": "any", "foreign": "any", "backup": "any", "backups": "any", "archive": "any", "more": "any",
 }
 
 // folderNotes are what a folder's videos say about each of them together.
@@ -2208,6 +2295,10 @@ func titledEpisodes(rel string, names []string) bool {
 	}
 	for _, name := range names {
 		s := plainStem(name)
+		// The show's own film kept with it, "Moss Mouse Movie (2019)", says nothing of its episodes.
+		if words := strings.Fields(normName(s)); len(words) > len(own) && slices.Equal(words[:len(own)], own) && showFilm.MatchString(s) {
+			continue
+		}
 		if _, year, _ := searchQuery(s, 0); year != 0 || bracketYear.MatchString(s) {
 			return false
 		}

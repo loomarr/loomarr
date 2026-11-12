@@ -411,8 +411,9 @@ var (
 	// title.
 	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*(?:www\.(?:[a-z0-9-]+\.)+[a-z]{2,10}(?:\s*\][ ._]*(?:-[ ._]*)?|[ ._]*-[ ._]*|\s+|_+)|(?:[a-z0-9-]+\.)+(?:com|org|net|io|to|cc|me|tv|info|xyz|ru|se|nu|ws|club|lol|biz|co|example)\s*\]?[ ._]*-[ ._]*)`)
 	// indexPrefix matches a collection's place for a film, before its title: "01 - Ashgrove",
-	// "1. Ashgrove", "(1) Ashgrove". A number that starts a title, "10 Kettles", has none of these.
-	indexPrefix = regexp.MustCompile(`^\s*(?:\(\d{1,2}\)|\d{1,2}\.|\d{1,2}[ ._]+-)[ ._]+`)
+	// "1. Ashgrove", "(1) Ashgrove", "03 Ashgrove" padded as a place is. A number that starts a
+	// title, "10 Kettles" or "7 Lanterns", has none of these.
+	indexPrefix = regexp.MustCompile(`^\s*(?:\(\d{1,2}\)|\d{1,2}\.|\d{1,2}[ ._]+-|0\d)[ ._]+`)
 	// bracketNote matches a bracketed group after a title, which noteWords may say is a note on the
 	// release rather than part of its name: "(Dual Audio)", "[HD]", "(2016 Remaster)".
 	bracketNote = regexp.MustCompile(`[(\[]([^()\[\]]*)[)\]]`)
