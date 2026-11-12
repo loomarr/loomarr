@@ -614,7 +614,10 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   has reads "No such channel" on a solid ink plate.
 - **Flipping channels.** The band gives way to a row of channel cards. Each card has a picture of its
   own (the programme's fanart, or a flat stand-in) with the number block on it and the words under it;
-  the card being aimed at is at full strength and the rest sit back.
+  the card being aimed at is at full strength and the rest sit back. Every flip tunes at once (§9.4),
+  so the card lit is the channel now playing, and it reads "Watching now". The cards come up with the
+  first flip and go 1.2 s after the last; the readout names the channel meanwhile, and the utilities
+  and Leave step away. Five cards on desktop and television, three on a phone.
 - **Station ID.** After a settled tune with the controls hidden, the band is replaced by the ident card
   on the programme's backdrop, heavily dimmed, and clears after five seconds.
 

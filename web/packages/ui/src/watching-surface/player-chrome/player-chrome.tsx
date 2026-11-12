@@ -3,6 +3,7 @@ import { memo, useDeferredValue, useState } from "react";
 import { type LayoutChangeEvent, Platform, View } from "react-native";
 
 import { ChannelBand } from "./channel-band";
+import { ChannelCards } from "./channel-cards";
 import { gradientOr, webOnly } from "./flat";
 import { IdentBackdrop } from "./ident-backdrop";
 import { PlayerCaption } from "./player-caption";
@@ -50,6 +51,7 @@ const ChromeBody = memo(
     readout,
     schedule,
     sheet,
+    surf,
     unmute,
     utilities,
     visible,
@@ -58,9 +60,12 @@ const ChromeBody = memo(
     const tv = layout === "tv";
     const touch = density === "touch";
     const pointer = keys.pointer;
+    // Flipping channels (§9.2): the cards take the band's place with the keys up beside them, and the
+    // utilities and Leave step away until the flipping stops.
+    const surfing = surf !== undefined && !sheet;
     // The station-ID card stands in for hidden controls: the band alone, fuller.
-    const card = ident && !visible && !sheet;
-    const controls = visible;
+    const card = ident && !visible && !sheet && !surfing;
+    const controls = visible || surfing;
     const shown = controls || card;
     // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540. A phone keeps clear
     // of its safe areas: the Dynamic Island, the home indicator and, on its side, both ends (§9.7).
@@ -110,6 +115,8 @@ const ChromeBody = memo(
             live={live}
             onGoLive={onGoLive}
             onLeave={onLeave}
+            readout={readout}
+            surf={sheet ? undefined : surf}
             unmute={unmute}
             utilities={utilities}
           />
@@ -178,16 +185,20 @@ const ChromeBody = memo(
               onLayout={(e: LayoutChangeEvent) => setBandHeight(e.nativeEvent.layout.height)}
               style={{ flex: 1, marginBottom: bandLift, minWidth: 0 }}
             >
-              <ChannelBand
-                band={band}
-                density={density}
-                formatTime={formatTime}
-                ident={card}
-                live={live}
-                onGoLive={onGoLive}
-                schedule={schedule}
-                tv={tv}
-              />
+              {surf && surfing ? (
+                <ChannelCards density={density} surf={surf} />
+              ) : (
+                <ChannelBand
+                  band={band}
+                  density={density}
+                  formatTime={formatTime}
+                  ident={card}
+                  live={live}
+                  onGoLive={onGoLive}
+                  schedule={schedule}
+                  tv={tv}
+                />
+              )}
             </View>
             {card ? null : (
               // The control cluster: everything you can press, in one place. The utilities are a smaller
@@ -207,13 +218,13 @@ const ChromeBody = memo(
                 testID="player-cluster"
               >
                 {menu}
-                {tv ? null : <PlayerUtilities {...utilities} />}
+                {tv || surfing ? null : <PlayerUtilities {...utilities} />}
                 <PlayerKeys {...keys} {...(tv ? { audio: utilities } : {})} />
               </View>
             )}
           </View>
         </View>
-        {onLeave && !tv ? (
+        {onLeave && !tv && !surfing ? (
           // Leave: the top left corner, where people reach to leave (§9.3). The rating sits beside it.
           // A television has none: the remote's Back leaves.
           <View

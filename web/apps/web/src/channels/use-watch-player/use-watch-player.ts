@@ -169,10 +169,12 @@ const useWatchPlayer = ({ channelId, channels, nowNext, onNavigate }: UseWatchPl
   return {
     attach: player.attach,
     canSurf: snapshot.catalog.length > 1,
+    catalog: snapshot.catalog,
     channel,
     currentTitle,
     error,
     failureCause,
+    ...(snapshot.tuneReason === "step" && tunedId ? { flipKey: tunedId } : {}),
     ladder: player.ladder,
     liveTransport,
     playbackSessionId: player.playbackSessionId,

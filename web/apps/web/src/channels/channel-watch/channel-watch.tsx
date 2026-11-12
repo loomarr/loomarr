@@ -27,9 +27,11 @@ import {
   PlayerVolume,
   playbarFromTimeline,
   rungFor,
+  surfCardsFromGuide,
+  useSurfCards,
   watermarkOf,
 } from "@loomarr/ui";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChannelDrawer } from "@/channels/channel-drawer";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player/video-player";
@@ -416,9 +418,19 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // The number readout, top right of the frame, drawn by the chrome (it keeps it clear of the
   // watermark): the digits so far, dashed out to the longest channel number, over "Enter channel" or,
   // for a number no channel has, "No such channel". On a solid ink backing (§9.2), white, never amber.
+  // Flipping (§9.2): each Channel key tunes at once, and the cards ride along in the band's place; the
+  // band is down, so the readout names the channel.
+  const guide = channels?.guide;
+  const surfCards = useMemo(
+    () => (guide ? surfCardsFromGuide(player.catalog, guide.layout, guide.nowMs) : []),
+    [player.catalog, guide],
+  );
+  const surf = useSurfCards(surfCards, channel.id, player.flipKey);
   const readout = entry.digits
     ? { digits: entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–"), missed: entry.missed }
-    : undefined;
+    : surf
+      ? { digits: String(osdChannel.number), name: osdChannel.name }
+      : undefined;
   // The channel's bug is burned into the picture; the chrome keeps out of its corner (§9.6, #2772).
   const watermark = watermarkOf(channel.policy?.watermark);
 
@@ -645,6 +657,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             }
             onGoLive={chrome.goLive}
             readout={readout}
+            {...(surf ? { surf } : {})}
             panel={
               detailsOpen && !touch ? (
                 <PlayerDetailsPanel

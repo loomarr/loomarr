@@ -31,6 +31,7 @@ import {
   pairingBackAvailable,
   playerChromeFromGuide,
   SurfJourney,
+  surfCardsFromGuide,
   useClientDestination,
   type WatchingLayer,
   WatchingSurface,
@@ -208,6 +209,11 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     return () => clearInterval(timer);
   }, []);
   const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs: clockMs, snapshot });
+  // The cards a flip shows in the band's place (§9.2): the catalog Up and Down step through.
+  const surfCards = useMemo(
+    () => surfCardsFromGuide(snapshot.catalog, guideSnapshot.layout, clockMs),
+    [snapshot.catalog, guideSnapshot.layout, clockMs],
+  );
   const markSwitchShown = useCallback(
     (what: "osd" | "still") => certMarks.held(controller.getSnapshot().attemptId, what),
     [controller],
@@ -247,6 +253,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
           player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
           snapshot={snapshot}
           subtitles={subtitles}
+          surfCards={surfCards}
         />
       }
       overlay={

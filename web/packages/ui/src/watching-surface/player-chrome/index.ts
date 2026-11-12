@@ -22,6 +22,8 @@ export type {
   PlayerLiveState,
   PlayerSchedule,
   PlayerSheetProps,
+  PlayerSurf,
+  PlayerSurfChannel,
   PlayerUtilitiesProps,
 } from "./player-chrome.type";
 export type { PlayerCoverProps } from "./player-cover";

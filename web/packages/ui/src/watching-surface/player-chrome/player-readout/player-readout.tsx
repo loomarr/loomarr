@@ -20,9 +20,19 @@ interface PlayerReadoutProps {
   countdown?: string;
   /** Distance from the frame's top: the chrome starts it below the top row and the watermark. */
   top: number;
+  /** Distance from the frame's right edge: the chrome's side margin (an upright phone's is narrower). */
+  right?: number;
 }
 
-const PlayerReadout = ({ countdown, density, digits, missed = false, name, top }: PlayerReadoutProps) => (
+const PlayerReadout = ({
+  countdown,
+  density,
+  digits,
+  missed = false,
+  name,
+  right = 48,
+  top,
+}: PlayerReadoutProps) => (
   <View
     role="status"
     style={{
@@ -32,7 +42,7 @@ const PlayerReadout = ({ countdown, density, digits, missed = false, name, top }
       paddingHorizontal: 24,
       paddingVertical: 16,
       position: "absolute",
-      right: 48,
+      right,
       top,
       zIndex: 40,
     }}
