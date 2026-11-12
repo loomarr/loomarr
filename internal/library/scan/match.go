@@ -425,7 +425,7 @@ var (
 	// "Tangled Web", "The Cam", "Mister Proper", "The German". It ends the title only where a
 	// release's words are plainly under way: after the year, before another release word, or last
 	// in a name written with dots.
-	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch)$`)
+	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch|amzn|nf|dsnp|hmax|atvp|pcok|hulu|3d|hsbs|hou|sbs|mkv|mp4|avi)$`)
 )
 
 // releaseToken says whether a word is a release's: a releaseMark, or a releaseWord.
@@ -562,6 +562,13 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	for j := len(words) - 1; j > 0; j-- {
 		// A year glued to a release group, "2015-GRP", or set between dashes, "-2015-", is the year.
 		if w := strings.SplitN(strings.TrimLeft(words[j], "-"), "-", 2)[0]; releaseYear(w) {
+			// A year with a title's words after it, "Back to 1985 Again" or "Class of 1999 Kettle", is
+			// the title's. A release's year has only its notes after it ("Ashgrove.2015.3D.HSBS",
+			// "Kettle Bay 2021 AMZN") or an edition, or is in brackets.
+			bracketed := strings.Contains(name, "("+w+")") || strings.Contains(name, "["+w+"]")
+			if !bracketed && titleWords(words[j+1:], name) {
+				continue
+			}
 			if year == 0 {
 				year, _ = strconv.Atoi(w)
 			}
@@ -588,6 +595,50 @@ var editionWords = [][]string{
 	{"extended", "edition"}, {"extended", "cut"}, {"directors", "cut"}, {"director's", "cut"}, {"special", "edition"},
 	{"ultimate", "edition"}, {"collectors", "edition"}, {"collector's", "edition"}, {"anniversary", "edition"},
 	{"theatrical", "cut"}, {"remastered"}, {"unrated"}, {"extended"},
+}
+
+// titleWords says whether words, the last of name's, run on a title: each a word written as name
+// writes its title's, "Again" ("again" in a name all in lower case), or a small one between them,
+// "of", "the", and not an edition or a release's word. A release's notes are in capitals or carry
+// digits: "AMZN", "3D".
+func titleWords(words []string, name string) bool {
+	if len(words) == 0 || editionOnly(words) {
+		return false
+	}
+	asTitle := func(w string) bool {
+		if strings.ContainsFunc(w, func(r rune) bool { return !unicode.IsLetter(r) && r != '\'' }) {
+			return false
+		}
+		switch {
+		case name == strings.ToLower(name), name == strings.ToUpper(name):
+			return true
+		}
+		r, size := utf8.DecodeRuneInString(w)
+		return unicode.IsUpper(r) && w[size:] != "" && strings.ToLower(w[size:]) == w[size:]
+	}
+	titled := false
+	for _, w := range words {
+		switch {
+		case releaseToken(w):
+			return false
+		case smallWords[strings.ToLower(w)]:
+		case asTitle(w):
+			titled = true
+		default:
+			return false
+		}
+	}
+	return titled
+}
+
+// smallWords are the words a title keeps in lower case between its others.
+var smallWords = map[string]bool{"of": true, "the": true, "and": true, "a": true, "an": true, "in": true, "to": true, "on": true, "at": true}
+
+// editionOnly says whether words are an edition and nothing else: "Directors Cut", "Extended".
+func editionOnly(words []string) bool {
+	return slices.ContainsFunc(editionWords, func(edition []string) bool {
+		return slices.EqualFunc(words, edition, strings.EqualFold)
+	})
 }
 
 // withoutEdition is a title's words with an edition at their end taken off; a title that is

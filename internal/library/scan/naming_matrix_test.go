@@ -862,6 +862,64 @@ var namingMatrix = []namingRow{
 		"TV/Kettle/Kettle Run S01E01.mkv": "episode Kettle Run S1E1",
 		"TV/Kettle/Kettle Run S01E02.mkv": "episode Kettle Run S1E2",
 	}},
+	// Re-score #10: a loose episode's show is the one its name gives, unless its folder's name is
+	// that show's: an alphabet's or a to-watch folder names none.
+	{id: "W93", files: map[string]string{
+		"TV/C/Cinder Bay S01E01.mkv":             "episode Cinder Bay S1E1",
+		"TV/C/Cinder Bay S01E02.mkv":             "episode Cinder Bay S1E2",
+		"TV/B/Birch Hill S01E02.mkv":             "episode Birch Hill S1E2",
+		"TV/D-F/Dune Fen S02E01.mkv":             "episode Dune Fen S2E1",
+		"TV/New Episodes/Copper Wick S01E04.mkv": "episode Copper Wick S1E4",
+		"TV/To Watch/Copper Fen S01E01.mkv":      "episode Copper Fen S1E1",
+		"TV/Kettle Bay/kb.s01e01.mkv":            "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle.Bay.US.S01E02.mkv": "episode Kettle Bay S1E2",
+	}},
+	// Re-score #10: a folder's files numbered after a name they share are that show's episodes;
+	// fansub tags last or in round brackets.
+	{id: "W94", files: map[string]string{
+		"Kids/Cartoons/Bunny Hop 01.mp4":        "episode Bunny Hop S?E?",
+		"Kids/Cartoons/Bunny Hop 02.mp4":        "episode Bunny Hop S?E?",
+		"Cartoons/Fizzy Fox 01.mp4":             "episode Fizzy Fox S?E?",
+		"Cartoons/Fizzy Fox 02.mp4":             "episode Fizzy Fox S?E?",
+		"Kids/Fizzy Cat - 01 - Paws.mp4":        "episode Fizzy Cat S?E?",
+		"Kids/Fizzy Cat - 02 - Claws.mp4":       "episode Fizzy Cat S?E?",
+		"Kids/Fizzy Hen/01.mp4":                 "episode Fizzy Hen S?E?",
+		"Kids/Fizzy Hen/02.mp4":                 "episode Fizzy Hen S?E?",
+		"Hana Kettle - 06 [SubGrp].mkv":         "episode Hana Kettle S?E?",
+		"Hana Pond 08 (1080p) [SubGrp].mkv":     "episode Hana Pond S?E?",
+		"(SubGrp) Yume Kettle - 09 (1080p).mkv": "episode Yume Kettle S?E?",
+		"{SubGrp} Yume Pond - 11.mkv":           "episode Yume Pond S?E?",
+	}},
+	// Re-score #10: a year inside a title; MakeMKV's older names and a season's disc label; a film
+	// recorded off air; Japanese seasons; numbered anime specials.
+	{id: "W95", files: map[string]string{
+		"Movies/Year 2000 Kettle.mkv":                                      "movie Year 2000 Kettle -",
+		"Movies/Back to 1985 Again.mkv":                                    "movie Back to 1985 Again -",
+		"TV/Class of 1999 Kettle/Season 1/Class of 1999 Kettle S01E01.mkv": "episode Class of 1999 Kettle S1E1",
+		"Movies/Ashgrove.2015.Directors.Cut.1080p.mkv":                     "movie Ashgrove 2015",
+		"Movies/IRON_TIDE/title00.mkv":                                     "movie IRON TIDE -",
+		"Rips/KETTLE_BAY_S1_D1/title_t00.mkv":                              "episode KETTLE BAY S?E?",
+		"Rips/KETTLE_BAY_S1_D1/title_t01.mkv":                              "episode KETTLE BAY S?E?",
+		"Recorded TV/Iron Spire (2011)_Film4_2022_05_01_21_00_00.wtv":      "movie Iron Spire 2011",
+		"TV/灰色の海岸/シーズン1/第5話.mkv":                                           "episode 灰色の海岸 S1E5",
+		"Anime/[Grp] Tsuki Kettle - SP01 [1080p].mkv":                      "episode Tsuki Kettle S0E1",
+	}},
+	// Re-score #10's over-corrections: a sequel's number, a film's tag last, a title's leading
+	// number, a film's year with its edition, a show named by a letter, a film's ripped titles.
+	{id: "W96", files: map[string]string{
+		"Movies/Apollo Ridge 13 [Criterion].mkv":      "movie Apollo Ridge 13 -",
+		"Kids/Ironvale 2.mkv":                         "movie Ironvale 2 -",
+		"Kids/Ironvale 3.mkv":                         "movie Ironvale 3 -",
+		"Movies/Ashgrove 2015 Directors Cut.mkv":      "movie Ashgrove 2015",
+		"Movies/Class of 1999 (1990).mkv":             "movie Class of 1999 1990",
+		"Movies/Kettle Bay 2019 Remastered.mkv":       "movie Kettle Bay 2019",
+		"Rips/Ashgrove (2015)/01.mkv":                 "movie Ashgrove 2015",
+		"Rips/Ashgrove (2015)/02.mkv":                 "movie Ashgrove 2015",
+		"TV/V/V S01E01.mkv":                           "episode V S1E1",
+		"TV/V/V S01E02.mkv":                           "episode V S1E2",
+		"Kids/Hollow Pond (2010).mkv":                 "movie Hollow Pond 2010",
+		"Downloads/Ferrow Lane - 07 [Remastered].mkv": "movie Ferrow Lane - 07 -",
+	}},
 	// Re-score #9's over-corrections: a show's folder whose files add a country; a film named by an
 	// edition's word; an episode titled "Credits" beside marked ones; a film with "Ep" in its name.
 	{id: "W92", files: map[string]string{

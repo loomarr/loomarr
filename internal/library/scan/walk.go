@@ -415,7 +415,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	notes.Episodes = marked >= 2 || marked == 1 && (shows || ownMarked) || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
 		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
 	})
-	notes.Leading = leadingEpisodes(videoNames)
+	notes.Leading = leadingEpisodes(folder, videoNames)
 	notes.Series = dir != w.root && namedSeries(folder, videoNames)
 	for _, e := range entries {
 		if e.IsDir() {

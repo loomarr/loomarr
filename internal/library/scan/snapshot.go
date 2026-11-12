@@ -184,7 +184,14 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    and "Intro" are a film's extras, but an episode's titles beside marked episodes; a
 //	    season's extras folder and a scene's proof are skipped; "Christmas Specials" are season
 //	    0; "Saga Two" is a title, not a saga's folder.
-const writeVersion = 51
+//	52: a shelf by letter ("TV/C/") or by what is watched ("To Watch/") names no show; files
+//	    numbered after a name they share ("Fizzy Fox 01", "Fizzy Cat - 02 - Paws", "01" beside
+//	    "02") are that show's episodes wherever they are; a group's tag last, "{Grp}" or "(Grp)"
+//	    first, tags a release; a fansub's "SP01" and "OVA 2" are season 0's; a year with a
+//	    title's words after it is the title's ("Back to 1985 Again"); a season's disc label
+//	    ("SHOW_S1_D1") holds its episodes; MakeMKV's "title00" and a recorded film are named by
+//	    their folder and film; "シーズン1" is a season folder.
+const writeVersion = 52
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -563,8 +570,8 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 
 var (
 	// makeMKVTitle matches MakeMKV's mark for a title it ripped, at a name's end: "title_t00",
-	// "GILDED_MOOR_t01".
-	makeMKVTitle = regexp.MustCompile(`(?i)(?:^title|_)_?t\d{2}$`)
+	// "GILDED_MOOR_t01", and its older versions' "title00".
+	makeMKVTitle = regexp.MustCompile(`(?i)(?:^title_?t?|_t)\d{2}$`)
 	// discLabel matches the disc's place a disc's label ends in: "OSTREVIN D1", "OSTREVIN DISC 2".
 	discLabel = regexp.MustCompile(`(?i)[ ]+d(?:isc)?[ ]?\d$`)
 )
@@ -590,6 +597,11 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
 			return clean(path.Base(path.Dir(dir)))
 		}
+	}
+	// A recorder names a film it recorded by the film, then its channel and when it began: "Iron
+	// Spire (2011)_Film4_2022_05_01_21_00_00" is "Iron Spire (2011)".
+	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain)) {
+		return clean(datedShow(plain))
 	}
 	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
 	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
