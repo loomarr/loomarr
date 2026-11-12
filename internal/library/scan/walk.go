@@ -195,6 +195,11 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		return nil
 	}
 	w.visited[real] = true
+	// The folder is listed, and its files recorded, under its one canonical path, not the alias
+	// that happened to reach it first.
+	if canonical, ok := canonicalPath(w.root, w.realRoot, real); ok {
+		dir = canonical
+	}
 	w.report.listing(w.rel(dir))
 	entries, err := os.ReadDir(dir)
 	w.steps.Add(1)
@@ -257,6 +262,11 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 				continue
 			}
 			isDir = info.IsDir()
+			// A file link to a file the walk records itself would record it twice; the target is
+			// the one. A target in a folder the walk skips is reached only through the link.
+			if canonical, ok := canonicalPath(w.root, w.realRoot, target); !isDir && ok && !w.within(filepath.Dir(canonical)) {
+				continue
+			}
 		}
 		switch {
 		case isDir && (skippedDirs[lower] || strings.HasPrefix(lower, ".trash-")):
@@ -407,6 +417,18 @@ func topEntries(ctx context.Context, root string) int {
 	case <-ctx.Done():
 		return 0
 	}
+}
+
+// canonicalPath is real, a resolved path, as the root names it: the root joined with real's place
+// under the root's own real path. Whatever path reached a folder or file, through a symlink or
+// not, it is recorded under this one, so a full walk and a folder pass agree (#3227). ok is false
+// when real lies outside the root.
+func canonicalPath(root, realRoot, real string) (string, bool) {
+	rel, err := filepath.Rel(realRoot, real)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.Join(root, rel), true
 }
 
 // inside resolves a symlink, reporting its target only when the target stays inside the root.

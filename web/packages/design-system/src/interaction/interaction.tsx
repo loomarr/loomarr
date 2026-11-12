@@ -642,9 +642,11 @@ const Field = ({
               borderWidth: focused ? 3 : 2,
               color: theme.contentPrimary.val,
               // A raw TextInput: Tamagui's per-weight face swap doesn't reach it, so name the file.
+              // The body face: what someone types, and a placeholder, are words, and mono is for
+              // channel numbers and clocks (#2778, #3412).
               fontFamily: isWeb
-                ? typography.family.data.web
-                : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
+                ? typography.family.body.web
+                : nativeFontFace("body", Platform.OS === "android" ? "android" : "ios"),
               fontSize: typography[density].body.size,
               minHeight: semanticTargets[density],
               opacity: disabled ? 0.62 : 1,
@@ -676,11 +678,11 @@ const Field = ({
         ) : null}
       </View>
       {error ? (
-        <Text aria-live="polite" density={density} id={messageId} textRole="metadata" tone="danger">
+        <Text aria-live="polite" density={density} id={messageId} textRole="hint" tone="danger">
           {error}
         </Text>
       ) : description ? (
-        <Text density={density} id={messageId} textRole="metadata">
+        <Text density={density} id={messageId} textRole="hint" tone="secondary">
           {description}
         </Text>
       ) : null}

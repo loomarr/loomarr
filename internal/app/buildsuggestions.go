@@ -105,7 +105,7 @@ func buildSuggestions(
 
 	catalogService := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
-	})
+	}).WithEvidence(st)
 	result.search = searchAdapter{catalogService}
 	collectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}

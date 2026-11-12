@@ -124,6 +124,15 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("doesn't claim every title is ready while a folder in use is empty", () => {
+    const { host, cleanup } = render({
+      status: { health: "folder_empty", scan: IDLE, held: [], offline: [] },
+    });
+    expect(host.textContent).not.toContain("All caught up");
+    expect(host.textContent).toContain("Up to date");
+    cleanup();
+  });
+
   // WCAG 2.5.3: a tile's name is what it shows. A label of its own ("Harbour Lights") left out the
   // year and kind beside it, which axe flags and a voice-control user cannot say.
   it("names a tile by what it shows, with no label of its own", () => {

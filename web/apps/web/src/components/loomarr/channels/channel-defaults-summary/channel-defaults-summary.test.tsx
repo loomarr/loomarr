@@ -4,13 +4,17 @@ import { eraDates } from "@/lib/era-dates";
 import { ChannelDefaultsSummary } from "./channel-defaults-summary";
 
 describe("ChannelDefaultsSummary", () => {
-  it("counts no overrides on a fresh channel", () => {
+  it("says a fresh channel uses the defaults, and that a change stays on this channel", () => {
     render(<ChannelDefaultsSummary policy={{}} />);
-    expect(screen.getByText(/^0 of 11 fields are channel overrides\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This channel uses Loomarr's defaults. Anything you change here applies to this channel only.",
+      ),
+    ).toBeInTheDocument();
   });
 
-  it("counts each overridden field, and says where the real defaults live", () => {
-    render(
+  it("draws nothing once a field is changed: each changed field marks itself", () => {
+    const { container } = render(
       <ChannelDefaultsSummary
         policy={{
           audience: { ceiling: "TV-14" },
@@ -19,10 +23,6 @@ describe("ChannelDefaultsSummary", () => {
         }}
       />,
     );
-    const summary = screen.getByText(/^3 of 11 fields are channel overrides\./);
-    expect(summary).toHaveTextContent("Most defaults here are Loomarr's built-in values");
-    expect(summary).toHaveTextContent(
-      "only Schedule horizon and Commercial-break frequency live on Settings",
-    );
+    expect(container).toBeEmptyDOMElement();
   });
 });

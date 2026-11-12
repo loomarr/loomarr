@@ -183,15 +183,91 @@ func (p *Provider) resolveLocale() (locale, error) {
 	return locale{language: base + "-" + region, base: base}, nil
 }
 
-// detailQuery is the query shared by the movie and series detail calls. images are limited to the
-// installation's language and textless ones, so a logo or poster in a language nobody reads is not
-// returned.
+// fallbackLanguage is the language text TMDB has no translation for is read in instead: every
+// title's text is written in English first, so it is the one most likely there.
+const fallbackLanguage = "en-US"
+
+// fallsBack reports whether a text left empty in this locale is worth reading in fallbackLanguage.
+func (l locale) fallsBack() bool { return l.base != "en" }
+
+// detailQuery is the query shared by the movie, series and collection detail calls. images are
+// limited to the installation's language and textless ones, so a logo or poster in a language
+// nobody reads is not returned. Outside English the answer also carries the translations, so a text
+// with none in the installation's language is filled from English in the same call.
 func (l locale) detailQuery(appendTo string) string {
+	if l.fallsBack() {
+		appendTo += ",translations"
+	}
 	q := url.Values{}
 	q.Set("language", l.language)
 	q.Set("append_to_response", appendTo)
 	q.Set("include_image_language", l.base+",null")
 	return q.Encode()
+}
+
+// languageQuery is a query asking for language.
+func languageQuery(language string) url.Values {
+	q := url.Values{}
+	q.Set("language", language)
+	return q
+}
+
+// wireTranslations are a title's translations (append_to_response=translations).
+type wireTranslations struct {
+	Translations []struct {
+		Country  string `json:"iso_3166_1"`
+		Language string `json:"iso_639_1"`
+		Data     struct {
+			Overview string `json:"overview"`
+			Tagline  string `json:"tagline"`
+		} `json:"data"`
+	} `json:"translations"`
+}
+
+// fillFromEnglish fills d's empty overview and tagline from the English translation (the US one
+// first) and notes that they are in fallbackLanguage, so the record says which text is not in its
+// own language. A later fetch that finds the installation's own text keeps that instead.
+func fillFromEnglish(d *mp.Descriptive, t wireTranslations) {
+	var overview, tagline string
+	for _, us := range []bool{true, false} {
+		for _, tr := range t.Translations {
+			if tr.Language != "en" || strings.EqualFold(tr.Country, usCountry) != us {
+				continue
+			}
+			overview = firstNonEmpty(overview, strings.TrimSpace(tr.Data.Overview))
+			tagline = firstNonEmpty(tagline, strings.TrimSpace(tr.Data.Tagline))
+		}
+	}
+	fillOverview(d, overview)
+	if d.Tagline == "" && tagline != "" {
+		d.Tagline, d.TaglineLanguage = tagline, fallbackLanguage
+	}
+}
+
+// fillOverview sets d's overview to the English one when d has none.
+func fillOverview(d *mp.Descriptive, english string) {
+	if strings.TrimSpace(d.Overview) == "" && english != "" {
+		d.Overview, d.OverviewLanguage = english, fallbackLanguage
+	}
+}
+
+// fillEpisodes fills each episode's empty overview from english, keyed by TMDB episode id.
+func fillEpisodes(children []mp.Record, english map[string]string) {
+	for i := range children {
+		if c := &children[i]; c.Descriptive != nil && len(c.IDs) > 0 {
+			fillOverview(c.Descriptive, english[c.IDs[len(c.IDs)-1].Value])
+		}
+	}
+}
+
+// anyOverviewMissing reports whether an episode has no overview.
+func anyOverviewMissing(children []mp.Record) bool {
+	for _, c := range children {
+		if c.Descriptive != nil && strings.TrimSpace(c.Descriptive.Overview) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // get decodes path into out and maps the client's errors onto the contract's.
@@ -313,26 +389,27 @@ type wireExternalIDs struct {
 // ---- movie ----
 
 type wireMovie struct {
-	ID            int             `json:"id"`
-	IMDB          string          `json:"imdb_id"`
-	Title         string          `json:"title"`
-	OriginalTitle string          `json:"original_title"`
-	Overview      string          `json:"overview"`
-	ReleaseDate   string          `json:"release_date"`
-	Runtime       int             `json:"runtime"`
-	Tagline       string          `json:"tagline"`
-	VoteAverage   float64         `json:"vote_average"`
-	VoteCount     int             `json:"vote_count"`
-	Genres        []idName        `json:"genres"`
-	Companies     []idName        `json:"production_companies"`
-	Countries     []idName        `json:"production_countries"`
-	Videos        wireVideos      `json:"videos"`
-	Credits       wireCredits     `json:"credits"`
-	PosterPath    string          `json:"poster_path"`
-	BackdropPath  string          `json:"backdrop_path"`
-	Collection    *wireCollection `json:"belongs_to_collection"`
-	ExternalIDs   wireExternalIDs `json:"external_ids"`
-	Images        wireImages      `json:"images"`
+	ID            int              `json:"id"`
+	IMDB          string           `json:"imdb_id"`
+	Title         string           `json:"title"`
+	OriginalTitle string           `json:"original_title"`
+	Overview      string           `json:"overview"`
+	ReleaseDate   string           `json:"release_date"`
+	Runtime       int              `json:"runtime"`
+	Tagline       string           `json:"tagline"`
+	VoteAverage   float64          `json:"vote_average"`
+	VoteCount     int              `json:"vote_count"`
+	Genres        []idName         `json:"genres"`
+	Companies     []idName         `json:"production_companies"`
+	Countries     []idName         `json:"production_countries"`
+	Videos        wireVideos       `json:"videos"`
+	Credits       wireCredits      `json:"credits"`
+	PosterPath    string           `json:"poster_path"`
+	BackdropPath  string           `json:"backdrop_path"`
+	Collection    *wireCollection  `json:"belongs_to_collection"`
+	ExternalIDs   wireExternalIDs  `json:"external_ids"`
+	Images        wireImages       `json:"images"`
+	Translations  wireTranslations `json:"translations"`
 	Keywords      struct {
 		Keywords []idName `json:"keywords"`
 	} `json:"keywords"`
@@ -391,6 +468,7 @@ func (p *Provider) movie(ctx context.Context, loc locale, id int) (mp.Record, er
 			Name: m.Collection.Name,
 		}
 	}
+	fillFromEnglish(rec.Descriptive, m.Translations)
 	var ratings []string
 	for _, r := range m.ReleaseDatesWrap.Results {
 		if strings.EqualFold(r.Country, usCountry) {
@@ -485,12 +563,13 @@ func (p *Provider) Filmography(ctx context.Context, person mp.ExternalID) ([]mp.
 // ---- collection ----
 
 type wireCollectionDetail struct {
-	ID           int        `json:"id"`
-	Name         string     `json:"name"`
-	Overview     string     `json:"overview"`
-	PosterPath   string     `json:"poster_path"`
-	BackdropPath string     `json:"backdrop_path"`
-	Images       wireImages `json:"images"`
+	ID           int              `json:"id"`
+	Name         string           `json:"name"`
+	Overview     string           `json:"overview"`
+	PosterPath   string           `json:"poster_path"`
+	BackdropPath string           `json:"backdrop_path"`
+	Images       wireImages       `json:"images"`
+	Translations wireTranslations `json:"translations"`
 	Parts        []struct {
 		ID          int    `json:"id"`
 		MediaType   string `json:"media_type"`
@@ -530,6 +609,7 @@ func (p *Provider) collection(ctx context.Context, loc locale, id int) (mp.Recor
 		Descriptive: &mp.Descriptive{Title: c.Name, Overview: c.Overview},
 		Artwork:     artwork(loc, c.Images, c.PosterPath, c.BackdropPath),
 	}
+	fillFromEnglish(rec.Descriptive, c.Translations)
 	for _, part := range parts {
 		rec.Children = append(rec.Children, mp.Record{
 			Source: source,
@@ -546,26 +626,27 @@ func (p *Provider) collection(ctx context.Context, loc locale, id int) (mp.Recor
 // ---- series ----
 
 type wireSeries struct {
-	ID             int             `json:"id"`
-	Name           string          `json:"name"`
-	OriginalName   string          `json:"original_name"`
-	Overview       string          `json:"overview"`
-	FirstAirDate   string          `json:"first_air_date"`
-	Status         string          `json:"status"`
-	EpisodeRuntime []int           `json:"episode_run_time"`
-	VoteAverage    float64         `json:"vote_average"`
-	VoteCount      int             `json:"vote_count"`
-	Tagline        string          `json:"tagline"`
-	Genres         []idName        `json:"genres"`
-	Networks       []idName        `json:"networks"`
-	Countries      []idName        `json:"production_countries"`
-	Videos         wireVideos      `json:"videos"`
-	Credits        wireCredits     `json:"credits"`
-	CreatedBy      []wireCrew      `json:"created_by"`
-	PosterPath     string          `json:"poster_path"`
-	BackdropPath   string          `json:"backdrop_path"`
-	ExternalIDs    wireExternalIDs `json:"external_ids"`
-	Images         wireImages      `json:"images"`
+	ID             int              `json:"id"`
+	Name           string           `json:"name"`
+	OriginalName   string           `json:"original_name"`
+	Overview       string           `json:"overview"`
+	FirstAirDate   string           `json:"first_air_date"`
+	Status         string           `json:"status"`
+	EpisodeRuntime []int            `json:"episode_run_time"`
+	VoteAverage    float64          `json:"vote_average"`
+	VoteCount      int              `json:"vote_count"`
+	Tagline        string           `json:"tagline"`
+	Genres         []idName         `json:"genres"`
+	Networks       []idName         `json:"networks"`
+	Countries      []idName         `json:"production_countries"`
+	Videos         wireVideos       `json:"videos"`
+	Credits        wireCredits      `json:"credits"`
+	CreatedBy      []wireCrew       `json:"created_by"`
+	PosterPath     string           `json:"poster_path"`
+	BackdropPath   string           `json:"backdrop_path"`
+	ExternalIDs    wireExternalIDs  `json:"external_ids"`
+	Images         wireImages       `json:"images"`
+	Translations   wireTranslations `json:"translations"`
 	Seasons        []struct {
 		SeasonNumber int    `json:"season_number"`
 		EpisodeCount int    `json:"episode_count"`
@@ -637,6 +718,7 @@ func (p *Provider) series(ctx context.Context, loc locale, id int) (mp.Record, e
 		},
 		Artwork: artwork(loc, s.Images, s.PosterPath, s.BackdropPath),
 	}
+	fillFromEnglish(rec.Descriptive, s.Translations)
 	for _, season := range s.Seasons {
 		if season.SeasonNumber >= 0 && season.EpisodeCount > 0 {
 			rec.Descriptive.Seasons = append(rec.Descriptive.Seasons,
@@ -720,10 +802,8 @@ type wireSeason struct {
 // season is one season of a series: its episodes in TMDB's numbering, as Children.
 func (p *Provider) season(ctx context.Context, loc locale, series, number int) (mp.Record, error) {
 	var s wireSeason
-	q := url.Values{}
-	q.Set("language", loc.language)
-	path := "/tv/" + strconv.Itoa(series) + "/season/" + strconv.Itoa(number) + "?" + q.Encode()
-	if err := p.get(ctx, path, &s); err != nil {
+	path := "/tv/" + strconv.Itoa(series) + "/season/" + strconv.Itoa(number) + "?"
+	if err := p.get(ctx, path+languageQuery(loc.language).Encode(), &s); err != nil {
 		return mp.Record{}, err
 	}
 	if s.SeasonNumber != number || len(s.Episodes) == 0 {
@@ -745,6 +825,19 @@ func (p *Provider) season(ctx context.Context, loc locale, series, number int) (
 				Runtime:         time.Duration(e.Runtime) * time.Minute,
 			},
 		})
+	}
+	// TMDB has no per-episode translations to append, so an episode with no overview in the
+	// installation's language takes the season read once more in English.
+	if loc.fallsBack() && anyOverviewMissing(rec.Children) {
+		var en wireSeason
+		if err := p.get(ctx, path+languageQuery(fallbackLanguage).Encode(), &en); err != nil {
+			return mp.Record{}, err
+		}
+		english := map[string]string{}
+		for _, e := range en.Episodes {
+			english[strconv.Itoa(e.ID)] = strings.TrimSpace(e.Overview)
+		}
+		fillEpisodes(rec.Children, english)
 	}
 	return rec, nil
 }
@@ -784,9 +877,8 @@ func (p *Provider) episodeOrder(ctx context.Context, loc locale, id string) (mp.
 		return mp.Record{}, fmt.Errorf("tmdb: episode order %q: %w", id, mp.ErrUnsupported)
 	}
 	var g wireEpisodeGroup
-	q := url.Values{}
-	q.Set("language", loc.language)
-	if err := p.get(ctx, "/tv/episode_group/"+url.PathEscape(id)+"?"+q.Encode(), &g); err != nil {
+	path := "/tv/episode_group/" + url.PathEscape(id) + "?"
+	if err := p.get(ctx, path+languageQuery(loc.language).Encode(), &g); err != nil {
 		return mp.Record{}, err
 	}
 	if g.ID != id {
@@ -834,6 +926,19 @@ func (p *Provider) episodeOrder(ctx context.Context, loc locale, id string) (mp.
 	for i := range rec.Children {
 		rec.Children[i].Parent = rec.Parent
 	}
+	if loc.fallsBack() && anyOverviewMissing(rec.Children) {
+		var en wireEpisodeGroup
+		if err := p.get(ctx, path+languageQuery(fallbackLanguage).Encode(), &en); err != nil {
+			return mp.Record{}, err
+		}
+		english := map[string]string{}
+		for _, group := range en.Groups {
+			for _, e := range group.Episodes {
+				english[strconv.Itoa(e.ID)] = strings.TrimSpace(e.Overview)
+			}
+		}
+		fillEpisodes(rec.Children, english)
+	}
 	return rec, nil
 }
 
@@ -856,12 +961,15 @@ type wireFind struct {
 // episode resolves a TVDB episode id through /find (decision 15). The record's own ids are the
 // TVDB id it was asked by and TMDB's episode id; its parent is TMDB's series id.
 func (p *Provider) episode(ctx context.Context, loc locale, tvdb int) (mp.Record, error) {
-	var found wireFind
-	q := url.Values{}
-	q.Set("external_source", "tvdb_id")
-	q.Set("language", loc.language)
-	path := "/find/" + strconv.Itoa(tvdb) + "?" + q.Encode()
-	if err := p.get(ctx, path, &found); err != nil {
+	find := func(language string) (wireFind, error) {
+		var found wireFind
+		q := languageQuery(language)
+		q.Set("external_source", "tvdb_id")
+		err := p.get(ctx, "/find/"+strconv.Itoa(tvdb)+"?"+q.Encode(), &found)
+		return found, err
+	}
+	found, err := find(loc.language)
+	if err != nil {
 		return mp.Record{}, err
 	}
 	if len(found.Episodes) == 0 || found.Episodes[0].ID <= 0 {
@@ -889,6 +997,15 @@ func (p *Provider) episode(ctx context.Context, loc locale, tvdb int) (mp.Record
 	}
 	if ref := tmdbclient.ImageURL(e.StillPath); ref != "" {
 		rec.Artwork = []mp.ArtworkRef{{Kind: mp.KindThumb, Ref: ref}}
+	}
+	if loc.fallsBack() && strings.TrimSpace(e.Overview) == "" {
+		en, err := find(fallbackLanguage)
+		if err != nil {
+			return mp.Record{}, err
+		}
+		if len(en.Episodes) > 0 && en.Episodes[0].ID == e.ID {
+			fillOverview(rec.Descriptive, strings.TrimSpace(en.Episodes[0].Overview))
+		}
 	}
 	return rec, nil
 }

@@ -122,6 +122,13 @@ const renderArtwork = (airing: GuideAiringLayout) =>
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
+// The day picker's offset of a moment from today, within the days the picker offers. Rounded, so a
+// day that a clock change makes 23 or 25 hours long still counts as one.
+const dayOffsetOf = (atMs: number): number => {
+  const days = Math.round((startOfDay(new Date(atMs)) - startOfDay(new Date())) / 86_400_000);
+  return Math.min(FORWARD_DAYS, Math.max(-RETENTION_DAYS, days));
+};
+
 // The day picker's label: relative for the days people actually mean, absolute beyond that.
 const dayLabel = (offset: number, now: number): string => {
   if (offset === 0) return "Today";
@@ -138,8 +145,15 @@ const GuidePage = () => {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   // Selection owns the grid's roving Tab stop; actual hover/focus owns its preview.
-  const [selection, setSelection] = useState<GuideSelection>();
-  const [dayOffset, setDayOffset] = useState<number>(0);
+  // `?at=&channel=` (Home's Tonight rows, #2763) opens the grid on that day and hour with that
+  // channel's programme selected. Read once, on mount: afterwards the controls own the window.
+  const { view: viewParam, at: atParam, channel: channelParam } = useSearch({ from: "/_authed/guide" });
+  const [selection, setSelection] = useState<GuideSelection | undefined>(() =>
+    atParam !== undefined && channelParam ? { channelId: channelParam, anchorMs: atParam } : undefined,
+  );
+  const [dayOffset, setDayOffset] = useState<number>(() =>
+    atParam === undefined ? 0 : dayOffsetOf(atParam),
+  );
   // A phone opens on the shortest span: the compact grid (mocks 5d/5f) shows about an hour and a
   // half across, and four hours leave a half-hour programme a few pixels wide.
   const phoneWidth = usePhoneWidth();
@@ -152,7 +166,6 @@ const GuidePage = () => {
   // The guide opens on the Now/Next list, phone and desktop alike (#2787); `?view=grid` is the full
   // grid. The list always asks about now, and about a few hours so that "next" is usually listed;
   // the day, hour and span controls belong to the grid.
-  const { view: viewParam } = useSearch({ from: "/_authed/guide" });
   const view: GuideView = viewParam === "grid" ? "grid" : "list";
   const setView = useCallback(
     (next: GuideView) =>
@@ -171,7 +184,9 @@ const GuidePage = () => {
   const [hourShift, setHourShift] = useState<number>(0);
   // null = "follow now" (the default). A number pins the window to that hour of the shown day,
   // which is how you ask "what airs at 7am?" without stepping there an hour at a time.
-  const [startHour, setStartHour] = useState<number | null>(null);
+  const [startHour, setStartHour] = useState<number | null>(() =>
+    atParam === undefined ? null : new Date(atParam).getHours(),
+  );
   // A precise start is a useful planning tool, but not a question most people ask on every
   // visit. It lives in a secondary row, and the trigger announces when a hidden non-default
   // remains active, so progressive disclosure never turns into invisible state.

@@ -234,7 +234,9 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 		return out, nil
 	}
 
+	endChannels := httpcore.Phase(ctx, "channels")
 	channels, err := s.store.ListChannels(ctx)
+	endChannels()
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +259,8 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 	artworkRefs := make([][]guideArtworkRef, len(channels))
 	sem := make(chan struct{}, guideConcurrency)
 	var wg sync.WaitGroup
+	// Wall time for the whole concurrent fan-out, not the sum of the rows.
+	endTimelines := httpcore.Phase(ctx, "timelines")
 
 	for i, ch := range channels {
 		// EVERY channel, not just internally-played ones. /playout/tuner.m3u filters to the
@@ -347,6 +351,7 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 		}(i, ch)
 	}
 	wg.Wait()
+	endTimelines()
 
 	// TMDB has no multi-title endpoint. Resolve one deduplicated, bounded-concurrent work set for
 	// the whole Guide instead of serializing provider latency inside every channel row. Projection
@@ -359,7 +364,9 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 			}
 		}
 	}
+	endThumbs := httpcore.Phase(ctx, "thumbs")
 	programmeThumbs := s.resolveTimelineThumbs(ctx, programmeKeys)
+	endThumbs()
 	for i := range rows {
 		for j := range rows[i].Airings {
 			thumb := programmeThumbs[artworkRefs[i][j].program]
@@ -386,7 +393,9 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 	}
 	clipsByHash := map[string]clipstore.Clip{}
 	if s.images != nil && len(clipHashes) > 0 {
+		endClips := httpcore.Phase(ctx, "clips")
 		clips, clipErr := s.store.ListClips(ctx, clipstore.ClipFilter{Hashes: clipHashes})
+		endClips()
 		if clipErr != nil {
 			s.log.Warn("guide: filler artwork lookup failed", "err", clipErr)
 		} else {
@@ -423,7 +432,9 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 			allImageHashes = append(allImageHashes, hash)
 		}
 	}
+	endImages := httpcore.Phase(ctx, "images")
 	byHash := s.imageDTOsByHash(ctx, allImageHashes)
+	endImages()
 	for i := range rows {
 		for j := range rows[i].Airings {
 			if image := byHash[selectedHashes[i][j]]; image != nil {
@@ -439,7 +450,9 @@ func (s *Handlers) channelGuide(ctx context.Context, in *guideInput) (*guideOutp
 	for i := range rows {
 		timelines[i] = rows[i].Airings
 	}
+	endTitleArt := httpcore.Phase(ctx, "titleart")
 	s.attachTitleArt(ctx, timelines...)
+	endTitleArt()
 
 	out.Body.Channels = rows
 	return out, nil
