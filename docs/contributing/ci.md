@@ -880,6 +880,11 @@ gate because a newly published advisory would otherwise fail every Go PR regardl
 A red run is the prompt to bump the module, or go.mod's `toolchain` line together with the
 Dockerfile's golang image.
 
+The same workflow runs `make scan-scale`: the library scanner's scale guard over a 33k-file library,
+the household's size. It checks that step 2 counts each file once, and that passes made while the
+header stage waits for playback leave nothing held. The PR suite runs the same guard at 2k files.
+At 33k it takes about a minute, which is too long for every PR.
+
 ## Scheduled ffmpeg pin refresh
 
 `ffmpeg-pin-refresh.yml` runs every Monday, and on manual dispatch with an optional `dry_run`. It

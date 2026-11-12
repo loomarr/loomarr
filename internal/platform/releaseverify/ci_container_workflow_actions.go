@@ -178,6 +178,8 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "staging.yml", job: "control", step: 0}:                `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "go-maintenance.yml", job: "vulnerabilities", step: 0}: `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "go-maintenance.yml", job: "vulnerabilities", step: 1}: `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
+		{workflow: "go-maintenance.yml", job: "library-scale", step: 0}:   `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
+		{workflow: "go-maintenance.yml", job: "library-scale", step: 1}:   `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh", step: 0}:     `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "ffmpeg-pin-refresh.yml", job: "refresh", step: 1}:     `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
 		{workflow: "rust-maintenance.yml", job: "supply-chain", step: 0}:  `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
