@@ -5,7 +5,8 @@ import { useFocusLook } from "../focus-look";
 import { Icon } from "../icon";
 import { icons } from "../icons";
 import { boxFocusRing } from "../interaction/interaction";
-import { Surface, Text } from "../primitives";
+import { Surface } from "../primitives";
+import { Text } from "../text";
 import { semanticSpace, semanticTargets } from "../tokens";
 import type { ToggleProps } from "./toggle.type";
 

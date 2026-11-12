@@ -116,8 +116,6 @@ export type {
   StatusTone,
   StatusWordKind,
   StatusWordProps,
-  TextProps,
-  TextTone,
 } from "./src/primitives";
 export {
   ArtworkFrame,
@@ -131,7 +129,6 @@ export {
   StatusDot,
   StatusWord,
   Surface,
-  Text,
 } from "./src/primitives";
 export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
 export { LoomarrProvider, resolveLoomarrTheme, ThemeScope } from "./src/provider";
@@ -169,6 +166,8 @@ export type {
   TableSectionProps,
 } from "./src/table";
 export { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "./src/table";
+export type { TextProps, TextTone } from "./src/text";
+export { Text } from "./src/text";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
 export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";

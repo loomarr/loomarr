@@ -4,7 +4,8 @@ import { forwardRef, useId, useLayoutEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, useWindowDimensions } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { StatusDot, type StatusTone, Text } from "../primitives";
+import { StatusDot, type StatusTone } from "../primitives";
+import { Text } from "../text";
 import { type Density, semanticSpace, semanticTargets } from "../tokens";
 import { useViewportScale } from "../viewport";
 

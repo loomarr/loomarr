@@ -6,7 +6,7 @@ import { Icon } from "../icon";
 import { icons } from "../icons";
 import { ModalLayer } from "../modal-layer";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { semanticRadius } from "../tokens";
 import { ViewportStage } from "../viewport";
 import type {

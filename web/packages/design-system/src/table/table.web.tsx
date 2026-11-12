@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { useState } from "react";
 
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { semanticRadius, semanticSpace, typography } from "../tokens";
 import { isPlainText as isPlain } from "./plain-text";
 import type {
