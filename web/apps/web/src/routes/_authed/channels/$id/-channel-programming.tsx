@@ -2,10 +2,9 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useGuideWindow } from "@loomarr/core/guide";
 import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
-import { keepPreviousData } from "@tanstack/react-query";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
 import { ChannelAutoCurate } from "@/components/loomarr/channels/channel-auto-curate";
 import { ChannelCollectionsScope } from "@/components/loomarr/channels/channel-collections-scope";
@@ -106,14 +105,8 @@ const ChannelProgramming = ({
   const savedCycle = channelsApi.usePreviewChannelCycle(channelId);
   const holidayEpisodes = unwrap(savedCycle.data)?.holidayEpisodes;
 
-  // The household guide timezone, so the change list's times read as the Guide shows them. The
-  // same pinned window the Watch tab, Home and the Guide share, so this is usually cached. A slide
-  // refetches behind the timezone already on screen.
-  const { window: guideWindow } = useGuideWindow();
-  const guide = channelsApi.useChannelGuide(guideWindow, {
-    query: { retry: false, placeholderData: keepPreviousData },
-  });
-  const guideTimeZone = unwrap(guide.data)?.timezone;
+  // The household timezone, so the change list's times read as the Guide shows them.
+  const guideTimeZone = useHouseholdTimeZone();
 
   // One full pass through this channel's titles, so Play order can say what its choice means
   // here. Same saved preview the cycle section below reads, so the two cannot disagree.
