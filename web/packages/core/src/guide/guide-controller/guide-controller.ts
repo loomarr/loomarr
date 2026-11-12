@@ -42,11 +42,18 @@ const createGuideController = ({
       : layout;
 
   // Keep the requested channel when it's in view, else the first row, at the same time column.
-  const settle = (layout: GuideLayout, channelId: string | undefined, anchorMs: number) => {
+  // `carry` is the refresh state to keep: a filter change re-settles the same stale or re-reading
+  // Guide, so its error and its in-flight flag still hold; a fresh load starts with neither.
+  const settle = (
+    layout: GuideLayout,
+    channelId: string | undefined,
+    anchorMs: number,
+    carry: Pick<GuideControllerSnapshot, "error" | "refreshing"> = {},
+  ) => {
     const requested = channelId ? guideSelectionForChannel(layout, channelId, anchorMs) : undefined;
     const first = layout.channels[0]?.source.channelId;
     const selection = requested ?? (first ? guideSelectionForChannel(layout, first, anchorMs) : undefined);
-    publish({ layout, selection, status: layout.channels.length ? "ready" : "empty" });
+    publish({ ...carry, layout, selection, status: layout.channels.length ? "ready" : "empty" });
   };
 
   const loadWindow = async (
@@ -128,7 +135,10 @@ const createGuideController = ({
       if (disposed) return;
       only = channelIds ? new Set(channelIds) : undefined;
       if (!full || (snapshot.status !== "ready" && snapshot.status !== "empty")) return;
-      settle(narrow(full), snapshot.selection?.channelId, snapshot.selection?.anchorMs ?? now());
+      settle(narrow(full), snapshot.selection?.channelId, snapshot.selection?.anchorMs ?? now(), {
+        error: snapshot.error,
+        refreshing: snapshot.refreshing,
+      });
     },
     select: (selection) => {
       if (disposed || snapshot.status !== "ready") return;
