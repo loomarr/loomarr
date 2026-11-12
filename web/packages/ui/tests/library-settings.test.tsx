@@ -434,6 +434,74 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  const openAddFolder = (overrides: Partial<LibrarySettingsProps> = {}) => {
+    const rendered = render(overrides);
+    act(() => rendered.button("Add a folder").click());
+    const input = rendered.host.querySelector('input[aria-label="Where is the folder?"], input') as El;
+    return { ...rendered, input };
+  };
+  const pressEnter = (input: El) =>
+    act(async () => {
+      const dom = globalThis as unknown as {
+        KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => Event;
+      };
+      input.dispatchEvent(new dom.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+
+  it("adds the trimmed path and closes the box once it is accepted", async () => {
+    const { host, props, button, input, cleanup } = openAddFolder({
+      onAddFolder: vi.fn(async () => undefined),
+    });
+    type(input, "  /mnt/new  ");
+    await act(async () => button("Add folder").click());
+    expect(props.onAddFolder).toHaveBeenCalledTimes(1);
+    expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/new");
+    expect(host.textContent).not.toContain("Where is the folder?");
+    expect(host.textContent).toContain("Add a folder");
+    cleanup();
+  });
+
+  it("adds the path when Enter is pressed in the box", async () => {
+    const { props, input, cleanup } = openAddFolder({ onAddFolder: vi.fn(async () => undefined) });
+    type(input, "/mnt/enter");
+    await pressEnter(input);
+    expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/enter");
+    cleanup();
+  });
+
+  it("has nothing to add until a path is typed", async () => {
+    const { props, button, input, cleanup } = openAddFolder({ onAddFolder: vi.fn(async () => undefined) });
+    await act(async () => button("Add folder").click());
+    type(input, "   ");
+    await act(async () => button("Add folder").click());
+    expect(props.onAddFolder).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("clears a refusal as soon as the path is edited", async () => {
+    const { host, button, input, cleanup } = openAddFolder();
+    type(input, "/mnt/missing");
+    await act(async () => button("Add folder").click());
+    expect(host.textContent).toContain("Loomarr can't open that folder");
+    type(input, "/mnt/missing2");
+    expect(host.textContent).not.toContain("Loomarr can't open that folder");
+    cleanup();
+  });
+
+  it("forgets the path and the refusal when cancelled", async () => {
+    const { host, props, button, input, cleanup } = openAddFolder();
+    type(input, "/mnt/missing");
+    await act(async () => button("Add folder").click());
+    act(() => button("Cancel").click());
+    expect(host.textContent).not.toContain("Where is the folder?");
+    act(() => button("Add a folder").click());
+    const reopened = host.querySelector('input[aria-label="Where is the folder?"], input') as El;
+    expect(reopened.value).toBe("");
+    expect(host.textContent).not.toContain("Loomarr can't open that folder");
+    expect(props.onAddFolder).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
   it("saves a path-map change once when Enter is followed by leaving the field", () => {
     const { host, props, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
     const input = host.querySelector('input[aria-label="Sonarr /tv maps to"]') as El;
