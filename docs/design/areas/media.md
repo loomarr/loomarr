@@ -13,7 +13,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Packages
 
-- **`media/bgexec`** · 6 importers · → `media/proctree`
+- **`media/bgexec`** · 7 importers · → `media/proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`media/creative`** · 8 importers
   Decides whether two filler clips are the same advert (#2033).

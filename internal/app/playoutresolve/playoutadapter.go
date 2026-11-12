@@ -169,6 +169,10 @@ type Resolver struct {
 	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
 	// still tone mapping; nil, or any other id, reads the inventory.
 	libraryVideo LibraryVideoReader
+	// librarySubtitles and subtitleCues serve a channel's soft subtitles (#2088 decision 5); nil
+	// until SetSubtitles, which leaves every window empty.
+	librarySubtitles LibrarySubtitleReader
+	subtitleCues     SubtitleCues
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
 	itemFacts librarystore.LibraryItemFactsReader
