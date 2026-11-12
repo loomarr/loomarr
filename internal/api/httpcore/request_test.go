@@ -57,6 +57,11 @@ func TestClientIPTrustedProxyUsesRightMostHop(t *testing.T) {
 		{"LAN client forged a left hop", "10.0.0.2:5000", []string{"198.51.100.7, 192.168.1.20"}, "192.168.1.20"},
 		{"unparseable hop falls back to the peer", "10.0.0.2:5000", []string{"203.0.113.9, garbage"}, "10.0.0.2"},
 		{"mapped and padded forms normalize", "10.0.0.2:5000", []string{"::ffff:203.0.113.9"}, "203.0.113.9"},
+		// A proxy reaching Loomarr over Tailscale sits in its 100.64.0.0/10 shared address space.
+		{"tailscale proxy, one hop", "100.101.102.103:5000", []string{"203.0.113.9"}, "203.0.113.9"},
+		{"tailscale range's last address", "100.127.255.254:5000", []string{"203.0.113.9"}, "203.0.113.9"},
+		{"just below the tailscale range is public", "100.63.255.255:5000", []string{"203.0.113.9"}, "100.63.255.255"},
+		{"just above the tailscale range is public", "100.128.0.1:5000", []string{"203.0.113.9"}, "100.128.0.1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := (Origin{TrustProxy: true}).ClientIP(clientIPRequest(tc.peer, tc.xff...)); got != tc.want {

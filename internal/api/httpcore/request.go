@@ -160,10 +160,16 @@ func peerAddr(remote string) (netip.Addr, bool) {
 	return netip.Addr{}, false
 }
 
-// isTrustedProxy reports whether addr may be a reverse proxy in front of Loomarr: loopback, or a
-// private or link-local address, which is where a proxy on the same host, a Docker network or a
-// LAN sits. `security.trust_proxy` is a switch, not a list, so this is the whole trust boundary
-// and a proxy on a public address is not honored.
+// sharedAddressSpace is RFC 6598's 100.64.0.0/10, where Tailscale (and carrier-grade NAT) number
+// their peers. It is never routed on the public internet, so a proxy there is one the household
+// runs on its own tailnet.
+var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+
+// isTrustedProxy reports whether addr may be a reverse proxy in front of Loomarr: loopback, a
+// private or link-local address (a proxy on the same host, a Docker network or a LAN), or the shared
+// address space a proxy reaching Loomarr over Tailscale comes from. Tailscale's IPv6 range is a
+// unique-local one, already private. `security.trust_proxy` is a switch, not a list, so this is the
+// whole trust boundary and a proxy on a public address is not honored.
 func isTrustedProxy(addr netip.Addr) bool {
-	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast()
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || sharedAddressSpace.Contains(addr)
 }

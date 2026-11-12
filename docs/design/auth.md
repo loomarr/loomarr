@@ -33,8 +33,8 @@ them at once; `SESSION_TTL` slides. `cookie.secure=auto|always|never`. Mutating 
 `X-Loomarr-Csrf: 1`. Login is rate-limited by client IP. Forwarding headers (`X-Forwarded-For`,
 `X-Forwarded-Proto`) are trusted only when `security.trust_proxy=true`; otherwise the socket peer is
 used, so a direct client cannot forge its way past the throttle or downgrade its cookie. With the
-setting on, `X-Forwarded-For` is read only when the socket peer is a proxy (loopback, private or
-link-local), and the client is its right-most hop: a proxy appends the address it saw, and
+setting on, `X-Forwarded-For` is read only when the socket peer is a proxy (loopback, private,
+link-local, or Tailscale's 100.64.0.0/10), and the client is its right-most hop: a proxy appends the address it saw, and
 everything to its left was written by whoever sent the request. No hop further left is taken, even
 past a private address, because a private address cannot be told apart from a LAN client. Behind a
 chain of proxies every client therefore shares the inner proxy's throttle key. A proxy on a public
