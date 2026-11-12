@@ -87,7 +87,7 @@ describe("PhoneBottomBar", () => {
     const more = await screen.findByRole("button", { name: "More" });
     await user.click(more);
     await screen.findByRole("dialog", { name: "More" });
-    await user.click(screen.getByTestId("phone-bottom-bar-backdrop"));
+    await user.click(document.body);
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument());
     expect(more).toHaveFocus();
   });
