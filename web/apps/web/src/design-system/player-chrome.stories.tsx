@@ -604,6 +604,36 @@ const PortraitMore: Story = {
   },
   render: (args) => <PhoneFrame {...args} />,
 };
+// Forty minutes into a film, the last fifteen hold no break, so the past is a sliver of a phone's
+// strip: "Live" sits near the left edge, and "−15m" gives way to it (#3566).
+const midFilm: GuideAiring[] = [
+  programme("m1", -40, 50, { genres: ["Drama"], title: "A detective film", year: 1994 }, 280),
+  breakOf("m2", 50, [spot("commercial", "Toy robot", 30, "A toy maker")]),
+  programme("m3", 51, 140, { genres: ["Comedy"], title: "An ensemble comedy" }, 20),
+];
+const midFilmData = playbarFromTimeline({ airings: midFilm, channel, live, nowMs: NOW, playheadMs: NOW });
+const PortraitMoreMidFilm: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: (
+      <PlayerBottomSheet onClose={fn()} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="touch"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+          schedule={{
+            onSeek: fn(),
+            playheadMs: NOW,
+            segments: midFilmData.segments,
+            window: midFilmData.window,
+          }}
+        />
+      </PlayerBottomSheet>
+    ),
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
 const PortraitAudio: Story = {
   args: {
     ...portraitArgs,
@@ -734,6 +764,7 @@ export {
   PortraitLongChannel,
   PortraitLongTitle,
   PortraitMore,
+  PortraitMoreMidFilm,
   PortraitUnmute,
   StationId,
   StationIdBackdrop,
