@@ -206,4 +206,4 @@ const startQueryPersistence = async ({
 };
 
 export type { CacheStore, LastUser, StoredCache };
-export { PERSIST_MAX_AGE_MS, PERSISTED_READS, shouldPersistQuery, startQueryPersistence };
+export { shouldPersistQuery, startQueryPersistence };
