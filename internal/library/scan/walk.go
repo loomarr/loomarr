@@ -418,6 +418,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	})
 	notes.Leading = leadingEpisodes(folder, videoNames)
 	notes.Series = dir != w.root && namedSeries(folder, videoNames)
+	notes.Titled = dir != w.root && titledEpisodes(w.rel(dir), videoNames)
 	notes.Years = looseYears(videoNames)
 	for _, e := range entries {
 		if e.IsDir() {

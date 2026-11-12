@@ -994,6 +994,85 @@ var namingMatrix = []namingRow{
 		"Docs/Ferrow Lane (2010) - Part 1.mkv":                                  "movie Ferrow Lane 2010",
 		"Docs/Ferrow Lane (2010) - Part 2.mkv":                                  "movie Ferrow Lane 2010",
 	}},
+	// Re-score #13: a show's folder of episodes named by their titles alone, in an audience's
+	// catch-all, is a show's; a film's folder, a franchise's, a collection whose films give their
+	// years, and a shelf of home videos or concerts are not.
+	{id: "W108", files: map[string]string{
+		"Kids/Hop Pond/Big Carrot.mp4":                  "episode Hop Pond S?E?",
+		"Kids/Hop Pond/Frost Morning.mp4":               "episode Hop Pond S?E?",
+		"Children/Hop Mead/Frost Morning.mp4":           "episode Hop Mead S?E?",
+		"Children/Hop Mead/Lost Hat.mp4":                "episode Hop Mead S?E?",
+		"Home Videos/Beach Trip.mp4":                    "movie Beach Trip -",
+		"Home Videos/Garden Party.mp4":                  "movie Garden Party -",
+		"Concerts/Ferrow Band - Live.mkv":               "movie Ferrow Band - Live -",
+		"Concerts/Ashgrove Choir - Live.mkv":            "movie Ashgrove Choir - Live -",
+		"Kids/Tansy Fell/Tansy Fell.mp4":                "movie Tansy Fell -",
+		"Kids/Tansy Fell/Making Of.mp4":                 "skip",
+		"Kids/Glow Studio/Brindle Cove (2004).mp4":      "movie Brindle Cove 2004",
+		"Kids/Glow Studio/Copper Kite (2009).mp4":       "movie Copper Kite 2009",
+		"Family/Wren Lake/Wren Lake.mp4":                "movie Wren Lake -",
+		"Family/Wren Lake/Wren Lake 2.mp4":              "movie Wren Lake 2 -",
+		"Kids/Gorse Trilogy/Gorse Rising.mp4":           "movie Gorse Rising -",
+		"Kids/Gorse Trilogy/Gorse Falling.mp4":          "movie Gorse Falling -",
+		"Ashby Moor (2011)/Ashby Moor (2011).mkv":       "movie Ashby Moor 2011",
+		"Ashby Moor (2011)/Deleted Scene.mkv":           "skip",
+		"Movies/Cinder Shelf/Pale Orchard.mkv":          "movie Pale Orchard -",
+		"Movies/Cinder Shelf/Quiet Ferry.mkv":           "movie Quiet Ferry -",
+		"Movies/Ashlee Vane (2015)/4K/Ashlee Vane.mkv":  "movie Ashlee Vane 2015",
+		"Documentaries/Salt Roads/Salt Roads - Sea.mkv": "episode Salt Roads S?E?",
+		"Documentaries/Salt Roads/Salt Roads - Sky.mkv": "episode Salt Roads S?E?",
+	}},
+	// Re-score #13: one show is one show in a doubled folder, with an anime's "(TV)" tag, and with
+	// a recording's day bracketed or run together.
+	{id: "W109", files: map[string]string{
+		"TV/Moss Hollow/Season 1/Moss Hollow S01E01.mkv":             "episode Moss Hollow S1E1",
+		"TV/Moss Hollow/Moss Hollow/Season 2/Moss Hollow S02E01.mkv": "episode Moss Hollow S2E1",
+		"Anime/[Grp] Hana Kettle - 04 [1080p].mkv":                   "episode Hana Kettle S?E?",
+		"Anime/[Grp] Hana Kettle - 05 [1080p].mkv":                   "episode Hana Kettle S?E?",
+		"Anime/[Grp] Hana Kettle (TV) - 06 [1080p].mkv":              "episode Hana Kettle S?E?",
+		"Recordings/Kite Hill_20230102_20002100.ts":                  "episode Kite Hill 2023-01-02",
+		"Recordings/Kite Hill (2023-01-30).ts":                       "episode Kite Hill 2023-01-30",
+	}},
+	// Re-score #13: a miniseries' episodes among films say so, by "Episode 1", "E01" or "Night 1";
+	// a film called so is a film.
+	{id: "W110", files: map[string]string{
+		"Movies/Reed Wood/Reed Wood - Episode 1.mkv":                       "episode Reed Wood S1E1",
+		"Movies/Reed Wood/Reed Wood - Episode 2.mkv":                       "episode Reed Wood S1E2",
+		"Docs/Ocean Rooms - Episode 1.mkv":                                 "episode Ocean Rooms S1E1",
+		"Docs/Ocean Rooms - Episode 2.mkv":                                 "episode Ocean Rooms S1E2",
+		"Movies/Rook Hall Mini/Rook Hall Mini E01.mkv":                     "episode Rook Hall Mini S1E1",
+		"Movies/Rook Hall Mini/Rook Hall Mini E02.mkv":                     "episode Rook Hall Mini S1E2",
+		"Miniseries/Ash Vale (2008) - Night 1.mkv":                         "episode Ash Vale 2008 S1E1",
+		"Miniseries/Ash Vale (2008) - Night 2.mkv":                         "episode Ash Vale 2008 S1E2",
+		"Movies/Episode Nine (2014)/Episode Nine.mkv":                      "movie Episode Nine 2014",
+		"Movies/Night 2 (2019).mkv":                                        "movie Night 2 2019",
+		"Movies/Ninth Lantern Night (1996).mkv":                            "movie Ninth Lantern Night 1996",
+		"Movies/Kettle Wars/Kettle Wars Episode 4 (1977).mkv":              "movie Kettle Wars Episode 4 1977",
+		"Movies/Kettle Wars/Kettle Wars Episode 5 (1980).mkv":              "movie Kettle Wars Episode 5 1980",
+		"Movies/Slate Spindle Vol 2 (2004)/Slate Spindle Vol 2 (2004).mkv": "movie Slate Spindle Vol 2 2004",
+		"Movies/Ironvale/Ironvale 2.mkv":                                   "movie Ironvale 2 -",
+		"Movies/Ironvale/Ironvale 3.mkv":                                   "movie Ironvale 3 -",
+	}},
+	// Re-score #13: a film's disc folder alone is no title; its film's folder names it.
+	{id: "W111", files: map[string]string{
+		"Rips/Holm Dyke/Disc 1/title_t00.mkv":           "movie Holm Dyke -",
+		"DVD Rips/Holm Fen (2004)/Disc 1/title_t00.mkv": "movie Holm Fen 2004",
+	}},
+	// Re-score #13: a drama's release named "Show.E05.YYMMDD" is its fifth episode wherever it is.
+	{id: "W112", files: map[string]string{
+		"Downloads/Kettle.Love.E05.240301.1080p-NEXT.mp4": "episode Kettle Love S1E5",
+		"Korean/Kettle.Love.E06.240302.1080p-NEXT.mp4":    "episode Kettle Love S1E6",
+		"Moon.Lane.E01.240105.720p-NEXT.mp4":              "episode Moon Lane S1E1",
+	}},
+	// Re-score #13: a show's volume folder is its show's; Chinese "第05集" is its fifth episode.
+	{id: "W113", files: map[string]string{
+		"Kids/Puddle Ducks/01 - Rain.mp4":         "episode Puddle Ducks S1E1",
+		"Kids/Puddle Ducks/02 - Wind.mp4":         "episode Puddle Ducks S1E2",
+		"Kids/Puddle Ducks Vol 2/03 - Mud.mp4":    "episode Puddle Ducks S1E3",
+		"Kids/Puddle Ducks Vol 2/04 - Frost.mp4":  "episode Puddle Ducks S1E4",
+		"Anime/【Grp】Kettle Hana 第05集 [1080p].mp4": "episode Kettle Hana S1E5",
+		"Anime/【Grp】Kettle Hana 第06集 [1080p].mp4": "episode Kettle Hana S1E6",
+	}},
 	// Re-score #11: a tracker's promo, a film's credits and Q&A, and a download still being written
 	// are no title.
 	{id: "W97", files: map[string]string{

@@ -33,7 +33,8 @@ func FuzzNamingFromAPath(f *testing.F) {
 		"Show (2019) {tmdb-0}/Season 0/x.mkv", "Show/Specials/Specials/x.mkv", "x/Season 1/../S01E01.mkv",
 		"TV/00/A 0X0", "[](0-0)0/x.mkv", "S0/0/A S0E0", "SeAsonOne/A/0 S0E0", "0/S0/ S/S0/1", "S0/S0/S0 S0e0",
 		"TV/Series Seven/Series S0E0/0", "TV/Series Seven/Series Seven S0E0/0", "0/S0/TV/S S0E0", "S0/A/0/A S0E0",
-		"TV/ S0/0", "(tV)", "A/' ' S0E0",
+		"TV/ S0/0", "(tV)", "A/' ' S0E0", "A/SeAson One/S0E0/SeAson One S1E0",
+		"0/S0(tvdB-1)/0/1/S0E0",
 	} {
 		f.Add(rel)
 	}
@@ -110,13 +111,17 @@ func checkEpisode(t *testing.T, rel string, rec mp.Record, seriesDir string) {
 	}
 	// A show named as a season is ("TV/Series Seven/Series Seven S01E01.mkv") is filed under its own
 	// folder when nothing but a catch-all is above it.
-	// The episode is named by its file, or by the episode's own folder it is in.
+	// The episode is named by its file, or by the episode's own folder it is in; a file marked as
+	// another episode than its folder is named by itself (seriesFolderOf).
 	name := path.Base(rel)
 	for d := path.Dir(rel); d != "." && episodeMark.MatchString(path.Base(d)); d = path.Dir(d) {
 		name = path.Base(d)
 	}
-	namedSo := catchAllFolder(path.Base(path.Dir(seriesDir))) && sameWords(looseSeries(name), path.Base(seriesDir))
-	if isSeasonFolder(seriesDir) && path.Dir(seriesDir) != "." && !namedSo {
+	namedSo := catchAllFolder(path.Base(path.Dir(seriesDir))) &&
+		(sameWords(looseSeries(name), path.Base(seriesDir)) || sameWords(looseSeries(path.Base(rel)), path.Base(seriesDir)))
+	// A folder carrying a show's id ("S0 {tvdb-1}") is the show's, whatever its name: a season's
+	// folder never carries one.
+	if isSeasonFolder(seriesDir) && path.Dir(seriesDir) != "." && !namedSo && len(idsIn(path.Base(seriesDir))) == 0 {
 		t.Errorf("%q files under the season folder %q", rel, seriesDir)
 	}
 }
