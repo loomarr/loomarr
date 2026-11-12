@@ -1,4 +1,4 @@
-import { getChannelGuideMockHandler } from "@loomarr/api/msw";
+import { getHouseholdMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
@@ -14,18 +14,37 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 );
 
 describe("useHouseholdTimeZone", () => {
-  it("is the zone the Guide tells times in", async () => {
+  it("is the zone the Guide tells times in, read without loading the Guide", async () => {
+    let guideAsked = false;
     server.use(
-      getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0, timezone: "Pacific/Auckland" }),
+      getHouseholdMockHandler({ timeZone: "Pacific/Auckland" }),
+      http.get("*/v1/guide", () => {
+        guideAsked = true;
+        return HttpResponse.json({});
+      }),
     );
     const { result } = renderHook(() => useHouseholdTimeZone(), { wrapper });
     await waitFor(() => expect(result.current).toBe("Pacific/Auckland"));
+    expect(guideAsked).toBe(false);
   });
 
-  it("is undefined while the Guide can't be read, so times fall back to the device's zone", async () => {
+  it("is undefined when no timezone is set, so times fall back to the device's zone", async () => {
     let asked = false;
     server.use(
-      http.get("*/v1/guide", () => {
+      getHouseholdMockHandler(() => {
+        asked = true;
+        return { timeZone: "" };
+      }),
+    );
+    const { result } = renderHook(() => useHouseholdTimeZone(), { wrapper });
+    await waitFor(() => expect(asked).toBe(true));
+    expect(result.current).toBeUndefined();
+  });
+
+  it("is undefined while the household can't be read", async () => {
+    let asked = false;
+    server.use(
+      http.get("*/v1/household", () => {
         asked = true;
         return HttpResponse.json({ title: "Unavailable" }, { status: 503 });
       }),

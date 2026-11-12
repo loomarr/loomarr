@@ -1,7 +1,7 @@
 import {
-  getChannelGuideMockHandler,
   getChannelTimelineMockHandler,
   getChannelUpcomingMockHandler,
+  getHouseholdMockHandler,
 } from "@loomarr/api/msw";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -19,11 +19,11 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 describe("ChannelUpcoming", () => {
   // The rows also read the channel's timeline for episode names; most tests have none to give.
-  // The guide supplies the household timezone; most tests leave it unset (the device's zone).
+  // The household read supplies the timezone; most tests leave it unset (the device's zone).
   beforeEach(() => {
     server.use(
       getChannelTimelineMockHandler({ airings: [], serverNowMs: Date.now() }),
-      getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
+      getHouseholdMockHandler({ timeZone: "" }),
     );
   });
 
@@ -32,7 +32,7 @@ describe("ChannelUpcoming", () => {
     // except Auckland's own.
     const start = Date.UTC(2027, 0, 15, 6, 0);
     server.use(
-      getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0, timezone: "Pacific/Auckland" }),
+      getHouseholdMockHandler({ timeZone: "Pacific/Auckland" }),
       getChannelUpcomingMockHandler({
         upcoming: [{ gap: false, startMs: start, stopMs: start + 1_800_000, title: "Evening show" }],
       }),

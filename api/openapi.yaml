@@ -5673,6 +5673,22 @@ components:
         - modelsLive
         - models
       type: object
+    HouseholdOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/HouseholdOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        timeZone:
+          description: IANA timezone the household tells times in; empty when unset
+          type: string
+      required:
+        - timeZone
+      type: object
     HouseholdViewingOutputBody:
       additionalProperties: false
       properties:
@@ -18118,6 +18134,26 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: The holiday definitions and this year's dates
+      tags:
+        - channels
+  /v1/household:
+    get:
+      description: Any signed-in person. The IANA timezone the Guide tells times in, or empty when none is set (times then read in the viewer's own zone).
+      operationId: household
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: The household's timezone
       tags:
         - channels
   /v1/household/viewing:
