@@ -132,7 +132,7 @@ const HostedModelPicker = ({
   const [queries, setQueries] = useState<Record<string, string>>({});
 
   return (
-    <div className={cn("flex flex-col gap-4", className)}>
+    <Stack className={className} gap="4">
       {providers.map((hp: HostedProviderView) => {
         const models = hp.models ?? [];
         const primary = models.find((model) => model.recommended);
@@ -311,7 +311,7 @@ const HostedModelPicker = ({
           </Stack>
         );
       })}
-    </div>
+    </Stack>
   );
 };
 

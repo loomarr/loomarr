@@ -108,7 +108,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
           Couldn't load your collections. Check the media server connection in Settings.
         </Text>
       ) : (
-        <fieldset className="flex flex-col gap-2" aria-label="Only these collections">
+        <Stack aria-label="Only these collections" gap="inline" render="fieldset">
           {selected.length > 0 && (
             <Stack direction="row" gap="inline" render="ul" wrap>
               {selected.map((id) => (
@@ -194,7 +194,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               Add a collection…
             </Action>
           )}
-        </fieldset>
+        </Stack>
       )}
     </Stack>
   );

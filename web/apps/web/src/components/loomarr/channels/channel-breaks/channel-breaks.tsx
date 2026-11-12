@@ -1,8 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Stack, Text } from "@loomarr/design-system";
 import { PodTimeline } from "../../filler/pod-timeline";
 import type { ChannelBreaksProps } from "./channel-breaks.type";
 
@@ -30,13 +29,13 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
   if (entries.length === 0) return null;
 
   return (
-    <section className={cn("flex flex-col gap-1.5", className)}>
+    <Stack className={className} gap="1.5" render="section">
       <h3 className="text-2xs text-muted-foreground font-normal">Between shows</h3>
       <PodTimeline entries={entries} matchLevel={pod?.matchLevel} />
       <Text as="p" textRole="compact" tone="secondary">
         {`${pluralize(entries.length, "clip")} between shows, assembled exactly as the channel builds them.`}
       </Text>
-    </section>
+    </Stack>
   );
 };
 

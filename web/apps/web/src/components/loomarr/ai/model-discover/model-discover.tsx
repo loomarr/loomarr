@@ -2,7 +2,6 @@ import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
 import { Action, ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { ModelDiscoverProps } from "./model-discover.type";
 
 // The §8.1 "download a model" surface — the QUIET counterpart to the installed picker above
@@ -34,7 +33,7 @@ const ModelDiscover = ({
   const hiddenCount = total - (visible?.length ?? 0);
 
   return (
-    <div className={cn("flex flex-col gap-2.5", className)}>
+    <Stack className={className} gap="2.5">
       <div>
         <Text as="p" textRole="cardLabel" tone="secondary">
           Need a different model?
@@ -145,7 +144,7 @@ const ModelDiscover = ({
           Show fewer
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

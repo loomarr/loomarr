@@ -160,7 +160,7 @@ const SortableLineupRow = ({
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
         </Stack>
         {isSeries && onSeasonChange && (
-          <div className="col-[2/-1] flex flex-wrap items-center gap-1.5 @md:mt-1.5">
+          <Stack align="center" className="col-[2/-1] @md:mt-1.5" direction="row" gap="1.5" wrap>
             <Text as="span" textRole="hint" tone="secondary">
               Seasons
             </Text>
@@ -172,7 +172,7 @@ const SortableLineupRow = ({
               </Text>
               {seasonInput("seasonMax", entry.seasonMax, "latest")}
             </Stack>
-          </div>
+          </Stack>
         )}
       </div>
 

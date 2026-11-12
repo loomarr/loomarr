@@ -59,7 +59,12 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   const line = progress ? progressLine(progress) : (LABELS[phase] ?? LABELS.reasoning);
   const count = progress ? pickCount(progress) : undefined;
   return (
-    <div className={cn("border-border bg-muted/35 flex items-start gap-3 rounded-lg border p-4", className)}>
+    <Stack
+      align="start"
+      className={cn("border-border bg-muted/35 rounded-lg border p-4", className)}
+      direction="row"
+      gap="control"
+    >
       {!complete && (
         <Stack className="mt-0.5" direction="row" render="span">
           <ActivityIndicator decorative size="compact" tone="suggest" />
@@ -90,7 +95,7 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
           </Text>
         )}
       </div>
-    </div>
+    </Stack>
   );
 };
 

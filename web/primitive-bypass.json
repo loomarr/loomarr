@@ -17,20 +17,17 @@
     "apps/web/src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
       "flexStack": 3
     },
-    "apps/web/src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
+    "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/refine-review/refine-review.tsx": {
       "flexStack": 2
@@ -38,20 +35,11 @@
     "apps/web/src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/channels/channel-card/channel-card.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
       "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
       "flexStack": 1
@@ -60,9 +48,6 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
@@ -70,9 +55,6 @@
     },
     "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
       "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "flexStack": 3
@@ -87,7 +69,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/feedback/placeholder/placeholder.tsx": {
       "flexStack": 1
@@ -119,9 +101,6 @@
     "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
       "flexStack": 3
     },
-    "apps/web/src/components/loomarr/filler/watch-line/watch-line.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
       "flexStack": 1
     },
@@ -145,9 +124,6 @@
     },
     "apps/web/src/components/loomarr/settings/database-migration/database-migration.tsx": {
       "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/settings/installation-location/installation-location.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
       "flexStack": 1
@@ -268,9 +244,6 @@
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 3
-    },
-    "apps/web/src/help/doc-view/doc-view.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/help/help-page/help-page.tsx": {
       "flexStack": 1
