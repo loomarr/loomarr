@@ -183,6 +183,35 @@ that disappears with the legacy Web consumers.
 **Layer 1 — primitives:** the design system, `@loomarr/design-system` (`Action`, `Field`, `CompactSelect`, `Combobox`, `Dialog`, `Disclosure`, `Stack`, `Table`, `Text`, `Surface`…) with `@loomarr/ui` above it, shared with native and TV. The app's old shadcn copy-ins (`components/ui`) are gone (#2147 Wave 4); a missing primitive is built in the design system with its stories first, never re-added to the app. Its web adapters keep **Base UI** (`@base-ui/react`) underneath the dialog, menu, toggle and tooltip for focus management and a11y; the app itself never imports it. ⚠ Base UI's Tooltip is **visual-only by design** (no `role="tooltip"`, no `aria-describedby`), so a tooltip whose content is information rather than a restatement of the trigger's label must declare its own description — see `FieldHelp` and design §14.
 **Layer 2 — Loomarr components:** the actual product library, in `apps/web/src/components/loomarr/`. **Pages compose Layer-2 components; Tailwind utility soup is confined to Layers 1–2.** Every Layer-2 component: typed props (named variants, not ad-hoc class strings) from the orval client where applicable, a co-located Storybook story (§5) enumerating all states, and renders RFC 7807 errors through the shared `ErrorState`/field-error patterns — never raw JSON.
 
+### Moving legacy text classes onto `Text`
+
+Text styled by Tailwind classes moves onto the design system's `Text`, keeping its element through
+`as` (`<h2>`, `<p>`, `<dt>`…). The role is the one whose web size and weight match the classes. The
+role's own line height and tracking then apply, and the visual baselines are refreshed: the design
+system's look wins over the legacy one.
+
+| Legacy classes | `Text` |
+|---|---|
+| `text-xs` | `textRole="hint"` (12/16, 400) |
+| `text-xs font-medium` | `textRole="label"` (12/16, 500) |
+| `font-mono text-xs`, `text-2xs` mono | `textRole="mono"` (12/16, mono) |
+| `text-sm` | `textRole="compact"` (13/20, 400) |
+| `text-sm font-medium` / `font-semibold` | `textRole="cardLabel"` (13/18, 500); `strong` for 600 |
+| `text-base` | `textRole="body"` (14/21) |
+| `text-md` | `textRole="reading"` (16/24) |
+| `text-base`/`text-md` `font-semibold` | `textRole="heading"` (18/24, 600) |
+| `text-lg` | `textRole="headline"` (20/30) |
+| `text-xl font-semibold` | `textRole="title"` (24/30, 650) |
+| `text-2xl` | `textRole="display"` (32/36) |
+
+Colour is the role's default unless the classes name another: `text-muted-foreground` and
+`text-static-400` are `tone="secondary"`, `text-foreground` and `text-static-100` are
+`tone="primary"`, and the accents are `danger` (`destructive`/`onair`), `success` (`lock`), `warning`
+(`caution`), `info` (`tune`), `signal` and `suggest`. A role that is muted by default (`label`,
+`section`, `metadata`…) takes `tone="primary"` where the legacy text was the foreground colour.
+`uppercase tracking-wide` is `shout`. Classes that are not typography (`mt-2`, `truncate`, widths)
+stay on `className` until their own sweep.
+
 ### Signature components (the vocabulary of the app)
 
 | Component | Purpose | States to register |
