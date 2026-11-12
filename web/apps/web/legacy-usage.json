@@ -2,7 +2,7 @@
   "note": "Web legacy-usage ledger (#970 step 5), maintained by web/scripts/check-legacy-usage.mjs. Counts may only fall: `pnpm legacy:update` shrinks them. Never raise one to pass the check.",
   "files": {
     "src/channels/channel-drawer/channel-drawer.tsx": {
-      "tailwindClasses": 127,
+      "tailwindClasses": 119,
       "rawButton": 3,
       "rawTypeSize": 4,
       "rawTypeWeight": 2
@@ -16,16 +16,16 @@
       "rawButton": 1
     },
     "src/channels/channel-watch/channel-watch.tsx": {
-      "tailwindClasses": 23
+      "tailwindClasses": 16
     },
     "src/channels/guide-page/guide-page.tsx": {
-      "tailwindClasses": 45
+      "tailwindClasses": 36
     },
     "src/channels/tuner-osd/tuner-osd.tsx": {
       "tailwindClasses": 1
     },
     "src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "tailwindClasses": 38
+      "tailwindClasses": 35
     },
     "src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
       "tailwindClasses": 19
@@ -74,13 +74,13 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "tailwindClasses": 63
+      "tailwindClasses": 60
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
       "tailwindClasses": 19
     },
     "src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
-      "tailwindClasses": 63,
+      "tailwindClasses": 59,
       "rawButton": 1,
       "rawTypeSize": 2,
       "rawTypeWeight": 1
@@ -172,7 +172,7 @@
       "tailwindClasses": 19
     },
     "src/components/loomarr/filler/pull-card/pull-card.tsx": {
-      "tailwindClasses": 31
+      "tailwindClasses": 23
     },
     "src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
       "tailwindClasses": 73,
@@ -190,7 +190,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 90,
+      "tailwindClasses": 86,
       "rawButton": 1,
       "rawTypeSize": 1
     },
@@ -201,7 +201,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "tailwindClasses": 66
+      "tailwindClasses": 62
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
       "tailwindClasses": 43
@@ -231,7 +231,7 @@
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
-      "tailwindClasses": 54,
+      "tailwindClasses": 47,
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
@@ -275,7 +275,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/login-shell/login-shell.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 7
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
       "tailwindClasses": 39,
@@ -288,16 +288,13 @@
       "rawTypeWeight": 1
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 131,
+      "tailwindClasses": 118,
       "rawButton": 1,
       "rawTypeSize": 3,
       "rawTypeWeight": 3
     },
-    "src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
-      "tailwindClasses": 7
-    },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 5
     },
     "src/components/loomarr/shell/page-header/page-header.tsx": {
       "tailwindClasses": 23
@@ -335,7 +332,7 @@
       "rawTypeSize": 9
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 136
+      "tailwindClasses": 128
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,

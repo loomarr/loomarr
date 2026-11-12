@@ -1,5 +1,4 @@
-import { BrandWordmark, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { BrandWordmark, Stack, Text } from "@loomarr/design-system";
 import { ColorBars } from "../color-bars";
 import type { BrandLockupProps } from "./brand-lockup.type";
 
@@ -10,14 +9,14 @@ import type { BrandLockupProps } from "./brand-lockup.type";
 const BrandLockup = ({ variant = "hero", tagline = true, className }: BrandLockupProps) => {
   if (variant === "compact") {
     return (
-      <div className={cn("flex items-center gap-2", className)}>
+      <Stack align="center" className={className} direction="row" gap="inline">
         <ColorBars size="sm" />
         <BrandWordmark size="small" />
-      </div>
+      </Stack>
     );
   }
   return (
-    <div className={cn("flex flex-col items-center gap-3", className)}>
+    <Stack align="center" className={className} gap="control">
       <ColorBars size="lg" />
       <BrandWordmark size="large" />
       {tagline && (
@@ -25,7 +24,7 @@ const BrandLockup = ({ variant = "hero", tagline = true, className }: BrandLocku
           always something on
         </Text>
       )}
-    </div>
+    </Stack>
   );
 };
 

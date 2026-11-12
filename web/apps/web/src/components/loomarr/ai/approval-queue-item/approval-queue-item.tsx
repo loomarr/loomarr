@@ -188,7 +188,7 @@ const ApprovalQueueItem = ({
         </div>
 
         {!denied && !denying && (
-          <div className="flex shrink-0 gap-2">
+          <Stack direction="row" flexShrink={0} gap="inline">
             <Action disabled={busy} icon="close" onPress={() => setDenying(true)} variant="outline">
               Deny
             </Action>
@@ -201,7 +201,7 @@ const ApprovalQueueItem = ({
             >
               Approve
             </Action>
-          </div>
+          </Stack>
         )}
       </div>
 

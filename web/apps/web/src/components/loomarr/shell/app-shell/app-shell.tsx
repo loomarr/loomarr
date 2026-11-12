@@ -264,8 +264,10 @@ const AppShell = ({
           </Tooltip>
         )}
 
-        <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3`}
+        <Stack
+          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border border-t px-2 pt-3`}
+          direction="row"
+          gap="inline"
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
@@ -279,16 +281,18 @@ const AppShell = ({
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
-            <Text
-              as="div"
-              className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full"
-              textRole="mono"
-              tone="primary"
+            <Stack
+              align="center"
+              className="bg-static-800 size-7 rounded-full"
+              flexShrink={0}
+              justify="center"
             >
-              {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
-                  between, so "KB" + "Kira" would otherwise read as one word against the label. */}
-              {accountInitials}{" "}
-            </Text>
+              <Text as="span" textRole="mono" tone="primary">
+                {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                    between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+                {accountInitials}{" "}
+              </Text>
+            </Stack>
             <Text as="span" className="truncate" textRole="compact" tone="secondary">
               {userName}
             </Text>
@@ -300,7 +304,7 @@ const AppShell = ({
               </Action>
             </Tooltip>
           )}
-        </div>
+        </Stack>
       </aside>
 
       {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
@@ -313,7 +317,7 @@ const AppShell = ({
           viewport instead of being added to main's scrollable content (a second scroller at phone
           width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Stack className="min-h-0 min-w-0" flexBasis="0%" flexGrow={1}>
         {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
             top right on every page (#2751). It opens the same search the rail's button does. */}
         {phoneWidth && (
@@ -324,14 +328,17 @@ const AppShell = ({
           </Suspense>
         )}
         {banner}
-        <main
+        <Stack
+          className="min-h-0 min-w-0 overflow-auto overscroll-contain focus:outline-none"
+          flexBasis="0%"
+          flexGrow={1}
           id={MAIN_ID}
+          render="main"
           tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-contain focus:outline-none"
         >
           {children}
-        </main>
-      </div>
+        </Stack>
+      </Stack>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't

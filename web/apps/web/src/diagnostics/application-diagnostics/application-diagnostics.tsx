@@ -386,7 +386,14 @@ const ApplicationDiagnostics = ({
   ] as const;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4" aria-labelledby="logs-title">
+    <Stack
+      aria-labelledby="logs-title"
+      className="min-h-0"
+      flexBasis="0%"
+      flexGrow={1}
+      gap="4"
+      render="section"
+    >
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div>
           <Text as="h2" id="logs-title" textRole="headline">
@@ -507,7 +514,7 @@ const ApplicationDiagnostics = ({
         </section>
       )}
 
-      <fieldset className="flex flex-wrap items-center gap-2">
+      <Stack align="center" direction="row" gap="inline" render="fieldset" wrap>
         <legend className="sr-only">Severity filters</legend>
         {(
           [
@@ -550,7 +557,7 @@ const ApplicationDiagnostics = ({
             since startup
           </Text>
         )}
-      </fieldset>
+      </Stack>
 
       <DiagnosticsPager
         label="Log pages"
@@ -686,7 +693,7 @@ const ApplicationDiagnostics = ({
           }
         />
       )}
-    </section>
+    </Stack>
   );
 };
 

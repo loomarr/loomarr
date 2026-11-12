@@ -10,7 +10,7 @@ import {
   useChannelSubtitles,
 } from "@loomarr/core/channel-subtitles";
 import { formatGuideTime } from "@loomarr/core/guide";
-import { ThemeScope } from "@loomarr/design-system";
+import { Stack, ThemeScope } from "@loomarr/design-system";
 import type { PlayerFailureCause } from "@loomarr/player";
 import {
   PlayerAudio,
@@ -563,7 +563,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     ) : sheet === "info" && info && placement !== "menu" ? (
       sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
     ) : sheet === "channels" && drawer ? (
-      <div className="absolute inset-y-0 right-0 z-40 flex max-w-full">
+      <Stack className="absolute inset-y-0 right-0 z-40 max-w-full" direction="row">
         <ChannelDrawer
           channels={drawer.channels}
           tunedId={osdChannel.id}
@@ -574,7 +574,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           onFavourite={drawer.onFavourite}
           onClose={closeSheet}
         />
-      </div>
+      </Stack>
     ) : undefined;
 
   // A stream that stopped has nothing for the playbar to stand on, so Retry and the way out take the
@@ -738,7 +738,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   if (paused) {
     return (
-      <section className="relative flex min-h-0 flex-1 flex-col">
+      <Stack className="relative min-h-0" flexBasis="0%" flexGrow={1} render="section">
         <ThemeScope theme="dark">
           <PlayerCover
             channelLabel={channelLabel}
@@ -754,12 +754,12 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             title={`${channel.name} is off air`}
           />
         </ThemeScope>
-      </section>
+      </Stack>
     );
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} render="section">
       <div className="relative min-h-0 flex-1">
         {playerEl}
         {/* The wash's centred channel line is the visible readout; this is the same line for a
@@ -768,7 +768,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           <TunerOSD number={osdChannel.number} name={osdChannel.name} currentTitle={player.currentTitle} />
         )}
       </div>
-    </section>
+    </Stack>
   );
 };
 

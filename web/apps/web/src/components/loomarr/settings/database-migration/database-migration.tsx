@@ -115,16 +115,19 @@ const DatabaseMigration = ({
               const current = at === i;
               return (
                 <Stack align="center" direction="row" gap="inline" key={s.key} render="li">
-                  <span
+                  <Stack
+                    align="center"
                     className={cn(
-                      "text-2xs flex size-5 items-center justify-center rounded-full border font-mono",
+                      "text-2xs size-5 rounded-full border font-mono",
                       done && "border-signal bg-signal-tint-15 text-signal",
                       current && "border-tune bg-tune-tint-15 text-tune",
                       !done && !current && "border-border text-muted-foreground",
                     )}
+                    justify="center"
+                    render="span"
                   >
                     {done ? <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> : i + 1}
-                  </span>
+                  </Stack>
                   <Text
                     as="span"
                     textRole={current ? "label" : "hint"}
@@ -184,15 +187,19 @@ const DatabaseMigration = ({
                 <Stack gap="inline" render="ul">
                   {checks.map((c) => (
                     <Stack align="start" direction="row" gap="inline" key={c.name} render="li">
-                      <span
+                      <Stack
+                        align="center"
+                        aria-hidden
                         className={cn(
-                          "text-2xs mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full font-mono",
+                          "text-2xs mt-0.5 size-4 rounded-full font-mono",
                           c.ok ? "bg-signal-tint-15 text-signal" : "bg-onair-tint-15 text-onair-300",
                         )}
-                        aria-hidden
+                        flexShrink={0}
+                        justify="center"
+                        render="span"
                       >
                         {c.ok ? "✓" : "✕"}
-                      </span>
+                      </Stack>
                       <Text as="span" textRole="compact">
                         {c.name}
                         <Text

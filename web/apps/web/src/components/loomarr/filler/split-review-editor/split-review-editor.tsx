@@ -246,7 +246,7 @@ const SplitReviewEditor = ({
   const selected = selectedIndex >= 0 ? draft[selectedIndex] : undefined;
 
   return (
-    <div className={cn("flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-hidden", className)}>
+    <Stack className={cn("w-full max-w-full overflow-x-hidden", className)} gap="4">
       {/* The reel stays stable while the selected clip is inspected in the side panel. */}
       <SegmentFilmstrip
         segments={stripSegments}
@@ -348,7 +348,7 @@ const SplitReviewEditor = ({
           </DialogContent>
         ) : null}
       </Dialog>
-    </div>
+    </Stack>
   );
 };
 

@@ -138,7 +138,7 @@ const ImportDialog = ({
             </Stack>
           ) : (
             <>
-              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6">
+              <Stack className="min-h-0 overflow-auto px-6" flexBasis="0%" flexGrow={1} gap="4">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
                   <SearchField
                     label="Search accounts"
@@ -277,7 +277,7 @@ const ImportDialog = ({
                     </Stack>
                   </div>
                 </div>
-              </div>
+              </Stack>
 
               <DialogFooter>
                 <Action
