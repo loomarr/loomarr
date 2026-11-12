@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
@@ -182,6 +183,40 @@ func TestAFileNamedByItsAirDateIsAnEpisode(t *testing.T) {
 			t.Errorf("%s = %v day %q in %q, want %v day %q in %q", tc.rel, rec.Kind, id.airDate(), seriesDir,
 				tc.kind, tc.day, tc.seriesDir)
 		}
+	}
+}
+
+// A root whose top-level count came back empty (its listing took longer than the count waits, as a
+// busy share's can) is counted when the walk lists it: step 1 shows its folders, rather than reading
+// full while the root's every file is still to come (a 533-folder TV root read "2,268 of 2,268"
+// for minutes).
+func TestStep1CountsARootItsEarlyCountMissed(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"Tango", "Uniform", "Victor", "Whiskey"} {
+		touch(t, root, name+"/"+name+" S01E01.mkv")
+	}
+	tr := NewTracker(nil, nil)
+	tr.Begin(StepWalking, 0)
+	other := &walkReport{tracker: tr, name: "Movies", entries: 6}
+	tr.Grow(StepWalking, other.entries)
+	other.listed(6)
+	other.wrote(6)
+
+	late := &walkReport{tracker: tr, name: "TV"} // its count timed out: 0 entries
+	if _, err := walkRoot(context.Background(), root, nil, late); err != nil {
+		t.Fatal(err)
+	}
+	got := tr.Snapshot(time.Now())
+	if got.Total != 10 {
+		t.Fatalf("step 1 total = %d after the late root was listed, want 10 (6 + 4)", got.Total)
+	}
+	if got.Done >= got.Total {
+		t.Errorf("step 1 = %d of %d before the late root's files are written, want it short of full", got.Done, got.Total)
+	}
+	late.writing()
+	late.wrote(4)
+	if got := tr.Snapshot(time.Now()); got.Done != 10 {
+		t.Errorf("step 1 done = %d once the late root is written, want 10", got.Done)
 	}
 }
 

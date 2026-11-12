@@ -1,3 +1,4 @@
+import { Table, TableBody, TableCell, TableRow } from "@loomarr/design-system";
 import { webTokenSet } from "@loomarr/design-system/web-theme";
 
 // Tokens — the complete web token set, as data (§2.5, §5.1a).
@@ -31,30 +32,26 @@ const isColor = (v: TokenLeaf) => typeof v === "string" && v.startsWith("#");
 const GroupTable = ({ name, group }: { name: string; group: TokenGroup }) => (
   <section className="flex flex-col gap-2">
     <h2 className="font-mono text-base font-semibold">{name}</h2>
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-96 text-sm">
-        <tbody>
-          {asRows(group).map(([key, value]) => (
-            <tr key={key} className="border-border/60 border-b last:border-b-0">
-              <td className="py-1.5 pr-4 align-middle">
-                <code className="font-mono text-xs">{key}</code>
-              </td>
-              <td className="py-1.5 pr-4 align-middle">
-                <code className="text-static-400 font-mono text-xs">{value}</code>
-              </td>
-              <td className="w-10 py-1.5 align-middle">
-                {isColor(value) && (
-                  <span
-                    className="border-border block size-5 rounded border"
-                    style={{ backgroundColor: String(value) }}
-                  />
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table caption={`${name} tokens`} minWidth={384}>
+      <TableBody>
+        {asRows(group).map(([key, value]) => (
+          <TableRow key={key}>
+            <TableCell mono rowHeader>
+              {key}
+            </TableCell>
+            <TableCell mono>{value}</TableCell>
+            <TableCell width={48}>
+              {isColor(value) && (
+                <span
+                  className="border-border block size-5 rounded border"
+                  style={{ backgroundColor: String(value) }}
+                />
+              )}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   </section>
 );
 

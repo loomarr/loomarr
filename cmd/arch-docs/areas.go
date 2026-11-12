@@ -127,7 +127,7 @@ var areas = []area{
 		Packages: []string{
 			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
-			"playout/landiscovery",
+			"playout/landiscovery", "playout/subtitles",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
