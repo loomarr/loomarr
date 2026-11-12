@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -155,7 +156,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	45: a miniseries' parts in a shows' catch-all are its episodes; "Title (Year) Trailer" alone,
 //	    and "Show - Making Of" beside its episode, are extras; a show's folder with one marked
 //	    episode holds episodes; "Promo", "TV Spot", "Blooper Reel" and galleries are extras.
-const writeVersion = 45
+//	46: a file among films is a film unless "S01E01" or a show's season folder says otherwise;
+//	    every video in a show's folder in a shows' catch-all is an episode; names are read
+//	    without their release's notes at their end; a remake's and a sequel's folders are their
+//	    own shows; MakeMKV's, Media Center's, old scene and phone names; trackers' sites.
+const writeVersion = 46
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -532,6 +537,14 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 	}
 }
 
+var (
+	// makeMKVTitle matches MakeMKV's mark for a title it ripped, at a name's end: "title_t00",
+	// "GILDED_MOOR_t01".
+	makeMKVTitle = regexp.MustCompile(`(?i)(?:^title|_)_?t\d{2}$`)
+	// discLabel matches the disc's place a disc's label ends in: "OSTREVIN D1", "OSTREVIN DISC 2".
+	discLabel = regexp.MustCompile(`(?i)[ ]+d(?:isc)?[ ]?\d$`)
+)
+
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
@@ -541,15 +554,21 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	clean := func(name string) string {
 		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
 	}
-	name := path.Base(rel)
-	if dot := strings.LastIndex(name, "."); dot > 0 {
-		name = name[:dot]
-	}
+	name := plainStem(path.Base(rel))
 	if part > 0 {
 		name = withoutPart(name)
 		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
 			return clean(path.Base(path.Dir(dir)))
 		}
+	}
+	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
+	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
+	if m := makeMKVTitle.FindStringSubmatchIndex(name); m != nil && kind == mp.KindMovie {
+		label := strings.Trim(strings.ReplaceAll(name[:m[0]], "_", " "), " ")
+		if dir := path.Dir(rel); (len(label) <= 3 || strings.EqualFold(label, "title")) && dir != "." && !catchAllFolder(path.Base(dir)) {
+			label = strings.ReplaceAll(path.Base(dir), "_", " ")
+		}
+		return clean(discLabel.ReplaceAllString(label, ""))
 	}
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))

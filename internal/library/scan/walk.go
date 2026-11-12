@@ -771,28 +771,31 @@ func extraName(lowerName string) bool {
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
 		return true
 	}
-	for _, suffix := range sampleSuffixes {
-		if strings.HasSuffix(base, suffix) {
-			return true
-		}
+	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv".
+	if strings.HasSuffix(base, "-sample") {
+		return true
 	}
-	// Spaced, it follows a release's own words: "Movie (2001) sample", "Kettle Bay S01E02 - sample",
-	// "Movie 1080p sample"; "The Last Sample" and "Free Sample" are titles.
-	if before, ok := strings.CutSuffix(base, " sample"); ok {
-		fields := strings.Fields(strings.TrimRight(before, " -"))
+	// Otherwise it follows a release's own words: "Movie (2001) sample", "Kettle Bay S01E02 -
+	// sample", "kettle.bay.s01e02.720p.hdtv.x264-grp.sample"; "The Last Sample", "The.Last.Sample"
+	// and "Free Sample" are titles.
+	for _, sep := range []string{".", "_", " "} {
+		before, ok := strings.CutSuffix(base, sep+"sample")
+		if !ok {
+			continue
+		}
+		fields := strings.FieldsFunc(strings.TrimRight(before, " ._-"), func(r rune) bool { return r == ' ' || r == '.' || r == '_' })
 		if len(fields) == 0 {
 			return false
 		}
 		last := fields[len(fields)-1]
-		return strings.HasSuffix(last, ")") || strings.HasSuffix(last, "]") || releaseToken(last) ||
-			episodeMark.MatchString(last) || yearToken.MatchString(last)
+		if strings.HasSuffix(last, ")") || strings.HasSuffix(last, "]") || episodeMark.MatchString(last) || yearToken.MatchString(last) {
+			return true
+		}
+		// The release's words, and its group's after a dash: "x264-grp".
+		return slices.ContainsFunc(strings.Split(last, "-"), releaseToken)
 	}
 	return false
 }
-
-// sampleSuffixes mark a release's sample by its file name, joined to it: "Movie (2001)-sample.mkv",
-// "Kettle.Bay.S01E02.sample.mkv".
-var sampleSuffixes = []string{"-sample", ".sample", "_sample"}
 
 // extraKinds are the words an extra is named by, as Jellyfin, Plex and households name them; a
 // longer one is tried before a word it starts with.
@@ -801,7 +804,7 @@ var extraKinds = [][]string{
 	{"short", "film"}, {"deleted", "scenes"}, {"deleted", "scene"}, {"official", "trailer"},
 	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
 	{"audio", "commentary"}, {"blooper", "reel"}, {"tv", "spot"}, {"photo", "gallery"},
-	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"},
+	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"}, {"sample"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
 	{"deletedscenes"}, {"deleted"}, {"bloopers"}, {"outtakes"}, {"commentary"}, {"scene"}, {"short"},
 	{"clip"}, {"extra"}, {"other"}, {"theme"},
@@ -879,7 +882,10 @@ func siblingExtras(folder string, names []string) map[string]bool {
 	for _, name := range names {
 		words := extraWords(name)
 		at := extraKindAt(words)
-		if episodeMark.MatchString(name) && episodeExtra.MatchString(stem(name)) && !titleWordExtra.MatchString(stem(name)) {
+		// A name written all in lower case can't say "Paper-Clip" from Jellyfin's "Tidewater-clip":
+		// it is the episode, never skipped unread.
+		if episodeMark.MatchString(name) && episodeExtra.MatchString(stem(name)) && !titleWordExtra.MatchString(stem(name)) &&
+			name != strings.ToLower(name) {
 			out[name] = true
 			continue
 		}

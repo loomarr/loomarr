@@ -527,7 +527,7 @@ var namingMatrix = []namingRow{
 	}},
 	{id: "W52", files: map[string]string{
 		"Movies/Night.Trailer.mkv":                         "movie Night Trailer -",
-		"Movies/The.Last.Sample.mkv":                       "skip",
+		"Movies/The.Last.Sample.mkv":                       "movie The Last Sample -",
 		"Movies/Cut-Short.mkv":                             "movie Cut-Short -",
 		"Movies/the-other.avi":                             "movie the-other -",
 		"Movies/Outtakes.mkv":                              "movie Outtakes -",
@@ -652,6 +652,45 @@ var namingMatrix = []namingRow{
 		"Movies/Pale Mount (2009)/Pale Mount (2009) - Blooper Reel.mkv":  "skip",
 		"Movies/Pale Mount (2009)/Pale Mount (2009) - Promo.mkv":         "skip",
 		"Movies/Pale Mount (2009)/Pale Mount (2009) - Storyboards.mkv":   "skip",
+	}},
+	// A show's folder in a shows' catch-all holds its episodes, however they are named or kept.
+	{id: "W75", files: map[string]string{
+		"TV/Puddle Pals/Puddle Pals - Big Splash.mp4":                          "episode Puddle Pals S?E?",
+		"Kids TV/Puddle Pups/Big Splash.mp4":                                   "episode Puddle Pups S?E?",
+		"TV/Tiddlywinks Farm/Tiddlywinks Farm - Series 2 - 05 - Muddy Day.mp4": "episode Tiddlywinks Farm S2E5",
+		"TV/Tiddlywinks Farm/Volume 1/01 Muddy Day.mp4":                        "episode Tiddlywinks Farm S1E1",
+		"TV/Tiddlywinks Farm/Volume 1/02 Windy Day.mp4":                        "episode Tiddlywinks Farm S1E2",
+		"TV/Hollowmere/Season 2/Disc 1/title_t00.mkv":                          "episode Hollowmere S?E?",
+		"TV/Grimsby Lanes/Grimsby Lanes S3/Grimsby Lanes - Episode 3.mkv":      "episode Grimsby Lanes S3E3",
+		"Recorded TV/Larchmont Road_ITV_2022_11_02_20_00_00.wtv":               "episode Larchmont Road 2022-11-02",
+		"Recorded TV/Larchmont Road_ITV_2022_11_09_20_00_00.wtv":               "episode Larchmont Road 2022-11-09",
+		"Miniseries/Dunmore Road/Dunmore Road Part One.mkv":                    "episode Dunmore Road S1E1",
+		"Miniseries/Dunmore Road/Dunmore Road Part Two.mkv":                    "episode Dunmore Road S1E2",
+	}},
+	// Among films, a file is a film: a collection's numbered films, a title with "4x4", MakeMKV's.
+	{id: "W76", files: map[string]string{
+		"Movies/Hazelgrot Trilogy/1. Hazelgrot.mkv":       "movie Hazelgrot -",
+		"Movies/Hazelgrot Trilogy/2. Hazelgrot Rises.mkv": "movie Hazelgrot Rises -",
+		"Movies/5x5 Fighters.mkv":                         "movie 5x5 Fighters -",
+		"Movies/Kids/Mudcar 4x4.mp4":                      "movie Mudcar 4x4 -",
+		"Movies/NETTLECOMBE_RISE/title_t00.mkv":           "movie NETTLECOMBE RISE -",
+		"Movies/Corvallo Nights/Corvallo Nights_t00.mkv":  "movie Corvallo Nights -",
+		"Movies/OSTREVIN_D1/OSTREVIN_D1_t00.mkv":          "movie OSTREVIN -",
+		"Movies/Unsorted/VID_20190601_123456.mp4":         "movie VID 20190601 123456 -",
+	}},
+	// Anime as Sonarr writes it, a remake's and a sequel's folders, old scene names, a tracker's site.
+	{id: "W77", files: map[string]string{
+		"Anime/Kumori Sora - 01.mkv":                                        "episode Kumori Sora S?E?",
+		"Anime/Kumori Sora - 02.mkv":                                        "episode Kumori Sora S?E?",
+		"Anime/Tsukishiro Kan Episode 09.mp4":                               "episode Tsukishiro Kan S1E9",
+		"TV/Starhaven/Starhaven (2005)/Season 1/Starhaven S01E01.mkv":       "episode Starhaven 2005 S1E1",
+		"TV/Starhaven/Starhaven (1978)/Season 1/Starhaven S01E01.mkv":       "episode Starhaven 1978 S1E1",
+		"TV/Kettlebridge/Kettlebridge 2/Season 1/Kettlebridge 2 S01E01.mkv": "episode Kettlebridge 2 S1E1",
+		"Downloads/larchmont.road.312.hdtv-lol.avi":                         "episode Larchmont Road S3E12",
+		"Downloads/larchmont.road.313.hdtv-lol.avi":                         "episode Larchmont Road S3E13",
+		"Movies/Fahrenheit.Lane.451.1080p.mkv":                              "movie Fahrenheit Lane 451 -",
+		"Downloads/www.Tracker.Example - Quillmere Two (2016) 720p.mkv":     "movie Quillmere Two 2016",
+		"Movies/Tracker.io - Brindlewood Four (2017).mkv":                   "movie Brindlewood Four 2017",
 	}},
 	// A franchise's folder holds its shows, each its own.
 	{id: "W65", files: map[string]string{

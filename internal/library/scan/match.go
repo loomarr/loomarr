@@ -405,8 +405,11 @@ var (
 	// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
 	leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
 	// trackerPrefix matches the site a download names itself after, before the title:
-	// "www.TrackerNet.org - Ashgrove", "[www.TrackerNet.org] Ashgrove".
-	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*www\.[a-z0-9-]+\.[a-z]{2,6}\s*\]?[ ._]*(?:-[ ._]*)?`)
+	// "www.TrackerNet.org - Ashgrove", "[www.TrackerNet.org] Ashgrove", "[ www.Torrent.Example ] -
+	// Ashgrove", and, with no "www.", a site's name with its domain and a dash: "Tracker.io -
+	// Ashgrove". The site ends at a bracket, a space, an underscore or a dash, never inside a dotted
+	// title.
+	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*(?:www\.(?:[a-z0-9-]+\.)+[a-z]{2,10}(?:\s*\][ ._]*(?:-[ ._]*)?|[ ._]*-[ ._]*|\s+|_+)|(?:[a-z0-9-]+\.)+(?:com|org|net|io|to|cc|me|tv|info|xyz|ru|se|nu|ws|club|lol|biz|co|example)\s*\]?[ ._]*-[ ._]*)`)
 	// indexPrefix matches a collection's place for a film, before its title: "01 - Ashgrove",
 	// "1. Ashgrove", "(1) Ashgrove". A number that starts a title, "10 Kettles", has none of these.
 	indexPrefix = regexp.MustCompile(`^\s*(?:\(\d{1,2}\)|\d{1,2}\.|\d{1,2}[ ._]+-)[ ._]+`)
