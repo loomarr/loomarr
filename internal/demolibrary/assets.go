@@ -240,6 +240,9 @@ func (l Layout) linkLibrary(lib *Library) error {
 			if err := link(t, t.ID(), l.FilmFile(t)); err != nil {
 				return err
 			}
+			if err := l.writeFilmSubtitles(t); err != nil {
+				return err
+			}
 			continue
 		}
 		for _, e := range lib.EpisodesOf(t) {
@@ -249,6 +252,41 @@ func (l Layout) linkLibrary(lib *Library) error {
 		}
 	}
 	return nil
+}
+
+// FilmSubtitles is an invented film's English subtitles, a file beside it as a real library keeps
+// them ("Name (Year) {tmdb-n}.en.srt"), so soft subtitles have a track to serve (#2088). An open
+// pack's film has none.
+func (l Layout) FilmSubtitles(t Title) string {
+	return strings.TrimSuffix(l.FilmFile(t), filepath.Ext(l.FilmFile(t))) + ".en.srt"
+}
+
+// writeFilmSubtitles writes an invented film's subtitles when they differ from what is there.
+func (l Layout) writeFilmSubtitles(t Title) error {
+	f, ok := FormatByID(t.Format)
+	if t.Open || !ok {
+		return nil
+	}
+	want, p := demoSubtitles(f.Duration), l.FilmSubtitles(t)
+	if have, err := os.ReadFile(p); err == nil && bytes.Equal(have, want) {
+		return nil
+	}
+	tmp := tempName(p)
+	if err := os.WriteFile(tmp, want, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
+}
+
+// demoSubtitles is a numbered line every ten seconds of a runtime, each shown for four, so a
+// viewer who turns subtitles on sees them change.
+func demoSubtitles(seconds int) []byte {
+	var b strings.Builder
+	stamp := func(s int) string { return fmt.Sprintf("%02d:%02d:%02d,000", s/3600, s/60%60, s%60) }
+	for n, at := 1, 10; at+4 <= seconds; n, at = n+1, at+10 {
+		fmt.Fprintf(&b, "%d\n%s --> %s\nDemo subtitles · line %d\n\n", n, stamp(at), stamp(at+4), n)
+	}
+	return []byte(b.String())
 }
 
 // resetIfStale removes generated files left by a different AssetVersion or content mode. The

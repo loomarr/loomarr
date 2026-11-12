@@ -7,12 +7,14 @@ import {
   getChannelUpcomingMockHandler,
   getDeviceListMockHandler,
   getFillerDefectReportMockHandler,
+  getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
   getGetChannelMockHandler,
   getGetChannelWatermarkOptionsMockHandler,
   getGetCurrentHealthMockHandler,
+  getGetDiagnosticVerboseCaptureMockHandler,
   getGuideHighlightsMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
@@ -31,6 +33,7 @@ import {
   getListProposalJobsMockHandler,
   getListProposalsMockHandler,
   getListStartupReportsMockHandler,
+  getListTaxonomyMockHandler,
   getListTitlesMockHandler,
   getListUsersMockHandler,
   getMyChannelsMockHandler,
@@ -230,8 +233,27 @@ const appHandlers = (): RequestHandler[] => [
     hosted: [],
   }),
   getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
+  // What the Diagnostics route's loader reads.
+  getGetDiagnosticVerboseCaptureMockHandler({ active: false }),
   getListDocsMockHandler({ docs: [] }),
   getFillerPoolMockHandler({ channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 }),
+  // What the Filler routes' loaders read. Nothing incoming and no taxonomy is an empty install; the
+  // coverage meter answers as a filler-less install does (501), which it renders as nothing.
+  getFillerIncomingMockHandler({
+    preparing: { rows: [], total: 0 },
+    needsHelp: { rows: [], total: 0 },
+    recentlyReady: { rows: [], total: 0 },
+  } as never),
+  getListTaxonomyMockHandler({
+    taxa: [],
+    totalClips: 0,
+    taggedClips: 0,
+    unclassifiedClips: 0,
+    axisCoverage: [],
+  }),
+  http.get("*/v1/channels/:id/filler/coverage", () =>
+    HttpResponse.json({ title: "Not Implemented", status: 501 }, { status: 501 }),
+  ),
   getFillerWatchMockHandler({
     clips: 0,
     health: "healthy",

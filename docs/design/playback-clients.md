@@ -176,10 +176,12 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   the encoder, transcode reason and session, and get **Copy stream URL**), Info (the on-air
   programme's card in full) and Channels, all behind More except the utilities'. On desktop they open
   as a menu over the keys; on a phone as a sheet (§9.5). One is open at a time.
-- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
-  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
-  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
-  restarts the encoder.
+- **Audio, subtitles and quality are per viewer and remembered.** Audio and quality are among the
+  renditions the Channel publishes (the default audio plus at most one alternate); that choice
+  switches the rendition and never restarts the encoder. Subtitles are soft and served beside the
+  stream (`GET /v1/channels/{id}/subtitles`, [`playout.md`](playout.md)): the player asks for the
+  cues of the remembered track key around its playhead, on the channel's wall clock, and draws them
+  over the picture (`C` cycles them).
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
   The route hides the app nav and has a back arrow in the top left corner.
@@ -200,8 +202,8 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
   remote focus starts on the film strip's on-air block (§9.7). Their Audio reads the same two things
   the web's does (the airing programme's tracks and the channel's language, both a member's reads,
-  `@loomarr/core/channel-audio`), each time it opens. Subtitles stays hidden on every client until
-  the master playlist carries renditions (#2088).
+  `@loomarr/core/channel-audio`), each time it opens. The server serves subtitles; the Subtitles key
+  stays hidden on a client until it draws them (#3409).
 
 ## Android TV
 

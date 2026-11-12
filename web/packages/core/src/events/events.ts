@@ -294,6 +294,7 @@ export {
   invalidateForFrame,
   invalidateSettings,
   isFrameFed,
+  listAndDetail,
   openEventStream,
   openFrameStream,
   useLoomarrEvents,
