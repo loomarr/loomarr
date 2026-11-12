@@ -67,7 +67,7 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
   const installed = (status.catalog ?? []).filter((model) => model.tools);
 
   return (
-    <div className="flex flex-col gap-5">
+    <Stack gap="5">
       {select.error != null && <ErrorState error={select.error} />}
       {discover.error != null && <ErrorState error={discover.error} onRetry={() => discover.refetch()} />}
       {pull.error != null && <ErrorState error={pull.error} />}
@@ -94,7 +94,7 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
         pulling={pull.pulling}
         onPull={pull.start}
       />
-    </div>
+    </Stack>
   );
 };
 
@@ -334,7 +334,7 @@ const AiModelSettings = ({
   if (!onRoleSettingChange) return lineup;
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       <Stack
         aria-labelledby="role-lineup"
         className="border-border border-t pt-4"
@@ -361,7 +361,7 @@ const AiModelSettings = ({
           for (const [key, value] of visionChoiceSettings(choice)) onRoleSettingChange(key, value);
         }}
       />
-    </div>
+    </Stack>
   );
 };
 

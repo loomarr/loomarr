@@ -171,10 +171,10 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         </Action>
       </Stack>
       {(query.data.truncated || query.data.discarded > 0) && (
-        <p className="text-caution flex items-center gap-1 text-xs">
+        <Stack align="center" className="text-caution text-xs" direction="row" gap="1" render="p">
           <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Output is truncated;{" "}
           {query.data.discarded} earlier lines were discarded.
-        </p>
+        </Stack>
       )}
       <pre
         ref={scrollRef}
@@ -265,10 +265,13 @@ const ProcessDetail = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : latest ? (
-        <div
-          role="status"
-          className="bg-muted/30 flex flex-wrap gap-5 rounded-md p-3 text-sm"
+        <Stack
           aria-label="Latest Process progress"
+          className="bg-muted/30 rounded-md p-3 text-sm"
+          direction="row"
+          gap="5"
+          role="status"
+          wrap
         >
           <span>
             Frame <strong>{latest.frame}</strong>
@@ -282,7 +285,7 @@ const ProcessDetail = ({
           {detail?.progressTruncated && (
             <span className="text-caution">Earlier progress samples omitted</span>
           )}
-        </div>
+        </Stack>
       ) : (
         <p className="text-muted-foreground text-sm">No progress samples retained for this run.</p>
       )}

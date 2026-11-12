@@ -68,7 +68,7 @@ const WizardAiBlock = () => {
   const dirty = Object.keys(edits).length > 0;
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       {/* Provider choice + (for a hosted provider) its URL/key — the same fields Settings→AI
           shows, so the wizard offers the full Ollama-vs-external choice, not Ollama only. */}
       <SettingsFields entries={aiEntries} values={edits} onChange={setEdit} results={patchResults} />
@@ -116,7 +116,7 @@ const WizardAiBlock = () => {
       {/* The real picker: local installed/download list, OR the hosted model picker — chosen
           by the LIVE provider. onModelChange flips the wizard's green dot when a model is set. */}
       <AiModelSettings provider={liveProvider} baseUrl={liveBaseUrl} onModelChange={refreshSetupStatus} />
-    </div>
+    </Stack>
   );
 };
 

@@ -71,7 +71,7 @@ const HelpPage = () => {
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card gap={12} padding={12}>
             <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
-            <ul className="flex flex-col gap-1">
+            <Stack gap="1" render="ul">
               {visible.map((d) => (
                 <li key={d.slug}>
                   {/* A link, not a button: each page is a place with its own URL, so it opens in a new
@@ -93,7 +93,7 @@ const HelpPage = () => {
               {visible.length === 0 && (
                 <li className="text-muted-foreground px-2 py-1.5 text-sm">No pages match.</li>
               )}
-            </ul>
+            </Stack>
           </Card>
         </nav>
 

@@ -119,20 +119,20 @@ const ExecutionHistory = ({ name }: { name: string }) => {
           <p className="text-muted-foreground text-xs">No completed runs.</p>
         ) : (
           <dl className="flex flex-wrap gap-x-4 text-xs">
-            <div className="flex gap-1">
+            <Stack direction="row" gap="1">
               <dt className="text-muted-foreground">Runs</dt>
               <dd className="font-mono">{history.truncated ? `${history.runCount}+` : history.runCount}</dd>
-            </div>
-            <div className="flex gap-1">
+            </Stack>
+            <Stack direction="row" gap="1">
               <dt className="text-muted-foreground">Failed</dt>
               <dd className={cn("font-mono", history.failureCount > 0 && "text-destructive")}>
                 {history.failureCount}
               </dd>
-            </div>
-            <div className="flex gap-1">
+            </Stack>
+            <Stack direction="row" gap="1">
               <dt className="text-muted-foreground">Average</dt>
               <dd className="font-mono">{executionDuration(history.averageDurationMs)}</dd>
-            </div>
+            </Stack>
           </dl>
         )}
       </div>
@@ -357,7 +357,7 @@ const TasksPage = () => {
                                   )}
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
-                                    <div className="mt-3 flex items-center gap-1">
+                                    <Stack align="center" className="mt-3" direction="row" gap="1">
                                       <Action
                                         accessibilityLabel={
                                           job.paused ? `Resume ${job.title}` : `Pause ${job.title}`
@@ -375,7 +375,7 @@ const TasksPage = () => {
                                         Modify
                                       </Action>
                                       <RunButton busy={busy} onRun={() => run.mutate({ name: job.name })} />
-                                    </div>
+                                    </Stack>
                                   )}
                                 </TableCell>
                               </TableRow>

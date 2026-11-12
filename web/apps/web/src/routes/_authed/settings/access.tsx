@@ -1,7 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Disclosure } from "@loomarr/design-system";
+import { Disclosure, Stack } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { viewerIsAdmin } from "@/auth/me-query";
@@ -92,10 +92,10 @@ const AccessSettings = () => {
             description="Generated credentials and database encryption for unusual administration work."
             label="Advanced access controls"
           >
-            <div className="flex flex-col gap-4">
+            <Stack gap="4">
               <SecretsSettings />
               <EncryptionSettings />
-            </div>
+            </Stack>
           </Disclosure>
         </>
       }

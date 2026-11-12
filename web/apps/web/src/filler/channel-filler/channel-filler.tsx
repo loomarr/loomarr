@@ -381,7 +381,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         )}
       </Stack>
 
-      <section className="border-border bg-card flex flex-col gap-5 rounded-lg border p-5">
+      <Stack className="border-border bg-card rounded-lg border p-5" gap="5" render="section">
         <div>
           <h3 className="text-base font-semibold">Choose what fits</h3>
           <p className="text-muted-foreground text-sm">
@@ -427,7 +427,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           installationGeography={{ country: homeCountry, place: homePlace }}
           defaultRoles={coverage?.defaultRoles}
         />
-      </section>
+      </Stack>
 
       <Disclosure
         label="Specific clips (advanced)"
@@ -437,7 +437,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             : `${pluralize(pinned.length + excluded.length, "saved override")}.`
         } Always include, or never include, particular clips.`}
       >
-        <div className="flex flex-col gap-4">
+        <Stack gap="4">
           <FillerClipList
             label="Prefer on this channel"
             hint="Play these clips ahead of automatic rotation, even when year, audience, or topics differ. Location, type, and length restrictions still apply. Preferred clips may repeat."
@@ -458,7 +458,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             disabled={isApplying}
             excludeIds={pinned}
           />
-        </div>
+        </Stack>
       </Disclosure>
 
       {/* The live break — the ground-truth preview of the current draft. */}

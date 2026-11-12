@@ -197,32 +197,23 @@
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/design/palette/palette.tsx": {
-      "flexStack": 5
-    },
     "apps/web/src/design/spacing/spacing.tsx": {
       "flexStack": 15
     },
-    "apps/web/src/design/tokens/tokens.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/design/typography/typography.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "flexStack": 8
+      "flexStack": 7
     },
     "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "flexStack": 1
     },
     "apps/web/src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
       "flexStack": 2
@@ -231,33 +222,24 @@
       "flexStack": 2
     },
     "apps/web/src/filler/channel-filler/channel-filler.tsx": {
-      "flexStack": 3
-    },
-    "apps/web/src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
-      "flexStack": 8
+      "flexStack": 1
     },
     "apps/web/src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/filler/clip-details/clip-details.tsx": {
       "flexStack": 4
-    },
-    "apps/web/src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/filler/filler-catalog/clip-more-details/clip-more-details.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/filler-overview/filler-overview.tsx": {
@@ -273,43 +255,37 @@
       "flexStack": 1
     },
     "apps/web/src/filler/incoming/incoming.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/filler/sources-panel/local-source-form/local-source-form.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/split-review-page/split-review-page.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 3
     },
     "apps/web/src/help/doc-view/doc-view.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/help/help-page/help-page.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/home/home-page/home-page.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/home/home-strip/home-strip.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/home/new-this-week/new-this-week.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/lib/app-form/app-form.tsx": {
       "flexStack": 1
@@ -318,33 +294,18 @@
       "flexStack": 1
     },
     "apps/web/src/queue/request-detail/request-detail.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/routes/_authed/account.tsx": {
-      "flexStack": 4
-    },
-    "apps/web/src/routes/_authed/channels/$id/-channel-advanced.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "flexStack": 2
+      "flexStack": 3
     },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
-      "flexStack": 5
-    },
-    "apps/web/src/routes/_authed/settings/access.tsx": {
-      "flexStack": 1
+      "flexStack": 3
     },
     "apps/web/src/routes/_authed/settings/index.tsx": {
       "flexStack": 1
     },
     "apps/web/src/routes/_authed/settings/system/index.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/settings/encryption-settings/encryption-settings.tsx": {
       "flexStack": 1
     },
     "apps/web/src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
@@ -360,19 +321,13 @@
       "flexStack": 3
     },
     "apps/web/src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "flexStack": 9
-    },
-    "apps/web/src/suggest/approval-queue/approval-queue.tsx": {
-      "flexStack": 1
+      "flexStack": 5
     },
     "apps/web/src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "flexStack": 3
-    },
-    "apps/web/src/suggest/intent-form/intent-form.tsx": {
-      "flexStack": 1
+      "flexStack": 2
     },
     "apps/web/src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
       "flexStack": 1
@@ -383,19 +338,7 @@
     "apps/web/src/wizard/bootstrap-step/bootstrap-step.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/wizard/connect-step/connect-step.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/wizard/first-channel-step/first-channel-step.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {
-      "flexStack": 3
-    },
-    "apps/web/src/wizard/users-step/users-step.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/wizard/wizard-ai-block/wizard-ai-block.tsx": {
       "flexStack": 1
     },
     "packages/ui/src/overlay/overlay.tsx": {

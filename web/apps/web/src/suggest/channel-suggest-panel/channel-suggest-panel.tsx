@@ -239,7 +239,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
       {proposal && (
-        <div className="flex flex-col gap-4">
+        <Stack gap="4">
           <ProposalReview
             proposal={proposal.proposal}
             optionalSuggestions={optionalSuggestions}
@@ -285,7 +285,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
               </Action>
             </Stack>
           )}
-        </div>
+        </Stack>
       )}
     </section>
   );

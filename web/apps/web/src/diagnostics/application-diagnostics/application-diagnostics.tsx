@@ -184,10 +184,10 @@ const EventDetail = ({
           {correlations.length > 0 && (
             <div className="grid gap-1">
               {correlations.map(([label, value]) => (
-                <div key={label} className="flex min-w-0 items-center gap-1">
+                <Stack align="center" className="min-w-0" direction="row" gap="1" key={label}>
                   <span className="text-muted-foreground w-28 shrink-0 text-xs">{label}</span>
                   <CopyValue label={label} value={value} />
-                </div>
+                </Stack>
               ))}
             </div>
           )}

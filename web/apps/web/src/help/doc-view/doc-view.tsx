@@ -1,5 +1,13 @@
 import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
-import { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "@loomarr/design-system";
+import {
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -78,8 +86,16 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
           </h4>
         ),
         p: ({ children }) => <p className="text-sm leading-relaxed">{children}</p>,
-        ul: ({ children }) => <ul className="ml-5 flex list-disc flex-col gap-1.5 text-sm">{children}</ul>,
-        ol: ({ children }) => <ol className="ml-5 flex list-decimal flex-col gap-1.5 text-sm">{children}</ol>,
+        ul: ({ children }) => (
+          <Stack className="ml-5 list-disc text-sm" gap="1.5" render="ul">
+            {children}
+          </Stack>
+        ),
+        ol: ({ children }) => (
+          <Stack className="ml-5 list-decimal text-sm" gap="1.5" render="ol">
+            {children}
+          </Stack>
+        ),
         li: ({ children }) => <li className="leading-relaxed">{children}</li>,
         code: ({ children }) => (
           <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>

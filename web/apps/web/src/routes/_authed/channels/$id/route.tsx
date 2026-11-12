@@ -288,13 +288,19 @@ const ChannelDetailLayout = () => {
             ) : (
               <h1 className="text-xl leading-tight font-semibold">{ch.name}</h1>
             )}
-            <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
+            <Stack
+              align="center"
+              className="text-muted-foreground text-sm"
+              direction="row"
+              gap="1.5"
+              render="span"
+            >
               <span
                 aria-hidden
                 className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
               />
               {airLine.text}
-            </span>
+            </Stack>
           </div>
           <Stack
             align="center"
@@ -386,7 +392,7 @@ const ChannelDetailLayout = () => {
         ref={sectionScroller}
         style={{ position: "relative" }}
       >
-        <div className="max-w-detail mx-auto flex w-full flex-col gap-4 p-6">
+        <Stack className="max-w-detail mx-auto w-full p-6" gap="4">
           <ChannelDetailProvider
             value={{
               id,
@@ -406,7 +412,7 @@ const ChannelDetailLayout = () => {
           >
             <Outlet />
           </ChannelDetailProvider>
-        </div>
+        </Stack>
       </div>
     </Stack>
   );

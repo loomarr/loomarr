@@ -54,9 +54,9 @@ const CheckIdentity = ({ check }: { check: HealthCheck }) => (
 const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
   <TableRow>
     <TableCell rowHeader verticalAlign="top">
-      <span className="flex flex-col gap-0.5">
+      <Stack gap="0.5" render="span">
         <CheckIdentity check={check} />
-      </span>
+      </Stack>
     </TableCell>
     <TableCell verticalAlign="top">
       <Verdict word={checkWord(check.status)} />

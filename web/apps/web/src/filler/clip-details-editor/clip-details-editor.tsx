@@ -331,9 +331,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               const inAxis = flattenAxis(vocabTaxa, axis);
               if (inAxis.length === 0) return null;
               return (
-                <div key={axis} className="flex flex-col gap-1.5">
+                <Stack gap="1.5" key={axis}>
                   <span className="text-muted-foreground text-xs">{AXIS_LABEL[axis]}</span>
-                  <div className="flex flex-wrap gap-1.5">
+                  <Stack direction="row" gap="1.5" wrap>
                     {inAxis.map(({ taxon: t, depth }) => {
                       const on = tags.includes(t.slug);
                       return (
@@ -342,8 +342,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                         </Chip>
                       );
                     })}
-                  </div>
-                </div>
+                  </Stack>
+                </Stack>
               );
             })
           )}

@@ -1,7 +1,7 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
 import { useAppForm } from "@/lib/app-form";
@@ -92,7 +92,7 @@ const IntentForm = ({
   });
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       <form.Field name="description">
         {(field) => (
           <IntentInput
@@ -153,7 +153,7 @@ const IntentForm = ({
           </form.AppField>
         </div>
       )}
-    </div>
+    </Stack>
   );
 };
 
