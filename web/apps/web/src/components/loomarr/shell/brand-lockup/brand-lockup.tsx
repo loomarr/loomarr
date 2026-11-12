@@ -1,3 +1,4 @@
+import { BrandWordmark, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { ColorBars } from "../color-bars";
 import type { BrandLockupProps } from "./brand-lockup.type";
@@ -11,15 +12,19 @@ const BrandLockup = ({ variant = "hero", tagline = true, className }: BrandLocku
     return (
       <div className={cn("flex items-center gap-2", className)}>
         <ColorBars size="sm" />
-        <span className="text-sm font-semibold tracking-[0.12em]">LOOMARR</span>
+        <BrandWordmark size="small" />
       </div>
     );
   }
   return (
     <div className={cn("flex flex-col items-center gap-3", className)}>
       <ColorBars size="lg" />
-      <span className="text-3xl font-bold tracking-[0.08em]">LOOMARR</span>
-      {tagline && <span className="text-muted-foreground font-mono text-sm">always something on</span>}
+      <BrandWordmark size="large" />
+      {tagline && (
+        <Text as="span" textRole="mono" tone="secondary">
+          always something on
+        </Text>
+      )}
     </div>
   );
 };

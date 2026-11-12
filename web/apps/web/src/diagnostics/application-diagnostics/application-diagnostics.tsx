@@ -619,26 +619,30 @@ const ApplicationDiagnostics = ({
                         selected={open}
                       >
                         <div className="grid w-full gap-2 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start">
-                          <span className="inline-flex items-center gap-2 text-xs">
+                          <Text
+                            as="span"
+                            className="inline-flex items-center gap-2"
+                            textRole="hint"
+                            tone="primary"
+                          >
                             <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
                             {levelLabel(event.level)}
-                          </span>
+                          </Text>
                           <span className="min-w-0">
-                            <span className="block text-sm font-medium">
+                            <Text as="span" className="block" textRole="cardLabel" tone="primary">
                               {event.message || fallbackMessage(event)}
-                            </span>
-                            <span className="text-muted-foreground mt-1 block text-xs">
+                            </Text>
+                            <Text as="span" className="mt-1 block" textRole="hint" tone="secondary">
                               {sourceLabel(event.source)}
                               {event.subsystem ? ` · ${event.subsystem}` : ""}
                               {event.channelId ? " · Channel involved" : ""}
                               {event.processRunId ? " · Process output available" : ""}
-                            </span>
+                            </Text>
                           </span>
-                          <time
-                            className="text-muted-foreground font-mono text-xs sm:text-right"
-                            dateTime={new Date(event.occurredAt).toISOString()}
-                          >
-                            {formatTime(event.occurredAt)}
+                          <time className="sm:text-right" dateTime={new Date(event.occurredAt).toISOString()}>
+                            <Text as="span" textRole="mono" tone="secondary">
+                              {formatTime(event.occurredAt)}
+                            </Text>
                           </time>
                         </div>
                       </PressableRow>

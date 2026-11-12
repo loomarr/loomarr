@@ -190,15 +190,11 @@ const ChannelIconField = ({
                 From your titles
               </Text>
               {suggestions.isLoading && (
-                <Stack
-                  align="center"
-                  className="text-muted-foreground mt-2 text-xs"
-                  direction="row"
-                  gap="inline"
-                  render="p"
-                >
-                  <ActivityIndicator decorative size="compact" tone="inherit" />
-                  Looking for posters…
+                <Stack align="center" className="mt-2" direction="row" gap="inline" render="p">
+                  <ActivityIndicator decorative size="compact" tone="secondary" />
+                  <Text as="span" textRole="hint" tone="secondary">
+                    Looking for posters…
+                  </Text>
                 </Stack>
               )}
               {tmdbUnconfigured && (

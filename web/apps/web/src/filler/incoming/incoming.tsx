@@ -73,13 +73,17 @@ const StatusRows = ({
           {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium break-words">{row.name}</span>
-          <span className="text-muted-foreground mt-0.5 block text-xs">
+          <Text as="span" className="block break-words" textRole="cardLabel" tone="primary">
+            {row.name}
+          </Text>
+          <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
             {row.from ? `${row.from} · ` : ""}
             {formatClipDuration(row.durationMs)}
-          </span>
+          </Text>
         </span>
-        <span className="text-muted-foreground shrink-0 text-xs">{row.statusLabel}</span>
+        <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+          {row.statusLabel}
+        </Text>
       </PressableRow>
     ))}
     {group.nextCursor ? (

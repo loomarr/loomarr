@@ -75,13 +75,17 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
           {clip.name}
         </button>
       ) : (
-        <p className="truncate text-sm" title={clip.name}>
-          {clip.name}
+        <p className="truncate" title={clip.name}>
+          <Text as="span" textRole="compact" tone="primary">
+            {clip.name}
+          </Text>
         </p>
       )}
       {clip.brand ? (
-        <p className="text-muted-foreground truncate text-xs" title={`Brand: ${clip.brand}`}>
-          {clip.brand}
+        <p className="truncate" title={`Brand: ${clip.brand}`}>
+          <Text as="span" textRole="hint" tone="secondary">
+            {clip.brand}
+          </Text>
         </p>
       ) : null}
       {/* Phone only, as the mock draws it: below `md` the tag columns are gone, so the row has no
@@ -109,8 +113,10 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
 
     {/* The same three-branch rule the card renders — shared, because the `playsCounted:false`
         branch is a claim about what this install can OBSERVE, and two copies drift. */}
-    <span className="text-2xs text-static-400 hidden truncate font-mono lg:inline" title={playsLine(clip)}>
-      {playsLine(clip)}
+    <span className="hidden truncate lg:inline" title={playsLine(clip)}>
+      <Text as="span" textRole="mono" tone="secondary">
+        {playsLine(clip)}
+      </Text>
     </span>
   </div>
 );

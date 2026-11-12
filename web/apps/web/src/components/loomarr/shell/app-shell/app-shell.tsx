@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
@@ -162,13 +162,17 @@ const AppShell = ({
             onClick={onOpenCommand}
             aria-keyshortcuts={commandShortcutAria()}
             className={cn(
-              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors",
               FOCUS_RING,
             )}
           >
             <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
-            <span>Search…</span>
-            <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
+            <Text as="span" textRole="compact" tone="secondary">
+              Search…
+            </Text>
+            <Text as="kbd" className="ml-auto" textRole="mono" tone="secondary">
+              {commandShortcutLabel()}
+            </Text>
           </button>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
@@ -202,12 +206,15 @@ const AppShell = ({
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
                 {item.to !== "/watch/$id" && (badges?.[item.to] ?? 0) > 0 && (
-                  <span
+                  <Text
+                    as="span"
                     data-testid={`nav-badge-${item.to}`}
-                    className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
+                    className="bg-suggest-tint-15 ml-auto rounded-full px-[7px] py-px"
+                    textRole="mono"
+                    tone="suggest"
                   >
                     {badges?.[item.to]}
-                  </span>
+                  </Text>
                 )}
               </>
             );
@@ -244,19 +251,21 @@ const AppShell = ({
             ) : (
               <Stack
                 align="center"
-                className="text-static-400 mt-auto min-w-0 px-3 py-1.5 font-mono text-xs"
+                className="mt-auto min-w-0 px-3 py-1.5"
                 direction="row"
                 gap="inline"
                 render="span"
               >
-                {versionLabel}
+                <Text as="span" textRole="mono" tone="secondary">
+                  {versionLabel}
+                </Text>
               </Stack>
             )}
           </Tooltip>
         )}
 
         <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3 text-sm`}
+          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3`}
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
@@ -270,12 +279,19 @@ const AppShell = ({
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
-            <div className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs">
+            <Text
+              as="div"
+              className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full"
+              textRole="mono"
+              tone="primary"
+            >
               {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
                   between, so "KB" + "Kira" would otherwise read as one word against the label. */}
               {accountInitials}{" "}
-            </div>
-            <span className="text-muted-foreground truncate">{userName}</span>
+            </Text>
+            <Text as="span" className="truncate" textRole="compact" tone="secondary">
+              {userName}
+            </Text>
           </Link>
           {onLogout && (
             <Tooltip content="Sign out">

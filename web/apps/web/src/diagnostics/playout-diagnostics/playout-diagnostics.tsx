@@ -189,9 +189,11 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
           const output = event.currentTarget;
           if (follow && output.scrollHeight - output.scrollTop - output.clientHeight > 24) setFollow(false);
         }}
-        className={`border-border bg-background max-h-[28rem] overflow-auto rounded-md border p-3 font-mono text-xs ${wrap ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
+        className={`border-border bg-background max-h-[28rem] overflow-auto rounded-md border p-3 ${wrap ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
       >
-        {visible || "No retained output matches this search."}
+        <Text as="span" textRole="mono" tone="primary">
+          {visible || "No retained output matches this search."}
+        </Text>
       </pre>
     </div>
   );
@@ -516,16 +518,25 @@ const PlayoutDiagnostics = ({
                       >
                         <div className="grid w-full gap-1 text-left">
                           <Stack align="center" direction="row" gap="inline" justify="between" render="span">
-                            <strong className="truncate text-sm">{run.purpose}</strong>
-                            <span className="inline-flex items-center gap-1 text-xs">
+                            <Text as="strong" className="truncate" strong textRole="cardLabel" tone="primary">
+                              {run.purpose}
+                            </Text>
+                            <Text
+                              as="span"
+                              className="inline-flex items-center gap-1"
+                              textRole="hint"
+                              tone="primary"
+                            >
                               <StatusDot tone={tone(run.status)} label={run.status} />
                               {run.status}
-                            </span>
+                            </Text>
                           </Stack>
-                          <span className="text-muted-foreground truncate text-xs">
+                          <Text as="span" className="truncate" textRole="hint" tone="secondary">
                             {run.target ?? run.id}
-                          </span>
-                          <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
+                          </Text>
+                          <Text as="time" textRole="hint" tone="secondary">
+                            {formatTime(run.startedAt)}
+                          </Text>
                         </div>
                       </PressableRow>
                     </li>
