@@ -17,9 +17,9 @@ import (
 //   - A file is a movie or an episode, nothing else.
 //   - An episode's last episode, if it has one, comes after its first.
 //   - An episode's show is never a season folder: "Season 1" names no show.
-//   - A show in a folder is one of the file's own folders, never one beside or below it, unless the
-//     file is loose and names its own: in a catch-all folder, or a release folder at the top; or
-//     its season pack's release folder stands for the show's folder beside it.
+//   - A show in a folder is one of the file's own folders, never one beside or below it; or, for a
+//     show with no folder of its own, its name alone or inside a shows' catch-all the file is in;
+//     or its season pack's release folder stands for the show's folder beside it.
 //   - A show's folder name never comes out empty, and a search year is a real one.
 func FuzzNamingFromAPath(f *testing.F) {
 	for _, row := range namingMatrix {
@@ -33,7 +33,7 @@ func FuzzNamingFromAPath(f *testing.F) {
 		"Show (2019) {tmdb-0}/Season 0/x.mkv", "Show/Specials/Specials/x.mkv", "x/Season 1/../S01E01.mkv",
 		"TV/00/A 0X0", "[](0-0)0/x.mkv", "S0/0/A S0E0", "SeAsonOne/A/0 S0E0", "0/S0/ S/S0/1", "S0/S0/S0 S0e0",
 		"TV/Series Seven/Series S0E0/0", "TV/Series Seven/Series Seven S0E0/0", "0/S0/TV/S S0E0", "S0/A/0/A S0E0",
-		"TV/ S0/0", "(tV)",
+		"TV/ S0/0", "(tV)", "A/' ' S0E0",
 	} {
 		f.Add(rel)
 	}
@@ -97,20 +97,13 @@ func checkEpisode(t *testing.T, rel string, rec mp.Record, seriesDir string) {
 		inFolder = show != path.Base(d) && path.Join(path.Dir(d), show) == seriesDir
 	}
 	if !inFolder {
-		// A loose episode is named by its file, not a folder: one in a season folder (or its disc's
-		// folder) with no show's folder above, in a catch-all folder ("Downloads/Complete"), in a
-		// season's number folder in either ("TV/1/"), or in its own release folder at the top.
-		var loose func(dir string) bool
-		loose = func(dir string) bool {
-			season := seasonDirOf(dir)
-			showless := season != "" && (aboveSeasons(season) == "." || catchAllFolder(path.Base(aboveSeasons(season))))
-			if showless || catchAllFolder(path.Base(dir)) || episodeMark.MatchString(path.Base(dir)) {
-				return true
-			}
-			base, above := path.Base(dir), path.Dir(dir)
-			return digits(base) && len(base) <= 2 && (above == "." || isSeasonFolder(above) || loose(above))
-		}
-		if strings.Contains(seriesDir, "/") || !loose(dir) {
+		// A show with no folder of its own (its loose episodes, season packs, release folders, disc
+		// labels) is kept by its name alone, or by its name inside a shows' catch-all the file is in:
+		// "Kettle Bay", "TV/Kettle Bay" (showKey).
+		container := path.Dir(seriesDir)
+		kept := container == "." || showsFolderNames[folderKey(path.Base(container))] &&
+			(dir == container || strings.HasPrefix(dir, container+"/"))
+		if !kept || strings.TrimSpace(path.Base(seriesDir)) == "" {
 			t.Errorf("%q files under %q, which is not one of its folders", rel, seriesDir)
 		}
 		return

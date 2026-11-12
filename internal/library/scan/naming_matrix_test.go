@@ -898,11 +898,101 @@ var namingMatrix = []namingRow{
 		"TV/Class of 1999 Kettle/Season 1/Class of 1999 Kettle S01E01.mkv": "episode Class of 1999 Kettle S1E1",
 		"Movies/Ashgrove.2015.Directors.Cut.1080p.mkv":                     "movie Ashgrove 2015",
 		"Movies/IRON_TIDE/title00.mkv":                                     "movie IRON TIDE -",
-		"Rips/KETTLE_BAY_S1_D1/title_t00.mkv":                              "episode KETTLE BAY S?E?",
-		"Rips/KETTLE_BAY_S1_D1/title_t01.mkv":                              "episode KETTLE BAY S?E?",
+		"Rips/KETTLE_BAY_S1_D1/title_t00.mkv":                              "episode Kettle Bay S?E?",
+		"Rips/KETTLE_BAY_S1_D1/title_t01.mkv":                              "episode Kettle Bay S?E?",
 		"Recorded TV/Iron Spire (2011)_Film4_2022_05_01_21_00_00.wtv":      "movie Iron Spire 2011",
 		"TV/灰色の海岸/シーズン1/第5話.mkv":                                           "episode 灰色の海岸 S1E5",
 		"Anime/[Grp] Tsuki Kettle - SP01 [1080p].mkv":                      "episode Tsuki Kettle S0E1",
+	}},
+	// Re-score #12: a show with no folder of its own is one show however its releases hold it: its
+	// season packs, its episodes' own release folders, its loose episodes spelt with or without an
+	// apostrophe or their year, a named season's folder and a complete series' copy.
+	{id: "W103", files: map[string]string{
+		"Downloads/Complete/Ostlers.Way.S03.1080p.WEB-DL.DD5.1.H264-GRP/Ostlers.Way.S03E01.1080p.WEB-DL.DD5.1.H264-GRP.mkv": "episode Ostlers Way S3E1",
+		"Downloads/Complete/Ostlers.Way.S03.1080p.WEB-DL.DD5.1.H264-GRP/Ostlers.Way.S03E02.1080p.WEB-DL.DD5.1.H264-GRP.mkv": "episode Ostlers Way S3E2",
+		"Downloads/Complete/Ostlers.Way.S03E03.1080p.WEB.h264-OTHER[eztv]/ostlers.way.s03e03.1080p.web.h264-other.mkv":      "episode Ostlers Way S3E3",
+		"Hollyhock.Lane.S01.1080p.BluRay.x264-GRP/Hollyhock.Lane.S01E01.1080p.BluRay.x264-GRP.mkv":                          "episode Hollyhock Lane S1E1",
+		"Hollyhock Lane Season 2/Hollyhock Lane - 2x01.mkv":                                                                 "episode Hollyhock Lane S2E1",
+		"Hollyhock Lane S03/hl.s03e01.mkv":                               "episode Hollyhock Lane S3E1",
+		"Hollyhock Lane (Complete Series)/S04/Hollyhock Lane S04E01.mkv": "episode Hollyhock Lane S4E1",
+		"Pembertons.Orchard.S01E01.mkv":                                  "episode Pembertons Orchard S1E1",
+		"Pemberton's Orchard S01E02.mkv":                                 "episode Pembertons Orchard S1E2",
+		"Pembroke.Gate.2019.S01E01.mkv":                                  "episode Pembroke Gate 2019 S1E1",
+		"Pembroke.Gate.S01E02.mkv":                                       "episode Pembroke Gate 2019 S1E2",
+	}},
+	// Re-score #12: beside a film named as its folder, "<film> - <anything else>" is an extra unless
+	// what follows says a version (its quality, an edition, a part); a film's supplements folder is
+	// its extras'.
+	{id: "W104", files: map[string]string{
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013).mkv":                     "movie Corbel Ridge 2013",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Alternate Opening.mkv": "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Animatic.mkv":          "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Cast Interviews.mkv":   "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Concept Art.mkv":       "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - EPK.mkv":               "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Isolated Score.mkv":    "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Press Conference.mkv":  "skip",
+		"Movies/Corbel Ridge (2013)/DVD Extras/Menu.mkv":                         "skip",
+		"Movies/Corbel Ridge (2013)/Supplements/Doc 3.mkv":                       "skip",
+		"Movies/Vesper Hill (2009)/Vesper Hill (2009).mkv":                       "movie Vesper Hill 2009",
+		"Movies/Vesper Hill (2009)/Vesper Hill - Alternate Opening.mkv":          "skip",
+		"Movies/Brigg (2008)/Brigg (2008).mkv":                                   "movie Brigg 2008",
+		"Movies/Brigg (2008)/Brigg (2008)-proof.mkv":                             "skip",
+		"Movies/Lathe (2016)/Lathe (2016) - 1080p.mkv":                           "movie Lathe 2016",
+		"Movies/Lathe (2016)/Lathe (2016) - 2160p.mkv":                           "movie Lathe 2016",
+		"Movies/Lathe (2016)/Lathe (2016) - Directors Cut.mkv":                   "movie Lathe 2016",
+	}},
+	// Re-score #12: a show's trailers and featurettes are no episodes; an episode titled with the
+	// word is.
+	{id: "W105", files: map[string]string{
+		"TV/Gannet Rock/Season 1/Gannet Rock S01E01.mkv":               "episode Gannet Rock S1E1",
+		"TV/Gannet Rock/Season 1/Gannet Rock S01E05 - The Trailer.mkv": "episode Gannet Rock S1E5",
+		"TV/Gannet Rock/Season 1/Gannet Rock S01 Featurette.mkv":       "skip",
+		"TV/Gannet Rock/trailer.mkv":                                   "skip",
+		"TV/Gannet Rock/Gannet Rock - Official Trailer.mkv":            "skip",
+		"TV/Gannet Rock/Gannet Rock - Teaser.mkv":                      "skip",
+		"TV/Gannet Rock/Gannet Rock S02 Trailer.mkv":                   "skip",
+		"TV/Hallam Cross/Hallam Cross S01E01.mkv":                      "episode Hallam Cross S1E1",
+		"TV/Hallam Cross/Hallam Cross - Season 2 Trailer.mkv":          "skip",
+		"TV/Trailer Park Tales/Trailer Park Tales S01E01.mkv":          "episode Trailer Park Tales S1E1",
+	}},
+	// Re-score #12: a sequel kept in the first film's folder is the sequel; a show's "1-01" loose; a
+	// show's dated special beside its numbered episodes; a documentary's parts with their titles; a
+	// daily show by year and month; a film recorded with its year; disc labels with the season
+	// joined to its word or the disc; "Criterion" is a release's word.
+	{id: "W106", files: map[string]string{
+		"Movies/Brook (2010)/Brook (2010).mkv":                 "movie Brook 2010",
+		"Movies/Brook (2010)/Brook 2.mkv":                      "movie Brook 2 -",
+		"Movies/Heath (2011)/Heath (2011).mkv":                 "movie Heath 2011",
+		"Movies/Heath (2011)/Heath Part 2.mkv":                 "movie Heath Part 2 -",
+		"TV/Lower Wick 1-01.mkv":                               "episode Lower Wick S1E1",
+		"TV/Lower Wick 1-02.mkv":                               "episode Lower Wick S1E2",
+		"Kids/Busy Bees/Busy Bees 101.mp4":                     "episode Busy Bees S1E1",
+		"Kids/Busy Bees/Busy Bees 102.mp4":                     "episode Busy Bees S1E2",
+		"Kids/Busy Bees/Busy Bees - Christmas Buzz (2015).mp4": "episode Busy Bees S?E?",
+		"Docs/Wild Shore (2020) - Part 1 - Tides.mkv":          "episode Wild Shore 2020 S1E1",
+		"Docs/Wild Shore (2020) - Part 2 - Rocks.mkv":          "episode Wild Shore 2020 S1E2",
+		"TV/Morning Desk/2022/12/Morning Desk 2022-12-07.mkv":  "episode Morning Desk 2022-12-07",
+		"TV/Morning Desk/2022/11/Morning Desk 2022-11-30.mkv":  "episode Morning Desk 2022-11-30",
+		"Recorded TV/Grey Harbour (1958) 2022-01-01.ts":        "movie Grey Harbour 1958",
+		"Rips/DAPPLE_ROAD_SEASON1_DISC2/title_t00.mkv":         "episode Dapple Road S?E?",
+		"Rips/Saltwick Bay S1D2/title_t00.mkv":                 "episode Saltwick Bay S?E?",
+		"Movies/Ebbing.Shore.1962.Criterion.1080p.mkv":         "movie Ebbing Shore 1962",
+	}},
+	// Re-score #12's over-corrections: a remake's loose episodes beside the original's, and one with
+	// no year between two; a film's versions beside it; a film titled "1-22" loose among films; a
+	// film's untitled parts in a catch-all; a film's own trailer in its folder.
+	{id: "W107", files: map[string]string{
+		"Downloads/Hartfell.1990.S01E01.mkv":                                    "episode Hartfell 1990 S1E1",
+		"Downloads/Hartfell.2019.S01E01.mkv":                                    "episode Hartfell 2019 S1E1",
+		"Downloads/Hartfell.S01E02.mkv":                                         "episode Hartfell S1E2",
+		"Movies/Marrow Point (2010)/Marrow Point (2010).mkv":                    "movie Marrow Point 2010",
+		"Movies/Marrow Point (2010)/Marrow Point (2010) - 4K HDR.mkv":           "movie Marrow Point 2010",
+		"Movies/Marrow Point (2010)/Marrow Point (2010) - Extended Edition.mkv": "movie Marrow Point 2010",
+		"Movies/Marrow Point (2010)/Marrow Point (2010) - Trailer.mkv":          "skip",
+		"Movies/Catch 1-22.mkv":                                                 "movie Catch 1-22 -",
+		"Docs/Ferrow Lane (2010) - Part 1.mkv":                                  "movie Ferrow Lane 2010",
+		"Docs/Ferrow Lane (2010) - Part 2.mkv":                                  "movie Ferrow Lane 2010",
 	}},
 	// Re-score #11: a tracker's promo, a film's credits and Q&A, and a download still being written
 	// are no title.
@@ -956,7 +1046,7 @@ var namingMatrix = []namingRow{
 	{id: "W101", files: map[string]string{
 		"Docs/Wild Moor 1of3.mkv":                       "episode Wild Moor S1E1",
 		"Docs/Wild Moor 2of3.mkv":                       "episode Wild Moor S1E2",
-		"Rips/HOLLOW_FEN_SEASON_2_DISC_1/title_t00.mkv": "episode HOLLOW FEN S?E?",
+		"Rips/HOLLOW_FEN_SEASON_2_DISC_1/title_t00.mkv": "episode Hollow Fen S?E?",
 		"Anime/[Grp] Kumo no Hana - OVA [1080p].mkv":    "episode Kumo no Hana S?E?",
 		"Movies/Pinecrest Widescreen.mkv":               "movie Pinecrest -",
 		"Movies/Brackenfold Special Edition.mkv":        "movie Brackenfold -",
