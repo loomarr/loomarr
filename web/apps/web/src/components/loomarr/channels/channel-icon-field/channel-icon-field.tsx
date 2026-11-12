@@ -173,7 +173,7 @@ const ChannelIconField = ({
           today's three ways in plus Clear. */}
       {isAdmin && suggestionsOpen && (
         <div id={pickerId} className="border-border rounded-md border p-4">
-          <div className="flex flex-col gap-4">
+          <Stack gap="4">
             {logo && (
               <Action
                 disabled={clearing}
@@ -321,7 +321,7 @@ const ChannelIconField = ({
               </Stack>
               {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
             </div>
-          </div>
+          </Stack>
         </div>
       )}
     </Stack>

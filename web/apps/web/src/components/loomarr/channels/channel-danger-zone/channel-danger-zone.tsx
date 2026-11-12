@@ -79,14 +79,14 @@ const ChannelDangerZone = ({
           that is true for both. */}
       <Stack className="border-onair-tint-15 border-t pt-4" gap="control">
         {!confirming ? (
-          <div className="flex flex-col gap-4">
+          <Stack gap="4">
             <Stack align="center" direction="row" gap="control" justify="between">
-              <div className="flex flex-col gap-1">
+              <Stack gap="1">
                 <p className="text-sm">Stop Loomarr from updating this channel.</p>
                 <p className="text-muted-foreground text-xs">
                   Loomarr keeps its record and leaves any Tunarr channel in place.
                 </p>
-              </div>
+              </Stack>
               <div className="shrink-0">
                 <Action disabled={busy} onPress={() => chooseRemoval("detach")} variant="outline">
                   Stop updating
@@ -95,10 +95,10 @@ const ChannelDangerZone = ({
             </Stack>
 
             <Stack align="center" direction="row" gap="control" justify="between">
-              <div className="flex flex-col gap-1">
+              <Stack gap="1">
                 <p className="text-sm">Delete this channel from Loomarr, and from Tunarr if it's there.</p>
                 <p className="text-onair-300 text-xs">This can't be undone.</p>
-              </div>
+              </Stack>
               <div className="shrink-0">
                 <Action
                   disabled={busy}
@@ -110,7 +110,7 @@ const ChannelDangerZone = ({
                 </Action>
               </div>
             </Stack>
-          </div>
+          </Stack>
         ) : (
           <Stack className="border-onair-tint-15 bg-background/40 rounded-md border p-3" gap="control">
             {removal === "detach" ? (

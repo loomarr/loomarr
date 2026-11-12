@@ -226,7 +226,7 @@ const InvitationDialog = ({
                       (candidate) => candidate.id === field.state.value,
                     );
                     return (
-                      <div className="flex flex-col gap-1.5">
+                      <Stack gap="1.5">
                         <field.SelectField
                           disabled={busy}
                           label="Library account"
@@ -248,7 +248,7 @@ const InvitationDialog = ({
                             Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
                           </FieldHint>
                         )}
-                      </div>
+                      </Stack>
                     );
                   }}
                 </form.AppField>
@@ -268,7 +268,7 @@ const InvitationDialog = ({
                 </form.AppField>
                 <form.AppField name="role">
                   {(field) => (
-                    <div className="flex flex-col gap-1.5">
+                    <Stack gap="1.5">
                       <field.SelectField disabled={busy} label="Initial role" options={ROLE_OPTIONS} />
                       <FieldHint>
                         Initial Loomarr role:{" "}
@@ -276,7 +276,7 @@ const InvitationDialog = ({
                           ? "Administrator"
                           : "Member"}
                       </FieldHint>
-                    </div>
+                    </Stack>
                   )}
                 </form.AppField>
               </div>

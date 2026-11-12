@@ -59,7 +59,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
 
   return (
     <Stack className={className} gap="control">
-      <div className="flex items-start gap-2.5">
+      <Stack align="start" direction="row" gap="2.5">
         <Toggle
           id="policy-auto-curate"
           label={OPT_IN_LABEL}
@@ -69,8 +69,8 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           aria-describedby="policy-auto-curate-hint"
           onCheckedChange={toggle}
         />
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <Stack gap="1">
+          <Stack align="center" direction="row" gap="1.5" wrap>
             <Text as="label" htmlFor="policy-auto-curate" textRole="label" tone="primary">
               {OPT_IN_LABEL}
             </Text>
@@ -84,7 +84,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               overrideLabel="Opted in"
               defaultLabel="Default: off"
             />
-          </div>
+          </Stack>
           {/* The hint tracks the CURRENT state — it is the sentence that says what is happening
               now, not a static description of the setting. (An earlier version always read "Off,
               new titles wait for your approval", which flatly contradicted a ticked box; the
@@ -96,8 +96,8 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 ? "New titles that fit are added on their own, within the limits below."
                 : "Off, new titles wait for your approval."}
           </p>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
 
       {/* The two overrides appear only once opted in: they modify a behaviour that is
           otherwise not running, and showing disabled boxes for a feature that is off reads as
@@ -107,7 +107,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         // source badge and Reset right, in the mock's two-column grid at full width (#1877 mock).
         // Unindented, so the badge row fits beside or under the label on a phone.
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
+          <Stack gap="1">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-score" textRole="hint" tone="secondary">
                 Quality bar
@@ -133,8 +133,8 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onChange({ ...policy, autoCurate: { ...auto, minScorePct: next } });
               }}
             />
-          </div>
-          <div className="flex flex-col gap-1">
+          </Stack>
+          <Stack gap="1">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-cap" textRole="hint" tone="secondary">
                 Title cap
@@ -158,7 +158,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onChange({ ...policy, autoCurate: { ...auto, maxTitles: next } });
               }}
             />
-          </div>
+          </Stack>
         </div>
       )}
     </Stack>

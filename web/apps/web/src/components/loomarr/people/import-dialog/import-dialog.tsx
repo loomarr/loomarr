@@ -121,7 +121,7 @@ const ImportDialog = ({
           </DialogHeader>
 
           {!available ? (
-            <div className="flex flex-col items-start gap-4 overflow-auto px-6 pb-6">
+            <Stack align="start" className="overflow-auto px-6 pb-6" gap="4">
               <div className="border-border bg-static-900 rounded-lg border p-4">
                 <p className="font-medium">Connect a media server first</p>
                 <p className="text-muted-foreground mt-1 text-sm">
@@ -132,7 +132,7 @@ const ImportDialog = ({
               <Action accessibilityRole="link" render={<a href="/settings/connections" />} variant="outline">
                 Open Connections settings
               </Action>
-            </div>
+            </Stack>
           ) : (
             <>
               <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-6">

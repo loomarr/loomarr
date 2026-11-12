@@ -108,14 +108,14 @@ const LoginForm = ({
           skips authentication should read as the unusual thing it is, both for the
           maintainer using it and for anyone who finds it somewhere it shouldn't be. */}
       {onDevLogin && (
-        <div className="border-border flex flex-col items-center gap-1 border-t pt-4">
+        <Stack align="center" className="border-border border-t pt-4" gap="1">
           <Action disabled={isPending} onPress={onDevLogin} variant="outline">
             Skip sign-in (dev)
           </Action>
           <p className="text-muted-foreground text-xs">
             <code>LOOMARR_DEV_LOGIN</code> is on. It signs you in as an admin with no password.
           </p>
-        </div>
+        </Stack>
       )}
     </form>
   );

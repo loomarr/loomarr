@@ -61,12 +61,12 @@ const PolicyField = ({
   return (
     <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
       <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-        <div className="flex items-center gap-1.5">
+        <Stack align="center" direction="row" gap="1.5">
           <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
             {label}
           </Text>
           <FieldHelp label={label}>{help}</FieldHelp>
-        </div>
+        </Stack>
         <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
       </Stack>
       {children}

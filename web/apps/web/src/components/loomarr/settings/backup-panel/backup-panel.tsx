@@ -49,7 +49,7 @@ const BackupPanel = ({
 
   return (
     <section className={cn("border-border rounded-lg border p-4", className)}>
-      <div className="flex items-start gap-4">
+      <Stack align="start" direction="row" gap="4">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium">Backups</h2>
           <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
@@ -60,7 +60,7 @@ const BackupPanel = ({
         <Action disabled={pending} icon="download" onPress={onBackUpNow}>
           {pending ? "Backing up..." : "Back up now"}
         </Action>
-      </div>
+      </Stack>
 
       {error ? (
         <Stack
@@ -106,7 +106,7 @@ const BackupPanel = ({
           No backups yet. One is written on the schedule below, or take the first one now.
         </p>
       ) : (
-        <ul className="mt-4 flex flex-col gap-1.5">
+        <Stack className="mt-4" gap="1.5" render="ul">
           {backups.map((b) => (
             <Stack
               align="center"
@@ -132,7 +132,7 @@ const BackupPanel = ({
               </Action>
             </Stack>
           ))}
-        </ul>
+        </Stack>
       )}
 
       <p className="text-muted-foreground mt-3 font-mono text-xs">

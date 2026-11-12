@@ -157,13 +157,13 @@ const SortableLineupRow = ({
           <div className="col-[2/-1] flex flex-wrap items-center gap-1.5 @md:mt-1.5">
             <span className="text-muted-foreground text-xs">Seasons</span>
             {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
-            <span className="flex items-center gap-1.5">
+            <Stack align="center" direction="row" gap="1.5" render="span">
               {seasonInput("seasonMin", entry.seasonMin, "1")}
               <span className="text-muted-foreground text-xs" aria-hidden>
                 –
               </span>
               {seasonInput("seasonMax", entry.seasonMax, "latest")}
-            </span>
+            </Stack>
           </div>
         )}
       </div>
@@ -283,7 +283,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           auto-curate appends, so the default play order shows the oldest picks first and hides
           everything added since. */}
       {entries.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.75">
+        <Stack align="center" direction="row" gap="1.75" wrap>
           {/* The same toolbar label voice as the guide's "Start at". */}
           <Text as="span" textRole="metadata">
             Show
@@ -300,7 +300,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
             </Chip>
           ))}
           {!dragEnabled && <span className="text-2xs text-static-400">Switch to Play order to reorder</span>}
-        </div>
+        </Stack>
       )}
 
       {entries.length === 0 ? (

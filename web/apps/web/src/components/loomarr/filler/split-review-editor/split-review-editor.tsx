@@ -306,7 +306,7 @@ const SplitReviewEditor = ({
                 {`Clip ${selectedIndex + 1} of ${draft.length} · ${selected.startText}–${selected.endText}`}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-5 p-6">
+            <Stack className="p-6" gap="5">
               <Stack align="center" direction="row" gap="control" justify="between">
                 <Action
                   accessibilityLabel="Previous clip"
@@ -343,7 +343,7 @@ const SplitReviewEditor = ({
                 onDrop={() => drop(selectedIndex)}
                 onMergeWithNext={() => mergeWithNext(selectedIndex)}
               />
-            </div>
+            </Stack>
           </DialogContent>
         ) : null}
       </Dialog>
@@ -415,7 +415,7 @@ const SegmentSummaryRow = ({
             >
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
             </span>
-            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <Stack align="center" className="mt-1.5" direction="row" gap="1.5" render="span" wrap>
               {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
               {segment.audience ? (
                 <Badge shape="square" tone="neutral">
@@ -433,7 +433,7 @@ const SegmentSummaryRow = ({
                 </Badge>
               ) : null}
               {needsAttention ? <StatusLabel tone="warn">Needs a closer look</StatusLabel> : null}
-            </span>
+            </Stack>
           </span>
           <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
         </button>
@@ -481,7 +481,7 @@ const SegmentInspector = ({
       segment.transcript,
   );
   return (
-    <section aria-label={`Clip ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-4">
+    <Stack aria-label={`Clip ${n}: ${segment.name || "unnamed"}`} gap="4" render="section">
       <SegmentPreview
         clipHash={clipHash}
         // Preview the draft the operator can actually keep. Untouched cuts retain detector
@@ -508,7 +508,7 @@ const SegmentInspector = ({
           >
             {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Stack align="center" className="mt-2" direction="row" gap="1.5" wrap>
             {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
             {segment.audience ? (
               <Badge shape="square" tone="neutral">
@@ -533,9 +533,9 @@ const SegmentInspector = ({
                 </Badge>
               ) : null;
             })()}
-          </div>
+          </Stack>
         </div>
-        <div className="flex flex-wrap justify-end gap-1">
+        <Stack direction="row" gap="1" justify="end" wrap>
           {!last && (
             <Tooltip content="Join this clip and the next">
               <Action onPress={onMergeWithNext} variant="ghost">
@@ -548,7 +548,7 @@ const SegmentInspector = ({
               Remove
             </Action>
           </Tooltip>
-        </div>
+        </Stack>
       </Stack>
 
       {segment.holdReason ? (
@@ -642,7 +642,7 @@ const SegmentInspector = ({
           </div>
         </details>
       ) : null}
-    </section>
+    </Stack>
   );
 };
 
