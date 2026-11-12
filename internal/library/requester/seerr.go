@@ -132,8 +132,24 @@ const (
 // the deployments observed (Jellyseerr doesn't reliably proxy the arr queue back), so this path
 // deliberately reads only the enum — a coarse, always-present signal — never a fake percentage.
 type seerrMediaItem struct {
-	TMDBID int `json:"tmdbId"`
-	Status int `json:"status"`
+	TMDBID    int    `json:"tmdbId"`
+	MediaType string `json:"mediaType"` // "movie" | "tv"
+	Status    int    `json:"status"`
+}
+
+// seerrMediaKey identifies a Seerr media record. TMDB numbers movies and TV separately, so
+// the id alone is ambiguous.
+type seerrMediaKey struct {
+	mediaType string
+	tmdbID    int
+}
+
+// seerrMediaType is the mediaType Seerr uses for a title's kind.
+func seerrMediaType(t provision.Title) string {
+	if t.MediaType == provision.Series {
+		return "tv"
+	}
+	return "movie"
 }
 
 type seerrMediaPage struct {
@@ -169,11 +185,11 @@ func (s *Seerr) QueueStatus(ctx context.Context, titles []provision.Title) ([]Qu
 		return nil, fmt.Errorf("seerr media: decode: %w", err)
 	}
 
-	// Index the processing set by TMDB id → status.
-	byTMDB := make(map[int]int, len(page.Results))
+	// Index the processing set by media kind + TMDB id → status.
+	byTMDB := make(map[seerrMediaKey]int, len(page.Results))
 	for _, m := range page.Results {
 		if m.TMDBID != 0 {
-			byTMDB[m.TMDBID] = m.Status
+			byTMDB[seerrMediaKey{m.MediaType, m.TMDBID}] = m.Status
 		}
 	}
 
@@ -183,7 +199,7 @@ func (s *Seerr) QueueStatus(ctx context.Context, titles []provision.Title) ([]Qu
 		if err != nil {
 			continue // no usable key → can't correlate
 		}
-		status, present := byTMDB[t.TMDBID]
+		status, present := byTMDB[seerrMediaKey{seerrMediaType(t), t.TMDBID}]
 		grabbed, label := seerrCoarse(status, present)
 		out = append(out, QueueItem{Key: key, Grabbed: grabbed, Status: label})
 	}
