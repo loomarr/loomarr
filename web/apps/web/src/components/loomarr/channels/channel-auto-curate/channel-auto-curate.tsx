@@ -1,7 +1,6 @@
-import { Text, Toggle } from "@loomarr/design-system";
+import { Stack, Text, Toggle } from "@loomarr/design-system";
 import { CommitField } from "@loomarr/ui";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelAutoCurateProps } from "./channel-auto-curate.type";
@@ -59,7 +58,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
   };
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control">
       <div className="flex items-start gap-2.5">
         <Toggle
           id="policy-auto-curate"
@@ -109,7 +108,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         // Unindented, so the badge row fits beside or under the label on a phone.
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-score" textRole="hint" tone="secondary">
                 Quality bar
               </Text>
@@ -118,7 +117,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onReset={() => onChange(resetThreshold(policy, "minScorePct"))}
                 label="Quality bar"
               />
-            </div>
+            </Stack>
             <CommitField
               // Keyed on the stored value, so a reset re-seeds the box.
               key={auto?.minScorePct ?? 0}
@@ -136,7 +135,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
             />
           </div>
           <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-cap" textRole="hint" tone="secondary">
                 Title cap
               </Text>
@@ -145,7 +144,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onReset={() => onChange(resetThreshold(policy, "maxTitles"))}
                 label="Title cap"
               />
-            </div>
+            </Stack>
             <CommitField
               key={auto?.maxTitles ?? 0}
               id="policy-auto-curate-cap"
@@ -162,7 +161,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           </div>
         </div>
       )}
-    </div>
+    </Stack>
   );
 };
 

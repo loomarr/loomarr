@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
 import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -221,9 +221,9 @@ const ClipFrame = ({
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
             <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-              <span className="ml-0.5 flex">
+              <Stack className="ml-0.5" direction="row" render="span">
                 <Icon decorative glyph={icons.play} size="default" tone="inherit" />
-              </span>
+              </Stack>
             </span>
           </button>
         </div>

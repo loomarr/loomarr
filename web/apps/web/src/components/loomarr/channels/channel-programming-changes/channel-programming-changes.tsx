@@ -5,9 +5,9 @@ import type { ProgrammingChangeSideDTO } from "@loomarr/api/models/programmingCh
 import { ProgrammingChangeSideDTOKind } from "@loomarr/api/models/programmingChangeSideDTOKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
+import { Stack } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
-import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
 import type { ChannelProgrammingChangesProps } from "./channel-programming-changes.type";
 
@@ -113,7 +113,7 @@ const ChannelProgrammingChanges = ({
     content = <EmptyState title="No upcoming slots change" />;
   } else {
     content = (
-      <div className="flex flex-col gap-2">
+      <Stack gap="inline">
         <p className="text-muted-foreground text-xs">
           {body.truncated
             ? `Showing ${body.changes.length} of ${body.count} changes`
@@ -138,17 +138,17 @@ const ChannelProgrammingChanges = ({
             />
           ))}
         </ul>
-      </div>
+      </Stack>
     );
   }
 
   return (
-    <section aria-labelledby="programming-changes-heading" className={cn("flex flex-col gap-2", className)}>
+    <Stack aria-labelledby="programming-changes-heading" className={className} gap="inline" render="section">
       <h3 id="programming-changes-heading" className="text-base font-semibold">
         What changes
       </h3>
       {content}
-    </section>
+    </Stack>
   );
 };
 
