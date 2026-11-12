@@ -163,6 +163,35 @@ describe("Guide controller", () => {
     expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 1_000, toMs: 5_000 });
   });
 
+  // A refresh re-reads what the viewer is looking at: a channel event, a reconnect or a tune must not
+  // throw them back to now from a later page. Once now catches up with that page, it is live again.
+  it("refreshes the page the viewer moved to, until now reaches it", async () => {
+    let at = 2_000;
+    const resolveWindow = vi.fn((now: number) => {
+      const from = Math.floor(now / 4_000) * 4_000 + 1_000;
+      return { from, to: from + 4_000 };
+    });
+    const source = {
+      load: vi.fn((window: { from: number; to: number }) =>
+        Promise.resolve({ ...guide(), fromMs: window.from, toMs: window.to }),
+      ),
+    };
+    const controller = createGuideController({ now: () => at, resolveWindow, source });
+    await controller.refresh();
+    await controller.page("later");
+    await controller.page("later");
+    expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 9_000, toMs: 13_000 });
+
+    await controller.refresh("seven");
+    expect(source.load).toHaveBeenLastCalledWith({ from: 9_000, to: 13_000 }, expect.any(AbortSignal));
+    expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 9_000, toMs: 13_000 });
+
+    // Now has caught up with that page: the live window it resolves to is the one to read.
+    at = 14_000;
+    await controller.refresh();
+    expect(source.load).toHaveBeenLastCalledWith({ from: 13_000, to: 17_000 }, expect.any(AbortSignal));
+  });
+
   it("falls back deterministically and reports an empty authoritative Guide", async () => {
     const source = { load: vi.fn().mockResolvedValue(guide("available")) };
     const controller = createGuideController({ now: () => 2_000, source });
