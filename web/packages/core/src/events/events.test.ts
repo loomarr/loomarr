@@ -4,7 +4,7 @@ import {
   browserEventStreamFactory,
   EVENT_INVALIDATIONS,
   EVENT_TYPES,
-  invalidateAfterReconnect,
+  invalidateMissedFrames,
   invalidateByPrefix,
   invalidateForFrame,
   invalidateSettings,
@@ -136,22 +136,24 @@ describe("openEventStream", () => {
   });
 });
 
-describe("a stream that comes back", () => {
-  it("tells of a reconnect on every open after the first", () => {
+describe("a stream that opens", () => {
+  // A route's loader reads before the layout opens the stream, so a change between that read and
+  // the first open is a frame nobody heard: the first open re-reads too, not only a reconnect.
+  it("tells of every open, the first included", () => {
     const listeners = new Map<string, (event: EventStreamMessage) => void>();
-    const onReconnect = vi.fn();
+    const onOpen = vi.fn();
     const stop = openFrameStream(
       () => {},
       "http://loomarr.test/v1/events",
       () => ({ addEventListener: (type, listener) => listeners.set(type, listener), close: () => {} }),
-      onReconnect,
+      onOpen,
     );
 
+    expect(onOpen).not.toHaveBeenCalled();
     listeners.get("open")?.({ data: "" });
-    expect(onReconnect).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledOnce();
     listeners.get("open")?.({ data: "" });
-    listeners.get("open")?.({ data: "" });
-    expect(onReconnect).toHaveBeenCalledTimes(2);
+    expect(onOpen).toHaveBeenCalledTimes(2);
     stop();
   });
 
@@ -166,7 +168,7 @@ describe("a stream that comes back", () => {
     for (const key of fed) await qc.prefetchQuery({ queryKey: key, queryFn: () => "x" });
     await qc.prefetchQuery({ queryKey: ["/v1/auth/me"], queryFn: () => "me" });
 
-    await invalidateAfterReconnect(qc);
+    await invalidateMissedFrames(qc);
 
     // The library status is fed only by an idle scan frame; a reconnect refetches it regardless.
     for (const key of fed) expect(qc.getQueryState(key)?.isInvalidated, String(key[0])).toBe(true);
