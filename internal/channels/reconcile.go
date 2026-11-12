@@ -1069,9 +1069,9 @@ func staleProgramCount(prev []schedule.Slot, eligible map[provision.Key]bool) in
 
 // lineupDiffers reports whether the desired slots differ from Tunarr's actual
 // programming in a way that requires a push. Comparison is on the pushable shape
-// (kind + library item + duration) since Tunarr can't round-trip our Key
-// (lineup.go itemToSlot). A length change or any positional difference triggers a
-// push — this is the minimal-diff decision (§9): equal ⇒ no Tunarr write.
+// (pushShape) since Tunarr can't round-trip our Key (lineup.go itemToSlot). A
+// different slot count, program, or break length triggers a push — this is the
+// minimal-diff decision (§9): equal ⇒ no Tunarr write.
 func lineupDiffers(desired, actual []schedule.Slot) bool {
 	if len(desired) != len(actual) {
 		return true
@@ -1084,25 +1084,29 @@ func lineupDiffers(desired, actual []schedule.Slot) bool {
 	return false
 }
 
-// pushEqual compares two slots by what actually reaches Tunarr. A desired
-// program/filler-with-item is a "content" item keyed by LibraryItemID; everything
-// else is flex. So two slots are push-equal iff they render to the same Tunarr
-// item type + id.
+// pushEqual compares two slots by what actually reaches Tunarr: two slots are
+// push-equal iff they render to the same pushShape.
 func pushEqual(want, got schedule.Slot) bool {
-	wType, wID := pushShape(want)
-	gType, gID := pushShape(got)
-	return wType == gType && wID == gID
+	return pushShape(want) == pushShape(got)
 }
 
-// pushShape returns the (tunarr-type, item-id) a slot renders to, matching
-// tunarr.slotToItem's logic. Kept here (not exported from tunarr) so the
-// diff is expressed in domain terms. Filler lives in a Tunarr filler-list (§10), so
-// filler slots are ALWAYS flex in the pushed lineup — only a program is content.
-func pushShape(s schedule.Slot) (string, string) {
+// slotShape is what one slot sends Tunarr: a program by its item, a break by its length.
+type slotShape struct {
+	content bool
+	itemID  string
+	flexMs  int64
+}
+
+// pushShape returns what a slot renders to, matching tunarr.slotToItem's logic. Filler
+// lives in a Tunarr filler-list (§10), so filler slots are ALWAYS flex in the pushed
+// lineup — only a program is content. A break compares by the length it is pushed with
+// (Tunarr's floor applied). A program compares by its item alone: its length is the
+// item's runtime, which Tunarr may report as its own.
+func pushShape(s schedule.Slot) slotShape {
 	if s.Kind == schedule.SlotProgram {
-		return "content", s.LibraryItemID
+		return slotShape{content: true, itemID: s.LibraryItemID}
 	}
-	return "flex", ""
+	return slotShape{flexMs: tunarr.PushedFlexMs(s.DurationMs)}
 }
 
 // isNotFound reports whether err is the store's not-found sentinel.
