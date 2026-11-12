@@ -240,7 +240,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// endpoint make" without serialising traffic and diffing a global counter by hand.
 	// It must be outside because it routes a request copy carrying that counter; the Recorder and
 	// mux must see that same copy for the mux-populated Pattern to reach the HTTP route label.
-	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux)))))
+	// WithServerTiming stamps `Server-Timing` (#3399): total time plus any phases a handler names
+	// with httpcore.Phase, readable in the browser's network panel.
+	return httpcore.WithSecurityHeaders(httpcore.WithRequestID(httpcore.WithServerTiming(recorder.FanoutMiddleware(recorder.Middleware(logRequests(log, mux))))))
 }
 
 // systemGPU is the GPU name and VRAM the playout status header reads from the language-model

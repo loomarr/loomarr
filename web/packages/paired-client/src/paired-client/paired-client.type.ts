@@ -1,3 +1,4 @@
+import type { ChannelAudioSource } from "@loomarr/core/channel-audio";
 import type { ClientDiagnosticsIdentity } from "@loomarr/core/client-diagnostics";
 import type { GuideController, GuideControllerSnapshot } from "@loomarr/core/guide";
 import type { MyChannelsController, MyChannelsSnapshot } from "@loomarr/core/my-channels";
@@ -42,6 +43,8 @@ interface PairedClientOptions {
 /** One paired server's playback, guide and the viewer's channels, shared by the TV and the phone. */
 interface PairedClient {
   catalogState: CatalogRefreshState;
+  /** The player's Audio menu for a channel, read from the server (see useChannelAudio). */
+  channelAudio: ChannelAudioSource;
   controller: PlayerController;
   guide: GuideController;
   guideSnapshot: GuideControllerSnapshot;

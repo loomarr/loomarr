@@ -168,6 +168,13 @@ func (e *eventEmitter) LibraryTitlesChanged() {
 	e.bus.Publish(events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}})
 }
 
+// LibraryRootsChanged publishes an empty `library_roots` frame: a media folder stopped or started
+// opening, or emptied or filled, and Settings → Library reads its folders again. Satisfies
+// libraryFrames.
+func (e *eventEmitter) LibraryRootsChanged() {
+	e.bus.Publish(events.Event{Type: "library_roots", Payload: opsapi.LibraryRootsEvent{}})
+}
+
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
 //
 // ⚠ **Throttled HERE rather than at the source, which is the call `PlayoutEvent` already

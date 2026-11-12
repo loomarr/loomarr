@@ -29,7 +29,10 @@ interface PlaybarProgramme {
   /** S/E, rating and genres, for the preview card. */
   chips: readonly string[];
   synopsis?: string;
+  /** The programme's fanart (a thumbnail without one): the block's still and its card's hero. */
   stillUri?: string;
+  /** The title's clear logo, set on the card's hero, sized by area (§9.2). */
+  logo?: PlayerArt;
 }
 
 interface PlaybarBreak {
@@ -65,13 +68,15 @@ interface PlayerBandData {
   clockMs?: number;
   /**
    * The programme's title: the series, or the film's. In a break it is the programme that comes
-   * back. It is the logo's text fallback and the logo's accessible name (§9.2).
+   * back. The band always types it; a title's logo never stands in for it there (§9.2).
    */
   title?: string;
-  /** The programme's clear logo; without one the title is set as text (§9.2). */
+  /** The programme's clear logo, for the preview card's hero; never drawn in the band (§9.2). */
   logo?: PlayerArt;
   /** The programme's fanart, dimmed behind the station-ID card; drawn contained at 16:9, never stretched. */
   backdrop?: PlayerArt;
+  /** The programme's rating (`TV-PG`), shown beside Leave while the controls are up. */
+  rating?: string;
   /** `S2 E4 "Episode"` for an episode, `1994 · Drama` for a film. */
   line?: string;
   /** The programme's own time slot, for the progress line's clocks. */
@@ -128,18 +133,39 @@ interface PlayerChromeProps {
   keys: PlayerKeysProps;
   /**
    * `overlay` draws over the picture and auto-hides (§9.1). `portrait` is the phone held upright
-   * (§9.7): the top row above the picture, the band and keys below it, nothing over the picture, and
-   * always shown. The app pins the picture at `PORTRAIT_PICTURE_TOP`.
+   * (§9.7): the player centres the picture as a strip mid-screen, with a toolbar above it and the band
+   * and keys below, nothing over the picture, and always shown. `tv` is the ten-foot overlay: 5% clear
+   * at every edge, four keys, no utilities row and no Leave (Back leaves).
    */
-  layout?: "overlay" | "portrait";
-  top: PlayerTopRowProps;
+  layout?: "overlay" | "portrait" | "tv";
+  /** Leave: the back arrow in the top left corner (§9.3). Omitted on a television, where Back leaves. */
+  onLeave?: () => void;
+  /**
+   * What is on and what follows, for the film strip that is the band's foot on desktop and television
+   * (§9.2). Omitted on phones (their strip is in More) and while nothing is scheduled.
+   */
+  schedule?: PlayerSchedule;
+  /** The utilities over the keys (§9.3): a toolbar above the picture on an upright phone. */
+  utilities: PlayerUtilitiesProps;
   /** Playback details as a panel at the upper left (pointer devices); a phone shows it as a sheet. */
   panel?: ReactNode;
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
-  /** Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark. */
-  readout?: { digits: string; missed?: boolean };
-  /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
+  /**
+   * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
+   * the channel they reach and, on a remote, the auto-tune countdown.
+   */
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
+  /**
+   * The open menu (§9.5, variant J): on desktop and television, what a key opens sits in the control
+   * cluster, right over the keys, with the picture whole. Omitted when none is open.
+   */
+  menu?: ReactNode;
+  /**
+   * The open sheet: the right-hand sheet over a dimmed picture on a phone on its side, the bottom
+   * sheet (picture undimmed, so a choice shows as it is made) on one held upright. Omitted when none
+   * is open.
+   */
   sheet?: ReactNode;
   /**
    * The channel's watermark, burned into the picture (§9.6): the chrome keeps out of its box. Omitted
@@ -148,32 +174,41 @@ interface PlayerChromeProps {
   watermark?: PlayerWatermark;
 }
 
-/** The keys (§9.3): the same on desktop and phone. */
+/**
+ * The keys (§9.3): Last channel, Channel down, Play, Channel up, Volume (desktop) and More. A
+ * television (density `tv`) has four: Last channel, Subtitles, Audio and More; the remote has the rest.
+ */
 interface PlayerKeysProps {
   density: Density;
-  /** Pointer devices get a legend under each key, Volume, and tooltips naming each key. */
+  /** Pointer devices get a legend under a key while it is pointed at or focused. */
   pointer: boolean;
-  playing: boolean;
-  onTogglePlay: () => void;
+  /** Play / Pause; omitted on a television, whose remote has the button (the key is then not drawn). */
+  playing?: boolean;
+  onTogglePlay?: () => void;
   /** The channel Last returns to; omitted until there is one (the key is then not drawn). */
   last?: { number: string; onPress: () => void };
   /** The Channel up / down rocker; omitted where the player cannot tune. */
   onChannelUp?: () => void;
   onChannelDown?: () => void;
-  muted: boolean;
-  /** 0–1. */
-  volume: number;
-  onToggleMute: () => void;
-  /** More: open or close the More sheet. */
-  moreOpen: boolean;
-  onMore: () => void;
+  /**
+   * Volume, on desktop: it opens the level in the menu's place (§9.5). Omitted on a phone and a
+   * television, whose own buttons set it (the key is then not drawn).
+   */
+  volume?: { muted: boolean; onPress: () => void; open: boolean };
+  /** More: open or close the More sheet. Omitted where the player has nothing for More to open. */
+  moreOpen?: boolean;
+  onMore?: () => void;
 }
 
-/** The top row, upper right (§9.3): Subtitles, Audio, then Fullscreen (pointer) and Leave. */
-interface PlayerTopRowProps {
+/**
+ * The utilities (§9.3): a smaller row of icon keys over the main keys. Subtitles and Audio, then
+ * Fullscreen where a window can fill the screen, or AirPlay and picture in picture on an iPhone. A key
+ * whose handler is omitted is not drawn. On a television Subtitles and Audio are main keys instead.
+ */
+interface PlayerUtilitiesProps {
   density: Density;
   pointer: boolean;
-  /** Audio: open or close the audio sheet; omitted when there is nothing to choose. */
+  /** Audio: open or close what Audio opens; omitted when there is nothing to choose. */
   audioOpen?: boolean;
   onAudio?: () => void;
   /** Subtitles; omitted until the player has any (the key is then not drawn). */
@@ -183,7 +218,30 @@ interface PlayerTopRowProps {
   /** Fullscreen; omitted where the platform has none (a phone's app is already full screen). */
   fullscreen?: boolean;
   onFullscreen?: () => void;
-  onLeave: () => void;
+  /** AirPlay (iPhone): the system's route picker. */
+  onAirPlay?: () => void;
+  /** Picture in picture, where the player is a phone app that has a key for it. */
+  onPictureInPicture?: () => void;
+}
+
+/** The film strip's data (§9.2): the timeline it draws and where the viewer is in it. */
+interface PlayerSchedule {
+  segments: readonly PlaybarSegment[];
+  window: PlaybarWindow;
+  /** The wall-clock instant at the playhead. */
+  playheadMs: number;
+  /** Seek to an instant in the past; without it the strip only previews. */
+  onSeek?: (wallClockMs: number) => void;
+  /**
+   * Pressing a block that does not seek. A television passes the Guide here: OK opens the Guide on
+   * Watching (playback-clients), and the strip is where focus rests while the controls are up.
+   */
+  onSelect?: () => void;
+  /**
+   * Info is open (§9.5, variant J): on desktop and television it is the block on air's own card,
+   * pinned open in full. A phone has no strip, so its Info is a sheet.
+   */
+  info?: boolean;
 }
 
 interface ClipTransportProps {
@@ -235,6 +293,7 @@ export type {
   PlayerInfoData,
   PlayerKeysProps,
   PlayerLiveState,
+  PlayerSchedule,
   PlayerSheetProps,
-  PlayerTopRowProps,
+  PlayerUtilitiesProps,
 };

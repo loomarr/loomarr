@@ -41,6 +41,7 @@ const MOVIES = {
   path: "/media/movies",
   inUse: false,
   readable: true,
+  empty: false,
   addedByHand: false,
   foundIn: [{ authority: "radarr" as const, path: "/movies" }],
 };

@@ -505,7 +505,8 @@ test("registered sources stay compact and open a scalable source workspace", asy
     await providerSwitch.click();
     await expect.poll(() => archiveProviderEnabled).toBe(false);
     await expect(providerSwitch).not.toBeChecked();
-    const childList = provider.locator('ul[aria-label="Sources under Archive.org"]');
+    // A DS ListGroup (#2920): a list by role, not a <ul>. Hidden while the provider is off.
+    const childList = provider.getByRole("list", { name: "Sources under Archive.org", includeHidden: true });
     await expect(childList).toBeHidden();
     // The design-system switch is a pressable, so it says disabled in ARIA rather than natively.
     await expect(

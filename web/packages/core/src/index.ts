@@ -3,6 +3,7 @@
 // the swappable EventSource construction, so the Expo app reuses them verbatim.
 export * from "./account";
 export * from "./anchor";
+export * from "./channel-audio";
 export * from "./client-diagnostics";
 export * from "./clip-thumb";
 export * from "./contracts";
