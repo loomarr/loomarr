@@ -58,7 +58,13 @@ const createGuideController = ({
     request?.abort();
     const nextRequest = new AbortController();
     request = nextRequest;
-    publish({ ...snapshot, error: undefined, status: "loading" });
+    // A shown layout stays on screen while it is re-read; only a first load reports `loading`.
+    const shown = snapshot.layout !== undefined;
+    publish(
+      shown
+        ? { ...snapshot, error: undefined, refreshing: true }
+        : { ...snapshot, error: undefined, status: "loading" },
+    );
 
     try {
       const sourceGuide = await source.load(window, nextRequest.signal);
@@ -68,11 +74,12 @@ const createGuideController = ({
       settle(narrow(full), preferredChannelId, anchorMs);
     } catch (error) {
       if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
-      publish({
-        ...snapshot,
-        error: error instanceof Error ? error.message : "Couldn't load the Guide.",
-        status: "error",
-      });
+      const message = error instanceof Error ? error.message : "Couldn't load the Guide.";
+      publish(
+        shown
+          ? { ...snapshot, error: message, refreshing: undefined }
+          : { ...snapshot, error: message, status: "error" },
+      );
     }
   };
 
