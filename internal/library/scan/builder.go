@@ -422,8 +422,10 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 		res := b.resolveSeries(ctx, s)
 		resolved := res.resolved
 		facts, coverage := itemFacts(resolved)
-		if facts.Name == "" {
-			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(s.dir, ""))
+		// A show with no name of its own is named by its own folder, not the folders it sits in:
+		// "TV/Kids/Kettle Bay" is "Kettle Bay".
+		if facts.Name == "" && s.dir != "" {
+			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(filepath.Base(filepath.FromSlash(s.dir)), ""))
 		}
 		coverage["sources"] = inventory.CoverageEmpty
 		snapshot := inventory.Snapshot{
