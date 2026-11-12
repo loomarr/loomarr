@@ -125,7 +125,13 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    a catch-all's "Shorts" folder are not extras.
 //	38: a movie in parts is one title before any catalog names it, and its parts may each have a
 //	    folder of their own ("CD1/", "Disc 2/").
-const writeVersion = 38
+//	39: season folders spelled out, in other languages, with notes or the show's initials, or with
+//	    a disc or codec folder inside, place their episodes; a NAS's snapshot and recycle folders, a
+//	    downloader's unfinished ones and a film's interviews and featurettes are skipped; a day
+//	    alone makes no show; a year after a dot, a dash or the release words is the year; release
+//	    notes, a collection's place and a tracker's name are not the title; "1x2", "S01Ep02",
+//	    "T01E02" and "Staffel 1 Folge 2" are marks.
+const writeVersion = 39
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

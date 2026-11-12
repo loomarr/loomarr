@@ -30,15 +30,22 @@ var videoExtensions = map[string]bool{
 	".mkv": true, ".mp4": true, ".m4v": true, ".avi": true, ".ts": true, ".m2ts": true, ".mts": true,
 	".mov": true, ".wmv": true, ".mpg": true, ".mpeg": true, ".webm": true,
 	".divx": true, ".flv": true, ".f4v": true, ".ogm": true, ".ogv": true, ".rmvb": true, ".rm": true,
-	".vob": true, ".asf": true, ".3gp": true, ".m2v": true,
+	".vob": true, ".asf": true, ".3gp": true, ".m2v": true, ".xvid": true,
 }
 
-// skippedDirs hold media-server and NAS by-products and recycle bins, never media. A ".trash-<uid>"
-// folder is skipped by its prefix.
+// skippedDirs hold media-server and NAS by-products, snapshots and recycle bins, never media. A
+// ".trash-<uid>" folder is skipped as hidden; a NAS's "@…" folders (QNAP's "@Recycle" and
+// "@Recently-Snapshot", Synology's "@eaDir") and a downloader's unfinished "_UNPACK_…" and
+// "_FAILED_…" folders by their prefixes (skippedPrefixes). A snapshot holds a second copy of the
+// whole library.
 var skippedDirs = map[string]bool{
-	"trickplay": true, "extrafanart": true, ".actors": true, "@eadir": true,
+	"trickplay": true, "extrafanart": true, ".actors": true,
 	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "incomplete": true,
+	"#snapshot": true, "system volume information": true,
 }
+
+// skippedPrefixes begin the names of folders skippedDirs skips by their prefix.
+var skippedPrefixes = []string{".", "@", "_unpack_", "_failed_"}
 
 // discDirs are disc structures, which are not imported but listed as problems.
 var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
@@ -60,7 +67,7 @@ var extrasDirs = map[string]bool{
 // disc structure is not walked either, but is listed as a problem.
 func skippedDir(parent, name string) bool {
 	lower := strings.ToLower(name)
-	return skippedDirs[lower] || strings.HasPrefix(lower, ".") ||
+	return skippedDirs[lower] || slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) }) ||
 		(parent != "." && extrasDirs[lower] && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
@@ -77,14 +84,19 @@ func relTo(root, p string) string {
 // extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv", once any number
 // after them is dropped ("-trailer2"); it is skipped. A trailer or a sample is also marked with a
 // dot, an underscore or a dash and a space (Jellyfin's).
+// A hand-named extra spells its kind out after a dash, "Movie (2001) - Behind the Scenes", or a
+// trailer after the year, "Movie (2001) Trailer".
 var extrasSuffixes = []string{
 	"-trailer", ".trailer", "_trailer", "- trailer", "-sample", ".sample", "_sample", "- sample",
 	"-featurette", "-behindthescenes", "-deleted", "-deletedscene", "-interview", "-scene", "-short",
 	"-clip", "-extra", "-other",
+	"- behind the scenes", "- interview", "- featurette", "- deleted scene", "- deleted scenes",
+	") trailer", "] trailer",
 }
 
-// extrasStems are extras' whole names, as a release's "sample.mkv" or a folder's "trailer.mkv".
-var extrasStems = map[string]bool{"sample": true, "trailer": true}
+// extrasStems are extras' whole names, as a release's "sample.mkv", a folder's "trailer.mkv" or its
+// theme video, "theme.mp4".
+var extrasStems = map[string]bool{"sample": true, "trailer": true, "theme": true}
 
 // Stat is a file's size and modification time, which together are its revision.
 type Stat struct {
@@ -696,7 +708,8 @@ func (f File) art() []string {
 // sample, or a hidden file such as a Mac's "._" shadow of a real one.
 func extraName(lowerName string) bool {
 	base := strings.TrimRight(strings.TrimSuffix(lowerName, filepath.Ext(lowerName)), "0123456789")
-	if strings.HasPrefix(lowerName, ".") || extrasStems[base] || strings.HasPrefix(base, "sample-") ||
+	// A "~" name is a copy still being written, or an editor's temporary file.
+	if strings.HasPrefix(lowerName, ".") || strings.HasPrefix(lowerName, "~") || extrasStems[base] || strings.HasPrefix(base, "sample-") ||
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
 		return true
 	}

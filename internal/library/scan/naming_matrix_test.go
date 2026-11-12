@@ -303,6 +303,79 @@ var namingMatrix = []namingRow{
 		"Movies/Shorts/Lantern Keeper (2010)/Lantern Keeper (2010).mkv": "movie Lantern Keeper 2010",
 		"Movies/Ashgrove (2015)/Shorts/Ashgrove Reel.mkv":               "skip",
 	}},
+	// W: what a messy library does to a name. Season folders spelled out, in other languages, with
+	// notes or the show's initials, or a disc or codec folder inside them.
+	{id: "W1", files: map[string]string{"TV/Kettle Bay/Season One/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W2", files: map[string]string{"TV/Kettle Bay/Sezon 2/Kettle Bay S02E02.mkv": "episode Kettle Bay S2E2"}},
+	{id: "W3", files: map[string]string{"TV/Kettle Bay/Säsong 1/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W4", files: map[string]string{"TV/Kettle Bay/Season 1 - 2019/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W5", files: map[string]string{"TV/Kettle Bay/Season 1 1080p WEB-DL/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W6", files: map[string]string{"TV/Kettle Bay/Season 01 Complete/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W7", files: map[string]string{"TV/Kettle Bay/KB Season 1/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W8", files: map[string]string{"TV/Kettle Bay/(Season 1)/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W9", files: map[string]string{"TV/Kettle Bay/Season 1/Disc 2/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W10", files: map[string]string{"TV/Kettle Bay/Season 1/x265/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	// A day alone makes no show: a home video and a concert are films of a day.
+	{id: "W11", files: map[string]string{
+		"Home Videos/2019-06-01 Beach Day.mp4":                        "movie 2019-06-01 Beach Day -",
+		"Concerts/Ferrow Band - Live at Ashgrove Hall 2019.10.05.mkv": "movie Ferrow Band - Live at Ashgrove Hall 2019.10.05 -",
+	}},
+	{id: "W12", files: map[string]string{
+		"TV/Daily Kettle/Daily Kettle 2024_03_14.mkv": "episode Daily Kettle 2024-03-14",
+		"TV/Daily Kettle/Daily Kettle 2024-3-15.mkv":  "episode Daily Kettle 2024-03-15",
+	}},
+	// A year after a dot or a dash, and one after the release words.
+	{id: "W13", files: map[string]string{
+		"Movies/Ferrow Lane.2019.mkv":                     "movie Ferrow Lane 2019",
+		"Movies/The Quiet Signal.2008.720p.mkv":           "movie The Quiet Signal 2008",
+		"Movies/Lantern.Keeper (2010).mkv":                "movie Lantern Keeper 2010",
+		"Movies/marrow-point-2011.mkv":                    "movie marrow point 2011",
+		"Movies/Ashgrove 1080p 2015.mkv":                  "movie Ashgrove 2015",
+		"Movies/S.W.A.L.E. (2012).mkv":                    "movie S.W.A.L.E 2012",
+		"Movies/Harbor Lights (2016) (2020 Remaster).mkv": "movie Harbor Lights 2016",
+	}},
+	// Release notes, a collection's place and a tracker's name are not the title.
+	{id: "W14", files: map[string]string{
+		"Movies/Ashgrove.CAM.avi":                                        "movie Ashgrove -",
+		"Movies/Ferrow.HDRip.avi":                                        "movie Ferrow -",
+		"Movies/Lantern.MULTi.VOSTFR.mkv":                                "movie Lantern -",
+		"Movies/Marrow [HD].mkv":                                         "movie Marrow -",
+		"Movies/Tidewater (Dual Audio).mkv":                              "movie Tidewater -",
+		"Movies/Low Water (Directors Cut).mkv":                           "movie Low Water -",
+		"Movies/Kettle Bay (US) (2004).mkv":                              "movie Kettle Bay US 2004",
+		"Movies/www.TrackerNet.org - Harbor Lights (2016).mkv":           "movie Harbor Lights 2016",
+		"Movies/Marrow Point Collection/01 - Marrow Point (2010).mkv":    "movie Marrow Point 2010",
+		"Movies/Marrow Point Collection/2. Marrow Point II (2012).mkv":   "movie Marrow Point II 2012",
+		"Movies/Marrow Point Collection/(3) Marrow Point III (2014).mkv": "movie Marrow Point III 2014",
+		"Movies/10 Kettles (2009).mkv":                                   "movie 10 Kettles 2009",
+	}},
+	// A NAS's snapshots and recycle bins, a downloader's unfinished work, an editor's lock file and
+	// a film's extras are none of the library's titles; an Xvid file is a video.
+	{id: "W16", files: map[string]string{
+		"Movies/#snapshot/Ashgrove (2015).mkv":                         "skip",
+		"Movies/@Recently-Snapshot/Ashgrove (2015).mkv":                "skip",
+		"Movies/@Recycle/Ashgrove (2015).mkv":                          "skip",
+		"Movies/System Volume Information/Ashgrove (2015).mkv":         "skip",
+		"Downloads/_UNPACK_Kettle.Bay.S01E02/Kettle.Bay.S01E02.mkv":    "skip",
+		"Downloads/_FAILED_Kettle.Bay.S01E03/Kettle.Bay.S01E03.mkv":    "skip",
+		"Movies/~Ferrow (2019).mkv":                                    "skip",
+		"Movies/Lantern (2010)/Lantern (2010).mkv":                     "movie Lantern 2010",
+		"Movies/Lantern (2010)/Lantern (2010) - Behind the Scenes.mkv": "skip",
+		"Movies/Lantern (2010)/Lantern (2010) - Interview.mkv":         "skip",
+		"Movies/Lantern (2010)/Lantern (2010) Trailer.mkv":             "skip",
+		"Movies/Lantern (2010)/theme.mp4":                              "skip",
+		"Movies/Marrow (2011).xvid":                                    "movie Marrow 2011",
+	}},
+	// Episode marks as other apps and languages write them, and one file of several.
+	{id: "W15", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay 1x2.avi":               "episode Kettle Bay S1E2",
+		"TV/Kettle Bay/Kettle Bay S01Ep03.avi":           "episode Kettle Bay S1E3",
+		"TV/Kettle Bay/Kettle Bay S01 - E04.avi":         "episode Kettle Bay S1E4",
+		"TV/Kettle Bay/Kettle Bay T01E05.avi":            "episode Kettle Bay S1E5",
+		"TV/Kettle Bay/Kettle Bay Staffel 1 Folge 6.avi": "episode Kettle Bay S1E6",
+		"TV/Kettle Bay/Kettle Bay S02E01-720.mkv":        "episode Kettle Bay S2E1",
+		"TV/Kettle Bay/Kettle Bay S02E02 and E03.mkv":    "episode Kettle Bay S2E2-3",
+	}},
 }
 
 func TestNamingMatrix(t *testing.T) {

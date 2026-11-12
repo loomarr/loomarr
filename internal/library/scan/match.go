@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -400,12 +401,54 @@ func posterURL(rec mp.Record) string {
 	return ""
 }
 
-// releaseToken is a word a release name carries after the title: the quality, source, codec or
-// edition. The title ends before the first.
-// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
-var leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
+var (
+	// leadingYearTag matches a year in brackets before a title: "(2015) Ashgrove", "[2015] Ashgrove".
+	leadingYearTag = regexp.MustCompile(`^\s*[(\[]((?:19|20)\d{2})[)\]][ ._-]*`)
+	// trackerPrefix matches the site a download names itself after, before the title:
+	// "www.TrackerNet.org - Ashgrove", "[www.TrackerNet.org] Ashgrove".
+	trackerPrefix = regexp.MustCompile(`(?i)^\s*\[?\s*www\.[^\s\]]+\s*\]?[ ._]*(?:-[ ._]*)?`)
+	// indexPrefix matches a collection's place for a film, before its title: "01 - Ashgrove",
+	// "1. Ashgrove", "(1) Ashgrove". A number that starts a title, "10 Kettles", has none of these.
+	indexPrefix = regexp.MustCompile(`^\s*(?:\(\d{1,2}\)|\d{1,2}\.|\d{1,2}[ ._]+-)[ ._]+`)
+	// bracketNote matches a bracketed group after a title, which noteWords may say is a note on the
+	// release rather than part of its name: "(Dual Audio)", "[HD]", "(2016 Remaster)".
+	bracketNote = regexp.MustCompile(`[(\[]([^()\[\]]*)[)\]]`)
+	// noteWord is a word a bracketed note on a release is made of.
+	noteWord = regexp.MustCompile(`(?i)^(directors?|director's|cut|uncut|extended|unrated|theatrical|special|edition|version|remaster|remastered|restored|dual|audio|multi|subs?|subbed|dubbed|eng|english|hd|sd|fhd|imax|criterion|anniversary|\d+(?:st|nd|rd|th))$`)
+	// releaseToken is a word a release name carries after the title: the quality, source, codec,
+	// language or edition. The title ends before the first.
+	releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited|cam|camrip|hdcam|hdrip|hdts|telesync|dvdscr|screener|multi|vostfr|vost|subbed|dubbed|hd|fhd)$`)
+)
 
-var releaseToken = regexp.MustCompile(`(?i)^(\d{3,4}x\d{3,4}|\d{3,4}p|4k|uhd|hdr\d*|dv|sdr|blu-?ray|bd|bdrip|brrip|web|web-?dl|webrip|hdtv|dvd|dvdrip|remux|x26[45]|h\.?26[45]|hevc|avc|xvid|aac\d*|ac3|dts|ddp?\d*|atmos|truehd|10bit|8bit|proper|repack|extended|unrated|remastered|imax|internal|limited)$`)
+// releaseNote says whether a bracketed group's words are a note on the release ("Dual Audio",
+// "2016 Remaster", "HD"), not part of the title. A year alone is the title's year, kept.
+func releaseNote(inner string) bool {
+	words := strings.Fields(inner)
+	if len(words) == 0 || len(words) == 1 && yearToken.MatchString(words[0]) {
+		return false
+	}
+	for _, w := range words {
+		if !noteWord.MatchString(w) && !releaseToken.MatchString(w) && !yearToken.MatchString(w) {
+			return false
+		}
+	}
+	return true
+}
+
+// dottedWords splits a word joined with dots into its words, "Lane.2019" and "Ferrow.Lane", where
+// the name is otherwise spaced. Letters written apart ("S.W.A.T.") and a number ("3.14") stay whole.
+func dottedWords(w string) []string {
+	parts := strings.Split(w, ".")
+	if len(parts) < 2 || slices.Contains(parts, "") {
+		return []string{w}
+	}
+	for _, p := range parts {
+		if letters := strings.IndexFunc(p, unicode.IsLetter) >= 0; letters && utf8.RuneCountInString(p) > 1 {
+			return parts
+		}
+	}
+	return []string{w}
+}
 
 var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
 
@@ -432,17 +475,42 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	if m := leadingYearTag.FindStringSubmatch(name); m != nil {
 		leadingYear, name = atoi(m[1]), name[len(m[0]):]
 	}
+	name = trackerPrefix.ReplaceAllString(name, "")
 	name = leadingTags.ReplaceAllString(name, "")
+	if loc := indexPrefix.FindStringIndex(name); loc != nil && strings.IndexFunc(name[loc[1]:], unicode.IsLetter) >= 0 {
+		name = name[loc[1]:]
+	}
+	name = bracketNote.ReplaceAllStringFunc(name, func(group string) string {
+		if releaseNote(group[1 : len(group)-1]) {
+			return " "
+		}
+		return group
+	})
 	if !strings.Contains(name, " ") {
 		name = strings.NewReplacer(".", " ", "_", " ").Replace(name)
 	}
-	words := strings.FieldsFunc(name, func(r rune) bool {
+	// A name joined only with dashes, "ferrow-lane-2019", is spaced where a year shows it is words.
+	if !strings.Contains(name, " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], releaseYear) {
+		name = strings.ReplaceAll(name, "-", " ")
+	}
+	var words []string
+	for _, w := range strings.FieldsFunc(name, func(r rune) bool {
 		return unicode.IsSpace(r) || strings.ContainsRune("()[]{}_", r)
-	})
+	}) {
+		words = append(words, dottedWords(w)...)
+	}
 	cut := len(words)
 	for i, w := range words {
 		if i > 0 && releaseToken.MatchString(strings.SplitN(w, "-", 2)[0]) {
 			cut = i
+			break
+		}
+	}
+	// A year among the release words, "Ashgrove 1080p 2015", is the year when the title gives none.
+	after := 0
+	for _, w := range words[cut:] {
+		if w = strings.SplitN(w, "-", 2)[0]; releaseYear(w) {
+			after = atoi(w)
 			break
 		}
 	}
@@ -464,6 +532,9 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	}
 	if year == 0 {
 		year = leadingYear
+	}
+	if year == 0 {
+		year = after
 	}
 	return articleFirst(clean(words)), year, whole
 }

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -214,28 +216,40 @@ var (
 	// embeddedID matches an id written into a name in any bracket Jellyfin reads: "{tmdb-1234}",
 	// "[imdbid-tt0001234]", "(tvdbid-5678)", "[tmdbid=1234]".
 	embeddedID = regexp.MustCompile(`(?i)[\[{(](tmdb|tmdbid|imdb|imdbid|tvdb|tvdbid)[-=]([a-z0-9]+)[\]})]`)
-	// episodeMark matches an episode's mark: "S01E02", Emby's "S01xE02", and "1x02". The episodes
-	// after it in a file holding several are moreEpisodes'.
-	episodeMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:s(\d{1,4})[ ._-]?x?e(\d{1,4})|(\d{1,2})x(\d{2,3})(?:[^0-9]|$))`)
+	// episodeMark matches an episode's mark: "S01E02", Emby's "S01xE02", "S01Ep02", "S01 - E02",
+	// Spanish "T01E02" (temporada), "1x02" and "1x2". The episodes after it in a file holding
+	// several are moreEpisodes'.
+	episodeMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:[st](\d{1,4})(?:[ ._]*-[ ._]*|[ ._-]?)x?e(?:p[ ._]?)?(\d{1,4})|(\d{1,2})x(\d{1,3})(?:[^0-9]|$))`)
 	// moreEpisodes match each further episode of a file holding several, after its mark, in every
 	// style the apps write (Sonarr's six, Plex's, Emby's): one joined on ("E03", "xE03", "x03"),
-	// one after a dash or plus ("-E03", "+E03", " - S01E03", "-x03", " - 1x03"), or a bare number
-	// straight after a dash ("-03"). A bare number is two or three digits and ends there, so
-	// "S01E02-1080p" and "S01E02-720p" hold one episode.
-	moreEpisodesS = regexp.MustCompile(`(?i)^(?:[ ._]*[-+&][ ._]*|[ ._]?)(?:s(\d{1,4})[ ._-]?)?x?e(\d{1,4})`)
+	// one after a dash, plus, "&" or "and" ("-E03", "+E03", " and E03", " - S01E03", "-x03",
+	// " - 1x03"), or a bare number straight after a dash ("-03"). A bare number is two or three
+	// digits and ends there, and is never a picture's height, so "S01E02-1080p", "S01E02-720p" and
+	// "S01E02-720" hold one episode.
+	moreEpisodesS = regexp.MustCompile(`(?i)^(?:[ ._]*(?:[-+&]|and)[ ._]*|[ ._]?)(?:s(\d{1,4})[ ._-]?)?x?e(\d{1,4})`)
 	moreEpisodesX = regexp.MustCompile(`(?i)^(?:[ ._]*[-+&][ ._]*(\d{1,2})x|-?x)(\d{2,3})(?:[^0-9]|$)`)
 	moreBare      = regexp.MustCompile(`(?i)^-(\d{2,3})(?:[^0-9a-z]|$)`)
 	// airDateMark matches the day a daily or weekly show's episode aired: "2013-02-15",
-	// "2013.02.15", "2013 02 15", "20130215", and Plex's day first, "15-02-2013" and "15.02.2013".
-	// The two separators are one character, the same both times.
-	airDateMark = regexp.MustCompile(`(?:^|[^0-9])(?:((?:19|20)\d{2})([-. ]?)(\d{2})([-. ]?)(\d{2})|(\d{2})([-.])(\d{2})([-.])((?:19|20)\d{2}))(?:[^0-9]|$)`)
+	// "2013.02.15", "2013 02 15", "2013_02_15", "20130215", and Plex's day first, "15-02-2013" and
+	// "15.02.2013". The two separators are one character, the same both times; a month or day of
+	// one digit ("2013-2-5") is read between dashes, dots or underscores only.
+	airDateMark = regexp.MustCompile(`(?:^|[^0-9])(?:((?:19|20)\d{2})([-._ ]?)(\d{1,2})([-._ ]?)(\d{1,2})|(\d{2})([-.])(\d{2})([-.])((?:19|20)\d{2}))(?:[^0-9]|$)`)
 )
 
 // airDateIn is the day a file's name says its episode aired, YYYY-MM-DD; "" for none. A day that
 // never was, such as "2024-02-30" or a number that only looks like one, is none.
 func airDateIn(name string) string {
+	pad := func(s string) string {
+		if len(s) == 1 {
+			return "0" + s
+		}
+		return s
+	}
 	for _, m := range airDateMark.FindAllStringSubmatch(name, -1) {
-		day, same := m[1]+"-"+m[3]+"-"+m[5], m[2] == m[4]
+		day, same := m[1]+"-"+pad(m[3])+"-"+pad(m[5]), m[2] == m[4]
+		if m[1] != "" && (len(m[3]) == 1 || len(m[5]) == 1) && (m[2] == "" || m[2] == " ") {
+			continue
+		}
 		if m[1] == "" {
 			day, same = m[10]+"-"+m[8]+"-"+m[6], m[7] == m[9]
 		}
@@ -244,6 +258,28 @@ func airDateIn(name string) string {
 		}
 	}
 	return ""
+}
+
+// datedEpisode says whether a file its name dates is a show's episode: one in a season folder, or
+// one whose name before its day is its show's ("Kettle Bay/Kettle Bay 2024-03-14.mkv"). A day alone
+// does not make a show: "Home Videos/2019-06-01 Beach Day.mp4" is a day's video, and
+// "Concerts/Ferrow Band - Live 2019.10.05.mkv" a film of one.
+func datedEpisode(file File) bool {
+	if seasonDirOf(path.Dir(file.Rel)) != "" {
+		return true
+	}
+	name := stem(path.Base(file.Rel))
+	m := airDateMark.FindStringSubmatchIndex(name)
+	if m == nil {
+		return false
+	}
+	start := m[2] // the year first, else the day first
+	if start < 0 {
+		start = m[12]
+	}
+	before, _, _ := searchQuery(name[:start], 0)
+	show, _, _ := searchQuery(showFolderName(path.Base(seriesFolderOf(file))), 0)
+	return before != "" && sameName(before, show)
 }
 
 // idsIn returns the grounded ids written into one name.
@@ -300,9 +336,9 @@ func numberingIn(name string) (mp.Numbering, bool) {
 	last := n.Episode
 	for {
 		rest := name[at:]
-		next := more.FindStringSubmatchIndex(rest)
+		next, bare := more.FindStringSubmatchIndex(rest), false
 		if next == nil {
-			next = moreBare.FindStringSubmatchIndex(rest)
+			next, bare = moreBare.FindStringSubmatchIndex(rest), true
 			if next != nil {
 				next = []int{next[0], next[1], -1, -1, next[2], next[3]}
 			}
@@ -311,6 +347,9 @@ func numberingIn(name string) (mp.Numbering, bool) {
 			break
 		}
 		season, episode := n.Season, atoi(rest[next[4]:next[5]])
+		if bare && (episode == 480 || episode == 576 || episode == 720) {
+			break
+		}
 		if next[2] >= 0 {
 			season = atoi(rest[next[2]:next[3]])
 		}
@@ -359,7 +398,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// A daily or weekly show names its episodes by the day they aired, in the show's folder: the
 	// day, not a season and number, says which episode it is (season.go's byAirDate). A dated file
 	// loose at the root's top has no show to belong to.
-	if day := airDateIn(name); day != "" && len(segments) > 1 {
+	if day := airDateIn(name); day != "" && len(segments) > 1 && datedEpisode(file) {
 		rec := mp.Record{Source: src, Kind: mp.KindEpisode, Descriptive: &mp.Descriptive{PremiereDate: day}}
 		seriesDir := seriesFolderOf(file)
 		rec.Parent = idsIn(path.Base(seriesDir))
@@ -402,27 +441,97 @@ func embeddedRecord(file File) (mp.Record, string) {
 	return rec, ""
 }
 
+// seasonWords name a season in a folder's name, in the languages households name them in.
+const seasonWords = `season|series|staffel|saison|temporada|stagione|sezon|seizoen|säsong|sasong|sæson|saeson|sesong|сезон`
+
+// spelledNumbers are a season's number spelled out: "Season One", "Series Two".
+var spelledNumbers = map[string]int{
+	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+	"ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+	"sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
+}
+
 var (
-	// seasonFolder matches a season folder's name: "Season 1", "Season 01", "S01", "Specials",
-	// "Series 1" and its other languages' words ("Staffel 1", "Saison 1", "Temporada 1"), with any
-	// bracketed notes after it ("Season 2 [1080p]").
-	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:season|series|staffel|saison|temporada|stagione)[ ._-]*\d+|s\d+|specials)` +
-		`(?:[ ._-]*[\[(][^\])]*[\])])*$`)
-	// namedSeason matches a season folder that starts with its show's name: "Kettle Bay Season 1".
-	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:season|series|staffel|saison|temporada|stagione)[ ._-]*\d+` +
-		`(?:[ ._-]*[\[(][^\])]*[\])])*$`)
+	// seasonFolder matches a season folder's name and its number: "Season 1", "Season 01", "Series
+	// One", "Staffel 1", "Säsong 1", with whatever notes follow a separator ("Season 2 [1080p]",
+	// "Season 1 - 2019", "Season 01 Complete", "Season 1-2"); "S01" with only bracketed notes.
+	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)(?:[ ._\-\[(].*)?|s(\d{1,4})(?:[ ._-]*[\[(][^\])]*[\])])*)$`)
+	// namedSeason matches a season folder that starts with its show's name: "Kettle Bay Season 1",
+	// "KB Season 1".
+	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)(?:[ ._\-\[(].*)?$`)
 )
 
+// seasonIn is the season a season folder's own name gives, "Specials" 0; ok is false for a name
+// that names no season. A name in brackets is read inside them: "(Season 1)".
+func seasonIn(name string) (season int, ok bool) {
+	if len(name) > 2 && (name[0] == '(' && name[len(name)-1] == ')' || name[0] == '[' && name[len(name)-1] == ']') {
+		name = name[1 : len(name)-1]
+	}
+	if strings.EqualFold(name, "specials") {
+		return 0, true
+	}
+	m := seasonFolder.FindStringSubmatch(name)
+	if m == nil {
+		return 0, false
+	}
+	if m[2] != "" {
+		return atoi(m[2]), true
+	}
+	return seasonNumberWord(m[1])
+}
+
+// seasonNumberWord is a season's number written in digits or spelled out.
+func seasonNumberWord(w string) (int, bool) {
+	if digits(w) {
+		return atoi(w), true
+	}
+	n, ok := spelledNumbers[strings.ToLower(w)]
+	return n, ok
+}
+
 // isSeasonFolder says whether dir, relative to the root, is a season folder. One that starts with a
-// show's name is one only inside that show's folder: "Kettle Bay/Kettle Bay Season 1" is, while a
-// "Kettle Bay Season 1" folder of its own, with no show folder above it, is the show's.
+// show's name, or its initials, is one only inside that show's folder: "Kettle Bay/Kettle Bay
+// Season 1" and "Kettle Bay/KB Season 1" are, while a "Kettle Bay Season 1" folder of its own, with
+// no show folder above it, is the show's.
 func isSeasonFolder(dir string) bool {
 	name := path.Base(dir)
-	if seasonFolder.MatchString(name) {
+	if _, ok := seasonIn(name); ok {
 		return true
 	}
 	m := namedSeason.FindStringSubmatch(name)
-	return m != nil && path.Dir(dir) != "." && sameWords(m[1], path.Base(path.Dir(dir)))
+	if m == nil || path.Dir(dir) == "." {
+		return false
+	}
+	if _, ok := seasonNumberWord(m[2]); !ok {
+		return false
+	}
+	show := path.Base(path.Dir(dir))
+	return sameWords(m[1], show) || strings.EqualFold(m[1], initials(show))
+}
+
+// initials are a name's words' first letters: "Kettle Bay (2001)" is "KB".
+func initials(name string) string {
+	var b strings.Builder
+	for _, w := range strings.FieldsFunc(name, func(r rune) bool { return r == ' ' || r == '.' || r == '_' || r == '-' }) {
+		if r, _ := utf8.DecodeRuneInString(w); unicode.IsLetter(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// seasonDirOf is the season folder a file's folder dir is, or sits in ("Season 1/Disc 2/",
+// "Season 1/x265/"), "" for none.
+func seasonDirOf(dir string) string {
+	switch {
+	case dir == ".":
+		return ""
+	case isSeasonFolder(dir):
+		return dir
+	case path.Dir(dir) != "." && isSeasonFolder(path.Dir(dir)):
+		return path.Dir(dir)
+	}
+	return ""
 }
 
 // aboveSeasons is the folder above a season folder and any season folders it sits in
@@ -474,8 +583,8 @@ func seriesFolderOf(file File) string {
 	if show := looseSeries(name); catchAllFolder(path.Base(dir)) && show != "" {
 		return show
 	}
-	if isSeasonFolder(dir) {
-		if show := aboveSeasons(dir); show != "." {
+	if season := seasonDirOf(dir); season != "" {
+		if show := aboveSeasons(season); show != "." {
 			return show
 		}
 		return looseSeries(name)
@@ -552,8 +661,9 @@ func looseSeries(name string) string {
 }
 
 var (
-	// seasonEpisodeWords matches a mark written out: "Season 1 Episode 2", "Season 1 Ep 2".
-	seasonEpisodeWords = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:season|series|staffel|saison|temporada)[ ._-]*(\d{1,4})[ ._-]*(?:episode|ep)[ ._-]*(\d{1,4})(?:[^0-9]|$)`)
+	// seasonEpisodeWords matches a mark written out: "Season 1 Episode 2", "Season 1 Ep 2",
+	// "Staffel 1 Folge 2", "Temporada 1 Episodio 2".
+	seasonEpisodeWords = regexp.MustCompile(`(?i)(?:^|[^\pL0-9])(?:` + seasonWords + `)[ ._-]*(\d{1,4})[ ._-]*(?:episode|ep|folge|episodio|épisode|aflevering|avsnitt|afsnit|odcinek)[ ._-]*(\d{1,4})(?:[^0-9]|$)`)
 	// episodeWord matches an episode with no season: "Ep02", "Episode 2", "Ep. 2".
 	episodeWord = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(?:episode|ep)[ ._-]*(\d{1,4})(?:[^0-9]|$)`)
 	// partOf matches a miniseries' "2of6", "2 of 6", "Part 2 of 6".
@@ -568,8 +678,6 @@ var (
 	bareEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])e(\d{1,3})(?:[ ._-]|$)`)
 	// dashedTwoDigits matches a dash and a two-digit number: "Kettle Bay - 03".
 	dashedTwoDigits = regexp.MustCompile(`[ ._]-[ ._]*\d{2}(?:[ ._-]|$)`)
-	// seasonNumber is a season folder's number: "Season 2", "S02", "Kettle Bay Series 2".
-	seasonNumber = regexp.MustCompile(`(?i)(?:season|series|staffel|saison|temporada|stagione|^s)[ ._-]*(\d+)`)
 	// leadingTags are a release group's bracketed tags before a name: "[Kumo] ", "[Kumo][Show]".
 	leadingTags = regexp.MustCompile(`^(?:[ ._]*\[[^\]]*\])+[ ._]*`)
 	// animeNumber matches an anime release's absolute episode after its show's name, " - 07" or
@@ -617,12 +725,12 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	}
 	name := stem(path.Base(file.Rel))
 	season, inSeason, show := 1, false, path.Base(dir)
-	if isSeasonFolder(dir) {
-		inSeason, show = true, path.Base(aboveSeasons(dir))
-		if strings.EqualFold(path.Base(dir), "specials") {
-			season = 0
-		} else if m := seasonNumber.FindStringSubmatch(path.Base(dir)); m != nil {
-			season = atoi(m[1])
+	if seasonDir := seasonDirOf(dir); seasonDir != "" {
+		inSeason, show = true, path.Base(aboveSeasons(seasonDir))
+		if n, ok := seasonIn(path.Base(seasonDir)); ok {
+			season = n
+		} else if m := namedSeason.FindStringSubmatch(path.Base(seasonDir)); m != nil {
+			season, _ = seasonNumberWord(m[2])
 		}
 	}
 	episode := func(e int) (mp.Numbering, bool) { return mp.Numbering{Season: season, Episode: e}, e > 0 }
