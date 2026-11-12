@@ -10,9 +10,12 @@ import {
   Surface,
   Text,
 } from "@loomarr/design-system";
+import { useStore } from "@tanstack/react-form";
 import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
+import { useUiForm } from "../../form-kit";
 import { ModalOverlay } from "../../overlay";
+import { useCommittedDraft } from "../../use-committed-draft";
 import { LibraryPoster, Twirl } from "../library-poster";
 import { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
@@ -495,9 +498,22 @@ const LibraryFolderCard = ({
 
 const AddFolder = ({ onAddFolder }: Pick<LibrarySettingsProps, "onAddFolder">) => {
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState("");
+  // The server's refusal (a path it cannot open) is not the form's own validation: it stays under the
+  // field until the path is edited.
   const [error, setError] = useState<string>();
-  const [saving, setSaving] = useState(false);
+  const form = useUiForm({
+    defaultValues: { path: "" },
+    onSubmit: async ({ formApi, value }) => {
+      const refused = await onAddFolder(value.path.trim());
+      setError(refused);
+      if (!refused) {
+        formApi.reset();
+        setAdding(false);
+      }
+    },
+  });
+  const path = useStore(form.store, (current) => current.values.path);
+  const saving = useStore(form.store, (current) => current.isSubmitting);
   if (!adding) {
     return (
       <Line>
@@ -507,38 +523,28 @@ const AddFolder = ({ onAddFolder }: Pick<LibrarySettingsProps, "onAddFolder">) =
       </Line>
     );
   }
-  const submit = async () => {
-    setSaving(true);
-    const refused = await onAddFolder(draft.trim());
-    setSaving(false);
-    setError(refused);
-    if (!refused) {
-      setDraft("");
-      setAdding(false);
-    }
-  };
+  const submit = () => void form.handleSubmit();
   return (
     <Line alignItems="flex-end" gap="control">
       <Stack flexBasis={240} flexGrow={1}>
-        <Field
-          error={error}
-          label="Where is the folder?"
-          onChangeText={(text) => {
-            setDraft(text);
-            setError(undefined);
-          }}
-          onSubmitEditing={() => void submit()}
-          placeholder="/media/…"
-          value={draft}
-        />
+        <form.AppField listeners={{ onChange: () => setError(undefined) }} name="path">
+          {(field) => (
+            <field.TextField
+              error={error}
+              label="Where is the folder?"
+              onSubmitEditing={submit}
+              placeholder="/media/…"
+            />
+          )}
+        </form.AppField>
       </Stack>
-      <Action disabled={draft.trim() === "" || saving} onPress={() => void submit()} tone="primary">
+      <Action disabled={path.trim() === "" || saving} onPress={submit} tone="primary">
         Add folder
       </Action>
       <Action
         onPress={() => {
           setAdding(false);
-          setDraft("");
+          form.reset();
           setError(undefined);
         }}
         variant="ghost"
@@ -558,7 +564,7 @@ const PathMapRow = ({
   mapping: LibraryPathMapping;
   onMapFolder: LibrarySettingsProps["onMapFolder"];
 }) => {
-  const [value, setValue] = useState(mapping.localPath);
+  const { draft: value, editDraft: setValue } = useCommittedDraft(mapping.localPath);
   // What this edit already sent. Enter then leaving the field would otherwise save twice: the
   // second commit runs before the server's answer updates mapping.localPath. Typing clears it, so
   // a save that failed can be sent again.

@@ -1,13 +1,6 @@
 {
   "note": "Hand-rolled forms (#2147 Wave 4), maintained by web/scripts/check-forms.mjs. Entries may only be removed: convert the form to useAppForm and run `pnpm forms:update`. Never add one to pass the check.",
   "files": [
-    "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx",
-    "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx",
-    "packages/ui/src/commit-field/commit-field.tsx",
-    "packages/ui/src/library/library-collection-editor/library-collection-editor.tsx",
-    "packages/ui/src/library/library-settings/library-settings.tsx",
-    "packages/ui/src/library/pick-title/pick-title.tsx",
-    "packages/ui/src/number-field/number-field.tsx",
-    "packages/ui/src/year-range-list-field/year-range-list-field.tsx"
+    "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx"
   ]
 }
