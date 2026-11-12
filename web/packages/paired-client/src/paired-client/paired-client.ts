@@ -193,17 +193,23 @@ const usePairedClient = ({
       onUnauthorized: () => session.revoked(),
     });
     let closeStream: (() => void) | undefined;
+    const reload = () => {
+      refresh();
+      void guide.refresh();
+    };
     const openStream = () => {
       if (closeStream) return;
+      // Frames sent while the stream was down are gone, so each time it comes back the catalog
+      // and guide load again. Its first open needs none: they load as it opens, on launch and on
+      // every return to the foreground.
+      let opens = 0;
       closeStream = openEventStream(
-        {
-          onChannel: () => {
-            refresh();
-            void guide.refresh();
-          },
-        },
+        { onChannel: reload },
         new URL("/v1/events", credential.serverUrl).toString(),
         createStream,
+        () => {
+          if (opens++ > 0) reload();
+        },
       );
     };
     const closeActiveStream = () => {
