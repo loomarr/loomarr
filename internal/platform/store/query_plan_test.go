@@ -57,6 +57,7 @@ var scannedWhole = map[string]string{
 	"DELETE inventory_sources":              "retention sweep: sources no origin holds any more",
 	"DELETE library_files":                  "retention sweep: files missing past their window",
 	"DELETE library_people":                 "orphan sweep: people no credit names",
+	"UPDATE library_people":                 "hourly sweep: people with a filmography whose credits are all on unlisted titles",
 	"DELETE discovery_feedback":             "retention sweep: keeps the newest feedback per target",
 	"DELETE clip_tags":                      "rebuild: re-deriving the ancestor tags drops every non-leaf row",
 	"SELECT library_items":                  "orphan sweep: items nothing references",
