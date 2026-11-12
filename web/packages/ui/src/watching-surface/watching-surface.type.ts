@@ -2,7 +2,13 @@ import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 
 import type { ProgrammeIdentityData } from "../identity";
-import type { PlaybarSegment, PlaybarWindow, PlayerBandData, PlayerOption } from "./player-chrome";
+import type {
+  PlaybarSegment,
+  PlaybarWindow,
+  PlayerBandData,
+  PlayerOption,
+  PlayerSurfChannel,
+} from "./player-chrome";
 
 interface ChannelNumberEntry {
   channelName?: string;
@@ -95,6 +101,11 @@ interface WatchingSurfaceProps {
   snapshot: PlayerSnapshot;
   /** Subtitles: the Subtitles key, its menu, and the line; omitted, the key is not drawn. */
   subtitles?: WatchingSubtitles;
+  /**
+   * The channel cards a flip shows in the band's place (§9.2), one per channel in the catalog, from
+   * `surfCardsFromGuide`. Omitted, flipping keeps the band.
+   */
+  surfCards?: readonly PlayerSurfChannel[];
 }
 
 export type {

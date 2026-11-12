@@ -1,6 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelNowNext } from "@loomarr/api/models/channelNowNext";
-import type { LivePlaybackState, PlayerFailureCause, TuneDirection } from "@loomarr/player";
+import type { LivePlaybackState, PlayerFailureCause, PlayerSnapshot, TuneDirection } from "@loomarr/player";
 import type { LiveLadder, LiveQuality } from "@loomarr/player/browser";
 
 /**
@@ -32,6 +32,10 @@ interface WatchPlayer {
   /** Binds the player to the surface's <video>. Pass to the video surface's `attach`. */
   attach: (video: HTMLVideoElement) => () => void;
   canSurf: boolean;
+  /** The channels Channel up and down step through, in that order. */
+  catalog: PlayerSnapshot["catalog"];
+  /** Changes with every Channel up or down (the channel the step tuned); undefined after any other tune. */
+  flipKey?: string;
   /** The channel being watched or tuned, from the lineup; undefined until the player has one. */
   channel?: ChannelDTO;
   /** What is airing on `channel` now. */

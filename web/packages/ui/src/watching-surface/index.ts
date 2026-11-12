@@ -1,4 +1,6 @@
 export * from "./player-chrome";
+export type { SurfCatalogChannel } from "./surf-cards";
+export { SURF_LINGER_MS, surfCardsFromGuide, useSurfCards } from "./surf-cards";
 export type { WatchFrameProps } from "./watch-frame";
 export { WatchFrame } from "./watch-frame";
 export type { WatchingPanelData, WatchingPanelDataArgs } from "./watching-panel";

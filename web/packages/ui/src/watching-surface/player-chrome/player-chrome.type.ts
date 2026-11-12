@@ -97,6 +97,27 @@ interface PlayerBandData {
   station?: string;
 }
 
+/** One channel on the row of cards that stands in for the band while flipping (§9.2). */
+interface PlayerSurfChannel {
+  id: string;
+  number: string;
+  name: string;
+  /** The channel's era decade: it colours the card's number block, as it does the band's. */
+  decade?: number;
+  /** What is on now; omitted when nothing is. */
+  nowPlaying?: string;
+  /** The programme's picture; without one the card's picture is a flat stand-in. */
+  artUri?: string;
+}
+
+/** Flipping channels (§9.2): the cards around the channel just tuned, which is lit. */
+interface PlayerSurf {
+  /** Every channel a flip steps through, in number order. */
+  channels: readonly PlayerSurfChannel[];
+  /** The channel the last flip tuned: its card is lit and reads "Watching now". */
+  tunedId: string;
+}
+
 /** The Info sheet's programme (§9, mock "info"): the block at the playhead and what follows it. */
 interface PlayerInfoData {
   /** The band's programme line. */
@@ -157,7 +178,13 @@ interface PlayerChromeProps {
    * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
    * the channel they reach and, on a remote, the auto-tune countdown.
    */
-  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string; quiet?: boolean };
+  /**
+   * Flipping channels (§9.2, variant J): the row of channel cards takes the band's place and the
+   * utilities step away, with the controls up. Every flip tunes at once (§9.4); the app sets this
+   * from a flip until a beat after the last one, and omits it otherwise.
+   */
+  surf?: PlayerSurf;
   /**
    * The open menu (§9.5, variant J): on desktop and television, what a key opens sits in the control
    * cluster, right over the keys, with the picture whole. Omitted when none is open.
@@ -297,5 +324,7 @@ export type {
   PlayerLiveState,
   PlayerSchedule,
   PlayerSheetProps,
+  PlayerSurf,
+  PlayerSurfChannel,
   PlayerUtilitiesProps,
 };

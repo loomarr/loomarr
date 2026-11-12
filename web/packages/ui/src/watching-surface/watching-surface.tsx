@@ -13,8 +13,10 @@ import {
   PlayerMenu,
   PlayerMore,
   PlayerOptions,
+  type PlayerSurfChannel,
 } from "./player-chrome";
 import { PlayerReadout } from "./player-chrome/player-readout";
+import { useSurfCards } from "./surf-cards";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
 
 // Watching on a television (frontend-design §9.7): the picture, with the J chrome drawn over it while
@@ -23,6 +25,7 @@ import type { WatchingSurfaceProps } from "./watching-surface.type";
 // OK there opens the Guide, as OK does on the bare picture.
 
 const LIVE: PlayerLiveState = { lagSeconds: 0, mode: "live" };
+const NO_CARDS: readonly PlayerSurfChannel[] = [];
 // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540.
 const EDGE = { bottom: 28, side: 48, top: 28 } as const;
 
@@ -113,12 +116,19 @@ const WatchingSurface = ({
   player,
   snapshot,
   subtitles,
+  surfCards = NO_CARDS,
 }: WatchingSurfaceProps) => {
   const cover = loading ? undefined : coverOf(snapshot, loadError);
   const tuning = !loading && snapshot.status === "tuning";
   const switching = tuning && !snapshot.reconnecting && SWITCH_REASONS.has(snapshot.tuneReason);
-  // The controls are up for activity and through a tune; a cover stands in for them.
-  const shown = !loading && !cover && Boolean(chrome) && (controlsVisible || tuning);
+  // Flipping (§9.2): each Up or Down tunes at once, and the cards ride along in the band's place.
+  const surf = useSurfCards(
+    surfCards,
+    snapshot.channel?.id,
+    snapshot.tuneReason === "step" ? snapshot.channel?.id : undefined,
+  );
+  // The controls are up for activity, through a tune and while flipping; a cover stands in for them.
+  const shown = !loading && !cover && Boolean(chrome) && (controlsVisible || tuning || Boolean(surf));
   const typing = Boolean(numberEntry?.digits);
   const countdown = useAutoTuneCountdownLabel(typing ? numberEntry?.expiresAtMs : undefined);
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
@@ -273,6 +283,7 @@ const WatchingSurface = ({
                 ) : undefined
               }
               onGoLive={onGoLive}
+              {...(surf ? { surf } : {})}
               schedule={
                 strip
                   ? {
@@ -332,6 +343,15 @@ const WatchingSurface = ({
               density="tv"
               digits={numberEntry.digits}
               name={numberEntry.channelName}
+              top={EDGE.top}
+            />
+          ) : surf && shown && snapshot.channel ? (
+            // While flipping the band is down, so the readout names the channel (§9.2).
+            <PlayerReadout
+              density="tv"
+              digits={String(snapshot.channel.number)}
+              name={snapshot.channel.name}
+              quiet
               top={EDGE.top}
             />
           ) : null}

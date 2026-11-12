@@ -5,6 +5,7 @@ import {
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
+import { layoutGuide } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -44,6 +45,7 @@ const diagnosticsRecord = vi.hoisted(() => vi.fn());
 const watchPlayer = (overrides: Partial<WatchPlayer> = {}): WatchPlayer => ({
   attach: hls.attach,
   canSurf: true,
+  catalog: [],
   ladder: { rungs: [] },
   liveTransport: hls.liveTransport,
   playbackSessionId: "playback_1",
@@ -457,6 +459,74 @@ describe("ChannelWatch — full-bleed route", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Channel up" }));
     await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
+
+  it("puts the channel cards in the band's place while Channel up and down flip, the readout naming the channel", async () => {
+    stubTracks();
+    const catalog = [
+      { id: "ch-1", inAppPlayable: true, name: "Late Night Noir", number: 42 },
+      { id: "ch-9", inAppPlayable: true, name: "Movie Matinee", number: 9 },
+    ];
+    const nowMs = Date.now();
+    const hour = 3_600_000;
+    const guide = {
+      layout: layoutGuide(
+        {
+          channels: [
+            {
+              airings: [
+                {
+                  kind: "program" as const,
+                  scheduleBlockId: "b",
+                  startMs: nowMs - hour,
+                  stopMs: nowMs + hour,
+                  title: "A heist film",
+                },
+              ],
+              channelId: "ch-9",
+              name: "Movie Matinee",
+              number: 9,
+              pendingCount: 0,
+              status: "live" as const,
+            },
+          ],
+          fromMs: nowMs - hour,
+          timezone: "UTC",
+          toMs: nowMs + hour,
+        },
+        nowMs,
+      ),
+      nowMs,
+    };
+    const watch = (flipKey?: string) => (
+      <ChannelWatch
+        channel={live}
+        isAdmin={false}
+        onLeave={vi.fn()}
+        player={{ catalog, ...(flipKey ? { flipKey } : {}) }}
+        channels={{
+          drawer: { channels: [], favourites: [], recent: [], nowPercent: 0, onFavourite: vi.fn() },
+          guide,
+          onTuneSettled: vi.fn(),
+        }}
+      />
+    );
+    // Opened on a channel: no flip yet, so the band.
+    const view = render(watch(), { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "Channel up" });
+    expect(screen.queryByRole("list", { name: "Channels" })).not.toBeInTheDocument();
+
+    // A flip tuned this channel: the cards come up, each saying what is on, and the readout names it.
+    view.rerender(watch("ch-1"));
+    const cards = await screen.findByRole("list", { name: "Channels" });
+    expect(within(cards).getByText("Watching now")).toBeInTheDocument();
+    expect(within(cards).getByText("A heist film")).toBeInTheDocument();
+    // Drawn, not announced: the tuner's own status announces the tune, and a second would repeat it.
+    const quiet = Array.from(document.querySelectorAll('[aria-hidden="true"]')).map((el) => el.textContent);
+    expect(quiet).toContain("42Late Night Noir");
+    expect(screen.queryAllByRole("status").map((el) => el.textContent)).not.toContain("42Late Night Noir");
+    // Leave steps away while flipping.
+    expect(screen.queryByRole("button", { name: "Leave" })).not.toBeInTheDocument();
   });
 
   it("has no Last key until there is a channel to return to, then tunes it from the key and from L", async () => {

@@ -40,7 +40,9 @@ import {
   RequestsJourney,
   ScreenHeader,
   StatePanel,
+  surfCardsFromGuide,
   useClientDestination,
+  useSurfCards,
   watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import Constants from "expo-constants";
@@ -164,6 +166,16 @@ const WatchingScreen = ({
   const [touches, setTouches] = useState(0);
   const touched = () => setTouches((n) => n + 1);
   const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs, snapshot });
+  // Flipping (§9.2): each Channel key tunes at once, and the cards ride along in the band's place.
+  const surfCards = useMemo(
+    () => surfCardsFromGuide(snapshot.catalog, guideSnapshot.layout, nowMs),
+    [snapshot.catalog, guideSnapshot.layout, nowMs],
+  );
+  const surf = useSurfCards(
+    surfCards,
+    snapshot.channel?.id,
+    snapshot.tuneReason === "step" ? snapshot.channel?.id : undefined,
+  );
   const formatTime = (ms: number) => formatGuideTime(ms, guideSnapshot.layout?.timezone);
   const live = snapshot.livePlayback ?? LIVE;
   const playing = snapshot.status === "playing";
@@ -332,6 +344,17 @@ const WatchingScreen = ({
             live={live}
             onGoLive={() => void controller.goLive()}
             onLeave={onLeave}
+            {...(surf && snapshot.channel
+              ? {
+                  // While flipping the band is down, so the readout names the channel (§9.2).
+                  readout: {
+                    digits: String(snapshot.channel.number),
+                    name: snapshot.channel.name,
+                    quiet: true,
+                  },
+                  surf,
+                }
+              : {})}
             sheet={sheet ? sheetFor(sheet) : undefined}
             utilities={{
               audioOpen: sheet === "audio",

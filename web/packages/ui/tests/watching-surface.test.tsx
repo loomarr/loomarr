@@ -128,6 +128,38 @@ describe("WatchingSurface", () => {
       expect(button(host, name), name).toBeUndefined();
   });
 
+  it("puts the channel cards in the band's place when Up or Down flips, then brings the band back", () => {
+    vi.useFakeTimers();
+    const surfCards = [
+      { id: "six", name: "Nature", nowPlaying: "A river film", number: "6" },
+      { id: "seven", name: "Science Fiction", nowPlaying: "The Current Frontier", number: "7" },
+    ];
+    // The surface mounts on a channel a flip already tuned: that is not a flip to show.
+    const { host, render } = mount(() => surface({ surfCards }));
+    expect(host.querySelector('[aria-label="Channels"]')).toBeNull();
+
+    // Down (a handled key, so the controls are up) tunes six at once; the cards ride along, six lit,
+    // and the readout names it.
+    render(() => surface({ snapshot: { ...playing, channel: six }, surfCards }));
+    expect(host.querySelector('[data-testid="channel-card-lit"]')?.textContent).toBe("6NatureWatching now");
+    // Drawn, not announced: the tune is announced already, and a second status would say it twice.
+    const quiet = Array.from(host.querySelectorAll('[aria-hidden="true"]')).map((el) => el.textContent);
+    expect(quiet).toContain("6Nature");
+    expect(host.querySelector('[role="status"]')?.textContent).not.toBe("6Nature");
+    expect(host.querySelector('[data-testid="band-channel-block"]')).toBeNull();
+
+    act(() => vi.advanceTimersByTime(1_200));
+    expect(host.querySelector('[aria-label="Channels"]')).toBeNull();
+    expect(host.querySelector('[data-testid="band-channel-block"]')).not.toBeNull();
+  });
+
+  it("keeps the band through a tune that is not a flip", () => {
+    const surfCards = [{ id: "six", name: "Nature", number: "6" }];
+    const { host, render } = mount(() => surface({ surfCards }));
+    render(() => surface({ snapshot: { ...playing, channel: six, tuneReason: "channel" }, surfCards }));
+    expect(host.querySelector('[aria-label="Channels"]')).toBeNull();
+  });
+
   it("tunes the last channel from its key", () => {
     const onTuneChannel = vi.fn();
     const { host } = mount(() => surface({ onTuneChannel }));
