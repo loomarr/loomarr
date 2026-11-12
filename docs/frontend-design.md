@@ -617,7 +617,8 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
   the card being aimed at is at full strength and the rest sit back. Every flip tunes at once (§9.4),
   so the card lit is the channel now playing, and it reads "Watching now". The cards come up with the
   first flip and go 1.2 s after the last; the readout names the channel meanwhile, and the utilities
-  and Leave step away. Five cards on desktop and television, three on a phone.
+  and Leave step away. On a television the keys step away as well, since the remote is what flips, and
+  the cards have the whole width. Five cards on desktop and television, three on a phone.
 - **Station ID.** After a settled tune with the controls hidden, the band is replaced by the ident card
   on the programme's backdrop, heavily dimmed, and clears after five seconds.
 

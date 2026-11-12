@@ -110,6 +110,21 @@ describe("the channel cards while flipping (§9.2)", () => {
     expect(labelled(host, "Leave")).toBeUndefined();
   });
 
+  it("have a television's whole width: its keys step away too, since the remote is what flips", () => {
+    const { host } = mount(
+      chrome({
+        density: "tv",
+        keys: { density: "tv", onChannelUp: vi.fn(), pointer: false },
+        layout: "tv",
+        surf: { channels: lineup, tunedId: "c9" },
+        utilities: { density: "tv", onAudio: vi.fn(), pointer: false },
+      }),
+    );
+    expect(host.querySelectorAll('[role="listitem"]')).toHaveLength(5);
+    expect(host.querySelector('[data-testid="player-cluster"]')).toBeNull();
+    expect(labelled(host, "Audio")).toBeUndefined();
+  });
+
   it("show three on a phone held upright, with the readout in the toolbar's place", () => {
     const { host } = mount(
       chrome({

@@ -61,7 +61,8 @@ const ChromeBody = memo(
     const touch = density === "touch";
     const pointer = keys.pointer;
     // Flipping channels (§9.2): the cards take the band's place with the keys up beside them, and the
-    // utilities and Leave step away until the flipping stops.
+    // utilities and Leave step away until the flipping stops. A television's keys step away too: the
+    // remote is what flips, so the cards have the whole width (J's `tv--surfing` tile).
     const surfing = surf !== undefined && !sheet;
     // The station-ID card stands in for hidden controls: the band alone, fuller.
     const card = ident && !visible && !sheet && !surfing;
@@ -200,7 +201,7 @@ const ChromeBody = memo(
                 />
               )}
             </View>
-            {card ? null : (
+            {card || (tv && surfing) ? null : (
               // The control cluster: everything you can press, in one place. The utilities are a smaller
               // row over the main keys, sharing their right edge (§9.3). A television has none: its
               // Subtitles and Audio are main keys, and the remote has the rest. What a key opens is a
