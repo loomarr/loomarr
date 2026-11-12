@@ -303,7 +303,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
-		facts.Name = fallbackName(file.Rel)
+		facts.Name = fallbackName(file.Rel, id.kind)
 	}
 	coverage["sources"] = inventory.CoveragePresent
 	snapshot.Kind = kindOf(id.kind)

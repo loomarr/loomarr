@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -111,7 +112,8 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    "S01E01-03", "S01E01+E02", "S01E01-S01E02" and "1x01-1x02" hold episodes through the last.
 //	29: a file with no episode mark in a show's season folder ("Specials") is one of its episodes.
 //	30: a release folder names its show by the words before its season ("Kettle.Bay.S02.1080p").
-const writeVersion = 30
+//	31: a movie whose file name has no year is named by its folder's, when that has one.
+const writeVersion = 31
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -478,11 +480,24 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 	}
 }
 
-// fallbackName is a title from a file name when no source names the item.
-func fallbackName(rel string) string {
-	name := rel[strings.LastIndex(rel, "/")+1:]
+// fallbackName is a title from a file name when no source names the item. A movie whose file name
+// has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
+// folder: a release or rip names its folder and leaves the file a code.
+func fallbackName(rel string, kind mp.Kind) string {
+	clean := func(name string) string {
+		return strings.TrimSpace(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), ""))
+	}
+	name := path.Base(rel)
 	if dot := strings.LastIndex(name, "."); dot > 0 {
 		name = name[:dot]
 	}
-	return strings.TrimSpace(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), ""))
+	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
+		folder := clean(path.Base(dir))
+		if _, fileYear := searchQuery(name, 0); fileYear == 0 {
+			if title, year := searchQuery(folder, 0); year != 0 && title != "" {
+				return folder
+			}
+		}
+	}
+	return clean(name)
 }
