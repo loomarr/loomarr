@@ -90,7 +90,7 @@ type meOutput struct {
 
 func (s *Handlers) handleLogin(ctx context.Context, in *loginInput) (*meOutput, error) {
 	r := httpcore.RequestFrom(ctx)
-	rateKey := s.origin.ClientIP(r) + "|" + in.Body.Username
+	rateKey := auth.LoginRateKey(s.origin.ClientIP(r), in.Body.Username)
 	token, expires, u, err := s.login.Login(ctx, in.Body.Username, in.Body.Password, rateKey)
 	if err != nil {
 		switch {

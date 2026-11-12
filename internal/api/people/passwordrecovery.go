@@ -49,7 +49,7 @@ func (s *Handlers) requestPasswordRecovery(
 	ctx context.Context,
 	in *requestPasswordRecoveryInput,
 ) (*requestPasswordRecoveryOutput, error) {
-	rateKey := s.origin.ClientIP(httpcore.RequestFrom(ctx)) + "|" + strings.ToLower(strings.TrimSpace(in.Body.Username))
+	rateKey := auth.LoginRateKey(s.origin.ClientIP(httpcore.RequestFrom(ctx)), strings.ToLower(strings.TrimSpace(in.Body.Username)))
 	if err := s.passwordRecovery.Request(ctx, in.Body.Username, rateKey); err != nil {
 		if errors.Is(err, auth.ErrRateLimited) {
 			return nil, httpcore.TooManyRequests("Too many requests", "Wait a moment before requesting another password reset.")
