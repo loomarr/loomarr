@@ -1,10 +1,15 @@
+import { spaceSteps } from "@loomarr/design-system";
 import { webMotion, webRadius, webRowHeight, webSpace } from "@loomarr/design-system/web-theme";
 
 // Spacing, radius and motion — the geometry half of the system (§2.3, §2.4, §5.1a).
 //
 // Read from the generated tokens like every other Design page. Space is a 4px grid: the values
 // are not arbitrary, they are multiples, and seeing them stacked is what makes an off-grid
-// `gap-[7px]` obviously wrong rather than merely unusual.
+// `gap-[7px]` obviously wrong rather than merely unusual. The half steps the app already uses sit
+// in the same list at their own size, and the copy names them as the recorded exceptions they are.
+
+const steps = Object.entries(spaceSteps).sort(([, a], [, b]) => a - b);
+const halfSteps = Object.keys(spaceSteps).filter((step) => !(step in webSpace));
 
 const Spacing = () => (
   <div className="flex flex-col gap-8 p-6">
@@ -12,14 +17,16 @@ const Spacing = () => (
       <h1 className="text-xl font-semibold">Spacing, radius & motion</h1>
       <p className="text-muted-foreground max-w-2xl text-sm">
         A 4px grid. Every step is a multiple of four, which is what makes the interface feel aligned without
-        anyone measuring — and what makes an off-grid value stand out.
+        anyone measuring — and what makes an off-grid value stand out. The half steps ({halfSteps.join(", ")})
+        are the exception: tight spacing inside a control or a chip, kept at its own size so a layout that
+        uses one does not move when it adopts the scale.
       </p>
     </header>
 
     <section className="flex flex-col gap-3">
       <h2 className="text-base font-semibold">Space</h2>
       <div className="flex flex-col gap-2">
-        {Object.entries(webSpace).map(([step, px]) => (
+        {steps.map(([step, px]) => (
           <div key={step} className="flex items-center gap-4">
             <span className="text-2xs text-static-400 w-8 shrink-0 font-mono">{step}</span>
             <span className="text-2xs text-static-400 w-12 shrink-0 font-mono tabular-nums">{`${px}px`}</span>

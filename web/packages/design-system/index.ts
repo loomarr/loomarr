@@ -186,6 +186,7 @@ export {
   semanticSpace,
   semanticTargets,
   semanticThemes,
+  spaceSteps,
   typography,
 } from "./src/tokens";
 export type { TooltipProps } from "./src/tooltip";

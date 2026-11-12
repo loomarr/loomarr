@@ -5,7 +5,7 @@
 // (scripts/generate-web-theme.ts, `make fe-tokens`) writes it to generated/theme.css and CI fails on
 // drift.
 
-import { brandChroma, semanticThemes, typography } from "../tokens";
+import { brandChroma, semanticThemes, spaceGrid, typography } from "../tokens";
 
 const dark = semanticThemes.dark;
 
@@ -77,7 +77,9 @@ const webType = {
 } as const;
 
 // --- Space (4px grid), radius, motion (§2.3, §2.4) ---
-const webSpace = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 } as const;
+// Only the grid: a half step has no `--spacing-N` name (a dot is not valid in one), and the app's
+// Tailwind already sizes its half-step utilities from the base unit.
+const webSpace = spaceGrid;
 const webRadius = { sm: 4, md: 8, lg: 12 } as const;
 const webRowHeight = { compact: 40 } as const; // tables (§2.3)
 const webMotion = {

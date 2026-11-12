@@ -206,6 +206,13 @@ const semanticSpace = {
   inline: 8,
 } as const;
 
+// The spacing scale (frontend-design §2.3), keyed as Tailwind keys its steps so a `gap-4` moves onto
+// a Stack as `gap="4"` at the same size. The grid is the 4px steps the web theme emits as
+// `--spacing-N`. The half steps are values the app already uses off the grid; they are recorded at
+// their own size rather than rounded onto it, so moving a layout onto them changes no pixel.
+const spaceGrid = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 } as const;
+const spaceSteps = { ...spaceGrid, "0.5": 2, "1.5": 6, "1.75": 7, "2.5": 10 } as const;
+
 const semanticRadius = {
   control: 10,
   card: 16,
@@ -467,5 +474,7 @@ export {
   semanticSpace,
   semanticTargets,
   semanticThemes,
+  spaceGrid,
+  spaceSteps,
   typography,
 };
