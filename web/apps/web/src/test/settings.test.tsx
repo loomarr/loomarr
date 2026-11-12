@@ -729,7 +729,8 @@ describe("Settings honesty", () => {
     // there is nothing for Discard to clear and the check button is not a save.
     expect(await screen.findByText(/Add your OpenRouter key above/i)).toBeInTheDocument();
     expect(screen.getByLabelText("AI service address")).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Check AI setup" })).toBeInTheDocument();
+    // The check button waits on the setup verdict, which the route starts but does not await.
+    expect(await screen.findByRole("button", { name: "Check AI setup" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /unsaved changes/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Hosted lineup model")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
