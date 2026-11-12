@@ -770,12 +770,23 @@ func extraName(lowerName string) bool {
 			return true
 		}
 	}
+	// Spaced, it follows a release's own words: "Movie (2001) sample", "Kettle Bay S01E02 - sample",
+	// "Movie 1080p sample"; "The Last Sample" and "Free Sample" are titles.
+	if before, ok := strings.CutSuffix(base, " sample"); ok {
+		fields := strings.Fields(strings.TrimRight(before, " -"))
+		if len(fields) == 0 {
+			return false
+		}
+		last := fields[len(fields)-1]
+		return strings.HasSuffix(last, ")") || strings.HasSuffix(last, "]") || releaseToken(last) ||
+			episodeMark.MatchString(last) || yearToken.MatchString(last)
+	}
 	return false
 }
 
-// sampleSuffixes mark a release's sample by its file name: "Movie (2001)-sample.mkv",
+// sampleSuffixes mark a release's sample by its file name, joined to it: "Movie (2001)-sample.mkv",
 // "Kettle.Bay.S01E02.sample.mkv".
-var sampleSuffixes = []string{"-sample", ".sample", "_sample", "- sample", " sample"}
+var sampleSuffixes = []string{"-sample", ".sample", "_sample"}
 
 // extraKinds are the words an extra is named by, as Jellyfin, Plex and households name them; a
 // longer one is tried before a word it starts with.
@@ -796,14 +807,19 @@ func extraKindAt(words []string) int {
 	for i, w := range words {
 		bare[i] = strings.NewReplacer("'", "", "’", "").Replace(strings.TrimRight(w, "0123456789"))
 	}
-	for i := range bare {
+	// The kind follows the title, which may hold a kind's word of its own: "Ferry Extra (1982)
+	// 1080p-trailer" is a trailer.
+	last := -1
+	for i := 0; i < len(bare); i++ {
 		for _, kind := range extraKinds {
 			if len(bare)-i >= len(kind) && slices.Equal(bare[i:i+len(kind)], kind) {
-				return i
+				last = i
+				i += len(kind) - 1
+				break
 			}
 		}
 	}
-	return -1
+	return last
 }
 
 // episodeExtra matches Jellyfin's mark for an episode's own extra, joined to its name with a dash:
@@ -812,9 +828,10 @@ func extraKindAt(words []string) int {
 var episodeExtra = regexp.MustCompile(`(?i)-(?:trailer|featurette|behindthescenes|deleted|deletedscene|interview|scene|short|clip|extra)\d*$`)
 
 // titleWordExtra matches an episode's title that ends in an everyday word joined on with a dash,
-// as a hyphenated title does: "Behind-the-Scene", "Cut-Short". A mark joined to the episode's
-// number ("S01E02-short") is Jellyfin's.
-var titleWordExtra = regexp.MustCompile(`(?i)[a-z]-(?:short|scene)$`)
+// as a hyphenated title does: "Behind-the-Scene", "Cut-Short", "Paper-Clip", "Re-Interview". A
+// mark joined to the episode's number ("S01E02-short") is Jellyfin's, as is one it writes in lower
+// case after a title ("Tidewater-clip").
+var titleWordExtra = regexp.MustCompile(`[a-zA-Z]-(?:(?i:short|scene)|[A-Z][a-z]+)$`)
 
 // extraWords are a name's lower-cased words, split at its separators and brackets; an apostrophe
 // stays in its word ("barney's"), as the title it is matched against keeps it.
@@ -833,14 +850,17 @@ func extraWords(name string) []string {
 // kind ("Ashgrove Short (2017)"), and an episode, whose mark says what it is ("S02E08 - Trailer").
 // folder is the folder's name, "" for a root's top.
 func siblingExtras(folder string, names []string) map[string]bool {
+	// A title is keyed by its letters alone: "E.T.A. the Ferry" and its extra's words, "e t a the
+	// ferry", are one.
+	compact := func(title string) string { return strings.ReplaceAll(normName(title), " ", "") }
 	key := func(words []string) string {
 		title, _, _ := searchQuery(strings.Join(words, " "), 0)
-		return normName(title)
+		return compact(title)
 	}
 	titles := map[string]bool{}
 	titled := false
 	if title, year, _ := searchQuery(folder, 0); folder != "" && title != "" && year != 0 {
-		titles[normName(title)], titled = true, true
+		titles[compact(title)], titled = true, true
 	}
 	type marked struct {
 		name  string
@@ -856,17 +876,14 @@ func siblingExtras(folder string, names []string) map[string]bool {
 			out[name] = true
 			continue
 		}
-		if at < 0 || episodeMark.MatchString(name) {
+		// A kind's word before the title's year is the title's: "Ferry Extra (1982) 1080p".
+		if at < 0 || episodeMark.MatchString(name) || slices.ContainsFunc(words[at:], releaseYear) {
 			titles[key(words)] = true
 			continue
 		}
 		kinds = append(kinds, marked{name, words, at})
 	}
 	for _, k := range kinds {
-		after := k.words[k.at:]
-		if slices.ContainsFunc(after, releaseYear) {
-			continue
-		}
 		if k.at == 0 {
 			// Its kind alone, and what a household adds: "Trailer 2", "Featurette Costumes", in a
 			// title's own folder: one named with its year, or holding that one title. In a catch-all

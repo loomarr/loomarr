@@ -146,7 +146,13 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    alone in a show's folder are its; "Complete Series" folders, "第1期", "시즌 1" and "Series 7
 //	    Club" are read as they mean; ".45 …" and "@Home …" are titles, not hidden folders.
 //	43: an extra of a title with an apostrophe in its name ("…'s … (2010)-trailer") is one.
-const writeVersion = 43
+//	44: a show's episodes in its folder's unnamed or misspelt folders, or a copy of it ("Show
+//	    Complete/", "Show (Season 2)/"), are the show's; loose names written in lower case are
+//	    one show with their capitalised spelling; fansub numbers written " 19", " - E20", " -
+//	    Episode 17", " - 05.5" and " - 01-03" are episodes, as are a show's numbers alone in a
+//	    shows' catch-all; a film in its own folder in a films' catch-all is a film; "The Sample",
+//	    "Paper-Clip" and a title holding "Extra" are titles; genre folders are catch-alls.
+const writeVersion = 44
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

@@ -557,6 +557,84 @@ var namingMatrix = []namingRow{
 	{id: "W60", files: map[string]string{"TV/Guri/시즌 1/3화.mkv": "episode Guri S1E3"}},
 	{id: "W61", files: map[string]string{"TV/Med/Сезон 1/Med - 3 серия.mkv": "episode Med S1E3"}},
 	{id: "W62", files: map[string]string{"TV/Series 7 Club/Season 1/Series 7 Club S01E01.mkv": "episode Series 7 Club S1E1"}},
+	// A show's folder holding its episodes in folders it does not name a season by: one show.
+	{id: "W63", files: map[string]string{
+		"TV/Brass Horn/Season 1/Brass Horn S01E01.mkv":                       "episode Brass Horn S1E1",
+		"TV/Brass Horn/Seaosn 2/Brass Horn S02E01.mkv":                       "episode Brass Horn S2E1",
+		"TV/Brass Horn/new/Brass Horn S02E02.mkv":                            "episode Brass Horn S2E2",
+		"TV/Brass Horn/Vol 1/Brass Horn S02E03.mkv":                          "episode Brass Horn S2E3",
+		"TV/Brass Horn/BH S02/Brass Horn S02E04.mkv":                         "episode Brass Horn S2E4",
+		"TV/Brass Horn/Brass.Horn.S03.WEB-DL/Season 3/Brass.Horn.S03E01.mkv": "episode Brass Horn S3E1",
+		"TV/Brass Horn/Brass Horn Complete/Season 4/Brass Horn S04E01.mkv":   "episode Brass Horn S4E1",
+		"TV/Brass Horn/Brass Horn (Season 5)/Brass Horn S05E01.mkv":          "episode Brass Horn S5E1",
+		"TV/Brass Horn/Brass Horn DVD 1/Brass Horn S06E01.mkv":               "episode Brass Horn S6E1",
+	}},
+	{id: "W64", files: map[string]string{
+		"Downloads/Brass.Reed.S01E01.720p.mkv": "episode Brass Reed S1E1",
+		"Downloads/brass.reed.s01e02.720p.mkv": "episode Brass Reed S1E2",
+	}},
+	// Fansub releases, however their number is written; a film with a number in its title stays one.
+	{id: "W66", files: map[string]string{
+		"[Kumo] Hoshi Tanken 19 [1080p].mkv":             "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - Episode 17 [1080p].mkv":   "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - E20 [1080p].mkv":          "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - 05.5 [1080p].mkv":         "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - 01-03 [1080p].mkv":        "episode Hoshi Tanken S?E?",
+		"Hoshi Tanken - 10 [1080p].mkv":                  "episode Hoshi Tanken S?E?",
+		"[Kumo]_hoshi_tanken_-_04_[720p].mkv":            "episode Hoshi Tanken S?E?",
+		"Movies/[TrackerNet] Eleven Hands 11 (2001).mkv": "movie Eleven Hands 11 2001",
+		"Movies/Eleven Hands 11 [1080p].mkv":             "movie Eleven Hands 11 -",
+	}},
+	// A show's folder in a shows' catch-all numbers its episodes alone; a film's folder holds sequels.
+	{id: "W67", files: map[string]string{
+		"TV/Ivory Fen/Ivory Fen 1.mkv":           "episode Ivory Fen S?E?",
+		"TV/Ivory Fen/Ivory Fen 2.mkv":           "episode Ivory Fen S?E?",
+		"Anime/Hoshi Kettle/Hoshi Kettle 12.mkv": "episode Hoshi Kettle S?E?",
+		"TV/Ivory Bay/01.mkv":                    "episode Ivory Bay S?E?",
+		"TV/Ivory Bay/02.mkv":                    "episode Ivory Bay S?E?",
+		"Movies/Marrow Point/Marrow Point 2.mkv": "movie Marrow Point 2 -",
+		"Kids/Spotty Dog - Episode 3.mkv":        "episode Spotty Dog S1E3",
+		"TV/Spotty Cat/Spotty Cat - Ep 04.mkv":   "episode Spotty Cat S1E4",
+	}},
+	// A film in its own folder in a films' catch-all is a film, whatever its title says.
+	{id: "W68", files: map[string]string{
+		"Movies/Season One (2012)/Season One (2012).mkv":   "movie Season One 2012",
+		"Movies/Episode 50 (2011)/Episode 50 (2011).mkv":   "movie Episode 50 2011",
+		"Movies/Hour 2 of 3 (2018)/Hour 2 of 3 (2018).mkv": "movie Hour 2 of 3 2018",
+		"Movies/Grid 4x4/Grid 4x4.mkv":                     "movie Grid 4x4 -",
+		"Movies/Gravel Shore/Gravel Shore - 2.mkv":         "movie Gravel Shore - 2 -",
+	}},
+	// A title ending in a word an extra or a sample is named by is a title.
+	{id: "W69", files: map[string]string{
+		"TV/Cold Coast/Season 1/Cold Coast S01E02 - The Sample.mkv":       "episode Cold Coast S1E2",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E03 - Free Sample.mkv":    "episode Cold Coast S1E3",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E05 - Paper-Clip.mkv":     "episode Cold Coast S1E5",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E06 - Re-Interview.mkv":   "episode Cold Coast S1E6",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E07 - Tidewater-clip.mkv": "skip",
+		"TV/Cold Coast/Season 1/Cold Coast S01E08 sample.mkv":             "skip",
+		"Movies/The Last Sample/The Last Sample.mkv":                      "movie The Last Sample -",
+		"Movies/Free Sample (2014).mkv":                                   "movie Free Sample 2014",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) sample.mkv":         "skip",
+	}},
+	// A show named as a season folder is, in a shows' catch-all.
+	{id: "W70", files: map[string]string{
+		"TV/Series Seven/Series Seven S01E01.mkv":      "episode Series Seven S1E1",
+		"TV/Series Seven/Series Seven S01E02.mkv":      "episode Series Seven S1E2",
+		"TV/Season One/Season 1/Season One S01E01.mkv": "episode Season One S1E1",
+	}},
+	// An extra of a film whose title holds an extra's word, or is written in letters apart.
+	{id: "W72", files: map[string]string{
+		"Movies/Q.T. the Extra-Lunar (1982)/Q.T. the Extra-Lunar (1982) [imdbid-tt0000002] - [Remux-2160p][HEVC].mkv": "movie Q.T. the Extra-Lunar 1982",
+		"Movies/Q.T. the Extra-Lunar (1982)/Q.T. the Extra-Lunar (1982) 1080p DTSHD-MA 8ch-trailer.mp4":               "skip",
+		"Movies/Ferry Extra (2004)/Ferry Extra (2004).mkv":                                                            "movie Ferry Extra 2004",
+		"Movies/Ferry Extra (2004)/Ferry Extra (2004) Official Trailer.mkv":                                           "skip",
+	}},
+	// A franchise's folder holds its shows, each its own.
+	{id: "W65", files: map[string]string{
+		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E01.mkv": "episode Star Ridge Origins S1E1",
+		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E02.mkv": "episode Star Ridge Origins S1E2",
+		"TV/Star Ridge/Star Ridge Beyond/Season 1/Star Ridge Beyond S01E01.mkv":   "episode Star Ridge Beyond S1E1",
+	}},
 	// Episode marks as other apps and languages write them, and one file of several.
 	{id: "W15", files: map[string]string{
 		"TV/Kettle Bay/Kettle Bay 1x2.avi":               "episode Kettle Bay S1E2",
@@ -660,6 +738,16 @@ func outcomesIn(t *testing.T, h *harness, files map[string]string, grounded bool
 		byPath[r.Path] = r
 	}
 	out := map[string]string{}
+	// A show's episodes are one show's: the name it is listed by names one show, and an episode in
+	// a second show of that name reads " (split)".
+	showKeys, showOfRel := map[string]map[string]bool{}, map[string]string{}
+	defer func() {
+		for rel, show := range showOfRel {
+			if len(showKeys[show]) > 1 {
+				out[rel] += " (split)"
+			}
+		}
+	}()
 	for rel := range files {
 		p := filepath.Join(h.root, filepath.FromSlash(rel))
 		r, ok := byPath[p]
@@ -681,12 +769,32 @@ func outcomesIn(t *testing.T, h *harness, files map[string]string, grounded bool
 				continue
 			}
 			out[rel] = describeItem(showOf, it)
+			if show := showNameOf(out[rel]); show != "" {
+				showOfRel[rel] = show
+				if showKeys[show] == nil {
+					showKeys[show] = map[string]bool{}
+				}
+				showKeys[show][it.Series.Authority+" "+it.Series.Key] = true
+			}
 			if grounded {
 				out[rel] += groundedSuffix(showOf, it)
 			}
 		}
 	}
 	return out
+}
+
+// showNameOf is the show an episode's outcome names, "" for any other outcome: "episode Kettle Bay
+// S1E2" names "Kettle Bay".
+func showNameOf(outcome string) string {
+	rest, ok := strings.CutPrefix(outcome, "episode ")
+	if !ok {
+		return ""
+	}
+	if i := strings.LastIndex(rest, " "); i > 0 {
+		return rest[:i]
+	}
+	return rest
 }
 
 // describeItem is a title's outcome, as a naming row reads it.
