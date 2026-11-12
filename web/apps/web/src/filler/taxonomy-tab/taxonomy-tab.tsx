@@ -153,10 +153,12 @@ const TaxonTree = ({
               <Link
                 to="/filler/library"
                 search={{ taxon: taxon.slug }}
-                className="text-signal focus-visible:ring-ring rounded-sm font-mono text-xs underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                className="focus-visible:ring-ring rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
                 title={`Browse clips matching ${taxon.label}, including descendants`}
               >
-                {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
+                <Text as="span" textRole="mono" tone="signal">
+                  {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
+                </Text>
               </Link>
             </div>
           </Stack>
@@ -565,10 +567,12 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             <Link
               to="/filler/library"
               search={{ unclassified: true }}
-              className="text-signal mt-2 inline-flex self-start text-sm underline-offset-2 hover:underline"
+              className="mt-2 inline-flex self-start underline-offset-2 hover:underline"
             >
-              Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
-              {data.unclassifiedClips === 1 ? "clip" : "clips"}
+              <Text as="span" textRole="compact" tone="signal">
+                Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
+                {data.unclassifiedClips === 1 ? "clip" : "clips"}
+              </Text>
             </Link>
           ) : (
             <Text as="p" className="mt-2" textRole="compact" tone="success">
@@ -630,9 +634,11 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                         <Link
                           to="/filler/library"
                           search={{ withoutAxis: axis }}
-                          className="text-signal mt-1 inline-flex text-xs underline-offset-2 hover:underline"
+                          className="mt-1 inline-flex underline-offset-2 hover:underline"
                         >
-                          Browse {coverage.untaggedClips.toLocaleString()} without this signal
+                          <Text as="span" textRole="hint" tone="signal">
+                            Browse {coverage.untaggedClips.toLocaleString()} without this signal
+                          </Text>
                         </Link>
                       ) : (
                         <Text as="p" className="mt-1" textRole="hint" tone="success">

@@ -504,14 +504,10 @@ const SegmentInspector = ({
 
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div className="min-w-0 flex-1">
-          <p
-            className={cn(
-              "font-mono text-xs tabular-nums",
-              valid ? "text-muted-foreground" : "text-onair-300",
-            )}
-            title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
-          >
-            {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+          <p title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}>
+            <Text as="span" className="tabular-nums" textRole="mono" tone={valid ? "secondary" : "danger"}>
+              {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+            </Text>
           </p>
           <Stack align="center" className="mt-2" direction="row" gap="1.5" wrap>
             {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
@@ -557,8 +553,10 @@ const SegmentInspector = ({
       </Stack>
 
       {segment.holdReason ? (
-        <p role="status" className="bg-caution-tint-15 text-caution rounded-sm px-2 py-1.5 text-sm">
-          {`Take a closer look: ${segment.holdReason}.`}
+        <p role="status" className="bg-caution-tint-15 rounded-sm px-2 py-1.5">
+          <Text as="span" textRole="compact" tone="warning">
+            {`Take a closer look: ${segment.holdReason}.`}
+          </Text>
         </p>
       ) : null}
       {segment.unsplittable ? (
@@ -568,9 +566,11 @@ const SegmentInspector = ({
         </Text>
       ) : null}
       {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
-        <p role="status" className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
-          This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer, join
-          it with the next clip, or remove it.
+        <p role="status" className="bg-onair-tint-15 rounded-sm px-2 py-1.5">
+          <Text as="span" textRole="compact" tone="danger">
+            This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer,
+            join it with the next clip, or remove it.
+          </Text>
         </p>
       ) : null}
 
@@ -642,8 +642,10 @@ const SegmentInspector = ({
               </Text>
             ) : null}
             {!segment.language && languageMessage ? (
-              <p className="text-muted-foreground text-sm" title={segment.languageNote}>
-                {languageMessage}
+              <p title={segment.languageNote}>
+                <Text as="span" textRole="compact" tone="secondary">
+                  {languageMessage}
+                </Text>
               </p>
             ) : null}
             {segment.dupOf ? (

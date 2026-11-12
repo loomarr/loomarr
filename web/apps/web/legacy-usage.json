@@ -2,10 +2,10 @@
   "note": "Web legacy-usage ledger (#970 step 5), maintained by web/scripts/check-legacy-usage.mjs. Counts may only fall: `pnpm legacy:update` shrinks them. Never raise one to pass the check.",
   "files": {
     "src/channels/channel-drawer/channel-drawer.tsx": {
-      "tailwindClasses": 151,
+      "tailwindClasses": 127,
       "rawButton": 3,
-      "rawTypeSize": 12,
-      "rawTypeWeight": 7
+      "rawTypeSize": 4,
+      "rawTypeWeight": 2
     },
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
       "tailwindClasses": 16,
@@ -90,9 +90,9 @@
       "tailwindClasses": 22
     },
     "src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
-      "tailwindClasses": 65,
+      "tailwindClasses": 63,
       "rawButton": 1,
-      "rawTypeSize": 3,
+      "rawTypeSize": 2,
       "rawTypeWeight": 1
     },
     "src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
@@ -166,9 +166,9 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "tailwindClasses": 55,
+      "tailwindClasses": 49,
       "rawButton": 2,
-      "rawTypeSize": 4
+      "rawTypeSize": 1
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
       "tailwindClasses": 36,
@@ -204,9 +204,9 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 100,
+      "tailwindClasses": 90,
       "rawButton": 1,
-      "rawTypeSize": 5
+      "rawTypeSize": 1
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 11
@@ -302,15 +302,13 @@
       "rawTypeWeight": 1
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 145,
+      "tailwindClasses": 131,
       "rawButton": 1,
-      "rawTypeSize": 9,
+      "rawTypeSize": 3,
       "rawTypeWeight": 3
     },
     "src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
-      "tailwindClasses": 16,
-      "rawTypeSize": 3,
-      "rawTypeWeight": 4
+      "tailwindClasses": 7
     },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
       "tailwindClasses": 6
@@ -351,9 +349,7 @@
       "rawTypeSize": 9
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 144,
-      "rawTypeSize": 4,
-      "rawTypeWeight": 1
+      "tailwindClasses": 136
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,
@@ -368,8 +364,7 @@
       "tailwindClasses": 36
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 102,
-      "rawTypeSize": 5
+      "tailwindClasses": 94
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 2
@@ -451,9 +446,7 @@
       "tailwindClasses": 36
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 48,
-      "rawTypeSize": 3,
-      "rawTypeWeight": 1
+      "tailwindClasses": 42
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 13
@@ -494,8 +487,7 @@
       "rawTypeSize": 1
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 110,
-      "rawTypeSize": 3
+      "tailwindClasses": 103
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 38,
