@@ -163,26 +163,50 @@ func episodeOrder(rec mp.Record) int {
 // pathMapper translates one authority's paths to local ones by the longest matching path-map row.
 // A path no row covers translates to "".
 func pathMapper(authority string, paths []librarystore.LibraryRootPath) func(string) string {
-	type row struct{ from, to string }
+	type row struct {
+		from, to string
+		windows  bool
+	}
 	var rows []row
 	for _, p := range paths {
 		if p.Authority == authority && p.RootPath != "" {
-			rows = append(rows, row{from: strings.TrimSuffix(path.Clean(filepath.ToSlash(p.AuthorityPath)), "/"), to: p.RootPath})
+			from, windows := arrSlashes(p.AuthorityPath)
+			rows = append(rows, row{from: strings.TrimSuffix(from, "/"), to: p.RootPath, windows: windows})
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return len(rows[i].from) > len(rows[j].from) })
 	return func(arrPath string) string {
-		p := path.Clean(filepath.ToSlash(arrPath))
+		p, windows := arrSlashes(arrPath)
 		for _, r := range rows {
-			if p == r.from {
+			// A Windows path names the same folder in any case: D:\Movies is d:\movies.
+			key, from := p, r.from
+			if windows || r.windows {
+				key, from = strings.ToLower(key), strings.ToLower(from)
+			}
+			if key == from {
 				return r.to
 			}
-			if strings.HasPrefix(p, r.from+"/") {
-				return filepath.Join(r.to, filepath.FromSlash(strings.TrimPrefix(p, r.from+"/")))
+			if strings.HasPrefix(key, from+"/") {
+				return filepath.Join(r.to, filepath.FromSlash(p[len(from)+1:]))
 			}
 		}
 		return ""
 	}
+}
+
+// windowsPath matches a path as an app on Windows writes it: a drive ("D:\", "D:/") or a share
+// ("\\nas\media").
+var windowsPath = regexp.MustCompile(`^(?:[A-Za-z]:[\\/]|\\\\)`)
+
+// arrSlashes is an arr's path with forward slashes, cleaned, and whether it is a Windows path. An
+// arr on Windows writes backslashes, which are a file name's own characters on Linux, so they are
+// turned only in a Windows path.
+func arrSlashes(p string) (string, bool) {
+	windows := windowsPath.MatchString(p)
+	if windows {
+		p = strings.ReplaceAll(p, `\`, "/")
+	}
+	return path.Clean(p), windows
 }
 
 var (
