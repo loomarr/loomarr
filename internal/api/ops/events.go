@@ -202,6 +202,12 @@ type LibraryScanEvent struct {
 // last change is never missed.
 type LibraryTitlesEvent struct{}
 
+// LibraryRootsEvent announces that a scan pass found a media folder's state changed: it stopped
+// opening or opens again, or it emptied or filled (a share unmounted or mounted again). Empty like
+// LibraryTitlesEvent: Settings → Library refetches the folders and the status, which stay the
+// truth. A folder changes state rarely, so it is published as it happens.
+type LibraryRootsEvent struct{}
+
 // adminFrame reports whether a frame's payload is for admins only.
 func adminFrame(payload any) bool {
 	_, ok := payload.(LibraryScanEvent)
@@ -233,6 +239,7 @@ func EventTypeMap() map[string]any {
 		"playout":        PlayoutEvent{},
 		"library_scan":   LibraryScanEvent{},
 		"library_titles": LibraryTitlesEvent{},
+		"library_roots":  LibraryRootsEvent{},
 	}
 }
 

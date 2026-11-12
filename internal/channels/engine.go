@@ -827,13 +827,13 @@ func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy s
 	}
 	hist, err := e.store.LastAiredByChannel(ctx, ch.ID, opened)
 	if err != nil {
-		e.log.Debug("recency: airing history unavailable; placement falls back to positional rotation",
+		e.log.Warn("recency: airing history unavailable; placement falls back to positional rotation",
 			"channel", ch.ID, "err", err)
 		return nil
 	}
 	scheduled, err := e.store.LastScheduledByChannel(ctx, ch.ID, opened)
 	if err != nil {
-		e.log.Debug("recency: scheduled ledger unavailable; using watched airings only", "channel", ch.ID, "err", err)
+		e.log.Warn("recency: scheduled ledger unavailable; using watched airings only", "channel", ch.ID, "err", err)
 	}
 	for _, b := range scheduledPrograms(accepted, acceptedAnchor, opened) {
 		if scheduled == nil {
@@ -890,7 +890,7 @@ func (e *Engine) recordScheduled(ctx context.Context, ch channelstore.Channel, n
 	for _, b := range scheduledPrograms(ch.Desired, ch.PlayoutAnchor, until) {
 		airing := channeldatastore.ScheduledAiring{Key: b.Key, LibraryItemID: b.LibraryItemID, AiredAt: b.Start}
 		if err := e.store.RecordScheduledAirings(ctx, ch.ID, []channeldatastore.ScheduledAiring{airing}, b.Start); err != nil {
-			e.log.Debug("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
+			e.log.Warn("recency: scheduled airing not recorded", "channel", ch.ID, "item", b.LibraryItemID, "err", err)
 			return
 		}
 	}

@@ -617,6 +617,7 @@ describe("wizard", () => {
               path: "/media/movies",
               inUse: false,
               readable: true,
+              empty: false,
               addedByHand: false,
               foundIn: [{ authority: "radarr", path: "/movies" }],
             },

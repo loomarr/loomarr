@@ -212,6 +212,13 @@ tuner-e2e-host: fe-build ## 100-Channel tuner controller matrix in host-installe
 tuner-e2e-quarantine: export TUNER_QUARANTINE = only
 tuner-e2e-quarantine: tuner-e2e-host ## only the tuner tests the flake quarantine holds out (after tuner-quarantine)
 
+# Route timing (#3399): the SPA driven through the main nav in host-installed Chromium, asserting the
+# browser's route marks against warm and cold budgets under a fixed API delay. Runs beside the tuner
+# matrix in ci-tuner.yml; it needs no Docker image and no quarantine.
+.PHONY: route-timing-e2e-host
+route-timing-e2e-host: fe-build ## route timing budgets (warm and cold, main nav) in host-installed Chromium (#3399)
+	cd web/apps/web && node_modules/.bin/playwright test --config=playwright.route-timing.config.ts
+
 .PHONY: e2e-update
 e2e-update: fe-build ensure-playwright-image ## regenerate the committed e2e page snapshots (sanctioned update path)
 	./scripts/run-playwright-container.sh e2e-update

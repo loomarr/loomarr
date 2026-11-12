@@ -93,8 +93,8 @@ test("automatic downloads expose simple defaults with optional per-source contro
   await expect(page.getByText(/^Next automatic check /)).toHaveCount(0);
 
   await page.goto("/filler/settings/downloads");
-  await page.getByRole("combobox", { name: "Look for new clips" }).click();
-  await page.getByRole("option", { name: "Never" }).click();
+  // A native <select>: its options are picked, not clicked (they are never "visible" to click).
+  await page.getByRole("combobox", { name: "Look for new clips" }).selectOption({ label: "Never" });
   await expect(
     page.getByText(
       "Automatic downloads are off for sources using these defaults. No enabled sources are currently downloading automatically.",
@@ -139,8 +139,7 @@ test("automatic download controls stay usable on a narrow, zoomed screen and fro
   const sourceSettings = workspace.getByRole("button", { name: /^Source settings/, expanded: false });
   await sourceSettings.focus();
   await page.keyboard.press("Enter");
-  await expect(
-    workspace.getByRole("combobox", { name: "Automatic downloads for this source" }),
-  ).toBeVisible();
+  // The DS Select is a button that names its value: "Automatic downloads for this source, Use …".
+  await expect(workspace.getByRole("button", { name: /^Automatic downloads for this source/ })).toBeVisible();
   await expect(workspace.getByRole("button", { name: "Save automatic downloads" })).toBeVisible();
 });

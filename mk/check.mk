@@ -139,7 +139,8 @@ go-shard-verify: ## Go test lanes must cover every package within their latency 
 # QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
 # run, every lane reports success, and CI is green over code it never executed. Nothing else in
 # the pipeline would notice. The release verifier pins SHARDS=2 and the workflow's two ordinary
-# identities plus its two certification identities, so execution and coverage authority cannot drift.
+# identities plus one certification identity per manifest lane, so execution and coverage authority
+# cannot drift.
 	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: go-race-weights

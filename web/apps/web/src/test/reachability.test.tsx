@@ -315,6 +315,7 @@ const stubReachable = () => {
           path: "/media/movies",
           inUse: true,
           readable: true,
+          empty: false,
           addedByHand: false,
           checkedAt: "2026-07-25T19:55:00Z",
           foundIn: [{ authority: "radarr", path: "/media/movies" }],
