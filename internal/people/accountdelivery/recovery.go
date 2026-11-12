@@ -16,10 +16,15 @@ import (
 type PasswordRecovery struct {
 	recovery       *auth.PasswordRecoveryService
 	notifications  passwordRecoveryNotifier
-	requestLimiter *auth.RateLimiter
+	requestLimiter auth.Limiter
 	redeemLimiter  *auth.RateLimiter
 	log            *slog.Logger
 }
+
+// newRecoveryRequestLimiter throttles recovery requests per account and per client address: each
+// accepted request can email an account holder, so one address must not reach every account by
+// rotating usernames.
+func newRecoveryRequestLimiter() *auth.SourceLimiter { return auth.NewSourceLimiter(0.05, 3, 0.05, 6) }
 
 type passwordRecoveryNotifier interface {
 	Publish(context.Context, notifications.PublishCommand) (notifications.Intent, bool, error)
@@ -29,7 +34,7 @@ func (c *PasswordRecovery) Request(ctx context.Context, username, rateKey string
 	if c == nil || c.recovery == nil || c.notifications == nil {
 		return fmt.Errorf("password recovery is unavailable")
 	}
-	if c.requestLimiter != nil && !c.requestLimiter.Allow("request|"+rateKey) {
+	if c.requestLimiter != nil && !c.requestLimiter.Allow(rateKey) {
 		return auth.ErrRateLimited
 	}
 	request, err := c.recovery.Request(ctx, username)
