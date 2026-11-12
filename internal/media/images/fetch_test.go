@@ -2,6 +2,7 @@ package images
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -144,6 +145,41 @@ func TestReAdoptingAFetchedURLDoesNotRefetch(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Errorf("origin hits = %d, want 1 — re-adopting re-downloaded bytes already on disk", hits)
+	}
+}
+
+// Lookup finds an adopted URL's image before and after its fetch re-keys it, and reports a URL
+// never adopted as not found, without writing anything.
+func TestLookupFindsAnAdoptedURLWithoutWriting(t *testing.T) {
+	body := pngBytes(t, testImage(400, 600))
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	f, svc, _ := newTestFetcher(t, srv, []string{"127.0.0.1"})
+	ctx := context.Background()
+	src := srv.URL + "/poster.png"
+
+	if _, err := svc.Lookup(ctx, src); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("lookup before adopt = %v, want ErrNotFound", err)
+	}
+	if _, err := svc.Lookup(ctx, src); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a lookup wrote the image: second lookup = %v, want ErrNotFound", err)
+	}
+	adopted, err := svc.Adopt(ctx, src, IngestRequest{Role: RolePoster})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := svc.Lookup(ctx, src); err != nil || pending.Hash != adopted.Hash {
+		t.Fatalf("lookup while pending = %+v, %v; want the adopted row", pending, err)
+	}
+	if _, err := f.FetchPending(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fetched, err := svc.Lookup(ctx, src)
+	if err != nil || fetched.Hash != HashBytes(body) || !fetched.HasBytes() {
+		t.Fatalf("lookup once fetched = %+v, %v; want the content-hashed row with its bytes", fetched, err)
 	}
 }
 
