@@ -369,13 +369,13 @@ const WatchingScreen = ({
           />
         </View>
       ) : catalogState.loading ? (
-        <View style={{ flex: 1, justifyContent: "center" }}>
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: PHONE_GUTTER }}>
           <StatePanel density="touch" kind="loading" title="Loading channels" />
         </View>
       ) : snapshot.catalog.length === 0 ? (
         // Nothing on air to tune (#3836): the Guide's own empty state, with the way back Leave would
         // have been, since Leave lives in the chrome and Watching has no tab bar.
-        <View style={{ flex: 1, justifyContent: "center" }}>
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: PHONE_GUTTER }}>
           <StatePanel
             action={{ label: "Back to the Guide", onPress: onLeave }}
             density="touch"
