@@ -106,11 +106,13 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   width={256}
                   content={
                     <>
-                      <p className="truncate text-sm font-medium">{name}</p>
-                      <p className="text-muted-foreground mt-0.5 font-mono text-xs tabular-nums">
+                      <Text as="p" className="truncate" textRole="cardLabel" tone="primary">
+                        {name}
+                      </Text>
+                      <Text as="p" className="mt-0.5 tabular-nums" textRole="mono" tone="secondary">
                         {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
                         {formatClipDuration(item.durationMs)}
-                      </p>
+                      </Text>
                       {tags.length > 0 || item.language ? (
                         <p className="text-muted-foreground mt-2">
                           {[...tags, item.language ? languageName(item.language) : ""]

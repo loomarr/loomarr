@@ -39,15 +39,19 @@ const matches = (entry: SettingEntry, q: string): boolean => {
 // enum has exactly env/db/default. Rendering a fourth state would mean inventing a value the
 // backend never sends. Those secrets live under Access and devices, where view/copy/
 // regenerate belong.
-const PROVENANCE: Record<string, { label: string; className: string }> = {
+const PROVENANCE: Record<
+  string,
+  { label: string; className: string; tone: "info" | "secondary" | "success" }
+> = {
   [SettingEntryProvenance.env]: {
     label: "SET VIA ENV",
     // The only one that is not merely informational: an env-pinned key cannot be edited in the
     // UI at all (§3), so it reads as a lock rather than a note.
-    className: "bg-tune-tint-15 text-tune",
+    className: "bg-tune-tint-15",
+    tone: "info",
   },
-  [SettingEntryProvenance.db]: { label: "DATABASE", className: "bg-lock-tint-15 text-lock" },
-  [SettingEntryProvenance.default]: { label: "DEFAULT", className: "bg-static-800 text-static-400" },
+  [SettingEntryProvenance.db]: { label: "DATABASE", className: "bg-lock-tint-15", tone: "success" },
+  [SettingEntryProvenance.default]: { label: "DEFAULT", className: "bg-static-800", tone: "secondary" },
 };
 
 const AdvancedSettingsTable = ({
@@ -84,12 +88,12 @@ const AdvancedSettingsTable = ({
 
       <div className="border-border overflow-x-auto rounded-lg border">
         <div className="min-w-[780px]">
-          <div className="border-border text-2xs text-muted-foreground grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2">
-            <div>Key</div>
-            <div>Value</div>
-            <div>Owner</div>
-            <div>Provenance</div>
-            <div>Action</div>
+          <div className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2">
+            {["Key", "Value", "Owner", "Provenance", "Action"].map((heading) => (
+              <Text as="div" key={heading} textRole="label" tone="secondary">
+                {heading}
+              </Text>
+            ))}
           </div>
 
           {rows.length === 0 && (
@@ -104,7 +108,8 @@ const AdvancedSettingsTable = ({
             const home = owner?.id === "advanced" ? undefined : owner;
             const prov = PROVENANCE[entry.provenance] ?? {
               label: entry.provenance.toUpperCase(),
-              className: "bg-static-800 text-static-400",
+              className: "bg-static-800",
+              tone: "secondary" as const,
             };
             // llm.model is committed through the model-selection action, which also
             // verifies capability, persists provider metadata, and hot-swaps the client.
@@ -135,9 +140,11 @@ const AdvancedSettingsTable = ({
                   {entry.advanced && (
                     <span
                       title="advanced: also shown behind its home page's disclosure"
-                      className="border-border text-2xs text-muted-foreground shrink-0 rounded-sm border px-1 font-mono"
+                      className="border-border shrink-0 rounded-sm border px-1"
                     >
-                      ADV
+                      <Text as="span" textRole="mono" tone="secondary">
+                        ADV
+                      </Text>
                     </span>
                   )}
                 </Stack>
@@ -171,8 +178,10 @@ const AdvancedSettingsTable = ({
                     Only here
                   </Text>
                 )}
-                <span className={cn("text-2xs w-fit rounded-sm px-1.5 py-0.5 font-mono", prov.className)}>
-                  {prov.label}
+                <span className={cn("w-fit rounded-sm px-1.5 py-0.5", prov.className)}>
+                  <Text as="span" textRole="mono" tone={prov.tone}>
+                    {prov.label}
+                  </Text>
                 </span>
                 {pickerOwned ? (
                   <Link to="/settings/ai" className="text-signal w-fit text-xs underline underline-offset-4">

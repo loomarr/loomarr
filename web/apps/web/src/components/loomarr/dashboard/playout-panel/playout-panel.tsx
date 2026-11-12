@@ -61,7 +61,9 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
       justify="between"
     >
       <div className="min-w-0">
-        <p className="text-2xs text-muted-foreground">Encoder</p>
+        <Text as="p" textRole="hint" tone="secondary">
+          Encoder
+        </Text>
         <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
           {summary}
         </Text>
@@ -140,7 +142,13 @@ const ChannelRow = ({ channel }: { channel: ChannelHealth }) => {
               request. The design-system Tooltip gives a prompt, styled
               reveal on hover/focus, same idiom as FieldHelp; the aria-label keeps it screen-reader
               reachable. (A native `title` also "worked" but its ~1.5s browser delay read as broken.) */}
-        <Tooltip content={<span className="font-mono text-xs">{channel.channelId}</span>}>
+        <Tooltip
+          content={
+            <Text as="span" textRole="mono" tone="primary">
+              {channel.channelId}
+            </Text>
+          }
+        >
           <Action compact icon="info" layout="icon" variant="ghost">
             {`Channel id ${channel.channelId}`}
           </Action>

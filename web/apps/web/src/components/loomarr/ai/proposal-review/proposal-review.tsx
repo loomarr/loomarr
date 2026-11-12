@@ -473,8 +473,10 @@ const ProposalReview = ({
                           Raw search data
                         </Text>
                       </summary>
-                      <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-md p-3 text-xs">
-                        {JSON.stringify(proposal.trace, null, 2)}
+                      <pre className="bg-muted mt-2 max-h-72 overflow-auto rounded-md p-3">
+                        <Text as="span" textRole="mono" tone="primary">
+                          {JSON.stringify(proposal.trace, null, 2)}
+                        </Text>
                       </pre>
                     </details>
                   </section>
