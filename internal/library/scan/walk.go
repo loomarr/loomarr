@@ -44,13 +44,24 @@ var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 var extrasDirs = map[string]bool{
 	"extras": true, "featurettes": true, "behind the scenes": true, "deleted scenes": true,
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
-	"backdrops": true,
+	"backdrops": true, "sample": true, "special features": true, "bonus features": true,
+}
+
+// skippedDir reports whether a walk passes over a folder named name: a by-product, a recycle bin, a
+// hidden folder, or (below the top of the root) an extras folder. A disc structure is not walked
+// either, but is listed as a problem.
+func skippedDir(name string, belowTop bool) bool {
+	lower := strings.ToLower(name)
+	return skippedDirs[lower] || strings.HasPrefix(lower, ".") || (belowTop && extrasDirs[lower])
 }
 
 // extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv"; it is skipped.
 var extrasSuffixes = []string{
 	"-trailer", "-featurette", "-behindthescenes", "-deleted", "-interview", "-scene", "-short", "-sample", "-other",
 }
+
+// extrasStems are extras' whole names, as a release's "sample.mkv" or a folder's "trailer.mkv".
+var extrasStems = map[string]bool{"sample": true, "trailer": true}
 
 // Stat is a file's size and modification time, which together are its revision.
 type Stat struct {
@@ -140,9 +151,7 @@ func (w *walker) within(dir string) bool {
 		if _, err := os.Stat(filepath.Join(at, ".ignore")); err == nil {
 			return true
 		}
-		lower := strings.ToLower(seg)
-		if skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] || seg == ".." ||
-			(i > 0 && extrasDirs[lower]) {
+		if skippedDir(seg, i > 0) || discDirs[strings.ToLower(seg)] {
 			return true
 		}
 		at = filepath.Join(at, seg)
@@ -272,10 +281,9 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 		switch {
-		case isDir && (skippedDirs[lower] || strings.HasPrefix(lower, ".trash-")):
+		case isDir && skippedDir(e.Name(), w.rel(dir) != "."):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
-		case isDir && extrasDirs[lower] && w.rel(dir) != ".":
 		case isDir:
 			if err := w.dir(ctx, path); err != nil {
 				return err
@@ -586,8 +594,13 @@ func (f File) art() []string {
 	return names
 }
 
+// extraName reports whether a video file's lower-cased name marks it as no title: an extra, a
+// sample, or a hidden file such as a Mac's "._" shadow of a real one.
 func extraName(lowerName string) bool {
 	stem := strings.TrimSuffix(lowerName, filepath.Ext(lowerName))
+	if strings.HasPrefix(lowerName, ".") || extrasStems[stem] || strings.HasPrefix(stem, "sample-") {
+		return true
+	}
 	for _, suffix := range extrasSuffixes {
 		if strings.HasSuffix(stem, suffix) {
 			return true

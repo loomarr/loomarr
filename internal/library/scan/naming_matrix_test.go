@@ -58,18 +58,10 @@ var namingToday = map[string]string{
 	"J7 TV/Kettle Bay Complete Series (2010-2015) [1080p]/Season 3/Kettle Bay S03E01.mkv": "episode Kettle Bay Complete Series 2010-2015 S3E1",
 	"K3 TV/Kettle Bay/1/Kettle Bay S01E01.mkv":                                            "episode 1 S1E1",
 	"L3 Movies/Ashgrove (2015)/asg-1080p.mkv":                                             "movie asg-1080p -",
-	"O2 Movies/Ashgrove (2015)/trailer.mkv":                                               "movie trailer -",
-	"O4 Movies/Ashgrove (2015)/Special Features/Gag Reel.mkv":                             "movie Gag Reel -",
 	"O10 Movies/Ashgrove (2015)/trailerthings.mkv":                                        "movie trailerthings -",
-	"P1 Movies/Ashgrove.2015.1080p-GRP/sample.mkv":                                        "movie sample -",
 	"P3 Movies/Ashgrove.2015-GRP/grp-asg.mkv":                                             "movie grp-asg -",
-	"P3 Movies/Ashgrove.2015-GRP/Sample/grp-asg.mkv":                                      "movie grp-asg -",
 	"P9 Downloads/Complete/Kettle.Bay.S01E02.mkv":                                         "episode Complete S1E2",
 	"P9 Downloads/Incomplete/Kettle.Bay.S01E03.mkv":                                       "episode Incomplete S1E3",
-	"P10 Movies/._Ashgrove (2015).mkv":                                                    "movie Ashgrove 2015",
-	"P11 Movies/.hidden/Ashgrove (2015).mkv":                                              "movie Ashgrove 2015",
-	"Q1 Movies/Ashgrove (2015)/VIDEO_TS/VTS_01_1.VOB":                                     "skip",
-	"Q2 Movies/Ashgrove (2015)/BDMV/STREAM/00001.m2ts":                                    "skip",
 	"R1 Media/Kettle.Bay.S01E02.mkv":                                                      "episode Media S1E2",
 	"R4 TV/Kettle Bay/kb 101.avi":                                                         "movie kb 101 -",
 	"R4 TV/Kettle Bay/kb 201.avi":                                                         "movie kb 201 -",
@@ -127,8 +119,11 @@ var namingMatrix = []namingRow{
 		"Movies/Marrow Point (2010).mkv": "movie Marrow Point 2010",
 	}},
 	{id: "D8", files: map[string]string{
-		"Movies/The Sample Room (2004).mkv":    "movie The Sample Room 2004",
-		"Movies/Trailer Park Kings (2011).mkv": "movie Trailer Park Kings 2011",
+		"Movies/The Sample Room (2004).mkv":        "movie The Sample Room 2004",
+		"Movies/Trailer Park Kings (2011).mkv":     "movie Trailer Park Kings 2011",
+		"Movies/Sample (2016).mkv":                 "movie Sample 2016",
+		"Movies/Trailer (2019)/Trailer (2019).mkv": "movie Trailer 2019",
+		"Movies/Sampler.2018.mkv":                  "movie Sampler 2018",
 	}},
 	{id: "D9", files: map[string]string{"Movies/Ward 101 (2012).mkv": "movie Ward 101 2012"}},
 
@@ -382,7 +377,14 @@ func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 	}
 	out := map[string]string{}
 	for rel := range row.files {
-		r, ok := byPath[filepath.Join(h.root, filepath.FromSlash(rel))]
+		p := filepath.Join(h.root, filepath.FromSlash(rel))
+		r, ok := byPath[p]
+		// A disc structure is listed as one problem, at its folder.
+		for d := filepath.Dir(p); !ok && d != h.root; d = filepath.Dir(d) {
+			if up, listed := byPath[d]; listed && up.Problem != "" {
+				r, ok = up, true
+			}
+		}
 		switch {
 		case !ok:
 			out[rel] = "skip"
