@@ -1149,6 +1149,24 @@ var namingMatrix = []namingRow{
 		"Sports/Lisk League 2023-10-12 Wexleys vs Abbots.mkv":     "episode Lisk League 2023-10-12",
 		"Sports/Lisk League/Season 2023/Lisk League S2023E04.mkv": "episode Lisk League S2023E4",
 	}},
+	// Re-score #17: a show's bare "E01" in its folder in a catch-all, a single season's folder on a
+	// films' shelf, a saga's film numbered without a dot, a misspelt episode in its show's folder,
+	// and a camera's clips.
+	{id: "W129", files: map[string]string{
+		"Downloads/Hollow Sea/E01.mkv":                "episode Hollow Sea S1E1",
+		"Downloads/Hollow Sea/E02.mkv":                "episode Hollow Sea S1E2",
+		"Movies/Pike Gate - Season 1/01.mkv":          "episode Pike Gate S1E1",
+		"Movies/Lantern Saga/01 Lantern Rising.mkv":   "movie Lantern Rising -",
+		"Movies/Lantern Saga/03 Lantern Reborn.mkv":   "movie Lantern Reborn -",
+		"TV/Kettle Bank/Kettle Bank S01E01.mkv":       "episode Kettle Bank S1E1",
+		"TV/Kettle Bank/Kettel Bank S01E03.mkv":       "episode Kettle Bank S1E3",
+		"TV/Kettle Bank/Kettle Bnak S01E04.mkv":       "episode Kettle Bank S1E4",
+		"Videos/Holiday 2018/MVI_1001.MOV":            "movie MVI 1001 -",
+		"Videos/Holiday 2018/MVI_1002.MOV":            "movie MVI 1002 -",
+		"Kids/Moss Mouse/Rainy Day.mp4":               "episode Moss Mouse S?E?",
+		"Kids/Moss Mouse/Kite Flying.mp4":             "episode Moss Mouse S?E?",
+		"Kids/Moss Mouse/Moss Mouse Movie (2019).mp4": "movie Moss Mouse Movie 2019",
+	}},
 	// Re-score #15: a show and its remake loose together are two shows when both number an episode
 	// alike; a yearless copy beside a dated one with episodes of its own joins it.
 	{id: "W122", files: map[string]string{

@@ -92,6 +92,29 @@ func TestPrincipleGroupingFolderIsTheShows(t *testing.T) {
 	}
 }
 
+// TestPrincipleShelfNameSaysFilms: a household's shelf of films, named however it is named, keeps
+// its films apart, years or not; and a show on any shows' or audience's shelf keeps its episodes
+// named by title alone together, beside its own film or not.
+func TestPrincipleShelfNameSaysFilms(t *testing.T) {
+	films := []string{"Ashen Garden", "Copper Wick", "Lantern Moor", "Velvet Ferry"}
+	for _, shelf := range []string{"Movie", "Movies2", "Movies - Kids", "Christmas Movies", "Feature Films", "Cinema", "Kino",
+		"Filmes", "Filmer", "DVDs", "DVD Rips", "BluRays", "Westerns", "Classics", "Disney", "Old Movies", "Movies & TV"} {
+		files := map[string]string{}
+		for _, film := range films {
+			files[fmt.Sprintf("%s/%s.mkv", shelf, film)] = fmt.Sprintf("movie %s -", film)
+		}
+		t.Run(strings.NewReplacer(" ", "-", "&", "and").Replace(shelf), func(t *testing.T) { principleRead(t, files) })
+	}
+	for _, shelf := range []string{"TV", "TV Show", "TV-Shows", "TV 2", "Kids", "Toddler", "Kids & Family", "Children"} {
+		files := map[string]string{
+			shelf + "/Moss Mouse/Rainy Day.mp4":   "episode Moss Mouse S?E?",
+			shelf + "/Moss Mouse/Kite Flying.mp4": "episode Moss Mouse S?E?",
+			shelf + "/Moss Mouse/Big Puddle.mp4":  "episode Moss Mouse S?E?",
+		}
+		t.Run(strings.NewReplacer(" ", "-", "&", "and").Replace(shelf), func(t *testing.T) { principleRead(t, files) })
+	}
+}
+
 // TestPrincipleAnimeExtraIsSkipped: a release's opening, ending, menu, preview or trailer in its
 // episode's place is an extra however it is written, and its episodes beside it are the show's.
 func TestPrincipleAnimeExtraIsSkipped(t *testing.T) {

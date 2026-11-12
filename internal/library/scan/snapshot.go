@@ -225,7 +225,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    show's, and a release pack's "S02" gives its bare numbers' season; a show called a saga on
 //	    a shows' shelf is a show; a film's "Specials" and any "Subs" folder are skipped; an anime
 //	    release's bracketed notes leave its show's name; "Sports/" is a shows' shelf.
-const writeVersion = 59
+//	60: a shelf no list names is read by its words ("Christmas Movies", "TV-Shows", "Movies2",
+//	    "DVD Rips", "Toddlers"); a show's own film beside its titled episodes leaves them its; a
+//	    bare "E01" in a show's folder, and a lone number in a named season's, are episodes; a
+//	    film's padded place, "03 Title", leaves its title; a camera's clip is its own video.
+const writeVersion = 60
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -677,7 +681,8 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		}
 		return clean(discLabel.ReplaceAllString(label, ""))
 	}
-	if dir := filmFolder(path.Dir(rel)); kind == mp.KindMovie && dir != "." {
+	// A camera's clip is its own video, never the film its folder ("Holiday 2018/") seems to name.
+	if dir := filmFolder(path.Dir(rel)); kind == mp.KindMovie && dir != "." && !cameraClip.MatchString(plain) {
 		folder := clean(path.Base(dir))
 		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
 		// So is one named by what it is rather than what it is called: "Pikestaff/movie.mkv",
