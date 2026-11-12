@@ -237,6 +237,20 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  it("shows no number for a special that has none", () => {
+    const unnumbered: LibraryTitleDetail = {
+      ...SERIES,
+      seasons: [
+        { number: 0, episodes: [{ id: "90000921", name: "Harbour - The Movie", number: 0, ready: true }] },
+      ],
+    };
+    const { host, button, cleanup } = render(unnumbered);
+    act(() => button("Specials").click());
+    expect(host.textContent).toContain("Harbour - The Movie");
+    expect(host.textContent).not.toContain("0Harbour - The Movie");
+    cleanup();
+  });
+
   // #2151 decision 53: episodes that wait on the show's order say so, and Choose opens Needs you.
   it("says which episodes wait on the show's episode order, and opens Needs you", () => {
     const onChooseOrder = vi.fn();
