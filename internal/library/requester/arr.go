@@ -227,6 +227,9 @@ func (a *Arr) qualityProfileID(ctx context.Context, ep arrEndpoint) (int, error)
 		return 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if err := httpx.CheckStatus(resp); err != nil {
+		return 0, fmt.Errorf("arr qualityprofile: %w", err)
+	}
 	var profiles []struct {
 		ID   int    `json:"id"`
 		Name string `json:"name"`
@@ -273,8 +276,8 @@ func (a *Arr) RootFolders(ctx context.Context, app string) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("arr rootfolder: status %d", resp.StatusCode)
+	if err := httpx.CheckStatus(resp); err != nil {
+		return nil, fmt.Errorf("arr rootfolder: %w", err)
 	}
 	var roots []struct {
 		Path string `json:"path"`
@@ -301,6 +304,9 @@ func (a *Arr) rootFolderPath(ctx context.Context, ep arrEndpoint) (string, error
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if err := httpx.CheckStatus(resp); err != nil {
+		return "", fmt.Errorf("arr rootfolder: %w", err)
+	}
 	var roots []struct {
 		Path string `json:"path"`
 	}
