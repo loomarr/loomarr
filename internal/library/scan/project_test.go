@@ -3,6 +3,8 @@ package scan
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +77,32 @@ func TestLibraryStreamLabelsAChannelLayout(t *testing.T) {
 
 // A title is listed from its present scanner origin over a newer missing one, never from another
 // authority's, and not at all by an origin written before it carried how it is listed.
+// A title sorts by its letters, not their accents: "À Nous" files under A, beside "Alpha", rather
+// than after Z, where an accented first letter's bytes put it.
+func TestATitleSortsByItsLettersNotTheirAccents(t *testing.T) {
+	ext, _ := json.Marshal(originExtension{Listed: &listedExtension{}})
+	sortName := func(title string) string {
+		item, ok := ProjectLibraryItem(inventory.Item{ID: "m1", Kind: kindMovie, Origins: []inventory.ItemOrigin{{
+			Key: inventory.OriginKey{Authority: inventory.AuthorityID(authorityPrefix + "a"), ExternalItemID: "file:1"},
+			Observation: inventory.Observation[inventory.ItemFacts]{Extension: ext,
+				Facts: inventory.ItemFacts{Name: title, SortTitle: title}},
+		}}})
+		if !ok {
+			t.Fatalf("%s is not listed", title)
+		}
+		return item.SortName
+	}
+	if got := sortName("À Nous la Liberté"); got != "a nous la liberte" {
+		t.Errorf("sort name = %q, want %q", got, "a nous la liberte")
+	}
+	titles := []string{"Zulu Hour", "Éclair Noir", "Alpha Hour", "À Nous la Liberté", "Øster Bay", "Echo Point"}
+	slices.SortFunc(titles, func(a, b string) int { return strings.Compare(sortName(a), sortName(b)) })
+	want := []string{"À Nous la Liberté", "Alpha Hour", "Echo Point", "Éclair Noir", "Øster Bay", "Zulu Hour"}
+	if !slices.Equal(titles, want) {
+		t.Errorf("sorted %q, want %q", titles, want)
+	}
+}
+
 func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	at := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	listed := func(page string) json.RawMessage {
