@@ -6,11 +6,13 @@ import { Pressable, View } from "react-native";
 import { ChannelSwitchOverlay } from "../channel-switch-overlay";
 import {
   PlayerAudio,
+  PlayerCaption,
   PlayerChrome,
   PlayerCover,
   type PlayerLiveState,
   PlayerMenu,
   PlayerMore,
+  PlayerOptions,
 } from "./player-chrome";
 import { PlayerReadout } from "./player-chrome/player-readout";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
@@ -22,7 +24,7 @@ import type { WatchingSurfaceProps } from "./watching-surface.type";
 
 const LIVE: PlayerLiveState = { lagSeconds: 0, mode: "live" };
 // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540.
-const EDGE = { side: 48, top: 28 } as const;
+const EDGE = { bottom: 28, side: 48, top: 28 } as const;
 
 const Centred = ({ label }: { label: string }) => (
   <View
@@ -110,6 +112,7 @@ const WatchingSurface = ({
   playheadMs,
   player,
   snapshot,
+  subtitles,
 }: WatchingSurfaceProps) => {
   const cover = loading ? undefined : coverOf(snapshot, loadError);
   const tuning = !loading && snapshot.status === "tuning";
@@ -139,8 +142,8 @@ const WatchingSurface = ({
     dismissControlsRef.current();
   }, [controlsActivityKey]);
   // The controls clear five seconds after the last handled key (playback-clients), not on a tune, and
-  // not while a menu (Audio or More) is open: it waits for a choice, or for Menu or Back.
-  const menuOpen = layer === "audio" || layer === "more";
+  // not while a menu (Subtitles, Audio or More) is open: it waits for a choice, or for Menu or Back.
+  const menuOpen = layer === "audio" || layer === "more" || layer === "subtitles";
   useEffect(() => {
     if (!shown || tuning || menuOpen) return undefined;
     const timeout = setTimeout(dismissControlsForActivity, 5_000);
@@ -210,8 +213,20 @@ const WatchingSurface = ({
               }}
               layout="tv"
               live={live}
+              captions={subtitles?.captions}
               menu={
-                layer === "audio" ? (
+                layer === "subtitles" && subtitles ? (
+                  // Subtitles on a television (§9.5): the remote starts on the choice in use; OK on a
+                  // row chooses it and the menu stays, so the line changes behind it. Menu or Back closes.
+                  <PlayerMenu density="tv" title="Subtitles">
+                    <PlayerOptions
+                      density="tv"
+                      label="Subtitles"
+                      onSelect={subtitles.choose}
+                      options={subtitles.options}
+                    />
+                  </PlayerMenu>
+                ) : layer === "audio" ? (
                   // Audio on a television (§9.5): the channel's language, read-only, so its rows take no
                   // focus; it stays on the Audio key, whose OK closes the menu as Menu or Back does.
                   <PlayerMenu density="tv" title="Audio">
@@ -274,9 +289,21 @@ const WatchingSurface = ({
                 density: "tv",
                 onAudio: () => onLayer(layer === "audio" ? undefined : "audio"),
                 pointer: false,
+                ...(subtitles
+                  ? {
+                      onSubtitles: () => onLayer(layer === "subtitles" ? undefined : "subtitles"),
+                      subtitlesOn: subtitles.on,
+                      subtitlesOpen: layer === "subtitles",
+                    }
+                  : {}),
               }}
               visible
             />
+          ) : null}
+          {/* With the controls down the chrome is not mounted, so the line is drawn here, at the
+              picture's foot (the chrome's own place for it then). */}
+          {!shown && !cover && !loading && subtitles ? (
+            <PlayerCaption bottom={EDGE.bottom + 12} density="tv" lines={subtitles.captions} where="tv" />
           ) : null}
           {shown && snapshot.livePlayback?.noticeRevision ? (
             // The paused point fell out of the window and playback went back to live: web says so in a

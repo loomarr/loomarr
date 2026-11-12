@@ -1,4 +1,5 @@
 import { createChannelAudioSource } from "@loomarr/core/channel-audio";
+import { createChannelSubtitlesSource } from "@loomarr/core/channel-subtitles";
 import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
 import { openEventStream } from "@loomarr/core/events";
 import { createGuideController, createGuideSourcePort, guideWindow } from "@loomarr/core/guide";
@@ -88,6 +89,7 @@ const usePairedClient = ({
   );
   const version = useMemo(() => createServerVersionSource(request), [request]);
   const channelAudio = useMemo(() => createChannelAudioSource(request), [request]);
+  const channelSubtitles = useMemo(() => createChannelSubtitlesSource(request), [request]);
   const guide = useMemo(
     () =>
       createGuideController({
@@ -230,6 +232,7 @@ const usePairedClient = ({
   return {
     catalogState,
     channelAudio,
+    channelSubtitles,
     controller,
     guide,
     guideSnapshot,

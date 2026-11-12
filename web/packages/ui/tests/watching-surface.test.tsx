@@ -194,6 +194,58 @@ describe("WatchingSurface", () => {
     expect(onLayer).toHaveBeenLastCalledWith(undefined);
   });
 
+  // Subtitles (§9.5): a television's own key, a menu of choices, and the line on the picture.
+  const subtitles = (choose = vi.fn(), captions: readonly string[] = ["I thought you said tonight"]) => ({
+    captions,
+    choose,
+    on: true,
+    options: [
+      { label: "Off", selected: false, value: "off" },
+      { label: "English", selected: true, value: "en" },
+    ],
+  });
+
+  it("draws no Subtitles key until the client has subtitles", () => {
+    const { host } = mount(() => surface());
+    expect(button(host, "Subtitles")).toBeUndefined();
+  });
+
+  it("opens Subtitles from its key, chooses a track from its rows, and draws the line", () => {
+    const onLayer = vi.fn();
+    const choose = vi.fn();
+    const { host, render } = mount(() => surface({ onLayer, subtitles: subtitles(choose) }));
+    act(() => button(host, "Subtitles")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith("subtitles");
+    render(() => surface({ layer: "subtitles", onLayer, subtitles: subtitles(choose) }));
+    const menu = '[role="dialog"][aria-label="Subtitles"]';
+    const rows = Array.from(host.querySelectorAll(`${menu} [role="radio"]`));
+    expect(rows.map((row) => [row.textContent, row.getAttribute("aria-checked")])).toEqual([
+      ["Off", "false"],
+      ["English", "true"],
+    ]);
+    act(() => rows[0]?.click());
+    expect(choose).toHaveBeenCalledWith("off");
+    expect(host.querySelector('[data-testid="player-caption"]')?.textContent).toBe(
+      "I thought you said tonight",
+    );
+  });
+
+  it("keeps drawing the line when the controls are down", () => {
+    const { host } = mount(() => surface({ controlsVisible: false, subtitles: subtitles() }));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector('[data-testid="player-caption"]')?.textContent).toBe(
+      "I thought you said tonight",
+    );
+  });
+
+  it("keeps the controls up while Subtitles waits for a choice", () => {
+    vi.useFakeTimers();
+    const dismiss = vi.fn();
+    mount(() => surface({ layer: "subtitles", onDismissControls: dismiss, subtitles: subtitles() }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
   it("keeps the controls up while Audio is open", () => {
     vi.useFakeTimers();
     const dismiss = vi.fn();

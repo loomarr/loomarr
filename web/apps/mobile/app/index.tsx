@@ -20,6 +20,7 @@ import {
   usePairedAccount,
   usePairedClient,
   usePairedRequests,
+  usePairedSubtitles,
 } from "@loomarr/paired-client";
 import { NativePlayerView, PairedNativeImage, useShellTune } from "@loomarr/player/native";
 import type { ApprovalBrowser } from "@loomarr/ui";
@@ -33,6 +34,7 @@ import {
   PlayerChrome,
   PlayerInfo,
   PlayerMore,
+  PlayerOptions,
   PlayerSheet,
   playerChromeFromGuide,
   RequestsJourney,
@@ -56,11 +58,10 @@ const credentialStore = createPairingCredentialStore({
   setItem: SecureStore.setItemAsync,
 });
 
-// The channel last watched (#23): the Guide starts on it and Watching tunes it first.
-const lastChannel = createLastChannelStore({
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-});
+// What the device remembers: the channel last watched (#23), which the Guide starts on and Watching
+// tunes first, and the viewer's subtitles.
+const deviceStorage = { getItem: SecureStore.getItemAsync, setItem: SecureStore.setItemAsync };
+const lastChannel = createLastChannelStore(deviceStorage);
 
 // The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
 // SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
@@ -109,8 +110,8 @@ lockUpright();
 // while playing and with nothing open (§9.1), as the television's does.
 const CHROME_IDLE_MS = 5_000;
 
-/** What a Watching key opens as a sheet: Audio (a utility), More, or Info (from More). */
-type WatchingSheet = "audio" | "info" | "more";
+/** What a Watching key opens as a sheet: Subtitles or Audio (utilities), More, or Info (from More). */
+type WatchingSheet = "audio" | "info" | "more" | "subtitles";
 
 // Watching turns with the phone while it is mounted, and puts the app upright again as it goes.
 const useTurnWithPhone = () => {
@@ -133,7 +134,16 @@ const WatchingScreen = ({
   onLeave: () => void;
   onOpenChannels: () => void;
 }) => {
-  const { catalogState, channelAudio, controller, guideSnapshot, refresh, snapshot, transport } = client;
+  const {
+    catalogState,
+    channelAudio,
+    channelSubtitles,
+    controller,
+    guideSnapshot,
+    refresh,
+    snapshot,
+    transport,
+  } = client;
   const haptic = useHaptic();
   const [nowMs, setNowMs] = useState(Date.now);
   useEffect(() => {
@@ -144,6 +154,7 @@ const WatchingScreen = ({
   const closeSheet = () => setSheet(undefined);
   const toggleSheet = (name: WatchingSheet) => () => setSheet((open) => (open === name ? undefined : name));
   const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, sheet === "audio");
+  const subtitles = usePairedSubtitles(channelSubtitles, deviceStorage, snapshot);
   useTurnWithPhone();
   const { height, width } = useWindowDimensions();
   const onSide = width > height;
@@ -191,6 +202,17 @@ const WatchingScreen = ({
   const sheetFor = (name: WatchingSheet) => {
     if (!chrome || !snapshot.channel) return undefined;
     const { info, segments, startOverMs, window } = chrome;
+    // Subtitles: a choice leaves the sheet open, so the line changes on the picture above it.
+    if (name === "subtitles")
+      return sheetOf(
+        "Subtitles",
+        <PlayerOptions
+          density="touch"
+          label="Subtitles"
+          onSelect={subtitles.choose}
+          options={subtitles.options}
+        />,
+      );
     // Audio: the channel's language, read-only (an admin sets it on the channel's page).
     if (name === "audio")
       return sheetOf("Audio", <PlayerAudio density="touch" options={audioOptions ?? []} />);
@@ -284,6 +306,7 @@ const WatchingScreen = ({
         <View onTouchStart={touched} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
           <PlayerChrome
             band={chrome.band}
+            captions={subtitles.captions}
             density="touch"
             formatTime={formatTime}
             keys={{
@@ -314,7 +337,10 @@ const WatchingScreen = ({
               audioOpen: sheet === "audio",
               density: "touch",
               onAudio: toggleSheet("audio"),
+              onSubtitles: toggleSheet("subtitles"),
               pointer: false,
+              subtitlesOn: subtitles.on,
+              subtitlesOpen: sheet === "subtitles",
             }}
             visible={visible}
           />

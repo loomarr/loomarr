@@ -204,8 +204,9 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   the web's does (the airing programme's tracks and the channel's language, both a member's reads,
   `@loomarr/core/channel-audio`), each time it opens. Subtitles are `@loomarr/core/channel-subtitles` on every
   client: the menu's choices, `C`'s next one, and a follower that asks for the remembered track's
-  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The web draws them;
-  the Subtitles key stays hidden on the phone and TV until they do (#3409).
+  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The phone and TV
+  remember the choice on the device (`usePairedSubtitles`, `@loomarr/paired-client`); a television's
+  menu starts its focus on the choice in use, and its line stays while the controls are down.
 
 ## Android TV
 
