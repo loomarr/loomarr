@@ -777,7 +777,14 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		// A confirmation is spent by the first complete walk of the whole root after it, held or
 		// not: it answers the removal the maintainer saw, never a later one.
 		confirmed := scope == nil && walk.Complete && im.takeConfirmed(root)
-		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
+		// Only importable files count toward the hold, as they do toward what the root holds.
+		importable := 0
+		for _, r := range removed {
+			if r.Problem == "" {
+				importable++
+			}
+		}
+		over := importable > holdAtLeast || (present > 0 && float64(importable) > holdShare*float64(present))
 		held := over && !confirmed
 		for _, r := range removed {
 			if held && r.Problem == "" {
@@ -791,7 +798,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			save = append(save, r)
 		}
 		if held {
-			result.State, result.Held = RootHeld, len(removed)
+			result.State, result.Held = RootHeld, importable
 		}
 	}
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {

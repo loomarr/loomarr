@@ -722,6 +722,36 @@ func TestAnUnreadableFolderHoldsOnlyItself(t *testing.T) {
 	}
 }
 
+// Problem files that are gone never count toward a hold: clearing out disc images the maintainer
+// couldn't play anyway leaves one deleted movie under the share a pass holds, so it goes missing.
+func TestGoneProblemFilesDontHoldARemoval(t *testing.T) {
+	h := newHarness(t)
+	for i := range 20 {
+		name := fmt.Sprintf("Juliet %02d", i)
+		h.file(name+"/"+name+".mkv", 10)
+	}
+	for i := range 15 {
+		h.file(fmt.Sprintf("Discs/Kilo %02d.iso", i), 10)
+	}
+	h.run()
+	for i := range 15 {
+		if err := os.Remove(filepath.Join(h.root, "Discs", fmt.Sprintf("Kilo %02d.iso", i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(h.root, "Juliet 00", "Juliet 00.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	gone := fileOrigin(h.root, "Juliet 00/Juliet 00.mkv")
+	if o := h.origin(h.item(gone), gone); o.MissingAt.IsZero() {
+		t.Error("one deleted movie in 20 was held because 15 disc images went with it")
+	}
+	if r := h.im.Progress().Roots; r[0].State == RootHeld {
+		t.Errorf("roots = %+v, want nothing held", r)
+	}
+}
+
 // An unreadable root is an incomplete scan: nothing under it is marked missing.
 func TestImportUnreadableRootMarksNothing(t *testing.T) {
 	h := newHarness(t)
