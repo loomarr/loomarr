@@ -323,7 +323,7 @@ func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.C
 	}
 	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
 	// Its last writes go to the resources below, so they are stopped once it has returned, or at the
-	// deadline: the caller starts the next generation then, and this one's resources must not outlive it.
+	// deadline: a restart brings up its successor then, and this one's resources must not outlive it.
 	errs = append(errs, l.waitWorkers(ctx))
 	for _, stop := range slices.Backward(stops) {
 		errs = append(errs, stop(ctx))

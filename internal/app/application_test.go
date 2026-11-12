@@ -66,7 +66,7 @@ func TestApplicationOwnsHandlerAndLifecycle(t *testing.T) {
 }
 
 // A worker that ignores cancellation must not hold the generation open past the shutdown deadline:
-// the caller starts the next generation then, so this one's resources are stopped regardless, and
+// a restart brings up its successor then, so this one's resources are stopped regardless, and
 // every later call reports the same outcome.
 func TestApplicationShutdownStopsResourcesAtTheDeadlineDespiteAStuckWorker(t *testing.T) {
 	lifecycle := newGenerationLifecycle(t.Context())
