@@ -39,6 +39,21 @@ describe("isHandRolledForm", () => {
   });
 });
 
+describe("isHandRolledForm, what is not a form", () => {
+  it("passes a search box, a list filter and a select that picks a view", () => {
+    const search = handRolled.replace("setName", "setQuery").replace("setName", "setQuery");
+    assert.equal(isHandRolledForm(search), false);
+    const select = `
+      import { useState } from "react";
+      export const View = () => {
+        const [view, setView] = useState("day");
+        return <Select onValueChange={setView} value={view} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(select), false);
+  });
+});
+
 describe("compareToLedger", () => {
   it("fails a form the ledger does not list and notes one that could go", () => {
     assert.deepEqual(compareToLedger(["a.tsx", "b.tsx"], ["a.tsx", "c.tsx"]), {

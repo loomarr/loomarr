@@ -193,6 +193,7 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
           held: current.held,
           offline,
           needsYou: needs.needs.length + needs.problems.length > 0,
+          details: current.details,
         }}
         titles={titles}
       />

@@ -32,6 +32,7 @@ type LibraryRootService interface {
 	Progress() scan.Progress
 	Importing() scan.ProgressSnapshot
 	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
+	Details(ctx context.Context) (scan.Details, error)
 	Rescan() error
 	RefreshEverything(ctx context.Context) error
 	ConfirmRemovals(ctx context.Context, root string) error
@@ -326,6 +327,15 @@ func ScanProgressOf(p scan.ProgressSnapshot) ScanProgress {
 	return out
 }
 
+// libraryDetailsDTO is how the titles' details are getting on: how many wait and when the next try
+// is. A key problem is never the household's to fix (a release build ships its own key), so it is
+// said only in the server's log, never here.
+type libraryDetailsDTO struct {
+	Waiting     int        `json:"waiting" doc:"Movies and series whose details haven't been looked up yet"`
+	Unreachable bool       `json:"unreachable" doc:"The catalog didn't answer the last lookup"`
+	RetryAt     *time.Time `json:"retryAt,omitempty" doc:"When looking up is tried again; absent when nothing is waiting on a retry"`
+}
+
 type libraryScanDTO struct {
 	Enabled bool `json:"enabled" doc:"library.scanner.enabled: false stops every scan"`
 	ScanProgress
@@ -349,13 +359,14 @@ type libraryStatusOutput struct {
 		Empty     int    `json:"empty" doc:"Folders in use that opened with nothing in them at their last check"`
 		ToConfirm int    `json:"toConfirm" doc:"Readable folders found but not yet in use"`
 
-		Scan           libraryScanDTO   `json:"scan"`
-		Files          int              `json:"files" doc:"Media files found in folders in use"`
-		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
-		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
-		NeedsYou       int              `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
-		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
-		Hooks          []libraryHookDTO `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
+		Scan           libraryScanDTO    `json:"scan"`
+		Files          int               `json:"files" doc:"Media files found in folders in use"`
+		HeadersPending int               `json:"headersPending" doc:"Files not read yet"`
+		Problems       int               `json:"problems" doc:"Files Loomarr skips, such as disc images"`
+		NeedsYou       int               `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
+		Held           []libraryHeldDTO  `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Hooks          []libraryHookDTO  `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
+		Details        libraryDetailsDTO `json:"details" doc:"How the titles' details are getting on"`
 	}
 }
 
@@ -376,6 +387,10 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
+	details, err := svc.Details(ctx)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
 	st := scan.StatusOf(all)
 	out := &libraryStatusOutput{}
 	out.Body.NeedsYou = needsYou
@@ -383,6 +398,11 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	b.Health, b.InUse, b.Offline, b.Empty, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.Empty, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
 	b.Held = heldView(counts.Held)
+	b.Details = libraryDetailsDTO{Waiting: details.Waiting, Unreachable: details.State == scan.LookupsUnreachable}
+	if !details.RetryAt.IsZero() {
+		at := details.RetryAt
+		b.Details.RetryAt = &at
+	}
 	b.Hooks = s.libraryHooksView()
 
 	p := svc.Progress()

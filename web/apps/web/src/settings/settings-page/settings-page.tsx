@@ -10,6 +10,7 @@ import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { cn } from "@/lib/utils";
+import { everyEditSaved } from "../saved-edits";
 import { useSettingsEdits } from "../settings-edits";
 import {
   announceSettingsChange,
@@ -164,14 +165,7 @@ const SettingsPage = ({
     try {
       if (Object.keys(edits).length > 0) {
         const saved = await patch.mutateAsync({ data: { edits } });
-        const results = unwrap(saved, (body) => body.results) ?? [];
-        if (
-          !Object.keys(edits).every((key) =>
-            results.some((result) => result.key === key && result.status === "saved"),
-          )
-        ) {
-          return;
-        }
+        if (!everyEditSaved(saved, edits)) return;
       }
       const res = await runTest.mutateAsync({ data: { check } });
       if (res.status === 200) {

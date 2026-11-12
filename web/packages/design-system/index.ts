@@ -19,6 +19,8 @@ export type { ChipProps, ChipTone } from "./src/chip";
 export { Chip } from "./src/chip";
 export type { ChoiceCardAccent, ChoiceCardProps } from "./src/choice-card";
 export { ChoiceCard } from "./src/choice-card";
+export type { ComboboxOption, ComboboxProps } from "./src/combobox";
+export { Combobox } from "./src/combobox";
 export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
 export { CompactSelect } from "./src/compact-select";
 export type { DateFieldProps } from "./src/date-field";
@@ -151,10 +153,20 @@ export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
+export type { StackAlign, StackGap, StackJustify, StackProps } from "./src/stack";
+export { Stack } from "./src/stack";
 export type { StatusLabelProps } from "./src/status-label";
 export { StatusLabel } from "./src/status-label";
 export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
+export type {
+  TableCellProps,
+  TableHeaderCellProps,
+  TableProps,
+  TableRowProps,
+  TableSectionProps,
+} from "./src/table";
+export { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "./src/table";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
 export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";

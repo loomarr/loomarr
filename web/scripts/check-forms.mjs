@@ -2,10 +2,12 @@
 // apps/web, `@tanstack/react-form` elsewhere): its values, validation and submit state live in one
 // place rather than in a `useState` per input.
 //
-// A source is a hand-rolled form when it keeps a text, number or choice input's draft in `useState`:
-// a `useState` setter is called from an input's `onChangeText`, `onChange` or `onValueChange`, and
-// the file does not import `@tanstack/react-form` (or `@/lib/app-form`). Tests and stories are not
-// production code and are not counted.
+// A source is a hand-rolled form when it keeps a typed input's draft in `useState`: a `useState`
+// setter is called from an input's `onChangeText` or `onChange` (a select's `onValueChange` picks
+// what to show, which is a view setting, not a draft), and
+// the file does not import `@tanstack/react-form` (or `@/lib/app-form`). A search box or filter
+// (a setter named `setQuery`, `setFilter`, …) is not a form. Tests and stories are not production
+// code and are not counted.
 //
 // The committed ledger (hand-rolled-forms.json) is a ratchet:
 //   - the check fails when a file not in the ledger is a hand-rolled form;
@@ -22,7 +24,7 @@ const webRoot = fileURLToPath(new URL("../", import.meta.url));
 const roots = [join(webRoot, "apps", "web", "src"), join(webRoot, "packages", "ui", "src")];
 const ledgerPath = join(webRoot, "hand-rolled-forms.json");
 
-const INPUT_HANDLERS = new Set(["onChangeText", "onChange", "onValueChange"]);
+const INPUT_HANDLERS = new Set(["onChangeText", "onChange"]);
 const FORM_MODULES = ["@tanstack/react-form", "@/lib/app-form"];
 const NON_CHILD_KEYS = new Set([
   "loc",
@@ -60,7 +62,11 @@ const walk = (node, visit) => {
   }
 };
 
-// stateSetters names every setter a `const [value, setValue] = useState(…)` declares.
+// A search box or a list filter narrows what is shown; nothing submits it, so it is not a form.
+const FILTER_SETTER = /^set(?:Query|Search|Filter|Q|Needle|Role|Status)\w*$/;
+
+// stateSetters names every setter a `const [value, setValue] = useState(…)` declares, except a
+// filter's.
 const stateSetters = (program) => {
   const setters = new Set();
   walk(program, (node) => {
@@ -72,7 +78,8 @@ const stateSetters = (program) => {
       node.init.callee.type === "Identifier" &&
       node.init.callee.name === "useState"
     ) {
-      setters.add(node.id.elements[1].name);
+      const setter = node.id.elements[1].name;
+      if (!FILTER_SETTER.test(setter)) setters.add(setter);
     }
   });
   return setters;

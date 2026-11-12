@@ -22,14 +22,16 @@ func newConfiguredSearchHandler(
 	}}}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth:   testAuthorizer{},
-		Log:    log,
-		Search: search,
+		Auth: testAuthorizer{},
+		Log:  log,
 		LiveSettings: stringSettings(func(key string) string {
 			return cfg[key]
 		}),
-		LibraryConfigured: func() bool {
-			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
+		Library: api.LibraryOptions{
+			Search: search,
+			Configured: func() bool {
+				return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
+			},
 		},
 	})
 	return handler, search

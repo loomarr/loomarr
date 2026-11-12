@@ -2,10 +2,13 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   browserEventStreamFactory,
+  EVENT_INVALIDATIONS,
+  EVENT_TYPES,
   invalidateAfterReconnect,
   invalidateByPrefix,
   invalidateForFrame,
   invalidateSettings,
+  isFrameFed,
   openEventStream,
   openFrameStream,
 } from "./events";
@@ -24,6 +27,58 @@ describe("invalidateByPrefix", () => {
     const channels = qc.getQueryState(["/v1/channels"]);
     expect(titles?.isInvalidated).toBe(true);
     expect(channels?.isInvalidated).toBe(false);
+  });
+});
+
+describe("the frame-to-query map", () => {
+  // Each frame type, the URLs its frame keeps current (trusted forever), and what it invalidates.
+  it.each([
+    ["title", ["/v1/titles", "/v1/titles/abc", "/v1/proposals", "/v1/proposals/7"]],
+    ["channel", ["/v1/channels", "/v1/channels/9"]],
+    ["job", ["/v1/jobs"]],
+    ["activity", ["/v1/activity"]],
+    ["health", ["/v1/diagnostics/health"]],
+    ["settings", ["/v1/settings", "/v1/settings/some.key", "/v1/setup"]],
+    ["library_scan", ["/v1/library/status"]],
+    ["library_titles", ["/v1/library/items", "/v1/library/items/3", "/v1/library/needs"]],
+  ] as const)("a %s frame feeds %j", (type, urls) => {
+    for (const url of urls) {
+      expect(isFrameFed([url, { page: 1 }])).toBe(true);
+      // The frame invalidates what it feeds, or the read would be trusted and never refreshed.
+      expect(
+        EVENT_INVALIDATIONS[type].prefixes.some((prefix) => url.startsWith(prefix)),
+        `${type} frame must invalidate ${url}`,
+      ).toBe(true);
+    }
+  });
+
+  it("trusts nothing that moves with the clock, carries a signed URL, or has no frame", () => {
+    for (const url of [
+      "/v1/channels/now-next",
+      "/v1/channels/9/timeline",
+      "/v1/channels/9/upcoming",
+      "/v1/channels/9/play-url",
+      "/v1/guide",
+      "/v1/proposals/7/outlook",
+      "/v1/settings/secrets/token",
+      "/v1/playout/sessions",
+      "/v1/filler/readiness",
+      "/v1/system/llm",
+      "/v1/me",
+    ]) {
+      expect(isFrameFed([url]), url).toBe(false);
+    }
+    expect(isFrameFed([{ not: "a url" }])).toBe(false);
+  });
+
+  it("never lists a fed URL under a frame that does not invalidate it", () => {
+    for (const type of EVENT_TYPES) {
+      const row = EVENT_INVALIDATIONS[type];
+      for (const pattern of row.fed ?? []) {
+        expect(row.prefixes.length, `${type} feeds reads but invalidates none`).toBeGreaterThan(0);
+        expect(pattern.source.startsWith("^")).toBe(true);
+      }
+    }
   });
 });
 

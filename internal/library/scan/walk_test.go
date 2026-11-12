@@ -158,6 +158,33 @@ func TestSeriesFolder(t *testing.T) {
 	}
 }
 
+// A file named by the day it aired, in a folder, is an episode of that folder's show, placed by the
+// day. A season and number in the name stand over a day; a day that is no real date, or a dated file
+// loose at the top with no show folder, leaves the file what it was.
+func TestAFileNamedByItsAirDateIsAnEpisode(t *testing.T) {
+	for _, tc := range []struct {
+		rel, day, seriesDir string
+		kind                mp.Kind
+	}{
+		{"Papa Hour/Papa Hour - 2013-02-15 - February 15, 2013.mkv", "2013-02-15", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour {tmdb-90000802}/Papa.Hour.2014.03.07.mkv", "2014-03-07", "Papa Hour {tmdb-90000802}", mp.KindEpisode},
+		{"Papa Hour/Season 2014/Papa Hour 2014 03 21.mkv", "2014-03-21", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour/Papa Hour S02E05 2013-02-15.mkv", "", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour/Papa Hour - 2013-02-30.mkv", "", "", mp.KindMovie},
+		{"Papa Hour/Papa Hour - 2013-13-01.mkv", "", "", mp.KindMovie},
+		{"Papa Hour - 2013-02-15.mkv", "", "", mp.KindMovie},
+		{"Quebec (2013)/Quebec (2013).mkv", "", "", mp.KindMovie},
+		{"Quebec (2013)/Quebec.2013.1080p.mkv", "", "", mp.KindMovie},
+	} {
+		rec, seriesDir := embeddedRecord(File{Rel: tc.rel})
+		id := identity{kind: rec.Kind, embedded: rec}
+		if rec.Kind != tc.kind || id.airDate() != tc.day || seriesDir != tc.seriesDir {
+			t.Errorf("%s = %v day %q in %q, want %v day %q in %q", tc.rel, rec.Kind, id.airDate(), seriesDir,
+				tc.kind, tc.day, tc.seriesDir)
+		}
+	}
+}
+
 // A movie takes ids from its own name or folder: not from a collection or series folder above it,
 // and never a tvdb id.
 func TestMovieIDsComeFromItsOwnFolder(t *testing.T) {
