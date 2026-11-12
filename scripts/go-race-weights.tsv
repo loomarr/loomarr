@@ -1,39 +1,36 @@
-# Measured `go test` seconds per package in the Go race-policy lanes: the median over successful
-# lane jobs of merge-group runs 38536549839 38767340706 38740334450 38722225365, rounded up. Regenerate with
+# Measured `go test` seconds per package in the Go race-policy lanes: the median over the
+# finished packages of the lane jobs in merge-group runs 43037503041, rounded up. Regenerate with
 # `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
 # Packages below five seconds use the one-second floor in go-shard.sh.
-internal/playout/watermark	407
-internal/demolibrary	379
-internal/app	281
-internal/filler/fetch	261
-internal/api	216
-internal/platform/store	191
-internal/integration	178
-internal/channels/schedule	151
-internal/media/images	149
-internal/platform/releaseverify	124
-cmd/image-cert	117
-internal/proposals/suggest	100
-internal/people/auth	65
-internal/filler	65
-cmd/seed	49
-internal/people/secretprotection	46
-internal/proposals/workflow	45
-internal/filler/records	36
-internal/playout	33
-internal/channels	31
-internal/people/notifications	31
-cmd/demo-library	24
-internal/library/provisionbackstop	23
-internal/people/access	20
-internal/channels/approval	19
-cmd/dev-bootstrap	17
-internal	15
-internal/playout/backendtransition	15
-internal/channels/recurate	14
-internal/platform/jobs	14
-internal/media/tools	12
-internal/proposals/outlook	11
+internal/platform/store	291
+internal/playout/watermark	158
+internal/proposals/suggest	158
+internal/api	148
+internal/media/images	145
+internal/demolibrary	143
+internal/channels/schedule	135
+internal/filler	123
+internal/filler/records	110
+internal/app	100
+internal/people/auth	96
+internal/filler/fetch	87
+internal	81
+internal/people/secretprotection	76
+cmd/image-cert	74
+internal/platform/store/clipstore	44
+internal/playout/channelbug	35
+internal/playout	31
+internal/integration	30
+internal/channels	19
+internal/media/tools	14
 internal/playout/packager	10
-internal/library/inventory	9
-internal/media/measure	8
+internal/filler/location	9
+internal/platform/httpx	9
+internal/filler/pod	7
+internal/filler/station	7
+internal/media/measure	7
+internal/media/header	6
+internal/app/playoutresolve	5
+internal/channels/recurate	5
+internal/platform/settings	5
+project/evidence/curation-1670/kit	5

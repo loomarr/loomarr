@@ -11,11 +11,18 @@ interface PlayerReadoutProps {
   digits: string;
   /** No channel has this number. */
   missed?: boolean;
+  /** The channel the digits reach, named under them; "Enter channel" until they reach one. */
+  name?: string;
+  /**
+   * When the typed number tunes by itself ("auto-tunes in 1.2 s"): a remote's digits tune after a
+   * pause the viewer can see and lengthen (#1659 N4, WCAG 2.2.1).
+   */
+  countdown?: string;
   /** Distance from the frame's top: the chrome starts it below the top row and the watermark. */
   top: number;
 }
 
-const PlayerReadout = ({ density, digits, missed = false, top }: PlayerReadoutProps) => (
+const PlayerReadout = ({ countdown, density, digits, missed = false, name, top }: PlayerReadoutProps) => (
   <View
     role="status"
     style={{
@@ -33,9 +40,14 @@ const PlayerReadout = ({ density, digits, missed = false, top }: PlayerReadoutPr
     <Text density={density} strong textRole="display" tone="primary">
       {digits}
     </Text>
-    <Text density={density} textRole="compact" tone={missed ? "live" : "secondary"}>
-      {missed ? "No such channel" : "Enter channel"}
+    <Text density={density} numberOfLines={1} textRole="compact" tone={missed ? "live" : "secondary"}>
+      {missed ? "No such channel" : (name ?? "Enter channel")}
     </Text>
+    {countdown && !missed ? (
+      <Text density={density} textRole="compact" tone="muted">
+        {countdown}
+      </Text>
+    ) : null}
   </View>
 );
 

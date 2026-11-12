@@ -84,16 +84,18 @@ const writeVersion = 25
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
-// learns more reaches every file.
-func identityDigest(file File, m managed, embedded mp.Record, reader int) string {
+// learns more reaches every file. seriesSidecars are an episode's series folder's tvshow.nfo and
+// folder art (#3226); omitted when empty, so a movie's digest is unchanged by them.
+func identityDigest(file File, m managed, embedded mp.Record, reader int, seriesSidecars map[string]Stat) string {
 	payload, _ := json.Marshal(struct {
-		Version  int
-		Header   int
-		Records  []mp.Record
-		Series   *mp.Record
-		Embedded mp.Record
-		Sidecars map[string]Stat
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars})
+		Version        int
+		Header         int
+		Records        []mp.Record
+		Series         *mp.Record
+		Embedded       mp.Record
+		Sidecars       map[string]Stat
+		SeriesSidecars map[string]Stat `json:",omitempty"`
+	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }

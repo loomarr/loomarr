@@ -28,6 +28,7 @@ import (
 
 type httpBuild struct {
 	rootCtx     context.Context
+	owner       *generationLifecycle
 	store       records.Store
 	log         *slog.Logger
 	overrides   Overrides
@@ -168,7 +169,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 			// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 			Service:       playoutSvc,
 			Observer:      playoutObserver,
-			Viewing:       startWatchHistory(rootCtx, st, guideSvc, log),
+			Viewing:       startWatchHistory(deps.owner, st, guideSvc, log),
 			Capability:    playoutCapability,
 			Secret:        playoutSecret,
 			SecretCurrent: playoutSecretCurrent,
@@ -234,9 +235,9 @@ func buildHTTP(deps httpBuild) http.Handler {
 }
 
 // startWatchHistory makes the household-viewing tracker the API's playlist polls feed and starts
-// the recorder that writes it to the watch history (#3010) until ctx ends. Each row's programme is
+// the recorder that writes it to the watch history (#3010) until the generation ends. Each row's programme is
 // the title the guide says is airing; a gap between programmes has none.
-func startWatchHistory(ctx context.Context, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
+func startWatchHistory(owner *generationLifecycle, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
 	tracker := viewing.New()
 	var programmes viewing.Programmes
 	if guide != nil {
@@ -254,7 +255,8 @@ func startWatchHistory(ctx context.Context, st records.Store, guide guideapi.Gui
 			return titles, nil
 		}
 	}
-	go viewing.NewRecorder(tracker, st, programmes, log).Run(ctx)
+	// Generation-owned, so Shutdown waits for the recorder's last write before the store closes.
+	owner.goRun(viewing.NewRecorder(tracker, st, programmes, log).Run)
 	return tracker
 }
 

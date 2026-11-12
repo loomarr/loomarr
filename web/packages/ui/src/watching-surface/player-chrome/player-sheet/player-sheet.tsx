@@ -1,9 +1,9 @@
-import { Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-system";
+import { Icon, icons, playerChrome, Text, useFocusLook, useViewportInsets } from "@loomarr/design-system";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import { BarsEdge, ChannelBlock } from "../channel-band";
-import { webOnly } from "../flat";
+import { nativeFocus, webOnly } from "../flat";
 import type { PlayerSheetProps } from "../player-chrome.type";
 
 // The one right-hand sheet (§9.5, layer 4): Subtitles, Audio, Picture, More, Info and Channels all
@@ -42,6 +42,7 @@ const CloseKey = ({ title, onPress }: { title: string; onPress: () => void }) =>
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons.close} size="control" />
@@ -49,54 +50,60 @@ const CloseKey = ({ title, onPress }: { title: string; onPress: () => void }) =>
   );
 };
 
-const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheetProps) => (
-  <View
-    aria-label={title}
-    role="dialog"
-    style={{
-      backgroundColor: playerChrome.surface,
-      borderLeftColor: playerChrome.hairline,
-      borderLeftWidth: 1,
-      bottom: 0,
-      maxWidth: "100%",
-      position: "absolute",
-      right: 0,
-      top: 0,
-      width: density === "touch" ? 384 : 416,
-      zIndex: 40,
-    }}
-  >
-    <BarsEdge height={density === "touch" ? 8 : 10} />
+// On a phone on its side the notch or the home indicator can sit at the right edge: the sheet widens by
+// that inset and pads it, so its content keeps J's width clear of them. A browser's insets are zero.
+const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheetProps) => {
+  const insets = useViewportInsets();
+  return (
     <View
+      aria-label={title}
+      role="dialog"
       style={{
-        alignItems: "stretch",
-        borderBottomColor: playerChrome.hairline,
-        borderBottomWidth: 1,
-        flexDirection: "row",
-        gap: 16,
-        paddingRight: 16,
+        backgroundColor: playerChrome.surface,
+        borderLeftColor: playerChrome.hairline,
+        borderLeftWidth: 1,
+        bottom: 0,
+        maxWidth: "100%",
+        paddingRight: insets.right,
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: (density === "touch" ? 384 : 416) + insets.right,
+        zIndex: 40,
       }}
     >
-      <ChannelBlock density="touch" number={channel.number} width={72} />
-      <View style={{ flex: 1, gap: 4, justifyContent: "center", minWidth: 0, paddingVertical: 16 }}>
-        <Text density={density} numberOfLines={1} textRole="label" tone="secondary">
-          {channel.name}
-        </Text>
-        <Text as="h2" density={density} numberOfLines={1} strong textRole="title" tone="primary">
-          {title}
-        </Text>
+      <BarsEdge height={density === "touch" ? 8 : 10} />
+      <View
+        style={{
+          alignItems: "stretch",
+          borderBottomColor: playerChrome.hairline,
+          borderBottomWidth: 1,
+          flexDirection: "row",
+          gap: 16,
+          paddingRight: 16,
+        }}
+      >
+        <ChannelBlock density="touch" number={channel.number} width={72} />
+        <View style={{ flex: 1, gap: 4, justifyContent: "center", minWidth: 0, paddingVertical: 16 }}>
+          <Text density={density} numberOfLines={1} textRole="label" tone="secondary">
+            {channel.name}
+          </Text>
+          <Text as="h2" density={density} numberOfLines={1} strong textRole="title" tone="primary">
+            {title}
+          </Text>
+        </View>
+        <View style={{ justifyContent: "center" }}>
+          <CloseKey onPress={onClose} title={title} />
+        </View>
       </View>
-      <View style={{ justifyContent: "center" }}>
-        <CloseKey onPress={onClose} title={title} />
-      </View>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 32 + insets.bottom, paddingHorizontal: 24, paddingTop: 16 }}
+        style={{ flex: 1 }}
+      >
+        {children}
+      </ScrollView>
     </View>
-    <ScrollView
-      contentContainerStyle={{ paddingBottom: 32, paddingHorizontal: 24, paddingTop: 16 }}
-      style={{ flex: 1 }}
-    >
-      {children}
-    </ScrollView>
-  </View>
-);
+  );
+};
 
 export { PlayerSheet };

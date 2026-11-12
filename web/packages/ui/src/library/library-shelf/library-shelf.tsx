@@ -23,7 +23,7 @@ const StatusLine = ({
   onRescan,
   onOpenSettings,
 }: Pick<LibraryShelfProps, "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings">) => {
-  const scan = scanHeadline(status.scan, status.needsYou);
+  const scan = scanHeadline(status.scan, status.needsYou || status.health === "folder_empty");
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
   // What needs the maintainer comes first; the import's own words show only when nothing does.
