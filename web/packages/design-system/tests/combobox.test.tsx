@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { Combobox, type ComboboxOption, type ComboboxProps, LoomarrProvider } from "../index";
+import {
+  Combobox,
+  type ComboboxGroup,
+  type ComboboxOption,
+  type ComboboxProps,
+  LoomarrProvider,
+} from "../index";
 
 // The web Combobox is Base UI's. axe cannot say whether the keys work, so each is pressed here: the
 // text reaches the caller, the arrow keys move the highlight while focus stays in the input, Enter
@@ -199,5 +205,254 @@ describe("Combobox (web)", () => {
     expect(input.disabled).toBe(true);
     await userEvent.type(input, "p");
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+});
+
+const palette: readonly ComboboxGroup[] = [
+  {
+    id: "channels",
+    label: "Channels",
+    options: [{ label: "90s Action", trailing: "#42", value: "c1" }],
+  },
+  { id: "none", label: "Nothing here", options: [] },
+  {
+    id: "library",
+    label: "In your library",
+    options: [
+      { label: "The Velvet Cartographer", trailing: <b>In library</b>, value: "l1" },
+      { label: "Pelican Point Motel", value: "l2" },
+    ],
+  },
+];
+
+const activeOption = () => {
+  const id = screen.getByRole("combobox").getAttribute("aria-activedescendant");
+  return id ? document.getElementById(id)?.textContent : null;
+};
+
+describe("Combobox groups (web)", () => {
+  it("names each group by its heading, skips an empty one, and walks one sequence across them", async () => {
+    renderBox(<Harness groups={palette} options={undefined} />);
+    const input = screen.getByRole("combobox");
+
+    await userEvent.type(input, "a");
+    expect(screen.getByRole("group", { name: "Channels" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "In your library" })).toBeTruthy();
+    expect(screen.queryByText("Nothing here")).toBeNull();
+
+    await userEvent.keyboard("{ArrowDown}");
+    expect(activeOption()).toBe("90s Action#42");
+    // Down crosses the heading into the next group.
+    await userEvent.keyboard("{ArrowDown}");
+    expect(activeOption()).toBe("The Velvet CartographerIn library");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(activeOption()).toBe("Pelican Point Motel");
+    await userEvent.keyboard("{ArrowUp}{ArrowUp}");
+    expect(activeOption()).toBe("90s Action#42");
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("picks from a later group with Enter, handing back the option", async () => {
+    const onPick = vi.fn();
+    renderBox(<Harness groups={palette} onPick={onPick} options={undefined} />);
+
+    await userEvent.type(screen.getByRole("combobox"), "a{ArrowDown}{ArrowDown}{Enter}");
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ value: "l1" }));
+  });
+});
+
+describe("Combobox inline (web)", () => {
+  const Palette = (props: ComponentProps<typeof Harness>) => (
+    <Harness
+      autoHighlight="always"
+      endAdornment={<kbd>ESC</kbd>}
+      groups={palette}
+      inline
+      listLabel="Search results"
+      options={undefined}
+      startAdornment={<span data-testid="lead" />}
+      {...props}
+    />
+  );
+
+  it("is open before anyone types, with the first option highlighted and no popup", () => {
+    renderBox(<Palette />);
+    const input = screen.getByRole("combobox", { name: "Location" });
+    const listbox = screen.getByRole("listbox", { name: "Search results" });
+
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    expect(input.getAttribute("aria-controls")).toBe(listbox.id);
+    expect(screen.getByTestId("lead")).toBeTruthy();
+    expect(screen.getByText("ESC")).toBeTruthy();
+    // In place, not portalled out of the render tree.
+    expect(listbox.closest("[data-testid]")).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(activeOption()).toBe("90s Action#42");
+  });
+
+  it("steps through the groups with the arrows and wraps straight round at both ends", async () => {
+    renderBox(<Palette />);
+    screen.getByRole("combobox").focus();
+
+    await userEvent.keyboard("{ArrowUp}");
+    expect(activeOption()).toBe("Pelican Point Motel");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(activeOption()).toBe("90s Action#42");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(activeOption()).toBe("The Velvet CartographerIn library");
+  });
+
+  it("jumps to the first and last option with Home and End instead of moving the caret", async () => {
+    renderBox(<Palette inputValue="velvet" />);
+    const input = screen.getByRole<HTMLInputElement>("combobox");
+    input.focus();
+    input.setSelectionRange(3, 3);
+
+    await userEvent.keyboard("{End}");
+    expect(activeOption()).toBe("Pelican Point Motel");
+    expect(input.selectionStart).toBe(3);
+    await userEvent.keyboard("{ArrowUp}{Home}");
+    expect(activeOption()).toBe("90s Action#42");
+  });
+
+  it("picks the highlighted option with Enter and a clicked option by click", async () => {
+    const onPick = vi.fn();
+    renderBox(<Palette onPick={onPick} />);
+    screen.getByRole("combobox").focus();
+
+    await userEvent.keyboard("{End}{Enter}");
+    expect(onPick).toHaveBeenLastCalledWith(expect.objectContaining({ value: "l2" }));
+    await userEvent.click(screen.getByRole("option", { name: /90s Action/ }));
+    expect(onPick).toHaveBeenLastCalledWith(expect.objectContaining({ value: "c1" }));
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+
+  it("moves the highlight to a hovered option, so the pointer and Enter agree", async () => {
+    const onPick = vi.fn();
+    renderBox(<Palette onPick={onPick} />);
+
+    await userEvent.hover(screen.getByRole("option", { name: /Pelican/ }));
+    expect(activeOption()).toBe("Pelican Point Motel");
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ value: "l2" }));
+  });
+
+  it("hands the typed text up and puts the highlight back on the first option when the list changes", async () => {
+    const onType = vi.fn();
+    const { rerender } = renderBox(<Palette onType={onType} />);
+    await userEvent.type(screen.getByRole("combobox"), "{End}b");
+    expect(onType).toHaveBeenCalledWith("b");
+    expect(activeOption()).toBe("90s Action#42");
+
+    rerender(
+      <LoomarrProvider>
+        <Palette groups={[palette[2] as ComboboxGroup]} onType={onType} />
+      </LoomarrProvider>,
+    );
+    expect(activeOption()).toBe("The Velvet CartographerIn library");
+  });
+
+  it("calls onEscape on every Escape, even with nothing to list, and keeps the text", async () => {
+    const onEscape = vi.fn();
+    const { rerender } = renderBox(<Palette inputValue="x" onEscape={onEscape} />);
+    const input = screen.getByRole<HTMLInputElement>("combobox");
+    input.focus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    expect(input.value).toBe("x");
+
+    rerender(
+      <LoomarrProvider>
+        <Palette emptyText="No matches." groups={[]} inputValue="x" onEscape={onEscape} />
+      </LoomarrProvider>,
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(onEscape).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves Escape alone when there is no onEscape, so a dialog around it still closes", async () => {
+    const outer = vi.fn();
+    const listen = (event: KeyboardEvent) => event.key === "Escape" && outer();
+    window.addEventListener("keydown", listen);
+    renderBox(<Palette />);
+    screen.getByRole("combobox").focus();
+
+    await userEvent.keyboard("{Escape}");
+    window.removeEventListener("keydown", listen);
+    expect(outer).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops an Escape it handles from reaching the window", async () => {
+    const outer = vi.fn();
+    const listen = (event: KeyboardEvent) => event.key === "Escape" && outer();
+    window.addEventListener("keydown", listen);
+    renderBox(<Palette onEscape={() => undefined} />);
+    screen.getByRole("combobox").focus();
+
+    await userEvent.keyboard("{Escape}");
+    window.removeEventListener("keydown", listen);
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("says nothing matched without drawing an empty listbox, and the field does not point at one", () => {
+    renderBox(<Palette emptyText="No matches for “zz”." groups={[]} inputValue="zz" />);
+    const input = screen.getByRole("combobox");
+
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("No matches for “zz”.");
+    expect(input.getAttribute("aria-controls")).toBeNull();
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  it("does nothing on Home, End, the arrows or Enter with no options", async () => {
+    const onPick = vi.fn();
+    renderBox(<Palette emptyText="No matches." groups={[]} onPick={onPick} />);
+    screen.getByRole("combobox").focus();
+
+    await userEvent.keyboard("{Home}{End}{ArrowDown}{ArrowUp}{Enter}");
+    expect(onPick).not.toHaveBeenCalled();
+    expect(activeOption()).toBeNull();
+  });
+
+  it("takes its name from a visible label", () => {
+    renderBox(
+      <>
+        <span id="find">Find anything</span>
+        <Palette aria-labelledby="find" />
+      </>,
+    );
+    expect(screen.getByRole("combobox", { name: "Find anything" })).toBeTruthy();
+  });
+});
+
+describe("Combobox floating list keys (web)", () => {
+  it("keeps Home and End on the text caret, where the list is a popup", async () => {
+    renderBox(<Harness inputValue="seattle" />);
+    const input = screen.getByRole<HTMLInputElement>("combobox");
+    await userEvent.type(input, "{ArrowDown}");
+    const before = activeOption();
+
+    await userEvent.keyboard("{End}");
+    expect(input.selectionStart).toBe(input.value.length);
+    await userEvent.keyboard("{Home}");
+    expect(input.selectionStart).toBe(0);
+    expect(activeOption()).toBe(before);
+  });
+
+  it("closes the list on the first Escape and calls onEscape on the next", async () => {
+    const onEscape = vi.fn();
+    renderBox(<Harness onEscape={onEscape} />);
+    const input = screen.getByRole("combobox");
+
+    await userEvent.type(input, "x");
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onEscape).not.toHaveBeenCalled();
+
+    await userEvent.keyboard("{Escape}");
+    expect(onEscape).toHaveBeenCalledTimes(1);
   });
 });
