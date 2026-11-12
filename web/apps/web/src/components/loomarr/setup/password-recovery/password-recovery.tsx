@@ -1,5 +1,5 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
@@ -25,9 +25,9 @@ const PasswordRecoveryRequest = ({
   if (sent) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <span className="mx-auto flex w-fit">
+        <Stack className="mx-auto w-fit" direction="row" render="span">
           <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
-        </span>
+        </Stack>
         <div className="space-y-2">
           <h1 className="font-display text-2xl font-semibold">Check your email</h1>
           <p className="text-muted-foreground text-sm">
@@ -49,9 +49,9 @@ const PasswordRecoveryRequest = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <span className="mx-auto flex w-fit">
+        <Stack className="mx-auto w-fit" direction="row" render="span">
           <Icon decorative glyph={icons.mail} size="touch" tone="primary" />
-        </span>
+        </Stack>
         <h1 className="font-display text-2xl font-semibold">Forgot your password?</h1>
         <p className="text-muted-foreground text-sm">
           Enter your Loomarr username. We’ll email a reset link when this local account has a verified
@@ -96,18 +96,25 @@ const PasswordRecoveryReset = ({
 
   if (isLoading) {
     return (
-      <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
+      <Stack
+        align="center"
+        className="text-muted-foreground min-h-48"
+        direction="row"
+        gap="inline"
+        justify="center"
+        role="status"
+      >
         <LoadingStrip decorative width={32} />
         Checking reset link…
-      </div>
+      </Stack>
     );
   }
   if (succeeded) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <span className="mx-auto flex w-fit">
+        <Stack className="mx-auto w-fit" direction="row" render="span">
           <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
-        </span>
+        </Stack>
         <div className="space-y-2">
           <h1 className="font-display text-2xl font-semibold">Password reset</h1>
           <p className="text-muted-foreground text-sm">
@@ -145,9 +152,9 @@ const PasswordRecoveryReset = ({
       }}
     >
       <div className="space-y-2 text-center">
-        <span className="mx-auto flex w-fit">
+        <Stack className="mx-auto w-fit" direction="row" render="span">
           <Icon decorative glyph={icons.key} size="touch" tone="primary" />
-        </span>
+        </Stack>
         <h1 className="font-display text-2xl font-semibold">Create a new password</h1>
         <p className="text-muted-foreground text-sm">This reset link expires {expiry}.</p>
       </div>

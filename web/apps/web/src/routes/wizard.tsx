@@ -6,7 +6,7 @@ import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenan
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { LoadingStrip } from "@loomarr/design-system";
+import { LoadingStrip, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -193,9 +193,16 @@ const WizardScreen = () => {
   // and then yank the operator forward — hold the paint instead of flashing.
   if (authLoading || (isAuthenticated && (status.isLoading || settings.isLoading))) {
     return (
-      <main className="bg-background flex min-h-screen items-center justify-center" aria-busy="true">
+      <Stack
+        align="center"
+        className="bg-background min-h-screen"
+        direction="row"
+        justify="center"
+        render="main"
+        aria-busy
+      >
         <LoadingStrip accessibilityLabel="Checking your setup" />
-      </main>
+      </Stack>
     );
   }
 
@@ -205,9 +212,15 @@ const WizardScreen = () => {
   // retry local to this idempotent read instead.
   if (isAuthenticated && settings.error) {
     return (
-      <main className="bg-background flex min-h-screen items-center justify-center p-6">
+      <Stack
+        align="center"
+        className="bg-background min-h-screen p-6"
+        direction="row"
+        justify="center"
+        render="main"
+      >
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />
-      </main>
+      </Stack>
     );
   }
 

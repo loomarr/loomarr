@@ -1,5 +1,6 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { invalidateSettings } from "@loomarr/core/events";
+import { Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -52,7 +53,7 @@ const AdvancedSettings = () => {
   });
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="Advanced settings"
         description="Every setting key Loomarr knows about. Search by key, group, or value, or follow its owner to the usual place to change it."
@@ -77,7 +78,7 @@ const AdvancedSettings = () => {
           }}
         />
       </div>
-    </div>
+    </Stack>
   );
 };
 

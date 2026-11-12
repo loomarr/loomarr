@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth/me-query";
 import { SettingsEditsProvider } from "@/settings/settings-edits";
@@ -5,12 +6,12 @@ import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
 const FillerSettingsLayout = () => (
   <SettingsEditsProvider>
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <div className="min-h-0 flex-1">
         <Outlet />
       </div>
       <SettingsSaveBarHost />
-    </div>
+    </Stack>
   </SettingsEditsProvider>
 );
 

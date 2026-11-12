@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
@@ -242,9 +242,15 @@ const AppShell = ({
                 {versionLabel}
               </Link>
             ) : (
-              <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs">
+              <Stack
+                align="center"
+                className="text-static-400 mt-auto min-w-0 px-3 py-1.5 font-mono text-xs"
+                direction="row"
+                gap="inline"
+                render="span"
+              >
                 {versionLabel}
-              </span>
+              </Stack>
             )}
           </Tooltip>
         )}

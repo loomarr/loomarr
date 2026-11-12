@@ -1,4 +1,4 @@
-import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
+import { ActivityIndicator, Icon, icons, Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { RestartOverlayProps } from "./restart-overlay.type";
 
@@ -56,7 +56,12 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
       // implicit role, which supports no label at all.
       role={failed ? "alert" : "status"}
     >
-      <div className="border-border bg-card flex max-w-sm items-center gap-3 rounded-lg border p-4 shadow-lg">
+      <Stack
+        align="center"
+        className="border-border bg-card max-w-sm rounded-lg border p-4 shadow-lg"
+        direction="row"
+        gap="control"
+      >
         {restarting ? (
           <ActivityIndicator decorative size="default" tone="primary" />
         ) : failed ? null : (
@@ -72,7 +77,7 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
               : (failed ?? "Everything is back to normal.")}
           </p>
         </div>
-      </div>
+      </Stack>
     </div>
   );
 };

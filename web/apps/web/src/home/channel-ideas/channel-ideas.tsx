@@ -4,7 +4,7 @@ import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
-import { Action, Badge, SectionHeader, StatusDot, Surface, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, SectionHeader, Stack, StatusDot, Surface, Tooltip } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -42,23 +42,23 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
         </h3>
         <p className="text-static-400 m-0 text-sm text-pretty">{idea.pitch}</p>
       </div>
-      <div className="flex items-center gap-2 px-4 pt-2.5 text-xs">
+      <Stack align="center" className="px-4 pt-2.5 text-xs" direction="row" gap="inline">
         {/* The availability text beside it says what the dot does. */}
         <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" size="compact" />
         <span>
           {ideaCount(idea)}
           <span className="text-static-400"> · {ideaAvailability(idea)}</span>
         </span>
-      </div>
+      </Stack>
       <div className="mt-auto p-4">
         {idea.requested ? (
-          <div className="flex min-h-8 items-center">
+          <Stack align="center" className="min-h-8" direction="row">
             <Badge shape="square" tone="suggest">
               Waiting for an admin
             </Badge>
-          </div>
+          </Stack>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <Stack align="center" direction="row" gap="inline" wrap>
             <Action disabled={busy} onPress={onRequest}>
               Request channel
             </Action>
@@ -78,7 +78,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
                 </Action>
               </Tooltip>
             </div>
-          </div>
+          </Stack>
         )}
       </div>
     </article>
@@ -198,7 +198,12 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
       {/* Describe your own channel (#1817): the same manual builder "Edit first" opens, started
           blank. The shipped grid above already names this as waiting on the mock; #1872 is the
           approved one. */}
-      <div className="border-static-700 mt-3 flex items-center justify-center rounded-lg border border-dashed p-3.5">
+      <Stack
+        align="center"
+        className="border-static-700 mt-3 rounded-lg border border-dashed p-3.5"
+        direction="row"
+        justify="center"
+      >
         <Action
           accessibilityRole="link"
           render={<Link to="/requests/new" search={{ manual: 1 }} />}
@@ -206,7 +211,7 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
         >
           Don’t see it? Describe your own channel
         </Action>
-      </div>
+      </Stack>
     </section>
   );
   // On a page of its own the section brings its page inset; the inset is part of what renders, so

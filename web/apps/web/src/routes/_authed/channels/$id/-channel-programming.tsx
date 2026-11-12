@@ -3,7 +3,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useGuideWindow } from "@loomarr/core/guide";
-import { Action, Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure, Stack } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
@@ -122,7 +122,7 @@ const ChannelProgramming = ({
   const cycle = cycleBody ? { ...cycleBody.cycle, ordering: cycleBody.trace.ordering } : undefined;
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       <div>
         <h2 className="text-lg font-semibold">Programming</h2>
         <p className="text-muted-foreground text-sm">What this channel plays, and when.</p>
@@ -190,7 +190,7 @@ const ChannelProgramming = ({
                 deliberately the same shape as the filler sandbox's bar: two drafts on one page
                 that commit differently would be two things to learn. */}
             {rules.isDirty && (
-              <div className="border-border flex items-center gap-2 border-t pt-4">
+              <Stack align="center" className="border-border border-t pt-4" direction="row" gap="inline">
                 <Action disabled={rules.isApplying} onPress={rules.apply} tone="suggest">
                   {rules.isApplying ? "Applying…" : "Apply rules"}
                 </Action>
@@ -198,7 +198,7 @@ const ChannelProgramming = ({
                   Discard
                 </Action>
                 <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
-              </div>
+              </Stack>
             )}
 
             {/* ⚠ Seasonal stays SEAMLESS: it writes `policy.seasonal`, a self-contained field,
@@ -265,7 +265,7 @@ const ChannelProgramming = ({
           />
         </div>
       </Disclosure>
-    </div>
+    </Stack>
   );
 };
 

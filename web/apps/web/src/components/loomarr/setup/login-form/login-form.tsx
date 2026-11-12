@@ -1,5 +1,5 @@
 import { loginSchema } from "@loomarr/core/schemas";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import { cn } from "@/lib/utils";
@@ -90,7 +90,7 @@ const LoginForm = ({
           always works alongside SSO rather than instead of it, and an install whose provider
           is down must not look like one nobody can enter. */}
       {onSso && (
-        <div className="border-border flex flex-col gap-2 border-t pt-4">
+        <Stack className="border-border border-t pt-4" gap="inline">
           {ssoError ? (
             <p className="text-danger text-sm" role="alert">
               {ssoErrorCopy(ssoError)}
@@ -99,7 +99,7 @@ const LoginForm = ({
           <Action disabled={isPending} onPress={onSso} variant="outline">
             Sign in with your provider
           </Action>
-        </div>
+        </Stack>
       )}
 
       {/* Development only (§11). Rendered solely when the SERVER reports

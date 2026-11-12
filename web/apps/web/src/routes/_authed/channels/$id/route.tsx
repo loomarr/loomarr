@@ -8,7 +8,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -244,11 +244,18 @@ const ChannelDetailLayout = () => {
   const saveLogo = (logo: string) => channelSave.save({ logo });
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack className="h-full">
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
-      <header className="border-border flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:px-6">
+      <Stack
+        align="center"
+        className="border-border border-b px-4 py-4 sm:px-6"
+        direction="row"
+        gap="control"
+        render="header"
+        wrap
+      >
         <Link
           to="/guide"
           aria-label="Back to channels"
@@ -289,7 +296,12 @@ const ChannelDetailLayout = () => {
               {airLine.text}
             </span>
           </div>
-          <div className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
+          <Stack
+            align="center"
+            className="text-muted-foreground ml-auto text-sm"
+            direction="row"
+            gap="inline"
+          >
             <Text as="span" shout textRole="data">
               Ch
             </Text>
@@ -309,7 +321,7 @@ const ChannelDetailLayout = () => {
             ) : (
               <span className="text-foreground px-1.5 py-0.5 font-mono">{channelNumber(ch.number)}</span>
             )}
-          </div>
+          </Stack>
         </div>
         {/* Watch opens the full-bleed player (#2088); it replaced the Watch tab. The media-server
             hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
@@ -336,7 +348,7 @@ const ChannelDetailLayout = () => {
             </Action>
           )}
         </Surface>
-      </header>
+      </Stack>
 
       {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin
           sees every section; a viewer's only section is Channel info, so they get no bar (Watch is
@@ -396,7 +408,7 @@ const ChannelDetailLayout = () => {
           </ChannelDetailProvider>
         </div>
       </div>
-    </div>
+    </Stack>
   );
 };
 

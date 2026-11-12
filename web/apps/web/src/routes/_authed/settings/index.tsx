@@ -3,7 +3,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
 import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import * as systemApi from "@loomarr/api/endpoints/system";
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -108,7 +108,7 @@ const SettingsHome = () => {
   const advanced = cardDestinations("advanced", isAdmin)[0];
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader title="Settings" description="Search reaches any setting directly." />
       <div className="min-h-0 flex-1 overflow-auto">
         <SettingsOverview
@@ -181,7 +181,7 @@ const SettingsHome = () => {
           }
         />
       </div>
-    </div>
+    </Stack>
   );
 };
 

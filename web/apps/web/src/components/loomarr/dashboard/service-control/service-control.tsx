@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
@@ -32,7 +32,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   return (
     <section className={cn("border-border rounded-lg border p-4", className)}>
-      <div className="flex items-center gap-3">
+      <Stack align="center" direction="row" gap="control">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium">Restart Loomarr</h2>
           <p className="text-muted-foreground mt-0.5 text-sm">
@@ -49,7 +49,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
             Restart...
           </Action>
         ) : null}
-      </div>
+      </Stack>
 
       {/* ⚠ Not a hidden button. A build with no restart loop behind it says so, and says
           what to do instead — hiding the control would leave an operator hunting for a
@@ -61,16 +61,23 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
       )}
 
       {error ? (
-        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <span className="mt-0.5 flex">
+        <Stack
+          align="start"
+          className="text-danger mt-3 text-sm"
+          direction="row"
+          gap="inline"
+          render="p"
+          role="alert"
+        >
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
+          </Stack>
           {error}
-        </p>
+        </Stack>
       ) : null}
 
       {confirming && (
-        <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
+        <Stack align="center" className="border-border mt-3 border-t pt-3" direction="row" gap="inline">
           <p className="min-w-0 flex-1 text-sm">
             {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
           </p>
@@ -86,7 +93,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           <Action onPress={() => setConfirming(false)} variant="ghost">
             Cancel
           </Action>
-        </div>
+        </Stack>
       )}
     </section>
   );

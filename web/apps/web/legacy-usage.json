@@ -115,13 +115,13 @@
       "tailwindClasses": 28
     },
     "src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "tailwindClasses": 74
+      "tailwindClasses": 66
     },
     "src/components/loomarr/dashboard/service-control/service-control.tsx": {
-      "tailwindClasses": 40
+      "tailwindClasses": 30
     },
     "src/components/loomarr/dashboard/services-panel/services-panel.tsx": {
-      "tailwindClasses": 36
+      "tailwindClasses": 33
     },
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 22
@@ -133,10 +133,10 @@
       "tailwindClasses": 3
     },
     "src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
-      "tailwindClasses": 36
+      "tailwindClasses": 33
     },
     "src/components/loomarr/feedback/placeholder/placeholder.tsx": {
-      "tailwindClasses": 14
+      "tailwindClasses": 12
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
       "tailwindClasses": 53,
@@ -239,23 +239,23 @@
       "tailwindClasses": 27
     },
     "src/components/loomarr/setup/connection-block/connection-block.tsx": {
-      "tailwindClasses": 22
+      "tailwindClasses": 18
     },
     "src/components/loomarr/setup/login-form/login-form.tsx": {
-      "tailwindClasses": 27
+      "tailwindClasses": 24
     },
     "src/components/loomarr/setup/login-shell/login-shell.tsx": {
       "tailwindClasses": 12
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
-      "tailwindClasses": 74
+      "tailwindClasses": 66
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "tailwindClasses": 108,
+      "tailwindClasses": 97,
       "rawButton": 2
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 151,
+      "tailwindClasses": 148,
       "rawButton": 1
     },
     "src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
@@ -268,28 +268,28 @@
       "tailwindClasses": 27
     },
     "src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
-      "tailwindClasses": 27
+      "tailwindClasses": 24
     },
     "src/components/loomarr/shell/search-command/search-command.tsx": {
       "tailwindClasses": 13
     },
     "src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
-      "tailwindClasses": 46
+      "tailwindClasses": 41
     },
     "src/components/loomarr/shell/tv-static/tv-static.tsx": {
       "tailwindClasses": 24
     },
     "src/design/palette/palette.tsx": {
-      "tailwindClasses": 106
+      "tailwindClasses": 89
     },
     "src/design/spacing/spacing.tsx": {
       "tailwindClasses": 118
     },
     "src/design/tokens/tokens.tsx": {
-      "tailwindClasses": 25
+      "tailwindClasses": 19
     },
     "src/design/typography/typography.tsx": {
-      "tailwindClasses": 102
+      "tailwindClasses": 79
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 198
@@ -427,19 +427,19 @@
       "rawButton": 1
     },
     "src/help/help-page/help-page.tsx": {
-      "tailwindClasses": 42
+      "tailwindClasses": 40
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
-      "tailwindClasses": 74
+      "tailwindClasses": 62
     },
     "src/home/home-page/home-page.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 16
     },
     "src/home/home-strip/home-strip.tsx": {
       "tailwindClasses": 34
     },
     "src/home/new-this-week/new-this-week.tsx": {
-      "tailwindClasses": 68
+      "tailwindClasses": 65
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
@@ -455,58 +455,58 @@
       "rawButton": 1
     },
     "src/people/users-page/users-page.tsx": {
-      "tailwindClasses": 14
+      "tailwindClasses": 9
     },
     "src/queue/request-detail/request-detail.tsx": {
-      "tailwindClasses": 62
+      "tailwindClasses": 47
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 24
+      "tailwindClasses": 15
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 73
+      "tailwindClasses": 62
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 21
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "tailwindClasses": 38
+      "tailwindClasses": 32
     },
     "src/routes/_authed/channels/$id/info.tsx": {
-      "tailwindClasses": 38
+      "tailwindClasses": 29
     },
     "src/routes/_authed/channels/$id/route.tsx": {
-      "tailwindClasses": 83
+      "tailwindClasses": 74
     },
     "src/routes/_authed/filler/settings/route.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 4
     },
     "src/routes/_authed/requests/_tabs.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 10
     },
     "src/routes/_authed/settings/access.tsx": {
       "tailwindClasses": 13
     },
     "src/routes/_authed/settings/advanced.tsx": {
-      "tailwindClasses": 8
+      "tailwindClasses": 6
     },
     "src/routes/_authed/settings/index.tsx": {
-      "tailwindClasses": 53
+      "tailwindClasses": 51
     },
     "src/routes/_authed/settings/route.tsx": {
-      "tailwindClasses": 7
+      "tailwindClasses": 5
     },
     "src/routes/_authed/settings/system/about.tsx": {
-      "tailwindClasses": 8
+      "tailwindClasses": 6
     },
     "src/routes/_authed/settings/system/backup.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 9
     },
     "src/routes/_authed/settings/system/database.tsx": {
-      "tailwindClasses": 8
+      "tailwindClasses": 6
     },
     "src/routes/_authed/settings/system/index.tsx": {
-      "tailwindClasses": 52
+      "tailwindClasses": 49
     },
     "src/routes/_authed/settings/system/storage.tsx": {
       "tailwindClasses": 9
@@ -518,7 +518,7 @@
       "tailwindClasses": 1
     },
     "src/routes/wizard.tsx": {
-      "tailwindClasses": 11
+      "tailwindClasses": 5
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
       "tailwindClasses": 36

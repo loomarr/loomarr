@@ -1,4 +1,4 @@
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import {
@@ -30,7 +30,7 @@ const GROUPS: readonly { id: string; label: string; description: string; pages: 
 ];
 
 const SystemHome = () => (
-  <div className="flex h-full min-h-0 flex-col">
+  <Stack className="h-full min-h-0">
     <PageHeader
       title="This server"
       description="Keep playback running, protect this installation, or investigate a problem."
@@ -62,9 +62,13 @@ const SystemHome = () => (
                         {item.description}
                       </span>
                     </span>
-                    <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+                    <Stack
+                      className="text-muted-foreground group-hover:text-foreground mt-0.5 transition-colors"
+                      direction="row"
+                      render="span"
+                    >
                       <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
-                    </span>
+                    </Stack>
                   </Link>
                 ))}
               </div>
@@ -73,7 +77,7 @@ const SystemHome = () => (
         })}
       </div>
     </div>
-  </div>
+  </Stack>
 );
 
 // no-loader: a static list of links to the System pages

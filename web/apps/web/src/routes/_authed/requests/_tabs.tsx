@@ -1,4 +1,5 @@
 import type { RequestTab } from "@loomarr/core/requests";
+import { Stack } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -43,7 +44,7 @@ const RequestsLayout = () => {
   const nothingRequested = !isLoading && error == null && entries.length === 0 && pendingApprovals === 0;
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack className="h-full">
       <PageHeader title="Requests" description="Channels you've asked for and where each one stands." />
       {error != null ? (
         <div className="p-6">
@@ -101,7 +102,7 @@ const RequestsLayout = () => {
           </div>
         </>
       )}
-    </div>
+    </Stack>
   );
 };
 
