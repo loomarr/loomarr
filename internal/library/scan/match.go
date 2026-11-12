@@ -509,21 +509,28 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	}
 	name = trackerPrefix.ReplaceAllString(name, "")
 	name = leadingTags.ReplaceAllString(name, "")
+	name = strings.NewReplacer("【", "[", "】", "]", "「", "[", "」", "]").Replace(name)
+	// A copy a household made by hand: "Copy of Ashgrove (2015)".
+	if strings.HasPrefix(strings.ToLower(name), "copy of ") {
+		name = name[len("copy of "):]
+	}
 	if loc := indexPrefix.FindStringIndex(name); loc != nil && strings.IndexFunc(name[loc[1]:], unicode.IsLetter) >= 0 {
 		name = name[loc[1]:]
 	}
+	// A name written with dots is one still when a bracketed note sits among them:
+	// "Ashgrove.2015.[1080p]".
+	dotted := !strings.Contains(name, " ")
 	name = bracketNote.ReplaceAllStringFunc(name, func(group string) string {
 		if releaseNote(group[1 : len(group)-1]) {
 			return " "
 		}
 		return group
 	})
-	dotted := !strings.Contains(name, " ")
 	if dotted {
 		name = strings.NewReplacer(".", " ", "_", " ", "+", " ").Replace(name)
 	}
 	// A name joined only with dashes, "ferrow-lane-2019", is spaced where a year shows it is words.
-	if !strings.Contains(name, " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], func(w string) bool {
+	if !strings.Contains(strings.TrimSpace(name), " ") && slices.ContainsFunc(strings.Split(name, "-")[1:], func(w string) bool {
 		return releaseYear(strings.Trim(w, "()[]"))
 	}) {
 		name = strings.ReplaceAll(name, "-", " ")
@@ -547,8 +554,8 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	clean := func(words []string) string { return strings.Trim(strings.Join(words, " "), " -.") }
 	year = known
 	for j := len(words) - 1; j > 0; j-- {
-		// A year glued to a release group, "2015-GRP", is the year.
-		if w := strings.SplitN(words[j], "-", 2)[0]; releaseYear(w) {
+		// A year glued to a release group, "2015-GRP", or set between dashes, "-2015-", is the year.
+		if w := strings.SplitN(strings.TrimLeft(words[j], "-"), "-", 2)[0]; releaseYear(w) {
 			if year == 0 {
 				year, _ = strconv.Atoi(w)
 			}

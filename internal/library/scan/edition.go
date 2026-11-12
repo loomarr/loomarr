@@ -67,7 +67,7 @@ func editionKey(label string) string {
 // playingCopies is which of a title's n files play: one in each edition (decision 54), or each
 // part of an edition in parts, picked among the copies of it as playingCopy picks (decision 37).
 // An edition with a whole file plays that, and its parts are extra copies.
-func playingCopies(n int, edition func(int) string, part func(int) int, managed func(int) bool, pixels func(int) int, size func(int) int64) []bool {
+func playingCopies(n int, edition func(int) string, part func(int) int, managed func(int) bool, pixels func(int) int, size, length func(int) int64) []bool {
 	groups := map[string][]int{}
 	whole := map[string]bool{}
 	for i := range n {
@@ -82,7 +82,7 @@ func playingCopies(n int, edition func(int) string, part func(int) int, managed 
 			continue
 		}
 		best := playingCopy(len(g), func(j int) bool { return managed(g[j]) },
-			func(j int) int { return pixels(g[j]) }, func(j int) int64 { return size(g[j]) })
+			func(j int) int { return pixels(g[j]) }, func(j int) int64 { return size(g[j]) }, func(j int) int64 { return length(g[j]) })
 		plays[g[best]] = true
 	}
 	return plays

@@ -504,6 +504,53 @@ var namingMatrix = []namingRow{
 		"TV/Kettle Bay/Pilot Extended.mkv":    "episode Kettle Bay S?E?",
 	}},
 	{id: "W50", files: map[string]string{"Movies/Brindle Cove/bc.mkv": "movie Brindle Cove -"}},
+	// An extra is one beside its title, however it is named; with no title beside it, a name with an
+	// extra's word in it is a title of its own.
+	{id: "W51", files: map[string]string{
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018).mkv":                   "movie Copper Hollow 2018",
+		"Movies/Copper Hollow (2018)/Copper.Hollow.2018.Trailer.1080p.mkv":       "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) [Trailer].mkv":         "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) (Trailer).mkv":         "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018)-trailer.1080p.mkv":     "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Trailer #2.mkv":      "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow Official Trailer.mkv":         "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow Teaser.mkv":                   "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Deleted Scene 1.mkv": "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Music Video.mkv":     "skip",
+		"Movies/Copper Hollow (2018)/Bonus/Making Of Part 1.mkv":                 "skip",
+	}},
+	{id: "W52", files: map[string]string{
+		"Movies/Night.Trailer.mkv":                         "movie Night Trailer -",
+		"Movies/The.Last.Sample.mkv":                       "skip",
+		"Movies/Cut-Short.mkv":                             "movie Cut-Short -",
+		"Movies/the-other.avi":                             "movie the-other -",
+		"Movies/Outtakes.mkv":                              "movie Outtakes -",
+		"Movies/Ashgrove Short (2017).mkv":                 "movie Ashgrove Short 2017",
+		"Movies/.45 Kettles (2014).mkv":                    "movie 45 Kettles 2014",
+		"Movies/@Home Again (2019)/@Home Again (2019).mkv": "movie @Home Again 2019",
+	}},
+	{id: "W53", files: map[string]string{
+		"TV/Pelican Drift/Season 2/Pelican Drift - S02E08 - Trailer.mkv": "episode Pelican Drift S2E8",
+		"TV/Pelican Drift/Season 1/Pelican Drift - S01E01.mkv":           "episode Pelican Drift S1E1",
+		"TV/Pelican Drift/Pelican Drift - Christmas Special.mkv":         "episode Pelican Drift S?E?",
+	}},
+	{id: "W54", files: map[string]string{
+		"Docs/Ocean Halls/01 - The Deep.mkv":  "episode Ocean Halls S1E1",
+		"Docs/Ocean Halls/02 - The Shelf.mkv": "episode Ocean Halls S1E2",
+	}},
+	{id: "W55", files: map[string]string{"TV/Pelican Drift (Complete Series)/Season 1/Pelican Drift S01E01.mkv": "episode Pelican Drift S1E1"}},
+	{id: "W56", files: map[string]string{"TV/Pelican Drift Complete/Season 1/Pelican Drift S01E01.mkv": "episode Pelican Drift S1E1"}},
+	{id: "W57", files: map[string]string{"TV/Pelican Drift - The Complete Series/Season 1/Pelican Drift S01E01.mkv": "episode Pelican Drift S1E1"}},
+	{id: "W58", files: map[string]string{
+		"Movies/Copper.Hollow.2018.[1080p].mkv":  "movie Copper Hollow 2018",
+		"Movies/【Lantern Cove】(2016).mkv":        "movie Lantern Cove 2016",
+		"Movies/Copy of Marrow Point (2010).mkv": "movie Marrow Point 2010",
+		"Movies/Brindle Cove -2014-.mkv":         "movie Brindle Cove 2014",
+	}},
+	{id: "W59", files: map[string]string{"TV/Dōkoku/第1期/第3話.mkv": "episode Dōkoku S1E3"}},
+	{id: "W60", files: map[string]string{"TV/Guri/시즌 1/3화.mkv": "episode Guri S1E3"}},
+	{id: "W61", files: map[string]string{"TV/Med/Сезон 1/Med - 3 серия.mkv": "episode Med S1E3"}},
+	{id: "W62", files: map[string]string{"TV/Series 7 Club/Season 1/Series 7 Club S01E01.mkv": "episode Series 7 Club S1E1"}},
 	// Episode marks as other apps and languages write them, and one file of several.
 	{id: "W15", files: map[string]string{
 		"TV/Kettle Bay/Kettle Bay 1x2.avi":               "episode Kettle Bay S1E2",

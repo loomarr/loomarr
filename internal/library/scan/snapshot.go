@@ -141,7 +141,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    and "第11話" are marks; a season pack in its show's folder, a fansub pack's folder and an
 //	    unmarked file beside a show's episodes are the show's; descriptive extras, Media Center
 //	    recordings and a Mac's share leavings are read as they are.
-const writeVersion = 41
+//	42: an extra named by its kind is one beside its title, however it is named, and a title of its
+//	    own with none beside it; specials loose beside a show's season folders and episodes numbered
+//	    alone in a show's folder are its; "Complete Series" folders, "第1期", "시즌 1" and "Series 7
+//	    Club" are read as they mean; ".45 …" and "@Home …" are titles, not hidden folders.
+const writeVersion = 42
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -393,7 +397,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 				}
 			}
 			return 0
-		}, func(i int) int64 { return files[i].src.SizeBytes })
+		}, func(i int) int64 { return files[i].src.SizeBytes }, func(i int) int64 { return files[i].src.DurationMs })
 	out := make([]librarystore.LibrarySource, len(files))
 	for i, f := range files {
 		out[i] = f.src

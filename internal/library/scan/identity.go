@@ -501,14 +501,21 @@ var spelledNumbers = map[string]int{
 	"sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20,
 }
 
+// seasonNotes is what may follow a season folder's number: anything after a dash or in brackets
+// ("Season 1 - 2019", "Season 2 [1080p]", "Season 1-2"), or a release's words ("Season 1 1080p
+// WEB-DL", "Season 01 Complete", "Season 1 Disc 2"). Any other word makes the name a show's:
+// "Series 7 Club", "Season 25 Club".
+const seasonNotes = `(?:[ ._]*[-\[(].*|[ ._]+(?:\d{3,4}p|complete|(?:19|20)\d{2}|web(?:-?dl|rip)?|blu-?ray|bdrip|brrip|hdtv|dvd(?:rip)?|x26[45]|h\.?26[45]|hevc|uhd|4k|remux|multi|disc|disk|dvd)(?:[ ._].*)?)?`
+
 var (
 	// seasonFolder matches a season folder's name and its number: "Season 1", "Season 01", "Series
-	// One", "Staffel 1", "Säsong 1", with whatever notes follow a separator ("Season 2 [1080p]",
-	// "Season 1 - 2019", "Season 01 Complete", "Season 1-2"); "S01" with only bracketed notes.
-	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)(?:[ ._\-\[(].*)?|s(\d{1,4})(?:[ ._-]*[\[(][^\])]*[\])])*)$`)
+	// One", "Staffel 1", "Säsong 1", with its notes; "S01" with only bracketed notes.
+	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)` + seasonNotes + `|s(\d{1,4})(?:[ ._-]*[\[(][^\])]*[\])])*)$`)
 	// namedSeason matches a season folder that starts with its show's name: "Kettle Bay Season 1",
 	// "KB Season 1".
-	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)(?:[ ._\-\[(].*)?$`)
+	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)` + seasonNotes + `$`)
+	// cjkSeason matches a Japanese, Chinese or Korean season folder: "第1期", "第2季", "시즌 1".
+	cjkSeason = regexp.MustCompile(`^(?:第\s*(\d{1,2})\s*[期季部]|시즌\s*(\d{1,2}))$`)
 	// ordinalSeason matches a season folder named by its place: "1st Season", "2nd Series".
 	ordinalSeason = regexp.MustCompile(`(?i)^(\d{1,2})(?:st|nd|rd|th)[ ._-]+(?:season|series)(?:[ ._\-\[(].*)?$`)
 )
@@ -525,6 +532,9 @@ func seasonIn(name string) (season int, ok bool) {
 	}
 	if m := ordinalSeason.FindStringSubmatch(name); m != nil {
 		return atoi(m[1]), true
+	}
+	if m := cjkSeason.FindStringSubmatch(name); m != nil {
+		return atoi(m[1] + m[2]), true // one of the two is the season
 	}
 	m := seasonFolder.FindStringSubmatch(name)
 	if m == nil {
@@ -707,11 +717,14 @@ func showFolderName(folder string) string {
 		if i+1 < len(words) {
 			next = strings.ToLower(strings.Trim(words[i+1], "()[]"))
 		}
+		// "Kettle Bay Complete", "Kettle Bay (Complete Series)", "Kettle Bay - The Complete Series".
+		complete := strings.Trim(w, "()[]") == "complete" &&
+			(next == "" || next == "series" || next == "season" || next == "seasons" || next == "collection")
 		holds := seasonToken.MatchString(w) ||
-			((w == "season" || w == "series" || w == "staffel" || w == "saison") && digits(next)) ||
-			(w == "complete" && (next == "series" || next == "season" || next == "seasons"))
+			((w == "season" || w == "series" || w == "staffel" || w == "saison") && digits(next)) || complete ||
+			(w == "the" && next == "complete")
 		if holds {
-			if show := strings.Trim(strings.Join(words[:i], " "), " -."); show != "" {
+			if show := strings.Trim(strings.Join(words[:i], " "), " -.("); show != "" {
 				return show
 			}
 		}
@@ -758,8 +771,9 @@ var (
 	episodeWord = regexp.MustCompile(`(?i)(?:^|[^\pL0-9])(?:episode|ep|folge|episodio|episódio|épisode|aflevering|avsnitt|afsnit|odcinek|cap[ií]tulo|серия|эпизод|bölüm|jakso)[ ._-]*(\d{1,4})(?:[^0-9]|$)`)
 	// capMark matches a Spanish release's "Cap.117": season 1, episode 17.
 	capMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])cap[ ._]?(\d{1,2})(\d{2})(?:[^0-9]|$)`)
-	// cjkEpisode matches a Japanese or Chinese episode's mark: "第11話", "第12集", "第3回".
-	cjkEpisode = regexp.MustCompile(`第\s*(\d{1,4})\s*[話话集回]`)
+	// cjkEpisode matches a Japanese or Chinese episode's mark: "第11話", "第12集", "第3回"; or a
+	// number before its word, as Korean, Russian and Turkish write it: "3화", "3 серия", "3. Bölüm".
+	cjkEpisode = regexp.MustCompile(`(?i)第\s*(\d{1,4})\s*[話话集回]|(?:^|[^0-9])(\d{1,4})\.?\s*(?:화|회|серия|bölüm)`)
 	// partOf matches a miniseries' "2of6", "2 of 6", "Part 2 of 6".
 	partOf = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(\d{1,3})[ ._-]*of[ ._-]*(\d{1,3})(?:[^0-9a-z]|$)`)
 	// leadingNumber matches a name that starts with its episode's number: "05 - Tidewater".
@@ -858,12 +872,13 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		return episode(atoi(m[1]))
 	}
 	if m := cjkEpisode.FindStringSubmatch(name); m != nil {
-		return episode(atoi(m[1]))
+		return episode(atoi(m[1] + m[2])) // one of the two is the episode
 	}
 	if m := partOf.FindStringSubmatch(name); m != nil && atoi(m[1]) <= atoi(m[2]) {
 		return episode(atoi(m[1]))
 	}
-	if m := leadingNumber.FindStringSubmatch(name); inSeason && m != nil {
+	// So do a show's episodes numbered alone in its own folder ("Ocean Halls/01 - The Deep.mkv").
+	if m := leadingNumber.FindStringSubmatch(name); (inSeason || file.Notes.Leading) && m != nil {
 		// "101 - Tidewater" in Season 1 is its first episode, when every numbered name in the folder
 		// is in its hundred; "101" among "99" and "100" is the hundred and first.
 		if n := atoi(m[1]); season > 0 && file.Notes.Hundreds == season {
@@ -965,10 +980,35 @@ type folderNotes struct {
 	// "Torrents/Kettle Bay S01E01.mkv" beside "Torrents/Ferrow Lane S02E03.mkv", or a genre's
 	// "TV/Kids/Kettle Bay S01E04.mkv". It names no show, as a catch-all does.
 	Dump bool
-	// Episodes is a folder two or more of whose videos carry an episode's mark: a show's own folder,
-	// whose unmarked videos ("Pilot.mkv") are its episodes too.
+	// Episodes is a folder two or more of whose videos carry an episode's mark, or one holding
+	// season folders: a show's own folder, whose unmarked videos ("Pilot.mkv", "Show - Christmas
+	// Special.mkv") are its episodes too.
 	Episodes bool
+	// Leading is a folder two or more of whose videos start with their number ("01 - The Deep",
+	// "2. Low Water") and none gives a year: a show's episodes, kept with no season folder.
+	Leading bool
 }
+
+// leadingEpisodes says whether a folder's videos are a show's numbered by their place alone: two or
+// more start with a number and a separator ("01 - The Deep", "2. Low Water"), and none gives a
+// year, as a collection's films do ("01 - Marrow Point (2010)").
+func leadingEpisodes(names []string) bool {
+	numbered := 0
+	for _, name := range names {
+		s := stem(name)
+		if _, year, _ := searchQuery(s, 0); year != 0 || bracketYear.MatchString(s) {
+			return false
+		}
+		if leadingPlace.MatchString(s) {
+			numbered++
+		}
+	}
+	return numbered >= 2
+}
+
+// leadingPlace matches a name that starts with its place and a separator, then words: "01 - The
+// Deep", "2. Low Water", "03_Tidewater".
+var leadingPlace = regexp.MustCompile(`^(\d{1,3})(?:[ ._]*[-.][ ._]*|[ _]+)\pL`)
 
 // dumpFolder says whether a folder named folder, holding videos named names, is a Dump. A show's
 // own folder whose files spell it two ways, or carry an old name beside its new one, has one of

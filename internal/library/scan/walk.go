@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
@@ -61,6 +62,7 @@ var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 var extrasDirs = map[string]bool{
 	"extras": true, "featurettes": true, "behind the scenes": true, "deleted scenes": true,
 	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
+	"bonus": true, "bonus disc": true, "bonus material": true, "extras disc": true,
 	"backdrops": true, "sample": true, "special features": true, "bonus features": true, "clips": true,
 	"extra": true, "theme-music": true,
 }
@@ -73,7 +75,9 @@ var extrasDirs = map[string]bool{
 // walked either, but is listed as a problem.
 func skippedDir(parent, name string, titled bool) bool {
 	lower := strings.ToLower(name)
-	return skippedDirs[lower] || slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) }) ||
+	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
+	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
+	return skippedDirs[lower] || prefixed ||
 		(parent != "." && extrasDirs[lower] && titled && !catchAllFolder(path.Base(parent))) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
@@ -108,23 +112,6 @@ func relTo(root, p string) string {
 	}
 	return filepath.ToSlash(rel)
 }
-
-// extrasSuffixes mark an extra by its file name, as in "Movie (2001)-trailer.mkv", once any number
-// after them is dropped ("-trailer2"); it is skipped. A trailer or a sample is also marked with a
-// dot, an underscore or a dash and a space (Jellyfin's).
-// A hand-named extra spells its kind out after a dash, "Movie (2001) - Behind the Scenes", or a
-// trailer after the year, "Movie (2001) Trailer".
-var extrasSuffixes = []string{
-	"-trailer", ".trailer", "_trailer", "- trailer", "-sample", ".sample", "_sample", "- sample",
-	"-featurette", "-behindthescenes", "-deleted", "-deletedscene", "-interview", "-scene", "-short",
-	"-clip", "-extra", "-other",
-	"- behind the scenes", "- interview", "- featurette", "- deleted scene", "- deleted scenes",
-	") trailer", "] trailer",
-}
-
-// extrasStems are extras' whole names, as a release's "sample.mkv", a folder's "trailer.mkv" or its
-// theme video, "theme.mp4".
-var extrasStems = map[string]bool{"sample": true, "trailer": true, "theme": true}
 
 // Stat is a file's size and modification time, which together are its revision.
 type Stat struct {
@@ -361,6 +348,12 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 	}
+	folder := ""
+	if dir != w.root {
+		folder = filepath.Base(dir)
+	}
+	extras := siblingExtras(folder, videoNames)
+	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
 	marked := 0
 	for _, name := range videoNames {
@@ -368,7 +361,10 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			marked++
 		}
 	}
-	notes.Episodes = marked >= 2
+	notes.Episodes = marked >= 2 || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
+	})
+	notes.Leading = leadingEpisodes(videoNames)
 	// A season folder's episodes name their show, not the season: it is never a dump.
 	notes.Dump = dir != w.root && seasonDirOf(w.rel(dir)) == "" && len(idsIn(filepath.Base(dir))) == 0 &&
 		dumpFolder(filepath.Base(dir), videoNames)
@@ -443,7 +439,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		case filepath.Ext(lower) == ".iso" || filepath.Ext(lower) == ".img":
 			st, _ := w.stat(path, e)
 			w.problem(path, st, ProblemDiscImage)
-		case videoExtensions[filepath.Ext(lower)] && !extraName(lower):
+		case videoExtensions[filepath.Ext(lower)] && !extraName(lower) && !extras[e.Name()]:
 			st, ok := w.stat(path, e)
 			if !ok {
 				w.unread(path)
@@ -748,35 +744,133 @@ func (f File) art() []string {
 	return names
 }
 
-// extraName reports whether a video file's lower-cased name marks it as no title: an extra, a
-// sample, or a hidden file such as a Mac's "._" shadow of a real one.
+// extraName reports whether a video file's lower-cased name marks it as no title whatever is beside
+// it: a sample, an anime's creditless opening, a copy still being written ("~"), or a hidden file
+// such as a Mac's "._" shadow of a real one. A name with a space after its dot (".45 Calibre
+// Kings") is a title's. An extra named by its kind ("- Trailer") is one only beside its title:
+// siblingExtras.
 func extraName(lowerName string) bool {
 	base := strings.TrimRight(strings.TrimSuffix(lowerName, filepath.Ext(lowerName)), "0123456789")
-	// A "~" name is a copy still being written, or an editor's temporary file.
-	if strings.HasPrefix(lowerName, ".") || strings.HasPrefix(lowerName, "~") || extrasStems[base] || strings.HasPrefix(base, "sample-") ||
+	hidden := strings.HasPrefix(lowerName, "._") || strings.HasPrefix(lowerName, ".") && !strings.Contains(lowerName, " ")
+	if hidden || strings.HasPrefix(lowerName, "~") || base == "sample" || strings.HasPrefix(base, "sample-") ||
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) {
 		return true
 	}
-	whole := strings.TrimSuffix(lowerName, filepath.Ext(lowerName))
-	if !episodeMark.MatchString(lowerName) && (plainExtra.MatchString(whole) || dashedExtra.MatchString(whole)) {
-		return true
-	}
-	// An episode's own title can end in a word the extras' marks are made of ("S01E04 - Each-Other",
-	// "Behind-the-Scene", "Cut-Short"): those don't mark a file with an episode's mark.
-	episode := episodeMark.MatchString(lowerName)
-	for _, suffix := range extrasSuffixes {
-		if strings.HasSuffix(base, suffix) && (!episode || !titleWordSuffixes[suffix]) {
+	for _, suffix := range sampleSuffixes {
+		if strings.HasSuffix(base, suffix) {
 			return true
 		}
 	}
 	return false
 }
 
-// titleWordSuffixes are the extras' marks that are also everyday words a hyphenated title ends in,
-// or an episode's own title after its mark ("S02E05 - Behind the Scenes").
-var titleWordSuffixes = map[string]bool{
-	"-other": true, "-scene": true, "-short": true, "- behind the scenes": true, "- interview": true,
-	"- featurette": true, "- deleted scene": true, "- deleted scenes": true,
+// sampleSuffixes mark a release's sample by its file name: "Movie (2001)-sample.mkv",
+// "Kettle.Bay.S01E02.sample.mkv".
+var sampleSuffixes = []string{"-sample", ".sample", "_sample", "- sample", " sample"}
+
+// extraKinds are the words an extra is named by, as Jellyfin, Plex and households name them; a
+// longer one is tried before a word it starts with.
+var extraKinds = [][]string{
+	{"behind", "the", "scenes"}, {"making", "of"}, {"gag", "reel"}, {"music", "video"}, {"alternate", "ending"},
+	{"short", "film"}, {"deleted", "scenes"}, {"deleted", "scene"}, {"official", "trailer"},
+	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
+	{"audio", "commentary"},
+	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
+	{"deletedscenes"}, {"deleted"}, {"bloopers"}, {"outtakes"}, {"commentary"}, {"scene"}, {"short"},
+	{"clip"}, {"extra"}, {"other"}, {"theme"},
+}
+
+// extraKindAt is where in a name's words its extra's kind starts, -1 for none. A number joined on
+// is its count: "trailer2".
+func extraKindAt(words []string) int {
+	bare := make([]string, len(words))
+	for i, w := range words {
+		bare[i] = strings.TrimRight(w, "0123456789")
+	}
+	for i := range bare {
+		for _, kind := range extraKinds {
+			if len(bare)-i >= len(kind) && slices.Equal(bare[i:i+len(kind)], kind) {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// episodeExtra matches Jellyfin's mark for an episode's own extra, joined to its name with a dash:
+// "Kettle Bay - S01E02-trailer", "… - Tidewater-deleted". " - Trailer", spaced, is the episode's
+// title.
+var episodeExtra = regexp.MustCompile(`(?i)-(?:trailer|featurette|behindthescenes|deleted|deletedscene|interview|scene|short|clip|extra)\d*$`)
+
+// titleWordExtra matches an episode's title that ends in an everyday word joined on with a dash,
+// as a hyphenated title does: "Behind-the-Scene", "Cut-Short". A mark joined to the episode's
+// number ("S01E02-short") is Jellyfin's.
+var titleWordExtra = regexp.MustCompile(`(?i)[a-z]-(?:short|scene)$`)
+
+// extraWords are a name's lower-cased words, split at its separators and brackets.
+func extraWords(name string) []string {
+	return strings.FieldsFunc(strings.ToLower(stem(name)), func(r rune) bool {
+		return unicode.IsSpace(r) || strings.ContainsRune("._-()[]{}#,'’", r)
+	})
+}
+
+// siblingExtras is which of a folder's videos are extras of a title beside them: named by their
+// title then their kind ("Ashgrove (2015) - Official Trailer", "Ashgrove.2015.Trailer.1080p",
+// "Ashgrove (2015) [Trailer]"), where the folder holds that title's own video or is named as it
+// is with its year; or named by their kind alone ("Trailer 2", "Gag Reel", "theme") in a title's
+// own folder. A name with no title beside it is a title of its own, kind words and all
+// ("Night Trailer", "Cut-Short", "The Other Side (2019)"), as is one with its own year after its
+// kind ("Ashgrove Short (2017)"), and an episode, whose mark says what it is ("S02E08 - Trailer").
+// folder is the folder's name, "" for a root's top.
+func siblingExtras(folder string, names []string) map[string]bool {
+	key := func(words []string) string {
+		title, _, _ := searchQuery(strings.Join(words, " "), 0)
+		return normName(title)
+	}
+	titles := map[string]bool{}
+	titled := false
+	if title, year, _ := searchQuery(folder, 0); folder != "" && title != "" && year != 0 {
+		titles[normName(title)], titled = true, true
+	}
+	type marked struct {
+		name  string
+		words []string
+		at    int
+	}
+	var kinds []marked
+	out := map[string]bool{}
+	for _, name := range names {
+		words := extraWords(name)
+		at := extraKindAt(words)
+		if episodeMark.MatchString(name) && episodeExtra.MatchString(stem(name)) && !titleWordExtra.MatchString(stem(name)) {
+			out[name] = true
+			continue
+		}
+		if at < 0 || episodeMark.MatchString(name) {
+			titles[key(words)] = true
+			continue
+		}
+		kinds = append(kinds, marked{name, words, at})
+	}
+	for _, k := range kinds {
+		after := k.words[k.at:]
+		if slices.ContainsFunc(after, releaseYear) {
+			continue
+		}
+		if k.at == 0 {
+			// Its kind alone, and what a household adds: "Trailer 2", "Featurette Costumes", in a
+			// title's own folder: one named with its year, or holding that one title. In a catch-all
+			// ("Movies/Outtakes.mkv") it is a title of its own.
+			if titled || len(titles) == 1 && !catchAllFolder(folder) {
+				out[k.name] = true
+			}
+			continue
+		}
+		if titles[key(k.words[:k.at])] {
+			out[k.name] = true
+		}
+	}
+	return out
 }
 
 var (
@@ -785,12 +879,4 @@ var (
 	// animeOpening matches a release's opening or ending in its episode's place, " - OP", " - ED2":
 	// an extra, when a release group's tag says the name is a release's.
 	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:op|ed|pv|cm|menu|preview)\d*(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
-	// plainExtra matches an extra a household named in words, alone or before a dash: "Gag Reel",
-	// "Making Of", "Trailer 2", "Featurette - Costumes", "Creditless Opening".
-	plainExtra = regexp.MustCompile(`(?i)^(?:gag reel|making of|commentary|behind the scenes|bloopers|outtakes|teaser|trailer|featurette|deleted scenes?|interview|creditless (?:opening|ending))(?:[ ._]*\d{1,2})?(?:[ ._]+-[ ._]+.*)?$`)
-	// dashedExtra matches an extra named after its film, after a dash or its year: "Ashgrove (2015) -
-	// Teaser", "Ashgrove (2015) - Official Trailer", "Ashgrove (2015) Teaser Trailer", "Ashgrove
-	// (2015)-Trailer 2", "Ashgrove (2015) - Director Commentary", "- Interview with Cast", "-
-	// Alternate Ending".
-	dashedExtra = regexp.MustCompile(`(?i)(?:[ ._]*-[ ._]*|[)\]][ ._]*)(?:(?:official|teaser|final|theatrical)[ ._]+)?(?:teaser|trailer|making of|gag reel|bloopers|outtakes|(?:directors?'?s?[ ._]+|audio[ ._]+)?commentary|interview(?:[ ._]+with[ ._].*)?|alternate[ ._]+ending|short[ ._]+film|featurette(?:[ ._]+-?[ ._]*.*)?)(?:[ ._]*\d{1,2})?$`)
 )
