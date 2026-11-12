@@ -14,7 +14,8 @@ import { type GestureResponderEvent, Platform, Pressable, TextInput } from "reac
 import { useFocusLook } from "../focus-look";
 import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
-import { lineHeightPx, Surface, Text } from "../primitives";
+import { Surface } from "../primitives";
+import { lineHeightPx, Text } from "../text";
 import { TamaguiText } from "../text-base";
 import {
   brandChroma,

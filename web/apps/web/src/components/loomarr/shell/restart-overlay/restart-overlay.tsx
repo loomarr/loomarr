@@ -1,4 +1,4 @@
-import { ActivityIndicator, Icon, icons, Stack } from "@loomarr/design-system";
+import { ActivityIndicator, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { RestartOverlayProps } from "./restart-overlay.type";
 
@@ -68,14 +68,14 @@ const RestartOverlay = ({ restarting, justCameBack, failed, className }: Restart
           <Icon decorative glyph={icons.selected} size="default" tone="success" />
         )}
         <div className="min-w-0">
-          <p className="text-sm font-medium">
+          <Text as="p" textRole="cardLabel">
             {restarting ? "Restarting Loomarr" : failed ? "Loomarr hasn't come back" : "Loomarr is back"}
-          </p>
-          <p className="text-muted-foreground mt-0.5 text-sm leading-snug">
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
             {restarting
               ? "This takes a few seconds. The app will pick up where it left off."
               : (failed ?? "Everything is back to normal.")}
-          </p>
+          </Text>
         </div>
       </Stack>
     </div>

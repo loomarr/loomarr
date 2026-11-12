@@ -3,7 +3,8 @@ import { useState } from "react";
 
 import { Field } from "../interaction";
 import { PressableRow } from "../pressable-row";
-import { Surface, Text } from "../primitives";
+import { Surface } from "../primitives";
+import { Text } from "../text";
 import type { Density } from "../tokens";
 import type { ComboboxOption, ComboboxProps } from "./combobox.type";
 
