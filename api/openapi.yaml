@@ -7005,6 +7005,10 @@ components:
           description: How long it plays, measured from the file
           format: int64
           type: integer
+        part:
+          description: Which part of a movie split over several files it is, from 1; absent for a whole file. Every part plays, in order
+          format: int64
+          type: integer
         path:
           description: The file on this machine
           type: string
