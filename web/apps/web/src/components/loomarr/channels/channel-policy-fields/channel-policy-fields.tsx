@@ -15,6 +15,18 @@ import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
 
+// What the number boxes take. A blank always passes (it clears the override); anything else that is
+// not the box's kind of number is held back with the reason, never sent as NaN (which the wire
+// spells null, silently clearing the limit).
+const asMinutes = (text: string) =>
+  text.trim() === "" || (Number.isFinite(Number(text)) && Number(text) >= 0)
+    ? undefined
+    : "Enter minutes as a number, like 90";
+const asCount = (text: string) =>
+  text.trim() === "" || /^\d+$/.test(text.trim()) ? undefined : "Enter a whole number, like 3";
+const asYear = (text: string) =>
+  text.trim() === "" || /^\d{4}$/.test(text.trim()) ? undefined : "Enter a year, like 1985";
+
 // One date axis: its title over the shared range list.
 const DateAxisEditor = ({
   label,
@@ -331,8 +343,9 @@ const ChannelPolicyFields = ({
               keyboardType="number-pad"
               label="From year"
               maxLength={4}
+              validate={asYear}
               onCommit={(text) => {
-                const next = text === "" ? undefined : Number(text);
+                const next = text.trim() === "" ? undefined : Number(text);
                 if (next === era?.from) return;
                 const { dates: _dates, ...scope } = policy.scope ?? {};
                 const nextDates = eraDates({ ...era, from: next });
@@ -351,8 +364,9 @@ const ChannelPolicyFields = ({
               keyboardType="number-pad"
               label="To year"
               maxLength={4}
+              validate={asYear}
               onCommit={(text) => {
-                const next = text === "" ? undefined : Number(text);
+                const next = text.trim() === "" ? undefined : Number(text);
                 if (next === era?.to) return;
                 const { dates: _dates, ...scope } = policy.scope ?? {};
                 const nextDates = eraDates({ ...era, to: next });
@@ -453,6 +467,7 @@ const ChannelPolicyFields = ({
             key={policy.scope?.runtimeMax ?? 0}
             keyboardType="number-pad"
             placeholder="e.g. 90"
+            validate={asMinutes}
             width={112}
             onCommit={(text) => {
               const raw = text.trim();
@@ -504,6 +519,7 @@ const ChannelPolicyFields = ({
             key={separation?.blockMax ?? ""}
             keyboardType="number-pad"
             placeholder="Use built-in"
+            validate={asCount}
             width={160}
             onCommit={(text) => {
               // Blank clears the authored cap and returns to the built-in limit. `0` is
