@@ -1,5 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
@@ -19,8 +19,14 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
     >
       <Icon decorative glyph={icons.alert} size="control" tone="danger" />
       <div>
-        <p className="text-onair-300 font-medium">{p.title ?? "Something went wrong"}</p>
-        {p.detail && <p className="text-muted-foreground mt-1 max-w-md text-sm">{p.detail}</p>}
+        <Text as="p" textRole="cardLabel" tone="danger">
+          {p.title ?? "Something went wrong"}
+        </Text>
+        {p.detail && (
+          <Text as="p" className="mt-1 max-w-md" textRole="compact" tone="secondary">
+            {p.detail}
+          </Text>
+        )}
       </div>
       {onRetry && (
         <Action onPress={onRetry} variant="outline">

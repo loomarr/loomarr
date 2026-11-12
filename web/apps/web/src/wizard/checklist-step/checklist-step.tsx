@@ -4,7 +4,7 @@ import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -213,13 +213,13 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
           than a hardcoded pair is what keeps the sentence honest on the internal path, where
           it would otherwise promise the operator a Tunarr requirement that no longer exists. */}
       {only === undefined && (
-        <p className="text-muted-foreground mt-1 text-xs">
+        <Text as="p" className="mt-1" textRole="hint" tone="secondary">
           {requiredChecks(backend)
             .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
             .join(" and ")}{" "}
           must pass to continue. The rest add features you can wire up later, and Settings re-runs these
           checks for the life of the install.
-        </p>
+        </Text>
       )}
 
       {patch.error != null && <ErrorState error={patch.error} />}

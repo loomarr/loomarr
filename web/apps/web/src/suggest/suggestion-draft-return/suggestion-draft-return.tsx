@@ -1,4 +1,4 @@
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { readSuggestionDraft } from "../suggestion-draft";
 
@@ -17,8 +17,12 @@ const SuggestionDraftReturn = () => {
       wrap
     >
       <div>
-        <p className="text-sm font-medium">Your channel draft is saved</p>
-        <p className="text-muted-foreground text-sm">Finish setup, then return without retyping it.</p>
+        <Text as="p" textRole="cardLabel">
+          Your channel draft is saved
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          Finish setup, then return without retyping it.
+        </Text>
       </div>
       <Action accessibilityRole="link" render={<Link to="/requests/new" />} variant="outline">
         Return to channel

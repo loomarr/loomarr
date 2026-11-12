@@ -4,7 +4,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { changePasswordSchema } from "@loomarr/core/schemas";
-import { Action, Card, FieldHint, Stack, StatusLabel } from "@loomarr/design-system";
+import { Action, Card, FieldHint, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -94,16 +94,15 @@ const AccountScreen = () => {
 
       <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
         <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
-          <Stack
-            align="center"
-            className="bg-muted size-10 rounded-full font-medium"
-            direction="row"
-            justify="center"
-          >
-            {(user?.name ?? "?").slice(0, 2).toUpperCase()}
+          <Stack align="center" className="bg-muted size-10 rounded-full" direction="row" justify="center">
+            <Text as="span" textRole="cardLabel">
+              {(user?.name ?? "?").slice(0, 2).toUpperCase()}
+            </Text>
           </Stack>
           <div className="min-w-0">
-            <p className="font-medium">{user?.name}</p>
+            <Text as="p" textRole="cardLabel">
+              {user?.name}
+            </Text>
             <Stack align="center" className="mt-0.5" direction="row" gap="1.5" wrap>
               <StatusLabel tone="off">{isLocal ? "Local account" : "Media-server account"}</StatusLabel>
               <StatusLabel tone={user?.role === "admin" ? "notice" : "off"}>
@@ -114,7 +113,9 @@ const AccountScreen = () => {
         </Card>
 
         <Card gap={12} padding={20}>
-          <h2 className="font-medium">Password</h2>
+          <Text as="h2" textRole="cardLabel">
+            Password
+          </Text>
           {isLocal ? (
             <form
               className="flex flex-col gap-3"
@@ -124,9 +125,9 @@ const AccountScreen = () => {
                 void form.handleSubmit();
               }}
             >
-              <p className="text-muted-foreground text-sm">
+              <Text as="p" textRole="compact" tone="secondary">
                 This is a local Loomarr account, so Loomarr stores the password and you can change it here.
-              </p>
+              </Text>
               <Stack gap="inline">
                 {PASSWORD_FIELDS.map(({ name, label, autoComplete }) => (
                   <form.AppField key={name} name={name}>
@@ -144,18 +145,18 @@ const AccountScreen = () => {
                   Change password
                 </Action>
                 {/* The honest consequence, stated before the click rather than after. */}
-                <span className="text-static-400 text-xs">
+                <Text as="span" textRole="hint" tone="secondary">
                   changing it signs you out everywhere, including here
-                </span>
+                </Text>
               </Stack>
             </form>
           ) : (
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               Your media server owns this password. Loomarr stores only a non-reversible verifier after a
               successful sign-in
               {user?.offlineLogin ? ", so this account can sign in during a media-server outage" : ""}. Change
               the password on your media server; your next successful sign-in refreshes the verifier.
-            </p>
+            </Text>
           )}
         </Card>
 
@@ -165,10 +166,18 @@ const AccountScreen = () => {
             labelled yet keeps today's "Signed in …" title. */}
         {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
         <Card flexShrink={0} overflow="hidden">
-          <h2 className="border-border border-b px-4 py-3.5 text-sm font-semibold">Where you're signed in</h2>
-          {sessions.isLoading && <p className="text-muted-foreground px-4 py-3 text-sm">Loading sessions…</p>}
+          <Text as="h2" className="border-border border-b px-4 py-3.5" strong textRole="cardLabel">
+            Where you're signed in
+          </Text>
+          {sessions.isLoading && (
+            <Text as="p" className="px-4 py-3" textRole="compact" tone="secondary">
+              Loading sessions…
+            </Text>
+          )}
           {!sessions.isLoading && sessionRows.length === 0 && (
-            <p className="text-muted-foreground px-4 py-3 text-sm">No other sessions.</p>
+            <Text as="p" className="px-4 py-3" textRole="compact" tone="secondary">
+              No other sessions.
+            </Text>
           )}
           <ul>
             {sessionRows.map((s) => (
@@ -191,13 +200,13 @@ const AccountScreen = () => {
                 ) : (
                   <>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
+                      <Text as="p" textRole="cardLabel">
                         {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
-                      </p>
+                      </Text>
                       {s.lastSeenAt !== undefined && (
-                        <p className="text-muted-foreground mt-0.5 font-mono text-xs">
+                        <Text as="p" className="mt-0.5" textRole="mono">
                           {formatRelative(s.lastSeenAt)}
-                        </p>
+                        </Text>
                       )}
                     </div>
                     {s.current && <StatusLabel tone="notice">This device</StatusLabel>}

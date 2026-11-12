@@ -1,6 +1,6 @@
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, LoadingStrip, Stack, Toggle } from "@loomarr/design-system";
+import { Action, LoadingStrip, Stack, Text, Toggle } from "@loomarr/design-system";
 import { useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -34,18 +34,20 @@ const UsersStep = () => {
     return (
       <Stack gap="control">
         <ErrorState error={candidates.error} onRetry={() => candidates.refetch()} />
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           You can skip this and import people later from Settings → Users.
-        </p>
+        </Text>
       </Stack>
     );
   }
 
   if (candidates.isLoading) {
     return (
-      <Stack align="center" className="text-muted-foreground text-sm" direction="row" gap="inline" render="p">
+      <Stack align="center" direction="row" gap="inline" render="p">
         <LoadingStrip decorative width={32} />
-        Looking up your media-server accounts…
+        <Text as="span" textRole="compact" tone="secondary">
+          Looking up your media-server accounts…
+        </Text>
       </Stack>
     );
   }
@@ -63,9 +65,9 @@ const UsersStep = () => {
     <Stack gap="4">
       {/* The shell's step description already covers "only the accounts you pick can sign
           in"; this adds the part that surprises people (§11) rather than repeating it. */}
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Anyone you don't import is refused even with correct media-server credentials.
-      </p>
+      </Text>
 
       <Stack gap="inline" render="ul">
         {rows.map((c) => {
@@ -88,8 +90,16 @@ const UsersStep = () => {
                   onCheckedChange={() => toggle(c.id)}
                 />
               </div>
-              {c.isAdmin && <span className="text-static-400 text-xs">server admin</span>}
-              {c.imported && <span className="text-lock text-xs">imported</span>}
+              {c.isAdmin && (
+                <Text as="span" textRole="hint" tone="secondary">
+                  server admin
+                </Text>
+              )}
+              {c.imported && (
+                <Text as="span" textRole="hint" tone="success">
+                  imported
+                </Text>
+              )}
             </Stack>
           );
         })}
@@ -110,7 +120,9 @@ const UsersStep = () => {
       </Action>
 
       {importable.length === 0 && (
-        <p className="text-muted-foreground text-xs">Everyone on your media server is imported.</p>
+        <Text as="p" textRole="hint" tone="secondary">
+          Everyone on your media server is imported.
+        </Text>
       )}
     </Stack>
   );

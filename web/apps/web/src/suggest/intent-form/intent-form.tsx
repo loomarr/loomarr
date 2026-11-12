@@ -1,7 +1,7 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
 import { useAppForm } from "@/lib/app-form";
@@ -107,9 +107,11 @@ const IntentForm = ({
       <form.Subscribe selector={(state) => state.errorMap.onSubmit}>
         {(validationError) =>
           validationError ? (
-            <p role="alert" className="text-onair-300 text-sm">
-              {validationError}
-            </p>
+            <div role="alert">
+              <Text as="p" textRole="compact" tone="danger">
+                {validationError}
+              </Text>
+            </div>
           ) : null
         }
       </form.Subscribe>

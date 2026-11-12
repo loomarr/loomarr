@@ -3,7 +3,7 @@ import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { unwrap } from "@loomarr/api/unwrap";
 import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
@@ -109,13 +109,13 @@ const HomePage = () => {
           {hasLife && !isAdmin && <YourRequests />}
           {hasLife && isAdmin && <OnTheWay />}
           {isAdmin && (
-            <p className="text-static-400 m-0 text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               Encoder, storage and service details are in{" "}
               <Link to="/settings/system" className="text-tune underline underline-offset-2">
                 Settings → This server
               </Link>
               .
-            </p>
+            </Text>
           )}
         </div>
       </div>

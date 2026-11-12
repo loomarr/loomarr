@@ -1,4 +1,4 @@
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import {
   AA_SMALL,
   accents,
@@ -110,16 +110,20 @@ const Palette = () => {
   return (
     <Stack className="p-6" gap="screen">
       <Stack gap="1" render="header">
-        <h1 className="text-xl font-semibold">Palette</h1>
-        <p className="text-muted-foreground max-w-2xl text-sm">
+        <Text as="h1" textRole="title">
+          Palette
+        </Text>
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           The broadcast accents, drawn from the SMPTE bars. Every hex and every ratio on this page is read
           from the generated tokens and measured with the same function the CI contrast gate uses — so what
           you see here is what the build enforces.
-        </p>
+        </Text>
       </Stack>
 
       <Stack gap="control" render="section">
-        <h2 className="text-base font-semibold">Accents</h2>
+        <Text as="h2" textRole="heading">
+          Accents
+        </Text>
         <div className="grid gap-3 sm:grid-cols-2">
           {accentRows.map(([name, a]) => (
             <Swatch key={name} name={name} hex={a.base} />
@@ -129,41 +133,45 @@ const Palette = () => {
 
       <Stack gap="4" render="section">
         <Stack gap="1">
-          <h2 className="text-base font-semibold">Tints, and the badge rule</h2>
-          <p className="text-muted-foreground max-w-2xl text-sm">
+          <Text as="h2" textRole="heading">
+            Tints, and the badge rule
+          </Text>
+          <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
             A tint is an alpha wash, not a fixed hex:{" "}
             <code className="font-mono text-xs">color-mix(in srgb, accent N%, transparent)</code> over the
             surface. 11px badge text is <em>small text</em> under WCAG, so the 4.5:1 bar applies. On the
             composited tints some accents fail at their base stop and use a{" "}
             <code className="font-mono text-xs">-300</code> stop instead — the swatches below show which,
             measured rather than asserted.
-          </p>
+          </Text>
         </Stack>
         {accentRows.map(([name, a]) => (
           <TintRamp key={name} accent={name} hex={a.base} textHex={a.on} />
         ))}
-        <p className="text-muted-foreground max-w-2xl text-sm">
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           ⚠ Note where the ramps go red. The badge rule and its CI check are scoped to the{" "}
           <strong className="text-foreground">15% step</strong> — the one badges actually use — and accent
           text does not clear AA on the 30% and 40% steps. Those darker steps are for <em>fills</em> (a pod
           segment, a progress bar), never for accent text, and today nothing uses them that way. This page is
           where that stops being an unwritten assumption.
-        </p>
+        </Text>
       </Stack>
 
       <Stack gap="control" render="section">
-        <h2 className="text-base font-semibold">Statics</h2>
+        <Text as="h2" textRole="heading">
+          Statics
+        </Text>
         <div className="grid gap-3 sm:grid-cols-2">
           {Object.entries(staticScale).map(([name, hex]) => (
             <Swatch key={name} name={name} hex={hex as string} measure={!SURFACE_STATICS.has(name)} />
           ))}
         </div>
-        <p className="text-muted-foreground max-w-2xl text-sm">
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           <code className="font-mono text-xs">static-500</code> sits at{" "}
           {ratio(staticScale["static-500"], staticScale["static-900"])}
           :1 on cards — below the AA bar — so it is restricted to disabled states and decorative glyphs. Any
           text carrying information uses <code className="font-mono text-xs">static-400</code> or better.
-        </p>
+        </Text>
       </Stack>
     </Stack>
   );
