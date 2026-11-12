@@ -15,7 +15,10 @@ interface GuideSourcePort {
 interface GuideControllerSnapshot {
   error?: string;
   layout?: GuideLayout;
+  /** True while a shown layout is being re-read; `status` keeps describing the layout on screen. */
+  refreshing?: boolean;
   selection?: GuideSelection;
+  /** `error` set alongside a `ready` or `empty` status is a failed background refresh of a shown layout. */
   status: GuideControllerStatus;
 }
 
