@@ -210,7 +210,17 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    a volume's ("Vol 2"), a "(TV)" tag and a bracketed day each join their show.
 //	56: a root named as a shelf ("/media/TV", "/media/Movies", "/media/Kids", "/media/Anime") is
 //	    read as one, as a folder of that name in a root is.
-const writeVersion = 56
+//	57: a MakeMKV title named by its film keeps its folder's year; a title in brackets alone is
+//	    the title; a recorded film with its channel is the film; "SITE.txt.mp4" is junk; a
+//	    season's disc folder in its show's folder is that show's; an anime's "Ep 05" and
+//	    "01-02" batch read as the show's.
+//	58: an episode titled after a spaced dash ("S01E04 - sample") is kept in any case; a show's
+//	    specials' folder named by it, and an anime's "OVA", are its season 0; an anime release's
+//	    creditless, clean, menu, preview and trailer extras are skipped; a recording named by its
+//	    day first is its show's on a shows' shelf; a show and its remake numbering an episode alike
+//	    stay two; a show's film kept with it is a film; three title-named videos with only
+//	    catch-alls above are a show's.
+const writeVersion = 58
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -642,14 +652,22 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 	// A recorder names a film it recorded by the film, then its channel and when it began: "Iron
 	// Spire (2011)_Film4_2022_05_01_21_00_00" and "Grey Harbour (1958) 2022-01-01" are "Iron Spire
 	// (2011)" and "Grey Harbour (1958)".
-	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain) || recordedFilm(plain, path.Dir(rel))) {
+	if kind == mp.KindMovie && recordedFilm(plain, path.Dir(rel)) {
+		return clean(recordedTitle(plain))
+	}
+	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain)) {
 		return clean(datedShow(plain))
 	}
 	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
 	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
 	if m := makeMKVTitle.FindStringSubmatchIndex(plain); m != nil && kind == mp.KindMovie {
 		label := strings.Trim(strings.ReplaceAll(plain[:m[0]], "_", " "), " ")
-		if dir := filmFolder(path.Dir(rel)); (len(label) <= 3 || strings.EqualFold(label, "title")) && dir != "." && !catchAllFolder(path.Base(dir)) {
+		dir := filmFolder(path.Dir(rel))
+		// A label that is the film's own folder's title, "Ferrisdale (1996)/Ferrisdale_t00", takes
+		// the folder's name, year and all.
+		title, year, _ := searchQuery(path.Base(dir), 0)
+		if dir != "." && !catchAllFolder(path.Base(dir)) &&
+			(len(label) <= 3 || strings.EqualFold(label, "title") || year != 0 && sameWords(discLabel.ReplaceAllString(label, ""), title)) {
 			label = strings.ReplaceAll(path.Base(dir), "_", " ")
 		}
 		return clean(discLabel.ReplaceAllString(label, ""))

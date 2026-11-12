@@ -1098,6 +1098,79 @@ var namingMatrix = []namingRow{
 		"Anime/【Grp】Kettle Hana 第05集 [1080p].mp4": "episode Kettle Hana S1E5",
 		"Anime/【Grp】Kettle Hana 第06集 [1080p].mp4": "episode Kettle Hana S1E6",
 	}},
+	// Re-score #15: a show and its remake loose together are two shows when both number an episode
+	// alike; a yearless copy beside a dated one with episodes of its own joins it.
+	{id: "W122", files: map[string]string{
+		"Downloads/Blue.Fen.S01E01.mkv":      "episode Blue Fen S1E1",
+		"Downloads/Blue.Fen.S01E02.mkv":      "episode Blue Fen S1E2",
+		"Downloads/Blue.Fen.2020.S01E01.mkv": "episode Blue Fen 2020 S1E1",
+		"Torrents/Grey.Moss.S01E02.mkv":      "episode Grey Moss 2021 S1E2",
+		"Torrents/Grey.Moss.2021.S01E01.mkv": "episode Grey Moss 2021 S1E1",
+	}},
+	// Re-score #15: a show's film kept with it is a film; an anime's OVA folder is its specials.
+	{id: "W123", files: map[string]string{
+		"Anime/Kaito Run/Kaito Run - 01.mkv":                                 "episode Kaito Run S?E?",
+		"Anime/Kaito Run/Kaito Run Movie 1 - Red Sky (2010).mkv":             "movie Kaito Run Movie 1 - Red Sky 2010",
+		"Anime/Kaito Run/OVA/Kaito Run OVA 1.mkv":                            "episode Kaito Run S0E1",
+		"TV/Westerly/Season 1/Westerly S01E01.mkv":                           "episode Westerly S1E1",
+		"TV/Westerly/Westerly Movie/Westerly Movie (2012).mkv":               "movie Westerly Movie 2012",
+		"TV/Movie Mossway/Season 1/Movie Mossway S01E01.mkv":                 "episode Movie Mossway S1E1",
+		"TV/Flicker Film/Season 1/Flicker Film - S01E02 - Finale (2019).mkv": "episode Flicker Film S1E2",
+	}},
+	// Re-score #15: a show's folder of episodes named by their titles at an unlabelled root's top
+	// is a show's, three or more of them; a shelf of home videos is not, nor a pair of films.
+	{id: "W124", files: map[string]string{
+		"Bumbleton/Hats.mp4":          "episode Bumbleton S?E?",
+		"Bumbleton/Coats.mp4":         "episode Bumbleton S?E?",
+		"Bumbleton/Boots.mp4":         "episode Bumbleton S?E?",
+		"Home Videos/Beach Trip.mp4":  "movie Beach Trip -",
+		"Home Videos/Birthday.mp4":    "movie Birthday -",
+		"Home Videos/First Steps.mp4": "movie First Steps -",
+		"Pellmore/Pellmore.mkv":       "movie Pellmore -",
+		"Pellmore/Pellmore 2.mkv":     "movie Pellmore 2 -",
+		"Pellmore/Pellmore 3.mkv":     "movie Pellmore 3 -",
+	}},
+	// Re-score #14: a show's volume folders inside its own folder hold its episodes, named by the
+	// show and a title, wherever the show's folder is.
+	{id: "W118", files: map[string]string{
+		"Kids/Wobble Wagon/Wobble Wagon Vol 1/Wobble Wagon - Wheels.mp4": "episode Wobble Wagon S?E?",
+		"Kids/Wobble Wagon/Wobble Wagon Vol 1/Wobble Wagon - Hills.mp4":  "episode Wobble Wagon S?E?",
+		"Kids/Wobble Wagon/Wobble Wagon Vol 2/Wobble Wagon - Mud.mp4":    "episode Wobble Wagon S?E?",
+		"Kids/Wobble Wagon/Wobble Wagon Vol 2/Wobble Wagon - Rain.mp4":   "episode Wobble Wagon S?E?",
+		"TV/Tinker Lane/Volume 1/Tinker Lane - Bolts.mp4":                "episode Tinker Lane S?E?",
+		"TV/Tinker Lane/Volume 1/Tinker Lane - Nuts.mp4":                 "episode Tinker Lane S?E?",
+	}},
+	// Re-score #14: a MakeMKV title named by its film, in the film's folder, keeps the folder's
+	// year; a bracketed title alone is the title, not a group's tag.
+	{id: "W119", files: map[string]string{
+		"Movies/Ferrisdale (1996)/Ferrisdale_t00.mkv":   "movie Ferrisdale 1996",
+		"Movies/Pellow Moor (2003)/PELLOW_MOOR_t00.mkv": "movie Pellow Moor 2003",
+		"Movies/[Carrow Fell] (2017).mkv":               "movie Carrow Fell 2017",
+		"Movies/[Carrow Mere].mkv":                      "movie Carrow Mere -",
+		"Movies/[Grp] Carrow Wold (2018).mkv":           "movie Carrow Wold 2018",
+	}},
+	// Re-score #14: a recorded film with its channel and day is the film; a file whose name
+	// carries another file's kind ("RARBG.txt.mp4") is a site's junk, not a copy of the film.
+	{id: "W120", files: map[string]string{
+		"Recordings/Hallow Point (2009) - Channel 9 - 2023-12-24.ts":                   "movie Hallow Point 2009",
+		"Recordings/Hallow Mere (2011) - 2023-12-25.ts":                                "movie Hallow Mere 2011",
+		"Recordings/Hallow Lane - 2023-12-26.ts":                                       "episode Hallow Lane 2023-12-26",
+		"Recordings/Hallow Lane - 2023-12-27.ts":                                       "episode Hallow Lane 2023-12-27",
+		"Downloads/Orrin.Field.2015.720p.BRRip.XviD.AC3-GRP/Orrin.Field.2015.720p.mp4": "movie Orrin Field 2015",
+		"Downloads/Orrin.Field.2015.720p.BRRip.XviD.AC3-GRP/SITE.txt.mp4":              "skip",
+		"Downloads/Orrin.Field.2015.720p.BRRip.XviD.AC3-GRP/Read Me.url.mkv":           "skip",
+		"Movies/Dotted.Line.Story (2010).mkv":                                          "movie Dotted Line Story 2010",
+	}},
+	// Re-score #14: a season's disc folder inside its show's folder is that show's; a loose
+	// anime's "Ep 05" is no part of its show's name, and "01-02" in a batch is two episodes.
+	{id: "W121", files: map[string]string{
+		"TV/Ashcombe/Ashcombe S1D1/Ashcombe_S1D1_t01.mkv": "episode Ashcombe S?E?",
+		"TV/Ashcombe/Season 2/Ashcombe S02E01.mkv":        "episode Ashcombe S2E1",
+		"Anime/Mizu no Oto - 04.mkv":                      "episode Mizu no Oto S?E?",
+		"Anime/Mizu no Oto Ep 05.mkv":                     "episode Mizu no Oto S1E5",
+		"Anime/[Kami] Shiro Neko - 01-02 [1080p].mkv":     "episode Shiro Neko S?E?",
+		"Anime/[Kami] Shiro Neko - 03 [1080p].mkv":        "episode Shiro Neko S?E?",
+	}},
 	// Re-score #11: a tracker's promo, a film's credits and Q&A, and a download still being written
 	// are no title.
 	{id: "W97", files: map[string]string{
