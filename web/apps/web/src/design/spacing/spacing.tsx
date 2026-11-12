@@ -1,10 +1,14 @@
+import { spaceSteps } from "@loomarr/design-system";
 import { webMotion, webRadius, webRowHeight, webSpace } from "@loomarr/design-system/web-theme";
 
 // Spacing, radius and motion — the geometry half of the system (§2.3, §2.4, §5.1a).
 //
 // Read from the generated tokens like every other Design page. Space is a 4px grid: the values
 // are not arbitrary, they are multiples, and seeing them stacked is what makes an off-grid
-// `gap-[7px]` obviously wrong rather than merely unusual.
+// `gap-[7px]` obviously wrong rather than merely unusual. The half steps the app already uses are
+// listed apart, at their own size, so they read as recorded exceptions rather than as the grid.
+
+const halfSteps = Object.entries(spaceSteps).filter(([step]) => !(step in webSpace));
 
 const Spacing = () => (
   <div className="flex flex-col gap-8 p-6">
@@ -20,6 +24,20 @@ const Spacing = () => (
       <h2 className="text-base font-semibold">Space</h2>
       <div className="flex flex-col gap-2">
         {Object.entries(webSpace).map(([step, px]) => (
+          <div key={step} className="flex items-center gap-4">
+            <span className="text-2xs text-static-400 w-8 shrink-0 font-mono">{step}</span>
+            <span className="text-2xs text-static-400 w-12 shrink-0 font-mono tabular-nums">{`${px}px`}</span>
+            <div className="bg-signal-tint-30 h-4 rounded-sm" style={{ width: px }} />
+          </div>
+        ))}
+      </div>
+      <h3 className="text-sm font-semibold">Half steps</h3>
+      <p className="text-muted-foreground max-w-2xl text-sm">
+        Tight spacing inside a control or a chip, between an icon and its label. These sit off the grid and
+        are kept at their own size, so a layout that uses one does not move when it adopts the scale.
+      </p>
+      <div className="flex flex-col gap-2">
+        {halfSteps.map(([step, px]) => (
           <div key={step} className="flex items-center gap-4">
             <span className="text-2xs text-static-400 w-8 shrink-0 font-mono">{step}</span>
             <span className="text-2xs text-static-400 w-12 shrink-0 font-mono tabular-nums">{`${px}px`}</span>

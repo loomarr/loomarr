@@ -1,7 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { LoomarrProvider, Stack } from "../index";
+import { LoomarrProvider, Stack, type StackProps, spaceSteps } from "../index";
+import { loomarrConfig } from "../src/config";
+import { webSpace } from "../web-theme";
 
 const render = (node: React.ReactNode) =>
   renderToStaticMarkup(<LoomarrProvider theme="dark">{node}</LoomarrProvider>);
@@ -36,6 +38,44 @@ describe("Stack", () => {
     expect(markup).toContain("flex-wrap:wrap");
     // `control` is the 12px spacing token, read through its CSS variable.
     expect(markup).toContain("gap:var(--t-space-control)");
+  });
+
+  // A step of the 4px grid (§2.3), named as Tailwind names it, so `gap-4` moves over as `gap="4"`
+  // with the same 16px. The half steps the app uses off the grid move over at their own size,
+  // never rounded onto it.
+  it("spaces by a step of the spacing scale, on the grid or a half step off it", () => {
+    const step = (gap: StackProps["gap"]) =>
+      render(
+        <Stack gap={gap}>
+          <span>a</span>
+        </Stack>,
+      );
+
+    const css = loomarrConfig.getCSS();
+    for (const [gap, px] of [
+      ["4", 16],
+      ["1", 4],
+      ["1.5", 6],
+      ["0.5", 2],
+      ["1.75", 7],
+      ["2.5", 10],
+    ] as const) {
+      expect(spaceSteps[gap]).toBe(px);
+      // The Stack's own gap class reads a space variable, and that variable is the step's size.
+      const markup = step(gap);
+      const gapClass = markup.match(/data-href="[^"]*\bt__(g-\d+)/)?.[1];
+      const variable =
+        gapClass && markup.match(new RegExp(`\\._${gapClass}\\s*\\{gap:var\\((--t-space-[^)]+)\\)`))?.[1];
+      expect(variable, `gap="${gap}"`).toBeDefined();
+      expect(css).toContain(`${variable}:${px}px`);
+    }
+  });
+
+  it("emits the grid once: the web theme's spacing is the scale's grid steps", () => {
+    expect(webSpace).toEqual({ 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 });
+    for (const [key, px] of Object.entries(webSpace)) {
+      expect(spaceSteps[key as keyof typeof spaceSteps]).toBe(px);
+    }
   });
 
   it("keeps a caller's class, element and accessible name, so a call site can move over whole", () => {

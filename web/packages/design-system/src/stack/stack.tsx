@@ -1,9 +1,13 @@
 import { View } from "@tamagui/core";
 import type { ComponentProps, ReactNode } from "react";
 
-import type { semanticSpace } from "../tokens";
+import type { semanticSpace, spaceSteps } from "../tokens";
 
-type StackGap = keyof typeof semanticSpace | "none";
+/**
+ * A semantic space (`control`, `inline` …) or a step of the spacing scale, keyed as Tailwind keys it
+ * (`"4"` is 16px, `"1.5"` is 6px), so a hand-rolled `gap-*` moves over at the same size.
+ */
+type StackGap = keyof typeof semanticSpace | `${keyof typeof spaceSteps}` | "none";
 type StackAlign = "start" | "center" | "end" | "stretch" | "baseline";
 type StackJustify = "start" | "center" | "end" | "between";
 
