@@ -177,6 +177,37 @@ func TestDiscover_HugeLimitIsBounded(t *testing.T) {
 	}
 }
 
+// Every keyword is one /search/keyword call, made one after another. Whatever list a caller hands
+// over, one Discover resolves a bounded number of them.
+func TestDiscover_KeywordLookupsAreBounded(t *testing.T) {
+	var lookups atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/search/keyword":
+			n := lookups.Add(1)
+			q := r.URL.Query().Get("query")
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{{"id": 90300000 + n, "name": q}}})
+		case "/discover/movie":
+			_ = json.NewEncoder(w).Encode(map[string]any{"page": 1, "total_pages": 1, "results": []map[string]any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	c := tmdb.NewWithBase(server.URL, "key")
+
+	keywords := make([]string, 2000)
+	for i := range keywords {
+		keywords[i] = "keyword " + strconv.Itoa(i)
+	}
+	if _, err := c.Discover(context.Background(), titlesearch.DiscoveryQuery{MediaType: provision.Movie, Keywords: keywords}, 20); err != nil {
+		t.Fatal(err)
+	}
+	if n := lookups.Load(); n > 8 {
+		t.Errorf("one Discover made %d keyword lookups, want at most 8", n)
+	}
+}
+
 func TestDiscover_ResolvesMovieCastAndCreatorsToGroundedPeople(t *testing.T) {
 	mock := testkit.NewTMDB(t)
 	mock.AddPerson(90000031, "Ansel Brightwater")
