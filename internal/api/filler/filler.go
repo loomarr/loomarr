@@ -611,7 +611,7 @@ type listFillerInput struct {
 	// clip after the first fails to resolve and the channel page reports real clips as "no longer
 	// in your catalog". Neither side's tests can see it if the Go tests hand-write `?hashes=a,b`
 	// against a client generated from a spec that agrees with them.
-	Hashes []string `query:"hashes,explode" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent."`
+	Hashes []string `query:"hashes,explode" maxItems:"500" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash, at most 500: the page size, so every hash asked for can come back. Unknown hashes are simply absent."`
 }
 type listFillerOutput struct {
 	Body struct {
