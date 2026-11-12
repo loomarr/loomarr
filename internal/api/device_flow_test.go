@@ -43,18 +43,22 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 
 		return api.Router(defaults.Log, api.Options{
-			Events:           events.NewBus(),
-			ProposalWorkflow: workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash),
-			Approver:         accept.NewApprover(defaults.Store, chBinder, time.Now),
-			Binder:           chBinder,
-			Store:            defaults.Store,
-			Auth:             api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-			Log:              defaults.Log,
-			Login:            auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:         mgr,
-			Devices:          devices,
-			DeviceLimiter:    limiter,
-			CookieSecure:     "false",
+			Store:        defaults.Store,
+			Auth:         api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:          defaults.Log,
+			CookieSecure: "false",
+			Ops:          api.OpsOptions{Events: events.NewBus()},
+			Proposals: api.ProposalsOptions{
+				Workflow: workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash),
+				Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
+			},
+			Channels: api.ChannelsOptions{Binder: chBinder},
+			People: api.PeopleOptions{
+				Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:      mgr,
+				Devices:       devices,
+				DeviceLimiter: limiter,
+			},
 		})
 	})
 }

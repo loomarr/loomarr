@@ -126,6 +126,19 @@ const InfoScreen = () => {
 
 const Route = createFileRoute("/_authed/channels/$id/info")({
   component: InfoScreen,
+  // The panel's "What's on" strip and its break preview each read their own endpoint and answer
+  // for themselves when empty or failed, so they are warmed together (a prefetch never rejects)
+  // rather than left to pop in under the status line. The layout's loader has the channel.
+  loader: async ({ context: { queryClient }, params: { id } }) => {
+    await Promise.all([
+      queryClient.prefetchQuery(
+        channelsApi.getChannelUpcomingQueryOptions(id, undefined, { query: { retry: false } }),
+      ),
+      queryClient.prefetchQuery(
+        channelsApi.getPreviewChannelPodsQueryOptions(id, { query: { retry: false } }),
+      ),
+    ]);
+  },
 });
 
 export { Route };

@@ -2,6 +2,7 @@ import type { RequestTab } from "@loomarr/core/requests";
 import { NavTabs } from "@loomarr/ui";
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -9,7 +10,7 @@ import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ChannelIdeas } from "@/home/channel-ideas";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRouteContent } from "@/lib/use-route-content";
-import { useRequests } from "@/queue/use-requests";
+import { ensureRequests, useRequests } from "@/queue/use-requests";
 
 // Requests — what you've asked for, and anything that needs you (#1405; this was "Queue"). Three
 // tabs, each its own PATH so a tab can be linked and reopened:
@@ -106,6 +107,11 @@ const RequestsLayout = () => {
 
 const Route = createFileRoute("/_authed/requests/_tabs")({
   component: RequestsLayout,
+  // The lists and counts the tab bar and every tab are made from. The landing redirect already
+  // read most of this, so arriving from /requests costs nothing more.
+  loader: async ({ context: { queryClient } }) => {
+    await ensureRequests(queryClient, await viewerIsAdmin(queryClient));
+  },
 });
 
 export { Route };

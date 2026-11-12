@@ -1,1 +1,1 @@
-export { folderName, heldTitle, joinNames, scanHeadline } from "./library-words";
+export { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline } from "./library-words";

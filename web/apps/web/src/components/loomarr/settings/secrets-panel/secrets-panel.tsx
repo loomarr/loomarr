@@ -41,7 +41,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                 {value ? "Hide" : "Reveal"}
               </Action>
               {value && (
-                <Action icon="copy" onPress={() => copy(value, secret.name)} variant="outline">
+                <Action icon="copy" onPress={() => void copy(value, secret.name)} variant="outline">
                   {copied === secret.name ? "Copied" : "Copy"}
                 </Action>
               )}

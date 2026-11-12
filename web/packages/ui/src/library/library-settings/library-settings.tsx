@@ -14,7 +14,7 @@ import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 
 import { ModalOverlay } from "../../overlay";
 import { LibraryPoster, Twirl } from "../library-poster";
-import { folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
+import { detailsWaiting, folderName, heldTitle, joinNames, scanHeadline } from "../library-words";
 import type {
   LibraryAuthority,
   LibraryFolder,
@@ -212,9 +212,12 @@ const HOOK_NAMES: Record<LibraryHook["app"], string> = { sonarr: "Sonarr", radar
 const KeepingUp = ({
   offline,
   hooks,
+  waiting,
 }: {
   offline: readonly LibraryFolder[];
   hooks: readonly LibraryHook[];
+  /** Titles stuck waiting for their details, and why; undefined when none are. */
+  waiting?: ReturnType<typeof detailsWaiting>;
 }) => {
   const signals = [
     {
@@ -253,6 +256,17 @@ const KeepingUp = ({
             </Text>
           </Line>
         ))}
+        {waiting ? (
+          <Line alignItems="flex-start" flexWrap="nowrap" gap="inline">
+            <StatusDot label="Waiting" size="compact" tone="warn" />
+            <Stack gap="inline">
+              <Text textRole="body">{waiting.title}</Text>
+              <Text textRole="body" tone="secondary">
+                {waiting.reason}
+              </Text>
+            </Stack>
+          </Line>
+        ) : null}
       </Stack>
     </Stack>
   );
@@ -304,6 +318,7 @@ const LibraryStatus = ({
   readySoFar,
   held,
   hooks,
+  details,
   checking,
   onCheckAgain,
   onRescan,
@@ -317,6 +332,7 @@ const LibraryStatus = ({
   | "readySoFar"
   | "held"
   | "hooks"
+  | "details"
   | "checking"
   | "onCheckAgain"
   | "onRescan"
@@ -330,10 +346,17 @@ const LibraryStatus = ({
   // An empty folder is said on its own card; here it only keeps "All caught up" from being said.
   const alerted = (health !== "ok" && health !== "folder_empty") || held.length > 0;
   const importing = health !== "needs_folders" && scan.step !== "idle";
+  // Titles stuck waiting for details are said under Keeping up to date, and keep "All caught up"
+  // from being said too.
+  const waiting = detailsWaiting(details, scan);
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
       {alerted ? null : (
-        <Headline notAllThere={health === "folder_empty"} readySoFar={readySoFar} scan={scan} />
+        <Headline
+          notAllThere={health === "folder_empty" || waiting !== undefined}
+          readySoFar={readySoFar}
+          scan={scan}
+        />
       )}
       {held.map((removal) => (
         <Callout
@@ -372,7 +395,7 @@ const LibraryStatus = ({
         </Callout>
       ) : null}
       {alerted && importing ? <Headline readySoFar={readySoFar} scan={scan} /> : null}
-      {health === "needs_folders" ? null : <KeepingUp hooks={hooks} offline={offline} />}
+      {health === "needs_folders" ? null : <KeepingUp hooks={hooks} offline={offline} waiting={waiting} />}
       {health === "needs_folders" ? null : (
         <ScanActions onRefreshEverything={onRefreshEverything} onRescan={onRescan} scan={scan} />
       )}
@@ -616,6 +639,7 @@ const LibrarySettings = ({
   readySoFar,
   held,
   hooks,
+  details,
   checking,
   onCheckAgain,
   onRescan,
@@ -632,6 +656,7 @@ const LibrarySettings = ({
         checking={checking}
         folders={folders}
         health={health}
+        details={details}
         held={held}
         hooks={hooks}
         onCheckAgain={onCheckAgain}

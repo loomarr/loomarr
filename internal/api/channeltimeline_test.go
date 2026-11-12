@@ -59,13 +59,13 @@ func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:          st,
-		Auth:           httpcore.NewTokenAuthorizer(adminToken),
-		Log:            slog.New(slog.DiscardHandler),
-		PlayoutGuide:   g,
-		TimelineThumbs: thumbs,
-		Images:         imageService,
-		LiveSettings:   stringSettings(func(k string) string { return cfg[k] }),
+		Store:        st,
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
+		Log:          slog.New(slog.DiscardHandler),
+		Playout:      api.PlayoutOptions{Guide: g},
+		Guide:        api.GuideOptions{TimelineThumbs: thumbs},
+		Images:       imageService,
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
 	}))
 	t.Cleanup(srv.Close)
 	return srv, st

@@ -124,6 +124,21 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("says how many titles wait for details and when it tries again, not that all is caught up", () => {
+    const { host, cleanup } = render({
+      status: {
+        health: "ok",
+        scan: IDLE,
+        held: [],
+        offline: [],
+        details: { waiting: 12, unreachable: true, retryAt: new Date(2026, 10, 2, 15, 40).toISOString() },
+      },
+    });
+    expect(host.textContent).toContain("12 titles are waiting on details — trying again at 3:40 PM");
+    expect(host.textContent).not.toContain("All caught up");
+    cleanup();
+  });
+
   it("doesn't claim every title is ready while a folder in use is empty", () => {
     const { host, cleanup } = render({
       status: { health: "folder_empty", scan: IDLE, held: [], offline: [] },
