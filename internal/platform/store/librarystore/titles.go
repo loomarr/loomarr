@@ -21,7 +21,8 @@ type LibraryTitle struct {
 	IDs    []LibraryID
 	Rating string
 	Genres []string
-	// SizeBytes is a movie's playing file's size; 0 for a series.
+	// SizeBytes is a movie's playing file's size, its parts' together for a movie in parts; the
+	// biggest edition's when it plays several; 0 for a series.
 	SizeBytes int64
 }
 
@@ -96,8 +97,8 @@ func (s *Store) withLibraryIDs(ctx context.Context, titles []LibraryTitle) error
 }
 
 const libraryTitleColumns = `i.id, i.kind, i.name, i.rating,
-	CASE WHEN i.kind = 'movie' THEN COALESCE((SELECT MAX(s.size_bytes) FROM library_sources s
-		WHERE s.item_id = i.id AND s.plays), 0) ELSE 0 END
+	CASE WHEN i.kind = 'movie' THEN COALESCE((SELECT MAX(e.size_bytes) FROM (SELECT SUM(s.size_bytes) AS size_bytes
+		FROM library_sources s WHERE s.item_id = i.id AND s.plays GROUP BY s.edition) e), 0) ELSE 0 END
 	FROM library_items i`
 
 func (s *Store) LibraryTitles(ctx context.Context, since time.Time) ([]LibraryTitle, error) {

@@ -74,7 +74,7 @@ type LibraryFileStore interface {
 	LibrarySubtitleTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
 	// LibraryPlayingFile is the file a library item plays: its source marked plays, while the
 	// scanner sees it present, the default edition's when a movie plays one in each edition
-	// (decision 54). ok is false for an id that is not a library item, or one with no present file.
+	// (decision 54), its first part for a movie in parts. ok is false for an id that is not a library item, or one with no present file.
 	LibraryPlayingFile(ctx context.Context, itemID string) (path string, ok bool, err error)
 	// LibraryPlayingVideo is the first video stream of the file a library item plays, as the
 	// scanner last read its header: Index, Codec, Width, Height, FrameRate, PixelFormat and
@@ -102,7 +102,7 @@ func (s *Store) LibraryPlayingFile(ctx context.Context, itemID string) (string, 
 	err := s.h.QueryRowContext(ctx, s.ph(`SELECT s.path FROM library_sources s
 		JOIN library_files f ON f.path = s.path
 		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = ''
-		ORDER BY s.edition <> '', s.path LIMIT 1`), itemID).Scan(&path)
+		ORDER BY s.edition <> '', s.part, s.path LIMIT 1`), itemID).Scan(&path)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return "", false, nil
@@ -119,7 +119,7 @@ func (s *Store) LibraryPlayingVideo(ctx context.Context, itemID string) (Library
 		JOIN library_files f ON f.path = s.path
 		JOIN library_streams st ON st.item_id = s.item_id AND st.path = s.path AND st.kind = 'video' AND st.external_ref = ''
 		WHERE s.item_id = ? AND s.plays AND f.missing_at_ms = 0 AND f.problem = '' AND f.header = ?
-		ORDER BY s.edition <> '', s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
+		ORDER BY s.edition <> '', s.part, s.path, st.stream_index LIMIT 1`), itemID, LibraryHeaderRead).Scan(
 		&v.Index, &v.Codec, &v.Width, &v.Height, &v.FrameRate, &v.PixelFormat, &v.ColorTransfer)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):

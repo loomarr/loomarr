@@ -6894,7 +6894,7 @@ components:
       additionalProperties: false
       properties:
         extraCopies:
-          description: A movie's files beyond the one that plays
+          description: A movie's files that never play, beyond the copy of each edition (or each part) that does
           format: int64
           type: integer
         files:

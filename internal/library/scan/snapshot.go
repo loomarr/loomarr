@@ -114,7 +114,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	30: a release folder names its show by the words before its season ("Kettle.Bay.S02.1080p").
 //	31: a movie whose file name has no year is named by its folder's, when that has one.
 //	32: a season folder inside a season folder ("Show/Season 1/Season 1") files under the show.
-const writeVersion = 34
+//	33: a library named the way Sonarr, Radarr, Plex, Jellyfin, Emby or Kodi name one reads as
+//	    that app means it.
+//	34: an anime episode numbered across its show ("Show - 013") is placed by its seasons.
+//	35: a movie in parts ("cd1", "cd2") notes each file's part, and every part of it plays.
+const writeVersion = 35
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -131,7 +135,9 @@ func identityDigest(file File, m managed, embedded mp.Record, reader int, series
 		SeriesSidecars map[string]Stat `json:",omitempty"`
 		// Notes can number a file differently when a file beside it comes or goes.
 		Notes folderNotes `json:",omitzero"`
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes})
+		// Part changes when another part of its movie comes or goes.
+		Part int `json:",omitzero"`
+	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes, file.Part})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }
@@ -183,6 +189,8 @@ type fileNotes struct {
 	Managed bool `json:"managed,omitempty"`
 	// Edition is the labelled version of a movie this file is, "" for the default (decision 54).
 	Edition string `json:"edition,omitempty"`
+	// Part is which part of a movie in parts this file is, from 1; 0 for a whole file.
+	Part int `json:"part,omitempty"`
 	// Trickplay are the trickplay files beside it, by path: referenced, never imported (decision 61).
 	Trickplay []string `json:"trickplay,omitempty"`
 	// External are the subtitle and audio files beside it, as their names describe them; Markers
@@ -206,11 +214,11 @@ type listedExtension struct {
 
 // originExtensionOf is res's provenance, how the title is listed (series is an episode's series
 // origin) and what the scanner notes about the file, as an origin's Observation.Extension. Only a
-// movie has an edition.
+// movie has an edition or parts.
 func originExtensionOf(kind mp.Kind, res resolution, series inventory.OriginKey, file fileNotes) json.RawMessage {
 	r := res.resolved
 	if kind != mp.KindMovie {
-		file.Edition = ""
+		file.Edition, file.Part = "", 0
 	}
 	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
@@ -324,7 +332,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 			}
 			f := o.Observation.Facts
 			src := librarystore.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
-				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition}
+				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition, Part: exts[o.Key].Part}
 			for _, ref := range exts[o.Key].Trickplay {
 				src.Trickplay = append(src.Trickplay, librarystore.LibraryTrickplay{Ref: ref, Format: "bif"})
 			}
@@ -351,6 +359,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 	}
 	slices.SortFunc(files, func(a, b file) int { return strings.Compare(a.src.Path, b.src.Path) })
 	plays := playingCopies(len(files), func(i int) string { return files[i].src.Edition },
+		func(i int) int { return files[i].src.Part },
 		func(i int) bool { return files[i].managed }, func(i int) int {
 			for _, st := range files[i].src.Streams {
 				if st.Kind == string(inventory.StreamVideo) {
@@ -485,14 +494,18 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
-// folder: a release or rip names its folder and leaves the file a code.
-func fallbackName(rel string, kind mp.Kind) string {
+// folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
+// (part > 0) is named without its part mark.
+func fallbackName(rel string, kind mp.Kind, part int) string {
 	clean := func(name string) string {
-		return strings.TrimSpace(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), ""))
+		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
 	}
 	name := path.Base(rel)
 	if dot := strings.LastIndex(name, "."); dot > 0 {
 		name = name[:dot]
+	}
+	if part > 0 {
+		name = withoutPart(name)
 	}
 	if dir := path.Dir(rel); kind == mp.KindMovie && dir != "." {
 		folder := clean(path.Base(dir))

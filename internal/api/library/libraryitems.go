@@ -141,13 +141,13 @@ type libraryItemDTO struct {
 	Poster *httpcore.ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
 	// A title with either count above zero needs a look (#2151 decision 24).
 	Unplayable  int `json:"unplayable" doc:"Files that can't be played: their details couldn't be read"`
-	ExtraCopies int `json:"extraCopies" doc:"A movie's files beyond the one that plays"`
+	ExtraCopies int `json:"extraCopies" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does"`
 }
 
 func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpcore.ImageDTO) libraryItemDTO {
 	extra := 0
-	if it.Kind == "movie" && it.Files > 1 {
-		extra = it.Files - 1
+	if it.Kind == "movie" {
+		extra = it.ExtraCopies
 	}
 	return libraryItemDTO{
 		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0,

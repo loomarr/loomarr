@@ -81,7 +81,10 @@ type LibrarySource struct {
 	DurationMs int64
 	// Edition labels a version of the title ("" the default; decision 54).
 	Edition string
-	// Plays marks the copy that plays (decision 37).
+	// Part is which part of a movie in parts it is, from 1; 0 for a whole file. Every part of the
+	// edition that plays is marked Plays, and they play in part order.
+	Part int
+	// Plays marks the copy that plays (decision 37), or each of its parts.
 	Plays   bool
 	Streams []LibraryStream
 	// Trickplay are the trickplay files beside it, referenced and never imported (decision 61).
@@ -225,8 +228,10 @@ type LibraryItemSummary struct {
 	Pending int
 	// Unplayable counts its present files whose header could not be read: they can't be played.
 	Unplayable int
-	// ExtraBytes is what a movie's extra copies take: its files that are not a copy that plays.
-	ExtraBytes int64
+	// ExtraCopies counts a movie's extra copies, its files that are not a copy that plays (each
+	// edition's, or each part of a movie in parts), and ExtraBytes is what they take.
+	ExtraCopies int
+	ExtraBytes  int64
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, any
@@ -362,7 +367,7 @@ var (
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
 		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
-		COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
+		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
 	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
 		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
@@ -472,7 +477,7 @@ func (s *Store) scanLibraryItems(ctx context.Context, query string, args ...any)
 		var it LibraryItemSummary
 		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraBytes); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraCopies, &it.ExtraBytes); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}

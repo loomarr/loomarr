@@ -103,6 +103,9 @@ type File struct {
 	// Notes are what its folder's videos say of it together: whether they number themselves after
 	// a name they share.
 	Notes folderNotes
+	// Part is which part of a movie it is, from 1, when its folder holds the movie in parts
+	// ("cd1", "cd2"); 0 for a whole file.
+	Part int
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
 	// Top is which of the root's top-level entries the file is under, counted as the walk lists
@@ -264,10 +267,17 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 	}
-	w.nfo[dir], w.videos[dir] = nfos, len(videoNames)
+	notes, parts := notesOf(videoNames), partsOf(videoNames)
+	// A movie in parts is one video: its folder's poster is the movie's.
+	movies := len(videoNames) - len(parts)
+	for _, n := range parts {
+		if n == 1 {
+			movies++
+		}
+	}
+	w.nfo[dir], w.videos[dir] = nfos, movies
 	defer delete(w.nfo, dir)
 	defer delete(w.videos, dir)
-	notes := notesOf(videoNames)
 
 	top := dir == w.root
 	if top {
@@ -322,7 +332,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 			w.out.Files = append(w.out.Files, File{
 				Path: path, Rel: w.rel(path), Stat: st,
-				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Notes: notes, Top: w.top,
+				Sidecars: w.sidecars(dir, e.Name()), Sole: w.videos[dir] <= 1, Notes: notes, Part: parts[e.Name()], Top: w.top,
 			})
 		}
 	}
