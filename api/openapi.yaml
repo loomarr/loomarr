@@ -16840,14 +16840,15 @@ paths:
           schema:
             description: Load the segments split out of this composite (§10 V45). Takes precedence over topLevel, which it contradicts by construction.
             type: string
-        - description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent.
+        - description: "Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash, at most 500: the page size, so every hash asked for can come back. Unknown hashes are simply absent."
           explode: true
           in: query
           name: hashes
           schema:
-            description: Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent.
+            description: "Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash, at most 500: the page size, so every hash asked for can come back. Unknown hashes are simply absent."
             items:
               type: string
+            maxItems: 500
             type: array
       responses:
         "200":
