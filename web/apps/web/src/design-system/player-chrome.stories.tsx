@@ -361,6 +361,26 @@ const TypingChannel: Story = { args: { readout: { digits: "1–" } } };
 
 const NoSuchChannel: Story = { args: { readout: { digits: "99", missed: true } } };
 
+// Flipping channels (§9.2, mock "surfing"): Channel up tuned 12, the cards ride along in the band's
+// place with 12 lit, and the readout names it. No art here, so every card's picture is its stand-in.
+const surf = {
+  channels: [
+    { id: "3", name: "Saturday Mornings", nowPlaying: "Cartoon block", number: "3" },
+    { id: "5", name: "Late Show Reruns", nowPlaying: "A talk show", number: "5" },
+    { decade: 1990, id: "7", name: "Coast 90s", nowPlaying: "The Diner Years", number: "7" },
+    { id: "9", name: "Movie Matinee", nowPlaying: "A heist film", number: "9" },
+    { id: "12", name: "Game Night", nowPlaying: "A quiz show", number: "12" },
+    { decade: 1970, id: "14", name: "Sunday Westerns", nowPlaying: "A cattle drive", number: "14" },
+    { id: "21", name: "Sports Replay", nowPlaying: "A baseball classic", number: "21" },
+  ],
+  tunedId: "12",
+};
+const Surfing: Story = { args: { readout: { digits: "12", name: "Game Night" }, surf } };
+const TelevisionSurfing: Story = {
+  ...Television,
+  args: { ...Television.args, readout: { digits: "12", name: "Game Night" }, surf } as Story["args"],
+};
+
 // The channel's watermark is burned into the picture and never moves. The chrome steps around it
 // (§9.6, #2772): a 16:9 frame so the picture fills it, and a stand-in bug drawn where playout puts it.
 const FRAME = { height: 720, width: 1280 } as const;
@@ -578,6 +598,11 @@ const portraitArgs = {
   layout: "portrait" as const,
 };
 const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
+// Flipping on an upright phone: three cards where the band was, the readout where the toolbar was.
+const PortraitSurfing: Story = {
+  args: { ...portraitArgs, readout: { digits: "12", name: "Game Night" }, surf },
+  render: (args) => <PhoneFrame {...args} />,
+};
 // Nothing covers an upright phone's picture, so its line sits at the picture's own foot, smaller.
 const PortraitSubtitles: Story = {
   args: {
@@ -814,16 +839,19 @@ export {
   PortraitMore,
   PortraitMoreMidFilm,
   PortraitSubtitles,
+  PortraitSurfing,
   PortraitUnmute,
   StationId,
   StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
   SubtitlesIdle,
+  Surfing,
   SubtitlesMenu,
   Television,
   TelevisionMore,
   TelevisionSubtitles,
+  TelevisionSurfing,
   Touch,
   TypingChannel,
   UnmutePill,
