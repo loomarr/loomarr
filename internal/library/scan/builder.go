@@ -129,6 +129,15 @@ type identity struct {
 	digest    string
 }
 
+// airDate is the day the file's name says its episode aired, for one named by it rather than by
+// season and number; "" otherwise.
+func (id identity) airDate() string {
+	if id.embedded.Numbering != nil || id.embedded.Descriptive == nil {
+		return ""
+	}
+	return id.embedded.Descriptive.PremiereDate
+}
+
 func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
@@ -285,7 +294,11 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
 	res := b.resolve(ctx, snapshot.Origin, in)
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
-		res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+		if day := id.airDate(); day != "" {
+			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+		} else {
+			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+		}
 	}
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
