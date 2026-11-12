@@ -2,9 +2,11 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -221,6 +223,51 @@ func TestStep1CountsARootItsEarlyCountMissed(t *testing.T) {
 	late.wrote(4)
 	if got := tr.Snapshot(time.Now()); got.Done != 10 {
 		t.Errorf("step 1 done = %d once the late root is written, want 10", got.Done)
+	}
+}
+
+// A root that holds a few big folders ("/media" with Movies and TV) is counted by what is in them:
+// step 1's bar moves a movie or show at a time, not 0, half, then full over hours.
+func TestStep1CountsAFewBigFoldersByWhatTheyHold(t *testing.T) {
+	root := t.TempDir()
+	for i := range 30 {
+		name := fmt.Sprintf("Lima %02d (2001)", i)
+		touch(t, root, "Movies/"+name+"/"+name+".mkv")
+	}
+	for i := range 20 {
+		touch(t, root, fmt.Sprintf("TV/Mike %02d/Season 01/Mike %02d S01E01.mkv", i, i))
+	}
+	touch(t, root, "readme.txt")
+	var mu sync.Mutex
+	seen := map[int]bool{}
+	var tr *Tracker
+	tr = NewTracker(nil, func(bool) {
+		s := tr.Snapshot(time.Now())
+		mu.Lock()
+		seen[s.Done] = true
+		mu.Unlock()
+	})
+	tr.Begin(StepWalking, 0)
+	report := &walkReport{tracker: tr, name: "media"}
+	walk, err := walkRoot(context.Background(), root, nil, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.Snapshot(time.Now()); got.Total != 51 {
+		t.Fatalf("step 1 total = %d, want 51: 30 movies, 20 shows and the loose file", got.Total)
+	}
+	report.writing()
+	for _, f := range walk.Files {
+		report.wrote(f.Top)
+	}
+	report.close()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 25 {
+		t.Errorf("step 1 moved through %d values, want it to move a folder at a time", len(seen))
+	}
+	if got := tr.Snapshot(time.Now()); got.Done != 51 {
+		t.Errorf("step 1 done = %d once written, want 51", got.Done)
 	}
 }
 

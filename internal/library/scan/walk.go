@@ -108,8 +108,8 @@ type File struct {
 	Part int
 	// Problem is why the path is not imported, "" for a media file.
 	Problem string
-	// Top is which of the root's top-level entries the file is under, counted as the walk lists
-	// them, so the import can tell how many entries' files it has written.
+	// Top is which of step 1's units the file is under (a top-level entry, or an entry of one, as
+	// walker.units counts them), so the import can tell how many units' files it has written.
 	Top int
 }
 
@@ -198,8 +198,10 @@ type walker struct {
 	steps *atomic.Int64
 	// report hears a whole root's walk go, for the import's progress; nil hears nothing.
 	report *walkReport
-	// top is the root's top-level entry being walked.
+	// top is step 1's unit being walked: a top-level entry, or an entry of one (units).
 	top int
+	// firstUnit is each top-level folder counted by its own entries, by path: its first unit.
+	firstUnit map[string]int
 	out Walk
 	// skipped are paths whose names are not UTF-8.
 	skipped []string
@@ -211,10 +213,43 @@ func newWalker(root string, steps *atomic.Int64) *walker {
 	}
 	w := &walker{
 		root: filepath.Clean(root), visited: map[string]bool{},
-		nfo: map[string]map[string]Stat{}, videos: map[string]int{}, steps: steps,
+		nfo: map[string]map[string]Stat{}, videos: map[string]int{}, steps: steps, firstUnit: map[string]int{},
 	}
 	w.out.Complete = true
 	return w
+}
+
+// unitsWanted is how many units step 1 counts a root by at least, when it can: a root with fewer
+// top-level entries ("/media" holding Movies and TV) is counted by what each of its folders holds.
+const unitsWanted = 50
+
+// units is how many units step 1 counts the root by, and the first unit of each top-level entry. A
+// root with unitsWanted top-level entries or more counts each as one. One with fewer counts each
+// top-level folder by its own entries, listed now, and notes each folder's first unit for its walk;
+// a file, or a folder that is empty or can't be listed, is one.
+func (w *walker) units(root string, entries []os.DirEntry) (int, []int) {
+	bases := make([]int, len(entries))
+	if len(entries) >= unitsWanted {
+		for i := range entries {
+			bases[i] = i
+		}
+		return len(entries), bases
+	}
+	n := 0
+	for i, e := range entries {
+		bases[i] = n
+		size := 1
+		if e.IsDir() {
+			path := filepath.Join(root, e.Name())
+			if inside, err := os.ReadDir(path); err == nil && len(inside) > 0 {
+				size = len(inside)
+				w.firstUnit[path] = n
+			}
+			w.steps.Add(1)
+		}
+		n += size
+	}
+	return n, bases
 }
 
 // unread records a folder or file the walk could not read: what lay under it is unknown.
@@ -288,14 +323,22 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	defer delete(w.videos, dir)
 
 	top := dir == w.root
+	var bases []int
 	if top {
-		w.report.counted(len(entries))
+		var units int
+		units, bases = w.units(dir, entries)
+		w.report.counted(units)
 	}
+	first, inTop := w.firstUnit[dir]
 	for i, e := range entries {
-		if top {
-			// The entries before this one are listed.
-			w.report.listed(i)
-			w.top = i
+		// The units before this one are listed.
+		switch {
+		case top:
+			w.report.listed(bases[i])
+			w.top = bases[i]
+		case inTop:
+			w.report.listed(first + i)
+			w.top = first + i
 		}
 		path := filepath.Join(dir, e.Name())
 		if !utf8.ValidString(e.Name()) {
