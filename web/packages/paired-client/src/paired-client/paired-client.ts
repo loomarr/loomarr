@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { AppState, Image } from "react-native";
 
 import type { PairedClient, PairedClientOptions } from "./paired-client.type";
+import { useDisposedWith } from "./use-disposed-with";
 
 // Hermes has no crypto.randomUUID, so expo-crypto supplies the platform's secure one.
 const newPlaybackSessionId = (platform: string) => `${platform}-${randomUUID()}`;
@@ -64,6 +65,10 @@ const usePairedClient = ({
       reporter,
     };
   }, [diagnostics, request]);
+  useDisposedWith(reporting, ({ playback, reporter }) => {
+    playback.dispose();
+    reporter.dispose();
+  });
   const controller = useMemo(
     () =>
       createPlayerController({
@@ -78,6 +83,7 @@ const usePairedClient = ({
       }),
     [credential.serverUrl, initialTune, lastChannel, reporting, request, transport],
   );
+  useDisposedWith(controller, (built) => built.dispose());
   const catalogRefresher = useMemo(
     () => createCatalogRefresher({ controller, list: createChannelCatalogPort(request).list }),
     [controller, request],
@@ -107,10 +113,12 @@ const usePairedClient = ({
       }),
     [guideWindowMinutes, request],
   );
+  useDisposedWith(guide, (built) => built.dispose());
   const myChannels = useMemo(
     () => createMyChannelsController({ port: createMyChannelsPort(request) }),
     [request],
   );
+  useDisposedWith(myChannels, (built) => built.dispose());
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const guideSnapshot = useSyncExternalStore(guide.subscribe, guide.getSnapshot, guide.getSnapshot);
   const myChannelsSnapshot = useSyncExternalStore(
@@ -158,19 +166,11 @@ const usePairedClient = ({
       catalogRefresher.abort();
       versionRequest.current?.abort();
       subscription.remove();
-      guide.dispose();
-      myChannels.dispose();
-      controller.dispose();
     };
-  }, [catalogRefresher, controller, guide, lifecycle, myChannels, refresh]);
+  }, [catalogRefresher, lifecycle, refresh]);
   useEffect(() => {
     if (!reporting) return;
-    const unsubscribe = transport.subscribe(reporting.playback.transportEvent);
-    return () => {
-      unsubscribe();
-      reporting.playback.dispose();
-      reporting.reporter.dispose();
-    };
+    return transport.subscribe(reporting.playback.transportEvent);
   }, [reporting, transport]);
   const channelId = snapshot.channel?.id;
   useEffect(() => {
