@@ -76,6 +76,7 @@ const SystemHome = () => (
   </div>
 );
 
+// no-loader: a static list of links to the System pages
 const Route = createFileRoute("/_authed/settings/system/")({
   component: SystemHome,
 });
