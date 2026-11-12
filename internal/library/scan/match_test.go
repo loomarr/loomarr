@@ -31,10 +31,29 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		{"Mystery Film", 2002, "Mystery Film", 2002},
 		{"Mystery Film 1999", 2002, "Mystery Film", 2002},
 		{"Mystery Film {tmdb-90000201}", 0, "Mystery Film", 0},
+		// A number no release could carry yet is the title's, never its year.
+		{"Harbor Lights 2049", 0, "Harbor Lights 2049", 0},
+		{"Harbor.Lights.2049.1080p.WEB-DL", 0, "Harbor Lights 2049", 0},
 	} {
-		title, year := searchQuery(tc.name, tc.known)
+		title, year, _ := searchQuery(tc.name, tc.known)
 		if title != tc.title || year != tc.year {
 			t.Errorf("searchQuery(%q, %d) = %q, %d; want %q, %d", tc.name, tc.known, title, year, tc.title, tc.year)
+		}
+	}
+}
+
+// A bare year-like word after a title may be its year or the end of its name ("Lantern Keeper
+// 1984"); the name is read both ways. A bracketed one is only ever the year.
+func TestSearchQueryKeepsTheWholeNameWhenTheYearIsBare(t *testing.T) {
+	for _, tc := range []struct{ name, whole string }{
+		{"Lantern Keeper 1984", "Lantern Keeper 1984"},
+		{"Lantern.Keeper.1984.1080p.BluRay", "Lantern Keeper 1984"},
+		{"Lantern Keeper 1984 (2020)", ""},
+		{"Lantern Keeper [1984]", ""},
+		{"Lantern Keeper", ""},
+	} {
+		if _, _, whole := searchQuery(tc.name, 0); whole != tc.whole {
+			t.Errorf("searchQuery(%q) whole = %q; want %q", tc.name, whole, tc.whole)
 		}
 	}
 }
@@ -166,6 +185,37 @@ func tmdbID(v string) mp.ExternalID { return mp.ExternalID{Namespace: mp.Namespa
 
 func tmdbLink(v string) librarystore.LibraryID {
 	return librarystore.LibraryID{Namespace: "tmdb", Value: v}
+}
+
+// A film whose name ends in a year-like number is searched by the title before it, and a result
+// named with the number matches its name as well as the namesake does: the right film is never
+// ranked out by a title it only shares the start of.
+func TestMatcherNameMatchesATitleEndingInAYearLikeNumber(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.file("Lantern.Keeper.1984.1080p.BluRay/Lantern.Keeper.1984.1080p.BluRay.mkv", 10)
+	h.run()
+	search := &fakeSearch{hits: []SearchHit{
+		{Kind: "movie", ID: tmdbID("90000321"), Name: "Lantern Keeper", Year: 1984},
+		{Kind: "movie", ID: tmdbID("90000322"), Name: "Lantern Keeper 1984", Year: 2020},
+	}}
+	m := &Matcher{Store: h.st, Search: search.search, Provider: &fakeCatalog{}, Inventory: h.inv}
+	if err := m.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.terms) != 1 || search.terms[0] != "Lantern Keeper" {
+		t.Fatalf("searched %v", search.terms)
+	}
+	lib := &Library{NeedStore: h.st, ItemStore: h.st, Keys: fakeCatalogKeys}
+	needs, _ := lib.Needs(ctx)
+	if len(needs) != 1 || len(needs[0].Candidates) != 2 {
+		t.Fatalf("needs = %+v; want the film with both candidates", needs)
+	}
+	for _, c := range needs[0].Candidates {
+		if !c.NameMatch {
+			t.Errorf("%s (%d): name does not match; want both readings of the name to", c.Name, c.Year)
+		}
+	}
 }
 
 // A movie nothing grounds is matched by its search when exactly one result agrees on its name,
@@ -358,13 +408,13 @@ func TestMatcherSearchesOnPastATitleItsCatalogRefuses(t *testing.T) {
 	if err != nil || len(needs) != titles {
 		t.Fatalf("%d needs, %v; want %d", len(needs), err, titles)
 	}
-	refused, _ = searchQuery(needs[0].Name, needs[0].Year)
+	refused, _, _ = searchQuery(needs[0].Name, needs[0].Year)
 	if err := m.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
 	needs, _ = h.st.LibraryNeeds(ctx)
 	for _, need := range needs {
-		name, _ := searchQuery(need.Name, need.Year)
+		name, _, _ := searchQuery(need.Name, need.Year)
 		if searched := need.Searched != ""; searched == (name == refused) {
 			t.Errorf("%s: searched = %v after a tick that refused only %q", need.Name, searched, refused)
 		}

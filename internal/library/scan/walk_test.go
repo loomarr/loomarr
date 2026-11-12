@@ -115,12 +115,16 @@ func TestIDsAndNumberingInNames(t *testing.T) {
 		t.Errorf("ids = %v", ids)
 	}
 	cases := map[string]mp.Numbering{
-		"Show S01E02.mkv":         {Season: 1, Episode: 2},
-		"Show.s10e100.mkv":        {Season: 10, Episode: 100},
-		"Show - S02E03-E05.mkv":   {Season: 2, Episode: 3, EpisodeEnd: 5},
-		"Show S02E03E04.mkv":      {Season: 2, Episode: 3, EpisodeEnd: 4},
-		"Show 3x07 Title.mkv":     {Season: 3, Episode: 7},
-		"Show S00E01 Special.mkv": {Season: 0, Episode: 1},
+		"Show S01E02.mkv":       {Season: 1, Episode: 2},
+		"Show.s10e100.mkv":      {Season: 10, Episode: 100},
+		"Show - S02E03-E05.mkv": {Season: 2, Episode: 3, EpisodeEnd: 5},
+		"Show S02E03E04.mkv":    {Season: 2, Episode: 3, EpisodeEnd: 4},
+		// A file holding three or more episodes is read through its last, not its second.
+		"Show.S01E01E02E03.mkv":     {Season: 1, Episode: 1, EpisodeEnd: 3},
+		"Show.S01E01-E02-E03.mkv":   {Season: 1, Episode: 1, EpisodeEnd: 3},
+		"Show S01E01-S01E02-S01E04": {Season: 1, Episode: 1, EpisodeEnd: 4},
+		"Show 3x07 Title.mkv":       {Season: 3, Episode: 7},
+		"Show S00E01 Special.mkv":   {Season: 0, Episode: 1},
 	}
 	for name, want := range cases {
 		if got, ok := numberingIn(name); !ok || got != want {

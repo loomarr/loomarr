@@ -402,7 +402,7 @@ func namingOutcomes(t *testing.T, row namingRow) map[string]string {
 // describeItem is a title's outcome, as a naming row reads it.
 func describeItem(showOf func(librarystore.LibraryOrigin) librarystore.LibraryItem, it librarystore.LibraryItem) string {
 	searched := func(it librarystore.LibraryItem) string {
-		title, year := searchQuery(it.Name, it.Year)
+		title, year, _ := searchQuery(it.Name, it.Year)
 		if year == 0 {
 			return title + " -"
 		}

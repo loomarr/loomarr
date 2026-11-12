@@ -190,9 +190,10 @@ var (
 	embeddedID = regexp.MustCompile(`(?i)[\[{](tmdb|tmdbid|imdb|imdbid|tvdb|tvdbid)[-=]([a-z0-9]+)[\]}]`)
 	// episodeMark matches "S01E02" and "1x02", and a file holding several episodes through its last:
 	// "S01E02E03", "S01E02-E03", "S01E02+E03", "S01E02-S01E03", "S01E02-03", "1x02-1x03", "1x02-03".
-	// A bare last episode is two or three digits and ends there, so "S01E02-1080p" holds one.
+	// A bare last episode is two or three digits and ends there, so "S01E02-1080p" holds one. The
+	// marks repeat ("S01E01E02E03"), and a repeated group captures its last, so group 3 is the end.
 	episodeMark = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])s(\d{1,4})[ ._-]?e(\d{1,4})` +
-		`(?:[ ._-]?[-+]?[ ._]?(?:s\d{1,4}[ ._-]?)?e(\d{1,4})|-(\d{2,3})(?:[^a-z0-9]|$))?` +
+		`(?:(?:[ ._-]?[-+]?[ ._]?(?:s\d{1,4}[ ._-]?)?e(\d{1,4}))+|-(\d{2,3})(?:[^a-z0-9]|$))?` +
 		`|(?:^|[^a-z0-9])(\d{1,2})x(\d{2,3})(?:-(?:\d{1,2}x)?(\d{2,3})(?:[^a-z0-9]|$)|[^0-9]|$)`)
 	// airDateMark matches the day a daily or weekly show's episode aired: "2013-02-15",
 	// "2013.02.15", "2013 02 15".
