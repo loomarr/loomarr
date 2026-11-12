@@ -1,3 +1,4 @@
+import { DockedPanel } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelDrawerProps, DrawerChannel } from "./channel-drawer.type";
@@ -62,33 +63,14 @@ const ChannelDrawer = ({
   }
 
   return (
-    // A sheet like the player's others (role=dialog), so the player's ↑/↓ leave its list alone.
-    <section
-      aria-labelledby="channel-drawer-title"
-      role="dialog"
-      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l"
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.stopPropagation();
-        onClose();
-      }}
+    // The design system's docked panel: docked in the player's frame, non-modal, role=dialog (so the
+    // player's ↑/↓ leave its list alone), and it owns Escape.
+    <DockedPanel
+      title="Channels"
+      closeLabel="Close channels"
+      meta={<span className="font-mono text-[11px] tracking-[.06em]">NOW → NEXT 2H</span>}
+      onClose={onClose}
     >
-      <div className="border-static-800 flex items-center gap-2.5 border-b px-[18px] pt-4 pb-3">
-        <h2 id="channel-drawer-title" className="text-sm font-semibold">
-          Channels
-        </h2>
-        <span className="text-muted-foreground font-mono text-[11px] tracking-[.06em]">NOW → NEXT 2H</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close channels"
-          className="text-muted-foreground hover:text-static-0 focus-visible:ring-ring ml-auto flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <span aria-hidden className="text-sm leading-none">
-            ✕
-          </span>
-        </button>
-      </div>
       <div className="px-2.5 pt-2.5">
         <input
           ref={findRef}
@@ -128,7 +110,7 @@ const ChannelDrawer = ({
           ? `${listed.length} of ${channels.length} channels · guide has the full week`
           : `${channels.length} channels · type a number to tune direct`}
       </p>
-    </section>
+    </DockedPanel>
   );
 };
 

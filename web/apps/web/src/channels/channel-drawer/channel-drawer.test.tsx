@@ -86,6 +86,12 @@ describe("ChannelDrawer", () => {
     expect(onFavourite).toHaveBeenCalledWith("b", false);
   });
 
+  it("is a non-modal dialog named Channels, so the player's arrow keys leave its list alone", () => {
+    renderDrawer();
+    const dialog = screen.getByRole("dialog", { name: "Channels" });
+    expect(dialog.hasAttribute("aria-modal")).toBe(false);
+  });
+
   it("closes on Escape and from its close button", async () => {
     const onClose = vi.fn();
     renderDrawer({ onClose });
