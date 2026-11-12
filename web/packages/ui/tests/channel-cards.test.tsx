@@ -16,7 +16,6 @@ import {
   surfCardsFromGuide,
   useSurfCards,
 } from "../index";
-import { cardsAround } from "../src/watching-surface/player-chrome/channel-cards";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -152,17 +151,34 @@ describe("the channel cards while flipping (§9.2)", () => {
   });
 });
 
-describe("cardsAround", () => {
-  const ids = (cards: readonly PlayerSurfChannel[]) => cards.map((card) => card.number);
+describe("the row of cards", () => {
+  // The channels on show, by name, in order.
+  const shown = (surf: PlayerSurf, touch = false) => {
+    const { host } = mount(
+      chrome(
+        touch
+          ? {
+              density: "touch",
+              keys: { density: "touch", onChannelUp: vi.fn(), pointer: false },
+              surf,
+              utilities: { density: "touch", onAudio: vi.fn(), pointer: false },
+            }
+          : { surf },
+      ),
+    );
+    return Array.from(host.querySelectorAll('[role="listitem"]')).map(
+      (el) => lineup.find((channel) => el.textContent?.includes(channel.name))?.number,
+    );
+  };
 
   it("centres the tuned channel, and holds against the ends of the lineup rather than wrapping", () => {
-    expect(ids(cardsAround(lineup, "c9", 5))).toEqual(["5", "7", "9", "12", "14"]);
-    expect(ids(cardsAround(lineup, "c3", 5))).toEqual(["3", "5", "7", "9", "12"]);
-    expect(ids(cardsAround(lineup, "c21", 3))).toEqual(["12", "14", "21"]);
+    expect(shown({ channels: lineup, tunedId: "c9" })).toEqual(["5", "7", "9", "12", "14"]);
+    expect(shown({ channels: lineup, tunedId: "c3" })).toEqual(["3", "5", "7", "9", "12"]);
+    expect(shown({ channels: lineup, tunedId: "c21" }, true)).toEqual(["12", "14", "21"]);
   });
 
   it("shows every channel when there are fewer than the row holds", () => {
-    expect(ids(cardsAround(lineup.slice(0, 2), "c5", 5))).toEqual(["3", "5"]);
+    expect(shown({ channels: lineup.slice(0, 2), tunedId: "c5" })).toEqual(["3", "5"]);
   });
 });
 

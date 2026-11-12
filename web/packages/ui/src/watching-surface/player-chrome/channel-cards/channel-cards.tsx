@@ -140,4 +140,4 @@ const ChannelCards = ({ density, surf }: ChannelCardsProps) => (
 );
 
 export type { ChannelCardsProps };
-export { ChannelCards, cardsAround };
+export { ChannelCards };
