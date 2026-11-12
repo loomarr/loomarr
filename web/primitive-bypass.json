@@ -189,12 +189,10 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "rawCombobox": 1,
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
-      "rawCombobox": 1,
-      "flexStack": 6
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
       "flexStack": 3
@@ -237,10 +235,6 @@
     },
     "apps/web/src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
       "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/shell/search-command/search-command.tsx": {
-      "rawCombobox": 1,
-      "flexStack": 3
     },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "flexStack": 2
@@ -351,7 +345,6 @@
       "flexStack": 2
     },
     "apps/web/src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
-      "rawCombobox": 1,
       "flexStack": 3
     },
     "apps/web/src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
