@@ -704,12 +704,21 @@ func seasonAmongFilms(file File) bool {
 	if dir == "." || catchAllFolder(path.Base(dir)) {
 		return false
 	}
-	return episodeOnly.MatchString(plainStem(path.Base(file.Rel))) || packShow(dir) != ""
+	// "Movies/Episode 7/Episode 7.mkv" is a film named as its own folder.
+	s := plainStem(path.Base(file.Rel))
+	if sameWords(s, path.Base(dir)) {
+		return false
+	}
+	return episodeOnly.MatchString(s) || cjkEpisodeOnly.MatchString(s) || packShow(dir) != ""
 }
 
 // episodeOnly matches a name that is an episode's word and number and nothing else: "Episode 1",
 // "Ep.02", "Folge 3".
 var episodeOnly = regexp.MustCompile(`(?i)^(?:episode|ep|e|folge|episodio|episódio|épisode|aflevering|avsnitt|afsnit|odcinek|cap[ií]tulo)[ ._-]*(\d{1,4})$`)
+
+// cjkEpisodeOnly matches a name that is a Japanese, Chinese or Korean episode's number alone:
+// "第1話", "第05集", "第3回", "1화".
+var cjkEpisodeOnly = regexp.MustCompile(`^(?:第\s*\d{1,4}\s*[話话集回]|\d{1,4}\s*화)$`)
 
 // showFilm matches a show's film named by the word after the show's name: "Kaito Run Movie 1",
 // "Westerly Movie", "Westerly: The Movie", "Hana Kettle Gekijouban".
@@ -1109,6 +1118,12 @@ func showFolderIn(file File) string {
 	// the episode's word are its show.
 	if m := episodeWord.FindStringIndex(plainStem(name)); show == "" && m != nil && m[0] > 0 && catchAllFolder(path.Base(dir)) {
 		show = showSpelling(strings.TrimSpace(plainStem(name)[:m[0]]))
+	}
+	// So, loose at the top or in a catch-all, is "Bramblecourt E01" beside "Bramblecourt E02".
+	if m := spelledEpisode.FindStringSubmatch(plainStem(name)); show == "" && m != nil &&
+		(dir == "." || catchAllFolder(path.Base(dir))) && file.Notes.Spelled &&
+		!leadingTags.MatchString(name) {
+		show = showSpelling(strings.TrimSpace(m[1]))
 	}
 	show = looseKey(show)
 	// "Pembroke.Gate.S01E02" beside "Pembroke.Gate.2019.S01E01" is the 2019 show's: the one year
@@ -1755,6 +1770,11 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		return n, true
 	}
 	if dir == "." {
+		// Loose at the top, "Bramblecourt E01" beside "Bramblecourt E02" number one show's episodes.
+		// A fansub's "[Kumo] Show - E20" is numbered across its show (looseAnime).
+		if m := spelledEpisode.FindStringSubmatch(name); m != nil && file.Notes.Spelled && !leadingTags.MatchString(name) {
+			return episode(atoi(m[2]))
+		}
 		return mp.Numbering{}, false
 	}
 	// "Tiddlywinks Farm - Series 2 - 05 - Muddy Day" is series 2's fifth.

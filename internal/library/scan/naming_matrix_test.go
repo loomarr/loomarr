@@ -1214,6 +1214,26 @@ var namingMatrix = []namingRow{
 		"Kids/Peppy Cow DVD/Title 2.mp4":               "episode Peppy Cow S?E?",
 		"Anime/[Grp] Kame Specials - 01 [1080p].mkv":   "episode Kame S0E1",
 	}},
+	// Re-score #19: a release folder's fuller title over its file's short one; loose "Show E01"
+	// numbered alike; a release's creditless folder; an episode named by its number alone in
+	// Japanese; a film named as its folder whatever its name says; a video site's id.
+	{id: "W133", files: map[string]string{
+		"Wren.Harbor.2003.1080p.BluRay.x264-GRP/wren.2003.1080p.mkv": "movie Wren Harbor 2003",
+		"Bramblecourt E01.mkv":                                        "episode Bramblecourt S1E1",
+		"Bramblecourt E02.mkv":                                        "episode Bramblecourt S1E2",
+		"Anime/Yuki Monogatari/Yuki Monogatari - 01.mkv":              "episode Yuki Monogatari S?E?",
+		"Anime/Yuki Monogatari/Creditless/Yuki Monogatari - ED1.mkv":  "skip",
+		"Filme/青い森/第1話.mkv":                                           "episode 青い森 S1E1",
+		"Filme/青い森/第2話.mkv":                                           "episode 青い森 S1E2",
+		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
+		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
+	}},
+	// Re-score #19: a file's own <movie> NFO makes the film of a file only its shows' shelf placed.
+	{id: "W134", files: map[string]string{
+		"TV/Odd/abc123.mkv": "movie Velvet Ash 2004",
+	}, nfo: map[string]string{
+		"TV/Odd/abc123.nfo": "<movie><title>Velvet Ash</title><year>2004</year></movie>",
+	}},
 	// Re-score #15: a show and its remake loose together are two shows when both number an episode
 	// alike; a yearless copy beside a dated one with episodes of its own joins it.
 	{id: "W122", files: map[string]string{

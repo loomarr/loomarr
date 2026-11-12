@@ -234,7 +234,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    named by its cut, framing, colour or voice is a version, never skipped; ".m2t" is a
 //	    video; "Kame Ep 5" in a shelf is Kame's; a show's film leaves its named episodes its; a
 //	    release's language and a show folder's "DVD" leave the name; "Kame Specials - 01" is S0.
-const writeVersion = 61
+//	62: shows told apart by a bracketed tag ("(US)", "(Animated)") never join; a release's short
+//	    file name takes its folder's fuller title of the same year; "Show E01" beside "E02" at the
+//	    top is a show's; a "Creditless" folder is extras; "第1話" alone is its folder's episode; a
+//	    film named as its own folder stays a film; a video site's id leaves the title; a file's own
+//	    <movie> NFO makes a film of one only its folder placed as an episode.
+const writeVersion = 62
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -701,6 +706,10 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" && !runsOn(fileTitle, title) {
 				return folder
 			}
+		} else if title, year, _ := searchQuery(folder, 0); year == fileYear && runsOn(title, fileTitle) {
+			// A release's file named short, "Wren.Harbor.2003…-GRP/wren.2003.1080p.mkv", is the film
+			// its folder names in full, of the same year.
+			return folder
 		}
 	}
 	return clean(name)
