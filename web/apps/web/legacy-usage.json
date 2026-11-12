@@ -265,7 +265,7 @@
       "tailwindClasses": 23
     },
     "src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
-      "tailwindClasses": 19
+      "tailwindClasses": 24
     },
     "src/components/loomarr/shell/search-command/search-command.tsx": {
       "tailwindClasses": 13
