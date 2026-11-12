@@ -126,7 +126,7 @@ func (s *Handlers) locationSuggestion(ctx context.Context, _ *struct{}) (*locati
 			return out, nil
 		}
 	}
-	address, ok := effectiveLocationClientAddress(request, s.origin.TrustProxy)
+	address, ok := effectiveLocationClientAddress(request, s.origin)
 	if !ok {
 		return out, nil
 	}
@@ -138,25 +138,15 @@ func (s *Handlers) locationSuggestion(ctx context.Context, _ *struct{}) (*locati
 	return out, nil
 }
 
-// effectiveLocationClientAddress returns the public-address candidate used only for
-// the approximate location suggestion. Keep it separate from clientIP: the auth rate
-// limiter has a deliberately narrow, established string contract, while location
-// lookup must correctly accept both IPv4 and IPv6 socket forms.
-func effectiveLocationClientAddress(request *http.Request, trustProxy bool) (netip.Addr, bool) {
-	raw := strings.TrimSpace(request.RemoteAddr)
-	if trustProxy {
-		if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
-			raw, _, _ = strings.Cut(forwarded, ",")
-			raw = strings.TrimSpace(raw)
-		}
+// effectiveLocationClientAddress returns the address the approximate location suggestion looks up:
+// the client as httpcore.Origin.ClientIP finds it, so X-Forwarded-For counts only from a proxy and
+// only its right-most hop that is not a proxy, never the left-most one a client wrote itself.
+func effectiveLocationClientAddress(request *http.Request, origin httpcore.Origin) (netip.Addr, bool) {
+	address, err := netip.ParseAddr(origin.ClientIP(request))
+	if err != nil {
+		return netip.Addr{}, false
 	}
-	if address, err := netip.ParseAddr(raw); err == nil {
-		return address.WithZone("").Unmap(), true
-	}
-	if addressPort, err := netip.ParseAddrPort(raw); err == nil {
-		return addressPort.Addr().WithZone("").Unmap(), true
-	}
-	return netip.Addr{}, false
+	return address, true
 }
 
 type locationHeaders struct {
