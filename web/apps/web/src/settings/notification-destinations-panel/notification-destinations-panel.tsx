@@ -770,9 +770,15 @@ const NotificationDestinationsPanel = () => {
     <section className="grid gap-4" aria-labelledby="notification-providers-title">
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <Stack direction="row" gap="control">
-          <span className="bg-signal/10 text-signal flex size-9 shrink-0 items-center justify-center rounded-lg">
+          <Stack
+            align="center"
+            className="bg-signal/10 text-signal size-9 rounded-lg"
+            flexShrink={0}
+            justify="center"
+            render="span"
+          >
             <Icon decorative glyph={icons.notifications} size="compact" tone="inherit" />
-          </span>
+          </Stack>
           <div>
             <Text as="h2" id="notification-providers-title" strong textRole="headline">
               Notification providers

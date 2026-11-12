@@ -186,11 +186,11 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
 const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "removed"; note?: string }) => (
   <Stack gap="0.5" render="li">
     <Stack align="baseline" direction="row" gap="inline">
-      <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden>
+      <Stack align="center" aria-hidden className="size-4" flexShrink={0} justify="center" render="span">
         {tone === "kept" && <Icon decorative glyph={icons.selected} size="compact" tone="muted" />}
         {tone === "added" && <Icon decorative glyph={icons.selected} size="compact" tone="success" />}
         {tone === "removed" && <Icon decorative glyph={icons.remove} size="compact" tone="danger" />}
-      </span>
+      </Stack>
       <Text
         as="span"
         className={cn(tone === "removed" && "line-through")}

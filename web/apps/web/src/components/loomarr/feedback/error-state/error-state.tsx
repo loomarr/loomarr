@@ -1,5 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Icon, icons, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
@@ -10,12 +10,13 @@ import type { ErrorStateProps } from "./error-state.type";
 const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
-    <div
+    <Stack
+      align="center"
+      className={cn("border-onair-tint-30 bg-onair-tint-8 rounded-lg border p-8 text-center", className)}
+      flexShrink={0}
+      gap="control"
+      justify="center"
       role="alert"
-      className={cn(
-        "border-onair-tint-30 bg-onair-tint-8 flex flex-col items-center justify-center gap-3 rounded-lg border p-8 text-center",
-        className,
-      )}
     >
       <Icon decorative glyph={icons.alert} size="control" tone="danger" />
       <div>
@@ -33,7 +34,7 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
           Try again
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

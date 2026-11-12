@@ -47,10 +47,10 @@ const ChannelCard = ({
         </Stack>
         {/* Top-right cluster: the on-air dot, then any trailing action (the row ⋮ menu).
             Kept together so the action reads as part of the card, not adrift beside it. */}
-        <div className="flex shrink-0 items-center gap-1.5">
+        <Stack align="center" direction="row" flexShrink={0} gap="1.5">
           <OnAirIndicator state={onAir} />
           {trailing}
-        </div>
+        </Stack>
       </Stack>
 
       <NowNextStrip {...nowNext} />
