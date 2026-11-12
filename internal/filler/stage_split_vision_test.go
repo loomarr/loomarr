@@ -634,6 +634,42 @@ func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testin
 	}
 }
 
+type failingStructureShadow struct {
+	pendingStructureShadow
+	failing string
+}
+
+func (s failingStructureShadow) NeedsStructureSplitObservation(ctx context.Context, proposal SplitProposal) (bool, error) {
+	if proposal.ClipHash == s.failing {
+		return false, errors.New("shadow store unavailable")
+	}
+	return s.pendingStructureShadow.NeedsStructureSplitObservation(ctx, proposal)
+}
+
+// One proposal whose shadow state cannot be read stays in review; it does not stop every other
+// proposal from being requeued.
+func TestSplitStageResumesOtherReviewsPastAnUnreadableShadow(t *testing.T) {
+	queue := proposalQueue{proposals: []SplitProposal{
+		{ClipHash: "unreadable", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "unobserved", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+	}}
+	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: failingStructureShadow{
+		pendingStructureShadow: pendingStructureShadow{pending: map[string]bool{"unobserved": true}},
+		failing:                "unreadable",
+	}})
+
+	hashes, err := stage.resumableReviewHashes(t.Context())
+	if err != nil {
+		t.Fatalf("one unreadable shadow failed the whole requeue: %v", err)
+	}
+	if _, ok := hashes["unobserved"]; !ok {
+		t.Fatal("the readable unobserved proposal was not requeued")
+	}
+	if _, ok := hashes["unreadable"]; ok {
+		t.Fatal("the proposal whose shadow could not be read was requeued; it stays in review")
+	}
+}
+
 // VisionKeyframesIn is the ONLY framing a vision call may use: the plain KeyframesIn above is
 // unbounded (up to 1920 px wide), so a call site that regresses to it would send a third more
 // pixels per frame. spanTools.KeyframesIn therefore refuses.

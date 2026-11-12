@@ -780,7 +780,12 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 		if rt.Shadow != nil {
 			pending, shadowErr := rt.Shadow.NeedsStructureSplitObservation(ctx, p)
 			if shadowErr != nil {
-				return nil, shadowErr
+				// This proposal stays in review, unconsumed; the others are still requeued.
+				if s.log != nil {
+					s.log.WarnContext(ctx, "split review not requeued: its structure shadow could not be read",
+						"clip", p.ClipHash, "err", shadowErr)
+				}
+				continue
 			}
 			if pending {
 				out[p.ClipHash] = struct{}{}
