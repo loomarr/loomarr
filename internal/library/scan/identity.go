@@ -487,6 +487,20 @@ var seasonToken = regexp.MustCompile(`(?i)^s\d{1,2}(?:-s?\d{1,2})?$`)
 // showFolderName is a show's name from its folder: the folder's own name, less its ids, or, for a
 // release folder, its words before what the folder holds of the show ("Kettle.Bay.S02.1080p-GRP" and
 // "Kettle Bay Complete Series (2010-2015)" are "Kettle Bay").
+// showYear matches the year an episode's file name gives its show, in brackets just before the
+// episode's mark: "Show (1963) - S01E01", "Show (1963) - S01xE01", "Show.[1963].1x01".
+var showYear = regexp.MustCompile(`[(\[]((?:18|19|20)\d\d)[)\]][\s._-]*(?:[Ss]\d{1,4}[xX]?[Ee]\d|\d{1,2}[xX]\d)`)
+
+// showYearIn is the year an episode's file name gives its show; 0 when it gives none.
+func showYearIn(name string) int {
+	m := showYear.FindStringSubmatch(name)
+	if m == nil {
+		return 0
+	}
+	year, _ := strconv.Atoi(m[1])
+	return year
+}
+
 func showFolderName(folder string) string {
 	name := strings.TrimSpace(embeddedID.ReplaceAllString(folder, ""))
 	spaced := name

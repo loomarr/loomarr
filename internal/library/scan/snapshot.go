@@ -118,7 +118,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    that app means it.
 //	34: an anime episode numbered across its show ("Show - 013") is placed by its seasons.
 //	35: a movie in parts ("cd1", "cd2") notes each file's part, and every part of it plays.
-const writeVersion = 35
+//	36: a show whose folder gives no year takes the one its episodes' names agree on
+//	    ("Show (1963) - S01E01").
+const writeVersion = 36
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
