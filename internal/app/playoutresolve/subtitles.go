@@ -54,38 +54,44 @@ func (r *Resolver) Subtitles(ctx context.Context, channelID string, from, to tim
 		if airing.Remaining <= 0 {
 			break // nothing airable in the cycle
 		}
-		until := at.Add(airing.Remaining)
+		// A movie in parts is walked a part at a time: each file has its own tracks and its own
+		// clock.
+		step := airing.Remaining
+		var input programmeInput
+		if airing.Kind == schedule.SlotProgram && airing.LibraryItemID != "" {
+			input = r.programmeInput(ctx, airing.LibraryItemID, airing.Offset)
+			if input.End > 0 {
+				step = min(step, input.End-airing.Offset)
+			}
+		}
+		until := at.Add(step)
 		if until.After(to) {
 			until = to
 		}
-		if airing.Kind == schedule.SlotProgram && airing.LibraryItemID != "" {
-			tracks := r.textSubtitles(ctx, airing.LibraryItemID)
+		if input.Path != "" {
+			tracks := r.textSubtitles(ctx, airing.LibraryItemID, input.Path)
 			if part == 0 {
 				window.Tracks = tracks
 			}
 			if track, ok := subtitles.Pick(tracks, key); ok && r.subtitleCues != nil {
 				switch cues, state := r.subtitleCues.Cues(track.Source); state {
 				case subtitles.Ready:
-					window.Cues = append(window.Cues, subtitles.Place(cues, airing.Offset, at, until)...)
+					window.Cues = append(window.Cues, subtitles.Place(cues, airing.Offset-input.Start, at, until)...)
 				case subtitles.Pending:
 					window.Pending = true
 				case subtitles.Failed:
 				}
 			}
 		}
-		at = at.Add(airing.Remaining)
+		at = at.Add(step)
 	}
 	return window, nil
 }
 
-// textSubtitles is a library item's text subtitle tracks, as the Library lists its playing file's,
-// one per choice key (the first wins). An image track isn't offered.
-func (r *Resolver) textSubtitles(ctx context.Context, itemID string) []subtitles.Track {
+// textSubtitles is the text subtitle tracks of path, a file library item itemID plays, as the
+// Library lists them, one per choice key (the first wins). An image track isn't offered.
+func (r *Resolver) textSubtitles(ctx context.Context, itemID, path string) []subtitles.Track {
 	tracks := []subtitles.Track{}
-	path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
-	if err != nil || !ok {
-		return tracks
-	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return tracks
