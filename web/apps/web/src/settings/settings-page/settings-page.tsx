@@ -179,7 +179,7 @@ const SettingsPage = ({
   };
 
   return (
-    <div className={cn("flex flex-col", !embedded && "h-full")}>
+    <Stack className={cn(!embedded && "h-full")}>
       {embedded ? (
         <div>
           <Text as="h2" textRole="title">
@@ -260,12 +260,13 @@ const SettingsPage = ({
             );
           }
           return (
-            <section
+            <Stack
               key={block.title}
               className={cn(
-                "flex flex-col gap-4",
                 block.surface === "card" && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
               )}
+              gap="4"
+              render="section"
             >
               <div>
                 <Text as="h2" strong textRole="headline">
@@ -287,7 +288,7 @@ const SettingsPage = ({
                 disabledReasons={block.disabledReasons}
               />
               {typeof block.footer === "function" ? block.footer({ liveValue, setEdit }) : block.footer}
-            </section>
+            </Stack>
           );
         })}
 
@@ -299,7 +300,7 @@ const SettingsPage = ({
       {/* The save bar lives in the layout, not here: Advanced settings is a destination that is
           not a SettingsPage, and an edit staged there had no Save button on screen. One bar
           above the outlet also means two pages can never render two bars. */}
-    </div>
+    </Stack>
   );
 };
 

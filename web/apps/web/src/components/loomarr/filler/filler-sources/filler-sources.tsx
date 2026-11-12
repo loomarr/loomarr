@@ -189,9 +189,12 @@ const FillerSources = ({
       <Icon decorative glyph={icons.folder} size="default" tone="muted" />
     );
     return (
-      <div
+      <Stack
+        align="center"
+        className={cn("pl-2", selectedId === source.id && "bg-muted/25")}
+        direction="row"
+        gap="inline"
         key={source.id}
-        className={cn("flex min-w-0 items-center gap-2 pl-2", selectedId === source.id && "bg-muted/25")}
       >
         {onToggleEnabled && source.switchable && (
           <Toggle
@@ -226,7 +229,7 @@ const FillerSources = ({
             title={name}
           />
         </div>
-      </div>
+      </Stack>
     );
   };
 

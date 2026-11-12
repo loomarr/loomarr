@@ -6,13 +6,13 @@
       "flexStack": 9
     },
     "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/channels/channel-watch/channel-watch.tsx": {
       "flexStack": 3
     },
     "apps/web/src/channels/guide-page/guide-page.tsx": {
-      "flexStack": 10
+      "flexStack": 5
     },
     "apps/web/src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
       "flexStack": 3
@@ -99,7 +99,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "flexStack": 1
@@ -108,7 +108,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
       "flexStack": 1
@@ -126,7 +126,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
       "flexStack": 1
@@ -165,7 +165,7 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/connection-block/connection-block.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/setup/login-form/login-form.tsx": {
       "flexStack": 1
@@ -216,9 +216,6 @@
       "flexStack": 1
     },
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/discovery-feedback/discovery-feedback.tsx": {
       "flexStack": 2
     },
     "apps/web/src/filler/channel-filler/channel-filler.tsx": {
@@ -297,7 +294,7 @@
       "flexStack": 1
     },
     "apps/web/src/routes/_authed/account.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
       "flexStack": 3
@@ -318,7 +315,7 @@
       "flexStack": 3
     },
     "apps/web/src/settings/settings-page/settings-page.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
       "flexStack": 1

@@ -181,9 +181,13 @@ const AccountScreen = () => {
           )}
           <ul>
             {sessionRows.map((s) => (
-              <li
+              <Stack
+                align="center"
+                className="border-border border-b px-4 py-3 last:border-b-0"
+                direction="row"
+                gap="control"
                 key={s.id}
-                className="border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                render="li"
               >
                 {/* The confirm takes the row's place, as Delete channel's replaces its choices. */}
                 {confirmingSession === s.id ? (
@@ -223,7 +227,7 @@ const AccountScreen = () => {
                     )}
                   </>
                 )}
-              </li>
+              </Stack>
             ))}
           </ul>
         </Card>

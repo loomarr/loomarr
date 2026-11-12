@@ -113,7 +113,15 @@ const PullCard = ({
           const id = candidateID(row);
           const isDropped = dropped.has(id);
           return (
-            <li key={id} className={cn("flex flex-wrap items-center gap-3", isDropped && "opacity-50")}>
+            <Stack
+              align="center"
+              className={cn(isDropped && "opacity-50")}
+              direction="row"
+              gap="control"
+              key={id}
+              render="li"
+              wrap
+            >
               <Badge shape="square" tone="neutral">
                 {row.tag}
               </Badge>
@@ -148,7 +156,7 @@ const PullCard = ({
               >
                 {isDropped ? "Put back" : "Leave out"}
               </Action>
-            </li>
+            </Stack>
           );
         })}
       </Stack>

@@ -14,7 +14,7 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Action, Chip, CompactSelect, SegmentedControl, Text } from "@loomarr/design-system";
+import { Action, Chip, CompactSelect, SegmentedControl, Stack, Text } from "@loomarr/design-system";
 import {
   GuideCompact,
   type GuideFilter,
@@ -416,7 +416,7 @@ const GuidePage = () => {
       {channels.length > 0 && !nowNextView && (
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
-            <div className="flex items-center gap-1.75">
+            <Stack align="center" direction="row" gap="1.75">
               <div>
                 <CompactSelect
                   label="Day"
@@ -436,11 +436,11 @@ const GuidePage = () => {
                   {`${dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today`}
                 </Chip>
               )}
-            </div>
+            </Stack>
 
             {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
                 window without changing the day. */}
-            <div className="flex items-center gap-1">
+            <Stack align="center" direction="row" gap="1">
               <Action
                 icon="earlier"
                 layout="icon"
@@ -463,15 +463,15 @@ const GuidePage = () => {
               <Action icon="later" layout="icon" onPress={() => setHourShift((h) => h + 1)} variant="outline">
                 Forward an hour
               </Action>
-            </div>
+            </Stack>
 
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
-            <div className="flex items-center gap-1.75 sm:ml-auto">
+            <Stack align="center" className="sm:ml-auto" direction="row" gap="1.75">
               <Text as="span" textRole="metadata">
                 Span
               </Text>
-              <div className="flex gap-1">
+              <Stack direction="row" gap="1">
                 {WINDOW_CHOICES.map((w) => {
                   const active = windowMinutes === Number(w.value);
                   return (
@@ -486,8 +486,8 @@ const GuidePage = () => {
                     </Chip>
                   );
                 })}
-              </div>
-            </div>
+              </Stack>
+            </Stack>
 
             <Action
               accessibilityLabel={hasCustomView ? "View options, custom" : "View options"}
@@ -508,7 +508,7 @@ const GuidePage = () => {
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
-              <div className="flex items-center gap-1.75">
+              <Stack align="center" direction="row" gap="1.75">
                 <Text as="span" textRole="metadata">
                   Start at
                 </Text>
@@ -520,7 +520,7 @@ const GuidePage = () => {
                     value={startHour === null ? "auto" : String(startHour)}
                   />
                 </div>
-              </div>
+              </Stack>
             </div>
           )}
         </>

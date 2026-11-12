@@ -73,12 +73,16 @@ const ConnectionBlock = ({
           <Stack align="center" direction="row" gap="control" wrap>
             {action}
             {verdict && (
-              <p
-                role="status"
+              <Stack
+                align="center"
                 className={cn(
-                  "flex items-center gap-1.5 text-sm",
+                  "text-sm",
                   verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400",
                 )}
+                direction="row"
+                gap="1.5"
+                render="p"
+                role="status"
               >
                 {failing && <Icon decorative glyph={icons.close} size="compact" tone="inherit" />}
                 <span className="min-w-0">
@@ -95,7 +99,7 @@ const ConnectionBlock = ({
                     Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
                   </Link>
                 )}
-              </p>
+              </Stack>
             )}
           </Stack>
         )}
