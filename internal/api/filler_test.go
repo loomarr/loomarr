@@ -353,13 +353,12 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.Image
 		// with it a test that passes `memberToken` is really testing an anonymous caller — which
 		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
 		// is member-readable and that has to be provable.
-		Auth:            testAuthorizer{},
-		Log:             slog.New(slog.DiscardHandler),
-		Filler:          ff,
-		SourceProviders: testSourceProviders(t),
-		Images:          imageService,
-		LiveSettings:    live,
-		Now:             now,
+		Auth:         testAuthorizer{},
+		Log:          slog.New(slog.DiscardHandler),
+		Filler:       api.FillerOptions{Service: ff, SourceProviders: testSourceProviders(t)},
+		Images:       imageService,
+		LiveSettings: live,
+		Now:          now,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -1449,8 +1448,10 @@ func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	current := "en,fr"
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
-		IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: api.FillerOptions{
+			Service:         &fakeFiller{},
+			IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+		},
 	}))
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
@@ -1489,8 +1490,10 @@ func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
-		IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: api.FillerOptions{
+			Service:         &fakeFiller{},
+			IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+		},
 	}))
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
