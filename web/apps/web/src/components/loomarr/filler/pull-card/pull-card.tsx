@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Badge, Card, Field, StatusLabel, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { cn } from "@/lib/utils";
@@ -62,15 +62,15 @@ const PullCard = ({
       role="group"
       {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}
     >
-      <div className="flex flex-wrap items-start gap-3">
+      <Stack align="start" direction="row" gap="control" wrap>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <Stack align="center" direction="row" gap="inline" wrap>
             <StatusLabel tone="ok">Filler pull</StatusLabel>
             <span id={titleId} className="text-sm font-semibold">
               {pull.title}
             </span>
             {edited && <StatusLabel tone="attention">Edited</StatusLabel>}
-          </div>
+          </Stack>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
               must never reach the screen. */}
@@ -94,7 +94,7 @@ const PullCard = ({
             {deciding ? "Starting…" : "Approve pull"}
           </Action>
         </div>
-      </div>
+      </Stack>
 
       {/* ⚠ On the row, not in a page-level banner (#1430): a decision failure belongs beside the
           card whose decision failed, not somewhere a reviewer scanning other cards has to go

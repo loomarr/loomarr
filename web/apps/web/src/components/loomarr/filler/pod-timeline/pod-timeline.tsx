@@ -2,7 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Badge, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -64,8 +64,8 @@ const PodTimeline = ({
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex flex-wrap items-center gap-2">
+    <Stack className={className} gap="inline">
+      <Stack align="center" direction="row" gap="inline" wrap>
         <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
@@ -74,7 +74,7 @@ const PodTimeline = ({
           </Badge>
         ) : null}
         {chip && <StatusLabel tone={chip.tone}>{chip.label}</StatusLabel>}
-      </div>
+      </Stack>
 
       <ul
         className="border-border flex h-9 w-full overflow-hidden rounded-md border"
@@ -116,7 +116,7 @@ const PodTimeline = ({
           </li>
         ))}
       </ul>
-    </div>
+    </Stack>
   );
 };
 

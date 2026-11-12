@@ -55,49 +55,49 @@
       "tailwindClasses": 9
     },
     "src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
-      "tailwindClasses": 36
+      "tailwindClasses": 23
     },
     "src/components/loomarr/channels/channel-breaks/channel-breaks.tsx": {
       "tailwindClasses": 8
     },
     "src/components/loomarr/channels/channel-card/channel-card.tsx": {
-      "tailwindClasses": 26
+      "tailwindClasses": 19
     },
     "src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 23
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "tailwindClasses": 134
+      "tailwindClasses": 117
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
-      "tailwindClasses": 68
+      "tailwindClasses": 47
     },
     "src/components/loomarr/channels/channel-defaults-summary/channel-defaults-summary.tsx": {
       "tailwindClasses": 2
     },
     "src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
-      "tailwindClasses": 101,
+      "tailwindClasses": 86,
       "rawButton": 1
     },
     "src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
       "tailwindClasses": 16
     },
     "src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "tailwindClasses": 112,
+      "tailwindClasses": 106,
       "rawButton": 1
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
-      "tailwindClasses": 34
+      "tailwindClasses": 18
     },
     "src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
-      "tailwindClasses": 47
+      "tailwindClasses": 41
     },
     "src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
-      "tailwindClasses": 62,
+      "tailwindClasses": 54,
       "rawButton": 1
     },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
-      "tailwindClasses": 25
+      "tailwindClasses": 19
     },
     "src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
       "tailwindClasses": 23
@@ -107,9 +107,6 @@
     },
     "src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "tailwindClasses": 21
-    },
-    "src/components/loomarr/channels/policy-field-source/policy-field-source.tsx": {
-      "tailwindClasses": 4
     },
     "src/components/loomarr/channels/state-badge/state-badge.tsx": {
       "tailwindClasses": 1
@@ -142,7 +139,7 @@
       "tailwindClasses": 14
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 60,
+      "tailwindClasses": 59,
       "rawButton": 2
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
@@ -150,34 +147,34 @@
       "rawButton": 2
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
-      "tailwindClasses": 68
+      "tailwindClasses": 57
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "tailwindClasses": 98
+      "tailwindClasses": 88
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "tailwindClasses": 43,
+      "tailwindClasses": 36,
       "rawButton": 1
     },
     "src/components/loomarr/filler/pool-health/pool-health.tsx": {
-      "tailwindClasses": 31
+      "tailwindClasses": 28
     },
     "src/components/loomarr/filler/pull-card/pull-card.tsx": {
-      "tailwindClasses": 67
+      "tailwindClasses": 59
     },
     "src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
-      "tailwindClasses": 93,
+      "tailwindClasses": 88,
       "rawButton": 1
     },
     "src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
-      "tailwindClasses": 57,
+      "tailwindClasses": 54,
       "rawButton": 1
     },
     "src/components/loomarr/filler/source-search/source-search.tsx": {
-      "tailwindClasses": 60
+      "tailwindClasses": 57
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 174,
+      "tailwindClasses": 151,
       "rawButton": 1
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {

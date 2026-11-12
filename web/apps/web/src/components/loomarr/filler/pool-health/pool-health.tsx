@@ -1,6 +1,6 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
@@ -65,9 +65,13 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
 
   if (folded && !expanded) {
     return (
-      <section
+      <Stack
+        align="center"
         aria-label="Catalog health"
-        className={cn("border-border flex items-center gap-2 rounded-lg border px-3 py-2.5", className)}
+        className={cn("border-border rounded-lg border px-3 py-2.5", className)}
+        direction="row"
+        gap="inline"
+        render="section"
       >
         <p className="min-w-0 flex-1 text-sm">
           {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
@@ -76,7 +80,7 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
         <Action aria-expanded={false} onPress={() => setExpanded(true)} variant="outline">
           Details
         </Action>
-      </section>
+      </Stack>
     );
   }
 

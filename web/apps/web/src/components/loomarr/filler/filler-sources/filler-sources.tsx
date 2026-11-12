@@ -1,5 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Icon, icons, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -85,7 +85,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
       )}
 
       {remaining > 0 && (
-        <div className="mt-2 flex">
+        <Stack className="mt-2" direction="row">
           <Action
             accessibilityLabel={`Show ${remaining} more under ${sectionLabel}`}
             onPress={() => setExpanded(true)}
@@ -93,10 +93,10 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           >
             {`Show ${remaining} more`}
           </Action>
-        </div>
+        </Stack>
       )}
       {scalable && expanded && !normalizedFilter && (
-        <div className="mt-2 flex">
+        <Stack className="mt-2" direction="row">
           <Action
             accessibilityLabel={`Show fewer under ${sectionLabel}`}
             onPress={() => setExpanded(false)}
@@ -104,7 +104,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           >
             Show fewer
           </Action>
-        </div>
+        </Stack>
       )}
     </div>
   );
@@ -229,7 +229,7 @@ const FillerSources = ({
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    <Stack className={className} gap="section">
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold">Where filler comes from</h2>
@@ -244,7 +244,14 @@ const FillerSources = ({
       </div>
 
       {needsLocation && (
-        <div className="border-caution/30 bg-caution/5 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+        <Stack
+          align="center"
+          className="border-caution/30 bg-caution/5 rounded-lg border px-4 py-3"
+          direction="row"
+          gap="control"
+          justify="between"
+          wrap
+        >
           <div>
             <p className="text-sm font-medium">Add your location</p>
             <p className="text-muted-foreground text-sm">
@@ -254,7 +261,7 @@ const FillerSources = ({
           <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
             Set location
           </Action>
-        </div>
+        </Stack>
       )}
 
       {error && <p className="text-onair-300 text-sm">{error}</p>}
@@ -339,7 +346,7 @@ const FillerSources = ({
           </section>
         );
       })}
-    </div>
+    </Stack>
   );
 };
 

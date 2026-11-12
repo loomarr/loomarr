@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, CompactSelect, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, CompactSelect, Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
@@ -170,7 +170,7 @@ const RuleRow = ({
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
-      <div className="flex items-center gap-2">
+      <Stack align="center" direction="row" gap="inline">
         <button
           type="button"
           {...attributes}
@@ -194,7 +194,7 @@ const RuleRow = ({
             {`Remove ${label}`}
           </Action>
         </Tooltip>
-      </div>
+      </Stack>
 
       <div className="grid grid-cols-1 gap-2 pl-9 sm:grid-cols-3">
         <CompactSelect
@@ -285,7 +285,7 @@ const ChannelRulesEditor = ({
   };
 
   return (
-    <section className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control" render="section">
       <div>
         <h3 className="text-base font-semibold">Wall-clock rules</h3>
         <p className="text-muted-foreground text-sm">
@@ -299,11 +299,11 @@ const ChannelRulesEditor = ({
           <p className="text-muted-foreground text-sm">
             No rules yet. This channel always follows its base policy above.
           </p>
-          <div className="mt-3 flex justify-center">
+          <Stack className="mt-3" direction="row" justify="center">
             <Action icon="plus" onPress={addRule} variant="outline">
               Add rule
             </Action>
-          </div>
+          </Stack>
         </div>
       ) : (
         <>
@@ -329,7 +329,7 @@ const ChannelRulesEditor = ({
           </Action>
         </>
       )}
-    </section>
+    </Stack>
   );
 };
 

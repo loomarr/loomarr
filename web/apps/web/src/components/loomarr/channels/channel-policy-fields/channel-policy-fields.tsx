@@ -1,5 +1,5 @@
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, CompactSelect, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -25,12 +25,12 @@ const DateAxisEditor = ({
   ranges: { from: number; to: number }[];
   onChange: (next: { from: number; to: number }[]) => void;
 }) => (
-  <div className="border-border flex flex-col gap-2 rounded-md border p-3">
-    <div className="flex items-center justify-between gap-3">
+  <Stack className="border-border rounded-md border p-3" gap="inline">
+    <Stack align="center" direction="row" gap="control" justify="between">
       <Text textRole="label">{label}</Text>
-    </div>
+    </Stack>
     <YearRangeListField emptyText="No date requirement." label={label} onChange={onChange} ranges={ranges} />
-  </div>
+  </Stack>
 );
 
 // PolicyField — one defaultable field (#1817 item 4): its label and (i) help on the left, where
@@ -60,7 +60,7 @@ const PolicyField = ({
   const labelId = `${id}-label`;
   return (
     <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <div className="flex items-center gap-1.5">
           <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
             {label}
@@ -68,7 +68,7 @@ const PolicyField = ({
           <FieldHelp label={label}>{help}</FieldHelp>
         </div>
         <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
-      </div>
+      </Stack>
       {children}
     </div>
   );
@@ -314,8 +314,14 @@ const ChannelPolicyFields = ({
           wide
           {...source("dates")}
         >
-          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would duplicate the visible label row */}
-          <div role="group" aria-labelledby="policy-dates-label" className="flex flex-wrap items-end gap-3">
+          <Stack
+            align="end"
+            aria-labelledby="policy-dates-label"
+            direction="row"
+            gap="control"
+            role="group"
+            wrap
+          >
             {/* Keyed on the stored value: a reset or any outside change re-seeds the box instead
                 of leaving the old year on screen. */}
             <CommitField
@@ -367,7 +373,7 @@ const ChannelPolicyFields = ({
             >
               Use separate date windows
             </Action>
-          </div>
+          </Stack>
         </PolicyField>
       )}
 

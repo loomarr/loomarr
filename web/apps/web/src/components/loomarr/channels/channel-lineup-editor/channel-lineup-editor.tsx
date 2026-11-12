@@ -18,7 +18,7 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Chip, Icon, icons, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, Chip, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -269,7 +269,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   };
 
   return (
-    <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
+    <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
       <div>
         <h2 className="text-lg font-semibold">Lineup</h2>
         <p className="text-muted-foreground text-sm">
@@ -349,7 +349,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
       )}
 
       {adding ? (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <SearchCommand
             query={query}
             onQueryChange={setQuery}
@@ -397,7 +397,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           <Action onPress={closeAdd} style={{ alignSelf: "flex-start" }} variant="ghost">
             Cancel
           </Action>
-        </div>
+        </Stack>
       ) : (
         <Action
           icon="plus"
@@ -408,7 +408,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           Add a title…
         </Action>
       )}
-    </section>
+    </Stack>
   );
 };
 

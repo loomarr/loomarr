@@ -2,9 +2,8 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
 import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.type";
@@ -93,7 +92,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
   if (unavailable) return null;
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <Stack className={className} gap="inline">
       <div className="flex items-center gap-1.5">
         <Text textRole="label">Only these collections</Text>
         <FieldHelp label="Only these collections">
@@ -133,7 +132,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
           )}
 
           {adding ? (
-            <div className="flex flex-col gap-2">
+            <Stack gap="inline">
               <SearchCommand
                 query={query}
                 onQueryChange={setQuery}
@@ -173,7 +172,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               >
                 Cancel
               </Action>
-            </div>
+            </Stack>
           ) : collections.length === 0 && !q.isPending ? (
             // A real answer, not a failure: a library is connected but nothing is shelved.
             <p className="text-muted-foreground text-sm">
@@ -191,7 +190,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
           )}
         </fieldset>
       )}
-    </div>
+    </Stack>
   );
 };
 

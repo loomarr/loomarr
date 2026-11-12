@@ -1,4 +1,4 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 import { useDeleteConfirm } from "@/channels/use-delete-confirm";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,13 @@ const ChannelDangerZone = ({
       </div>
 
       {/* Pause/resume — fully reversible, so it is a single click with no confirm step. */}
-      <div className="border-onair-tint-15 flex items-center justify-between gap-3 border-t pt-4">
+      <Stack
+        align="center"
+        className="border-onair-tint-15 border-t pt-4"
+        direction="row"
+        gap="control"
+        justify="between"
+      >
         <p className="text-sm">
           {paused ? "Paused: off air but kept." : "Take this channel off air without deleting it."}
         </p>
@@ -63,7 +69,7 @@ const ChannelDangerZone = ({
             Pause
           </Action>
         )}
-      </div>
+      </Stack>
 
       {/* Detach and purge are distinct server operations (§7), never a checkbox under one "delete"
           label. The confirmation step replaces both choices so it has one unambiguous action.
@@ -71,10 +77,10 @@ const ChannelDangerZone = ({
           only for a Tunarr-streamed channel: a detached channel Loomarr plays itself goes off
           air (api/channelplayurl.go). Until the maintainer settles it, this row keeps the line
           that is true for both. */}
-      <div className="border-onair-tint-15 flex flex-col gap-3 border-t pt-4">
+      <Stack className="border-onair-tint-15 border-t pt-4" gap="control">
         {!confirming ? (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
+            <Stack align="center" direction="row" gap="control" justify="between">
               <div className="flex flex-col gap-1">
                 <p className="text-sm">Stop Loomarr from updating this channel.</p>
                 <p className="text-muted-foreground text-xs">
@@ -86,9 +92,9 @@ const ChannelDangerZone = ({
                   Stop updating
                 </Action>
               </div>
-            </div>
+            </Stack>
 
-            <div className="flex items-center justify-between gap-3">
+            <Stack align="center" direction="row" gap="control" justify="between">
               <div className="flex flex-col gap-1">
                 <p className="text-sm">Delete this channel from Loomarr, and from Tunarr if it's there.</p>
                 <p className="text-onair-300 text-xs">This can't be undone.</p>
@@ -103,10 +109,10 @@ const ChannelDangerZone = ({
                   Delete channel
                 </Action>
               </div>
-            </div>
+            </Stack>
           </div>
         ) : (
-          <div className="border-onair-tint-15 bg-background/40 flex flex-col gap-3 rounded-md border p-3">
+          <Stack className="border-onair-tint-15 bg-background/40 rounded-md border p-3" gap="control">
             {removal === "detach" ? (
               <p className="text-sm">
                 Stop updating {channelName}? Loomarr will keep its record and leave any Tunarr channel in
@@ -119,7 +125,7 @@ const ChannelDangerZone = ({
               </>
             )}
 
-            <div className="flex items-center gap-2">
+            <Stack align="center" direction="row" gap="inline">
               <Action
                 disabled={busy}
                 onPress={() => onDelete({ purge: removal === "purge" })}
@@ -131,10 +137,10 @@ const ChannelDangerZone = ({
               <Action disabled={busy} onPress={cancel} variant="ghost">
                 Cancel
               </Action>
-            </div>
-          </div>
+            </Stack>
+          </Stack>
         )}
-      </div>
+      </Stack>
     </div>
   );
 };

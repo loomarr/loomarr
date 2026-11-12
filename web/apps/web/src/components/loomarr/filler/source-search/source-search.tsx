@@ -1,9 +1,8 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Field, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { SourceSearchProps } from "./source-search.type";
 
 // SourceSearch — the Sources tab's per-source search expander (§10, V35).
@@ -115,7 +114,7 @@ const SourceSearch = ({
   }, [ids, onVisible]);
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control">
       {/* A real form, so Enter submits — this is a search box, and needing the mouse to run it
           is the kind of papercut that makes a surface feel broken. */}
       <form
@@ -263,7 +262,7 @@ const SourceSearch = ({
       <p className="text-muted-foreground text-xs">
         Searching doesn’t download anything. Choose Queue download when you find a clip you want.
       </p>
-    </div>
+    </Stack>
   );
 };
 

@@ -6,7 +6,7 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, DateField, Disclosure, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, DateField, Disclosure, Icon, icons, Stack } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
@@ -341,9 +341,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
   const showByKey = new Map((lineupKeys ?? []).map((e) => [e.key, e.title]));
 
   return (
-    <section className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control" render="section">
       <div>
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <h3 className="text-base font-semibold">Preview what airs</h3>
           {/* ⚠ Says WHICH schedule is on screen. Without it, a draft preview and a saved one
               are indistinguishable — and an author who has just edited a rule would have no
@@ -353,7 +353,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
               Unsaved changes
             </Badge>
           ) : null}
-        </div>
+        </Stack>
         <p className="text-muted-foreground text-sm">
           {draftPolicy
             ? "What would air if you applied these changes. Time-travel to any moment to check a rule before saving."
@@ -361,7 +361,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <Stack align="end" direction="row" gap="control" wrap>
         <DateField
           id="cycle-preview-at"
           kind="datetime"
@@ -377,7 +377,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             </Action>
           ))}
         </div>
-      </div>
+      </Stack>
 
       {(draftPolicy ? draft.isPending : saved.isLoading) ? (
         <p className="text-muted-foreground text-sm">Loading preview…</p>
@@ -398,8 +398,14 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           }
         />
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-3 py-2.5">
+        <Stack gap="control">
+          <Stack
+            align="center"
+            className="border-border bg-card rounded-md border px-3 py-2.5"
+            direction="row"
+            gap="inline"
+            wrap
+          >
             <Icon decorative glyph={icons.filler} size="compact" tone="muted" />
             {body.activeRule.matched ? (
               <p className="text-sm">
@@ -412,7 +418,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             <span className="text-muted-foreground ml-auto font-mono text-xs">
               {humanWindow(body.windowMs)}
             </span>
-          </div>
+          </Stack>
 
           {!body.slots || body.slots.length === 0 ? (
             <EmptyState title="Nothing scheduled" description="No slots resolved for this moment yet." />
@@ -454,9 +460,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
               first, it would read as an error banner on a channel that is working correctly. */}
           <ExcludedPanel excluded={body.excluded} />
           <ScheduleTracePanel trace={body.trace} />
-        </div>
+        </Stack>
       )}
-    </section>
+    </Stack>
   );
 };
 

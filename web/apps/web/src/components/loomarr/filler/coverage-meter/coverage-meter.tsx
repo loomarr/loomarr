@@ -1,6 +1,6 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
-import { StatusDot, type StatusTone, Text } from "@loomarr/design-system";
+import { Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -125,8 +125,8 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   }
 
   return (
-    <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
-      <div className="flex items-start gap-2">
+    <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
+      <Stack align="start" direction="row" gap="inline">
         <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
         </span>
@@ -134,7 +134,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           <p className="text-sm font-medium">{level.label}</p>
           <p className="text-muted-foreground mt-0.5 text-xs">{level.hint}</p>
         </div>
-      </div>
+      </Stack>
 
       {rungs.length > 0 && (
         <ul className="flex flex-col gap-1.5">
@@ -201,7 +201,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <Text as="span" textRole="mono">
           {widest === 0
             ? "No eligible commercials for this channel."
@@ -228,8 +228,8 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             Propose a pull →
           </Link>
         )}
-      </div>
-    </section>
+      </Stack>
+    </Stack>
   );
 };
 

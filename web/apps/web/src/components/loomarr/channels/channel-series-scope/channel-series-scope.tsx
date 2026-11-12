@@ -1,9 +1,8 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
 import type { ChannelSeriesScopeProps } from "./channel-series-scope.type";
@@ -57,7 +56,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
   };
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <Stack className={className} gap="inline">
       <div className="flex items-center gap-1.5">
         <Text textRole="label">Only these shows</Text>
         <FieldHelp label="Only these shows">
@@ -89,7 +88,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
       )}
 
       {adding ? (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <SearchCommand
             query={query}
             onQueryChange={setQuery}
@@ -131,7 +130,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
           >
             Cancel
           </Action>
-        </div>
+        </Stack>
       ) : (
         <Action
           icon="plus"
@@ -142,7 +141,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
           Add a show…
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

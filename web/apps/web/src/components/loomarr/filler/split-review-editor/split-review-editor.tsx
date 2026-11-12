@@ -13,6 +13,7 @@ import {
   Field,
   Icon,
   icons,
+  Stack,
   StatusLabel,
   Tooltip,
 } from "@loomarr/design-system";
@@ -271,19 +272,25 @@ const SplitReviewEditor = ({
         </p>
       )}
 
-      <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
+      <Stack
+        align="center"
+        className="border-border border-t pt-4"
+        direction="row"
+        gap="control"
+        justify="between"
+      >
         <Action onPress={onBack} variant="outline">
           Back
         </Action>
-        <div className="flex items-center gap-3">
+        <Stack align="center" direction="row" gap="control">
           <span className="text-muted-foreground font-mono text-sm tabular-nums">
             {pluralize(draft.length, "clip")}
           </span>
           <Action disabled={!confirmable || confirming} onPress={() => onConfirm(toWire(draft))}>
             {confirming ? "Keeping clips…" : "Keep clips"}
           </Action>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
 
       <Dialog
         open={Boolean(selected)}
@@ -300,7 +307,7 @@ const SplitReviewEditor = ({
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-5 p-6">
-              <div className="flex items-center justify-between gap-3">
+              <Stack align="center" direction="row" gap="control" justify="between">
                 <Action
                   accessibilityLabel="Previous clip"
                   disabled={selectedIndex === 0}
@@ -323,7 +330,7 @@ const SplitReviewEditor = ({
                 >
                   Next
                 </Action>
-              </div>
+              </Stack>
 
               <SegmentInspector
                 key={selected.key}
@@ -390,10 +397,10 @@ const SegmentSummaryRow = ({
             )}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
+            <Stack align="center" direction="row" gap="inline" render="span">
               <span className="text-muted-foreground font-mono text-xs tabular-nums">#{n}</span>
               <span className="truncate text-sm font-medium">{segment.name || "Unnamed clip"}</span>
-            </span>
+            </Stack>
             <span
               className={cn(
                 "mt-1 block font-mono text-xs tabular-nums",
@@ -484,7 +491,7 @@ const SegmentInspector = ({
         embedded
       />
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div className="min-w-0 flex-1">
           <p
             className={cn(
@@ -536,7 +543,7 @@ const SegmentInspector = ({
             </Action>
           </Tooltip>
         </div>
-      </div>
+      </Stack>
 
       {segment.holdReason ? (
         <p role="status" className="bg-caution-tint-15 text-caution rounded-sm px-2 py-1.5 text-sm">
@@ -557,7 +564,7 @@ const SegmentInspector = ({
       ) : null}
 
       {segment.suggestedEra ? (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Stack align="center" className="text-sm" direction="row" gap="inline" wrap>
           <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
           <Action
             onPress={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
@@ -568,7 +575,7 @@ const SegmentInspector = ({
           <Action onPress={() => onChange({ suggestedEra: undefined })} variant="ghost">
             Not right
           </Action>
-        </div>
+        </Stack>
       ) : null}
 
       <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">

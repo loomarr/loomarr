@@ -1,5 +1,5 @@
 import { channelNumber } from "@loomarr/core/format";
-import { Card, Text } from "@loomarr/design-system";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { NowNextStrip } from "../now-next-strip";
 import { OnAirIndicator } from "../on-air-indicator";
@@ -30,8 +30,8 @@ const ChannelCard = ({
   const chip = HEALTH[health];
   return (
     <Card gap={12} padding={16}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-baseline gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between">
+        <Stack align="baseline" direction="row" gap="control">
           <span className="font-mono text-2xl leading-none tabular-nums">{channelNumber(number)}</span>
           <div>
             <p className="leading-tight font-medium">{name}</p>
@@ -41,14 +41,14 @@ const ChannelCard = ({
               </Text>
             )}
           </div>
-        </div>
+        </Stack>
         {/* Top-right cluster: the on-air dot, then any trailing action (the row ⋮ menu).
             Kept together so the action reads as part of the card, not adrift beside it. */}
         <div className="flex shrink-0 items-center gap-1.5">
           <OnAirIndicator state={onAir} />
           {trailing}
         </div>
-      </div>
+      </Stack>
 
       <NowNextStrip {...nowNext} />
 

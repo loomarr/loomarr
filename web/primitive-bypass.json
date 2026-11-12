@@ -39,52 +39,49 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
-      "flexStack": 8
+      "flexStack": 5
     },
     "apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-card/channel-card.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.tsx": {
-      "flexStack": 6
+      "flexStack": 4
     },
     "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "flexStack": 14
+      "flexStack": 9
     },
     "apps/web/src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
-      "flexStack": 10
+      "flexStack": 4
     },
     "apps/web/src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
-      "flexStack": 7
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "flexStack": 8
+      "flexStack": 6
     },
     "apps/web/src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
-      "flexStack": 6
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
-      "flexStack": 6
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
-      "flexStack": 5
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/channels/channel-upcoming/channel-upcoming.tsx": {
       "flexStack": 3
     },
     "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "flexStack": 4
-    },
-    "apps/web/src/components/loomarr/channels/policy-field-source/policy-field-source.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
       "flexStack": 4
@@ -108,37 +105,37 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
-      "flexStack": 8
-    },
-    "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "flexStack": 9
-    },
-    "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "flexStack": 5
     },
-    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
+    "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
+      "flexStack": 5
+    },
+    "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "flexStack": 3
     },
-    "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
-      "flexStack": 10
-    },
-    "apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
+    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
-      "flexStack": 3
-    },
-    "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
+    "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
       "flexStack": 8
     },
+    "apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
+      "flexStack": 7
+    },
     "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "flexStack": 16
+      "flexStack": 10
     },
     "apps/web/src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "flexStack": 1

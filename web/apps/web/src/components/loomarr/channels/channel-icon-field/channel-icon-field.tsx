@@ -1,12 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Field, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
 // ⚠ The multipart upload used to be hand-written here, replicating the mutator's transport
@@ -120,8 +119,8 @@ const ChannelIconField = ({
   };
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex items-center gap-3">
+    <Stack className={className} gap="control">
+      <Stack align="center" direction="row" gap="control">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
         <div className="border-border bg-background flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border">
@@ -168,7 +167,7 @@ const ChannelIconField = ({
             Change…
           </Action>
         )}
-      </div>
+      </Stack>
 
       {/* The mock draws only the "Change…" button, not what it opens, so the picker keeps
           today's three ways in plus Clear. */}
@@ -189,10 +188,16 @@ const ChannelIconField = ({
             <div>
               <p className="text-sm font-medium">From your titles</p>
               {suggestions.isLoading && (
-                <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
+                <Stack
+                  align="center"
+                  className="text-muted-foreground mt-2 text-xs"
+                  direction="row"
+                  gap="inline"
+                  render="p"
+                >
                   <ActivityIndicator decorative size="compact" tone="inherit" />
                   Looking for posters…
-                </p>
+                </Stack>
               )}
               {tmdbUnconfigured && (
                 <p className="text-muted-foreground mt-2 text-xs">
@@ -255,7 +260,7 @@ const ChannelIconField = ({
               <Text as="label" htmlFor={`${urlInputId}-file`} textRole="label">
                 Upload a file
               </Text>
-              <div className="mt-2 flex items-center gap-2">
+              <Stack align="center" className="mt-2" direction="row" gap="inline">
                 <input
                   ref={fileInputRef}
                   id={`${urlInputId}-file`}
@@ -269,7 +274,7 @@ const ChannelIconField = ({
                   className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
                 />
                 {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
-              </div>
+              </Stack>
               <p className="text-static-400 mt-1 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
               {uploadError && <p className="text-onair-300 mt-1 text-xs">{uploadError}</p>}
             </div>
@@ -279,7 +284,7 @@ const ChannelIconField = ({
               <Text as="label" htmlFor={urlInputId} textRole="label">
                 Paste an image URL
               </Text>
-              <div className="mt-2 flex items-center gap-2">
+              <Stack align="center" className="mt-2" direction="row" gap="inline">
                 <Surface
                   backgroundColor="transparent"
                   borderWidth={0}
@@ -313,13 +318,13 @@ const ChannelIconField = ({
                 >
                   {savingUrl ? "Setting…" : "Set"}
                 </Action>
-              </div>
+              </Stack>
               {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
             </div>
           </div>
         </div>
       )}
-    </div>
+    </Stack>
   );
 };
 
