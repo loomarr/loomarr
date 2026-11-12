@@ -68,6 +68,10 @@ type LibraryFileStore interface {
 	// header at this size and modification time and lists it with a title, so a file changed since
 	// is never answered from its old tracks.
 	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
+	// LibrarySubtitleTracks is a file's subtitle tracks, its own then the subtitle files beside it,
+	// in stream order (#2088 decision 5): Index, Codec, Title, Language, Forced, HearingImpaired and
+	// ExternalRef. ok is false on the same terms as LibraryAudioTracks.
+	LibrarySubtitleTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) (tracks []LibraryStream, ok bool, err error)
 	// LibraryPlayingFile is the file a library item plays: its source marked plays, while the
 	// scanner sees it present, the default edition's when a movie plays one in each edition
 	// (decision 54). ok is false for an id that is not a library item, or one with no present file.
@@ -126,15 +130,51 @@ func (s *Store) LibraryPlayingVideo(ctx context.Context, itemID string) (Library
 	return v, true, nil
 }
 
-func (s *Store) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
+// libraryFileCurrent reports whether the scanner read path's header at this size and modification
+// time and a title lists the file: the condition every per-file track read answers on.
+func (s *Store) libraryFileCurrent(ctx context.Context, path string, sizeBytes, modifiedNs int64) (bool, error) {
 	var listed int
-	if err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_files f
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM library_files f
 		JOIN library_sources src ON src.path = f.path
 		WHERE f.path = ? AND f.size_bytes = ? AND f.modified_ns = ? AND f.header = ? AND f.missing_at_ms = 0`),
-		path, sizeBytes, modifiedNs, LibraryHeaderRead).Scan(&listed); err != nil {
+		path, sizeBytes, modifiedNs, LibraryHeaderRead).Scan(&listed)
+	return listed > 0, err
+}
+
+func (s *Store) LibrarySubtitleTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
+	current, err := s.libraryFileCurrent(ctx, path, sizeBytes, modifiedNs)
+	if err != nil {
+		return nil, false, fmt.Errorf("library subtitle tracks: %w", err)
+	}
+	if !current {
+		return nil, false, nil
+	}
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT stream_index, codec, title, language, forced, hearing_impaired,
+		external_ref FROM library_streams WHERE path = ? AND kind = 'subtitle' ORDER BY stream_index`), path)
+	if err != nil {
+		return nil, false, fmt.Errorf("library subtitle tracks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	tracks := []LibraryStream{}
+	for rows.Next() {
+		t := LibraryStream{Kind: "subtitle"}
+		if err := rows.Scan(&t.Index, &t.Codec, &t.Title, &t.Language, &t.Forced, &t.HearingImpaired, &t.ExternalRef); err != nil {
+			return nil, false, fmt.Errorf("library subtitle tracks: %w", err)
+		}
+		tracks = append(tracks, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("library subtitle tracks: %w", err)
+	}
+	return tracks, true, nil
+}
+
+func (s *Store) LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]LibraryStream, bool, error) {
+	current, err := s.libraryFileCurrent(ctx, path, sizeBytes, modifiedNs)
+	if err != nil {
 		return nil, false, fmt.Errorf("library audio tracks: %w", err)
 	}
-	if listed == 0 {
+	if !current {
 		return nil, false, nil
 	}
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT stream_index, language, is_default, commentary, descriptive,

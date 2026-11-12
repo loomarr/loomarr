@@ -1531,6 +1531,34 @@ components:
             - 24h
           type: string
       type: object
+    ChannelSubtitlesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ChannelSubtitlesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        cues:
+          description: The chosen track's cues in the stretch, in order
+          items:
+            $ref: "#/components/schemas/SubtitleCueDTO"
+          type: array
+        pending:
+          description: A track in the stretch is still being read; ask again shortly
+          type: boolean
+        tracks:
+          description: Text tracks of the programme on air at from; empty for a break or none
+          items:
+            $ref: "#/components/schemas/SubtitleTrackDTO"
+          type: array
+      required:
+        - tracks
+        - cues
+        - pending
+      type: object
     ChannelTracksOutputBody:
       additionalProperties: false
       properties:
@@ -12486,6 +12514,50 @@ components:
       required:
         - jobId
       type: object
+    SubtitleCueDTO:
+      additionalProperties: false
+      properties:
+        endMs:
+          description: When it goes, Unix milliseconds
+          format: int64
+          type: integer
+        startMs:
+          description: When it shows, Unix milliseconds on the channel's clock
+          format: int64
+          type: integer
+        text:
+          description: Plain text; a newline separates its lines
+          type: string
+      required:
+        - startMs
+        - endMs
+        - text
+      type: object
+    SubtitleTrackDTO:
+      additionalProperties: false
+      properties:
+        forced:
+          description: "A forced track: only the lines in another language"
+          type: boolean
+        hearingImpaired:
+          description: Sounds described too (SDH)
+          type: boolean
+        key:
+          description: "Names the choice across programmes: the language ('und' when untagged), then -sdh and -forced"
+          type: string
+        language:
+          description: The track's language, a two-letter code where one exists; empty when untagged
+          type: string
+        title:
+          description: The track's own title, when the file gives one
+          type: string
+      required:
+        - key
+        - language
+        - title
+        - forced
+        - hearingImpaired
+      type: object
     SuggestionEvent:
       additionalProperties: false
       properties:
@@ -14846,6 +14918,61 @@ paths:
       tags:
         - channels
         - suggestions
+  /v1/channels/{id}/subtitles:
+    get:
+      description: Any signed-in user. The text subtitle tracks of the programme on air at `from`, and, when `track` names one, that track's cues from `from` to `to` on the channel's wall clock, across every programme part in the stretch (a break has none). A track is read from the media once; until it has been, `pending` is true and the player asks again shortly. Image subtitles (PGS, VOBSUB) are not offered.
+      operationId: channel-subtitles
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - description: Start of the stretch, Unix milliseconds; 0 or absent for now
+          explode: false
+          in: query
+          name: from
+          schema:
+            description: Start of the stretch, Unix milliseconds; 0 or absent for now
+            format: int64
+            minimum: 0
+            type: integer
+        - description: End of the stretch, Unix milliseconds; 0 or absent for two minutes after from. At most ten minutes after from
+          explode: false
+          in: query
+          name: to
+          schema:
+            description: End of the stretch, Unix milliseconds; 0 or absent for two minutes after from. At most ten minutes after from
+            format: int64
+            minimum: 0
+            type: integer
+        - description: The chosen track's key, as tracks list it; absent for the tracks alone
+          explode: false
+          in: query
+          name: track
+          schema:
+            description: The chosen track's key, as tracks list it; absent for the tracks alone
+            maxLength: 40
+            pattern: ^[a-z0-9-]*$
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelSubtitlesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Subtitles of what a channel airs over a stretch of its clock
+      tags:
+        - channels
   /v1/channels/{id}/timeline:
     get:
       description: The current programme, the next few, and the commercial breaks between them, from internal playout's guide (§9.1 V47) — each with episode/series detail and a TMDB preview image. Feeds the Watch player's mini-guide scrubber. Read-only — any authenticated user (viewer-facing).
