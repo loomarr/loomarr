@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 )
 
@@ -22,10 +23,17 @@ type Seerr struct {
 	LastAPIKey string
 	LastBody   []byte
 	Requests   int
-	// Processing is what GET /api/v1/media?filter=processing returns: tmdbId → MediaStatus
-	// enum (3=processing, 4=partially available). Drives the Seerr coarse queue-status path
-	// (§18.1). Empty ⇒ the endpoint returns no results.
-	Processing map[int]int
+	// Processing is what GET /api/v1/media?filter=processing returns, in order. Drives the
+	// Seerr coarse queue-status path (§18.1). Empty ⇒ the endpoint returns no results.
+	Processing []SeerrMedia
+}
+
+// SeerrMedia is one /api/v1/media record. TMDB numbers movies and TV separately, so the
+// same TMDBID can appear once per MediaType.
+type SeerrMedia struct {
+	TMDBID    int
+	MediaType string // "movie" | "tv"
+	Status    int    // MediaStatus enum: 3=processing, 4=partially available
 }
 
 // NewSeerr starts a mock Seerr.
@@ -42,17 +50,33 @@ func NewSeerr(t testing.TB) *Seerr {
 		_, _ = w.Write([]byte(`{"type":"movie","media":{"status":5}}`))
 	})
 	// Processing set for the coarse queue-status path (§18.1): GET /media?filter=processing
-	// returns {results:[{tmdbId,status}]} from s.Processing. Empty ⇒ no results.
-	mux.HandleFunc("GET /api/v1/media", func(w http.ResponseWriter, _ *http.Request) {
+	// returns {pageInfo, results:[{tmdbId,mediaType,status}]} from s.Processing. It pages as Seerr
+	// does: `take` rows (20 when absent) starting at `skip`, and pageInfo.results is the whole
+	// count, so a client that reads only one page misses the rest. Empty ⇒ no results.
+	mux.HandleFunc("GET /api/v1/media", func(w http.ResponseWriter, r *http.Request) {
 		type item struct {
-			TMDBID int `json:"tmdbId"`
-			Status int `json:"status"`
+			TMDBID    int    `json:"tmdbId"`
+			MediaType string `json:"mediaType"`
+			Status    int    `json:"status"`
 		}
-		results := make([]item, 0, len(s.Processing))
-		for id, st := range s.Processing {
-			results = append(results, item{TMDBID: id, Status: st})
+		take, err := strconv.Atoi(r.URL.Query().Get("take"))
+		if err != nil || take <= 0 {
+			take = 20
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+		skip, err := strconv.Atoi(r.URL.Query().Get("skip"))
+		if err != nil || skip < 0 {
+			skip = 0
+		}
+		start, end := min(skip, len(s.Processing)), min(skip+take, len(s.Processing))
+		results := make([]item, 0, end-start)
+		for _, m := range s.Processing[start:end] {
+			results = append(results, item(m))
+		}
+		pages := (len(s.Processing) + take - 1) / take
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pageInfo": map[string]int{"pages": pages, "pageSize": take, "results": len(s.Processing), "page": skip/take + 1},
+			"results":  results,
+		})
 	})
 	// Admin-authed endpoint the "test my Seerr" probe hits (Seerr.Reachable): 200 with
 	// a key, 403 without — so the connection test validates the key, not just reachability.

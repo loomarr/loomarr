@@ -12,8 +12,8 @@ import { useAuth } from "@/auth/use-auth";
 import { usePendingApprovals } from "@/queue/pending-approvals";
 
 // GET /v1/titles is a single-state FILTER (it 400s without `state`, §7), so the acquisition
-// states a request's status line needs are fetched one query per state and merged — the same
-// fan-out the old Queue made. React Query dedupes by key, so every caller shares one cache entry.
+// states a request's status line needs are fetched one query per state and merged. React Query
+// dedupes by key, so every caller shares one cache entry.
 const STATES = Object.values(TitleDTOState);
 
 interface RequestEntry {

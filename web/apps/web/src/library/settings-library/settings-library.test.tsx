@@ -1,10 +1,14 @@
-import { getLibraryStatusMockHandler, getListLibraryRootsMockHandler } from "@loomarr/api/msw";
+import {
+  getChannelGuideMockHandler,
+  getLibraryStatusMockHandler,
+  getListLibraryRootsMockHandler,
+} from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { libraryStatus } from "@/test/fixtures/library";
 import { server } from "@/test/msw/server";
 import { SettingsLibrary } from "./settings-library";
@@ -33,6 +37,11 @@ const inUse = {
 // The wiring: the page reads the folders and status, looks for folders by itself once when none
 // were ever recorded, and shows the server's refusal of a typed folder in its own words.
 describe("SettingsLibrary", () => {
+  beforeEach(() => {
+    // The page tells times in the household's zone, which the Guide read carries.
+    server.use(getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }));
+  });
+
   it("looks for folders once when none were ever recorded", async () => {
     let discoveries = 0;
     server.use(

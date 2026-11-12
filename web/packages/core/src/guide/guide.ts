@@ -126,7 +126,7 @@ const defaultGuideWindow = (at: number): GuideWindow =>
   });
 
 // One formatter per zone: constructing an Intl.DateTimeFormat costs ~0.35 ms, and a 100-channel
-// guide asks for hundreds of times on mount (measured on #1705: 143 ms of it before this cache).
+// guide asks for hundreds of times on mount (measured on #1705: 143 ms of it uncached).
 const guideTimeFormatters = new Map<string | undefined, Intl.DateTimeFormat>();
 
 /** Household guide clocks are explicit and consistent across browser, mobile, and TV. */

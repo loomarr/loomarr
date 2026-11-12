@@ -543,7 +543,8 @@ const ProviderRow = ({
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  // Deleting asks for the provider's name, typed back, before the button arms.
+  const deleteForm = useAppForm({ defaultValues: { confirmation: "" } });
   const update = notificationsApi.useNotificationProvidersUpdate({
     mutation: {
       onSuccess: () => {
@@ -581,7 +582,7 @@ const ProviderRow = ({
       await currentSubscription?.unsubscribe().catch(() => false);
     }
     setConfirmingDelete(false);
-    setDeleteConfirmation("");
+    deleteForm.reset();
     await refresh();
   };
 
@@ -684,30 +685,38 @@ const ProviderRow = ({
               </Text>
             </div>
             <div className="grid max-w-sm gap-1.5">
-              <Field
-                autoCapitalize="none"
-                autoComplete="off"
-                autoCorrect={false}
-                id={`${idPrefix}-delete-confirmation`}
-                label={`Type ${provider.label} to confirm`}
-                onChangeText={setDeleteConfirmation}
-                value={deleteConfirmation}
-              />
+              <deleteForm.Field name="confirmation">
+                {(field) => (
+                  <Field
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    autoCorrect={false}
+                    id={`${idPrefix}-delete-confirmation`}
+                    label={`Type ${provider.label} to confirm`}
+                    onChangeText={field.handleChange}
+                    value={field.state.value}
+                  />
+                )}
+              </deleteForm.Field>
             </div>
             <Stack direction="row" gap="inline" wrap>
-              <Action
-                disabled={deleteConfirmation !== provider.label || remove.isPending}
-                onPress={() => void deleteProvider().catch(() => undefined)}
-                tone="danger"
-                variant="outline"
-              >
-                Delete provider
-              </Action>
+              <deleteForm.Subscribe selector={(state) => state.values.confirmation}>
+                {(confirmation) => (
+                  <Action
+                    disabled={confirmation !== provider.label || remove.isPending}
+                    onPress={() => void deleteProvider().catch(() => undefined)}
+                    tone="danger"
+                    variant="outline"
+                  >
+                    Delete provider
+                  </Action>
+                )}
+              </deleteForm.Subscribe>
               <Action
                 disabled={remove.isPending}
                 onPress={() => {
                   setConfirmingDelete(false);
-                  setDeleteConfirmation("");
+                  deleteForm.reset();
                 }}
                 variant="ghost"
               >

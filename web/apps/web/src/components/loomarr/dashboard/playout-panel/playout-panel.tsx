@@ -8,8 +8,8 @@ import type { PlayoutPanelProps } from "./playout-panel.type";
 
 // PlayoutPanel — the dashboard's single live-playout picture (§12, §9.1 V47, GET /v1/playout/status).
 //
-// It MERGES what used to be two overlapping panels (TranscodingPanel + PlayoutHealthPanel), which
-// repeated channel id, speed and hardware per row. One panel now: a GPU/LLM-contention header — the
+// ONE panel for transcoding and playout health, so channel id, speed and hardware are not repeated
+// across two overlapping lists: a GPU/LLM-contention header — the
 // biggest silent cause of stutter, an LLM sat resident on the GPU the encoders need (§8.2) — and one
 // row per channel carrying everything non-duplicated: identity, throughput, cold-start, verdict.
 

@@ -18,8 +18,8 @@ import { useRequests } from "@/queue/use-requests";
 
 // One request, end to end (#1405) — the Proposal Job journey (GET /v1/proposal-jobs/{jobId}):
 // what was asked, what was proposed, who decided and when, how each title is coming along, the
-// channel it became, and the actions that make sense from here. Clicking a request on the Requests
-// page used to do nothing; this is what it opens.
+// channel it became, and the actions that make sense from here. It is what clicking a request on
+// the Requests page opens.
 //
 // Members can open only their own request and admins any (the endpoint enforces it), so a 403/404
 // is shown as the API's own problem message rather than an empty page.
@@ -51,7 +51,7 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   const retryTitle = titlesApi.useEnqueueTitle({
     mutation: {
       // A re-enqueue moves the title back to `wanted`, and the reconciler may advance it before we
-      // refetch, so every state's list is stale — the same invalidation the old In flight tab used.
+      // refetch, so every state's list is stale and all of them are invalidated.
       onSuccess: () =>
         Promise.all(
           Object.values(TitleDTOState).map((state) =>

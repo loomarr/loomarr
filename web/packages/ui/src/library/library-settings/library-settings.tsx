@@ -285,7 +285,8 @@ const KeepingUp = ({
 };
 
 // Scan now and Refresh everything (Emby and Jellyfin's Scan library and Replace all metadata).
-// Scan now is a pass now; Refresh everything is Update details for every title, so it asks first.
+// Scan now starts one pass at once, with no question; Refresh everything is Update details for
+// every title, which is slow on a big library, so it asks first.
 const ScanActions = ({
   scan,
   onRescan,
@@ -337,6 +338,7 @@ const LibraryStatus = ({
   onRescan,
   onRefreshEverything,
   onConfirmRemoval,
+  timeZone,
 }: Pick<
   LibrarySettingsProps,
   | "health"
@@ -352,6 +354,7 @@ const LibraryStatus = ({
   | "onRescan"
   | "onRefreshEverything"
   | "onConfirmRemoval"
+  | "timeZone"
 >) => {
   const inUse = folders.filter((f) => f.inUse);
   const offline = inUse.filter((f) => !f.readable);
@@ -362,7 +365,7 @@ const LibraryStatus = ({
   const importing = health !== "needs_folders" && scan.step !== "idle";
   // Titles stuck waiting for details are said under Keeping up to date, and keep "All caught up"
   // from being said too.
-  const waiting = detailsWaiting(details, scan);
+  const waiting = detailsWaiting(details, scan, timeZone);
   return (
     <Surface aria-label="Library status" gap="section" padding="section" role="region">
       {alerted ? null : (
@@ -681,6 +684,7 @@ const LibrarySettings = ({
   onAddFolder,
   onMapFolder,
   now,
+  timeZone,
 }: LibrarySettingsProps) => (
   <Stack alignSelf="center" gap="screen" maxWidth={880} width="100%">
     <Section title="Status">
@@ -698,6 +702,7 @@ const LibrarySettings = ({
         onRescan={onRescan}
         readySoFar={readySoFar}
         scan={scan}
+        timeZone={timeZone}
       />
     </Section>
     <Section description={foldersDescription(pathMap)} title="Media folders">

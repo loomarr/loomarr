@@ -4,11 +4,10 @@ import { useEffect } from "react";
 import { SourcesPanel } from "../sources-panel";
 
 // SourcesTab — where clips come from. A thin wrapper that owns the ONE query the Sources tab
-// needs, so the shell no longer runs it on behalf of a tab that may not be showing.
+// needs, so the shell does not run it on behalf of a tab that may not be showing.
 //
-// ⚠ Admin-only on the server, and the QUERY is gated as well as the tab (`enabled: isAdmin`
-// used to live in the shell; the tab is only rendered for an admin, so mounting it IS the gate
-// now). A member's request would 403 and fill their console with an error about a surface they
+// ⚠ Admin-only on the server, and the QUERY is gated as well as the tab (the tab is only
+// rendered for an admin, so mounting it IS the gate). A member's request would 403 and fill their console with an error about a surface they
 // cannot reach.
 //
 // ⚠ The page HEADER does not read this. It reads `GET /v1/filler/watch` — counts and verdict

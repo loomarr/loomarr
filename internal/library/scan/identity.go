@@ -1402,8 +1402,12 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	// its place in the whole show. In a film's folder, "Marrow Point 2" is the sequel.
 	if !ok && !inSeason && (underShows(dir) || file.Notes.Series) {
 		// A miniseries' "Ridge Point Part 2" and "Ridge Fall - Part Two" are its episodes.
+		// Its "Part 2" straight after the show's name is no film's sequel here (partIn's titlesOwnPart).
 		if _, part, ok := partIn(name + ".mkv"); ok && part > 0 {
 			return episode(part)
+		}
+		if m := capturedPart.FindStringSubmatch(name); m != nil && atoi(m[1]) > 0 {
+			return episode(atoi(m[1]))
 		}
 		if m := partWord.FindStringSubmatch(name); m != nil {
 			if part, ok := spelledNumbers[strings.ToLower(m[1])]; ok {

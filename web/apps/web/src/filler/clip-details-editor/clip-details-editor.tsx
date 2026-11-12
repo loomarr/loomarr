@@ -144,8 +144,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
   const tags = useStore(form.store, (state) => state.values.tags);
   const derivedTags = (clip?.tags ?? []).filter((tag) => !(clip?.assertedTags ?? []).includes(tag));
 
-  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), replacing
-  // the old hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
+  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), never a
+  // hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
   const vocab = fillerApi.useListTaxonomy();
   // The orval hook wraps the body: data.status===200 ? data.data.<body>. undefined while loading.
   const vocabTaxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : undefined;

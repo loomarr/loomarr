@@ -41,8 +41,8 @@ const lineupBadge = (item: ProposalItem) =>
 
 // ManualChannelBuilder — the manual/AI-off channel creation path (#1817, decision G2; approved
 // mock #1872). Library facets (from the existing GET /v1/discovery/ideas, #1665/#1720) and direct
-// library/TMDB search feed ONE lineup. It offers no starter templates: they were the AI path's four
-// example chips again, and filled only a name and a description that build nothing without AI
+// library/TMDB search feed ONE lineup. It offers no starter templates: they would be the AI path's four
+// example chips again, filling only a name and a description that build nothing without AI
 // (#2746, #3411). "Continue to review" is this component's only
 // write: POST /v1/discovery/manual-channel re-grounds the picks and returns a job id, which the
 // caller hands to the EXISTING ChannelSuggestPanel/ProposalReview — the same submit → review →

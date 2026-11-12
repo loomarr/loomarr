@@ -129,6 +129,22 @@ func withoutPart(stem string) string {
 	return strings.TrimSpace(before + " " + after)
 }
 
+// titlesOwnPart is whether a "part" or "pt" mark belongs to the title: it follows a title word
+// after a plain space ("Harbor Saga Part 2", a sequel). A rip sets its mark off with a separator, a
+// bracket or the year ("Ashgrove - pt1", "Ashgrove.part1", "Ashgrove (2015) Part 1"); a "cd",
+// "disc" or "dvd" mark is never a title's.
+func titlesOwnPart(before, mark string) bool {
+	if word := strings.ToLower(mark); !strings.HasPrefix(word, "part") && !strings.HasPrefix(word, "pt") {
+		return false
+	}
+	words := strings.TrimRight(before, " ")
+	if len(words) == len(before) {
+		return false
+	}
+	r, _ := utf8.DecodeLastRuneInString(words)
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
 // partIn is the set a file's name puts it in, the name with its part mark taken out, and its part
 // number; ok is false for a name with no part mark. A mark joined to the word before it
 // ("Counterpart2") or the word after it ("part about") is no mark. A letter counts as its place in
@@ -148,7 +164,7 @@ func partIn(name string) (set string, number int, ok bool) {
 		return "", 0, false
 	}
 	// "Part 1 of 3" counts a miniseries' episodes: a film's parts never say how many.
-	if partCount.MatchString(after) {
+	if partCount.MatchString(after) || titlesOwnPart(before, stem[m[3]:m[4]]) {
 		return "", 0, false
 	}
 	before = strings.TrimRight(before, " ._-([")

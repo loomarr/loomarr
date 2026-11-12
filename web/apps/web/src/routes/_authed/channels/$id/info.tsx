@@ -109,8 +109,8 @@ const InfoScreen = () => {
         />
       )}
 
-      {/* The default audio language (#2088), admin-only: it moved here from the player when Watch
-          became its own route. */}
+      {/* The default audio language (#2088), admin-only: a channel setting, so it lives here
+          rather than in the player, which has its own route. */}
       {isAdmin && <ChannelDefaultAudio channel={ch} savePolicy={savePolicy} />}
 
       {/* Admin-only diagnostics disclosure (P7): the relaxation ladder the last reconcile

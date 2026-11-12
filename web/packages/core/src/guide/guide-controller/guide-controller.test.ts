@@ -204,6 +204,80 @@ describe("Guide controller", () => {
     expect(controller.getSnapshot().selection).toBeUndefined();
   });
 
+  describe("a refresh over a shown Guide", () => {
+    const watch = (controller: ReturnType<typeof createGuideController>) => {
+      const seen: string[] = [];
+      controller.subscribe(() => {
+        const { layout, refreshing, status } = controller.getSnapshot();
+        seen.push(`${status}/${layout ? "layout" : "no-layout"}${refreshing ? "/refreshing" : ""}`);
+      });
+      return seen;
+    };
+
+    it("shows the first load as loading", async () => {
+      const controller = createGuideController({
+        now: () => 2_000,
+        source: { load: vi.fn().mockResolvedValue(guide()) },
+      });
+      const seen = watch(controller);
+      await controller.refresh();
+      expect(seen).toEqual(["loading/no-layout", "ready/layout"]);
+    });
+
+    it("keeps the layout ready while it re-reads, and flags the refresh", async () => {
+      const source = { load: vi.fn().mockResolvedValue(guide()) };
+      const controller = createGuideController({ now: () => 2_000, source });
+      await controller.refresh();
+      const seen = watch(controller);
+
+      await controller.refresh();
+
+      expect(seen).toEqual(["ready/layout/refreshing", "ready/layout"]);
+      expect(controller.getSnapshot().refreshing).toBeUndefined();
+    });
+
+    it("keeps the layout and reports the error when a background refresh fails", async () => {
+      const source = { load: vi.fn().mockResolvedValue(guide()) };
+      const controller = createGuideController({ now: () => 2_000, source });
+      await controller.refresh();
+      const shown = controller.getSnapshot().layout;
+      const seen = watch(controller);
+
+      source.load.mockRejectedValue(new Error("Couldn't load the Guide (503)."));
+      await controller.refresh();
+
+      expect(seen).toEqual(["ready/layout/refreshing", "ready/layout"]);
+      expect(controller.getSnapshot()).toMatchObject({
+        error: "Couldn't load the Guide (503).",
+        layout: shown,
+        status: "ready",
+      });
+      expect(controller.getSnapshot().refreshing).toBeUndefined();
+
+      source.load.mockResolvedValue(guide());
+      await controller.refresh();
+      expect(controller.getSnapshot().error).toBeUndefined();
+    });
+
+    it("keeps an empty Guide empty while it re-reads", async () => {
+      const source = { load: vi.fn().mockResolvedValue({ ...guide(), channels: [] }) };
+      const controller = createGuideController({ now: () => 2_000, source });
+      await controller.refresh();
+      const seen = watch(controller);
+      await controller.refresh();
+      expect(seen).toEqual(["empty/layout/refreshing", "empty/layout"]);
+    });
+
+    it("keeps the layout while it pages", async () => {
+      const source = { load: vi.fn().mockResolvedValue(guide()) };
+      const controller = createGuideController({ now: () => 2_000, source });
+      await controller.refresh();
+      const seen = watch(controller);
+      await controller.page("later");
+      expect(seen).toEqual(["ready/layout/refreshing", "ready/layout"]);
+    });
+  });
+
   it("uses the generated Guide URL and reports HTTP failure without inventing data", async () => {
     const request = vi.fn().mockResolvedValue(new Response("no", { status: 503 }));
     const source = createGuideSourcePort(request);

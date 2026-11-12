@@ -8,14 +8,12 @@ import { ServedImage } from "@/components/loomarr/served-image";
 import { useAppForm } from "@/lib/app-form";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
-// ⚠ The multipart upload used to be hand-written here, replicating the mutator's transport
-// contract (same-origin, `credentials: "include"`, the double-submit CSRF header) because
-// POST …/icon was a raw mux handler outside the generated client. It is a Huma operation with
-// a huma.MultipartFormFiles body now, so orval generates the call — it builds the FormData
-// itself, and customFetch adds CSRF and credentials without touching the body.
-//
-// The old comment justified the copy by saying "customFetch always JSON-encodes the body".
-// That was not true even then: the mutator passes `options.body` straight through to fetch.
+// ⚠ The multipart upload is NOT hand-written here. POST …/icon is a Huma operation with a
+// huma.MultipartFormFiles body, so orval generates the call — it builds the FormData itself,
+// and customFetch adds CSRF and credentials without touching the body (the mutator passes
+// `options.body` straight through to fetch; it does not JSON-encode it). Re-implementing the
+// transport contract here (same-origin, `credentials: "include"`, the double-submit CSRF
+// header) would only be a second copy to drift.
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 // ChannelIconField — the channel-detail "info" section's icon picker. One current-icon

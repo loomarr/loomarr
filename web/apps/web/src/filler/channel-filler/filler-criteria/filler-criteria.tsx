@@ -22,9 +22,9 @@ const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: s
   </Stack>
 );
 
-// ⚠ The hardcoded category mirror is GONE (§10 V45a). Categories are now the PRODUCT-axis taxa of the
+// ⚠ No hardcoded category mirror (§10 V45a). Categories are the PRODUCT-axis taxa of the
 // operator-editable taxonomy graph, fetched live from /v1/taxonomy — the one source of truth, so this
-// selector cannot drift from what the backend accepts. Selecting a ROLLUP node (e.g. `food`) now
+// selector cannot drift from what the backend accepts. Selecting a ROLLUP node (e.g. `food`)
 // matches every descendant (`cereal`, `candy`…) via the server's rollup-set intersection. The label
 // is a breadcrumb rather than a flattened leaf, so "Food › Cereal" explains why broad and specific
 // choices both exist.
@@ -136,8 +136,8 @@ const FillerCriteria = ({
   disabled?: boolean;
   className?: string;
   // The CHANNEL's programming era, which an unset filler era inherits (§10 V51f). Passed in so
-  // the inheritance can be SHOWN — it was applied live by the server and rendered nowhere, so a
-  // channel drawing 1990s ads from a blank field looked like it was drawing from everything.
+  // the inheritance can be SHOWN — the server applies it live, and unshown, a channel drawing
+  // 1990s ads from a blank field looks like it is drawing from everything.
   scopeEra?: { from?: number; to?: number };
   programmingDates?: DateScope;
   installationGeography?: { country?: string; place?: string };
@@ -150,8 +150,8 @@ const FillerCriteria = ({
   const eraWindows = selection.eraWindows;
   // ⚠ **Three states, and they are only distinguishable because `era` is a POINTER on the wire.**
   // Absent = inherit the channel's era; PRESENT-but-empty = explicitly any; a set range = itself.
-  // Before V51f the first two were the same value, so "any era" was unreachable on any channel
-  // that had a programming era — clearing the field simply re-inherited on the next derivation.
+  // Keep the first two distinct (V51f): as one value, "any era" would be unreachable on any channel
+  // that has a programming era — clearing the field would simply re-inherit on the next derivation.
   const inheriting = era === undefined && eraWindows === undefined;
   const explicitlyAny = era !== undefined && !era.from && !era.to;
   const inheritedWindows = programmingDates

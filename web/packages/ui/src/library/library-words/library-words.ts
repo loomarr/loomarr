@@ -1,4 +1,4 @@
-import { formatEpgTime } from "@loomarr/core/format";
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
 import type {
@@ -151,13 +151,13 @@ const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
 //   line:   "12 titles are waiting on details — trying again at 3:40 PM" (the Library's line)
 //   title:  "12 titles are waiting on details" (Settings → Library's row)
 //   reason: "Can't reach TMDB — trying again at 3:40 PM", or "Trying again at 3:40 PM"
-const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan) => {
+// The time is told on the household's clock (the Guide's), the device's while that is unknown.
+const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, timeZone?: string) => {
   if (!details?.retryAt || details.waiting === 0 || scan.step === "lookingUp") return undefined;
   const title = `${count(details.waiting, "title", "titles")} ${details.waiting === 1 ? "is" : "are"} waiting on details`;
-  const retry = `trying again at ${formatEpgTime(details.retryAt)}`;
-  const reason = details.unreachable
-    ? `Can't reach TMDB — ${retry}`
-    : `Trying again at ${formatEpgTime(details.retryAt)}`;
+  const at = formatGuideTime(Date.parse(details.retryAt), timeZone);
+  const retry = `trying again at ${at}`;
+  const reason = details.unreachable ? `Can't reach TMDB — ${retry}` : `Trying again at ${at}`;
   return { title, line: `${title} — ${retry}`, reason };
 };
 

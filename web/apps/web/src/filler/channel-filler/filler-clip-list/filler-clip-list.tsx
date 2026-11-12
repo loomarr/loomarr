@@ -79,10 +79,10 @@ const FillerClipList = ({
         </Text>
       </div>
 
-      {/* ⚠ **The clamp said nothing at all before this.** `filler.pod_max` caps how many clips one
-          break plays; pin more than that and the extras are saved, honoured, and simply cannot all
-          fit — with no count anywhere on the page. That is the same shape as the other V51f
-          defects: a control that accepts input and quietly does less than it says.
+      {/* ⚠ **This line is the only place the clamp is said.** `filler.pod_max` caps how many clips
+          one break plays; pin more than that and the extras are saved, honoured, and simply cannot
+          all fit — and without this there is no count anywhere on the page: a control that accepts
+          input and quietly does less than it says (the V51f defect shape).
           ⚠ Worded as "not all in ONE break" rather than "N will be dropped", because that is what
           actually happens: the pins are a priority pool the assembler draws from per break, so
           which ones appear varies by break rather than the list being truncated. */}
@@ -98,10 +98,9 @@ const FillerClipList = ({
           {ids.map((id) => {
             const clip = resolve(id);
             // ⚠ **A resolved-and-missing id is a DEAD override, not a clip with a long name.**
-            // It used to render the raw 64-character content hash, and this file's own comment
-            // called that "the honest signal that the override points at something no longer
-            // airable" — honest to someone who already knew, unreadable to everyone else. The
-            // assembler silently skips it, so nothing else says the pin does nothing.
+            // Shown as such, never as the raw 64-character content hash: a hash is a signal only
+            // to someone who already knows, unreadable to everyone else. The assembler silently
+            // skips it, so nothing else says the pin does nothing.
             const gone = !clip && !resolving;
             return (
               <Stack

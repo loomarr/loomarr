@@ -71,10 +71,10 @@ const toDraft = (seg: SplitReviewSegmentDTO): DraftSegment => ({
 // mm:ss is the precision they were given to express it in.
 const resolveMs = (text: string, originalMs: number): number => {
   if (text === formatMmSs(originalMs)) return originalMs;
-  // ⚠ Falls back to the ORIGINAL, not to 0. This used to be `?? 0`, so a half-typed or invalid
-  // field ("1:") committed that segment as starting at zero — silently, since `isValid` blocks
-  // the Confirm button only while the row is on screen. The filmstrip twenty lines below already
-  // fell back to `d.startMs`; the two disagreed about the same input.
+  // ⚠ Falls back to the ORIGINAL, not to 0. `?? 0` would commit a half-typed or invalid field
+  // ("1:") as a segment starting at zero — silently, since `isValid` blocks the Confirm button
+  // only while the row is on screen. The filmstrip twenty lines below falls back to `d.startMs`
+  // too, so the two agree about the same input.
   return parseMmSs(text) ?? originalMs;
 };
 

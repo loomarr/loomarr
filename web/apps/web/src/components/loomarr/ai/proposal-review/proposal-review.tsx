@@ -70,8 +70,12 @@ const ProposalReview = ({
   const [editingBrief, setEditingBrief] = useState(false);
   const [findingMore, setFindingMore] = useState(false);
   const findingMoreStarted = useRef(false);
-  const [reason, setReason] = useState("");
   const reasonId = useId();
+  // Why an admin turns the request down: optional, and the requester sees it.
+  const denyForm = useAppForm({
+    defaultValues: { reason: "" },
+    onSubmit: ({ value }) => onDeny?.(value.reason.trim() || undefined),
+  });
   const lineup = proposal.lineup ?? [];
   const acquisitions = proposal.acquisitions ?? [];
   const alternates = proposal.alternates ?? [];
@@ -327,15 +331,19 @@ const ProposalReview = ({
 
           {denying && !selfService ? (
             <Stack gap="inline">
-              <Field
-                autoFocus
-                disabled={controlsDisabled}
-                id={reasonId}
-                label="Why not? Optional: the requester sees this."
-                onChangeText={setReason}
-                placeholder="For example, ask for fewer new titles"
-                value={reason}
-              />
+              <denyForm.Field name="reason">
+                {(field) => (
+                  <Field
+                    autoFocus
+                    disabled={controlsDisabled}
+                    id={reasonId}
+                    label="Why not? Optional: the requester sees this."
+                    onChangeText={field.handleChange}
+                    placeholder="For example, ask for fewer new titles"
+                    value={field.state.value}
+                  />
+                )}
+              </denyForm.Field>
               <Stack direction="row" gap="inline" justify="end" wrap>
                 <Action disabled={controlsDisabled} onPress={() => setDenying(false)} variant="ghost">
                   Cancel
@@ -343,7 +351,7 @@ const ProposalReview = ({
                 <Action
                   disabled={controlsDisabled}
                   icon="close"
-                  onPress={() => onDeny?.(reason.trim() || undefined)}
+                  onPress={() => void denyForm.handleSubmit()}
                   variant="outline"
                 >
                   Not approved

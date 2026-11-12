@@ -30,9 +30,24 @@ describe("isHandRolledForm", () => {
     );
   });
 
-  it("passes a form that imports the form library", () => {
-    const converted = `import { useAppForm } from "@/lib/app-form";\n${handRolled}`;
+  it("passes a form whose inputs write the form library's fields", () => {
+    const converted = `
+      import { useAppForm } from "@/lib/app-form";
+      export const Name = () => {
+        const form = useAppForm({ defaultValues: { name: "" } });
+        return (
+          <form.Field name="name">
+            {(field) => <Field onChangeText={field.handleChange} value={field.state.value} />}
+          </form.Field>
+        );
+      };
+    `;
     assert.equal(isHandRolledForm(converted, "name.tsx"), false);
+  });
+
+  it("flags a useState draft beside a form, since importing the library excuses nothing else", () => {
+    const beside = `import { useAppForm } from "@/lib/app-form";\n${handRolled}`;
+    assert.equal(isHandRolledForm(beside, "name.tsx"), true);
   });
 
   it("ignores state no input writes", () => {
@@ -74,6 +89,11 @@ describe("isHandRolledForm, a flag a handler raises", () => {
 
   it("passes a setter called only with a boolean literal", () => {
     assert.equal(isHandRolledForm(editor("(next) => { setRequested(true); save(next); }")), false);
+  });
+
+  it("passes a setter that clears a value as the viewer types (an error the last submit raised)", () => {
+    assert.equal(isHandRolledForm(editor("(next) => { setName(undefined); save(next); }")), false);
+    assert.equal(isHandRolledForm(editor("(next) => { setName(null); save(next); }")), false);
   });
 
   it("still flags a setter that is handed what changed, or a computed boolean", () => {

@@ -77,6 +77,10 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		// A number no release could carry yet is the title's, never its year.
 		{"Harbor Lights 2049", 0, "Harbor Lights 2049", 0},
 		{"Harbor.Lights.2049.1080p.WEB-DL", 0, "Harbor Lights 2049", 0},
+		// A release word before the year is part of the title: release words follow the year.
+		{"Charlotte's Web (2006)", 0, "Charlotte's Web", 2006},
+		{"Charlotte's.Web.2006.1080p.WEB-DL", 0, "Charlotte's Web", 2006},
+		{"The Extended Family 1999 EXTENDED 1080p", 0, "The Extended Family", 1999},
 	} {
 		title, year, _ := searchQuery(tc.name, tc.known)
 		if title != tc.title || year != tc.year {

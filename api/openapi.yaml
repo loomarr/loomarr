@@ -20436,23 +20436,25 @@ paths:
               - movie
               - series
             type: string
-        - description: Structured genre terms; repeat the parameter for multiple values
+        - description: Structured genre terms; repeat the parameter for multiple values (at most 8)
           explode: true
           in: query
           name: genres
           schema:
-            description: Structured genre terms; repeat the parameter for multiple values
+            description: Structured genre terms; repeat the parameter for multiple values (at most 8)
             items:
               type: string
+            maxItems: 8
             type: array
-        - description: Structured thematic keyword terms; repeat the parameter for multiple values
+        - description: Structured thematic keyword terms; repeat the parameter for multiple values (at most 8). Each is one TMDB lookup.
           explode: true
           in: query
           name: keywords
           schema:
-            description: Structured thematic keyword terms; repeat the parameter for multiple values
+            description: Structured thematic keyword terms; repeat the parameter for multiple values (at most 8). Each is one TMDB lookup.
             items:
               type: string
+            maxItems: 8
             type: array
         - description: Earliest release or first-air year
           explode: false

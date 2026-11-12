@@ -9,11 +9,10 @@ import type { ChannelSeriesScopeProps } from "./channel-series-scope.type";
 
 // ChannelSeriesScope — `policy.scope.series`, the "only these shows" narrowing (§2).
 //
-// ORPHANED until now, and the audit was right that a text box would be "a door in name only":
-// the field is `[]provision.Key` — RESOLVED ids, never names (schedule/policy.go:177) — so a
-// typed title could not become a valid entry. It needs a search-backed picker, which is why it
-// was filed as design work. In practice the design already exists: the lineup editor solved
-// the same problem, so this reuses its `keyOf` derivation and the shared SearchCommand.
+// A text box would be "a door in name only": the field is `[]provision.Key` — RESOLVED ids,
+// never names (schedule/policy.go:177) — so a typed title cannot become a valid entry. It needs
+// a search-backed picker, and the lineup editor solves the same problem, so this reuses its
+// `keyOf` derivation and the shared SearchCommand.
 
 // keyOf, narrowed to the SERIES branch of the lineup editor's derivation. scope.series
 // restricts to series, so a movie candidate can never produce a valid entry here.
