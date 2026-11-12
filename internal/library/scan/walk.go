@@ -364,13 +364,19 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	extras := siblingExtras(folder, videoNames)
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
+	shows := dir != w.root && underShows(w.rel(dir))
+	if shows {
+		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder).
+		parts = nil
+	}
 	marked := 0
 	for _, name := range videoNames {
 		if episodeMark.MatchString(name) {
 			marked++
 		}
 	}
-	notes.Episodes = marked >= 2 || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+	// In a shows' catch-all, one marked episode says a show's folder.
+	notes.Episodes = marked >= 2 || marked == 1 && shows || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
 		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
 	})
 	notes.Leading = leadingEpisodes(videoNames)
@@ -794,7 +800,8 @@ var extraKinds = [][]string{
 	{"behind", "the", "scenes"}, {"making", "of"}, {"gag", "reel"}, {"music", "video"}, {"alternate", "ending"},
 	{"short", "film"}, {"deleted", "scenes"}, {"deleted", "scene"}, {"official", "trailer"},
 	{"teaser", "trailer"}, {"theatrical", "trailer"}, {"directors", "commentary"}, {"director", "commentary"},
-	{"audio", "commentary"},
+	{"audio", "commentary"}, {"blooper", "reel"}, {"tv", "spot"}, {"photo", "gallery"},
+	{"promo"}, {"storyboards"}, {"storyboard"}, {"gallery"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
 	{"deletedscenes"}, {"deleted"}, {"bloopers"}, {"outtakes"}, {"commentary"}, {"scene"}, {"short"},
 	{"clip"}, {"extra"}, {"other"}, {"theme"},
@@ -879,6 +886,12 @@ func siblingExtras(folder string, names []string) map[string]bool {
 		// A kind's word before the title's year is the title's: "Ferry Extra (1982) 1080p".
 		if at < 0 || episodeMark.MatchString(name) || slices.ContainsFunc(words[at:], releaseYear) {
 			titles[key(words)] = true
+			// An episode's show is a title its extras name: "Cold Coast - Making Of" beside
+			// "Cold Coast S01E01".
+			if show := looseSeries(name); show != "" {
+				title, _, _ := searchQuery(show, 0)
+				titles[compact(title)] = true
+			}
 			continue
 		}
 		kinds = append(kinds, marked{name, words, at})
@@ -893,11 +906,23 @@ func siblingExtras(folder string, names []string) map[string]bool {
 			}
 			continue
 		}
-		if titles[key(k.words[:k.at])] {
+		// A title's year, then a kind only an extra is named by, says an extra with no title beside
+		// it: "Movies/Gravel Peak (2003) Trailer.mp4".
+		if titles[key(k.words[:k.at])] || slices.ContainsFunc(k.words[:k.at], releaseYear) && strongExtraKind(k.words[k.at:]) {
 			out[k.name] = true
 		}
 	}
 	return out
+}
+
+// strongExtraKinds are the kinds only an extra is named by; "Short", "Clip" or "Theme" after a
+// year may be a title's or an edition's.
+var strongExtraKinds = []string{"trailer", "teaser", "featurette", "behind", "making", "deleted", "bloopers", "outtakes", "gag", "official", "theatrical", "behindthescenes", "deletedscene", "deletedscenes"}
+
+// strongExtraKind says whether the words an extra's kind starts are a kind only an extra is
+// named by.
+func strongExtraKind(words []string) bool {
+	return len(words) > 0 && slices.Contains(strongExtraKinds, strings.TrimRight(words[0], "0123456789"))
 }
 
 var (

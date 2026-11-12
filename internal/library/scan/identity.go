@@ -1032,6 +1032,15 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	// show's name, "TV/Ivory Fen/02.mkv" and "Anime/Hoshizora/Hoshizora 12.mkv": its episode by
 	// its place in the whole show. In a film's folder, "Marrow Point 2" is the sequel.
 	if !ok && !inSeason && underShows(dir) {
+		// A miniseries' "Ridge Point Part 2" and "Ridge Fall - Part Two" are its episodes.
+		if _, part, ok := partIn(name + ".mkv"); ok && part > 0 {
+			return episode(part)
+		}
+		if m := partWord.FindStringSubmatch(name); m != nil {
+			if part, ok := spelledNumbers[strings.ToLower(m[1])]; ok {
+				return episode(part)
+			}
+		}
 		words := strings.Fields(normName(name))
 		own := strings.Fields(normName(showFolderName(show)))
 		if len(words) == len(own)+1 && slices.Equal(words[:len(own)], own) || len(words) == 1 {
@@ -1097,6 +1106,9 @@ var catchAllNames = map[string]bool{
 	"docs": true, "series": true, "tv series": true, "serien": true, "séries": true, "filme": true,
 	"films et séries": true, "peliculas": true, "películas": true, "kids tv": true, "kids movies": true,
 }
+
+// partWord matches a part spelled out at a name's end: "Ridge Fall - Part One".
+var partWord = regexp.MustCompile(`(?i)(?:^|[ ._-])part[ ._-]+([a-z]+)$`)
 
 // showsFolderNames are catch-alls that hold shows: a folder in one is a show's.
 var showsFolderNames = map[string]bool{

@@ -152,7 +152,10 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    Episode 17", " - 05.5" and " - 01-03" are episodes, as are a show's numbers alone in a
 //	    shows' catch-all; a film in its own folder in a films' catch-all is a film; "The Sample",
 //	    "Paper-Clip" and a title holding "Extra" are titles; genre folders are catch-alls.
-const writeVersion = 44
+//	45: a miniseries' parts in a shows' catch-all are its episodes; "Title (Year) Trailer" alone,
+//	    and "Show - Making Of" beside its episode, are extras; a show's folder with one marked
+//	    episode holds episodes; "Promo", "TV Spot", "Blooper Reel" and galleries are extras.
+const writeVersion = 45
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

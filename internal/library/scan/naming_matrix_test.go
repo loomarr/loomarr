@@ -629,6 +629,30 @@ var namingMatrix = []namingRow{
 		"Movies/Ferry Extra (2004)/Ferry Extra (2004).mkv":                                                            "movie Ferry Extra 2004",
 		"Movies/Ferry Extra (2004)/Ferry Extra (2004) Official Trailer.mkv":                                           "skip",
 	}},
+	// A miniseries' parts in a shows' catch-all are its episodes; a film's parts in a films' are one film.
+	{id: "W73", files: map[string]string{
+		"TV/Ridge Point/Ridge Point Part 1.mkv":       "episode Ridge Point S1E1",
+		"TV/Ridge Point/Ridge Point Part 2.mkv":       "episode Ridge Point S1E2",
+		"TV/Ridge Fall/Ridge Fall - Part One.mkv":     "episode Ridge Fall S1E1",
+		"TV/Ridge Fall/Ridge Fall - Part Two.mkv":     "episode Ridge Fall S1E2",
+		"Movies/Ridge Gate (2001)/Ridge Gate CD1.mkv": "movie Ridge Gate 2001",
+		"Movies/Ridge Gate (2001)/Ridge Gate CD2.mkv": "movie Ridge Gate 2001",
+	}},
+	// An extra named by its title's year and its kind, alone; or by its show beside an episode.
+	{id: "W74", files: map[string]string{
+		"Movies/Gravel Peak (2003) Trailer.mp4":                          "skip",
+		"Movies/Gravel Pass Trailer (2003).mkv":                          "movie Gravel Pass Trailer 2003",
+		"Movies/Gravel Moor (2003) Short.mkv":                            "movie Gravel Moor 2003",
+		"TV/Cold Bay/Cold Bay S01E01.mkv":                                "episode Cold Bay S1E1",
+		"TV/Cold Bay/Cold Bay - Making Of.mkv":                           "skip",
+		"TV/Cold Bay/Cold Bay - The Interview.mkv":                       "episode Cold Bay S?E?",
+		"Movies/Pale Mount (2009)/Pale Mount (2009).mkv":                 "movie Pale Mount 2009",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Photo Gallery.mkv": "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - TV Spot 2.mkv":     "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Blooper Reel.mkv":  "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Promo.mkv":         "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Storyboards.mkv":   "skip",
+	}},
 	// A franchise's folder holds its shows, each its own.
 	{id: "W65", files: map[string]string{
 		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E01.mkv": "episode Star Ridge Origins S1E1",
