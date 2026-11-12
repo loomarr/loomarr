@@ -1228,6 +1228,22 @@ var namingMatrix = []namingRow{
 		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
 		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
 	}},
+	// Re-score #22: a kids' show numbered after its name with none named so alone is a show; an
+	// anime's film in its release's folder is a film; a count after a year runs on a title; an
+	// episode's trailer joined with a dot is its extra.
+	{id: "W137", files: map[string]string{
+		"Kids/Gumdrop Garage/Gumdrop Garage 1.mp4":                         "episode Gumdrop Garage S?E?",
+		"Kids/Gumdrop Garage/Gumdrop Garage 2.mp4":                         "episode Gumdrop Garage S?E?",
+		"Kids/Gumdrop Garage/Gumdrop Garage 10.mp4":                        "episode Gumdrop Garage S?E?",
+		"Kids/Ironvale/Ironvale.mp4":                                       "movie Ironvale -",
+		"Kids/Ironvale/Ironvale 2.mp4":                                     "movie Ironvale 2 -",
+		"Kids/Ironvale/Ironvale 3.mp4":                                     "movie Ironvale 3 -",
+		"Anime/[Grp] Kitsune Hana Movie [BD]/[Grp] Kitsune Hana Movie.mkv": "movie Kitsune Hana Movie -",
+		"Videos/Holiday 2019 Part 2.mp4":                                   "movie Holiday 2019 Part 2 -",
+		"Sports/Hollowball League 2023 Week 1 Harbor vs Ridge.mkv":         "movie Hollowball League 2023 Week 1 Harbor vs Ridge -",
+		"TV/Coldharbour/Season 1/Coldharbour S01E02.mkv":                   "episode Coldharbour S1E2",
+		"TV/Coldharbour/Season 1/Coldharbour S01E02.Trailer.mkv":           "skip",
+	}},
 	// Re-score #21: a film's file named with dashes and a release's mark is its folder's film; an
 	// episode's NFO names its show; Kodi's "Show - 101 - Title" numbers its episode; an anime's loose
 	// special and recap are its show's; a loose file's bracketed name with no group is its show; a

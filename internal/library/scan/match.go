@@ -675,11 +675,13 @@ func titleWords(words []string, name string) bool {
 		return unicode.IsUpper(r) && w[size:] != "" && strings.ToLower(w[size:]) == w[size:]
 	}
 	titled := false
-	for _, w := range words {
+	for i, w := range words {
 		switch {
 		case releaseToken(w):
 			return false
 		case smallWords[strings.ToLower(w)]:
+		// A count after its word runs on a title too: "Holiday 2019 Part 2", "League 2023 Week 1".
+		case i > 0 && countWords[strings.ToLower(words[i-1])] && digits(w) && len(w) <= 2:
 		case asTitle(w):
 			titled = true
 		default:
@@ -690,7 +692,16 @@ func titleWords(words []string, name string) bool {
 }
 
 // smallWords are the words a title keeps in lower case between its others.
-var smallWords = map[string]bool{"of": true, "the": true, "and": true, "a": true, "an": true, "in": true, "to": true, "on": true, "at": true}
+var smallWords = map[string]bool{
+	"of": true, "the": true, "and": true, "a": true, "an": true, "in": true, "to": true, "on": true, "at": true,
+	"vs": true, "v": true,
+}
+
+// countWords are the words a title counts its parts by, before the count: "Part 2", "Week 1".
+var countWords = map[string]bool{
+	"part": true, "week": true, "day": true, "round": true, "game": true, "match": true, "leg": true,
+	"stage": true, "race": true, "chapter": true,
+}
 
 // editionOnly says whether words are an edition and nothing else: "Directors Cut", "Extended".
 func editionOnly(words []string) bool {
