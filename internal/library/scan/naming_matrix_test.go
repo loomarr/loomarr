@@ -48,10 +48,6 @@ var namingToday = map[string]string{
 	"E9 TV/Kettle Bay/Season 1/Kettle Bay Ep02.mkv":                                       "movie Kettle Bay Ep02 -",
 	"E10 TV/Kettle Bay/Season 2/05 - Tidewater.mkv":                                       "movie 05 - Tidewater -",
 	"E13 TV/Ferrow Lane/Ferrow.Lane.2of6.mkv":                                             "movie Ferrow Lane 2of6 -",
-	"F1b TV/Kettle Bay/Kettle Bay S01E01-03.mkv":                                          "episode Kettle Bay S1E1",
-	"F3 TV/Kettle Bay/Kettle Bay S01E01-S01E02.mkv":                                       "episode Kettle Bay S1E1",
-	"F4 TV/Kettle Bay/Kettle Bay 1x01-1x02.mkv":                                           "episode Kettle Bay S1E1",
-	"F8 TV/Kettle Bay/Kettle Bay S01E01+E02.mkv":                                          "episode Kettle Bay S1E1",
 	"G1 TV/[Kumo] Sora no Kettle - 07 [1080p][A1B2C3D4].mkv":                              "movie Kumo Sora no Kettle - 07 -",
 	"G11 TV/Sora no Kettle/[Kumo] Sora no Kettle - NCOP1 [1080p].mkv":                     "movie Kumo Sora no Kettle - NCOP1 -",
 	"H3 TV/Kettle Bay/Specials/Kettle Bay - Holiday Special.mkv":                          "movie Kettle Bay - Holiday Special -",
@@ -61,10 +57,6 @@ var namingToday = map[string]string{
 	"J6 TV/Kettle.Bay.S02.1080p.WEB-DL-GRP/Kettle.Bay.S02E01.mkv":                         "episode Kettle Bay S02 S2E1",
 	"J7 TV/Kettle Bay Complete Series (2010-2015) [1080p]/Season 3/Kettle Bay S03E01.mkv": "episode Kettle Bay Complete Series 2010-2015 S3E1",
 	"K3 TV/Kettle Bay/1/Kettle Bay S01E01.mkv":                                            "episode 1 S1E1",
-	"K6 TV/Kettle Bay/Series 1/Kettle Bay S01E01.mkv":                                     "episode Series 1 S1E1",
-	"K7 TV/Kettle Bay/Staffel 1/Kettle Bay S01E01.mkv":                                    "episode Staffel 1 S1E1",
-	"K8 TV/Kettle Bay/Kettle Bay Season 1/Kettle Bay S01E01.mkv":                          "episode Kettle Bay Season 1 S1E1",
-	"K9 TV/Kettle Bay/Season 2 [1080p]/Kettle Bay S02E01.mkv":                             "episode Season 2 S2E1",
 	"L3 Movies/Ashgrove (2015)/asg-1080p.mkv":                                             "movie asg-1080p -",
 	"O2 Movies/Ashgrove (2015)/trailer.mkv":                                               "movie trailer -",
 	"O4 Movies/Ashgrove (2015)/Special Features/Gag Reel.mkv":                             "movie Gag Reel -",
@@ -163,6 +155,14 @@ var namingMatrix = []namingRow{
 	{id: "F3", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01-S01E02.mkv": "episode Kettle Bay S1E1-2"}},
 	{id: "F4", files: map[string]string{"TV/Kettle Bay/Kettle Bay 1x01-1x02.mkv": "episode Kettle Bay S1E1-2"}},
 	{id: "F8", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01+E02.mkv": "episode Kettle Bay S1E1-2"}},
+	// What follows one episode's mark is not a last episode: a resolution, a year in its title.
+	{id: "F9", files: map[string]string{
+		"TV/Kettle Bay/Kettle.Bay.S01E02-1080p.mkv":   "episode Kettle Bay S1E2",
+		"TV/Kettle Bay/Kettle Bay S01E03 - 1984.mkv":  "episode Kettle Bay S1E3",
+		"TV/Kettle Bay/Kettle Bay 1x04-720p.mkv":      "episode Kettle Bay S1E4",
+		"TV/Kettle Bay/Kettle Bay S01E05-E04.mkv":     "episode Kettle Bay S1E5",
+		"TV/Kettle Bay/Kettle.Bay.S01E06.Endgame.mkv": "episode Kettle Bay S1E6",
+	}},
 
 	// G. Absolute (anime) numbering: the show is placed, its episode by the catalog later.
 	{id: "G1", files: map[string]string{"TV/[Kumo] Sora no Kettle - 07 [1080p][A1B2C3D4].mkv": "episode Sora no Kettle S?E?"}},
@@ -201,6 +201,8 @@ var namingMatrix = []namingRow{
 	{id: "K7", files: map[string]string{"TV/Kettle Bay/Staffel 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
 	{id: "K8", files: map[string]string{"TV/Kettle Bay/Kettle Bay Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
 	{id: "K9", files: map[string]string{"TV/Kettle Bay/Season 2 [1080p]/Kettle Bay S02E01.mkv": "episode Kettle Bay S2E1"}},
+	// A folder named for a show's season with no show folder above it is the show's own folder.
+	{id: "K10", files: map[string]string{"Ferrow Lane Season 2/Ferrow Lane S02E01.mkv": "episode Ferrow Lane Season 2 S2E1"}},
 
 	// L. Movie layouts.
 	{id: "L1", files: map[string]string{"Movies/Ashgrove (2015)/Ashgrove (2015).mkv": "movie Ashgrove 2015"}},

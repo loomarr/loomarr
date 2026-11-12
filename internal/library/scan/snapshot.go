@@ -107,7 +107,9 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    numbered by the order picked (decision 53).
 //	26: a title sorts by its letters with the accents taken off ("À Nous" under A).
 //	27: a show with no name of its own is named by its own folder, not the folders above it.
-const writeVersion = 27
+//	28: "Series 1", "Staffel 1", "Season 2 [1080p]" and "<Show> Season 1" are season folders, and
+//	    "S01E01-03", "S01E01+E02", "S01E01-S01E02" and "1x01-1x02" hold episodes through the last.
+const writeVersion = 28
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
