@@ -14,6 +14,7 @@ import {
   Field,
   Icon,
   icons,
+  Stack,
 } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -179,19 +180,19 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
     <div className="border-border space-y-4 border-t pt-4">
       {statusQuery.isError || !enabled || configured ? (
         <div className="bg-muted/40 rounded-lg p-4">
-          <div className="flex items-start gap-3">
+          <Stack align="start" direction="row" gap="control">
             {configured && status?.state === "ready" ? (
-              <span className="mt-0.5 flex">
+              <Stack className="mt-0.5" direction="row" render="span">
                 <Icon decorative glyph={icons.passed} size="default" tone="success" />
-              </span>
+              </Stack>
             ) : status?.state === "degraded" || status?.state === "limit_reached" ? (
-              <span className="mt-0.5 flex">
+              <Stack className="mt-0.5" direction="row" render="span">
                 <Icon decorative glyph={icons.alert} size="default" tone="warning" />
-              </span>
+              </Stack>
             ) : (
-              <span className="mt-0.5 flex">
+              <Stack className="mt-0.5" direction="row" render="span">
                 <Icon decorative glyph={icons.search} size="default" tone="muted" />
-              </span>
+              </Stack>
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">
@@ -220,7 +221,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 </p>
               ) : null}
             </div>
-          </div>
+          </Stack>
         </div>
       ) : null}
 
@@ -281,7 +282,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   onChange={(value) => setEdit(monthly.key, value)}
                 />
               ) : null}
-              <div className="flex flex-wrap gap-2">
+              <Stack direction="row" gap="inline" wrap>
                 <Action disabled={busy} onPress={() => void runCurrentTest()} variant="outline">
                   {testProvider.isPending ? "Checking…" : "Test connection"}
                 </Action>
@@ -291,7 +292,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 <Action disabled={busy} onPress={() => void remove()} variant="ghost">
                   Remove web search
                 </Action>
-              </div>
+              </Stack>
             </section>
           ) : null}
         </div>
@@ -405,14 +406,14 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 {message}
               </p>
             ) : null}
-            <div className="border-border flex justify-end gap-2 border-t pt-4">
+            <Stack className="border-border border-t pt-4" direction="row" gap="inline" justify="end">
               <Action disabled={busy} onPress={() => setOpen(false)} variant="ghost">
                 Cancel
               </Action>
               <Action disabled={busy} onPress={() => void form.handleSubmit()}>
                 {busy ? "Checking…" : "Test and add"}
               </Action>
-            </div>
+            </Stack>
           </div>
         </DialogContent>
       </Dialog>

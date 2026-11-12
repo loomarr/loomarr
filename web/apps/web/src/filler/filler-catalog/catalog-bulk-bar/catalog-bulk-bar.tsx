@@ -3,7 +3,7 @@ import { ListFillerAudience } from "@loomarr/api/models/listFillerAudience";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, CompactSelect, Tooltip } from "@loomarr/design-system";
+import { Action, CompactSelect, Stack, Tooltip } from "@loomarr/design-system";
 import { toast } from "sonner";
 import { useFillerInvalidate } from "../../use-filler-invalidate";
 
@@ -63,7 +63,13 @@ const CatalogBulkBar = ({ selected, onClear }: CatalogBulkBarProps) => {
   });
 
   return (
-    <div className="border-signal/40 bg-signal/5 flex flex-wrap items-center gap-3 rounded-lg border p-3">
+    <Stack
+      align="center"
+      className="border-signal/40 bg-signal/5 rounded-lg border p-3"
+      direction="row"
+      gap="control"
+      wrap
+    >
       <span className="text-signal font-mono text-xs">{pluralize(selected.size, "clip")} selected</span>
 
       {BULK_TAG_FIELDS.map((field) => (
@@ -107,7 +113,7 @@ const CatalogBulkBar = ({ selected, onClear }: CatalogBulkBarProps) => {
           Clear
         </Action>
       </div>
-    </div>
+    </Stack>
   );
 };
 

@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { addFillerSourceSchema } from "@loomarr/core/schemas";
-import { Action, Field, Surface, Text } from "@loomarr/design-system";
+import { Action, Field, Stack, Surface, Text } from "@loomarr/design-system";
 import { useForm, useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -46,7 +46,7 @@ const LocalSourceForm = () => {
   if (!provider) return null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       <p className="text-sm font-medium">Add a folder or library</p>
       <form
         className="flex flex-wrap items-center gap-2"
@@ -99,7 +99,7 @@ const LocalSourceForm = () => {
       <Text as="span" textRole="mono">
         Uses your location. Every clip is checked before it can play.
       </Text>
-    </div>
+    </Stack>
   );
 };
 

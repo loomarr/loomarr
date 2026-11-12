@@ -1,7 +1,7 @@
 import type { IncomingProcessingDTO } from "@loomarr/api/models/incomingProcessingDTO";
 import type { IncomingProcessingStageDTO } from "@loomarr/api/models/incomingProcessingStageDTO";
 import { formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, ProgressTrack } from "@loomarr/design-system";
+import { Action, ProgressTrack, Stack } from "@loomarr/design-system";
 import { useState } from "react";
 
 const visibleByDefault = (stage: IncomingProcessingStageDTO) => stage.outcome !== "not_needed";
@@ -12,10 +12,10 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
   const label = measured ? `Current step: ${stage.progress}%` : "Current step in progress";
   return (
     <div className="mt-3 space-y-1.5">
-      <div className="flex items-center justify-between gap-3 text-xs">
+      <Stack align="center" className="text-xs" direction="row" gap="control" justify="between">
         <span className="text-muted-foreground">Current step</span>
         <span>{measured ? `${stage.progress}%` : "Working…"}</span>
-      </div>
+      </Stack>
       <ProgressTrack percent={stage.progress} label={label} tone="tune" />
     </div>
   );
@@ -79,13 +79,13 @@ const IncomingProcessingDetails = ({ processing }: { processing: IncomingProcess
           <p className="text-muted-foreground">No processing steps recorded yet.</p>
         )}
         {skipped ? (
-          <div className="flex">
+          <Stack direction="row">
             <Action onPress={() => setShowSkipped((open) => !open)} variant="ghost">
               {showSkipped
                 ? "Hide skipped steps"
                 : `Show ${skipped === 1 ? "skipped step" : `${skipped} skipped steps`}`}
             </Action>
-          </div>
+          </Stack>
         ) : null}
       </div>
     </details>

@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Card, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -63,18 +63,18 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
   if (configurationPending && tab !== "settings") {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <Stack className="h-full min-h-0">
         <FillerHeader />
         <div className="min-h-0 flex-1 p-6" role="status">
           <p className="text-muted-foreground text-sm">Loading filler…</p>
         </div>
-      </div>
+      </Stack>
     );
   }
 
   if (!fillerConfigured && tab !== "settings") {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <Stack className="h-full min-h-0">
         <FillerHeader />
         <div className="min-h-0 flex-1 overflow-auto p-6">
           <EmptyState
@@ -91,7 +91,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
               : {})}
           />
         </div>
-      </div>
+      </Stack>
     );
   }
 
@@ -109,9 +109,9 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     : "";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <FillerHeader status={watch && <WatchLine status={statusLine} health={watch.health} />} />
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack className="min-h-0 flex-1 overflow-auto p-6" gap="section">
         {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
             pages light Manage, as Settings and Tags already did. */}
         <NavTabs
@@ -213,8 +213,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         ) : (
           <FillerCatalog isAdmin={isAdmin} />
         )}
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

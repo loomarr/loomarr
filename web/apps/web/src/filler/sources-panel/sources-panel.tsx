@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { useRef } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { FillerSources } from "@/components/loomarr/filler/filler-sources";
@@ -31,7 +32,7 @@ const SourcesPanel = ({
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       <SourceStorageCard />
 
       <FillerSources
@@ -61,7 +62,7 @@ const SourcesPanel = ({
         finalFocus={sourceTrigger}
         onClose={onCloseSource}
       />
-    </div>
+    </Stack>
   );
 };
 
