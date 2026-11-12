@@ -6,9 +6,11 @@ import { useNumberEntry } from "../use-number-entry";
 const INFO_PLAYING_MS = 8_000;
 
 // The one sheet the chrome can have open at a time (§9.1, layer 4).
-type WatchSheet = "audio" | "channels" | "details" | "info" | "more" | "picture";
+type WatchSheet = "audio" | "channels" | "details" | "info" | "more" | "picture" | "subtitles";
 
 type WatchShortcutsOptions = {
+  // C steps the subtitles to the next choice, round to Off; omitted while there is nothing to step.
+  onNextSubtitles?: () => void;
   // I toggles Playback details (§9.3): a sheet (a phone), or `onDetails` for the pointer's panel.
   detailsAsSheet?: boolean;
   // Info is the strip's on-air card (a pointer, variant J): nothing in it takes focus, so opening it
@@ -26,14 +28,16 @@ type WatchShortcutsOptions = {
   viewerPaused: boolean;
 };
 
-// The Watch player's one right-hand sheet (Audio, Picture, More, Info or Channels) and its keys
-// (§9.3): A opens Audio, I Playback details, G Channels, L goes to the last channel; digits open a number entry;
+// The Watch player's one right-hand sheet (Subtitles, Audio, Picture, More, Info or Channels) and its
+// keys (§9.3): A opens Audio, C steps the subtitles, I Playback details, G Channels, L goes to the last
+// channel; digits open a number entry;
 // Enter tunes it at once; Escape closes the sheet, then leaves. Closing a sheet hands focus back to
 // what opened it (its button, or the frame for a key).
 const useWatchShortcuts = ({
   detailsAsSheet = false,
   infoAsCard = false,
   onDetails,
+  onNextSubtitles,
   channels,
   onLast,
   onLeave,
@@ -74,6 +78,10 @@ const useWatchShortcuts = ({
     }
     if (key === "a" || key === "A") {
       toggleSheet("audio");
+      return true;
+    }
+    if ((key === "c" || key === "C") && onNextSubtitles) {
+      onNextSubtitles();
       return true;
     }
     if ((key === "i" || key === "I") && (detailsAsSheet || onDetails)) {

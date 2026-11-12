@@ -3,6 +3,7 @@ import { useState } from "react";
 import { type LayoutChangeEvent, View } from "react-native";
 
 import { ChannelBand } from "../channel-band";
+import { PlayerCaption } from "../player-caption";
 import type { PlayerChromeProps } from "../player-chrome.type";
 import { PlayerKeys } from "../player-keys";
 import { PlayerLeave, PlayerUtilities } from "../player-utilities";
@@ -15,6 +16,7 @@ import { UnmutePill } from "../unmute-pill";
 
 const PortraitChrome = ({
   band,
+  captions,
   formatTime,
   insets,
   keys,
@@ -27,11 +29,12 @@ const PortraitChrome = ({
   PlayerChromeProps,
   "band" | "formatTime" | "keys" | "live" | "onGoLive" | "onLeave" | "unmute" | "utilities"
 > & {
+  captions: readonly string[];
   /** The phone's safe areas. */
   insets: ViewportInsets;
 }) => {
   const [frame, setFrame] = useState({ height: 0, width: 0 });
-  // The centred 16:9 picture's foot, for the unmute pill just under it.
+  // The centred 16:9 picture's foot, for the unmute pill just under it and the subtitle just inside it.
   const pictureFoot = (frame.height + (frame.width * 9) / 16) / 2;
   return (
     <View
@@ -62,6 +65,15 @@ const PortraitChrome = ({
         >
           <UnmutePill onPress={unmute} />
         </View>
+      ) : null}
+      {/* Nothing covers an upright phone's picture, so its subtitle sits at the picture's own foot. */}
+      {frame.height > 0 ? (
+        <PlayerCaption
+          bottom={frame.height - pictureFoot + 8}
+          density="touch"
+          lines={captions}
+          where="upright"
+        />
       ) : null}
       <View
         pointerEvents="box-none"

@@ -1,6 +1,7 @@
 import type { ChannelTracksOutputBody } from "@loomarr/api";
 import {
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
@@ -145,6 +146,8 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
       probed = true;
       return { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] };
     }),
+    // The subtitles beside the stream, read along the playhead: a programme with none.
+    getChannelSubtitlesMockHandler({ cues: [], pending: false, tracks: [] }),
   );
   return { wasProbed: () => probed };
 };
@@ -211,6 +214,45 @@ describe("ChannelWatch pickers", () => {
     ]);
     // The channel's own choice (Auto, unset) is the one marked.
     expect(within(languages).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
+  });
+
+  it("lists the programme's subtitles, draws the chosen track's line, and remembers it; C steps on", async () => {
+    stubTracks();
+    // The programme on air has English and English for the deaf and hard of hearing; each track's
+    // cue at the playhead (1,000,000) names the track it was asked for.
+    const asked: (string | null)[] = [];
+    server.use(
+      getChannelSubtitlesMockHandler(({ request }) => {
+        const track = new URL(request.url).searchParams.get("track");
+        asked.push(track);
+        return {
+          cues: track ? [{ endMs: 1_002_000, startMs: 999_000, text: `Line in ${track}` }] : [],
+          pending: false,
+          tracks: [
+            { forced: false, hearingImpaired: false, key: "en", language: "en", title: "" },
+            { forced: false, hearingImpaired: true, key: "en-sdh", language: "en", title: "SDH" },
+          ],
+        };
+      }),
+    );
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Subtitles" }));
+    const choices = within(menu("Subtitles")).getByRole("radiogroup", { name: "Subtitles" });
+    await waitFor(() => expect(within(choices).getAllByRole("radio")).toHaveLength(3));
+    expect(within(choices).getByRole("radio", { name: "Off" })).toHaveAttribute("aria-checked", "true");
+    expect(within(choices).getByRole("radio", { name: "English, with sounds" })).toBeInTheDocument();
+    // Off reads the tracks alone: no track is read from the media until one is chosen.
+    expect(asked).toEqual([null]);
+
+    await userEvent.click(within(choices).getByRole("radio", { name: "English" }));
+    expect(await screen.findByText("Line in en")).toBeInTheDocument();
+    expect(localStorage.getItem("loomarr.player.subtitles")).toBe("en");
+
+    await userEvent.keyboard("{Escape}c");
+    expect(await screen.findByText("Line in en-sdh")).toBeInTheDocument();
+    localStorage.clear();
   });
 
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {

@@ -149,6 +149,8 @@ interface PlayerChromeProps {
   utilities: PlayerUtilitiesProps;
   /** Playback details as a panel at the upper left (pointer devices); a phone shows it as a sheet. */
   panel?: ReactNode;
+  /** The subtitle lines on screen now, drawn over the picture; empty or omitted for none (§9.5). */
+  captions?: readonly string[];
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
   /**

@@ -2,6 +2,13 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { audioChoices } from "@loomarr/core/channel-audio";
+import {
+  createChannelSubtitlesSource,
+  nextSubtitle,
+  SUBTITLES_OFF,
+  subtitleChoices,
+  useChannelSubtitles,
+} from "@loomarr/core/channel-subtitles";
 import { formatGuideTime } from "@loomarr/core/guide";
 import { ThemeScope } from "@loomarr/design-system";
 import type { PlayerFailureCause } from "@loomarr/player";
@@ -32,6 +39,7 @@ import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { TunerOSD } from "../tuner-osd";
 import { usePlaybackDetails } from "../use-playback-details";
+import { useSubtitlesPreference } from "../use-subtitles-preference";
 import { useSwitchSound } from "../use-switch-sound";
 import { useTunePhase } from "../use-tune-phase";
 import type { WatchChannels } from "../use-watch-channels";
@@ -50,6 +58,10 @@ import { useWatchTelemetry } from "../use-watch-telemetry";
 //
 // ⚠ Audio only SHOWS the channel's default audio language. An admin sets it on the channel's info
 // page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
+
+// Subtitles are read beside the stream with the session cookie, the same-origin request every
+// member read makes.
+const subtitlesSource = createChannelSubtitlesSource((input, init) => fetch(input, init));
 
 interface ChannelWatchProps {
   channel: ChannelDTO;
@@ -267,6 +279,19 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // still applies when a programme with that track airs (audioChoices keeps it).
   const audio = audioChoices(tracksBody?.audio ?? [], channel.policy?.playout?.audioLanguage);
 
+  // Subtitles (§9.5): the viewer's remembered track, followed along the picture's own clock, so a
+  // viewer behind live reads the lines of what is on screen. C steps through the menu's choices.
+  const [subtitlesKey, setSubtitlesKey] = useSubtitlesPreference();
+  const subtitles = useChannelSubtitles(
+    subtitlesSource,
+    channel.id,
+    viewerTimeMs,
+    subtitlesKey,
+    !paused && player.status === "playing",
+  );
+  const subtitleOptions = subtitleChoices(subtitles.tracks ?? [], subtitlesKey);
+  const subtitlesOn = subtitlesKey !== SUBTITLES_OFF;
+
   // Quality (#2088 decision 7): Auto, naming the rung on air, then the channel's rungs. A remembered
   // rung this channel doesn't offer shows Auto chosen, because Auto is what plays.
   const { rungs, height: onAir } = player.ladder;
@@ -368,6 +393,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     infoAsCard: !touch,
     onDetails: () => setDetailsOpen((open) => !open),
     onLast: goLast,
+    onNextSubtitles: () => setSubtitlesKey(nextSubtitle(subtitleOptions)),
     // Esc closes the top layer, then leaves: the details panel and the volume level are layers too.
     onLeave: () =>
       detailsOpen ? setDetailsOpen(false) : volumeOpen || volumeFlash > 0 ? closeVolume() : onLeave(),
@@ -429,7 +455,18 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // What is open: a menu or a sheet, by placement. Info on a pointer is neither: it is the block on
   // air's card on the film strip, pinned open in full (the strip's `info`).
   const openSheetFor = (chrome: VideoPlayerChrome) =>
-    sheet === "audio" ? (
+    sheet === "subtitles" ? (
+      // A choice leaves the menu open, so the viewer sees the lines change as they choose.
+      sheetOf(
+        "Subtitles",
+        <PlayerOptions
+          density={density}
+          label="Subtitles"
+          onSelect={setSubtitlesKey}
+          options={subtitleOptions}
+        />,
+      )
+    ) : sheet === "audio" ? (
       sheetOf(
         "Audio",
         <PlayerAudio
@@ -562,6 +599,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         {errorCover ?? (
           <PlayerChrome
             band={chromeData.band}
+            captions={subtitles.lines}
             density={density}
             formatTime={formatGuideTime}
             ident={ident}
@@ -637,7 +675,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               fullscreen: chrome.fullscreen,
               onAudio: () => toggleSheet("audio"),
               onFullscreen: chrome.toggleFullscreen,
+              onSubtitles: () => toggleSheet("subtitles"),
               pointer: !touch,
+              subtitlesOn,
+              subtitlesOpen: sheet === "subtitles",
             }}
             unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
             // The quiet flip keeps the band up (§9.4); only the full signature hides it.

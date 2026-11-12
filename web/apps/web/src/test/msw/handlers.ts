@@ -1,6 +1,7 @@
 import {
   getChannelGuideMockHandler,
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelsNowNextMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
@@ -147,7 +148,7 @@ const appHandlers = (): RequestHandler[] => [
   getChannelsNowNextMockHandler({ channels: [] }),
   // A single channel read &mdash; the channel-detail routes fetch this by id.
   getGetChannelMockHandler(channel()),
-  // ⚠ The WATCH surface's three reads, and they belong in the SHARED set because opening a channel
+  // ⚠ The WATCH surface's reads, and they belong in the SHARED set because opening a channel
   // now lands on Watch and tunes in on mount (§9.1 V54). Every route-level test that renders a
   // channel therefore mounts the player, so leaving these per-test would make the shared set
   // incomplete for the app's default landing screen — an unhandled request is a loud MSW error,
@@ -156,6 +157,8 @@ const appHandlers = (): RequestHandler[] => [
   // Deliberately empty/inert payloads: these exist so the player MOUNTS without an unhandled
   // request, not to make it play. A test that cares about tracks or the timeline stubs its own.
   getChannelTracksMockHandler({ audio: [], subtitles: [] }),
+  // The subtitles beside the stream: a programme with none, so the menu is Off alone.
+  getChannelSubtitlesMockHandler({ cues: [], pending: false, tracks: [] }),
   getChannelTimelineMockHandler({ serverNowMs: Date.UTC(2026, 0, 1), airings: [] }),
   // What the channel and Library routes' loaders read, so opening one is not an unhandled request.
   getChannelUpcomingMockHandler({ upcoming: [] }),

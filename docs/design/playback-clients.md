@@ -202,8 +202,10 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
   remote focus starts on the film strip's on-air block (§9.7). Their Audio reads the same two things
   the web's does (the airing programme's tracks and the channel's language, both a member's reads,
-  `@loomarr/core/channel-audio`), each time it opens. The server serves subtitles; the Subtitles key
-  stays hidden on a client until it draws them (#3409).
+  `@loomarr/core/channel-audio`), each time it opens. Subtitles are `@loomarr/core/channel-subtitles` on every
+  client: the menu's choices, `C`'s next one, and a follower that asks for the remembered track's
+  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The web draws them;
+  the Subtitles key stays hidden on the phone and TV until they do (#3409).
 
 ## Android TV
 

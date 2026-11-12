@@ -5,9 +5,11 @@ import { type LayoutChangeEvent, Platform, View } from "react-native";
 import { ChannelBand } from "./channel-band";
 import { gradientOr, webOnly } from "./flat";
 import { IdentBackdrop } from "./ident-backdrop";
+import { PlayerCaption } from "./player-caption";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
 import { PlayerReadout } from "./player-readout";
+import { sheetWidth } from "./player-sheet";
 import { PlayerLeave, PlayerUtilities, UTILITY_SIZE } from "./player-utilities";
 import { PortraitChrome } from "./portrait-chrome";
 import { TuneDip } from "./tune-dip";
@@ -34,6 +36,7 @@ const READOUT_REACH = { pointer: 150, touch: 100 } as const;
 const ChromeBody = memo(
   ({
     band,
+    captions = [],
     density,
     formatTime,
     ident = false,
@@ -100,6 +103,7 @@ const ChromeBody = memo(
         <ThemeScope theme="dark">
           <PortraitChrome
             band={band}
+            captions={captions}
             formatTime={formatTime}
             insets={insets}
             keys={keys}
@@ -244,6 +248,15 @@ const ChromeBody = memo(
           </View>
         ) : null}
         {readout ? <PlayerReadout density={density} top={readoutAt} {...readout} /> : null}
+        {/* The subtitle: lifted clear of the band while it is up, at the picture's foot while it is
+            down. A side sheet keeps the line in what shows of the picture, at its foot. */}
+        <PlayerCaption
+          bottom={shown && !sheet ? bottomBase + bandLift + bandHeight + 16 : bottomBase + 12}
+          density={density}
+          lines={captions}
+          right={sheet ? sheetWidth(density) + insets.right : 0}
+          where={tv ? "tv" : touch ? "landscape" : "pointer"}
+        />
         {panel}
         {sheetLayer}
       </ThemeScope>
