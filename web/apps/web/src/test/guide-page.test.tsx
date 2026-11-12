@@ -462,6 +462,27 @@ describe("Guide", () => {
     expect(froms).toContain(new Date(tomorrowMidnight).setHours(21));
   });
 
+  // The axis reads in the household's zone, so the hour a link opens on is that zone's, whatever
+  // zone the device is in. Kiritimati (UTC+14) is no test machine's zone.
+  it("opens a link's ?at= on the household's hour, not the device's", async () => {
+    stubGuide();
+    const zone = "Pacific/Kiritimati";
+    const today = new Date();
+    // 07:30 UTC tomorrow is 21:30 in Kiritimati, so the grid opens at its 21:00: 07:00 UTC.
+    const at = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1, 7, 30);
+    const froms: number[] = [];
+    server.use(
+      http.get("*/v1/guide", ({ request }) => {
+        froms.push(Number(new URL(request.url).searchParams.get("from")));
+        return HttpResponse.json({ ...GUIDE, timezone: zone });
+      }),
+    );
+    const view = renderAt(`${GRID}&at=${at}&channel=ch-live`);
+
+    expect(await view.findByRole("button", { name: "View options, custom" })).toBeInTheDocument();
+    await waitFor(() => expect(froms).toContain(at - 30 * 60_000));
+  });
+
   it("opens the channel's page from its name, not the player (#2745)", async () => {
     const user = userEvent.setup();
     stubGuide();
