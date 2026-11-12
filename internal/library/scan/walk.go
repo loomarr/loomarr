@@ -71,6 +71,9 @@ var extrasDirs = map[string]bool{
 	"backdrops": true, "sample": true, "special features": true, "bonus features": true, "clips": true,
 	"extra": true, "theme-music": true, "proof": true, "proofs": true, "dvd extras": true, "supplements": true,
 	"supplemental": true, "bonus content": true, "extras and bonus": true,
+	// An anime release's openings and endings without their credits, and its menus.
+	"creditless": true, "nc": true, "ncop": true, "nced": true, "ncop & nced": true, "op & ed": true, "op-ed": true,
+	"openings": true, "endings": true, "menus": true, "menu": true,
 }
 
 // extrasFolder says whether a folder named name in parent is an extras folder: named by its kind,

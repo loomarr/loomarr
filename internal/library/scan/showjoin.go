@@ -153,8 +153,17 @@ func showIdentity(base string) (string, int) {
 	if m := bracketYear.FindString(s); m != "" {
 		year = atoi(m[1 : len(m)-1])
 	}
-	// A release's batch notes and its season: "(01-12)", "[1080p]", "(Season 2)", "S2".
-	s = bracketGroup.ReplaceAllString(s, " ")
+	// A release's batch notes and its season: "(01-12)", "[1080p]", "(Season 2)", "S2". Any other
+	// bracket is the show's name: "Quiet Office (US)" and "Quiet Office (UK)" are two shows, as are
+	// "Tin Cup" and "Tin Cup (Animated)".
+	s = bracketGroup.ReplaceAllStringFunc(s, func(g string) string {
+		inner := strings.TrimSpace(g[1 : len(g)-1])
+		if bracketYear.MatchString(g) || episodeRange.MatchString(g) || releaseNotes.MatchString(g) ||
+			trailingSeason.MatchString(" "+inner) || digits(strings.ReplaceAll(inner, "-", "")) {
+			return " "
+		}
+		return g
+	})
 	s = trailingSeason.ReplaceAllString(strings.TrimSpace(s), "")
 	title, y, _ := searchQuery(showFolderName(strings.TrimSpace(s)), 0)
 	if year == 0 {

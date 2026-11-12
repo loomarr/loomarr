@@ -133,6 +133,21 @@ func TestPrincipleShowIsOneWhereverKept(t *testing.T) {
 	}
 }
 
+// TestPrincipleTaggedShowsStayApart: two shows of one name told apart by a bracketed tag, as
+// Sonarr names a remake by its country ("Quiet Office (US)") or a spin-off by its kind ("Tin Cup
+// (Animated)"), are two shows, never joined into one.
+func TestPrincipleTaggedShowsStayApart(t *testing.T) {
+	for _, tags := range [][2]string{{"(US)", "(UK)"}, {"", "(AU)"}, {"", "(Animated)"}, {"(UK)", "(NZ)"}, {"", "(Kids)"}} {
+		files := map[string]string{}
+		for _, tag := range tags {
+			folder := strings.TrimSpace("Quiet Office " + tag)
+			files[fmt.Sprintf("TV/%s/Season 1/Quiet Office S01E01.mkv", folder)] = fmt.Sprintf("episode %s S1E1", showName(folder))
+			files[fmt.Sprintf("TV/%s/Season 1/Quiet Office S01E02.mkv", folder)] = fmt.Sprintf("episode %s S1E2", showName(folder))
+		}
+		t.Run(strings.Trim(tags[0]+tags[1], "()"), func(t *testing.T) { principleRead(t, files) })
+	}
+}
+
 // TestPrincipleFilmVersionIsKept: a film's copy beside it, named by how it was cut, framed,
 // coloured or voiced, is the film, never skipped; only a label that says an extra is one.
 func TestPrincipleFilmVersionIsKept(t *testing.T) {

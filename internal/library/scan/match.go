@@ -488,6 +488,27 @@ func dottedWords(w string) []string {
 
 var yearToken = regexp.MustCompile(`^(19|20)\d{2}$`)
 
+// videoSiteID matches a video site's id in brackets at a name's end, as yt-dlp writes it: eleven
+// letters, digits, dashes or underscores, "[abcDEF12345]" (withoutVideoID).
+var videoSiteID = regexp.MustCompile(`\s*\[([A-Za-z0-9_-]{11})\]$`)
+
+// withoutVideoID is a name without a video site's id at its end: one of eleven characters in both
+// cases or with a digit ("[abcDEF12345]", "[abcdef12345]"), never a word or a release's notes
+// ("[Remastered]").
+func withoutVideoID(name string) string {
+	m := videoSiteID.FindStringSubmatchIndex(name)
+	if m == nil {
+		return name
+	}
+	// An id carries a digit or both cases, as a word or a release's note doesn't.
+	id := name[m[2]:m[3]]
+	if strings.IndexFunc(id, unicode.IsDigit) < 0 && (strings.ToLower(id) == id || strings.ToUpper(id) == id) ||
+		strings.IndexFunc(id, unicode.IsLetter) < 0 {
+		return name
+	}
+	return name[:m[0]]
+}
+
 // releaseYear is whether a year-like word could be a release's year: none is dated after next year,
 // so "Harbor Lights 2049" is a title.
 func releaseYear(word string) bool {
@@ -509,6 +530,8 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	// A release's notes at its end say nothing of its title: "Ashgrove.CAM [1080p]" is
 	// "Ashgrove.CAM".
 	name = trimReleaseNotes(strings.TrimSpace(name))
+	// A video site's id after the title, "How to throw a bowl [abcDEF12345]", is no part of it.
+	name = withoutVideoID(name)
 	// A leading year is the year: "(2015) Ashgrove". Any other leading tag is a release group's.
 	leadingYear := 0
 	if m := leadingYearTag.FindStringSubmatch(name); m != nil {

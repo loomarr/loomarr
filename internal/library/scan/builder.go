@@ -159,16 +159,24 @@ func (b *builder) identify(file File) identity {
 	}
 	embedded, seriesDir := embeddedRecord(file)
 	// A file whose name says nothing of an episode is one when its own NFO says so: a scraper
-	// placed it ("Kettle Bay - Tidewater.mkv" beside an <episodedetails>).
-	if embedded.Kind == mp.KindMovie && len(m.records) == 0 && path.Dir(file.Rel) != "." {
+	// placed it ("Kettle Bay - Tidewater.mkv" beside an <episodedetails>). So is a file only its
+	// folder places as an episode a film when its own NFO is a <movie>: "TV/Odd/abc123.mkv" beside
+	// "abc123.nfo". A file's own mark ("S01E02") or day is never overruled.
+	placedOnly := embedded.Kind == mp.KindEpisode && embedded.Numbering == nil &&
+		(embedded.Descriptive == nil || embedded.Descriptive.PremiereDate == "")
+	if (embedded.Kind == mp.KindMovie || placedOnly) && len(m.records) == 0 && path.Dir(file.Rel) != "." {
 		own := strings.ToLower(strings.TrimSuffix(file.Path, filepath.Ext(file.Path)))
 		for nfo, st := range file.Sidecars {
 			if !isNFO(nfo) || strings.ToLower(strings.TrimSuffix(nfo, filepath.Ext(nfo))) != own {
 				continue
 			}
-			if b.im.nfoRoots.rootOf(nfo, st) == "episodedetails" {
+			switch root := b.im.nfoRoots.rootOf(nfo, st); {
+			case root == "episodedetails" && embedded.Kind == mp.KindMovie:
 				seriesDir = seriesFolderOf(file)
 				embedded = mp.Record{Source: embedded.Source, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}
+			case root == "movie" && placedOnly:
+				seriesDir = ""
+				embedded = mp.Record{Source: embedded.Source, Kind: mp.KindMovie}
 			}
 		}
 	}
