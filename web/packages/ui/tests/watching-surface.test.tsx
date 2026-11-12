@@ -9,6 +9,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface, type WatchingSurfaceProps } from "../index";
 
+// Records which pressable asks for the TV's focus as it renders; react-native-web drops the prop.
+const preferredFocus = vi.hoisted(() => ({ labels: [] as string[] }));
+vi.mock("react-native", async (importOriginal) => {
+  const original = await importOriginal<typeof import("react-native")>();
+  const { createElement } = await import("react");
+  const Pressable = (props: Parameters<typeof original.Pressable>[0]) => {
+    if (props.hasTVPreferredFocus && props.accessibilityLabel)
+      preferredFocus.labels.push(props.accessibilityLabel);
+    return createElement(original.Pressable, props);
+  };
+  return { ...original, Pressable };
+});
+
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The package compiles without the DOM lib (it is React Native first), so the test names the little
@@ -192,6 +205,76 @@ describe("WatchingSurface", () => {
     expect(host.querySelector(`${menu} [aria-current="true"]`)?.textContent).toBe("English");
     act(() => button(host, "Audio")?.click());
     expect(onLayer).toHaveBeenLastCalledWith(undefined);
+  });
+
+  // Subtitles (§9.5): a television's own key, a menu of choices, and the line on the picture.
+  const subtitles = (choose = vi.fn(), captions: readonly string[] = ["I thought you said tonight"]) => ({
+    captions,
+    choose,
+    on: true,
+    options: [
+      { label: "Off", selected: false, value: "off" },
+      { label: "English", selected: true, value: "en" },
+    ],
+  });
+
+  it("draws no Subtitles key until the client has subtitles", () => {
+    const { host } = mount(() => surface());
+    expect(button(host, "Subtitles")).toBeUndefined();
+  });
+
+  it("opens Subtitles from its key, chooses a track from its rows, and draws the line", () => {
+    const onLayer = vi.fn();
+    const choose = vi.fn();
+    const { host, render } = mount(() => surface({ onLayer, subtitles: subtitles(choose) }));
+    act(() => button(host, "Subtitles")?.click());
+    expect(onLayer).toHaveBeenLastCalledWith("subtitles");
+    render(() => surface({ layer: "subtitles", onLayer, subtitles: subtitles(choose) }));
+    const menu = '[role="dialog"][aria-label="Subtitles"]';
+    const rows = Array.from(host.querySelectorAll(`${menu} [role="radio"]`));
+    expect(rows.map((row) => [row.textContent, row.getAttribute("aria-checked")])).toEqual([
+      ["Off", "false"],
+      ["English", "true"],
+    ]);
+    act(() => rows[0]?.click());
+    expect(choose).toHaveBeenCalledWith("off");
+    expect(host.querySelector('[data-testid="player-caption"]')?.textContent).toBe(
+      "I thought you said tonight",
+    );
+  });
+
+  it("keeps drawing the line when the controls are down", () => {
+    const { host } = mount(() => surface({ controlsVisible: false, subtitles: subtitles() }));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector('[data-testid="player-caption"]')?.textContent).toBe(
+      "I thought you said tonight",
+    );
+  });
+
+  it("hands the remote's focus back to the key whose menu Back closed", () => {
+    for (const [layer, key] of [
+      ["subtitles", "Subtitles"],
+      ["more", "More"],
+    ] as const) {
+      const { render } = mount(() => surface({ layer, subtitles: subtitles() }));
+      preferredFocus.labels.length = 0;
+      render(() => surface({ subtitles: subtitles() }));
+      expect(preferredFocus.labels).toContain(key);
+    }
+  });
+
+  it("leaves focus alone on keys whose menus never opened", () => {
+    preferredFocus.labels.length = 0;
+    mount(() => surface({ subtitles: subtitles() }));
+    expect(preferredFocus.labels.filter((l) => ["Audio", "More", "Subtitles"].includes(l))).toEqual([]);
+  });
+
+  it("keeps the controls up while Subtitles waits for a choice", () => {
+    vi.useFakeTimers();
+    const dismiss = vi.fn();
+    mount(() => surface({ layer: "subtitles", onDismissControls: dismiss, subtitles: subtitles() }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(dismiss).not.toHaveBeenCalled();
   });
 
   it("keeps the controls up while Audio is open", () => {

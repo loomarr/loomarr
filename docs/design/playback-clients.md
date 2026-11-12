@@ -204,8 +204,9 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   the web's does (the airing programme's tracks and the channel's language, both a member's reads,
   `@loomarr/core/channel-audio`), each time it opens. Subtitles are `@loomarr/core/channel-subtitles` on every
   client: the menu's choices, `C`'s next one, and a follower that asks for the remembered track's
-  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The web draws them;
-  the Subtitles key stays hidden on the phone and TV until they do (#3409).
+  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The phone and TV
+  remember the choice on the device (`usePairedSubtitles`, `@loomarr/paired-client`); a television's
+  menu starts its focus on the choice in use, and its line stays while the controls are down.
 
 ## Android TV
 
@@ -221,7 +222,8 @@ the user's home-screen ordering.
   controls are up, Left and Right move focus through them instead (frontend-design §9.7). The More
   key opens a menu over the keys (Channels, Info, and Start over and Go live when behind): every
   arrow moves through its rows, the controls stay up until a choice, and Menu or Back closes it, as
-  they close Info, the on-air card pinned open, before doing anything else (§9.5). The Audio key
+  they close Info, the on-air card pinned open, before doing anything else (§9.5). Closing a menu
+  hands the remote's focus back to the key that opened it. The Audio key
   opens the channel's language in the same place, read-only, so focus stays on the key, whose OK
   closes it as Menu or Back does. Channel
   identity and the programme bar appear together and clear after five seconds. During filler the

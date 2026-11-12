@@ -254,8 +254,9 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
 //
 // Our tracks carry ISO 639-2 (3-letter, "eng"); Intl prefers 639-1 but accepts many 3-letter
 // codes. Where it can't resolve one it returns the input unchanged, so we fall back to the
-// upper-cased code. Intl.DisplayNames throws on a malformed code, and very old runtimes lack it,
-// so both are guarded; the one instance is created lazily and reused.
+// upper-cased code. Intl.DisplayNames throws on a malformed code, and a runtime can lack it, so
+// both are guarded; the one instance is created lazily and reused. Hermes lacks it: the native
+// apps install it from @loomarr/native-app (src/intl-polyfills) before any screen draws.
 let displayNames: Intl.DisplayNames | undefined;
 let displayNamesInitialised = false;
 
