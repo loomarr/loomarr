@@ -227,10 +227,20 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 	if item.Kind != kindMovie && item.Kind != kindSeries && item.Kind != kindEpisode {
 		return librarystore.LibraryItem{}, false
 	}
-	// Present beats missing, then newer beats older; the key breaks a tie, so the pick is stable.
+	// Present beats missing, then a copy grounded in the catalog beats one known only by its name
+	// (two copies of one title, one with an NFO naming its TMDB id: the title is named by that one,
+	// whichever copy was written last), then newer beats older; the key breaks a tie, so the pick is
+	// stable.
+	grounded := func(o inventory.ItemOrigin) bool {
+		listed := readOriginExtension(o.Observation.Extension).Listed
+		return listed != nil && listed.Catalog.String() != ""
+	}
 	better := func(o, than inventory.ItemOrigin) bool {
 		if o.MissingAt.IsZero() != than.MissingAt.IsZero() {
 			return o.MissingAt.IsZero()
+		}
+		if g := grounded(o); g != grounded(than) {
+			return g
 		}
 		if !o.Observation.ObservedAt.Equal(than.Observation.ObservedAt) {
 			return o.Observation.ObservedAt.After(than.Observation.ObservedAt)
