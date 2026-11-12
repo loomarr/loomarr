@@ -40,10 +40,18 @@ const Stat = ({
       {label}
     </Text>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
-    <span className={cn("text-lg font-semibold tabular-nums", tone === "warn" && "text-caution")}>
+    <Text
+      as="span"
+      className="tabular-nums"
+      strong
+      textRole="headline"
+      tone={tone === "warn" ? "warning" : "primary"}
+    >
       {value}
-    </span>
-    <span className="text-muted-foreground text-xs">{note}</span>
+    </Text>
+    <Text as="span" textRole="hint" tone="secondary">
+      {note}
+    </Text>
   </Stack>
 );
 
@@ -73,10 +81,10 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
         gap="inline"
         render="section"
       >
-        <p className="min-w-0 flex-1 text-sm">
+        <Text as="p" className="min-w-0 flex-1" textRole="compact" tone="primary">
           {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
           {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
-        </p>
+        </Text>
         <Action aria-expanded={false} onPress={() => setExpanded(true)} variant="outline">
           Details
         </Action>

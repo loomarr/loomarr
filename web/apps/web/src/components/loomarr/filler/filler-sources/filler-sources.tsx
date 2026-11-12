@@ -1,5 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, type StatusTone, Surface, Text, Toggle } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -81,7 +81,9 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           </ListGroup>
         </div>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">No sources match your filter.</p>
+        <Text as="p" className="mt-3" textRole="compact" tone="secondary">
+          No sources match your filter.
+        </Text>
       )}
 
       {remaining > 0 && (
@@ -232,15 +234,17 @@ const FillerSources = ({
     <Stack className={className} gap="section">
       <Stack align="start" direction="row" gap="4" wrap>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">Where filler comes from</h2>
-          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
+          <Text as="h2" strong textRole="cardLabel">
+            Where filler comes from
+          </Text>
+          <Text as="p" className="mt-1 max-w-xl" textRole="compact" tone="secondary">
             Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
             added.
-          </p>
+          </Text>
         </div>
-        <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
+        <Text as="span" className="shrink-0 whitespace-nowrap" textRole="hint" tone="secondary">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
-        </span>
+        </Text>
       </Stack>
 
       {needsLocation && (
@@ -253,10 +257,12 @@ const FillerSources = ({
           wrap
         >
           <div>
-            <p className="text-sm font-medium">Add your location</p>
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="cardLabel" tone="primary">
+              Add your location
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               Loomarr uses it to choose sources that fit your area.
-            </p>
+            </Text>
           </div>
           <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
             Set location
@@ -264,7 +270,11 @@ const FillerSources = ({
         </Stack>
       )}
 
-      {error && <p className="text-onair-300 text-sm">{error}</p>}
+      {error && (
+        <Text as="p" textRole="compact" tone="danger">
+          {error}
+        </Text>
+      )}
 
       {(localSources.length > 0 || renderLocalSetup) && (
         <section aria-labelledby="local-filler-sources" className="border-border/60 border-t pt-5">
@@ -273,11 +283,13 @@ const FillerSources = ({
               <h3 id="local-filler-sources" className="font-medium">
                 Your files
               </h3>
-              <p className="text-muted-foreground mt-1 text-sm">
+              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                 Folders and media-server libraries you already manage.
-              </p>
+              </Text>
             </div>
-            <span className="text-muted-foreground shrink-0 text-xs">{sourceSummary(localSources)}</span>
+            <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+              {sourceSummary(localSources)}
+            </Text>
           </Stack>
 
           {renderLocalSetup && <div className="mt-4">{renderLocalSetup}</div>}
@@ -306,14 +318,16 @@ const FillerSources = ({
                 <h3 id={`provider-${provider.kind}`} className="font-medium">
                   {provider.target}
                 </h3>
-                <p className="text-muted-foreground mt-1 text-sm">
+                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                   {!provider.enabled
                     ? `${provider.target} is paused. Sources and clips stay saved.`
                     : descriptions.find((description) => description.id === provider.kind)?.blurb}
-                </p>
+                </Text>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-3">
-                <span className="text-muted-foreground text-xs">{sourceSummary(children)}</span>
+                <Text as="span" textRole="hint" tone="secondary">
+                  {sourceSummary(children)}
+                </Text>
                 {onToggleProvider && (
                   <Toggle
                     kind="switch"
@@ -340,7 +354,9 @@ const FillerSources = ({
                   renderRow={row}
                 />
               ) : (
-                <p className="text-muted-foreground mt-3 text-xs">Nothing added yet.</p>
+                <Text as="p" className="mt-3" textRole="hint" tone="secondary">
+                  Nothing added yet.
+                </Text>
               )}
             </div>
           </section>

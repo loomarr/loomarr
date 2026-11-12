@@ -8,14 +8,17 @@ import type { ChannelCardProps, ChannelHealth } from "./channel-card.type";
 // ChannelCard — channel health at a glance (§3): the mono number, name, now/next,
 // a "Managed by Loomarr" badge (§9 ownership), and a health chip. Composes the
 // OnAir + NowNext atoms. States: healthy · pending-slots · drift · error · creating.
-const HEALTH: Record<ChannelHealth, { label: string; chip: string } | null> = {
+const HEALTH: Record<
+  ChannelHealth,
+  { label: string; chip: string; tone: "danger" | "info" | "secondary" | "warning" } | null
+> = {
   healthy: null,
-  "pending-slots": { label: "Filling in", chip: "bg-tune-tint-15 text-tune" },
-  drift: { label: "Drift", chip: "bg-caution-tint-15 text-caution" },
-  error: { label: "Error", chip: "bg-onair-tint-15 text-onair-300" },
-  creating: { label: "Creating", chip: "bg-static-800 text-static-400" },
+  "pending-slots": { label: "Filling in", chip: "bg-tune-tint-15", tone: "info" },
+  drift: { label: "Drift", chip: "bg-caution-tint-15", tone: "warning" },
+  error: { label: "Error", chip: "bg-onair-tint-15", tone: "danger" },
+  creating: { label: "Creating", chip: "bg-static-800", tone: "secondary" },
   // A deliberate operator pause — calm and neutral (a muted chip), never an error.
-  paused: { label: "Paused", chip: "bg-static-800 text-static-400" },
+  paused: { label: "Paused", chip: "bg-static-800", tone: "secondary" },
 };
 
 const ChannelCard = ({
@@ -53,14 +56,14 @@ const ChannelCard = ({
       <NowNextStrip {...nowNext} />
 
       {chip && (
-        <span
-          className={cn(
-            "text-2xs inline-flex w-fit items-center rounded-sm px-1.5 py-0.5 font-mono font-medium",
-            chip.chip,
-          )}
+        <Text
+          as="span"
+          className={cn("inline-flex w-fit items-center rounded-sm px-1.5 py-0.5", chip.chip)}
+          textRole="mono"
+          tone={chip.tone}
         >
           {chip.label}
-        </span>
+        </Text>
       )}
     </Card>
   );

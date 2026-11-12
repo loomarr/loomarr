@@ -71,12 +71,14 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
             <Stack
               key={key}
               align="center"
-              className="border-border bg-muted/40 rounded-md border px-2 py-1 text-sm"
+              className="border-border bg-muted/40 rounded-md border px-2 py-1"
               direction="row"
               gap="1.5"
               render="li"
             >
-              <span className="text-muted-foreground font-mono text-xs">{labelOfKey(key)}</span>
+              <Text as="span" textRole="mono">
+                {labelOfKey(key)}
+              </Text>
               <Action
                 compact
                 icon="close"

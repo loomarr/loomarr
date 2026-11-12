@@ -5,7 +5,7 @@ import type { ProgrammingChangeSideDTO } from "@loomarr/api/models/programmingCh
 import { ProgrammingChangeSideDTOKind } from "@loomarr/api/models/programmingChangeSideDTOKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
 import { EmptyState, ErrorState } from "../../feedback";
@@ -37,22 +37,31 @@ const sideLabel = (side: ProgrammingChangeSideDTO | undefined): string => {
 // three columns would squeeze the titles to a word per line, so the change drops to its own
 // full-width line under the time and rule.
 const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZone?: string }) => (
-  <li className="border-border flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-b py-1.5 text-sm last:border-b-0">
-    <span className="text-muted-foreground w-28 shrink-0 font-mono">
+  <Text
+    as="li"
+    className="border-border flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-b py-1.5 last:border-b-0"
+    textRole="compact"
+    tone="primary"
+  >
+    <Text as="span" className="w-28 shrink-0" textRole="mono">
       {formatSlotTime(change.startMs, timeZone)}
-    </span>
+    </Text>
     <span className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
-      <span className="text-muted-foreground line-through">{sideLabel(change.before)}</span>
-      <span className="text-muted-foreground" aria-hidden>
+      <Text as="span" className="line-through" textRole="compact" tone="secondary">
+        {sideLabel(change.before)}
+      </Text>
+      <Text aria-hidden as="span" textRole="compact" tone="secondary">
         {" → "}
-      </span>
+      </Text>
       <span className="sr-only"> becomes </span>
       <span>{sideLabel(change.after)}</span>
     </span>
     {change.after ? (
-      <span className="text-muted-foreground ml-auto text-xs">{change.after.rule.label}</span>
+      <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+        {change.after.rule.label}
+      </Text>
     ) : null}
-  </li>
+  </Text>
 );
 
 // ChannelProgrammingChanges — the upcoming slots an unsaved edit changes (programming-design §8.1,
@@ -91,9 +100,9 @@ const ChannelProgrammingChanges = ({
   let content: React.ReactNode;
   if (!draftPolicy) {
     content = (
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Edit the rules above to see which upcoming slots change.
-      </p>
+      </Text>
     );
   } else if (error) {
     content = (
@@ -104,7 +113,11 @@ const ChannelProgrammingChanges = ({
     );
   } else if (changes.isPending || !body) {
     // Also covers the debounce window before this draft's request, which has no result yet.
-    content = <p className="text-muted-foreground text-sm">Loading changes…</p>;
+    content = (
+      <Text as="p" textRole="compact" tone="secondary">
+        Loading changes…
+      </Text>
+    );
   } else if (body.compared === 0) {
     content = (
       <EmptyState title="Nothing scheduled" description="Nothing airs in this span to compare against." />
@@ -114,12 +127,12 @@ const ChannelProgrammingChanges = ({
   } else {
     content = (
       <Stack gap="inline">
-        <p className="text-muted-foreground text-xs">
+        <Text as="p" textRole="hint" tone="secondary">
           {body.truncated
             ? `Showing ${body.changes.length} of ${body.count} changes`
             : `${body.count} ${body.count === 1 ? "change" : "changes"}`}{" "}
           until {formatSlotTime(body.toMs, timeZone)}
-        </p>
+        </Text>
         {/* Rows are text, so the scroll region itself takes the Tab stop (see the cycle
             preview's slot list for the same treatment). */}
         <Stack
@@ -144,9 +157,9 @@ const ChannelProgrammingChanges = ({
 
   return (
     <Stack aria-labelledby="programming-changes-heading" className={className} gap="inline" render="section">
-      <h3 id="programming-changes-heading" className="text-base font-semibold">
+      <Text as="h3" id="programming-changes-heading" textRole="heading">
         What changes
-      </h3>
+      </Text>
       {content}
     </Stack>
   );

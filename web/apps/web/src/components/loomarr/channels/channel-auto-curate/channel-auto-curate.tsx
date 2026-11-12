@@ -89,13 +89,13 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               now, not a static description of the setting. (An earlier version always read "Off,
               new titles wait for your approval", which flatly contradicted a ticked box; the
               unit tests passed and the story screenshot caught it.) */}
-          <p id="policy-auto-curate-hint" className="text-muted-foreground text-sm">
+          <Text as="p" id="policy-auto-curate-hint" textRole="compact" tone="secondary">
             {!intentBacked
               ? "Only for channels built from an intent. This one was made by hand, so there is no intent to re-check."
               : enabled
                 ? "New titles that fit are added on their own, within the limits below."
                 : "Off, new titles wait for your approval."}
-          </p>
+          </Text>
         </Stack>
       </Stack>
 

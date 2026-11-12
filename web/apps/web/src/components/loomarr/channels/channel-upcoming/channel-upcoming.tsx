@@ -35,7 +35,9 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
       {entries.length === 0 ? (
         // The API deliberately lowers no guide, an empty schedule, and a backend read failure to
         // the same empty list. Do not infer broadcast state from a response that cannot prove it.
-        <p className="text-muted-foreground text-sm">Programme information isn't available.</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Programme information isn't available.
+        </Text>
       ) : (
         <Stack gap="1.5" render="ol">
           {entries.map((entry, i) => {
@@ -51,20 +53,19 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
             return (
               <Stack
                 align="baseline"
-                className="text-sm"
                 direction="row"
                 gap="control"
                 key={`${entry.startMs}-${entry.title}`}
                 render="li"
               >
-                <span
-                  className={cn(
-                    "w-16 shrink-0 font-mono text-xs tabular-nums",
-                    onNow ? "text-foreground" : "text-muted-foreground",
-                  )}
+                <Text
+                  as="span"
+                  className="w-16 shrink-0 tabular-nums"
+                  textRole="mono"
+                  tone={onNow ? "primary" : "secondary"}
                 >
                   {formatEpgTime(entry.startMs)}
-                </span>
+                </Text>
                 <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
                   <Text numberOfLines={1} textRole="compact">
                     {name}

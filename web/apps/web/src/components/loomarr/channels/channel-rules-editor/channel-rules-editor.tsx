@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, CompactSelect, Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
+import { Action, CompactSelect, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
@@ -181,7 +181,9 @@ const RuleRow = ({
         >
           <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
         </button>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
+        <Text as="span" className="min-w-0 flex-1 truncate" textRole="cardLabel" tone="primary">
+          {label}
+        </Text>
         <Tooltip content="Remove this rule">
           <Action
             disabled={disabled}
@@ -287,18 +289,20 @@ const ChannelRulesEditor = ({
   return (
     <Stack className={className} gap="control" render="section">
       <div>
-        <h3 className="text-base font-semibold">Wall-clock rules</h3>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h3" textRole="heading">
+          Wall-clock rules
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           Play different things at different times: weekend marathons, holiday programming, day-parts. The top
           rule wins when more than one matches a moment; drag to reprioritize.
-        </p>
+        </Text>
       </div>
 
       {drafts.length === 0 ? (
         <div className="border-border rounded-md border border-dashed px-3 py-6 text-center">
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             No rules yet. This channel always follows its base policy above.
-          </p>
+          </Text>
           <Stack className="mt-3" direction="row" justify="center">
             <Action icon="plus" onPress={addRule} variant="outline">
               Add rule

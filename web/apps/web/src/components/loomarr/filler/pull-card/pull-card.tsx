@@ -66,9 +66,9 @@ const PullCard = ({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <Stack align="center" direction="row" gap="inline" wrap>
             <StatusLabel tone="ok">Filler pull</StatusLabel>
-            <span id={titleId} className="text-sm font-semibold">
+            <Text as="span" id={titleId} strong textRole="cardLabel" tone="primary">
               {pull.title}
-            </span>
+            </Text>
             {edited && <StatusLabel tone="attention">Edited</StatusLabel>}
           </Stack>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
@@ -103,7 +103,9 @@ const PullCard = ({
 
       {/* Why this pull exists. "Approve this" without a reason is a button, not a decision. */}
       {pull.reason && (
-        <p className="bg-muted/40 text-muted-foreground rounded-md p-3 text-sm">{pull.reason}</p>
+        <Text as="p" className="bg-muted/40 rounded-md p-3" textRole="compact" tone="secondary">
+          {pull.reason}
+        </Text>
       )}
 
       <Stack gap="inline" render="ul">
@@ -116,7 +118,14 @@ const PullCard = ({
                 {row.tag}
               </Badge>
               <div className="min-w-0 flex-1">
-                <p className={cn("truncate text-sm", isDropped && "line-through")}>{row.name}</p>
+                <Text
+                  as="p"
+                  className={cn("truncate", isDropped && "line-through")}
+                  textRole="compact"
+                  tone="primary"
+                >
+                  {row.name}
+                </Text>
                 {row.why && (
                   <Text as="span" textRole="mono">
                     {row.why}
@@ -145,14 +154,16 @@ const PullCard = ({
       </Stack>
 
       {(pull.rejected?.length ?? 0) > 0 && (
-        <details className="border-border rounded-md border px-3 py-2 text-sm">
-          <summary className="text-muted-foreground cursor-pointer">
+        <details className="border-border rounded-md border px-3 py-2">
+          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
             {pluralize(pull.rejected?.length ?? 0, "other candidate")} considered and excluded
-          </summary>
+          </Text>
           <Stack className="mt-2" gap="1" render="ul">
             {(pull.rejected ?? []).map((candidate) => (
               <Stack direction="row" gap="inline" key={candidate.candidateId} render="li" wrap>
-                <span>{candidate.name}</span>
+                <Text as="span" textRole="compact" tone="primary">
+                  {candidate.name}
+                </Text>
                 <Text as="span" textRole="mono">
                   {candidate.disposition.replaceAll("_", " ")}: {candidate.detail}
                 </Text>
@@ -163,14 +174,16 @@ const PullCard = ({
       )}
 
       {skippedSources.length > 0 && (
-        <details className="border-border rounded-md border px-3 py-2 text-sm">
-          <summary className="text-muted-foreground cursor-pointer">
+        <details className="border-border rounded-md border px-3 py-2">
+          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
             {pluralize(skippedSources.length, "registered source")} not searched
-          </summary>
+          </Text>
           <Stack className="mt-2" gap="1" render="ul">
             {skippedSources.map((source) => (
               <Stack direction="row" gap="inline" key={source.sourceId} render="li" wrap>
-                <span>{source.label || source.sourceId}</span>
+                <Text as="span" textRole="compact" tone="primary">
+                  {source.label || source.sourceId}
+                </Text>
                 <Text as="span" textRole="mono">
                   {source.disposition.replaceAll("_", " ")}: {source.detail}
                 </Text>

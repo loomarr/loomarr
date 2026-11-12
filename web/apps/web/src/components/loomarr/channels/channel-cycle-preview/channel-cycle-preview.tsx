@@ -6,7 +6,7 @@ import { ExcludedItemDTOReason } from "@loomarr/api/models/excludedItemDTOReason
 import { ScheduleFactDTOReason } from "@loomarr/api/models/scheduleFactDTOReason";
 import type { ScheduleTraceDTO } from "@loomarr/api/models/scheduleTraceDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, DateField, Disclosure, Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Badge, DateField, Disclosure, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
@@ -99,13 +99,15 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       <Stack
         align="center"
         aria-label="Commercial break"
-        className="text-muted-foreground py-1.5 text-xs"
+        className="py-1.5"
         direction="row"
         gap="inline"
         render="li"
       >
         <div className="bg-border h-px flex-1" />
-        <span>Commercial break</span>
+        <Text as="span" textRole="hint" tone="secondary">
+          Commercial break
+        </Text>
         <div className="bg-border h-px flex-1" />
       </Stack>
     );
@@ -123,26 +125,40 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
         pending ? "border-dashed bg-transparent" : "bg-card",
       )}
     >
-      <span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs">{index + 1}</span>
+      <Text as="span" className="w-6 shrink-0 text-right" textRole="mono">
+        {index + 1}
+      </Text>
       {pending ? (
         <Icon decorative glyph={icons.time} size="compact" tone="muted" />
       ) : (
         <Icon decorative glyph={icons.channels} size="compact" tone="muted" />
       )}
-      <span
-        className={cn(
-          "flex min-w-0 flex-1 items-baseline gap-1.5 text-sm",
-          pending && "text-muted-foreground italic",
-        )}
+      <Text
+        as="span"
+        className={cn("flex min-w-0 flex-1 items-baseline gap-1.5", pending && "italic")}
+        textRole="compact"
+        tone={pending ? "secondary" : "primary"}
       >
-        {showPrefix ? <span className="shrink-0 font-medium">{showPrefix}</span> : null}
-        {se ? <span className="text-muted-foreground shrink-0 font-mono text-xs">{se}</span> : null}
+        {showPrefix ? (
+          <Text as="span" className="shrink-0" textRole="cardLabel" tone="primary">
+            {showPrefix}
+          </Text>
+        ) : null}
+        {se ? (
+          <Text as="span" className="shrink-0" textRole="mono">
+            {se}
+          </Text>
+        ) : null}
         {/* The em dash separates the show/SxxExx from the episode title, only when there's a
             show prefix to separate from — a movie (title == its own name) just shows its title. */}
-        {showPrefix ? <span className="text-muted-foreground shrink-0">—</span> : null}
+        {showPrefix ? (
+          <Text as="span" className="shrink-0" textRole="compact" tone="secondary">
+            —
+          </Text>
+        ) : null}
         <span className="truncate">{episodeTitle}</span>
         {pending ? <span className="shrink-0"> (coming soon)</span> : null}
-      </span>
+      </Text>
       {slot.part && slot.part > 0 ? (
         <Badge shape="square" tone="neutral">
           Part {slot.part}
@@ -218,15 +234,12 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             gap="0.5"
             render="li"
           >
-            <span className="truncate text-sm">{item.title || item.key}</span>
-            <span
-              className={cn(
-                "text-xs",
-                isSafetyReason(item.reason) ? "text-caution" : "text-muted-foreground",
-              )}
-            >
+            <Text as="span" className="truncate" textRole="compact" tone="primary">
+              {item.title || item.key}
+            </Text>
+            <Text as="span" textRole="hint" tone={isSafetyReason(item.reason) ? "warning" : "secondary"}>
               {REASON_LABEL[item.reason]}
-            </span>
+            </Text>
           </Stack>
         ))}
       </Stack>
@@ -274,9 +287,9 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
       onExpandedChange={setExpanded}
     >
       {omitted > 0 ? (
-        <p className="border-border text-muted-foreground border-b px-3 py-2 text-xs">
+        <Text as="p" className="border-border border-b px-3 py-2" textRole="hint" tone="secondary">
           {omitted} additional {omitted === 1 ? "decision" : "decisions"} omitted by the trace bound.
-        </p>
+        </Text>
       ) : null}
       <Stack
         className="scroll-thin divide-border max-h-72 divide-y overflow-y-auto"
@@ -293,11 +306,13 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
             gap="0.5"
             render="li"
           >
-            <span className="truncate text-sm">{fact.title || fact.key || "Commercial gap"}</span>
-            <span className="text-muted-foreground text-xs">
+            <Text as="span" className="truncate" textRole="compact" tone="primary">
+              {fact.title || fact.key || "Commercial gap"}
+            </Text>
+            <Text as="span" textRole="hint" tone="secondary">
               {TRACE_REASON_LABEL[fact.reason]}
               {fact.cyclePosition !== undefined ? ` · cycle slot ${fact.cyclePosition + 1}` : ""}
-            </span>
+            </Text>
           </Stack>
         ))}
       </Stack>
@@ -352,7 +367,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
     <Stack className={className} gap="control" render="section">
       <div>
         <Stack align="center" direction="row" gap="inline">
-          <h3 className="text-base font-semibold">Preview what airs</h3>
+          <Text as="h3" textRole="heading">
+            Preview what airs
+          </Text>
           {/* ⚠ Says WHICH schedule is on screen. Without it, a draft preview and a saved one
               are indistinguishable — and an author who has just edited a rule would have no
               way to tell whether they are looking at their change or at what is live. */}
@@ -362,11 +379,11 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
             </Badge>
           ) : null}
         </Stack>
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           {draftPolicy
             ? "What would air if you applied these changes. Time-travel to any moment to check a rule before saving."
             : "Time-travel the schedule. See exactly which rule wins and what plays at any moment, past or future."}
-        </p>
+        </Text>
       </div>
 
       <Stack align="end" direction="row" gap="control" wrap>
@@ -388,7 +405,9 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
       </Stack>
 
       {(draftPolicy ? draft.isPending : saved.isLoading) ? (
-        <p className="text-muted-foreground text-sm">Loading preview…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading preview…
+        </Text>
       ) : active.error || !body ? (
         // ⚠ Retry differs by source: the saved preview is a QUERY (refetch), the draft is a
         // MUTATION (re-POST the current draft). Calling refetch on the mutation would be a
@@ -416,16 +435,23 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           >
             <Icon decorative glyph={icons.filler} size="compact" tone="muted" />
             {body.activeRule.matched ? (
-              <p className="text-sm">
-                Active rule: <span className="font-medium">{body.activeRule.label}</span>{" "}
-                <span className="text-muted-foreground">(priority {body.activeRule.priority})</span>
-              </p>
+              <Text as="p" textRole="compact" tone="primary">
+                Active rule:{" "}
+                <Text as="span" textRole="cardLabel" tone="primary">
+                  {body.activeRule.label}
+                </Text>{" "}
+                <Text as="span" textRole="compact" tone="secondary">
+                  (priority {body.activeRule.priority})
+                </Text>
+              </Text>
             ) : (
-              <p className="text-muted-foreground text-sm">No rule active: base policy</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                No rule active: base policy
+              </Text>
             )}
-            <span className="text-muted-foreground ml-auto font-mono text-xs">
+            <Text as="span" className="ml-auto" textRole="mono">
               {humanWindow(body.windowMs)}
-            </span>
+            </Text>
           </Stack>
 
           {!body.slots || body.slots.length === 0 ? (

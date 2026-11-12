@@ -1,3 +1,4 @@
+import { Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
@@ -39,7 +40,9 @@ const WatchLine = ({ status, health, className }: WatchLineProps) => (
       )}
       aria-hidden
     />
-    <span className="text-muted-foreground min-w-0 text-xs">{status}</span>
+    <Text as="span" className="min-w-0" textRole="hint" tone="secondary">
+      {status}
+    </Text>
     {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}
