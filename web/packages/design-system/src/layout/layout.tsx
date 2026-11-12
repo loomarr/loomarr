@@ -241,13 +241,15 @@ const Disclosure = ({
           <Text density={density} textAlign="left" textRole="label" tone="primary">
             {label}
           </Text>
+          {/* Hint, not metadata: the same size at every density, in the body face. A description
+              and Show/Hide are words, and mono is for channel numbers and clocks (#2778, #3412). */}
           {description ? (
-            <Text density={density} textAlign="left" textRole="metadata">
+            <Text density={density} textAlign="left" textRole="hint" tone="secondary">
               {description}
             </Text>
           ) : null}
         </View>
-        <Text density={density} textRole="metadata" tone={focused ? "primary" : "secondary"}>
+        <Text density={density} textRole="hint" tone={focused ? "primary" : "secondary"}>
           {expanded ? "Hide" : "Show"}
         </Text>
       </Pressable>

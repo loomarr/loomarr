@@ -442,6 +442,26 @@ describe("Guide", () => {
     );
   });
 
+  // Home's Tonight rows link to a programme that hasn't started (#2763): the grid opens on its day
+  // and hour, flagged as a custom view.
+  it("opens on the day and hour a link's ?at= names", async () => {
+    stubGuide();
+    const today = new Date();
+    const tomorrowMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
+    const at = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 21, 30).getTime();
+    const froms: number[] = [];
+    server.use(
+      http.get("*/v1/guide", ({ request }) => {
+        froms.push(Number(new URL(request.url).searchParams.get("from")));
+        return undefined;
+      }),
+    );
+    const view = renderAt(`${GRID}&at=${at}&channel=ch-live`);
+
+    expect(await view.findByRole("button", { name: "View options, custom" })).toBeInTheDocument();
+    expect(froms).toContain(new Date(tomorrowMidnight).setHours(21));
+  });
+
   it("opens the channel's page from its name, not the player (#2745)", async () => {
     const user = userEvent.setup();
     stubGuide();

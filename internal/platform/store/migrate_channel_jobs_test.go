@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 )
 
@@ -12,8 +11,9 @@ import (
 const channelJobsMigration = 211
 
 func TestChannelJobsMigration(t *testing.T) {
+	t.Parallel()
 	// Foreign keys on, as production opens SQLite.
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "channel-jobs.db")+"?_pragma=foreign_keys(on)")
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, channelJobsMigration-1, foreignKeyConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

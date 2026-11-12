@@ -36,9 +36,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
       <h2 id="invitation-roster-title" className="text-lg font-semibold">
         Invitations
       </h2>
-      <p className="text-muted-foreground text-sm">
-        Pending admission decisions and the latest attempt to deliver each one.
-      </p>
+      <p className="text-muted-foreground text-sm">Invitations you've sent and whether they arrived.</p>
     </div>
 
     {invitations === undefined ? (

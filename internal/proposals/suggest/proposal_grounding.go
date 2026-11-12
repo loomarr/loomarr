@@ -61,6 +61,14 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonNoRelevanceEvidence)
 			membershipRejected = true
 			continue // identity is real, but it was not explicitly enumerated as a member
+		case pickRationaleRejects:
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonRationaleRejects)
+			otherRejection = true
+			continue // the model's own reason argues against it: a considered-and-rejected candidate
+		case pickToneMismatch:
+			traceGroundedDecision(trace, cand, proposals.DispositionValidationDropped, proposals.ReasonToneMismatch)
+			otherRejection = true
+			continue
 		}
 		rationale := p.Rationale
 		if requiresMembershipEvidence(intent) {
@@ -590,6 +598,8 @@ const (
 	pickNotSurfaced
 	pickIrrelevant
 	pickMembershipUnproven
+	pickRationaleRejects
+	pickToneMismatch
 )
 
 // resolvePick is the identity half of the grounding chokepoint: a pick resolves only to a
@@ -616,6 +626,12 @@ func resolvePick(intent Intent, p pick, surfaced map[provision.Key]titlesearch.C
 		if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
 			return cand, pickMembershipUnproven
 		}
+	}
+	if rationaleRejectsPick(p.Rationale) {
+		return cand, pickRationaleRejects
+	}
+	if contradictsSoftTone(intent, cand) {
+		return cand, pickToneMismatch
 	}
 	return cand, pickAccepted
 }

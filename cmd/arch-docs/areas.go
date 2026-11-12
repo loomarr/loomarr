@@ -192,7 +192,7 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/schemadoc",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/qualitystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/backup", "platform/databasemigration",
 			"platform/activity", "platform/diagnostics", "platform/currenthealth", "platform/metrics", "platform/httpx",

@@ -12,7 +12,7 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
@@ -348,7 +348,10 @@ describe("Settings", () => {
 
     renderAt("/settings/connections?focus=tmdb");
 
-    expect(await screen.findByRole("button", { name: /^TMDB/i })).toHaveAttribute("aria-expanded", "true");
+    // The page arrives with its settings, so the blocks are there before the checklist that seeds
+    // which one is open.
+    const tmdbHeader = await screen.findByRole("button", { name: /^TMDB/i });
+    await waitFor(() => expect(tmdbHeader).toHaveAttribute("aria-expanded", "true"));
     expect(screen.getByRole("button", { name: /media server/i })).toHaveAttribute("aria-expanded", "false");
     expect(await screen.findByLabelText("TMDB API key")).toBeInTheDocument();
   });

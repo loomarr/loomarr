@@ -63,10 +63,10 @@ func serverWithJobs(t *testing.T, svc system.JobService) *httptest.Server {
 	st := openTestStore(t, t.TempDir()+"/api.db")
 	t.Cleanup(func() { _ = st.Close() })
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st,
-		Auth:  testAuthorizer{},
-		Log:   slog.New(slog.DiscardHandler),
-		Jobs:  svc,
+		Store:  st,
+		Auth:   testAuthorizer{},
+		Log:    slog.New(slog.DiscardHandler),
+		System: api.SystemOptions{Jobs: svc},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

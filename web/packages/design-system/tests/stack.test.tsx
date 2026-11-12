@@ -18,6 +18,8 @@ describe("Stack", () => {
     expect(markup).toContain("flex-direction:column");
     expect(markup).toContain("align-items:stretch");
     expect(markup).toContain("flex-wrap:nowrap");
+    // It gives way as a flex item, as the <div> it replaces does.
+    expect(markup).toContain("flex-shrink:1");
     expect(markup).toContain("<span>one</span><span>two</span>");
   });
 
@@ -34,6 +36,22 @@ describe("Stack", () => {
     expect(markup).toContain("flex-wrap:wrap");
     // `control` is the 12px spacing token, read through its CSS variable.
     expect(markup).toContain("gap:var(--t-space-control)");
+  });
+
+  it("keeps a caller's class, element and accessible name, so a call site can move over whole", () => {
+    const markup = render(
+      <Stack
+        aria-label="What can play now"
+        className="text-muted-foreground mt-2"
+        gap="inline"
+        render="section"
+      >
+        <span>x</span>
+      </Stack>,
+    );
+
+    expect(markup).toMatch(/<section[^>]*aria-label="What can play now"/);
+    expect(markup).toMatch(/<section[^>]*class="[^"]*text-muted-foreground mt-2/);
   });
 
   it("maps end alignment to the flex keywords and passes the accessibility role through", () => {

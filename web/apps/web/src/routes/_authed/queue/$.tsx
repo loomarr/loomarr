@@ -8,6 +8,7 @@ const MOVED = {
   history: "/requests/done",
 } as const;
 
+// no-loader: redirects to the new path before anything is read
 const Route = createFileRoute("/_authed/queue/$")({
   beforeLoad: ({ params }) => {
     const tab = params._splat as keyof typeof MOVED;

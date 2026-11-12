@@ -53,11 +53,13 @@ func newProvisioningHarness(t *testing.T, configs ...provisioningHarnessConfig) 
 			Store:        defaults.Store,
 			Auth:         sessionAuth(mgr, adminToken),
 			Log:          defaults.Log,
-			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:     mgr,
-			UserSync:     auth.NewUserSync(lib, defaults.Store, time.Now),
-			Provision:    auth.NewProvisioner(defaults.Store, lib, newID, time.Now),
 			CookieSecure: "false",
+			People: api.PeopleOptions{
+				Login:     auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:  mgr,
+				UserSync:  auth.NewUserSync(lib, defaults.Store, time.Now),
+				Provision: auth.NewProvisioner(defaults.Store, lib, newID, time.Now),
+			},
 		})
 	})
 	return &provisioningHarness{apiHarness: base}

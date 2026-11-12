@@ -6,17 +6,18 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, redirect, useMatch, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useMatch, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
 import { watchChannelId } from "@/channels/watch-channel-id";
-import { AppShell } from "@/components/loomarr/shell/app-shell";
+import { AppShell, navPaths } from "@/components/loomarr/shell/app-shell";
 import { DemoTour, useDemoTour } from "@/demo/demo-tour";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { HealthNotice } from "@/diagnostics/startup-notice";
 import { LoomarrEventsProvider } from "@/events/events-provider";
+import { runAtIdle } from "@/lib/run-at-idle";
 import { serverVersionLabel } from "@/lib/server-version";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
@@ -42,12 +43,12 @@ const AuthedLayout = () => {
   const needsYouCount = useNeedsYouCount();
   // The Library nav badge (#2151 decision 27): the titles Loomarr can't tell what they are — the
   // same number as the Needs you heading. Admin-only, like the Library.
-  const libraryStatus = libraryApi.useLibraryStatus({ query: { enabled: isAdmin, staleTime: 30_000 } });
+  const libraryStatus = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
   const libraryNeedsYou = isAdmin ? (unwrap(libraryStatus.data)?.needsYou ?? 0) : 0;
   // Watch's target (#1817 item 3, #1659 Shell, decision X2), shared by the desktop rail and
   // PhoneBottomBar — one fetch, one selector, passed down as a single prop so neither shell
   // derives its own fallback chain.
-  const channels = channelsApi.useListChannels({ query: { staleTime: 30_000 } });
+  const channels = channelsApi.useListChannels();
   const channelList = unwrap(channels.data)?.channels ?? [];
   const viewing = dashboardApi.useHouseholdViewing({
     query: { enabled: channelList.length > 0, staleTime: 30_000 },
@@ -63,6 +64,14 @@ const AuthedLayout = () => {
   const versionBody = version.data?.status === 200 ? version.data.data : undefined;
   const serverVersion = versionBody ? serverVersionLabel(versionBody) : undefined;
   useEffect(() => clientDiagnostics.setVersion(versionBody?.version), [versionBody?.version]);
+  // After first paint, at idle, warm each main-nav route's code and data one at a time (#3399, 9.6)
+  // so the first click on the rail finds its chunk downloaded.
+  const router = useRouter();
+  const warmNav = router.options.context.warmNavAtIdle === true;
+  useEffect(
+    () => (warmNav ? runAtIdle(navPaths(isAdmin).map((to) => () => router.preloadRoute({ to }))) : undefined),
+    [warmNav, isAdmin, router],
+  );
   useEffect(() => {
     clientDiagnostics.setAuthenticated(true);
     return () => clientDiagnostics.setAuthenticated(false);
@@ -103,6 +112,7 @@ const AuthedLayout = () => {
   );
 };
 
+// no-loader: the session gate reads `me` in beforeLoad; the shell's own reads are not a page's data
 const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
     try {
