@@ -4697,6 +4697,7 @@ components:
         roles:
           items:
             type: string
+          maxItems: 8
           type: array
       type: object
     FillerSourceCheckSummaryDTO:
@@ -13972,6 +13973,7 @@ components:
           items:
             format: int64
             type: integer
+          maxItems: 7
           type: array
         holiday:
           type: string

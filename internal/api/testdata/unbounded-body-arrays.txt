@@ -7,7 +7,6 @@ PATCH /v1/channels/{id} (update-channel): body.policy.filler.categories
 PATCH /v1/channels/{id} (update-channel): body.policy.filler.eraWindows
 PATCH /v1/channels/{id} (update-channel): body.policy.filler.excluded
 PATCH /v1/channels/{id} (update-channel): body.policy.filler.pinned
-PATCH /v1/channels/{id} (update-channel): body.policy.filler.roles
 PATCH /v1/channels/{id} (update-channel): body.policy.operatorSet
 PATCH /v1/channels/{id} (update-channel): body.policy.rules
 PATCH /v1/channels/{id} (update-channel): body.policy.rules[].what.collections
@@ -17,7 +16,6 @@ PATCH /v1/channels/{id} (update-channel): body.policy.rules[].what.dates.seriesP
 PATCH /v1/channels/{id} (update-channel): body.policy.rules[].what.genres.exclude
 PATCH /v1/channels/{id} (update-channel): body.policy.rules[].what.genres.include
 PATCH /v1/channels/{id} (update-channel): body.policy.rules[].what.series
-PATCH /v1/channels/{id} (update-channel): body.policy.rules[].when.days
 PATCH /v1/channels/{id} (update-channel): body.policy.scope.collections
 PATCH /v1/channels/{id} (update-channel): body.policy.scope.dates.movieRelease
 PATCH /v1/channels/{id} (update-channel): body.policy.scope.dates.seriesAiring
@@ -31,7 +29,6 @@ POST /v1/channels/{id}/pods/preview (preview-draft-channel-pods): body.filler.ca
 POST /v1/channels/{id}/pods/preview (preview-draft-channel-pods): body.filler.eraWindows
 POST /v1/channels/{id}/pods/preview (preview-draft-channel-pods): body.filler.excluded
 POST /v1/channels/{id}/pods/preview (preview-draft-channel-pods): body.filler.pinned
-POST /v1/channels/{id}/pods/preview (preview-draft-channel-pods): body.filler.roles
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.lineup
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.lineup[].genres
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.applied
@@ -39,7 +36,6 @@ POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes)
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.filler.eraWindows
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.filler.excluded
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.filler.pinned
-POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.filler.roles
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.operatorSet
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.rules
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.rules[].what.collections
@@ -49,7 +45,6 @@ POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes)
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.rules[].what.genres.exclude
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.rules[].what.genres.include
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.rules[].what.series
-POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.rules[].when.days
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.scope.collections
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.scope.dates.movieRelease
 POST /v1/channels/{id}/programming/changes (preview-channel-programming-changes): body.policy.scope.dates.seriesAiring
@@ -65,7 +60,6 @@ POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.p
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.filler.eraWindows
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.filler.excluded
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.filler.pinned
-POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.filler.roles
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.operatorSet
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.rules
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.rules[].what.collections
@@ -75,7 +69,6 @@ POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.p
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.rules[].what.genres.exclude
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.rules[].what.genres.include
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.rules[].what.series
-POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.rules[].when.days
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.scope.collections
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.scope.dates.movieRelease
 POST /v1/channels/{id}/programming/preview (preview-channel-programming): body.policy.scope.dates.seriesAiring
