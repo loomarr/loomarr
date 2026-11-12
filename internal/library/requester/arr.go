@@ -313,23 +313,31 @@ func (a *Arr) rootFolderPath(ctx context.Context, ep arrEndpoint) (string, error
 	return roots[0].Path, nil
 }
 
-// Cancel is a REAL withdrawal (unlike Seerr's no-op): it finds the title's queue record and
-// DELETEs it so a given-up title stops downloading. Best-effort — a failure is non-fatal (the
-// record still transitions to unavailable), so a missing queue entry or a transport error just
-// returns nil-ish behavior at the caller.
+// Cancel is a REAL withdrawal (unlike Seerr's no-op): it finds every queue record of the title
+// and DELETEs each so a given-up title stops downloading. A series has one record per episode
+// download, so all of them go. Every record is attempted even when one fails; the failures
+// are joined. A missing queue entry is not an error.
 func (a *Arr) Cancel(ctx context.Context, t provision.Title) error {
 	ep, err := a.endpointFor(t)
 	if err != nil {
 		return err
 	}
-	id, ok, err := a.queueRecordID(ctx, ep)
+	ids, err := a.queueRecordIDs(ctx, ep)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return nil // nothing queued — already done, or never grabbed
+	var errs []error
+	for _, id := range ids {
+		if err := a.deleteQueueRecord(ctx, ep, id); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	// removeFromClient=true also tells the download client to abandon it.
+	return errors.Join(errs...)
+}
+
+// deleteQueueRecord removes one queue record; removeFromClient=true also tells the download
+// client to abandon it.
+func (a *Arr) deleteQueueRecord(ctx context.Context, ep arrEndpoint, id int) error {
 	resp, err := a.do(ctx, ep, http.MethodDelete,
 		fmt.Sprintf("/api/v3/queue/%d?removeFromClient=true&blocklist=false", id), nil)
 	if err != nil {
@@ -342,43 +350,30 @@ func (a *Arr) Cancel(ctx context.Context, t provision.Title) error {
 	return nil
 }
 
-// queueRecordID finds the queue record for the title (matching the looked-up arr id), returning
-// (id, found). The queue lists in-flight downloads keyed by the arr's movieId/seriesId.
-func (a *Arr) queueRecordID(ctx context.Context, ep arrEndpoint) (int, bool, error) {
+// queueRecordIDs lists the ids of every queue record for the title (matching the looked-up arr
+// id). The queue lists in-flight downloads keyed by the arr's movieId/seriesId; a series has
+// one record per episode.
+func (a *Arr) queueRecordIDs(ctx context.Context, ep arrEndpoint) ([]int, error) {
 	// Resolve the arr's internal id for this title via lookup, then match queue records to it.
 	obj, err := a.lookup(ctx, ep)
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
-	idField := "movieId"
-	objIDField := "id"
-	if ep.kind == "series" {
-		idField = "seriesId"
-	}
-	arrID, _ := toInt(obj[objIDField])
+	arrID, _ := toInt(obj["id"])
 	if arrID == 0 {
-		return 0, false, nil // not added yet → nothing queued
+		return nil, nil // not added yet → nothing queued
 	}
-
-	resp, err := a.do(ctx, ep, http.MethodGet, "/api/v3/queue?pageSize=1000", nil)
+	records, err := a.fetchQueue(ctx, ep)
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-	var page struct {
-		Records []map[string]any `json:"records"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-		return 0, false, fmt.Errorf("arr queue decode: %w", err)
-	}
-	for _, rec := range page.Records {
-		if recID, _ := toInt(rec[idField]); recID == arrID {
-			if qid, ok := toInt(rec["id"]); ok {
-				return qid, true, nil
-			}
+	var ids []int
+	for _, rec := range records {
+		if rec.arrID(ep.kind) == arrID && rec.ID != 0 {
+			ids = append(ids, rec.ID)
 		}
 	}
-	return 0, false, nil
+	return ids, nil
 }
 
 // Reachable probes each CONFIGURED arr (GET /api/v3/system/status) for the Test button (§8): it

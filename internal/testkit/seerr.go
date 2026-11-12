@@ -22,10 +22,17 @@ type Seerr struct {
 	LastAPIKey string
 	LastBody   []byte
 	Requests   int
-	// Processing is what GET /api/v1/media?filter=processing returns: tmdbId → MediaStatus
-	// enum (3=processing, 4=partially available). Drives the Seerr coarse queue-status path
-	// (§18.1). Empty ⇒ the endpoint returns no results.
-	Processing map[int]int
+	// Processing is what GET /api/v1/media?filter=processing returns, in order. Drives the
+	// Seerr coarse queue-status path (§18.1). Empty ⇒ the endpoint returns no results.
+	Processing []SeerrMedia
+}
+
+// SeerrMedia is one /api/v1/media record. TMDB numbers movies and TV separately, so the
+// same TMDBID can appear once per MediaType.
+type SeerrMedia struct {
+	TMDBID    int
+	MediaType string // "movie" | "tv"
+	Status    int    // MediaStatus enum: 3=processing, 4=partially available
 }
 
 // NewSeerr starts a mock Seerr.
@@ -42,15 +49,16 @@ func NewSeerr(t testing.TB) *Seerr {
 		_, _ = w.Write([]byte(`{"type":"movie","media":{"status":5}}`))
 	})
 	// Processing set for the coarse queue-status path (§18.1): GET /media?filter=processing
-	// returns {results:[{tmdbId,status}]} from s.Processing. Empty ⇒ no results.
+	// returns {results:[{tmdbId,mediaType,status}]} from s.Processing. Empty ⇒ no results.
 	mux.HandleFunc("GET /api/v1/media", func(w http.ResponseWriter, _ *http.Request) {
 		type item struct {
-			TMDBID int `json:"tmdbId"`
-			Status int `json:"status"`
+			TMDBID    int    `json:"tmdbId"`
+			MediaType string `json:"mediaType"`
+			Status    int    `json:"status"`
 		}
 		results := make([]item, 0, len(s.Processing))
-		for id, st := range s.Processing {
-			results = append(results, item{TMDBID: id, Status: st})
+		for _, m := range s.Processing {
+			results = append(results, item{TMDBID: m.TMDBID, MediaType: m.MediaType, Status: m.Status})
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})

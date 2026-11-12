@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,14 +24,19 @@ type arrStub struct {
 	addResponse string         // body to return from the add (default {"id":90000042})
 	lookupID    int            // the arr's internal id returned by lookup (for queue matching)
 	deletedID   int            // the queue id DELETEd by Cancel, if any
-	queueForID  int            // a queue record's movieId/seriesId to expose
-	queueRecID  int            // that queue record's own id
-	queueSize   float64        // queue record size / sizeleft → progress
-	queueLeft   float64        //
-	queueStatus string         // queue record status ("downloading"/"warning"/…)
-	queueTime   string         // queue record timeleft
-	profileName string         // name of the single quality profile (id 90000007)
-	lookupTerm  string         // the last lookup ?term= (proves tmdb/tvdb routing)
+	deletedIDs  []int          // every queue id DELETEd, in order
+	// queueRecords, when set, is the whole queue (replacing the single record below);
+	// queueHTTPStatus, when set, is the status the queue answers with instead of 200.
+	queueRecords    []map[string]any
+	queueHTTPStatus int
+	queueForID      int     // a queue record's movieId/seriesId to expose
+	queueRecID      int     // that queue record's own id
+	queueSize       float64 // queue record size / sizeleft → progress
+	queueLeft       float64 //
+	queueStatus     string  // queue record status ("downloading"/"warning"/…)
+	queueTime       string  // queue record timeleft
+	profileName     string  // name of the single quality profile (id 90000007)
+	lookupTerm      string  // the last lookup ?term= (proves tmdb/tvdb routing)
 	// seriesStats is GET /api/v3/series/{id}'s statistics by series id (Sonarr only); a
 	// missing id answers 404.
 	seriesStats map[int]map[string]any
@@ -79,6 +85,15 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 		if kind == "series" {
 			field = "seriesId"
 		}
+		if s.queueHTTPStatus != 0 {
+			w.WriteHeader(s.queueHTTPStatus)
+			_, _ = w.Write([]byte(`{"message":"Unauthorized"}`))
+			return
+		}
+		if s.queueRecords != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": s.queueRecords})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"records": []map[string]any{{
 				"id": s.queueRecID, field: s.queueForID,
@@ -92,6 +107,7 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 			// path is /api/v3/queue/<id> (strip any ?query first)
 			idStr := strings.TrimPrefix(r.URL.Path, "/api/v3/queue/")
 			s.deletedID, _ = strconv.Atoi(idStr)
+			s.deletedIDs = append(s.deletedIDs, s.deletedID)
 			w.WriteHeader(http.StatusOK)
 		}
 	})
@@ -263,6 +279,27 @@ func TestArr_Cancel_DeletesQueueRecord(t *testing.T) {
 	}
 	if stub.deletedID != 99 {
 		t.Errorf("deleted queue id = %d, want 99", stub.deletedID)
+	}
+}
+
+// Sonarr lists one queue record per episode download, so cancelling a series removes every
+// record of that series and leaves other series' downloads alone.
+func TestArr_Cancel_Series_DeletesEveryEpisodeRecord(t *testing.T) {
+	stub := newArrStub(t, "series")
+	stub.lookupID = 7
+	stub.queueRecords = []map[string]any{
+		{"id": 101, "seriesId": 7},
+		{"id": 102, "seriesId": 7},
+		{"id": 200, "seriesId": 8},
+		{"id": 103, "seriesId": 7},
+	}
+	a := arrFor("series", stub.server.URL, "", "")
+
+	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Series, TVDBID: 81189, Name: "S"}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(stub.deletedIDs, []int{101, 102, 103}) {
+		t.Errorf("deleted queue ids = %v, want [101 102 103]", stub.deletedIDs)
 	}
 }
 
