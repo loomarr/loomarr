@@ -236,10 +236,6 @@
     "apps/web/src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/components/loomarr/shell/search-command/search-command.tsx": {
-      "rawCombobox": 1,
-      "flexStack": 3
-    },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "flexStack": 2
     },
