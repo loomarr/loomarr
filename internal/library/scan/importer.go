@@ -639,7 +639,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	for _, file := range walk.Files {
 		found[file.Path] = true
 	}
-	inScope := func(path string) bool { return scope == nil || under(path, scope) }
+	// A folder or file the walk couldn't read is out of scope too: whatever it holds stands as it was,
+	// while a file gone from anywhere the walk did read is still gone.
+	inScope := func(path string) bool { return (scope == nil || under(path, scope)) && !under(path, walk.Unread) }
 	moved := movedFrom(prev, found, inScope)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
@@ -771,10 +773,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	removed, present := removals(prev, found, inScope)
 	// While an arr fails to list nothing is marked missing: a file it renamed meanwhile waits at its
 	// new path, and marking the old one missing would take the title off the air until it answers.
-	if walk.Complete && idx.complete {
+	if idx.complete {
 		// A confirmation is spent by the first complete walk of the whole root after it, held or
 		// not: it answers the removal the maintainer saw, never a later one.
-		confirmed := scope == nil && im.takeConfirmed(root)
+		confirmed := scope == nil && walk.Complete && im.takeConfirmed(root)
 		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
 		held := over && !confirmed
 		for _, r := range removed {
@@ -798,14 +800,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	if len(save) > 0 {
 		im.titlesChanged()
 	}
-	// Origins are marked unseen only after a complete walk, with no removal held and every arr
-	// answering: a file that waited for an arr was not written, and its series not seen.
-	if walk.Complete && result.State != RootHeld && idx.complete {
+	// Origins are marked unseen only with no removal held and every arr answering: a file that waited
+	// for an arr was not written, and its series not seen. What an unread folder holds was identified
+	// above, so it is seen.
+	if result.State != RootHeld && idx.complete {
 		if err := im.markUnseen(ctx, root, b.seen, now); err != nil {
 			return result, nil, err
 		}
 		im.titlesChanged()
-		if scope == nil {
+		if scope == nil && walk.Complete {
 			if err := im.Store.SetLibraryRootScanned(ctx, root, now); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return result, nil, err
 			}

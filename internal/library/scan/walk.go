@@ -116,8 +116,10 @@ type File struct {
 // Walk is one walk of one root.
 type Walk struct {
 	Files []File
-	// Complete is false when any folder could not be read, so a missing file proves nothing.
+	// Complete is false when any folder or file could not be read, and Unread lists each one: a
+	// file missing under one of them proves nothing, but a file missing anywhere else is gone.
 	Complete bool
+	Unread   []string
 	// Skipped are paths the walk could not keep because their names are not UTF-8.
 	Skipped []string
 }
@@ -215,6 +217,12 @@ func newWalker(root string, steps *atomic.Int64) *walker {
 	return w
 }
 
+// unread records a folder or file the walk could not read: what lay under it is unknown.
+func (w *walker) unread(path string) {
+	w.out.Complete = false
+	w.out.Unread = append(w.out.Unread, path)
+}
+
 func (w *walker) dir(ctx context.Context, dir string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -222,7 +230,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	// A folder reached twice, through a symlink inside the root, is walked once.
 	real, err := filepath.EvalSymlinks(dir)
 	if err != nil {
-		w.out.Complete = false
+		w.unread(dir)
 		return nil
 	}
 	if w.visited[real] {
@@ -238,7 +246,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	entries, err := os.ReadDir(dir)
 	w.steps.Add(1)
 	if err != nil {
-		w.out.Complete = false
+		w.unread(dir)
 		return nil
 	}
 	nfos := map[string]Stat{}
@@ -327,7 +335,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		case videoExtensions[filepath.Ext(lower)] && !extraName(lower):
 			st, ok := w.stat(path, e)
 			if !ok {
-				w.out.Complete = false
+				w.unread(path)
 				continue
 			}
 			w.out.Files = append(w.out.Files, File{

@@ -671,6 +671,57 @@ func TestImportRemovalGuard(t *testing.T) {
 	}
 }
 
+// A folder that can't be read keeps what it holds, but a file deleted from elsewhere in the root is
+// still marked missing: one locked folder doesn't freeze the whole root's removals.
+func TestAnUnreadableFolderHoldsOnlyItself(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every folder")
+	}
+	h := newHarness(t)
+	h.file("Echo/Echo.mkv", 10)
+	h.file("Foxtrot/Foxtrot.mkv", 10)
+	h.file("Golf/Golf.mkv", 10)
+	h.file("Hotel Show/Season 1/Hotel Show S01E01.mkv", 10)
+	// Enough else stays that one removal is under the share a pass holds for confirmation.
+	for i := range 10 {
+		name := fmt.Sprintf("India %d", i)
+		h.file(name+"/"+name+".mkv", 10)
+	}
+	h.run()
+	locked := []string{filepath.Join(h.root, "Foxtrot"), filepath.Join(h.root, "Hotel Show", "Season 1")}
+	for _, dir := range locked {
+		if err := os.Chmod(dir, 0o000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, dir := range locked {
+			_ = os.Chmod(dir, 0o755)
+		}
+	})
+	if err := os.Remove(filepath.Join(h.root, "Golf", "Golf.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	gone := fileOrigin(h.root, "Golf/Golf.mkv")
+	if o := h.origin(h.item(gone), gone); o.MissingAt.IsZero() {
+		t.Error("a file deleted outside the unreadable folder was not marked missing")
+	}
+	for _, rel := range []string{"Echo/Echo.mkv", "Foxtrot/Foxtrot.mkv", "Hotel Show/Season 1/Hotel Show S01E01.mkv"} {
+		origin := fileOrigin(h.root, rel)
+		if o := h.origin(h.item(origin), origin); !o.MissingAt.IsZero() {
+			t.Errorf("%s was marked missing", rel)
+		}
+	}
+	series := seriesOrigin(h.root, "Hotel Show")
+	if o := h.origin(h.item(series), series); !o.MissingAt.IsZero() {
+		t.Error("the series whose season can't be read was marked unseen")
+	}
+	if r := h.im.Progress().Roots; r[0].State != RootIncomplete {
+		t.Errorf("state = %s", r[0].State)
+	}
+}
+
 // An unreadable root is an incomplete scan: nothing under it is marked missing.
 func TestImportUnreadableRootMarksNothing(t *testing.T) {
 	h := newHarness(t)
