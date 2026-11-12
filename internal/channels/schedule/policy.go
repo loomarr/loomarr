@@ -248,14 +248,14 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range           `json:"era,omitempty"`        // year window; nil = inherit Scope.Dates at derivation.
-	EraWindows []Range          `json:"eraWindows,omitempty"` // explicit union; mutually exclusive with Era
-	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
-	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
-	Roles      []string         `json:"roles,omitempty"`      // empty = the default roles (all but political and news); else the chosen subset
-	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
-	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
-	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
+	Era        *Range           `json:"era,omitempty"`                // year window; nil = inherit Scope.Dates at derivation.
+	EraWindows []Range          `json:"eraWindows,omitempty"`         // explicit union; mutually exclusive with Era
+	Audience   string           `json:"audience,omitempty"`           // "" = any; else kids|family|general|late_night
+	Categories []string         `json:"categories,omitempty"`         // empty = any; else a subset of the closed category set
+	Roles      []string         `json:"roles,omitempty" maxItems:"8"` // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
+	Pinned     []string         `json:"pinned,omitempty"`             // clip hashes always included (a top-priority pool)
+	Excluded   []string         `json:"excluded,omitempty"`           // clip hashes never used (wins over Pinned)
+	Geography  *FillerGeography `json:"geography,omitempty"`          // nil = inherit Installation geography
 	// Language is the channel's commercial language (#2030 decision 12): "" = the household's
 	// `filler.language`. Any ISO 639 form; it is independent of Playout.AudioLanguage, so an anime
 	// channel with Japanese audio keeps English commercials.

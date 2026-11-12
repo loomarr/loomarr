@@ -94,8 +94,8 @@ type WhenPredicate struct {
 	// constraint; both true is contradictory and matches nothing (caller should not set).
 	Weekend bool `json:"weekend,omitempty"`
 	Weekday bool `json:"weekday,omitempty"`
-	// Days restricts to specific weekdays (0=Sunday…6=Saturday). Empty = any day.
-	Days []time.Weekday `json:"days,omitempty"`
+	// Days restricts to specific weekdays (0=Sunday…6=Saturday). Empty = any day. A week has seven.
+	Days []time.Weekday `json:"days,omitempty" maxItems:"7"`
 	// HourFrom/HourTo is an inclusive-start, exclusive-end hour window [from, to) in
 	// 24h wall-clock; it WRAPS when from > to (late-night, e.g. 23→2). Both 0 = any hour.
 	HourFrom int `json:"hourFrom,omitempty"`
