@@ -8,6 +8,9 @@ import { installMockBackend } from "./mock-backend";
 // renders the placeholder. The shot is soft: a changed state still fails the test, but the flow
 // goes on, so one CI run reports every changed state's actual PNG instead of only the first.
 const sourceReadinessShot = async (page: Page, name: string) => {
+  // The phone header and bottom bar are lazy; a shot taken while either Suspense placeholder shows
+  // captures an empty bar.
+  await expect(page.getByTestId("phone-header-placeholder")).toHaveCount(0);
   await expect(page.getByTestId("phone-bottom-bar-placeholder")).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   await expect.soft(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
@@ -691,7 +694,8 @@ for (const viewport of [
     await expect(page).toHaveURL(/\/settings\/access$/);
     const location = page.getByRole("combobox", { name: "Location" });
     await location.fill("New York");
-    await page.getByRole("option", { name: "New York City, United States" }).click();
+    // The option leads with the city; its region and country are the description.
+    await page.getByRole("option", { name: /^New York City\b/ }).click();
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("alert")).toContainText("Location wasn't saved");
     await expect(page.getByRole("region", { name: "Unsaved changes" })).toContainText("2 unsaved changes");

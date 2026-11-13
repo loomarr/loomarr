@@ -40,13 +40,15 @@ const primaryDestinations: ReadonlyArray<{ prefix: string; label: string }> = [
 const primaryDestinationFor = (path: string): string | undefined =>
   primaryDestinations.find(({ prefix }) => path === prefix || path.startsWith(`${prefix}/`))?.label;
 
-test("pages share one navigation and header geometry at desktop and mobile widths", async ({ page }) => {
-  await installMockBackend(page, { authed: true, role: "admin" });
-
-  for (const viewport of viewports) {
-    await page.setViewportSize(viewport);
-
-    for (const entry of pages) {
+// One test per viewport and route, so each page has its own time budget. A single loop over every
+// shell route at both widths shares one 30s budget, and grows past it as routes are added.
+for (const viewport of viewports) {
+  for (const entry of pages) {
+    test(`${entry.path} shares one navigation and header geometry at ${viewport.name} width`, async ({
+      page,
+    }) => {
+      await installMockBackend(page, { authed: true, role: "admin" });
+      await page.setViewportSize(viewport);
       await page.goto(entry.path);
 
       const main = page.getByRole("main");
@@ -146,9 +148,9 @@ test("pages share one navigation and header geometry at desktop and mobile width
         (element) => element.scrollWidth > element.clientWidth + 1,
       );
       expect(overflowsHorizontally, `${entry.path} should fit the ${viewport.name} viewport`).toBe(false);
-    }
+    });
   }
-});
+}
 
 test("Filler stays simple, discoverable, and accessible at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
