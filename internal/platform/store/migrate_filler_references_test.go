@@ -21,8 +21,8 @@ func TestFillerReferencesMigration(t *testing.T) {
 	testFillerReferencesMigration(t, db, DialectSQLite, "migrations/sqlite")
 }
 
-// testFillerReferencesMigration proves the migration keeps every link that names a row, turns ''
-// and a link naming a deleted source into NULL, and that afterwards the links are enforced:
+// testFillerReferencesMigration proves the migration keeps every link that names a row, turns an
+// empty link and a link naming a deleted source into NULL, and that afterwards the links are enforced:
 // deleting a source or pull forgets it, a run a clip pipeline names can't be deleted, and a ready
 // event forgets a deleted run.
 func testFillerReferencesMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {

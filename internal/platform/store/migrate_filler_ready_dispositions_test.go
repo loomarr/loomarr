@@ -211,7 +211,7 @@ func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDi
 
 // insertLegacyClipPipeline deliberately writes the pre-00113 shape used by migration fixtures.
 // The production writer always speaks the current schema and must not grow a compatibility path.
-// It leaves acquisition_id to the column's default, which is '' before 00236 keyed it and NULL
+// It leaves acquisition_id to the column's default, which is empty before 00236 keyed it and NULL
 // after, so a fixture row names no download run at any version.
 func insertLegacyClipPipeline(ctx context.Context, st Store, p pipelinestate.ClipPipeline) error {
 	s, ok := adapterOf(st)
