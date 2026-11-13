@@ -227,6 +227,35 @@ describe("the TV app", () => {
     await eventually(() => expect(focusedLabel()).toMatch(/^Cartoon Classics, /));
   });
 
+  // The press was for that one retry. After it failed, a recovery nobody pressed for (the next
+  // channel frame) must leave the remote where the viewer took it.
+  it("leaves the remote where it is when a frame recovers the Guide after a retry that failed", async () => {
+    await launch();
+    await eventually(() => expect(label("Open programme guide")).not.toBeNull());
+    await act(async () => label("Open programme guide")?.click());
+    await eventually(() => expect(label("Sci-Fi Classics, ")).not.toBeNull());
+
+    const restore = server.failGuide();
+    await act(async () => server.sendFrame("channel", { id: "ch-scifi", kind: "updated" }));
+    await eventually(() => expect(tryAgain()).not.toBeNull());
+    const button = tryAgain();
+    await act(async () => button?.focus());
+    const answer = server.holdGuide();
+    await act(async () => button?.click());
+    await act(async () => answer());
+    await eventually(() => expect(button?.textContent).not.toContain("Trying again"));
+    expect(tryAgain()).toBe(button);
+
+    // The viewer takes focus off the Guide; the server comes back and a frame reloads the Guide.
+    await act(async () => (page.activeElement as unknown as { blur(): void }).blur());
+    expect(focusedLabel()).toBeNull();
+    restore();
+    await act(async () => server.sendFrame("channel", { id: "ch-scifi", kind: "updated" }));
+    await eventually(() => expect(tryAgain()).toBeNull());
+    expect(label("Sci-Fi Classics, ")).not.toBeNull();
+    expect(focusedLabel()).toBeNull();
+  });
+
   // A Guide that never answered shows its error panel; its Try again is the first load's notice.
   it("keeps the remote on the error panel's Try again while it retries, then lands it on the Guide", async () => {
     const restore = server.failGuide();
