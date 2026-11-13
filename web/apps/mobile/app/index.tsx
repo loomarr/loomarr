@@ -384,8 +384,14 @@ const WatchingScreen = ({
             sheet={sheet ? sheetFor(sheet) : undefined}
             utilities={{
               ...(iPhone ? { airPlayPicker: <NativeAirPlayPicker /> } : {}),
+              // The key also brings a floating picture back into the app.
               ...(pictureInPicture
-                ? { onPictureInPicture: () => void picture.current?.startPictureInPicture() }
+                ? {
+                    onPictureInPicture: () =>
+                      transport.inPictureInPicture()
+                        ? picture.current?.stopPictureInPicture()
+                        : void picture.current?.startPictureInPicture(),
+                  }
                 : {}),
               audioOpen: sheet === "audio",
               density: "touch",
