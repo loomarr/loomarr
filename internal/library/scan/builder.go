@@ -383,7 +383,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
-		facts.Name = fallbackName(file.Rel, id.kind, file.Part)
+		facts.Name = fallbackName(file.Rel, id.kind, file.Part, file.Sole)
 	}
 	// An episode its file names by the day it aired lists that day until a catalog says more.
 	if day := id.airDate(); facts.PremiereDate == "" && day != "" {

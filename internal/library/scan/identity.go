@@ -238,6 +238,11 @@ func embeddedRecord(file File) (mp.Record, string) {
 			return movieRecord(src, segments), ""
 		}
 	}
+	// So is a release's film, tagged by its group, in its show's folder: "[Grp] Kage Hana - Movie 1 -
+	// Dawn [1080p]".
+	if leadingTags.MatchString(name) && animeFilm.MatchString(stem(name)) && markIn(name) == nil {
+		return movieRecord(src, segments), ""
+	}
 	n, ok := numberingIn(name)
 	if m := dramaRelease.FindStringSubmatch(name); !ok && m != nil {
 		n, ok = mp.Numbering{Season: 1, Episode: atoi(m[1])}, true
@@ -529,8 +534,8 @@ var (
 	// first), ahead of its notes or its end; or with no dash, " 07" with two digits or more.
 	animeNumber = regexp.MustCompile(`(?i)^(.+?)(?:[ ._]+-[ ._]+(?:(?:e|ep|episode)[ ._]*)?(\d{1,4})|[ ._]+(\d{2,4}))(?:\.5)?(?:-\d{1,4})?(?:v\d+)?(?:[ ._]+(?:end|final))?(?:[ ._]*$|[ ._]*[\[(]|[ ._]+-)`)
 	// animeDashed is animeNumber's dashed form alone, read first so a number in a show's name stays
-	// the show's: "Hoshizora 86 - 04" is episode 4 of "Hoshizora 86".
-	animeDashed = regexp.MustCompile(`(?i)^(.+?)[ ._]+-[ ._]+(?:(?:e|ep|episode)[ ._]*)?(\d{1,4})()(?:\.5)?(?:-\d{1,4})?(?:v\d+)?(?:[ ._]+(?:end|final))?(?:[ ._]*$|[ ._]*[\[(]|[ ._]+-)`)
+	// the show's: "Hoshizora 86 - 04" is episode 4 of "Hoshizora 86". "- #09" numbers one too.
+	animeDashed = regexp.MustCompile(`(?i)^(.+?)[ ._]+-[ ._]+(?:(?:e|ep|episode)[ ._]*|#)?(\d{1,4})()(?:\.5)?(?:-\d{1,4})?(?:v\d+)?(?:[ ._]+(?:end|final))?(?:[ ._]*$|[ ._]*[\[(]|[ ._]+-)`)
 	// paddedAbsolute matches an episode's number across its show after a dash, at the end of a name,
 	// written with a leading zero or in three digits: "Show - 08", "Show - 013v2".
 	paddedAbsolute = regexp.MustCompile(`[ ._]-[ ._]+(?:0\d{1,3}|[1-9]\d{2})(?:v\d+)?$`)

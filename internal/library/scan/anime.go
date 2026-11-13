@@ -23,6 +23,10 @@ func looseAnime(name string) (string, mp.Numbering, bool) { return animeRelease(
 // "Mizu no Oto Ep", "Mizu no Oto Episode".
 var trailingEpisodeWord = regexp.MustCompile(`(?i)[ ._-]+(?:ep|episode)\.?$`)
 
+// animeFilm matches a release's film after its show's name and a dash: " - Movie 1", " - The
+// Movie", " - Movie".
+var animeFilm = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:the[ ._]+)?(?:movie|gekijouban)(?:[ ._]*\d{1,2})?(?:[ ._]*[-\[(]|$)`)
+
 // animeRelease is looseAnime for a file in an anime's folder too ("Anime/"), where a name is a
 // release's as if its group had tagged it: "Anime/Usagi Den 07 [1080p].mkv", "Anime/Kumo Tetsu - 07
 // (BD 1080p) [Grp].mkv", "Anime/Usagi.Den.08.1080p.mkv", read without its release's words.
@@ -44,6 +48,11 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		}
 	}
 	tagged := inAnime || leadingTags.MatchString(s)
+	// A release's film of its show, "[Grp] Kage Hana - Movie 1 - Dawn", "[Grp] Kage Hana - The
+	// Movie", is a film, numbered among the show's films, never an episode.
+	if (tagged || grouped) && animeFilm.MatchString(s) {
+		return "", mp.Numbering{}, false
+	}
 	// A release's special, "[Kumo] Show - SP01" or "Show - OVA 2 [Kumo]", is the show's season 0's.
 	// An OVA with no number, "[Kumo] Show - OVA", is still the season's; a "Special" alone may be a
 	// title's word.

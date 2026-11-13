@@ -380,7 +380,7 @@ func holdingOnly(words []string) bool {
 
 // holdingWords are words a show's folder carries to say what it holds of the show.
 var holdingWords = regexp.MustCompile(`^(?:\d{1,4}|s\d{1,4}|complete|collection|` + seasonWords +
-	`|dvd|disc|disk|vol|volume|box|boxset|set|pack|full|all|episodes|bluray|web|webdl|webrip|hdtv|remux|\d{3,4}p|x26[45]|h26[45]|hevc|uhd|4k|sd|hd)$`)
+	`|dvd|disc|disk|vol|volume|box|boxset|set|pack|batch|full|all|episodes|bluray|web|webdl|webrip|hdtv|remux|\d{3,4}p|x26[45]|h26[45]|hevc|uhd|4k|sd|hd)$`)
 
 // packSeason is the season a season pack's release name gives by its token after the show's name,
 // "Pike.Moss.S02.1080p" 2; 0 for none, or for a pack of several ("S01-S03").
@@ -489,7 +489,7 @@ func showFolderName(folder string) string {
 }
 
 // discWords are the words a show's copy is named by after its name.
-var discWords = map[string]bool{"dvd": true, "dvds": true, "bluray": true, "blu-ray": true, "boxset": true}
+var discWords = map[string]bool{"dvd": true, "dvds": true, "bluray": true, "blu-ray": true, "boxset": true, "batch": true}
 
 // ownSeries is the show an episode's own name gives: before its mark (looseSeries), or a dated
 // release's before its day (datedShow).
@@ -542,8 +542,12 @@ func looseSeries(name string) string {
 }
 
 // untagged is a show's name before its episode's mark with the release group's tags before it
-// taken off: "[Grp] Hana Kettle", "【Grp】Kettle Hana".
+// taken off: "[Grp] Hana Kettle", "【Grp】Kettle Hana". So is the site a download names itself
+// after: "www.Torrentsite.com - Larch.Holm" (trackerPrefix).
 func untagged(name string) string {
+	if bare := trackerPrefix.ReplaceAllString(name, ""); strings.IndexFunc(bare, unicode.IsLetter) >= 0 {
+		name = bare
+	}
 	// A tag with nothing after it is the show's name in brackets, no group's: "[Tolland Mews]" of
 	// "[Tolland Mews] S01E09".
 	bare := leadingTags.ReplaceAllString(name, "")
