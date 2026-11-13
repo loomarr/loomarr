@@ -290,6 +290,44 @@ const Television: Story = {
   ),
 };
 
+// A break on a television, paused a little behind, leading back to a long title: the TV's large title
+// shares its row with `Back in n min`, and the title is what truncates.
+const longReturn = airings.map((airing) =>
+  airing.scheduleBlockId === "p2"
+    ? {
+        ...airing,
+        episode: undefined,
+        season: undefined,
+        series: undefined,
+        title: "A Lighthouse Keeper's Long Winter",
+      }
+    : airing,
+);
+const tvBreakState = { lagSeconds: 75, mode: "paused" as const };
+const tvBreakPlayhead = NOW - tvBreakState.lagSeconds * 1000;
+const tvBreak = playbarFromTimeline({
+  airings: longReturn,
+  channel,
+  live: tvBreakState,
+  nowMs: NOW,
+  playheadMs: tvBreakPlayhead,
+});
+const TelevisionCommercials: Story = {
+  ...Television,
+  args: {
+    ...Television.args,
+    band: tvBreak.band,
+    keys: { ...Television.args?.keys, playing: false },
+    live: tvBreakState,
+    schedule: {
+      onSeek: fn(),
+      playheadMs: tvBreakPlayhead,
+      segments: tvBreak.segments,
+      window: tvBreak.window,
+    },
+  } as Story["args"],
+};
+
 // A television's subtitle is short (about 32 characters a line, as broadcast captions are).
 const TelevisionSubtitles: Story = {
   ...Television,
@@ -853,6 +891,7 @@ export {
   SubtitlesMenu,
   Surfing,
   Television,
+  TelevisionCommercials,
   TelevisionMore,
   TelevisionSubtitles,
   TelevisionSurfing,
