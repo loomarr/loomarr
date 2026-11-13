@@ -10,12 +10,19 @@ import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 // the caller derived from GET /v1/setup/status, so a refresh loses nothing — and skipped
 // steps render neutral, never red (§6): an optional step you passed on is not a failure.
 const MARKER: Record<WizardStepStatus, string> = {
-  done: "border-lock bg-lock-tint-15 text-lock",
+  done: "border-lock bg-lock-tint-15",
   // Where you are is neutral (#1909 Q1): its row already takes the elevated fill, so the marker is
   // a foreground ring and number. Amber is focus or the primary action.
-  current: "border-foreground font-semibold text-foreground",
-  pending: "border-border text-static-400",
-  skipped: "border-border text-static-400",
+  current: "border-foreground",
+  pending: "border-border",
+  skipped: "border-border",
+};
+
+const MARKER_TONE: Record<WizardStepStatus, "primary" | "secondary" | "success"> = {
+  done: "success",
+  current: "primary",
+  pending: "secondary",
+  skipped: "secondary",
 };
 
 const WizardShell = ({
@@ -78,14 +85,16 @@ const WizardShell = ({
             <>
               <span
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full border",
                   MARKER[status],
                 )}
               >
                 {status === "done" ? (
-                  <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                  <Icon decorative glyph={icons.selected} size="compact" tone={MARKER_TONE[status]} />
                 ) : (
-                  i + 1
+                  <Text as="span" strong={status === "current"} textRole="mono" tone={MARKER_TONE[status]}>
+                    {i + 1}
+                  </Text>
                 )}
               </span>
               <Text

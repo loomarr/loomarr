@@ -35,9 +35,13 @@ const ChannelCard = ({
     <Card gap={12} padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
         <Stack align="baseline" direction="row" gap="control">
-          <span className="font-mono text-2xl leading-none tabular-nums">{channelNumber(number)}</span>
+          <Text as="span" className="tabular-nums" textRole="channelNumber" tone="primary">
+            {channelNumber(number)}
+          </Text>
           <div>
-            <p className="leading-tight font-medium">{name}</p>
+            <Text as="p" textRole="cardLabel" tone="primary">
+              {name}
+            </Text>
             {managed && (
               <Text as="p" shout textRole="mono">
                 Managed by Loomarr

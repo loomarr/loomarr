@@ -98,7 +98,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
   if (deltas.length === 0) return null;
   return (
     <Stack gap="1.5" render="section">
-      <h3 className="text-2xs text-static-400">{`Programming · ${deltas.length}`}</h3>
+      <Text as="h3" textRole="hint" tone="secondary">{`Programming · ${deltas.length}`}</Text>
       <Stack gap="1.5" render="ul">
         {deltas.map((d) => (
           <li key={d.label} className="flex flex-wrap items-baseline gap-x-2">
@@ -237,7 +237,7 @@ const Group = ({
   if (rows.length === 0) return null;
   return (
     <Stack gap="1.5" render="section">
-      <h3 className="text-2xs text-static-400">{`${title} · ${rows.length}`}</h3>
+      <Text as="h3" textRole="hint" tone="secondary">{`${title} · ${rows.length}`}</Text>
       <Stack gap="1" render="ul">
         {rows.map((row) => (
           <Row key={row.key} row={row} tone={tone} note={rowNote} />

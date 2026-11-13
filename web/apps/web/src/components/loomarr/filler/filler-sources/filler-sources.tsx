@@ -283,9 +283,9 @@ const FillerSources = ({
         <section aria-labelledby="local-filler-sources" className="border-border/60 border-t pt-5">
           <Stack align="start" direction="row" gap="4" justify="between">
             <div className="min-w-0">
-              <h3 id="local-filler-sources" className="font-medium">
+              <Text as="h3" id="local-filler-sources" textRole="cardLabel" tone="primary">
                 Your files
-              </h3>
+              </Text>
               <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                 Folders and media-server libraries you already manage.
               </Text>
@@ -318,9 +318,9 @@ const FillerSources = ({
           >
             <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
               <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
-                <h3 id={`provider-${provider.kind}`} className="font-medium">
+                <Text as="h3" id={`provider-${provider.kind}`} textRole="cardLabel" tone="primary">
                   {provider.target}
-                </h3>
+                </Text>
                 <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                   {!provider.enabled
                     ? `${provider.target} is paused. Sources and clips stay saved.`

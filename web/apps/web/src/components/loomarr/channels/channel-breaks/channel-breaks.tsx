@@ -30,7 +30,9 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
 
   return (
     <Stack className={className} gap="1.5" render="section">
-      <h3 className="text-2xs text-muted-foreground font-normal">Between shows</h3>
+      <Text as="h3" textRole="hint" tone="secondary">
+        Between shows
+      </Text>
       <PodTimeline entries={entries} matchLevel={pod?.matchLevel} />
       <Text as="p" textRole="compact" tone="secondary">
         {`${pluralize(entries.length, "clip")} between shows, assembled exactly as the channel builds them.`}

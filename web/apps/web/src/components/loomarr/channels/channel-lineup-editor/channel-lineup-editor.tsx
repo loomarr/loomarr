@@ -309,7 +309,11 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               {label}
             </Chip>
           ))}
-          {!dragEnabled && <span className="text-2xs text-static-400">Switch to Play order to reorder</span>}
+          {!dragEnabled && (
+            <Text as="span" textRole="hint" tone="secondary">
+              Switch to Play order to reorder
+            </Text>
+          )}
         </Stack>
       )}
 
