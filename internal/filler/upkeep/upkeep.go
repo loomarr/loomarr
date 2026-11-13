@@ -70,6 +70,7 @@ type Job struct {
 type Result struct {
 	Emptied      int   // quarantine batches deleted
 	LetGo        int   // rejected clips taken off the catalog this pass
+	HeldBack     int   // fetched rejects past their rest that stayed: pinned, or the clip changed within the week
 	Quarantined  int   // clips whose files went to quarantine this pass
 	Leftovers    int   // leftover staging folders removed
 	LeftoverByte int64 // bytes those folders held
@@ -102,8 +103,10 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 			errs = append(errs, err)
 		}
 	}
-	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.Quarantined > 0 || res.Leftovers > 0) {
-		j.log.Info("upkeep: filler let go of what it no longer needs", "rejects", res.LetGo,
+	// held_back is what to read when rejects pile up and none go: a clip row something keeps
+	// rewriting is never "unchanged for a week".
+	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.HeldBack > 0 || res.Quarantined > 0 || res.Leftovers > 0) {
+		j.log.Info("upkeep: filler let go of what it no longer needs", "rejects", res.LetGo, "held_back", res.HeldBack,
 			"quarantined", res.Quarantined, "emptied", res.Emptied, "leftovers", res.Leftovers,
 			"leftover_bytes", res.LeftoverByte)
 	}
@@ -139,6 +142,7 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 				return err
 			}
 			if !retired {
+				res.HeldBack++
 				continue
 			}
 			res.LetGo++

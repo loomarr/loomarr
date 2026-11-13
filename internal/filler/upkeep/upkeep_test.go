@@ -155,8 +155,9 @@ func TestRejectsLetGoAfterAWeekAndNothingElseDoes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.LetGo != 2 || res.Quarantined != 2 || res.Leftovers != 2 || cleaned != 1 {
-		t.Fatalf("Run = %+v (cleaner ran %d times), want 2 let go, 2 quarantined, 2 leftovers", res, cleaned)
+	// The pinned clip is past its rest and fetched, so the store is asked and refuses it.
+	if res.LetGo != 2 || res.HeldBack != 1 || res.Quarantined != 2 || res.Leftovers != 2 || cleaned != 1 {
+		t.Fatalf("Run = %+v (cleaner ran %d times), want 2 let go, 1 held back, 2 quarantined, 2 leftovers", res, cleaned)
 	}
 	for _, gone := range []string{old, tools.SidecarPathFor(old), filepath.Join(f.dir, masterOf("old")), sharing} {
 		if exists(gone) {
