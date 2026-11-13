@@ -205,6 +205,7 @@ const GuidePage = () => {
   const [dayOffset, setDayOffset] = useGuideDay({
     anchorMs,
     initialOffset: atParam === undefined ? 0 : dayOffsetOf(atParam, timeZone),
+    minOffset: -RETENTION_DAYS,
     timeZone,
   });
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
