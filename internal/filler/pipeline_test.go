@@ -526,6 +526,24 @@ func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	}
 }
 
+// A reject Loomarr let go (#3855) has no files; a rewind would put it back on the conveyor with
+// its reason erased.
+func TestPipeline_RewindRefusesAClipWhoseFilesWereDeleted(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "let-go")
+	row := st.rows["let-go"]
+	row.Disposition, row.RejectReason = pipelinestate.DispositionRejected, pipelinestate.ReasonUnplayable
+	row.FilesDeletedAt = time.Unix(1_900_000_000, 0).UTC()
+	st.rows["let-go"] = row
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(t.Context(), "let-go", pipelinestate.StageVision, false); !errors.Is(err, filler.ErrFilesDeleted) {
+		t.Fatalf("Rewind = %v, want ErrFilesDeleted", err)
+	}
+	if got := st.rows["let-go"]; got.Disposition != row.Disposition || got.RejectReason != row.RejectReason {
+		t.Fatalf("refused rewind changed the row: %+v", got)
+	}
+}
+
 func TestPipeline_RewindTranscodeRequiresExplicitForce(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "encoded")

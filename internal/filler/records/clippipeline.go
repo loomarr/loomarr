@@ -220,6 +220,14 @@ func (s *sqlStore) RetireRejectedClip(ctx context.Context, hash string, rejected
 		return false, fmt.Errorf("begin retire rejected clip %s: %w", hash, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	clipTx := s.db.Clips(tx)
+	// The clip row is locked first, as a retry locks it (RetryClipPipeline), so the two cannot
+	// deadlock on Postgres.
+	if _, err := clipTx.LockPublication(ctx, hash); errors.Is(err, clipstore.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock rejected clip %s: %w", hash, err)
+	}
 	query := storedb.LockRows(s.dialect, `SELECT clip_hash FROM filler_clip_pipeline
 		WHERE clip_hash = ? AND disposition = ? AND acquisition_id <> '' AND files_deleted_at = 0
 		  AND updated_at <= ?`)
@@ -231,13 +239,12 @@ func (s *sqlStore) RetireRejectedClip(ctx context.Context, hash string, rejected
 	if err != nil {
 		return false, fmt.Errorf("lock rejected clip %s: %w", hash, err)
 	}
-	clipTx := s.db.Clips(tx)
 	if pinned, err := clipTx.Pinned(ctx, hash); err != nil {
 		return false, fmt.Errorf("retire rejected clip %s: %w", hash, err)
 	} else if pinned {
 		return false, nil
 	}
-	if reaped, err := clipTx.Reap(ctx, hash, at); err != nil {
+	if reaped, err := clipTx.Reap(ctx, hash, rejectedBy, at); err != nil {
 		return false, fmt.Errorf("reap rejected clip %s: %w", hash, err)
 	} else if !reaped {
 		return false, nil

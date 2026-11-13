@@ -399,8 +399,10 @@ func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced map[strin
 
 // OwnFiles is ownFiles for a caller outside this package that retires a clip itself and disposes of
 // its files its own way: the files of the catalog clip clipRef (a clip path or hash), which the
-// caller has already taken off the catalog. clipRef resolves through ClipPath, so every file listed
-// is inside clipDir. referenced comes from ReferencedAssets and is decremented as assets are claimed.
+// caller has already taken off the catalog. clipRef resolves through ClipPath, so the playback file
+// and sidecar are inside clipDir; the master and evidence paths come from the sidecar, so the caller
+// still checks where they point before disposing of them. referenced comes from ReferencedAssets
+// and is decremented as assets are claimed.
 func OwnFiles(clipDir, clipRef string, tags asset.SidecarTags, referenced map[string]int) ([]string, error) {
 	full, err := cliplibrary.ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
 	if err != nil {

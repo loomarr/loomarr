@@ -240,6 +240,8 @@ func (s *Handlers) rewindFillerClip(ctx context.Context, in *rewindFillerClipInp
 		return nil, httpcore.Unprocessable("Unknown pipeline stage", "Choose a stage from the clip's pipeline ladder.")
 	case errors.Is(err, filler.ErrTranscodeNeedsForce):
 		return nil, httpcore.Conflict("Re-encoding needs confirmation", err.Error())
+	case errors.Is(err, filler.ErrFilesDeleted):
+		return nil, httpcore.Conflict("This clip's files are gone", err.Error())
 	case err != nil:
 		return nil, err
 	default:

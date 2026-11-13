@@ -226,13 +226,14 @@ func (c ClipTx) Pinned(ctx context.Context, hash string) (bool, error) {
 
 // Reap takes a held clip off the catalog for good before its files are deleted: removed, so
 // nothing airs it, and reaped, so a sync that no longer finds the file keeps the row, and no
-// restore or retry brings it back. A composite, a published clip or an already reaped one is left
-// alone and reports false.
-func (c ClipTx) Reap(ctx context.Context, hash string, at time.Time) (bool, error) {
+// restore or retry brings it back. Only a clip untouched since untouchedSince is reaped: a restore
+// or retry writes the row, and must win over a reap decided from an older reading. A composite, a
+// published clip, a recently changed one or an already reaped one is left alone and reports false.
+func (c ClipTx) Reap(ctx context.Context, hash string, untouchedSince, at time.Time) (bool, error) {
 	return c.affectedOne(ctx, `UPDATE clips SET
 		removed_at = CASE WHEN removed_at = 0 THEN ? ELSE removed_at END, reaped_at = ?, updated_at = ?
-		WHERE hash = ? AND held = ? AND is_composite = ? AND reaped_at IS NULL`,
-		epoch(at), epoch(at), epoch(at), hash, true, false)
+		WHERE hash = ? AND held = ? AND is_composite = ? AND reaped_at IS NULL AND updated_at <= ?`,
+		epoch(at), epoch(at), epoch(at), hash, true, false, epoch(untouchedSince))
 }
 
 // ClipPublication is what terminal readiness checks about a clip before publishing it.

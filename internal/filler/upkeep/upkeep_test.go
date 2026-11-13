@@ -185,6 +185,47 @@ func (failingBin) Put(files []string) map[string]error {
 	return failed
 }
 
+// sidecarStuckBin moves everything except a sidecar: a crash part-way through one clip's files.
+type sidecarStuckBin struct{ quarantine.Bin }
+
+func (b sidecarStuckBin) Put(files []string) map[string]error {
+	var rest []string
+	failed := map[string]error{}
+	for _, f := range files {
+		if filepath.Ext(f) == ".json" {
+			failed[f] = errors.New("injected: interrupted")
+			continue
+		}
+		rest = append(rest, f)
+	}
+	for f, err := range b.Bin.Put(rest) {
+		failed[f] = err
+	}
+	return failed
+}
+
+func TestAPartlyMovedClipIsFinishedByTheNextPass(t *testing.T) {
+	f := newFixture(t)
+	master := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, "masters", "aa", "bb", "m.mkv"))
+	old := f.reject(t, hashOf("old"), "run-1", master, t0.Add(-RejectRest-time.Hour))
+	now := func() time.Time { return t0 }
+	bin := quarantine.New(f.dir, now)
+
+	if _, err := New(f.store, sidecarStuckBin{bin}, nil, f.dir, now, nil).Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if exists(old) || exists(filepath.Join(f.dir, master)) || !exists(tools.SidecarPathFor(old)) {
+		t.Fatal("after the interrupted pass, want the media moved and the sidecar left")
+	}
+	res, err := New(f.store, bin, nil, f.dir, now, nil).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Quarantined != 1 || exists(tools.SidecarPathFor(old)) {
+		t.Fatalf("second pass = %+v, sidecar present=%v; want the sidecar moved", res, exists(tools.SidecarPathFor(old)))
+	}
+}
+
 func TestACrashAfterTheRetireIsFinishedByTheNextPass(t *testing.T) {
 	f := newFixture(t)
 	master := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, "masters", "aa", "bb", "m.mkv"))

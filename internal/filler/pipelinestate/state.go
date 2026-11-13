@@ -186,6 +186,9 @@ func (p *ClipPipeline) RestoreRefusal(at time.Time) bool {
 	if p.Disposition != DispositionRejected && p.Disposition != DispositionDismissed {
 		return false
 	}
+	if !p.FilesDeletedAt.IsZero() {
+		return false // nothing left to restore; the row is the record of why it went
+	}
 	p.Disposition = DispositionReview
 	p.RejectReason, p.RejectDetail = "", ""
 	p.UpdatedAt = at

@@ -5,6 +5,19 @@ import (
 	"time"
 )
 
+// A restore of a reject whose files Loomarr deleted has nothing to bring back; turning the row to
+// review would erase the record of why it went (#3855).
+func TestRestoreRefusalKeepsALetGoReject(t *testing.T) {
+	row := ClipPipeline{Disposition: DispositionRejected, RejectReason: ReasonLanguage, RejectDetail: "heard French",
+		FilesDeletedAt: time.Unix(1_900_000_000, 0).UTC()}
+	if row.RestoreRefusal(time.Unix(1_900_000_100, 0)) {
+		t.Fatal("RestoreRefusal changed a reject whose files were deleted")
+	}
+	if row.Disposition != DispositionRejected || row.RejectReason != ReasonLanguage || row.RejectDetail == "" {
+		t.Fatalf("row after refused restore = %+v, want unchanged", row)
+	}
+}
+
 func TestClipPipelineLifecycle(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0).UTC()
 	tests := []struct {

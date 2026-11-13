@@ -1736,6 +1736,12 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 	recent := reject("recent", "run-1", week.Add(time.Hour))
 	byHand := reject("by-hand", "", week.Add(-time.Hour))
 	pinned := reject("pinned", "run-1", week.Add(-time.Hour))
+	// Rejected long ago, but its clip row changed since (a restore writes it): that write wins.
+	touched := reject("touched", "run-1", week.Add(-time.Hour))
+	touched.Name = "touched, renamed"
+	if err := s.UpsertClip(ctx, Clip{Clip: touched.Clip, UpdatedAt: now.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 	channel := sampleChannel("pins-a-reject", 712, now)
 	channel.Policy.Filler = &schedule.FillerSelection{Pinned: []string{pinned.Hash}}
 	if _, err := s.SaveChannel(ctx, channel); err != nil {
@@ -1745,7 +1751,7 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 	for _, tc := range []struct {
 		clip Clip
 		want bool
-	}{{old, true}, {recent, false}, {byHand, false}, {pinned, false}, {old, false}} {
+	}{{old, true}, {recent, false}, {byHand, false}, {pinned, false}, {touched, false}, {old, false}} {
 		got, err := s.RetireRejectedClip(ctx, tc.clip.Hash, week, now)
 		if err != nil || got != tc.want {
 			t.Fatalf("RetireRejectedClip(%s) = %v, %v; want %v", tc.clip.Name, got, err, tc.want)
@@ -1788,9 +1794,9 @@ func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Four rejects remain in the audit count; the retired one is no longer recoverable.
-	if overview.Rejected != 4 || overview.Recoverable != 3 {
-		t.Fatalf("overview = %+v, want 4 rejected and 3 recoverable", overview)
+	// Five rejects remain in the audit count; the retired one is no longer recoverable.
+	if overview.Rejected != 5 || overview.Recoverable != 4 {
+		t.Fatalf("overview = %+v, want 5 rejected and 4 recoverable", overview)
 	}
 }
 
