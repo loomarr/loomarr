@@ -45,7 +45,26 @@ type invitationPreviewOutput struct {
 	}
 }
 
+// newInvitationPreviewLimiter allows a link to be opened a few times from one source (a refresh, a
+// second device) and no more than that in a burst.
+func newInvitationPreviewLimiter() *auth.RateLimiter { return auth.NewRateLimiter(0.2, 10) }
+
+// newInvitationRedeemLimiter holds a redemption to a few attempts per account from one source, a
+// few more per source across usernames, and a slowly refilling allowance per account across every
+// source, so rotating addresses does not buy a fresh burst of password guesses.
+func newInvitationRedeemLimiter() *auth.SourceLimiter {
+	return auth.NewSourceLimiter(0.1, 5, 0.1, 10, 1.0/30, 10)
+}
+
+func tooManyInvitationAttempts() error {
+	return httpcore.TooManyRequests("Too many attempts", "Too many invitation attempts. Wait a moment and try again.")
+}
+
 func (s *Handlers) previewInvitation(ctx context.Context, in *invitationBearerInput) (*invitationPreviewOutput, error) {
+	source := auth.ThrottleSource(s.origin.ClientIP(httpcore.RequestFrom(ctx)))
+	if !s.invitationPreviewLimiter.Allow(source) {
+		return nil, tooManyInvitationAttempts()
+	}
 	value, err := s.invitationRedemption.Preview(ctx, in.Body.Grant)
 	if err != nil {
 		return nil, invitationRedemptionError(err)
@@ -73,6 +92,9 @@ type redeemInvitationInput struct {
 }
 
 func (s *Handlers) redeemInvitation(ctx context.Context, in *redeemInvitationInput) (*meOutput, error) {
+	if !s.invitationRedeemLimiter.Allow(auth.LoginRateKey(s.origin.ClientIP(httpcore.RequestFrom(ctx)), in.Body.Username)) {
+		return nil, tooManyInvitationAttempts()
+	}
 	preview, err := s.invitationRedemption.Preview(ctx, in.Body.Grant)
 	if err != nil {
 		return nil, invitationRedemptionError(err)

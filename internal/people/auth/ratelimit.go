@@ -65,8 +65,13 @@ func (r *RateLimiter) size() int {
 }
 
 // LoginRateKey is the key a sign-in or account-recovery attempt is throttled on: the client's
-// throttle source (ThrottleSource) and the username.
-func LoginRateKey(clientIP, username string) string { return ThrottleSource(clientIP) + "|" + username }
+// throttle source (ThrottleSource) and the username, trimmed and lower-cased so "Admin" and
+// " admin " are one account.
+func LoginRateKey(clientIP, username string) string {
+	return ThrottleSource(clientIP) + "|" + normalizeAccountKey(username)
+}
+
+func normalizeAccountKey(username string) string { return strings.ToLower(strings.TrimSpace(username)) }
 
 // ThrottleSource is the source a client address is throttled as. An IPv4 address is itself. An IPv6
 // address is its /64, because a client is routinely handed the whole prefix and could otherwise take
@@ -84,31 +89,56 @@ func ThrottleSource(clientIP string) string {
 	return prefix.String()
 }
 
-// SourceLimiter throttles attempts keyed by LoginRateKey on two buckets: one per key (one account
-// from one source), and one per client address across every username it tries. Rotating usernames
-// therefore cannot buy a fresh burst per name.
-type SourceLimiter struct{ account, source *RateLimiter }
+// SourceLimiter throttles attempts keyed by LoginRateKey on three buckets, from the narrowest
+// cause to the widest:
+//
+//   - source: one client address (an IPv6 /64) across every username it tries, so rotating
+//     usernames cannot buy a fresh burst per name;
+//   - pair: one account from one source, a person retyping a password;
+//   - account: one account from every source together, so rotating sources (the /64s of an IPv6
+//     delegation, an IPv4 pool) cannot buy a fresh burst per address. The cost of a guess no longer
+//     depends on how much address space the guesser has.
+//
+// The account bucket is asked last, so an attempt the source or the pair has already refused
+// spends nothing from it: one address cannot lock an account out of everyone else's reach.
+type SourceLimiter struct{ source, pair, account *RateLimiter }
 
-// NewSourceLimiter allows keyBurst attempts per LoginRateKey (refilling at keyPerSec) and
-// sourceBurst per client address across all usernames (refilling at sourcePerSec).
-func NewSourceLimiter(keyPerSec float64, keyBurst int, sourcePerSec float64, sourceBurst int) *SourceLimiter {
+// NewSourceLimiter allows pairBurst attempts per LoginRateKey (refilling at pairPerSec),
+// sourceBurst per client address across all usernames (sourcePerSec), and accountBurst per account
+// across every source (accountPerSec).
+func NewSourceLimiter(
+	pairPerSec float64, pairBurst int, sourcePerSec float64, sourceBurst int, accountPerSec float64, accountBurst int,
+) *SourceLimiter {
 	return &SourceLimiter{
-		account: NewRateLimiter(keyPerSec, keyBurst),
 		source:  NewRateLimiter(sourcePerSec, sourceBurst),
+		pair:    NewRateLimiter(pairPerSec, pairBurst),
+		account: NewRateLimiter(accountPerSec, accountBurst),
 	}
 }
 
-// Allow reports whether an attempt for key (a LoginRateKey) may proceed now. The source bucket is
-// asked first, so an attempt it refuses spends nothing from the account's.
+// Allow reports whether an attempt for key (a LoginRateKey) may proceed now. A key with no username
+// has no account to throttle and is held by its source alone.
 func (l *SourceLimiter) Allow(key string) bool {
-	source, _, _ := strings.Cut(key, "|")
-	return l.source.Allow(source) && l.account.Allow(key)
+	source, account, _ := strings.Cut(key, "|")
+	if !l.source.Allow(source) || !l.pair.Allow(source+"|"+normalizeAccountKey(account)) {
+		return false
+	}
+	account = normalizeAccountKey(account)
+	return account == "" || l.account.Allow(account)
 }
 
-// The sign-in throttle. An account allows a short burst from one source (a person retyping a
-// password); a source allows more across every username (a household behind one address signing in
-// on several devices), and no more.
-const loginSourceBurst = 20
+// The sign-in throttle. A pair allows a short burst (a person retyping a password); a source allows
+// more across every username (a household behind one address signing in on several devices), and
+// no more; an account allows a larger burst across all sources, refilling slowly, which is what
+// stops an attacker who rotates addresses. A real owner locked out by that waits one refill.
+const (
+	loginSourceBurst  = 20
+	loginAccountBurst = 20
+	// loginAccountRefill is the time one account-wide attempt takes to come back.
+	loginAccountRefill = 30 * time.Second
+)
 
 // NewLoginLimiter returns the sign-in throttle.
-func NewLoginLimiter() *SourceLimiter { return NewSourceLimiter(0.2, 5, 0.5, loginSourceBurst) }
+func NewLoginLimiter() *SourceLimiter {
+	return NewSourceLimiter(0.2, 5, 0.5, loginSourceBurst, 1/loginAccountRefill.Seconds(), loginAccountBurst)
+}
