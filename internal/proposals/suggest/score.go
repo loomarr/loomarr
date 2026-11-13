@@ -6,11 +6,11 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/textmatch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // score describes only surviving grounded picks. Date evidence comes from the

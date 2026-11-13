@@ -17,6 +17,8 @@ interface LibraryTitleFile {
   subtitles: readonly { language?: string }[];
   /** A copy that never plays, because another of the title's files does. */
   extra: boolean;
+  /** Which part of a movie split over several files it is, from 1; absent for a whole file. */
+  part?: number;
 }
 
 /** Where a title's details came from, each as a name to show ("TMDB", "Sonarr"). */

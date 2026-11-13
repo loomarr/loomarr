@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // LibraryScan is the poll-based availability path (design §4, §18.1) — the PRIMARY way a
@@ -22,7 +22,7 @@ import (
 // inbound webhook.
 type LibraryScan struct {
 	store   store.TitleStore
-	scanner library.LibraryScanner
+	scanner mediaserver.LibraryScanner
 	emit    Emitter
 	quality AcquisitionQuality
 	now     func() time.Time
@@ -39,7 +39,7 @@ type LibraryScan struct {
 
 // NewLibraryScan builds a scan. now defaults to time.Now; lookback defaults to 1h (comfortably
 // wider than the default 5-minute scan cadence).
-func NewLibraryScan(st store.TitleStore, scanner library.LibraryScanner, emit Emitter, lookback time.Duration, now func() time.Time, log *slog.Logger) *LibraryScan {
+func NewLibraryScan(st store.TitleStore, scanner mediaserver.LibraryScanner, emit Emitter, lookback time.Duration, now func() time.Time, log *slog.Logger) *LibraryScan {
 	if now == nil {
 		now = time.Now
 	}
@@ -91,7 +91,7 @@ func (s *LibraryScan) Full(ctx context.Context) (int, error) {
 // LibraryConfirmed to any match. It indexes the (small) in-flight set by provision.Key, then
 // probes it with each (potentially many) scanned item's key — the key parity guarantee (same
 // Key from a Title, a webhook, or a scan item) makes the match exact. O(items) probes.
-func (s *LibraryScan) confirm(ctx context.Context, items []library.SearchResult, inflight map[provision.Key]provision.Record) (int, error) {
+func (s *LibraryScan) confirm(ctx context.Context, items []mediaserver.SearchResult, inflight map[provision.Key]provision.Record) (int, error) {
 	now := s.now()
 	confirmed := 0
 	seen := make(map[provision.Key]bool, len(inflight)) // one confirm per title per scan
@@ -183,9 +183,9 @@ func titleLabel(rec provision.Record) string {
 // faces the identical problem: a collection member carrying both provider ids must be findable
 // under whichever key form the lineup entry was born with. A second derivation would be a
 // fifth copy of this logic that drifts by one namespace and silently matches nothing.
-func ScanItemKeys(it library.SearchResult) []provision.Key {
+func ScanItemKeys(it mediaserver.SearchResult) []provision.Key {
 	mt := provision.Movie
-	if it.MediaType == library.Series {
+	if it.MediaType == mediaserver.Series {
 		mt = provision.Series
 	}
 	keys := make([]provision.Key, 0, 2)

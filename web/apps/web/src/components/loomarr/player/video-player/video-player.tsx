@@ -87,7 +87,6 @@ const VideoPlayer = ({
   attach,
   onChannelStep,
   fill = false,
-  pictureTop,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -138,7 +137,7 @@ const VideoPlayer = ({
   // The channel keys are the page's, not the frame's: while a live, tunable player is up, ↑/↓,
   // PgUp/PgDn and ChannelUp/Down change channel wherever focus is, on a chrome button, on <body>
   // after a click outside, or on the frame itself. Bound to the document for the player's lifetime, so
-  // focus leaving the frame no longer loses them. This is the ONLY place they are handled; the frame's
+  // focus leaving the frame does not lose them. This is the ONLY place they are handled; the frame's
   // handler lets them pass, so one press is one step. `channelStepFor` keeps them away from controls
   // that use the arrows themselves.
   const channelStepRef = useRef(onChannelStep);
@@ -266,17 +265,6 @@ const VideoPlayer = ({
             display: "block",
             height: "100%",
             width: "100%",
-            // Pinned under the top row: the picture starts `pictureTop` down and sits at the top of
-            // the room left, never centred in it.
-            ...(fill && pictureTop !== undefined
-              ? {
-                  height: `calc(100% - ${pictureTop}px)`,
-                  left: 0,
-                  objectPosition: "center top",
-                  position: "absolute",
-                  top: pictureTop,
-                }
-              : null),
           }}
           autoPlay={autoPlay}
           muted={muted}

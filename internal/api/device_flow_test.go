@@ -11,7 +11,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/channels/approval"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -19,7 +20,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -34,7 +34,7 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
@@ -43,18 +43,22 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 
 		return api.Router(defaults.Log, api.Options{
-			Events:           events.NewBus(),
-			ProposalWorkflow: workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash),
-			Approver:         accept.NewApprover(defaults.Store, chBinder, time.Now),
-			Binder:           chBinder,
-			Store:            defaults.Store,
-			Auth:             api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-			Log:              defaults.Log,
-			Login:            auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:         mgr,
-			Devices:          devices,
-			DeviceLimiter:    limiter,
-			CookieSecure:     "false",
+			Store:        defaults.Store,
+			Auth:         api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:          defaults.Log,
+			CookieSecure: "false",
+			Ops:          api.OpsOptions{Events: events.NewBus()},
+			Proposals: api.ProposalsOptions{
+				Workflow: workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash),
+				Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
+			},
+			Channels: api.ChannelsOptions{Binder: chBinder},
+			People: api.PeopleOptions{
+				Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:      mgr,
+				Devices:       devices,
+				DeviceLimiter: limiter,
+			},
 		})
 	})
 }
@@ -403,6 +407,20 @@ func TestDeviceApproveIsRateLimited(t *testing.T) {
 	}
 	if seen[http.StatusTooManyRequests] == 0 {
 		t.Fatalf("no attempt was throttled; statuses = %v", seen)
+	}
+}
+
+// The guard is per address as well as per account: a second account on the same address gets no
+// fresh allowance of guesses.
+func TestDeviceApproveIsRateLimitedPerAddressAcrossAccounts(t *testing.T) {
+	t.Parallel()
+	srv := newDeviceHarness(t, auth.NewRateLimiter(0.01, 2)).Server
+	kid, boss := login(t, srv, "kid", "pw"), login(t, srv, "boss", "pw")
+	for range 2 {
+		postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, kid)
+	}
+	if code, _ := postJSON(t, srv, "/v1/auth/device/approve", map[string]string{"userCode": "BCDF-GHJK"}, boss); code != http.StatusTooManyRequests {
+		t.Fatalf("a second account on the spent address = %d, want 429", code)
 	}
 }
 

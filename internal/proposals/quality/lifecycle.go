@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // AcquisitionRecorder translates a committed terminal provisioning transition

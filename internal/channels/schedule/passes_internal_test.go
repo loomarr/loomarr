@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Internals of the per-pass deal (#1676): the seam repair, the chain walk and its bound, and what

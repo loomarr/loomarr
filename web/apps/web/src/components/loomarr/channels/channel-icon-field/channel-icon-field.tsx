@@ -1,22 +1,19 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, ActivityIndicator, Field, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Field, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useId, useRef, useState } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import type { ChannelIconFieldProps } from "./channel-icon-field.type";
 
-// ⚠ The multipart upload used to be hand-written here, replicating the mutator's transport
-// contract (same-origin, `credentials: "include"`, the double-submit CSRF header) because
-// POST …/icon was a raw mux handler outside the generated client. It is a Huma operation with
-// a huma.MultipartFormFiles body now, so orval generates the call — it builds the FormData
-// itself, and customFetch adds CSRF and credentials without touching the body.
-//
-// The old comment justified the copy by saying "customFetch always JSON-encodes the body".
-// That was not true even then: the mutator passes `options.body` straight through to fetch.
+// ⚠ The multipart upload is NOT hand-written here. POST …/icon is a Huma operation with a
+// huma.MultipartFormFiles body, so orval generates the call — it builds the FormData itself,
+// and customFetch adds CSRF and credentials without touching the body (the mutator passes
+// `options.body` straight through to fetch; it does not JSON-encode it). Re-implementing the
+// transport contract here (same-origin, `credentials: "include"`, the double-submit CSRF
+// header) would only be a second copy to drift.
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 // ChannelIconField — the channel-detail "info" section's icon picker. One current-icon
@@ -120,11 +117,16 @@ const ChannelIconField = ({
   };
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex items-center gap-3">
+    <Stack className={className} gap="control">
+      <Stack align="center" direction="row" gap="control">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
-        <div className="border-border bg-background flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border">
+        <Stack
+          align="center"
+          className="border-border bg-background size-12 overflow-hidden rounded-md border"
+          flexShrink={0}
+          justify="center"
+        >
           {/*
             Three states, and the middle one is the interesting one.
 
@@ -150,12 +152,14 @@ const ChannelIconField = ({
           ) : (
             <Icon decorative glyph={icons.noImage} size="control" tone="muted" />
           )}
-        </div>
+        </Stack>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">Channel icon</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">
+          <Text as="p" textRole="cardLabel" tone="primary">
+            Channel icon
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
             What your household sees in the media server's guide.
-          </p>
+          </Text>
         </div>
         {isAdmin && (
           <Action
@@ -168,13 +172,13 @@ const ChannelIconField = ({
             Change…
           </Action>
         )}
-      </div>
+      </Stack>
 
       {/* The mock draws only the "Change…" button, not what it opens, so the picker keeps
           today's three ways in plus Clear. */}
       {isAdmin && suggestionsOpen && (
         <div id={pickerId} className="border-border rounded-md border p-4">
-          <div className="flex flex-col gap-4">
+          <Stack gap="4">
             {logo && (
               <Action
                 disabled={clearing}
@@ -187,28 +191,34 @@ const ChannelIconField = ({
             )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
             <div>
-              <p className="text-sm font-medium">From your titles</p>
+              <Text as="p" textRole="cardLabel" tone="primary">
+                From your titles
+              </Text>
               {suggestions.isLoading && (
-                <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
-                  <ActivityIndicator decorative size="compact" tone="inherit" />
-                  Looking for posters…
-                </p>
+                <Stack align="center" className="mt-2" direction="row" gap="inline" render="p">
+                  <ActivityIndicator decorative size="compact" tone="secondary" />
+                  <Text as="span" textRole="hint" tone="secondary">
+                    Looking for posters…
+                  </Text>
+                </Stack>
               )}
               {tmdbUnconfigured && (
-                <p className="text-muted-foreground mt-2 text-xs">
+                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                   Set up a TMDB connection in Settings to suggest icons from this channel's titles.
-                </p>
+                </Text>
               )}
               {!suggestions.isLoading && !tmdbUnconfigured && suggestions.error && (
-                <p className="text-muted-foreground mt-2 text-xs">Couldn't load suggestions right now.</p>
+                <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+                  Couldn't load suggestions right now.
+                </Text>
               )}
               {!suggestions.isLoading &&
                 !tmdbUnconfigured &&
                 !suggestions.error &&
                 suggestionList.length === 0 && (
-                  <p className="text-muted-foreground mt-2 text-xs">
+                  <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                     No posters found for this channel's titles yet.
-                  </p>
+                  </Text>
                 )}
               {suggestionList.length > 0 && (
                 <ul className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-8">
@@ -255,7 +265,7 @@ const ChannelIconField = ({
               <Text as="label" htmlFor={`${urlInputId}-file`} textRole="label">
                 Upload a file
               </Text>
-              <div className="mt-2 flex items-center gap-2">
+              <Stack align="center" className="mt-2" direction="row" gap="inline">
                 <input
                   ref={fileInputRef}
                   id={`${urlInputId}-file`}
@@ -269,9 +279,15 @@ const ChannelIconField = ({
                   className="text-muted-foreground file:bg-static-800 file:text-foreground hover:file:bg-static-700 block w-full text-sm file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
                 />
                 {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
-              </div>
-              <p className="text-static-400 mt-1 text-xs">PNG, JPEG, WebP, or GIF, up to 2 MB.</p>
-              {uploadError && <p className="text-onair-300 mt-1 text-xs">{uploadError}</p>}
+              </Stack>
+              <Text as="p" className="mt-1" textRole="hint" tone="secondary">
+                PNG, JPEG, WebP, or GIF, up to 2 MB.
+              </Text>
+              {uploadError && (
+                <Text as="p" className="mt-1" textRole="hint" tone="danger">
+                  {uploadError}
+                </Text>
+              )}
             </div>
 
             {/* (c) Paste a direct image URL. */}
@@ -279,7 +295,7 @@ const ChannelIconField = ({
               <Text as="label" htmlFor={urlInputId} textRole="label">
                 Paste an image URL
               </Text>
-              <div className="mt-2 flex items-center gap-2">
+              <Stack align="center" className="mt-2" direction="row" gap="inline">
                 <Surface
                   backgroundColor="transparent"
                   borderWidth={0}
@@ -313,13 +329,17 @@ const ChannelIconField = ({
                 >
                   {savingUrl ? "Setting…" : "Set"}
                 </Action>
-              </div>
-              {urlError && <p className="text-onair-300 mt-1 text-xs">{urlError}</p>}
+              </Stack>
+              {urlError && (
+                <Text as="p" className="mt-1" textRole="hint" tone="danger">
+                  {urlError}
+                </Text>
+              )}
             </div>
-          </div>
+          </Stack>
         </div>
       )}
-    </div>
+    </Stack>
   );
 };
 

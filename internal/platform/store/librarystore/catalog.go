@@ -44,9 +44,11 @@ func ParseLibraryCatalogKey(s string) (LibraryCatalogKey, bool) {
 type LibraryCatalogDue struct {
 	Now         time.Time
 	StaleBefore time.Time
-	// New and Stale cap each part; zero takes none of it.
-	New   int
-	Stale int
+	// New, Changed and Stale cap each part; zero takes none of it. Changed are fetched records
+	// the change feed named since (MarkLibraryCatalogChanged), oldest first.
+	New     int
+	Changed int
+	Stale   int
 	// Versions is the record shape each kind is read in now. A record saved in an older one is
 	// due with the titles never fetched; a kind not listed is version 0. A record RefreshLibrary
 	// marked (catalogRefresh) is due the same way, whatever its kind.
@@ -64,6 +66,13 @@ const catalogRefresh = -1
 type LibraryFilePath struct {
 	Root string
 	Path string
+}
+
+// LibraryCatalogWaiting is the movies and series still waiting for their details.
+type LibraryCatalogWaiting struct {
+	Titles int
+	// NextRetry is when the first one held back by a failed fetch is tried again; zero when none is.
+	NextRetry time.Time
 }
 
 // LibraryCatalogStore caches what catalogs say about the scanner's titles (#2151, decision 20).
@@ -89,6 +98,16 @@ type LibraryCatalogStore interface {
 	SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
 	// FailLibraryCatalog holds a key back from fetching until retryAt.
 	FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, retryAt time.Time) error
+	// MarkLibraryCatalogChanged marks the fetched records among keys as changed in the catalog,
+	// due again ahead of the refresh, and counts them. Keys the cache does not hold are ignored.
+	MarkLibraryCatalogChanged(ctx context.Context, keys []LibraryCatalogKey) (int, error)
+	// LibraryCatalogFeedRead is when provider's change feed was last read through; false never.
+	LibraryCatalogFeedRead(ctx context.Context, provider string) (time.Time, bool, error)
+	// SaveLibraryCatalogFeedRead records that provider's change feed was read through at.
+	SaveLibraryCatalogFeedRead(ctx context.Context, provider string, at time.Time) error
+	// LibraryCatalogWaiting counts the movies and series never fetched, and when the first of
+	// them held back by a failed fetch is tried again (zero when none is held past now).
+	LibraryCatalogWaiting(ctx context.Context, now time.Time) (LibraryCatalogWaiting, error)
 	// RewriteLibraryCatalogFiles forgets the identity digest of every present file of each title
 	// whose details come from key (a series' episodes too; for an episode key, each episode that
 	// has its id), so the scanner writes them again, and lists them.
@@ -151,6 +170,19 @@ func (s *Store) DueLibraryCatalog(ctx context.Context, due LibraryCatalogDue) ([
 			return nil, err
 		}
 		out = append(out, keys...)
+	}
+	if due.Changed > 0 {
+		keys, err := s.catalogKeys(ctx, `SELECT provider, kind, external_id FROM library_catalog
+			WHERE changed = ? AND fetched_at_ms > 0 AND retry_at_ms <= ? ORDER BY fetched_at_ms LIMIT ?`,
+			true, now, due.Changed)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range keys {
+			if !slices.Contains(out, k) {
+				out = append(out, k)
+			}
+		}
 	}
 	if due.Stale > 0 {
 		keys, err := s.catalogKeys(ctx, `SELECT provider, kind, external_id FROM library_catalog
@@ -219,6 +251,21 @@ func (s *Store) CountDueLibraryCatalog(ctx context.Context, due LibraryCatalogDu
 	return n, nil
 }
 
+func (s *Store) LibraryCatalogWaiting(ctx context.Context, now time.Time) (LibraryCatalogWaiting, error) {
+	var out LibraryCatalogWaiting
+	var next sql.NullInt64
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT COUNT(*), MIN(CASE WHEN retry_at_ms > ? THEN retry_at_ms END)
+		FROM library_catalog WHERE fetched_at_ms = 0 AND kind IN ('movie', 'series')`), now.UnixMilli()).
+		Scan(&out.Titles, &next)
+	if err != nil {
+		return out, fmt.Errorf("library catalog waiting: %w", err)
+	}
+	if next.Valid {
+		out.NextRetry = time.UnixMilli(next.Int64).UTC()
+	}
+	return out, nil
+}
+
 func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error) {
 	if key.String() == "" {
 		return false, fmt.Errorf("save library catalog: provider, kind and id are required")
@@ -236,11 +283,11 @@ func (s *Store) SaveLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_catalog (provider, kind, external_id, record,
-		fetched_at_ms, retry_at_ms, version, language)
-		VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+		fetched_at_ms, retry_at_ms, version, language, changed)
+		VALUES (?, ?, ?, ?, ?, 0, ?, ?, FALSE)
 		ON CONFLICT (provider, kind, external_id) DO UPDATE SET record = excluded.record,
 		fetched_at_ms = excluded.fetched_at_ms, retry_at_ms = 0, version = excluded.version,
-		language = excluded.language`),
+		language = excluded.language, changed = FALSE`),
 		key.Provider, key.Kind, key.ExternalID, storedb.OptionalJSON(record), at.UnixMilli(), version, language); err != nil {
 		return false, fmt.Errorf("save library catalog: %w", err)
 	}
@@ -283,6 +330,62 @@ func (s *Store) FailLibraryCatalog(ctx context.Context, key LibraryCatalogKey, r
 		WHERE provider = ? AND kind = ? AND external_id = ?`),
 		retryAt.UnixMilli(), key.Provider, key.Kind, key.ExternalID); err != nil {
 		return fmt.Errorf("fail library catalog: %w", err)
+	}
+	return nil
+}
+
+// changedBatch bounds the keys one MarkLibraryCatalogChanged statement names: a feed can name
+// thousands, and SQLite caps a statement's parameters.
+const changedBatch = 500
+
+func (s *Store) MarkLibraryCatalogChanged(ctx context.Context, keys []LibraryCatalogKey) (int, error) {
+	// One statement per provider and kind, ids in batches.
+	byKind := map[[2]string][]any{}
+	for _, k := range keys {
+		if k.String() != "" {
+			pk := [2]string{k.Provider, k.Kind}
+			byKind[pk] = append(byKind[pk], k.ExternalID)
+		}
+	}
+	marked := 0
+	for _, pk := range slices.SortedFunc(maps.Keys(byKind), func(a, b [2]string) int {
+		return strings.Compare(a[0]+"\x00"+a[1], b[0]+"\x00"+b[1])
+	}) {
+		for chunk := range slices.Chunk(byKind[pk], changedBatch) {
+			args := append([]any{true, pk[0], pk[1]}, chunk...)
+			result, err := s.h.ExecContext(ctx, s.ph(`UPDATE library_catalog SET changed = ?
+				WHERE provider = ? AND kind = ? AND fetched_at_ms > 0 AND external_id IN (?`+
+				strings.Repeat(", ?", len(chunk)-1)+`)`), args...)
+			if err != nil {
+				return marked, fmt.Errorf("mark library catalog changed: %w", err)
+			}
+			n, err := result.RowsAffected()
+			if err != nil {
+				return marked, fmt.Errorf("mark library catalog changed: %w", err)
+			}
+			marked += int(n)
+		}
+	}
+	return marked, nil
+}
+
+func (s *Store) LibraryCatalogFeedRead(ctx context.Context, provider string) (time.Time, bool, error) {
+	var at int64
+	err := s.h.QueryRowContext(ctx, s.ph(`SELECT read_at_ms FROM library_catalog_feeds WHERE provider = ?`),
+		provider).Scan(&at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("library catalog feed: %w", err)
+	}
+	return time.UnixMilli(at), true, nil
+}
+
+func (s *Store) SaveLibraryCatalogFeedRead(ctx context.Context, provider string, at time.Time) error {
+	if _, err := s.h.ExecContext(ctx, s.ph(`INSERT INTO library_catalog_feeds (provider, read_at_ms) VALUES (?, ?)
+		ON CONFLICT (provider) DO UPDATE SET read_at_ms = excluded.read_at_ms`), provider, at.UnixMilli()); err != nil {
+		return fmt.Errorf("save library catalog feed: %w", err)
 	}
 	return nil
 }

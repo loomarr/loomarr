@@ -10,11 +10,11 @@ import (
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // eventEmitter is the composition-root fan-out for provisioning domain events
@@ -166,6 +166,13 @@ func (e *eventEmitter) LibraryScanChanged(p scan.ProgressSnapshot) {
 // and a page showing them refetches its list. Satisfies libraryFrames, which paces it.
 func (e *eventEmitter) LibraryTitlesChanged() {
 	e.bus.Publish(events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}})
+}
+
+// LibraryRootsChanged publishes an empty `library_roots` frame: a media folder stopped or started
+// opening, or emptied or filled, and Settings → Library reads its folders again. Satisfies
+// libraryFrames.
+func (e *eventEmitter) LibraryRootsChanged() {
+	e.bus.Publish(events.Event{Type: "library_roots", Payload: opsapi.LibraryRootsEvent{}})
 }
 
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.

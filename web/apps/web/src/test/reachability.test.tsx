@@ -7,6 +7,7 @@ import {
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetCollectionMockHandler,
+  getGetDocMockHandler,
   getGetFillerSplitMockHandler,
   getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
@@ -120,6 +121,13 @@ const stubReachable = () => {
     getListUserSessionsMockHandler({ sessions: [] }),
     getListUsersMockHandler({ users: [user()] }),
     getListDocsMockHandler({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }),
+    // The Help route's loader reads the page the list opens on.
+    getGetDocMockHandler({
+      slug: "troubleshooting",
+      section: "",
+      title: "Troubleshooting",
+      markdown: "# Troubleshooting\n\nStart here.",
+    }),
     // /requests/$jobId is reached with the harness's placeholder param, whatever it is.
     getGetProposalJobMockHandler({
       version: 1,
@@ -307,6 +315,7 @@ const stubReachable = () => {
           path: "/media/movies",
           inUse: true,
           readable: true,
+          empty: false,
           addedByHand: false,
           checkedAt: "2026-07-25T19:55:00Z",
           foundIn: [{ authority: "radarr", path: "/media/movies" }],
@@ -671,6 +680,17 @@ describe("feature-gated panels mount when their flag is on", () => {
       ),
     );
     expect(scroller.scrollTop).toBe(0);
+  });
+
+  // #3404: jsdom cannot measure scrollHeight, so this pins the structural cause. Visually-hidden
+  // text is absolutely positioned and, without a positioned scroller, stretches the document.
+  it("/channels/ch-1 section scroller is the containing block, and the tab strip cannot widen the page", async () => {
+    stubReachable();
+    renderAt("/channels/ch-1/programming");
+    await screen.findByRole("navigation", { name: /channel sections/i });
+    expect(screen.getByTestId("channel-section-scroller").style.position).toBe("relative");
+    const strip = screen.getByTestId("channel-tab-strip");
+    expect(strip).toHaveClass("min-w-0", "overflow-x-auto");
   });
 
   // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only

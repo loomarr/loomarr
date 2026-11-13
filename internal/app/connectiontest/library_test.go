@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 func TestMediaServerConnectionTestUsesSharedLibraryClient(t *testing.T) {
 	providerCalls := 0
-	client := library.NewDynamic(func() library.Connection {
+	client := mediaserver.NewDynamic(func() mediaserver.Connection {
 		providerCalls++
-		return library.Connection{Flavor: library.Emby}
+		return mediaserver.Connection{Flavor: mediaserver.Emby}
 	}, "stable-install-device")
 
 	ok, detail := New(Config{Library: client})["media_server"](context.Background())

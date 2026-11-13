@@ -11,7 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/source"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -55,7 +55,7 @@ type fillerLibraryCutover struct {
 	roots interface {
 		LibraryRoots(ctx context.Context) (librarystore.LibraryRoots, error)
 	}
-	lib *library.Client
+	lib *mediaserver.Client
 	log *slog.Logger
 	now func() time.Time
 
@@ -121,7 +121,7 @@ func (c *fillerLibraryCutover) folders(ctx context.Context, name string) ([]stri
 
 // warnOnce says once per process why a library source still does no work.
 func (c *fillerLibraryCutover) warnOnce(s records.FillerSource, err error) {
-	if errors.Is(err, library.ErrConnectionRequired) {
+	if errors.Is(err, mediaserver.ErrConnectionRequired) {
 		err = nil
 	}
 	c.mu.Lock()

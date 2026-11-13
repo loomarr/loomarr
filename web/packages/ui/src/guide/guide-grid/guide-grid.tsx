@@ -50,6 +50,20 @@ const labelStride = (timelineWidth: number, span: number): number => {
   return LABEL_STRIDES.find((stride) => stride * hourPx >= LABEL_MIN_PX) ?? 6;
 };
 
+// The now label sits centred-left on the now line (translateX NOW_LABEL_SHIFT) and an hour's label
+// starts just right of its tick. Both widths are generous estimates of a mono "12:00 PM" box, so
+// a label is hidden slightly early rather than drawn over the other (#3410). The tick mark stays.
+const NOW_LABEL_SHIFT = 20;
+const NOW_LABEL_PX = 64;
+const TICK_LABEL_INSET = 8;
+const TICK_LABEL_PX = 64;
+
+const tickLabelHitsNow = (tickPx: number, nowPx: number): boolean => {
+  const labelLeft = tickPx + TICK_LABEL_INSET;
+  const nowLeft = nowPx - NOW_LABEL_SHIFT;
+  return labelLeft < nowLeft + NOW_LABEL_PX && labelLeft + TICK_LABEL_PX > nowLeft;
+};
+
 const arrowDirection: Record<string, GuideNavigationDirection> = {
   ArrowDown: "down",
   ArrowLeft: "left",
@@ -96,6 +110,8 @@ type BlockProps = {
   airing: GuideAiringLayout;
   /** Set when a key moved the selection here: the block takes focus once it mounts. */
   focusPending?: RefObject<boolean>;
+  /** Bumped when the host asks focus to come home: the Tab stop takes it, as a moved selection does. */
+  focusTick?: number;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
   /** The channel is paused: nothing airs, so no block wears the airing tone. */
@@ -111,6 +127,7 @@ type BlockProps = {
 const Block = ({
   airing,
   focusPending,
+  focusTick,
   focusable,
   offAir = false,
   onOpen,
@@ -161,11 +178,11 @@ const Block = ({
         : "guideBlockAccent";
 
   useEffect(() => {
-    if (selected && focusPending?.current) {
+    if ((selected || (focusable && focusTick)) && focusPending?.current) {
       focusPending.current = false;
       ref.current?.focus();
     }
-  }, [focusPending, selected]);
+  }, [focusPending, focusTick, focusable, selected]);
 
   return (
     <PreviewAnchor content={preview}>
@@ -234,7 +251,7 @@ const Block = ({
             // flush left.
             <>
               {hasSeries ? (
-                <Text numberOfLines={1} textAlign="left" textRole="label" textTransform="uppercase">
+                <Text numberOfLines={1} textAlign="left" textRole="label">
                   {a.series}
                   {/* A trailing space, collapsed on screen: axe (4.14, WCAG 2.5.3) joins sibling text
                       with nothing between, so "series" + "title" reads as one word against this
@@ -275,6 +292,7 @@ type WaitingBlockProps = Omit<BlockProps, "airing" | "offAir" | "preview" | "px"
 const WaitingBlock = ({
   airings,
   focusPending,
+  focusTick,
   focusable,
   label,
   onOpen,
@@ -291,11 +309,11 @@ const WaitingBlock = ({
   });
 
   useEffect(() => {
-    if (selected && focusPending?.current) {
+    if ((selected || (focusable && focusTick)) && focusPending?.current) {
       focusPending.current = false;
       ref.current?.focus();
     }
-  }, [focusPending, selected]);
+  }, [focusPending, focusTick, focusable, selected]);
 
   if (!first || !last) return null;
   return (
@@ -353,6 +371,7 @@ const Row = memo(
   ({
     channel,
     focusPending,
+    focusTick,
     nowRatio,
     onOpenChannel,
     onOpenChannelInfo,
@@ -366,6 +385,7 @@ const Row = memo(
   }: {
     channel: GuideChannelLayout;
     focusPending: RefObject<boolean>;
+    focusTick?: number;
     nowRatio?: number;
     onOpenChannel?: (channelId: string) => void;
     onOpenChannelInfo?: (channelId: string) => void;
@@ -427,17 +447,16 @@ const Row = memo(
           >
             <Text textRole="guideNumber">{channel.source.number}</Text>
             <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
-              <Text numberOfLines={1} textRole="cardLabel">
+              {/* Two lines so a long name reads in full (#3410). Two 18-point lines and the chip's
+                  16 points plus its 2-point gap are 54, inside the row's fixed 56, so the rail
+                  never changes the row geometry the cells share. */}
+              {/* Left-aligned by hand: the name sits inside a button, and a button centres its text
+                  by default, which a two-line name makes plain. */}
+              <Text numberOfLines={2} textAlign="left" textRole="cardLabel">
                 {channel.source.name}
               </Text>
               {chip ? (
-                <Text
-                  marginTop={2}
-                  numberOfLines={1}
-                  textRole="label"
-                  textTransform="uppercase"
-                  tone={chip.tone}
-                >
+                <Text marginTop={2} numberOfLines={1} textAlign="left" textRole="label" tone={chip.tone}>
                   {chip.label}
                 </Text>
               ) : null}
@@ -465,6 +484,7 @@ const Row = memo(
               airings={channel.airings}
               focusable={inRow}
               focusPending={focusPending}
+              focusTick={focusTick}
               label={waiting}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
@@ -476,6 +496,7 @@ const Row = memo(
                 airing={airing}
                 focusable={airing.scheduleBlockId === tabStop}
                 focusPending={focusPending}
+                focusTick={focusTick}
                 key={airing.scheduleBlockId}
                 offAir={health === "paused"}
                 onOpen={() => onOpenChannel?.(channel.source.channelId)}
@@ -495,6 +516,7 @@ const Row = memo(
 );
 
 const GuideGrid = ({
+  focusRequest,
   layout,
   nowMs,
   onMove,
@@ -505,9 +527,18 @@ const GuideGrid = ({
   renderPreview,
   selection,
 }: GuideGridProps) => {
-  const railWidth = guideRailWidth(useWindowWidth());
+  const windowWidth = useWindowWidth();
+  const railWidth = guideRailWidth(windowWidth);
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
+  // A host's request for focus to come home (a retry took the control focus was on): the Tab stop
+  // takes it once the blocks have seen the tick.
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    if (!focusRequest) return;
+    focusPending.current = true;
+    setFocusTick((tick) => tick + 1);
+  }, [focusRequest]);
   const typed = useRef({ at: 0, query: "" });
   const span = Math.max(1, layout.toMs - layout.fromMs);
   const nowRatio = nowMs >= layout.fromMs && nowMs < layout.toMs ? (nowMs - layout.fromMs) / span : undefined;
@@ -515,6 +546,9 @@ const GuideGrid = ({
   const ticks: number[] = [];
   for (let t = firstHour; t < layout.toMs; t += hourMs) ticks.push(t);
   const stride = labelStride(timelineWidth, span);
+  // Before the first layout the timeline's width is unknown; the window less the rail stands in.
+  const rulerPx = timelineWidth || Math.max(0, windowWidth - railWidth);
+  const nowPx = nowRatio === undefined ? undefined : nowRatio * rulerPx;
 
   const ruler = (
     <Surface
@@ -549,7 +583,8 @@ const GuideGrid = ({
             top={0}
             key={t}
           >
-            {i % stride === 0 ? (
+            {i % stride === 0 &&
+            !(nowPx !== undefined && tickLabelHitsNow(((t - layout.fromMs) / span) * rulerPx, nowPx)) ? (
               <Text numberOfLines={1} textRole="mono">
                 {formatGuideTime(t, layout.timezone)}
               </Text>
@@ -571,7 +606,9 @@ const GuideGrid = ({
                 transform: [{ translateX: -20 }],
               }}
             >
-              <Text textRole="mono" tone="inverse">
+              {/* The brand chroma's ink in both themes, as on a decade fill: the light theme's
+                  inverse (white) is 3.9:1 on this red. */}
+              <Text textRole="mono" tone="onDecade">
                 {formatGuideTime(nowMs, layout.timezone)}
               </Text>
             </View>
@@ -624,6 +661,7 @@ const GuideGrid = ({
           <Row
             channel={channel}
             focusPending={focusPending}
+            focusTick={focusTick}
             nowRatio={nowRatio}
             onOpenChannel={onOpenChannel}
             onOpenChannelInfo={onOpenChannelInfo ?? onOpenChannel}

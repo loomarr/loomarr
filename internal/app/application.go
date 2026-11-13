@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -18,6 +20,23 @@ import (
 var ErrApplicationQuiescing = errors.New("application generation is quiescing")
 
 const interactiveOperationCompletionTimeout = 5 * time.Second
+
+// generationStopBudget is the one budget the registered stops (River's Stop, the store close, the
+// recorder flush) share. It is theirs alone: a join that used up the shutdown context would
+// otherwise hand every stop a dead one, and they degrade to forced when given one. Shutdown waits
+// for the stops, so a generation's teardown never overlaps the next generation or the cutover.
+const generationStopBudget = 10 * time.Second
+
+// generationStopGrace is how long past the budget a stop that ignores its context is waited for
+// before it is reported, so one stuck stop cannot hold Shutdown open.
+const generationStopGrace = time.Second
+
+// ShutdownTail is what Application.Shutdown keeps for itself at the end of the deadline it is
+// given: a wait for workers that outlived the join, then the stop phase and its grace. A caller
+// gives Shutdown a deadline of (the time the workers get) + ShutdownTail, so the whole teardown, stops
+// included, ends by it. A deadline shorter than the tail is the workers' alone, and the tail then
+// runs past it.
+const ShutdownTail = 2*generationStopBudget + generationStopGrace
 
 type interactiveOperationLauncher func(
 	time.Duration,
@@ -92,9 +111,12 @@ func (a *Application) Quiesce(ctx context.Context) error {
 	return a.lifecycle.quiesce(ctx)
 }
 
-// Shutdown cancels generation-owned work, runs explicit stops in reverse construction order,
-// and waits for tracked workers. It is safe to call repeatedly or concurrently. A caller whose
-// context expires may call again with a fresh context to continue waiting for the same shutdown.
+// Shutdown cancels generation-owned work, waits for tracked workers, and runs explicit stops in
+// reverse construction order, returning only once they have finished. The first call's context
+// bounds the wait for workers; a worker that outlives it is waited for one more bounded budget (the
+// stops must not begin beside it) and reported, and a worker stuck past that does not hold the stops
+// back. The stops share one budget, so Shutdown outlasts ctx by at most ShutdownTail. It is safe to
+// call repeatedly or concurrently; every call waits for, and reports, the same outcome.
 func (a *Application) Shutdown(ctx context.Context) error {
 	if a == nil || a.lifecycle == nil {
 		return nil
@@ -112,18 +134,25 @@ type generationLifecycle struct {
 	quiescers   []func(context.Context) error
 	stops       []func(context.Context) error
 	wg          sync.WaitGroup
+	running     atomic.Int64 // workers between track and untrack
 	quiesceOnce sync.Once
 	quiesced    chan struct{}
 	quiesceErr  error
 	stopOnce    sync.Once
 	done        chan struct{}
 	err         error
+	// stopBudget is the one shared budget for the whole stop phase, whatever became of the shutdown
+	// context. The wait for workers that outlived that context draws on a budget of the same size.
+	stopBudget time.Duration
+	// stopGrace is how long past the budget a stop is waited for to return before it is named.
+	stopGrace time.Duration
 }
 
 func newGenerationLifecycle(parent context.Context) *generationLifecycle {
 	ctx, cancel := context.WithCancel(parent)
 	return &generationLifecycle{
 		ctx: ctx, cancel: cancel, quiesced: make(chan struct{}), done: make(chan struct{}),
+		stopBudget: generationStopBudget, stopGrace: generationStopGrace,
 	}
 }
 
@@ -162,12 +191,31 @@ func (l *generationLifecycle) goRun(run func(context.Context)) {
 		l.mu.Unlock()
 		panic("app: start generation worker after shutdown")
 	}
-	l.wg.Add(1)
+	l.track()
 	l.mu.Unlock()
 	go func() {
-		defer l.wg.Done()
+		defer l.untrack()
 		run(l.ctx)
 	}()
+}
+
+// goOnDemand starts generation-owned work that a component begins lazily, after construction: a
+// probe the first tune or programme triggers. Shutdown joins it like any worker. Unlike goRun it
+// refuses quietly once the generation is closing, reporting false, because a late request reaching
+// the component then is ordinary, not a wiring fault.
+func (l *generationLifecycle) goOnDemand(run func(context.Context)) bool {
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return false
+	}
+	l.track()
+	l.mu.Unlock()
+	go func() {
+		defer l.untrack()
+		run(l.ctx)
+	}()
+	return true
 }
 
 // startInteractiveOperation accepts request-triggered work into this application generation.
@@ -186,10 +234,10 @@ func (l *generationLifecycle) startInteractiveOperation(
 		l.mu.Unlock()
 		return ErrApplicationQuiescing
 	}
-	l.wg.Add(1)
+	l.track()
 	l.mu.Unlock()
 	go func() {
-		defer l.wg.Done()
+		defer l.untrack()
 		ctx := l.ctx
 		if timeout > 0 {
 			var cancel context.CancelFunc
@@ -242,12 +290,10 @@ func (l *generationLifecycle) quiesce(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	l.startQuiesce(ctx)
-	select {
-	case <-l.quiesced:
+	if settled(ctx, l.quiesced) {
 		return l.quiesceErr
-	case <-ctx.Done():
-		return ctx.Err()
 	}
+	return ctx.Err()
 }
 
 func (l *generationLifecycle) startQuiesce(ctx context.Context) {
@@ -284,23 +330,120 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 		go l.finish(ctx, stops)
 	})
 
-	select {
-	case <-l.done:
-		return l.err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	// Shutdown is the barrier the next generation, the store close and the database cutover stand
+	// behind, so it returns only once the stops have finished. Every phase of finish is bounded
+	// (the join by ctx, the late-worker wait and the stops by their budgets), so this wait is too.
+	<-l.done
+	return l.err
 }
 
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
-	<-l.quiesced
-	var stopErrs []error
-	for _, stop := range slices.Backward(stops) {
-		if err := stop(ctx); err != nil {
-			stopErrs = append(stopErrs, err)
-		}
+	var errs []error
+	if settled(ctx, l.quiesced) {
+		errs = append(errs, l.quiesceErr)
+	} else {
+		errs = append(errs, fmt.Errorf("quiesce unfinished at the shutdown deadline: %w", ctx.Err()))
 	}
-	l.wg.Wait()
-	l.err = errors.Join(l.quiesceErr, errors.Join(stopErrs...))
+	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
+	// Its last writes go to the resources below, so they are stopped once it has returned, or at the
+	// deadline: a restart brings up its successor then, and this one's resources must not outlive it.
+	joinCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) > l.tail() {
+		// A caller that sized its deadline to include the tail (see ShutdownTail) is giving the
+		// workers what is left once it is set aside, so the whole of Shutdown ends by its deadline.
+		var cancel context.CancelFunc
+		joinCtx, cancel = context.WithDeadline(ctx, deadline.Add(-l.tail()))
+		defer cancel()
+	}
+	joinErr := l.waitWorkers(joinCtx)
+	if joinErr != nil {
+		// The caller's deadline passed with a worker still unwinding. A stop must not begin beside
+		// a worker (River's Stop and the store close race its last writes), so the worker gets one
+		// more bounded wait, reported either way: a worker stuck past it is the only thing that
+		// starts the stops beside it.
+		lateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), l.stopBudget)
+		if lateErr := l.waitWorkers(lateCtx); lateErr != nil {
+			joinErr = errors.Join(joinErr, lateErr)
+		}
+		cancel()
+	}
+	errs = append(errs, joinErr)
+	// The stops do not inherit what is left of ctx, which the join may have spent entirely: they
+	// share one live budget of their own, so River's Stop and the store close are not forced by a
+	// join that ran long. A slow stop spends the shared budget; the rest still run, on the spent
+	// context, which they treat as a request to be quick.
+	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), l.stopBudget)
+	defer cancel()
+	for _, stop := range slices.Backward(stops) {
+		errs = append(errs, l.runStop(stopCtx, stop))
+	}
+	l.err = errors.Join(errs...)
 	close(l.done)
+}
+
+// runStop runs one stop and waits for it to return. A stop that honours its context is waited for
+// however slowly it unwinds; one that ignores it is named at hardStop, so it cannot hold Shutdown
+// open, and the Shutdown caller is told the stop may still be running.
+// tail is how long Shutdown can run past the workers' join: the late-worker wait, then the stops.
+func (l *generationLifecycle) tail() time.Duration { return 2*l.stopBudget + l.stopGrace }
+
+func (l *generationLifecycle) runStop(stopCtx context.Context, stop func(context.Context) error) error {
+	result := make(chan error, 1)
+	go func() { result <- stop(stopCtx) }()
+	// The grace runs from the budget's end, or from now when an earlier stop already spent it.
+	hardStop := time.Now()
+	if deadline, ok := stopCtx.Deadline(); ok && deadline.After(hardStop) {
+		hardStop = deadline
+	}
+	timer := time.NewTimer(time.Until(hardStop.Add(l.stopGrace)))
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		return err
+	case <-timer.C:
+		return fmt.Errorf("stop still running %v after its budget: %w", l.stopGrace, context.DeadlineExceeded)
+	}
+}
+
+// waitWorkers waits for the generation's workers until ctx ends. A worker still running then is
+// reported, not waited for; workers that have returned are never reported, whatever became of ctx.
+func (l *generationLifecycle) waitWorkers(ctx context.Context) error {
+	returned := make(chan struct{})
+	go func() {
+		l.wg.Wait()
+		close(returned)
+	}()
+	if settled(ctx, returned) || l.running.Load() == 0 {
+		return nil
+	}
+	return fmt.Errorf("generation workers still running at the shutdown deadline: %w", ctx.Err())
+}
+
+// settled reports whether done is closed, waiting for it only until ctx ends. When both are ready
+// it is done that wins: a deadline that passed as the work finished is not a failure, and a select
+// over the two would pick one at random.
+func settled(ctx context.Context, done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+	}
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
+// track and untrack bracket one worker's life. The WaitGroup is what the join waits on; the count
+// lets the join tell, without waiting, that no worker is left when its deadline has already passed.
+func (l *generationLifecycle) track() {
+	l.wg.Add(1)
+	l.running.Add(1)
+}
+
+func (l *generationLifecycle) untrack() {
+	l.running.Add(-1)
+	l.wg.Done()
 }

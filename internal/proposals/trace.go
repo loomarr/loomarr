@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // DecisionTraceVersion is the one trace schema version.
@@ -35,6 +35,12 @@ const (
 	ReasonNotSurfaced            = "not_surfaced"
 	ReasonNoRelevanceEvidence    = "no_relevance_evidence"
 	ReasonValidationDropped      = "validation_dropped"
+	// ReasonRationaleRejects: the model's own rationale for the pick argues against it ("far too
+	// violent"), so a candidate it considered and rejected is not kept (#3365).
+	ReasonRationaleRejects = "rationale_rejects"
+	// ReasonToneMismatch: the request names a soft tone (cozy, gentle, feel-good…) and the title is
+	// Horror (#3365). Adult ratings stay with the audience ceiling (ReasonOverCeiling).
+	ReasonToneMismatch           = "tone_mismatch"
 	ReasonAcquisitionCap         = "acquisition_cap"
 	ReasonOverCeiling            = "over_ceiling"
 	ReasonBudgetExhausted        = "budget_exhausted"
@@ -118,11 +124,14 @@ func validDispositionReason(disposition, reason string) bool {
 		return knownTerminal(reason)
 	}
 	allowed := map[string]map[string]bool{
-		DispositionSelected:          {"selected": true},
-		DispositionAlternate:         {ReasonAcquisitionCap: true},
-		DispositionNotSelected:       {ReasonNotSelected: true, ReasonNever: true, ReasonOverCeiling: true},
-		DispositionRefused:           {ReasonOverCeiling: true},
-		DispositionValidationDropped: {ReasonMalformedID: true, ReasonNotSurfaced: true, ReasonNoRelevanceEvidence: true, ReasonValidationDropped: true},
+		DispositionSelected:    {"selected": true},
+		DispositionAlternate:   {ReasonAcquisitionCap: true},
+		DispositionNotSelected: {ReasonNotSelected: true, ReasonNever: true, ReasonOverCeiling: true},
+		DispositionRefused:     {ReasonOverCeiling: true},
+		DispositionValidationDropped: {
+			ReasonMalformedID: true, ReasonNotSurfaced: true, ReasonNoRelevanceEvidence: true, ReasonValidationDropped: true,
+			ReasonRationaleRejects: true, ReasonToneMismatch: true,
+		},
 	}
 	return allowed[disposition][reason]
 }

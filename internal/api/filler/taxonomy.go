@@ -42,12 +42,14 @@ type TaxonDTO struct {
 // command and query shapes prevents generated clients from asking an operator to submit counts the
 // server computes.
 type CreateTaxonDTO struct {
-	Slug           string   `json:"slug" doc:"Stable machine id — immutable after creation"`
-	Label          string   `json:"label"`
-	Parent         string   `json:"parent,omitempty"`
-	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
-	Synonyms       []string `json:"synonyms,omitempty"`
-	RetiredAliases []string `json:"retiredAliases,omitempty"`
+	Slug   string `json:"slug" doc:"Stable machine id — immutable after creation"`
+	Label  string `json:"label"`
+	Parent string `json:"parent,omitempty"`
+	Axis   string `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
+	// A taxon has a few near-miss forms and the odd renamed slug: 100 synonyms and 50 retired
+	// aliases are far past any real vocabulary entry (create, update and impact share them).
+	Synonyms       []string `json:"synonyms,omitempty" maxItems:"100"`
+	RetiredAliases []string `json:"retiredAliases,omitempty" maxItems:"50"`
 }
 
 // UpdateTaxonDTO omits the immutable slug: the path identifies the node and is authoritative.
@@ -56,8 +58,8 @@ type UpdateTaxonDTO struct {
 	Label          string   `json:"label"`
 	Parent         string   `json:"parent,omitempty"`
 	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
-	Synonyms       []string `json:"synonyms,omitempty"`
-	RetiredAliases []string `json:"retiredAliases,omitempty"`
+	Synonyms       []string `json:"synonyms,omitempty" maxItems:"100"`
+	RetiredAliases []string `json:"retiredAliases,omitempty" maxItems:"50"`
 }
 
 // TaxonomyImpactCommandDTO describes one prospective advanced vocabulary edit. A single command
@@ -69,8 +71,8 @@ type TaxonomyImpactCommandDTO struct {
 	Label          string   `json:"label,omitempty"`
 	Parent         string   `json:"parent,omitempty"`
 	Axis           string   `json:"axis,omitempty" enum:"product,format,seasonal,audience-cue,presentation"`
-	Synonyms       []string `json:"synonyms,omitempty"`
-	RetiredAliases []string `json:"retiredAliases,omitempty"`
+	Synonyms       []string `json:"synonyms,omitempty" maxItems:"100"`
+	RetiredAliases []string `json:"retiredAliases,omitempty" maxItems:"50"`
 }
 
 type TaxonomyImpactNodeDTO struct {

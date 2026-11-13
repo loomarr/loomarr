@@ -1,3 +1,4 @@
+export { OnScreenLogoSection } from "./on-screen-logo";
 export type {
   LogoColor,
   LogoCorner,
@@ -7,5 +8,4 @@ export type {
   OnScreenLogoPolicy,
   OnScreenLogoPreviewRequest,
   OnScreenLogoSectionProps,
-} from "./on-screen-logo";
-export { OnScreenLogoSection } from "./on-screen-logo";
+} from "./on-screen-logo.type";

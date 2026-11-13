@@ -4,7 +4,7 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Chip, DateField, Field } from "@loomarr/design-system";
+import { Action, Chip, DateField, Field, Stack, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -144,8 +144,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
   const tags = useStore(form.store, (state) => state.values.tags);
   const derivedTags = (clip?.tags ?? []).filter((tag) => !(clip?.assertedTags ?? []).includes(tag));
 
-  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), replacing
-  // the old hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
+  // The tag vocabulary comes from the taxonomy graph — the ONE source of truth (§10 V45a), never a
+  // hardcoded CATEGORIES mirror. A member-readable read, so it loads for any operator.
   const vocab = fillerApi.useListTaxonomy();
   // The orval hook wraps the body: data.status===200 ? data.data.<body>. undefined while loading.
   const vocabTaxa = vocab.data?.status === 200 ? (vocab.data.data.taxa ?? []) : undefined;
@@ -169,9 +169,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       aria-label={`Edit details: ${clip.name}`}
       className="flex flex-col gap-4 outline-none"
     >
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         Change a detail if it is wrong. You do not need to fill in everything.
-      </p>
+      </Text>
 
       {patch.error != null && <ErrorState error={patch.error} />}
 
@@ -240,7 +240,9 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
       </div>
 
       <details className="border-border rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Location and broadcast details</summary>
+        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+          Location and broadcast details
+        </Text>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <form.Field name="geoScope">
@@ -308,10 +310,10 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               />
             )}
           </form.Field>
-          <p className="text-muted-foreground text-xs sm:col-span-2">
+          <Text as="p" className="sm:col-span-2" textRole="hint" tone="secondary">
             Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
             are not sure.
-          </p>
+          </Text>
         </div>
       </details>
 
@@ -320,20 +322,28 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
       <details className="border-border rounded-lg border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Topics and tags</summary>
-        <div className="mt-3 flex flex-col gap-3">
-          <p className="text-muted-foreground text-xs">Choose what this clip shows or advertises.</p>
+        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+          Topics and tags
+        </Text>
+        <Stack className="mt-3" gap="control">
+          <Text as="p" textRole="hint" tone="secondary">
+            Choose what this clip shows or advertises.
+          </Text>
           {vocab.error != null && <ErrorState error={vocab.error} />}
           {vocabTaxa == null ? (
-            <p className="text-muted-foreground text-sm">Loading the tag vocabulary…</p>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loading the tag vocabulary…
+            </Text>
           ) : (
             AXES.map((axis) => {
               const inAxis = flattenAxis(vocabTaxa, axis);
               if (inAxis.length === 0) return null;
               return (
-                <div key={axis} className="flex flex-col gap-1.5">
-                  <span className="text-muted-foreground text-xs">{AXIS_LABEL[axis]}</span>
-                  <div className="flex flex-wrap gap-1.5">
+                <Stack gap="1.5" key={axis}>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {AXIS_LABEL[axis]}
+                  </Text>
+                  <Stack direction="row" gap="1.5" wrap>
                     {inAxis.map(({ taxon: t, depth }) => {
                       const on = tags.includes(t.slug);
                       return (
@@ -342,32 +352,36 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                         </Chip>
                       );
                     })}
-                  </div>
-                </div>
+                  </Stack>
+                </Stack>
               );
             })
           )}
-        </div>
+        </Stack>
       </details>
 
       {derivedTags.length > 0 ? (
         <section className="border-border bg-surface/40 rounded-md border p-3" aria-label="Derived matches">
-          <p className="text-sm font-medium">Derived matches — read only</p>
-          <p className="text-muted-foreground mt-1 text-xs">
+          <Text as="p" textRole="cardLabel">
+            Derived matches — read only
+          </Text>
+          <Text as="p" className="mt-1" textRole="hint" tone="secondary">
             Inherited from the observed facts above and updated automatically when the hierarchy changes.
-          </p>
-          <p className="mt-2 text-sm break-words">{derivedLabels.join(", ")}</p>
+          </Text>
+          <Text as="p" className="mt-2 break-words" textRole="compact">
+            {derivedLabels.join(", ")}
+          </Text>
         </section>
       ) : null}
 
-      <div className="flex justify-end gap-2">
+      <Stack direction="row" gap="inline" justify="end">
         <Action onPress={onClose} variant="outline">
           Cancel
         </Action>
         <Action disabled={patch.isPending} onPress={() => void form.handleSubmit()}>
           {patch.isPending ? "Saving…" : "Save details"}
         </Action>
-      </div>
+      </Stack>
     </section>
   );
 };

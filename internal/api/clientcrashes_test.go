@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/events"
@@ -29,21 +29,25 @@ func newCrashHarness(t *testing.T) *apiHarness {
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
 		return api.Router(defaults.Log, api.Options{
-			Events:        events.NewBus(),
-			Store:         defaults.Store,
-			Auth:          api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-			Log:           defaults.Log,
-			Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:      mgr,
-			Devices:       devices,
-			CookieSecure:  "false",
-			ClientCrashes: diagnostics.NewClientCrashes(defaults.Store, time.Now),
+			Store:        defaults.Store,
+			Auth:         api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:          defaults.Log,
+			CookieSecure: "false",
+			People: api.PeopleOptions{
+				Login:    auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions: mgr,
+				Devices:  devices,
+			},
+			Ops: api.OpsOptions{
+				Events:        events.NewBus(),
+				ClientCrashes: diagnostics.NewClientCrashes(defaults.Store, time.Now),
+			},
 		})
 	})
 }

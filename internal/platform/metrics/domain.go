@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // This file owns Store-backed current-state gauges and authentication outcomes.

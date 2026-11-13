@@ -3,12 +3,14 @@ import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { unwrap } from "@loomarr/api/unwrap";
 import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
+import { Stack, Text } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelIdeas } from "../channel-ideas";
 import { ChannelWall } from "../channel-wall";
 import { HomeStrip } from "../home-strip";
@@ -49,6 +51,8 @@ const HomePage = () => {
   );
   const loading = guide.isLoading;
   const errored = guide.isError && !loading;
+  // Home's content is what is on now, which is the guide's answer.
+  useRouteContent(!loading && !errored);
   const hasLife = !loading && !errored && channels.length > 0;
   const stripState = loading ? "loading" : errored ? "error" : channels.length === 0 ? "empty" : "ok";
 
@@ -62,12 +66,12 @@ const HomePage = () => {
   const needs = useNeedsYou(isAdmin && hasLife);
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack className="h-full">
       <PageHeader title="Home" />
       <div className="flex-1">
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
-        <div className="max-w-overview mx-auto flex flex-col gap-6 p-4 sm:gap-8 sm:p-6">
+        <Stack className="max-w-overview mx-auto p-4 sm:p-6" gap={{ base: "6", sm: "8" }}>
           <HomeStrip state={stripState} isAdmin={isAdmin} onRetry={() => void guide.refetch()} />
           {hasLife && layout && (
             <ChannelWall
@@ -105,17 +109,17 @@ const HomePage = () => {
           {hasLife && !isAdmin && <YourRequests />}
           {hasLife && isAdmin && <OnTheWay />}
           {isAdmin && (
-            <p className="text-static-400 m-0 text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               Encoder, storage and service details are in{" "}
               <Link to="/settings/system" className="text-tune underline underline-offset-2">
                 Settings → This server
               </Link>
               .
-            </p>
+            </Text>
           )}
-        </div>
+        </Stack>
       </div>
-    </div>
+    </Stack>
   );
 };
 

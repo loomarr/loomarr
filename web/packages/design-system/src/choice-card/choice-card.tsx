@@ -10,7 +10,7 @@ import { forwardRef, useState } from "react";
 import { Pressable } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { semanticRadius, semanticSpace } from "../tokens";
 
 type ChoiceCardAccent = "info" | "suggest";
@@ -106,7 +106,8 @@ const ChoiceCard: ForwardRefExoticComponent<ChoiceCardProps & RefAttributes<Choi
               {title}
             </Text>
             {description ? (
-              <Text textRole="caption" tone="muted">
+              // Muted is 4.4:1 on the chosen card's wash, so a chosen card's line reads primary.
+              <Text textRole="caption" tone={on ? "primary" : "muted"}>
                 {description}
               </Text>
             ) : null}

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Retention purges for the accumulating suggester tables (§5, §18.1).
@@ -125,7 +125,7 @@ func (s *sqlStore) PurgeDiscardedProposals(ctx context.Context, before time.Time
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return 0, nil
+		return 0, fmt.Errorf("purge discarded proposals: count: %w", err)
 	}
 	return int(n), nil
 }

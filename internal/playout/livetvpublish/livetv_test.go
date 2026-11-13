@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -59,7 +59,7 @@ func TestConnect_SnapshotsLibraryOnceAcrossCompoundOperation(t *testing.T) {
 	rotated := testkit.NewLiveTV()
 	rotated.AddTunerErr = errors.New("rotated server must not receive this operation")
 	var snapshots int
-	connector := livetvpublish.NewLiveTVConnector(func() library.LiveTV {
+	connector := livetvpublish.NewLiveTVConnector(func() mediaserver.LiveTV {
 		snapshots++
 		if snapshots == 1 {
 			return primary
@@ -660,7 +660,7 @@ func TestTunerPublishingDisabled_DefaultsToUnchangedBehaviour(t *testing.T) {
 // A household with no media server (#2151) has no tuner to re-scan and no guide to refresh: every
 // reconcile's best-effort poke is nothing to do, not a failure to warn about.
 func TestPokesWithoutAMediaServerAreNothingToDo(t *testing.T) {
-	c := livetvpublish.NewLiveTVConnectorFixed(library.New("", "", "", "dev-1"), tunarr.LiveTVURLsAt("http://tunarr:8000"))
+	c := livetvpublish.NewLiveTVConnectorFixed(mediaserver.New("", "", "", "dev-1"), tunarr.LiveTVURLsAt("http://tunarr:8000"))
 	ctx := context.Background()
 	if err := c.RescanTuner(ctx); err != nil {
 		t.Fatalf("RescanTuner() with no media server = %v, want nil", err)

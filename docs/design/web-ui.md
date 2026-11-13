@@ -14,6 +14,10 @@ mocks are the authority on layout.
   a compile error. `@loomarr/api` re-exports DTOs type-only and only the enum objects the UI uses at
   run time.
 - Live updates come from SSE `/v1/events`, which only invalidates queries; the API stays authoritative.
+  Frames sent while the stream is down are gone, so when it opens again every read a frame feeds
+  refetches. The browser retries a dropped connection itself, but a refused response (a proxy's 502
+  while the server restarts) closes an `EventSource` for good, so the web client opens a new one
+  after 3 seconds.
 - The UI hides admin-only actions from members. Loomarr is not meant to be exposed publicly.
 
 ## Navigation
@@ -26,7 +30,7 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 | admin | Home · Guide · Requests · Filler · People · Settings · Help |
 | member | Home · Guide · Requests · Notifications · Help |
 
-- **Guide** (`/guide`, headed "Channels") is the single channels surface: a cross-channel time grid,
+- **Guide** (`/guide`, headed "Guide" like its nav item; #3413) is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest
   routes redirect to it.
   Desktop browsing uses the full content width. Programme and filler previews open beside the
@@ -54,7 +58,8 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
   escape hatch. **Help** renders the embedded help pages offline.
 - Global search (⌘K, or Ctrl K; the rail names the one the viewer's platform uses) is a
-  hand-rolled combobox over `/v1/search`, channels and help.
+  design-system inline `Combobox` (an always-open grouped list in a dialog) over `/v1/search`,
+  channels and help.
 
 ## Cross-view rules
 

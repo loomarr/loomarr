@@ -3,6 +3,7 @@ import {
   getApproveProposalMockHandler,
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
+  getHouseholdMockHandler,
   getListChannelIdeasMockHandler,
   getMeMockHandler,
   getResolveMovieCollectionsMockHandler,
@@ -12,7 +13,6 @@ import {
   getSubmitManualChannelMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
-import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -198,6 +198,7 @@ const renderPanel = (onCreated: (id: string) => void) => {
 describe("ChannelSuggestPanel", () => {
   beforeEach(() => {
     server.use(
+      getHouseholdMockHandler({ timeZone: "" }),
       getResolveMovieCollectionsMockHandler({ collections: [], complete: true }),
       getGetProposalOutlookMockHandler(
         outlook({
@@ -347,7 +348,7 @@ describe("ChannelSuggestPanel", () => {
           }
         />,
       );
-      await user.click(await screen.findByRole("button", { name: /cozy mystery nights/i }));
+      await user.type(await screen.findByLabelText("Channel name"), "Cozy Mystery Nights");
       await waitFor(() => expect(features.reads).toBe(1));
 
       features.suggestions = true;
@@ -356,9 +357,8 @@ describe("ChannelSuggestPanel", () => {
       });
       await user.click(await screen.findByRole("button", { name: "Try AI suggestions" }));
 
-      expect(await screen.findByLabelText("Channel intent")).toHaveValue(
-        CHANNEL_TEMPLATES.find((t) => t.label === "Cozy Mystery Nights")?.description,
-      );
+      // With no description from an idea, the name is the brief that carries over.
+      expect(await screen.findByLabelText("Channel intent")).toHaveValue("Cozy Mystery Nights");
       expect(screen.queryByText(/No AI service is connected yet/)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -877,11 +877,9 @@ describe("ChannelSuggestPanel", () => {
     });
     view.rerenderPanel();
 
-    expect(
-      await screen.findByText(
-        "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
-      ),
-    ).toHaveAttribute("role", "status");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Loomarr didn’t find any new strong matches this time. Your existing options are still here.",
+    );
     expect(screen.getByText("1 option")).toBeVisible();
     expect(screen.getByRole("button", { name: "Add Lemon Tree Heist" })).toBeVisible();
   });

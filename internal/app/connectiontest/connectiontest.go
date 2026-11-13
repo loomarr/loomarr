@@ -17,13 +17,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Config is what the probes read.
@@ -32,7 +32,7 @@ type Config struct {
 	Settings settings.Reader
 	// Library is the application library client; the media-server probe snapshots its live
 	// connection, including the stable install device id.
-	Library *library.Client
+	Library *mediaserver.Client
 	// TMDB validates the TMDB key; nil reads as "not configured".
 	TMDB *tmdb.Client
 	// Tunarr, Arr and Seerr resolve the connections live per probe.
@@ -60,11 +60,11 @@ func New(c Config) map[string]func(ctx context.Context) (bool, string) {
 			lib := c.Library.Snapshot()
 			_, err := lib.Connection().Validate()
 			switch {
-			case errors.Is(err, library.ErrConnectionFlavorRequired):
+			case errors.Is(err, mediaserver.ErrConnectionFlavorRequired):
 				return false, "set a media server flavor (emby | jellyfin)"
-			case errors.Is(err, library.ErrConnectionURLRequired):
+			case errors.Is(err, mediaserver.ErrConnectionURLRequired):
 				return false, "set the media server URL"
-			case errors.Is(err, library.ErrConnectionTokenRequired):
+			case errors.Is(err, mediaserver.ErrConnectionTokenRequired):
 				return false, "set the media server API token"
 			case err != nil:
 				return false, "set a complete media server connection"

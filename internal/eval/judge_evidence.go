@@ -7,9 +7,9 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The Judge seam stays bounded even when a caller supplies unusually large

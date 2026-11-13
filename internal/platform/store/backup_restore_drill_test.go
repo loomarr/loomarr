@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 const (

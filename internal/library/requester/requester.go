@@ -7,7 +7,7 @@ package requester
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Requester submits acquisition requests for titles (§2 boundary).

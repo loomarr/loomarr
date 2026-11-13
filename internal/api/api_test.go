@@ -13,13 +13,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 const adminToken = "test-admin-token"
@@ -201,6 +202,57 @@ func TestEnqueueTitleAdmin(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Key != "movie:tmdb:91111867" || body.State != "wanted" {
 		t.Errorf("enqueue body = %+v, want key movie:tmdb:91111867 state wanted", body)
+	}
+}
+
+// An enqueued title is due at once: the backstop claims `wanted` titles whose deadline has
+// passed, so a title written with no deadline would never be requested.
+func TestEnqueuedTitleIsClaimedForRequesting(t *testing.T) {
+	harness := newAPIHarness(t)
+	resp := harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":90000777}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("enqueue → %d, want 200", resp.StatusCode)
+	}
+
+	due, err := harness.Store.ClaimDueTitles(context.Background(), time.Now().Add(time.Minute), time.Minute, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 || due[0].Key != "movie:tmdb:90000777" {
+		t.Errorf("the backstop claimed %d title(s) after the enqueue, want the one just enqueued", len(due))
+	}
+}
+
+// The Requests page's Retry re-enqueues a given-up title: it goes back to wanted and is due again.
+func TestReenqueueRetriesAGivenUpTitle(t *testing.T) {
+	harness := newAPIHarness(t)
+	title := provision.Title{MediaType: provision.Movie, TMDBID: 90000778}
+	key, err := title.Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	given := provision.Record{Key: key, Title: title, State: provision.Unavailable, LastError: "deadline exceeded"}
+	if err := harness.Store.UpsertTitle(context.Background(), given); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":90000778}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("re-enqueue → %d, want 200", resp.StatusCode)
+	}
+	rec, err := harness.Store.GetTitle(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.State != provision.Wanted || rec.LastError != "" {
+		t.Errorf("re-enqueue left the title %s (%q), want wanted with the error cleared", rec.State, rec.LastError)
+	}
+	due, err := harness.Store.ClaimDueTitles(context.Background(), time.Now().Add(time.Minute), time.Minute, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 1 || due[0].Key != key {
+		t.Errorf("the backstop claimed %d title(s) after the retry, want the retried one", len(due))
 	}
 }
 

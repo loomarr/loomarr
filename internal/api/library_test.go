@@ -6,16 +6,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	mptmdb "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/library/scan"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 )
 
 type libraryRootsBody struct {
@@ -58,7 +60,7 @@ func newScanHarness(t *testing.T, sonarrFolders ...string) (*apiHarness, *scan.L
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib = newScanLibrary(t, defaults.Store, sonarrFolders...)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, LibraryRoots: lib,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Library: api.LibraryOptions{Roots: lib},
 		})
 	})
 	return h, lib
@@ -80,7 +82,7 @@ func newScanLibrary(t *testing.T, st records.Store, sonarrFolders ...string) *sc
 				{Authority: "radarr", Folders: func(context.Context) ([]string, error) { return nil, scan.ErrSkipped }},
 			}
 		},
-		PathMap: func() library.PathMap { return nil },
+		PathMap: func() mediaserver.PathMap { return nil },
 		Disk:    scan.OSDisk{MountInfo: filepath.Join(t.TempDir(), "no-mounts")},
 		Now:     time.Now,
 	}
@@ -128,6 +130,10 @@ func libraryStatus(t *testing.T, h *apiHarness) (health string, inUse, offline, 
 // Discover → confirm → status: the path the Settings → Library page drives.
 func TestLibraryRoots_DiscoverConfirmAndStatus(t *testing.T) {
 	tv := t.TempDir()
+	// A folder that holds something: an empty one reports folder_empty, not ok (#2151).
+	if err := os.WriteFile(filepath.Join(tv, "Pilot.mkv"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	h := newLibraryHarness(t, tv, "/not/on/this/machine")
 
 	if health, _, _, _ := libraryStatus(t, h); health != "needs_folders" {
@@ -207,11 +213,14 @@ type libraryScanStatus struct {
 	} `json:"scan"`
 	Files int `json:"files"`
 	Held  []struct {
-		Path     string `json:"path"`
-		Movies   int    `json:"movies"`
-		Episodes int    `json:"episodes"`
-		Other    int    `json:"other"`
+		Path       string   `json:"path"`
+		Movies     int      `json:"movies"`
+		Episodes   int      `json:"episodes"`
+		Other      int      `json:"other"`
+		Titles     []string `json:"titles"`
+		TitleCount int      `json:"titleCount"`
 	} `json:"held"`
+	Unreadable []string `json:"unreadable"`
 }
 
 func scanStatus(t *testing.T, resp *http.Response, want int) libraryScanStatus {
@@ -250,7 +259,8 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
-	if !st.Scan.Enabled || st.Scan.Step != "idle" || st.Scan.LastScanAt == nil || st.Files != 5 || len(st.Held) != 0 {
+	if !st.Scan.Enabled || st.Scan.Step != "idle" || st.Scan.LastScanAt == nil || st.Files != 5 || len(st.Held) != 0 ||
+		st.Unreadable == nil || len(st.Unreadable) != 0 {
 		t.Fatalf("after first scan %+v", st)
 	}
 
@@ -259,12 +269,23 @@ func TestLibraryScan_StatusHeldAndConfirm(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.WriteFile(filepath.Join(movies, "Foxtrot \xe9.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := lib.Scanner.Importer.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
 	st = scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
 	if len(st.Held) != 1 || st.Held[0].Path != movies || st.Held[0].Movies != 2 || st.Held[0].Episodes != 0 {
 		t.Fatalf("held %+v", st.Held)
+	}
+	// A name that is not UTF-8 is listed for renaming, as near its name as text allows.
+	if want := []string{filepath.Join(movies, "Foxtrot �.mkv")}; !slices.Equal(st.Unreadable, want) {
+		t.Fatalf("unreadable = %q, want %q", st.Unreadable, want)
+	}
+	// The maintainer sees which titles they would let go.
+	if got := st.Held[0]; strings.Join(got.Titles, ",") != "Alpha,Bravo" || got.TitleCount != 2 {
+		t.Fatalf("held titles = %q of %d, want Alpha and Bravo", got.Titles, got.TitleCount)
 	}
 
 	// The confirmation is recorded at once and applied by the next pass, which it asks for.

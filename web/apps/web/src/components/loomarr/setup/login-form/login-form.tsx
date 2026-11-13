@@ -1,8 +1,7 @@
 import { loginSchema } from "@loomarr/core/schemas";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import type { LoginFormProps } from "./login-form.type";
 
 // LoginForm — the sign-in surface (§11). Local or imported media-server credentials
@@ -49,13 +48,16 @@ const LoginForm = ({
   });
 
   return (
-    <form
+    <Stack
+      className={className}
+      gap="5"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
         form.handleSubmit();
       }}
-      className={cn("flex w-full flex-col gap-5", className)}
+      render="form"
+      width="100%"
     >
       {error != null && <ErrorState error={error} />}
 
@@ -90,16 +92,18 @@ const LoginForm = ({
           always works alongside SSO rather than instead of it, and an install whose provider
           is down must not look like one nobody can enter. */}
       {onSso && (
-        <div className="border-border flex flex-col gap-2 border-t pt-4">
+        <Stack className="border-border border-t pt-4" gap="inline">
           {ssoError ? (
-            <p className="text-danger text-sm" role="alert">
-              {ssoErrorCopy(ssoError)}
-            </p>
+            <div role="alert">
+              <Text as="p" textRole="compact" tone="danger">
+                {ssoErrorCopy(ssoError)}
+              </Text>
+            </div>
           ) : null}
           <Action disabled={isPending} onPress={onSso} variant="outline">
             Sign in with your provider
           </Action>
-        </div>
+        </Stack>
       )}
 
       {/* Development only (§11). Rendered solely when the SERVER reports
@@ -108,16 +112,16 @@ const LoginForm = ({
           skips authentication should read as the unusual thing it is, both for the
           maintainer using it and for anyone who finds it somewhere it shouldn't be. */}
       {onDevLogin && (
-        <div className="border-border flex flex-col items-center gap-1 border-t pt-4">
+        <Stack align="center" className="border-border border-t pt-4" gap="1">
           <Action disabled={isPending} onPress={onDevLogin} variant="outline">
             Skip sign-in (dev)
           </Action>
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             <code>LOOMARR_DEV_LOGIN</code> is on. It signs you in as an admin with no password.
-          </p>
-        </div>
+          </Text>
+        </Stack>
       )}
-    </form>
+    </Stack>
   );
 };
 

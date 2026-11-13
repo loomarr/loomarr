@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/filler/quarantine"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/filler/research"
 	"github.com/loomarr/loomarr/internal/filler/routine"
@@ -34,7 +35,8 @@ import (
 	youtubeprovider "github.com/loomarr/loomarr/internal/filler/source/youtube"
 	"github.com/loomarr/loomarr/internal/filler/station"
 	"github.com/loomarr/loomarr/internal/filler/storeadapter"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/filler/upkeep"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/images"
@@ -77,7 +79,7 @@ func buildFillerSubsystem(
 	set resolved,
 	layout cliplibrary.Layout,
 	log *slog.Logger,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
@@ -322,6 +324,9 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
+	registry.Add(fillerUpkeepJob(upkeep.New(storeadapter.NewUpkeep(st),
+		quarantine.New(layout.ClipDir(), time.Now), fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
+		layout.ClipDir(), time.Now, log)))
 	autoFetch := acquisition.NewFetcher(
 		storeadapter.NewFetch(
 			st,

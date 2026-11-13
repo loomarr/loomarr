@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -46,6 +46,11 @@ func TestFilmographerKeepsTheQualifyingPeoplesFilmographies(t *testing.T) {
 		{Name: "Other Director", Role: "director", ID: librarystore.LibraryID{Namespace: "imdb", Value: "nm90004005"}},
 	}}
 	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{film}, at); err != nil {
+		t.Fatal(err)
+	}
+	// Listed: only a title with a present file qualifies anyone (#3229).
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/m/Film.mkv", Root: "/m", Size: 1, ModifiedNs: 1,
+		Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "m1"}}); err != nil {
 		t.Fatal(err)
 	}
 	catalog := &fakeFilmCatalog{err: errors.New("tmdb: 503")}

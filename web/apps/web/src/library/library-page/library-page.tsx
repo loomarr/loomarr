@@ -10,13 +10,15 @@ import {
   LibraryNeedsStrip,
   LibraryShelf,
   type LibraryShelfTitle,
-  StatePanel,
 } from "@loomarr/ui";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
+import { useRouteContent } from "@/lib/use-route-content";
+import { libraryItemsQueryOptions } from "../library-items-query";
 import { useLibraryCollections } from "../use-library-collections";
 import { useLibraryNeeds } from "../use-library-needs";
 import { useLibraryScanFrames } from "../use-library-scan-frames";
@@ -27,7 +29,6 @@ import { useLibraryScanFrames } from "../use-library-scan-frames";
 // written into the status, and each library_titles frame refetches the titles (the events bus), so
 // new titles appear and "Getting ready" clears on their own.
 
-const PAGE = 60;
 const SEARCH_SETTLE_MS = 250;
 
 // The poster grid is 6 across at most, so a poster is drawn at most about a sixth of the frame.
@@ -66,6 +67,7 @@ interface LibraryPageProps {
 const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const timeZone = useHouseholdTimeZone();
   const [typed, setTyped] = useState(search);
   const settled = useSettled(typed.trim());
   const needs = useLibraryNeeds();
@@ -97,30 +99,16 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
     });
   }, [settled, kind, navigate, titlesView]);
 
-  const params = {
-    kind,
-    search: settled || undefined,
-    limit: PAGE,
-  };
   const items = useInfiniteQuery({
+    ...libraryItemsQueryOptions({ kind, search: settled || undefined }),
     enabled: titlesView,
-    queryKey: [...libraryApi.getListLibraryItemsQueryKey(params), "pages"],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam, signal }) => {
-      const res = await libraryApi.listLibraryItems({ ...params, offset: pageParam }, { signal });
-      const body = unwrap(res);
-      if (!body) throw new Error("Couldn't list the library");
-      return body;
-    },
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, page) => n + page.items.length, 0);
-      return loaded < last.total && last.items.length > 0 ? loaded : undefined;
-    },
   });
   const titles = useMemo(
     () => items.data?.pages.flatMap((page) => page.items.map(titleOf)) ?? [],
     [items.data],
   );
+  // The library's content is its status line and the first page of titles under it.
+  useRouteContent(current !== undefined && !items.isPending);
 
   // The next page loads once the grid's last rows are on screen.
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = items;
@@ -130,7 +118,8 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
 
   const error = status.error ?? items.error;
   if (error && !current) return <ErrorState error={error} onRetry={() => void status.refetch()} />;
-  if (!current) return <StatePanel kind="loading" title="Loading your library" />;
+  // The route's loader ensured the status, so it is here before this page mounts.
+  if (!current) return null;
 
   const offline = (unwrap(roots.data)?.roots ?? []).filter((f) => f.inUse && !f.readable).map((f) => f.path);
 
@@ -206,7 +195,9 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
           held: current.held,
           offline,
           needsYou: needs.needs.length + needs.problems.length > 0,
+          details: current.details,
         }}
+        timeZone={timeZone}
         titles={titles}
       />
     </>

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestEffectiveDiscoveryFeedbackResolvesReplacementOverrideAndFallback(t *testing.T) {

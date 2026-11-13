@@ -334,8 +334,9 @@ describe("AppShell", () => {
       // route must light the rail's Watch entry, not just the one it links to.
       renderShellAt("/watch/$id", { isAdmin: true, watchChannelId: "ch-7" });
       const watch = await screen.findByRole("link", { name: "Watch" });
-      // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at 500, never amber.
-      expect(watch).toHaveClass("bg-static-800", "font-medium", "text-foreground");
+      // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at the role's strong weight, never amber.
+      expect(watch).toHaveClass("bg-static-800", "text-foreground");
+      expect(within(watch).getByText("Watch")).toHaveStyle({ fontWeight: "600" });
       // Amber is focus only: the focus-visible ring is the one place `signal` may appear.
       expect(watch.className.replace(/focus-visible:ring-signal/, "")).not.toContain("signal");
       expect(screen.getByRole("link", { name: "Guide" })).not.toHaveClass("bg-static-800");
@@ -346,7 +347,7 @@ describe("AppShell", () => {
       async (section) => {
         renderShellAt(`/channels/$id/${section}`, { isAdmin: true, watchChannelId: "ch-7" });
         const guide = await screen.findByRole("link", { name: "Guide" });
-        expect(guide).toHaveClass("bg-static-800", "font-medium", "text-foreground");
+        expect(guide).toHaveClass("bg-static-800", "text-foreground");
         expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-static-800");
       },
     );
@@ -354,7 +355,7 @@ describe("AppShell", () => {
     it("highlights Guide, not Watch, on the channel's info route (member)", async () => {
       renderShellAt("/channels/$id/info", { isAdmin: false, watchChannelId: "ch-7" });
       const guide = await screen.findByRole("link", { name: "Guide" });
-      expect(guide).toHaveClass("bg-static-800", "font-medium", "text-foreground");
+      expect(guide).toHaveClass("bg-static-800", "text-foreground");
       expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-static-800");
     });
 

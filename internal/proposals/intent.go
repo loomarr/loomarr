@@ -16,8 +16,8 @@ type Intent struct {
 	Era         string   `json:"era,omitempty"`                                       // e.g. "1990s"
 	Tone        string   `json:"tone,omitempty"`                                      // e.g. "high-energy"
 	RuntimeTgt  int      `json:"runtimeTargetMin,omitempty" minimum:"0"`              // total target minutes; 0 ⇒ none
-	MustInclude []string `json:"mustInclude,omitempty"`                               // titles/terms to include
-	MustExclude []string `json:"mustExclude,omitempty"`                               // titles/terms to exclude
+	MustInclude []string `json:"mustInclude,omitempty" maxItems:"100"`                // titles/terms to include; a request names a handful
+	MustExclude []string `json:"mustExclude,omitempty" maxItems:"100"`                // titles/terms to exclude
 	MaxAcquire  int      `json:"maxAcquisitions,omitempty" minimum:"0" maximum:"200"` // cap on acquisitions (§8 quota); 0 ⇒ the quota alone
 	// ChannelName is a name the requester fixed (the manual builder's typed name when it hands
 	// over to AI, #1914). When set, the proposal keeps it instead of the model's; empty ⇒ the
@@ -28,8 +28,9 @@ type Intent struct {
 	// so the model reasons from what's already on the channel and returns a revised
 	// lineup. Context only — new picks are still grounded through Catalog operations, so
 	// refine can't invent titles. Empty on a fresh (non-refine) suggestion.
-	RefineText    string          `json:"refineText,omitempty"`
-	CurrentLineup []LineupContext `json:"currentLineup,omitempty"`
+	RefineText string `json:"refineText,omitempty"`
+	// At most 1000, the same ceiling as a channel lineup.
+	CurrentLineup []LineupContext `json:"currentLineup,omitempty" maxItems:"1000"`
 	// Adjacent are pre-seeded candidates from the recommendation graph walked over this
 	// channel's own lineup (programming-design §8.3) — the deterministic second corpus,
 	// merged with whatever the model finds through the Catalog.
@@ -44,7 +45,8 @@ type Intent struct {
 	//
 	// Empty on a fresh suggestion (no lineup to walk from) and on any install without a
 	// TMDB corpus wired.
-	Adjacent []AdjacentContext `json:"adjacent,omitempty"`
+	// At most 50: a refine is offered adjacentLimit (12) of them.
+	Adjacent []AdjacentContext `json:"adjacent,omitempty" maxItems:"50"`
 	// DiscoveryScopeID is request context for channel-specific explicit feedback during
 	// re-curation. It never enters the API or persisted intent JSON.
 	DiscoveryScopeID string `json:"-"`

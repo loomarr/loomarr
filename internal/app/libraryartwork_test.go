@@ -15,9 +15,9 @@ import (
 	"golang.org/x/image/webp"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/media/images/storeadapter"
-	"github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"

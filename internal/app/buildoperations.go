@@ -17,7 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/nownext"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/access"
 	"github.com/loomarr/loomarr/internal/people/accountdelivery"
@@ -95,7 +95,7 @@ func buildOperations(
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	refreshSecretRedactor func(),
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
@@ -321,7 +321,7 @@ func buildAuth(
 	set resolved,
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	log *slog.Logger,
 ) authBuild {
 	var result authBuild
@@ -339,8 +339,7 @@ func buildAuth(
 	}
 
 	manager := auth.NewManager(st, settings.SessionTTL.Get(set), time.Now)
-	loginLimiter := auth.NewRateLimiter(0.2, 5)
-	result.login = auth.NewLoginService(libraryClient, st, manager, loginLimiter, time.Now)
+	result.login = auth.NewLoginService(libraryClient, st, manager, auth.NewLoginLimiter(), time.Now)
 	result.userSync = auth.NewUserSync(libraryClient, st, time.Now)
 	result.provision = auth.NewProvisioner(st, libraryClient, newID, time.Now)
 	result.sso = auth.NewSSOService(func() auth.SSOConfig {
@@ -407,7 +406,7 @@ func buildSettings(
 	set resolved,
 	desiredSet resolved,
 	secrets *settings.Secrets,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	refreshRedactor func(),
 	readSecret func(context.Context, settings.GeneratedSecret) (string, error),

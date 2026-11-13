@@ -40,6 +40,17 @@ func testLibraryFilmography(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryItems(ctx, items, at); err != nil {
 		t.Fatal(err)
 	}
+	// Only a title with a present file is listed, and only listed titles qualify anyone (#3229).
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := sqlSt.db.ExecContext(ctx, sqlSt.ph(query), args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, it := range items {
+		exec(`INSERT INTO library_files (path, root, size_bytes, modified_ns, seen_at_ms, inventory_item_id)
+			VALUES (?, '/m', 1, 1, ?, ?)`, "/m/"+it.ID+".mkv", at.UnixMilli(), it.ID)
+	}
 	due := func(d LibraryFilmographyDue) []string {
 		t.Helper()
 		refs, err := st.DueLibraryFilmographies(ctx, d)
@@ -105,6 +116,29 @@ func testLibraryFilmography(t *testing.T, newStore NewStoreFunc) {
 	}
 	if n := count(`SELECT COUNT(*) FROM library_filmography`); n != 1 {
 		t.Fatalf("filmography rows after a refresh = %d, want it replaced", n)
+	}
+
+	// The lead's only title loses its file (#3229). Its row and credits stay for the retention
+	// window, but it is no longer listed: the lead stops being due, and prune drops the lead's
+	// filmography without removing the lead, whom the kept credit still names.
+	exec(`UPDATE library_files SET missing_at_ms = ? WHERE inventory_item_id = 'm1'`, at.UnixMilli())
+	if got := due(later); slices.Contains(got, "tmdb:90004001=90004001") || slices.Contains(got, "tmdb:90004003=90004003") {
+		t.Fatalf("due with m1 gone = %v, want neither the lead nor the director", got)
+	}
+	if n, err := st.PruneLibraryPeople(ctx); err != nil || n != 1 {
+		t.Fatalf("pruned %d, %v; want the lead's filmography set aside", n, err)
+	}
+	if n := count(`SELECT COUNT(*) FROM library_filmography`) + count(`SELECT COUNT(*) FROM library_people
+		WHERE id = 'tmdb:90004001' AND filmography_at_ms = 0`); n != 1 {
+		t.Fatalf("after set-aside: filmography rows + lead unfetched = %d, want 0 + 1", n)
+	}
+	if n, err := st.PruneLibraryPeople(ctx); err != nil || n != 0 {
+		t.Fatalf("second prune = %d, %v; want nothing left to do", n, err)
+	}
+	// The file returns: the lead is due again, first, as never fetched.
+	exec(`UPDATE library_files SET missing_at_ms = 0 WHERE inventory_item_id = 'm1'`)
+	if got := due(later); len(got) == 0 || got[0] != "tmdb:90004001=90004001" && got[0] != "tmdb:90004003=90004003" {
+		t.Fatalf("due with m1 back = %v, want the lead and director first", got)
 	}
 
 	// Titles rewritten without credits leave their people uncredited: pruned, filmographies too.

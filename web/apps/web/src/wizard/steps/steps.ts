@@ -10,10 +10,10 @@ const PLAYOUT_TUNARR: PlayoutBackend = "tunarr";
 
 // ⚠ THE STEP LIST IS DERIVED, NOT CONSTANT (design §13, config-design §6).
 //
-// §9.1 made internal playout the default and the wizard had not caught up: `tunarr` was a
-// hardcoded blocking check and had its own wiring step, so the DEFAULT path demanded a second
-// server the install would never use, and refused to continue until it answered. That is not a
-// copy problem. The shortest honest path to a live channel no longer runs through Tunarr, so a
+// §9.1 makes internal playout the default, so the steps depend on the playout choice: a
+// hardcoded blocking `tunarr` check with its own wiring step would make the DEFAULT path demand a
+// second server the install never uses, and refuse to continue until it answered. That is not a
+// copy problem. The shortest honest path to a live channel does not run through Tunarr, so a
 // fixed list cannot describe it.
 //
 // Steps the choice removes are HIDDEN, not shown as satisfied: a rail entry reading "not
@@ -31,7 +31,7 @@ const wizardSteps = (backend: PlayoutBackend): WizardStep[] => {
     // its form in the content (§13). ids match the setup-check names.
     subItems: [
       { id: "media_server", label: "Media server" },
-      // No Tunarr sub-item on either path: its form lives on the Playout step now, under the
+      // No Tunarr sub-item on either path: its form lives on the Playout step, under the
       // choice that makes it relevant (design §13).
       { id: "requester", label: "Requester" },
       // Sonarr and Radarr are on "Where's your media?", beside the folders they name.

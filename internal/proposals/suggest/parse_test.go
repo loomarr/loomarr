@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The external-LLM smoke found Claude wraps its final JSON in a ```json fence even

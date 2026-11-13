@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // TestScanAvailability_NoWebhook is the retirement safety proof (design §4, build plan): a

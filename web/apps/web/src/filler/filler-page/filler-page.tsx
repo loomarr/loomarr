@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Card, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -63,18 +63,20 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
   if (configurationPending && tab !== "settings") {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <Stack className="h-full min-h-0">
         <FillerHeader />
         <div className="min-h-0 flex-1 p-6" role="status">
-          <p className="text-muted-foreground text-sm">Loading filler…</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loading filler…
+          </Text>
         </div>
-      </div>
+      </Stack>
     );
   }
 
   if (!fillerConfigured && tab !== "settings") {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <Stack className="h-full min-h-0">
         <FillerHeader />
         <div className="min-h-0 flex-1 overflow-auto p-6">
           <EmptyState
@@ -91,7 +93,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
               : {})}
           />
         </div>
-      </div>
+      </Stack>
     );
   }
 
@@ -109,9 +111,9 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     : "";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <FillerHeader status={watch && <WatchLine status={statusLine} health={watch.health} />} />
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack className="min-h-0 flex-1 overflow-auto p-6" gap="section">
         {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
             pages light Manage, as Settings and Tags already did. */}
         <NavTabs
@@ -142,13 +144,16 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {/* Manage's children say where they return to, as the Settings index already did: the lit
             Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
         {tab === "incoming" || tab === "sources" || tab === "taxonomy" || tab === "quality" ? (
-          <Link
-            to="/filler/manage"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
-          >
-            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-            Manage
-          </Link>
+          <Stack align="start" flexShrink={0}>
+            <Action
+              accessibilityRole="link"
+              icon="goBack"
+              render={<Link to="/filler/manage" />}
+              variant="ghost"
+            >
+              Manage
+            </Action>
+          </Stack>
         ) : null}
 
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
@@ -163,13 +168,15 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             padding={16}
           >
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Automatic fetching is paused</p>
-              <p className="text-muted-foreground mt-0.5 text-sm">
+              <Text as="p" textRole="cardLabel">
+                Automatic fetching is paused
+              </Text>
+              <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
                 {watch.autoFetch.catalogClips.toLocaleString()} of{" "}
                 {(watch.autoFetch.maxCatalog ?? 0).toLocaleString()} catalog clips are in use. You can still
                 add clips yourself. Remove clips you no longer want or raise this limit to restart automatic
                 downloads.
-              </p>
+              </Text>
             </div>
             {isAdmin ? (
               <Action
@@ -213,8 +220,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         ) : (
           <FillerCatalog isAdmin={isAdmin} />
         )}
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

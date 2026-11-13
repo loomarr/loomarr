@@ -16,7 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
@@ -65,7 +65,7 @@ func buildSuggestions(
 	fillerLayout cliplibrary.Layout,
 	activityRecorder *activity.Recorder,
 	log *slog.Logger,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	channelService guideapi.ChannelService,
 	approver *accept.Approver,
@@ -105,7 +105,7 @@ func buildSuggestions(
 
 	catalogService := titlesearch.New(titlesearch.LibrarySearch{Titles: st, Facts: st}, tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}
-	})
+	}).WithEvidence(st)
 	result.search = searchAdapter{catalogService}
 	collectionResolver := tmdb.NewCollectionResolver(tmdbClient).WithPresenceSource(func() titlesearch.LibraryPresence {
 		return titlesearch.LibraryOwnership{Titles: st}

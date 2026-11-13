@@ -1,17 +1,17 @@
 // The URL that serves a clip's own bytes (V39).
 //
 // ⚠ A clip's wire identity is its content HASH (V45a) — hex, no slashes, no special characters — so
-// the URL is a plain `/v1/filler/{route}/{hash}`. This REPLACES the old path-based form, which had to
-// per-segment-encode a slash-and-`?`-and-`#`-bearing path; the hash removes that entire hazard class
-// (and the dev-proxy `%2F`-decoding 404 it caused). `encodeURIComponent` stays as belt-and-braces —
-// a hash needs no escaping, but it costs nothing and defends against a non-hash value slipping in.
+// the URL is a plain `/v1/filler/{route}/{hash}`. A path-based form would have to per-segment-encode
+// a slash-and-`?`-and-`#`-bearing path; the hash removes that entire hazard class (including the
+// dev-proxy `%2F`-decoding 404). `encodeURIComponent` is belt-and-braces — a hash needs no escaping,
+// but it costs nothing and defends against a non-hash value slipping in.
 //
-// ⚠ **`clipThumbURL` and `clipHoverURL` were RETIRED in V52 phase 8, with the routes behind them.**
-// A clip's still and hover loop are image-service images now (§22): the DTO carries `thumbImage` /
+// ⚠ **There is no `clipThumbURL` or `clipHoverURL` (V52 phase 8), and no route behind them.**
+// A clip's still and hover loop are image-service images (§22): the DTO carries `thumbImage` /
 // `hoverImage` records and the client renders them through the <Image> primitive, which brings a
 // width ladder, a ThumbHash placeholder and honest immutable caching — none of which a bare
-// `/v1/filler/thumb/{hash}` could provide. `clipMediaURL` stays: a clip's own bytes are not an
-// image, and the image service has no opinion about them.
+// `/v1/filler/thumb/{hash}` could provide. `clipMediaURL` is here because a clip's own bytes are
+// not an image, and the image service has no opinion about them.
 
 // clipAssetURL is the shared rule, kept as its own function because the pass-through below is a
 // rule about VALUES rather than about any one route.

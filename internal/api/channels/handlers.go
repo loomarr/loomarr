@@ -15,6 +15,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/channels/viewing"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -24,7 +25,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Store is the slice of the aggregate store these routes read and write.
@@ -215,6 +215,7 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerWatermarkOptions(api)
 	s.registerChannelIdeas(api)
 	s.registerMyChannels(api)
+	s.registerHousehold(api)
 	s.registerHouseholdViewing(api)
 	s.registerWatchHistory(api)
 }

@@ -14,12 +14,12 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 const (
@@ -264,14 +264,14 @@ func prepareFranchiseEvidence(ctx context.Context, evidence ScheduleFranchiseEvi
 
 func verifyLibraryOwnershipBinding(ctx context.Context, lib LibraryReader, key provision.Key, expectedLibraryItemID string) error {
 	mediaType, provider, id, ok := provision.ParseKey(key)
-	if !ok || provider != string(library.TMDB) || id <= 0 {
+	if !ok || provider != string(mediaserver.TMDB) || id <= 0 {
 		return fmt.Errorf("live schedule evidence Key %s is not an exact TMDB identity", key)
 	}
-	libraryMediaType := library.Movie
+	libraryMediaType := mediaserver.Movie
 	if mediaType == provision.Series {
-		libraryMediaType = library.Series
+		libraryMediaType = mediaserver.Series
 	}
-	detail, present, err := titlesearch.OwnedTitle(ctx, lib, library.TMDB, strconv.Itoa(id), libraryMediaType)
+	detail, present, err := titlesearch.OwnedTitle(ctx, lib, mediaserver.TMDB, strconv.Itoa(id), libraryMediaType)
 	if err != nil {
 		return fmt.Errorf("verify Library ownership binding for %s: %w", key, err)
 	}

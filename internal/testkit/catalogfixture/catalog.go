@@ -6,9 +6,9 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Corpus is a deterministic search/discovery corpus.
@@ -70,11 +70,11 @@ func (c *Corpus) Discoveries() []DiscoveryRequest {
 // Library is a deterministic library-scope searcher returning fixed rows, for
 // asserting how the catalog maps fields the pinned media-server fixture lacks.
 type Library struct {
-	Results []library.SearchResult
+	Results []mediaserver.SearchResult
 }
 
-func (l *Library) Search(context.Context, string, int) ([]library.SearchResult, error) {
-	return append([]library.SearchResult(nil), l.Results...), nil
+func (l *Library) Search(context.Context, string, int) ([]mediaserver.SearchResult, error) {
+	return append([]mediaserver.SearchResult(nil), l.Results...), nil
 }
 
 // Presence is a deterministic library-ownership adapter.

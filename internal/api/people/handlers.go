@@ -84,10 +84,15 @@ type Handlers struct {
 	accessPublicURL      func() string
 	devices              *auth.DeviceManager
 	deviceLimiter        *auth.RateLimiter
-	devLogin             bool
-	sso                  SSOService
-	provision            Provisioner
-	demo                 DemoAccount
+	// invitationPreviewLimiter and invitationRedeemLimiter throttle the two public invitation
+	// routes. Redeeming a library invitation asks the media server to check a caller-chosen
+	// username and password, so it is held per account across every source as well as per source.
+	invitationPreviewLimiter *auth.RateLimiter
+	invitationRedeemLimiter  *auth.SourceLimiter
+	devLogin                 bool
+	sso                      SSOService
+	provision                Provisioner
+	demo                     DemoAccount
 
 	configIntFn           func(settings.IntKey) int
 	libraryUnconfiguredFn func() bool
@@ -106,6 +111,7 @@ func New(d Deps, schemaOnly bool) *Handlers {
 		invitations: d.Invitations, invitationDelivery: d.InvitationDelivery,
 		invitationRedemption: d.InvitationRedemption, passwordRecovery: d.PasswordRecovery,
 		accessPublicURL: d.AccessPublicURL, devices: d.Devices, deviceLimiter: d.DeviceLimiter,
+		invitationPreviewLimiter: newInvitationPreviewLimiter(), invitationRedeemLimiter: newInvitationRedeemLimiter(),
 		devLogin: d.DevLogin, sso: d.SSO, provision: d.Provision, demo: d.Demo,
 		configIntFn: d.ConfigInt, libraryUnconfiguredFn: d.LibraryUnconfigured,
 		schemaOnly: schemaOnly,

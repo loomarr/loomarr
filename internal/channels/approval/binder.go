@@ -21,12 +21,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Store is the slice of store.Store the binder needs. Narrow, so a fake in tests
@@ -194,6 +194,11 @@ func (b *Binder) planChannel(ctx context.Context, p proposalstore.Proposal) (cha
 		}
 		for _, e := range bound.Dropped {
 			b.log.Info("auto-curate dropped a clearly-off-intent title", "title", e.Title, "key", e.Key)
+		}
+		if len(bound.Full) > 0 {
+			b.log.Warn("auto-curate could not add titles: the channel's lineup is full",
+				"channel", bound.Channel.ID, "turnedAway", len(bound.Full), "lineupMax", schedule.MaxLineupEntries,
+				"first", bound.Full[0].Title)
 		}
 	}
 	return bound.Channel, nil

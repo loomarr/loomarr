@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 func TestReleaseGateLatencyRequiresEveryTrialMeasurement(t *testing.T) {

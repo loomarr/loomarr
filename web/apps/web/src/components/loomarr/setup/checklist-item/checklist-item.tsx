@@ -1,5 +1,5 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { ActivityIndicator, Icon, icons } from "@loomarr/design-system";
+import { ActivityIndicator, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -16,20 +16,29 @@ const ICON: Record<CheckStatus, { node: ReactNode; label: string }> = {
 };
 
 const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItemProps) => (
-  <div
+  <Stack
+    align="start"
     className={cn(
-      "border-border bg-card flex items-start gap-3 rounded-md border px-3 py-2.5 transition-colors",
+      "border-border bg-card rounded-md border px-3 py-2.5 transition-colors",
       status === "pass" && "border-lock-tint-30",
       status === "fail" && "border-onair-tint-30",
       className,
     )}
+    direction="row"
+    gap="control"
   >
     <span className="mt-0.5" role="img" aria-label={ICON[status].label}>
       {ICON[status].node}
     </span>
     <div className="min-w-0 flex-1">
-      <p className="text-sm font-medium">{name}</p>
-      {status === "fail" && hint && <p className="text-muted-foreground mt-0.5 text-sm">{hint}</p>}
+      <Text as="p" textRole="cardLabel">
+        {name}
+      </Text>
+      {status === "fail" && hint && (
+        <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+          {hint}
+        </Text>
+      )}
     </div>
     {status === "fail" && docHref && (
       // Route into the Help center — the docHref ("troubleshooting#tunarr") is parsed
@@ -44,7 +53,7 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
         Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
       </Link>
     )}
-  </div>
+  </Stack>
 );
 
 export { ChecklistItem };

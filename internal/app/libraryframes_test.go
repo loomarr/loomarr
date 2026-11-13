@@ -75,7 +75,9 @@ func TestLibraryFramesFor(t *testing.T) {
 type recordedFrames struct {
 	scans  []scan.ProgressSnapshot
 	titles int
+	roots  int
 }
 
 func (r *recordedFrames) LibraryScanChanged(p scan.ProgressSnapshot) { r.scans = append(r.scans, p) }
 func (r *recordedFrames) LibraryTitlesChanged()                      { r.titles++ }
+func (r *recordedFrames) LibraryRootsChanged()                       { r.roots++ }

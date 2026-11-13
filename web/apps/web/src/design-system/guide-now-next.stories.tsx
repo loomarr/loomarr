@@ -164,9 +164,51 @@ const Desktop: Story = {
   },
 };
 
+// A long Next title (#3406): the desktop row gives Next the same share as On now, and both sizes
+// cut it with an ellipsis rather than wrap. The break on Sitcom Corner names its programme.
+const longNextLayout = layoutGuide(
+  {
+    ...evening,
+    channels: [
+      channel(2, "Cartoon Classics", "live", [
+        show(21 * 60 - 9, 21 * 60 + 13, "The Upside-Down Picnic", "Kettle Kids"),
+        show(
+          21 * 60 + 13,
+          21 * 60 + 35,
+          "The Runaway Teapot and the Very Long Walk Home Across the Meadow",
+          "Kettle Kids",
+        ),
+      ]),
+      ...evening.channels.slice(1),
+    ],
+  } as GuideOutputBody,
+  now,
+);
+const LongNext: Story = { args: { layout: longNextLayout } };
+const DesktopLongNext: Story = {
+  args: { layout: longNextLayout, onOpenChannelInfo: () => undefined, wide: true },
+};
+
+// The desktop row's number block in each decade's colour, and clear for the channel with none.
+const DesktopDecades: Story = {
+  args: { layout: decadeLayout, onOpenChannelInfo: () => undefined, wide: true },
+};
+
 const DesktopNothingOn: Story = {
   args: { layout: quiet, onOpenChannelInfo: () => undefined, wide: true },
 };
 
 export default meta;
-export { Decades, DecadesLight, Desktop, DesktopNothingOn, Evening, FavouritesFirst, NothingOn, WithHeader };
+export {
+  Decades,
+  DecadesLight,
+  Desktop,
+  DesktopDecades,
+  DesktopLongNext,
+  DesktopNothingOn,
+  Evening,
+  FavouritesFirst,
+  LongNext,
+  NothingOn,
+  WithHeader,
+};

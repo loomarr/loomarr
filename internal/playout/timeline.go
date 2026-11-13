@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/playout/packager"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // "What is airing right now?" — the question the channel packager asks at each item boundary (§9.1).
@@ -75,10 +75,17 @@ type Airing struct {
 	// restarting the show for whoever joins. A channel is a wall clock, not a playlist
 	// that begins when someone watches.
 	Offset time.Duration
-	// Remaining is how much of the item is left. The child encode is bounded by it, so the
-	// process exits at the item boundary and the packager resolves again.
+	// PartStart is how far into the item its resolved input begins: for a movie in parts, the
+	// length of the parts before the one airing; 0 for a whole file. Offset stays the programme's.
+	PartStart time.Duration
+	// Remaining is how much of the item is left: of a movie in parts, of the part airing. The child
+	// encode is bounded by it, so the process exits at the item (or part) boundary and the
+	// packager resolves again.
 	Remaining time.Duration
 }
+
+// Seek is how far into its resolved input the airing starts.
+func (a Airing) Seek() time.Duration { return a.Offset - a.PartStart }
 
 // Playable reports whether there is something to encode.
 //

@@ -423,7 +423,7 @@ func Build(c Config) Delivery {
 		Validators:  []notifications.DestinationValidator{adapter},
 		Recovery: &PasswordRecovery{
 			recovery: c.Recovery, notifications: service,
-			requestLimiter: auth.NewRateLimiter(0.05, 3), redeemLimiter: auth.NewRateLimiter(0.1, 5),
+			requestLimiter: newRecoveryRequestLimiter(), redeemLimiter: auth.NewRateLimiter(0.1, 5),
 			log: c.Log,
 		},
 	}

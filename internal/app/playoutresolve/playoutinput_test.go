@@ -5,13 +5,26 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
+// fakeLibraryFiles plays one whole file per item.
 type fakeLibraryFiles map[string]string
 
-func (f fakeLibraryFiles) LibraryPlayingFile(_ context.Context, itemID string) (string, bool, error) {
+func (f fakeLibraryFiles) LibraryPlayingParts(_ context.Context, itemID string) ([]librarystore.LibraryPlayingPart, error) {
 	path, ok := f[itemID]
-	return path, ok, nil
+	if !ok {
+		return nil, nil
+	}
+	return []librarystore.LibraryPlayingPart{{Path: path}}, nil
+}
+
+// fakeLibraryParts plays each item's parts in order.
+type fakeLibraryParts map[string][]librarystore.LibraryPlayingPart
+
+func (f fakeLibraryParts) LibraryPlayingParts(_ context.Context, itemID string) ([]librarystore.LibraryPlayingPart, error) {
+	return f[itemID], nil
 }
 
 // A programme reads its library item's own file, with no media server. A file that is gone, or an

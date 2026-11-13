@@ -17,9 +17,9 @@ import (
 	playoutapi "github.com/loomarr/loomarr/internal/api/playout"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // fakeTimelineThumbs is a canned TimelineThumbResolver — it records the keys it was asked about and
@@ -59,13 +59,13 @@ func newTimelineServerWithImages(t *testing.T, g playoutapi.PlayoutGuide, thumbs
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := map[string]string{"server.public_url": "http://loomarr.local:8080", "playout.backend": "internal"}
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:          st,
-		Auth:           httpcore.NewTokenAuthorizer(adminToken),
-		Log:            slog.New(slog.DiscardHandler),
-		PlayoutGuide:   g,
-		TimelineThumbs: thumbs,
-		Images:         imageService,
-		LiveSettings:   stringSettings(func(k string) string { return cfg[k] }),
+		Store:        st,
+		Auth:         httpcore.NewTokenAuthorizer(adminToken),
+		Log:          slog.New(slog.DiscardHandler),
+		Playout:      api.PlayoutOptions{Guide: g},
+		Guide:        api.GuideOptions{TimelineThumbs: thumbs},
+		Images:       imageService,
+		LiveSettings: stringSettings(func(k string) string { return cfg[k] }),
 	}))
 	t.Cleanup(srv.Close)
 	return srv, st

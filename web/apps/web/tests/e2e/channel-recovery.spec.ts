@@ -20,7 +20,7 @@ test("missing TMDB keeps connected AI truthful and preserves the channel draft t
   });
 
   await page.goto("/guide");
-  await page.getByRole("link", { name: "Add a channel" }).click();
+  await page.getByRole("button", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("Saturday morning cartoons");
   await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
@@ -56,7 +56,7 @@ test("a failed builder journey preserves the complete intent through authorized 
   const mock = await installMockBackend(page, { authed: true, role: "admin", failedProposalJourney: true });
 
   await page.goto("/guide");
-  await page.getByRole("link", { name: "Add a channel" }).click();
+  await page.getByRole("button", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("90s action movies");
   await page.getByRole("button", { name: "Add details" }).click();
   await page.getByLabel("Era").fill("1990s");
@@ -141,7 +141,7 @@ test("a bounded-discovery failure preserves the draft without exposing an intern
   );
 
   await page.goto("/guide");
-  await page.getByRole("link", { name: "Add a channel" }).click();
+  await page.getByRole("button", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("Create a QFUN channel");
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
 
@@ -160,7 +160,7 @@ test("discarding clears a deep-linked Journey so a reload is genuinely fresh", a
   // Seed a real persisted Journey, then enter through the same opaque `?job=` link used by
   // recovery navigation. This rules out a test that only observes in-memory reset state.
   await page.goto("/guide");
-  await page.getByRole("link", { name: "Add a channel" }).click();
+  await page.getByRole("button", { name: "Add a channel" }).click();
   await page.getByRole("textbox", { name: "Channel intent" }).fill("90s action movies");
   await page.getByRole("button", { name: "Suggest a lineup" }).click();
   await expect.poll(() => mock.state.proposalJobRequests).toHaveLength(1);
@@ -175,7 +175,7 @@ test("discarding clears a deep-linked Journey so a reload is genuinely fresh", a
   await page.reload();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   await page.goto("/guide");
-  await page.getByRole("link", { name: "Add a channel" }).click();
+  await page.getByRole("button", { name: "Add a channel" }).click();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveValue("");
   expect(mock.state.channelCreationRequests).toEqual([]);
   expect(mock.state.approvalRequests).toEqual([]);

@@ -9,7 +9,7 @@ import (
 )
 
 // libraryCatalogJSONMigration declares library_catalog.record JSON (#2793).
-const libraryCatalogJSONMigration = 216
+const libraryCatalogJSONMigration = 233
 
 func TestLibraryCatalogJSONMigration(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "catalog-json.db")+"?_pragma=foreign_keys(on)")
