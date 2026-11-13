@@ -5,13 +5,13 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
 // UserLister lists media-server users (the library adapter).
 type UserLister interface {
-	ListUsers(ctx context.Context) ([]library.User, error)
+	ListUsers(ctx context.Context) ([]mediaserver.User, error)
 }
 
 // UserSync refreshes ALREADY-IMPORTED media-server users (§11): it updates the name from the

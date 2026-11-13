@@ -414,6 +414,9 @@ tables:
       preparation_progress: Percent done across the whole preparation attempt; -1 means unknown.
       stage_queued_at: When the current step was queued, in Unix seconds.
       stage_started_at: When the current step started running, in Unix seconds.
+      files_deleted_at: >
+        When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix
+        seconds; the row stays as the record of why. 0 while the files are kept.
 
   - name: filler_clip_variants
     about: >

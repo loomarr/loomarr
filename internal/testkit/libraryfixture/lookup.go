@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 )
 
 // LookupResult is one deterministic media-library presence answer.
@@ -29,9 +29,9 @@ func NewLookup(results map[string]LookupResult) *Lookup {
 // Lookup implements provisionbackstop.LibraryLookup without opening a socket.
 func (l *Lookup) Lookup(
 	_ context.Context,
-	_ library.ProviderKind,
+	_ mediaserver.ProviderKind,
 	providerID string,
-	_ library.MediaType,
+	_ mediaserver.MediaType,
 ) (string, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

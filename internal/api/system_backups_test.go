@@ -55,10 +55,10 @@ func newSystemBackupsHarness(t *testing.T, svc system.BackupsService) *apiHarnes
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:   defaults.Store,
-			Auth:    defaults.Auth,
-			Log:     defaults.Log,
-			Backups: svc,
+			Store:  defaults.Store,
+			Auth:   defaults.Auth,
+			Log:    defaults.Log,
+			System: api.SystemOptions{Backups: svc},
 		})
 	})
 }

@@ -21,10 +21,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Client is the TMDB v3 client. The api key rides as a bearer token (v4 auth) or
@@ -219,6 +219,11 @@ type discoverResult struct {
 	VoteCount        int      `json:"vote_count"`
 }
 
+// maxDiscoverRows bounds one Discover call whatever limit the caller passes: TMDB pages are 20
+// rows, so it caps the pages fetched (and the quota spent) at five per media type. The
+// search API's own ceiling of 50 plus the catalog's doubled pool fits inside it.
+const maxDiscoverRows = 100
+
 type discoverResponse struct {
 	Page       int              `json:"page"`
 	TotalPages int              `json:"total_pages"`
@@ -237,6 +242,7 @@ func (c *Client) Discover(ctx context.Context, query titlesearch.DiscoveryQuery,
 	if limit <= 0 {
 		limit = 20
 	}
+	limit = min(limit, maxDiscoverRows)
 	if err := validateEntityQuery(query); err != nil {
 		return nil, err
 	}
@@ -312,7 +318,13 @@ func blendMediaTypes(movies, series []titlesearch.Candidate, limit int) []titles
 	return out
 }
 
+// maxDiscoverKeywords bounds how many keywords one Discover resolves. Each is a sequential
+// /search/keyword call and the terms are OR'd into with_keywords, so the cap trims recall at worst
+// and keeps one call from turning into thousands of lookups whatever list a caller hands over.
+const maxDiscoverKeywords = 8
+
 func (c *Client) resolveKeywordIDs(ctx context.Context, keywords []string) ([]int, []string, error) {
+	keywords = keywords[:min(len(keywords), maxDiscoverKeywords)]
 	seen := map[int]bool{}
 	ids := make([]int, 0, len(keywords))
 	names := make([]string, 0, len(keywords))

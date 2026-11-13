@@ -3,7 +3,7 @@ package scan
 import (
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 

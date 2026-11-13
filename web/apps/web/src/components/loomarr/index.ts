@@ -2,9 +2,9 @@
 //
 // This app-wide catalog is for tests and tooling. Production pages import the nearest component
 // leaf so route code splitting does not preload every Loomarr component (frontend-design §4.4).
-// The domains exist because a flat directory of 46 components stopped being navigable: the old
-// names compensated with prefixes (`channel-*`, `guide-*`, `settings-*`), which is a naming
-// convention doing a filesystem's job.
+// The domains exist because a flat directory of dozens of components is not navigable: names
+// compensate with prefixes (`channel-*`, `guide-*`, `settings-*`), which is a naming convention
+// doing a filesystem's job.
 export * from "./ai";
 export * from "./channels";
 export * from "./dashboard";

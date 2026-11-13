@@ -23,9 +23,9 @@ import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.t
 // channel. preventDefault covers the Link's own navigation; stopPropagation covers any ancestor
 // handler.
 //
-// ⚠ The menu ITEMS no longer need this, and that is a consequence of the port rather than an
-// oversight: the popup is portalled to <body>, so a click on an item is not inside the link's
-// subtree and has nothing to bubble through. Only the trigger is still nested.
+// ⚠ The menu ITEMS do not need this, by design rather than oversight: the popup is portalled to
+// <body>, so a click on an item is not inside the link's subtree and has nothing to bubble
+// through. Only the trigger is nested.
 const swallow = (e: React.MouseEvent) => {
   e.preventDefault();
   e.stopPropagation();
@@ -36,27 +36,22 @@ const swallow = (e: React.MouseEvent) => {
 // a two-step confirm (arm, then execute) via the shared useDeleteConfirm hook — the SAME gate
 // the detail page's ChannelDangerZone uses, so the confirm flow lives in one place.
 //
-// ⚠ THE PANEL IS STILL PORTALLED, and that is not a preference — it is the only thing that works.
+// ⚠ THE PANEL IS PORTALLED, and that is not a preference — it is the only thing that works.
 // On the guide, this menu renders inside a virtualized row whose `<li>` carries
-// `transform: translateY(...)`. A non-`none` transform CREATES A STACKING CONTEXT, so the panel's
-// z-index was scoped to its own row and every later row painted straight over it: the menu
-// rendered as a ~40px sliver with its labels overpainted, and no z-index value could have fixed
-// it. The grid's `overflow-auto` clipped what survived. The difference now is that the primitive
-// owns the portal instead of this file.
+// `transform: translateY(...)`. A non-`none` transform CREATES A STACKING CONTEXT, so an
+// unportalled panel's z-index is scoped to its own row and every later row paints straight over
+// it: the menu renders as a ~40px sliver with its labels overpainted, and no z-index value can
+// fix it. The grid's `overflow-auto` clips what survives. The primitive owns the portal, not
+// this file.
 //
-// ⚠ WHAT THIS FILE USED TO CARRY, and no longer does (V50b). It hand-rolled the app's only
-// `createPortal`, measured the trigger with `getBoundingClientRect` in a layout effect, clamped
-// both axes against hardcoded `PANEL_W = 236` / `PANEL_MAX_H = 210` constants, flipped upward when
-// the bottom would overflow, rendered `invisible` until measured to avoid a 0,0 flash, listened to
-// capture-phase `scroll`/`resize` to DISMISS itself (a portalled panel cannot follow its anchor),
-// and hand-wrote `role="menu"` / `role="menuitem"` / `aria-haspopup` / `aria-expanded` plus a
-// full-bleed <button> backdrop for outside-click. All of that is the positioner's job.
-//
-// Two of those were latent bugs rather than merely verbose: the pixel constants went stale the
-// moment the menu's content changed (the confirm panel is the tallest state, and nothing enforced
-// the 210), and dismissing on scroll was a workaround for an anchor the panel could not track —
-// the popup now FOLLOWS the trigger instead of closing. The menu also gains what it never had:
-// arrow-key navigation, typeahead, a focus trap, focus restore to the trigger, and Escape.
+// ⚠ The positioner owns placement and menu semantics (V50b): measuring and clamping against the
+// trigger, flipping upward when the bottom would overflow, avoiding a 0,0 flash, following the
+// anchor on scroll/resize, `role="menu"` / `role="menuitem"` / `aria-haspopup` /
+// `aria-expanded`, and outside-click dismissal. Do not hand-roll any of it here: hardcoded pixel
+// constants go stale the moment the menu's content changes (the confirm panel is the tallest
+// state), and dismissing on scroll only works around an anchor the panel cannot track. The popup
+// FOLLOWS the trigger instead of closing, and the primitive supplies arrow-key navigation,
+// typeahead, a focus trap, focus restore to the trigger, and Escape.
 const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();

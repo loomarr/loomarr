@@ -81,7 +81,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
 - [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
-- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
+- [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
 - [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
@@ -557,6 +557,7 @@ One row per local folder Loomarr may walk for media. A folder is added when a me
 | `by_hand` | 1 when someone typed the folder in rather than a media server or arr reporting it. | `BOOLEAN` |
 | `added_at_ms` | When the folder was added, in Unix milliseconds. | `INTEGER` |
 | `scanned_at_ms` | When a walk of the folder last completed, in Unix milliseconds; 0 means never. | `INTEGER` |
+| `empty` | 1 when the last check opened the folder and found nothing in it, which usually means the share behind a mount point isn't mounted. Always 0 when the folder isn't readable. | `BOOLEAN` |
 
 ### library_root_paths
 
@@ -587,7 +588,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `identity` | A digest of what said what the file is (its arr record, ids in its name, its NFO sidecar) when it was last written to the library. Cleared to make the scanner write the file again. | `TEXT` |
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
-| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), or invalid_facts (the library refused what was read from it). | `TEXT` |
+| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), invalid_facts (the library refused what was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink to a path outside the root, which the scan never follows). | `TEXT` |
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
@@ -792,7 +793,8 @@ A title's present files, one row each, with the copy that plays marked. Replaced
 | `bitrate` | The file's overall bitrate in bits per second; 0 when unknown. | `INTEGER` |
 | `duration_ms` | The file's length in milliseconds from its header; 0 until the header is read. | `INTEGER` |
 | `edition` | Which version of the title this file is, such as a director's cut; empty for the usual one. | `TEXT` |
-| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest). | `BOOLEAN` |
+| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order. | `BOOLEAN` |
+| `part` | Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file. | `INTEGER` |
 
 ### library_streams
 
@@ -902,6 +904,18 @@ What TMDB says about a title or a TMDB collection, cached so a scan never has to
 | `retry_at_ms` | After a failed fetch, the time before which it is not tried again, in Unix milliseconds; 0 for none. | `INTEGER` |
 | `version` | The shape of record it was fetched in. A record of an older shape than its kind is read in now is fetched again first, as if it had never been fetched. | `INTEGER` |
 | `language` | The language the record was fetched in, such as en-US; empty before languages were noted. A record in another language than the household's is fetched again first. | `TEXT` |
+| `changed` | 1 when the catalog's nightly change feed named the record after it was fetched; it is fetched again ahead of the refresh, which sets it back to 0. | `BOOLEAN` |
+
+### library_catalog_feeds
+
+When each catalog's change feed was last read, so the nightly read asks only for what changed since and picks up where it left off after a restart.
+
+**Kept:** One row per catalog, kept and overwritten each night.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `provider` | The catalog, such as tmdb. | `TEXT` · key |
+| `read_at_ms` | When the feed was last read through, in Unix milliseconds. | `INTEGER` |
 
 ### library_candidates
 
@@ -1517,6 +1531,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `preparation_progress` | Percent done across the whole preparation attempt; -1 means unknown. | `INTEGER` |
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
+| `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
 
 ### filler_clip_variants
 

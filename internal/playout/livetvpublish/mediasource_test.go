@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
@@ -13,14 +13,14 @@ import (
 
 func TestMediaSourceConnect_SnapshotsConnectionAndUsersOnce(t *testing.T) {
 	primary := libraryfixture.MediaSourceLibrary{
-		ConnectionValue: library.Connection{
-			Flavor: library.Jellyfin, BaseURL: "http://jellyfin-a:8096", Token: "token-a",
+		ConnectionValue: mediaserver.Connection{
+			Flavor: mediaserver.Jellyfin, BaseURL: "http://jellyfin-a:8096", Token: "token-a",
 		},
-		Users: []library.User{{ID: "admin-a", IsAdmin: true}},
+		Users: []mediaserver.User{{ID: "admin-a", IsAdmin: true}},
 	}
 	rotated := libraryfixture.MediaSourceLibrary{
-		ConnectionValue: library.Connection{
-			Flavor: library.Emby, BaseURL: "http://emby-b:8096", Token: "token-b",
+		ConnectionValue: mediaserver.Connection{
+			Flavor: mediaserver.Emby, BaseURL: "http://emby-b:8096", Token: "token-b",
 		},
 		ListUsersErr: errors.New("rotated server must not supply users to this operation"),
 	}
@@ -51,8 +51,8 @@ func TestMediaSourceConnect_SnapshotsConnectionAndUsersOnce(t *testing.T) {
 
 func embyWithToken(token string) libraryfixture.MediaSourceLibrary {
 	return libraryfixture.MediaSourceLibrary{
-		ConnectionValue: library.Connection{Flavor: library.Emby, BaseURL: "http://emby:8096", Token: token},
-		Users:           []library.User{{ID: "admin", IsAdmin: true}},
+		ConnectionValue: mediaserver.Connection{Flavor: mediaserver.Emby, BaseURL: "http://emby:8096", Token: token},
+		Users:           []mediaserver.User{{ID: "admin", IsAdmin: true}},
 	}
 }
 

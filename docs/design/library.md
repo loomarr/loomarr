@@ -13,10 +13,9 @@ metadata come from the Library's own tables.
 
 - **Auth is a header, never the `api_key` query parameter** (it leaks into logs): Emby
   `X-Emby-Token`, Jellyfin `Authorization: MediaBrowser Token="…"`.
-- **Collections** (BoxSets) are read only by the cutover's one-time import: `Collections()` lists
-  them, and `CollectionMembers(id)` returns members through `ParentId`. Its hand-made ones become
-  the household's collections, which back `scope.collections`; its TMDB ones are the Library's
-  ready-made sets.
+- **Collections are not read from the media server.** The household's collections live in the
+  Library ("Your collections" under [Scanner](#scanner)) and back `scope.collections`; the
+  adapter has no collection call.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
   `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`
@@ -104,7 +103,7 @@ from Matroska Cues or the MP4 sample tables, which `media/measure` uses.
 
 ## Metadata providers
 
-`internal/metadataprovider` is the registry of systems that already know what a media file is
+`internal/library/metadataprovider` is the registry of systems that already know what a media file is
 (#2151, decision [0046](decisions/0046-loomarr-scans-its-own-media-files.md)). It imports nothing from
 Loomarr. A provider declares capabilities: the item kinds it describes, the `(kind, namespace)` pairs it
 fetches by, the field families it supplies (technical, identity and numbering, descriptive,
@@ -139,7 +138,8 @@ catalog its text comes from, and rate hints. It fetches one item by id and may a
   `vote_average` is the episode's community rating. Language and country are the installation's
   `metadata.language` and `metadata.country`; a country other than the US is refused. The change
   feed reads `/movie/changes` and `/tv/changes` and answers within TMDB's 14-day window; an older
-  cursor is `ErrUnsupported` and the caller refetches. Keywords per item are capped at 40.
+  cursor is `ErrUnsupported`, and `scan.ChangeFollower` leaves it to the refresh (see Catalog
+  details). Keywords per item are capped at 40.
 - **Local artwork** (`metadataprovider/localart`) is a sidecar too, found by one listing of the media's
   folder in Kodi's naming: a movie's `<file>-poster.jpg` (and `-fanart`, `-clearlogo`, `-banner`,
   `-landscape`, `-clearart`, `-discart`), then the folder's `poster`, `folder`, `fanart`, `clearlogo` …
@@ -173,11 +173,20 @@ are credited. A person an NFO or the media server names without an id is kept by
 An episode's cast is its show's. `scan.Filmographer` keeps a filmography (`library_filmography`,
 decision 50) from the catalog provider for each person linked in its namespace who directed or
 created a title, is
-among a title's ten top-billed actors, or is credited on three or more titles. It is fetched when
-they first qualify and monthly after, and people no title credits any more are removed each hour.
+among a title's ten top-billed actors, or is credited on three or more titles. Only listed titles
+count: one with a present file. A removed title keeps its credits through the retention window, but
+qualifies nobody. A filmography is fetched when its person first qualifies, and monthly after.
+Each hour, people no title credits any more are removed. A person credited only on titles no
+longer listed has their filmography dropped and is fetched first if one of those titles returns
+(#3229).
 The household's metadata language
 (`metadata.language`, decision 21) defaults to the media server's; changing it fetches every
-catalog record again.
+catalog record again. Outside English, an overview or tagline TMDB has no translation for is filled
+from its US English text: a movie, series or collection takes the `translations` on its detail
+call, and a season, episode order or episode with an empty overview is read once more in `en-US`.
+The record marks that text `en-US` (`OverviewLanguage`, `TaglineLanguage`), so any source's text in
+the household's language wins over it, and a refresh after TMDB gains a translation replaces it
+(#3231).
 
 ## Media folders
 
@@ -203,7 +212,15 @@ catalog record again.
   longer reports, and only a folder that is neither in use, typed by hand nor named by any mapping
   disappears. Every folder is re-checked on each pass, within 5 s, so an offline NAS shows as
   "Loomarr can't open this folder" rather than hanging the page.
-- `GET /v1/library/status` reports `needs_folders`, `folder_offline` or `ok`, with counts.
+- **An empty folder is a warning, not health.** A share that isn't mounted leaves its mount point an
+  empty folder, which opens fine. The same check that tests readability records whether the folder
+  held anything (`library_roots.empty`). An empty folder can still be added; its card says "This
+  folder is empty — is the drive connected?" with Check again, and the headline says "Up to date",
+  never "All caught up". A pass that finds a folder's state changed (offline or back, emptied or
+  filled) publishes the empty `library_roots` frame, and Settings → Library reads its folders and
+  status again.
+- `GET /v1/library/status` reports `needs_folders`, `folder_offline`, `folder_empty` or `ok`, with
+  counts.
 
 ## Scanner
 
@@ -231,7 +248,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   Needs you link splits the copy out again; the founding origin never leaves.
 - **Unchanged files are never opened.** `library_files` keeps each file's stat and a digest of
   its identity inputs (the arr record, names, its sidecars' stat). A pass writes a file only when
-  either changed, and reads its header only when its bytes changed.
+  either changed, and reads its header only when its bytes changed. An episode's inputs include
+  its series folder's own `tvshow.nfo` and folder art (`poster.jpg`, `season01-poster.jpg` and the
+  like). The pass stats those from the series folder itself, so a full walk and a folder pass over
+  one season digest the same. Editing `tvshow.nfo` or replacing the show's poster rewrites the
+  episodes, and through them the show, with no episode file touched (#3226).
 - **While an arr fails to list:**
   - new and changed files in the roots it manages wait, rather than being written with what its
     absence would leave;
@@ -268,15 +289,20 @@ step 5). Nothing reads the scanner's origins until the cutover.
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
   an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  A file is recorded under one path: a folder reached through a link is listed under its real
+  place in the root, whichever path a walk or a folder pass took to reach it. A video link to a
+  file the walk records itself is skipped, unless its target lies in a folder walks skip (#3227).
   A video's trickplay file beside it (Emby's `<name>.bif`, decision 61) is referenced in
   `library_trickplay`, never read or imported. It joins the file's sidecars without a stat, so
   its appearing or going changes the identity digest at no cost to the walk. Only the `.bif`
   layout is handled, because it is the one seen in a real library. The `trickplay/` folder skip
   stays until another server's layout turns up.
 - **Progress.** One `scan.Tracker` records an import as three steps, each with its own count:
-  1 *Looking through your folders* (the walk; its total is the top-level entries of every walked
-  root, listed once at the start of the pass, and it names the folder it lists, "TV / Night Ferry /
-  Season 2"), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
+  1 *Looking through your folders* (the walk and the writes that follow it; its total is the
+  top-level entries of every walked root, listed once at the start of the pass, and it names the
+  folder it is on, "TV / Night Ferry / Season 2". An entry is done in two halves, once the walk has
+  listed it and once its files are written, because over a share either half can take minutes; the
+  time left is worked out afresh from when a root's writes begin), 2 *Reading each file* (header reads, growing as passes hand files over; it names the
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
   fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
@@ -341,6 +367,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
   minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
   blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
+  A header read gets the same 2 minutes: one that does not return ends the header stage and stalls
+  its root the same way, so no further reader is sent into the mount. One file the share cannot
+  give back (gone since the walk, an I/O error) stays pending for the next pass and the stage reads
+  on; eight such files in a row with no read between are the share's fault, and end the stage with
+  the rest still pending.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
@@ -405,15 +436,39 @@ step 5). Nothing reads the scanner's origins until the cutover.
   kind and id, and the importer reads it when it writes a title. A title not cached yet is written
   without it and its key noted as wanted, and `library_items.catalog` names the row each title's
   details come from. `scan.Enricher` fetches every minute: titles never fetched first (up to 200
-  a tick), then a share of the oldest, so the whole cache is fetched again within 90 days, spread
-  out. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
+  a tick), then the records TMDB changed (up to 200 a tick), then a share of the oldest, so the
+  whole cache is fetched again within 90 days, spread out. `scan.ChangeFollower` reads TMDB's change
+  feed nightly from where it last read through (`library_catalog_feeds`, so a restart picks up
+  there) and marks the cached records it names `changed`, so a corrected poster, overview or
+  rating arrives within a day instead of at the refresh; saving a record clears the mark. Its first
+  read only starts the cursor. A cursor older than the feed's 14-day window moves on to now without
+  marking anything, and the 90-day refresh catches up; a failed read keeps it, and the next hour
+  asks again (#3225). Changed records are not new titles, so they are no part of step 3. Every write that changes the titles also wakes it (`Enricher.Wake`), so step 3 follows the
+  write at once instead of up to a minute later, with the status reading caught up in between. A
+  woken lookup fetches only the titles never fetched: the share of the oldest is sized for one
+  tick a minute, so it stays with the tick. Wakes made while a lookup runs fold into one. The
+  titles looked up are written again, with their details, by folder passes through the scanner's
+  debounce. Step 3 stays, done and naming no title, until those have run (`Scanner.FoldersSettled`;
+  the end of each round of folder passes wakes the Enricher), so the status never reads caught up
+  over titles still showing their file names. It keeps to the provider's rate hint. Each row notes the shape of record it was fetched in
   (`version`, per kind, `scan.catalogVersions`). When the scanner starts reading something older
   records lack, that kind's version goes up, and its older records are fetched again with the
   titles never fetched, not at the refresh. Series are at version 5, which lists their other
   episode orders by name, kind and size (decision 53). A record that changed forgets the identity digest of
   its titles' present files (a series' episodes too) and passes over their folders, so they are
-  written again with it. A title TMDB does not know is cached empty until the refresh. A failed
-  fetch holds that title back for 6 hours, and with no TMDB key nothing is fetched or held back.
+  written again with it. A title TMDB does not know is cached empty until the refresh. A fetch
+  that fails for one title alone (an answer that doesn't parse, a 4xx other than a refused key)
+  holds that title back for 6 hours, and the next title goes on. A fetch that says TMDB can't be
+  used now (no key, a key turned down, out of reach, rate-limited, a 5xx) holds nothing back: the
+  tick stops, and every title is tried at the next one, so none waits hours after TMDB is fixed.
+  Titles waiting on a retry are never silent. `GET /v1/library/status` carries `details`
+  (`waiting`, `unreachable`, and `retryAt`). The Library's line says "12 titles are waiting on
+  details — trying again at 3:40 PM", and Settings → Library's Keeping up to date row says the same
+  count over "Can't reach TMDB — trying again at 3:40 PM" (or "Trying again at 3:40 PM"). Neither
+  is said while step 3 is looking titles up, and "All caught up" is not said beside them. A key
+  problem (none, or one turned down) is never shown: a release build ships its own key, so the
+  household has nothing to do about it. The server's log says it instead — a change of state is
+  logged once, a warning when TMDB can't be used, never a debug line per title.
   A release build ships its own key (decision 51), stamped from the `TMDB_BUNDLED_KEY` release
   secret into `buildinfo` as the `tmdb.api_key` default. A household's own key wins. Settings
   lists the shipped key as `builtIn`, never as set, and never previews it. Only a dev or source
@@ -443,7 +498,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
-  answered, up to 20 a tick at the provider's rate hint. It searches by the name up to the release
+  answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the
+  next tick and holds back no other; three failures in a row are the catalog out of reach, and end
+  the tick. It searches by the name up to the release
   words (quality, source, codec) and the last year-like word after the first, or the year a
   sidecar gave. It looks at the first five results of the title's kind, fetching each one's
   details, and keeps three in `library_candidates`, best first, each by its catalog's own id
@@ -453,11 +510,12 @@ step 5). Nothing reads the scanner's origins until the cutover.
   runtime). `library_items.searched` notes what was searched, so a title is searched again only
   when its name or year changes, or once a movie's length is known. With no TMDB key nothing is
   searched or marked. A movie is matched by its search (decision 56) when exactly one result
-  agrees on all three, name, year and length; two that agree, or none, wait in Needs you
-  (decision 58). That match is an answer with `answered_by = search`, written as a `search`
+  agrees on all three, name, year and length; a movie whose files name no year is checked by
+  its name and length alone. Two that agree, or none, wait in Needs you (decision 58). That match is an answer with `answered_by = search`, written as a `search`
   record ranked below every id and below the maintainer's link, which replaces it. A series is
   matched the same way (decision 57) when exactly one result agrees on the name, the year when its
-  folder names one, and its episodes: every season on disk is in TMDB's layout (the `seasons` the
+  folder names one (or, failing that, every episode file that names the show with a year names
+  the same one: "Show (1963) - S01E01"), and its episodes: every season on disk is in TMDB's layout (the `seasons` the
   detail call already carries) with at least as many episodes as the highest number found there.
   Specials and unnumbered files are not checked. It is containment, not equality, so a show still
   airing or one missing episodes fits, and a show TMDB numbers differently from the files waits
@@ -478,7 +536,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   line from `GET /v1/library/status`: caught up, adding with its step, share and time left
   ("Adding your media · Step 1 of 3 · 21% · about 9 min left"), paused, checking the folders on a
   quiet pass, a held removal or an offline folder with Check again, or dead air before any folder
-  is chosen. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
+  is chosen. An import still running for the other folders stays on the line after a held removal
+  or an offline folder ("Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%"),
+  and Settings → Library keeps its bar, step, file and time left below the callout; neither says
+  "All caught up" beside one. Below it are All · Movies · Shows, a search, and the poster grid, 6, 4 or 3 across by
   window width. The filter and search live in the URL (`?kind=&q=`); the grid loads 60 titles at a
   time as it scrolls, and the `library_scan` and `library_titles` frames keep the line and the
   loaded titles current, so new titles appear and "Getting ready" clears on its own (decision
@@ -553,11 +614,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   place. `/v1/collections` (admin) lists, reads, makes, changes (name, description and titles
   whole) and deletes them; each says which channels use it: a channel's scope or any rule's
   `what` that names its id. Delete answers 409 while any do. `imported_from` marks one brought
-  over from the media server at cutover (step 15). These are not the media server's collections
-  at `/v1/library/collections`, which channel scopes name until then. A channel's collection
-  scope matches either: the reconcile's membership index holds the household's collections under
-  their own ids beside the media server's (`LibraryCollectionMemberIDs`, keyed by each title's
-  TMDB and TVDB ids), and with no media server configured, the household's alone.
+  over from the media server at cutover (step 15). `/v1/library/collections` lists the same
+  collections for a different reader: it is member-readable and returns names and sizes only,
+  for the channel scope picker, where a member choosing a collection still goes through
+  submit and approve. The two stay separate routes because merging them would either open the
+  titles and the edits to members or close the picker to them. A channel's collection scope
+  matches through the reconcile's membership index, which holds the household's collections
+  under their own ids (`LibraryCollectionMemberIDs`, keyed by each title's TMDB and TVDB ids).
 - **Ready-made sets** (step 12b, decision 28). A movie's TMDB record names the TMDB collection it
   belongs to; the scanner keeps that as `library_items.set_key` and asks the catalog cache for the
   set's own record (`tmdb_collection`), which lists every movie in it in release order. The
@@ -678,6 +741,277 @@ step 5). Nothing reads the scanner's origins until the cutover.
   those. Tests drive the catalog through `catalogfixture.ScriptedLibrary`
   or the Library's own tables, and the media-server double no longer scripts titles.
 
+### Write versions
+
+The scanner's `writeVersion` (`internal/library/scan/snapshot.go`) changes whenever what a write
+produces from the same inputs changes, so every file is written once more in the new shape. Its
+header is kept, so no file is opened again. Each version and what it changed:
+
+- **2:** titles name the catalog row their details come from (`library_items.catalog`).
+- **3:** titles note their scan origin and whether anything grounds them (Needs you).
+- **4:** titles note what said which title they are, and its page (Wrong title?).
+- **5:** each origin notes where its shown details came from (Technical details).
+- **6:** a file's origin notes whether its arr lists it (the copy that plays).
+- **7:** a multi-episode file carries every episode's ids, not only its first's.
+- **8:** extras are not titles (0047); the digest drops what only an extra used.
+- **9:** NFOs are read in full (decision 59): older id tags, tags, ratings, people and sets.
+- **10:** a movie's or series' origin carries how it is listed; the store projects its row (0047).
+- **12:** every title, episodes too, is listed with its facts and who supplied each (decision 40).
+- **13:** an episode with a TVDB id asks the catalog for TMDB's view of it (decision 53).
+- **14:** every title's files, tracks and artwork are listed with it (decisions 41, 44).
+- **15:** an episode with no TVDB id takes TMDB's entry for its season and number, when TMDB
+  numbers the series as the disk does (decision 53).
+- **16:** an audio track whose container states no channel layout is labelled as ffmpeg states it.
+- **17:** a movie's file notes its edition, and each edition has its own copy that plays
+  (decision 54).
+- **18:** a series carries a poster for each season it has one for (decisions 45, 61).
+- **19:** a file notes the trickplay files beside it (decision 61).
+- **20:** a file notes its external subtitle and audio files and its .edl markers, and lists its
+  chapters and its tracks' commentary, SDH and descriptive flags (decisions 45, 46, 61).
+- **21:** a title lists every studio or network, and its tagline, countries and trailer
+  (decision 46).
+- **22:** a title lists its people with their role, character, TMDB id and photo (decision 49).
+- **23:** a movie's set is listed as the catalog row the catalog provider fetches it by.
+- **24:** a person is linked by any catalog's id (namespace and value), not a TMDB id.
+- **25:** an episode its show's catalog can't number is marked, and one whose show has an answer
+  is numbered by the order picked (decision 53).
+- **26:** a title sorts by its letters with the accents taken off ("À Nous" under A).
+- **27:** a show with no name of its own is named by its own folder, not the folders above it.
+- **28:** "Series 1", "Staffel 1", "Season 2 [1080p]" and "&lt;Show&gt; Season 1" are season
+  folders, and "S01E01-03", "S01E01+E02", "S01E01-S01E02" and "1x01-1x02" hold episodes through
+  the last.
+- **29:** a file with no episode mark in a show's season folder ("Specials") is one of its
+  episodes.
+- **30:** a release folder names its show by the words before its season ("Kettle.Bay.S02.1080p").
+- **31:** a movie whose file name has no year is named by its folder's, when that has one.
+- **32:** a season folder inside a season folder ("Show/Season 1/Season 1") files under the show.
+- **33:** a library named the way Sonarr, Radarr, Plex, Jellyfin, Emby or Kodi name one reads as
+  that app means it.
+- **34:** an anime episode numbered across its show ("Show - 013") is placed by its seasons.
+- **35:** a movie in parts ("cd1", "cd2") notes each file's part, and every part of it plays.
+- **36:** a show whose folder gives no year takes the one its episodes' names agree on
+  ("Show (1963) - S01E01").
+- **37:** a season folder's "101", "- 03", "3.05" and "E03" place its episodes; "10x10 (2018)" is
+  a title; DivX, Flash, OGM, RealMedia and VOB files are read; an episode titled "Each-Other" and a
+  catch-all's "Shorts" folder are not extras.
+- **38:** a movie in parts is one title before any catalog names it, and its parts may each have a
+  folder of their own ("CD1/", "Disc 2/").
+- **39:** season folders spelled out, in other languages, with notes or the show's initials, or
+  with a disc or codec folder inside, place their episodes; a NAS's snapshot and recycle folders, a
+  downloader's unfinished ones and a film's interviews and featurettes are skipped; a day alone
+  makes no show; a year after a dot, a dash or the release words is the year; release notes, a
+  collection's place and a tracker's name are not the title; "1x2", "S01Ep02", "T01E02" and
+  "Staffel 1 Folge 2" are marks.
+- **40:** an extras folder outside a title's own folder is a folder of titles; a folder whose
+  episodes name several shows, none its own, names none; extras named in words beside a film are
+  skipped; "Show E01" in the show's folder, a year's folder in a show's, "Season Specials", "1st
+  Season", "Folge 1" and a fansub's "Show S2 - 03" place their episodes.
+- **41:** a word a title may share with a release ("Tangled Web", "The Cam") ends it only where a
+  release's words are under way; a genre folder's one show is its episodes' own; a dated release
+  loose at the top or in a catch-all is its show's; "Capítulo 5", "Серия 9", "Cap.117" and "第11話"
+  are marks; a season pack in its show's folder, a fansub pack's folder and an unmarked file beside
+  a show's episodes are the show's; descriptive extras, Media Center recordings and a Mac's share
+  leavings are read as they are.
+- **42:** an extra named by its kind is one beside its title, however it is named, and a title of
+  its own with none beside it; specials loose beside a show's season folders and episodes numbered
+  alone in a show's folder are its; "Complete Series" folders, "第1期", "시즌 1" and "Series 7 Club"
+  are read as they mean; ".45 …" and "@Home …" are titles, not hidden folders.
+- **43:** an extra of a title with an apostrophe in its name ("…'s … (2010)-trailer") is one.
+- **44:** a show's episodes in its folder's unnamed or misspelt folders, or a copy of it ("Show
+  Complete/", "Show (Season 2)/"), are the show's; loose names written in lower case are one show
+  with their capitalised spelling; fansub numbers written " 19", " - E20", " - Episode 17", " -
+  05.5" and " - 01-03" are episodes, as are a show's numbers alone in a shows' catch-all; a film in
+  its own folder in a films' catch-all is a film; "The Sample", "Paper-Clip" and a title holding
+  "Extra" are titles; genre folders are catch-alls.
+- **45:** a miniseries' parts in a shows' catch-all are its episodes; "Title (Year) Trailer" alone,
+  and "Show - Making Of" beside its episode, are extras; a show's folder with one marked episode
+  holds episodes; "Promo", "TV Spot", "Blooper Reel" and galleries are extras.
+- **46:** a file among films is a film unless "S01E01" or a show's season folder says otherwise;
+  every video in a show's folder in a shows' catch-all is an episode; names are read without their
+  release's notes at their end; a remake's and a sequel's folders are their own shows; MakeMKV's,
+  Media Center's, old scene and phone names; trackers' sites.
+- **47:** a title named by its file keeps its release's notes in its name, as before 46; the
+  catalog's search sets them aside.
+- **48:** catch-alls are films', shows' or mixed; a show's loose folder of named episodes is a
+  series; TV captures' parts are episodes; a site's promo, a sneak peek, a recap, a bonus and a
+  preview are extras; an anime's dashed number wins over one in its name, a dated anime and a
+  batch's folder are read; "S01E01" alone among films is a film.
+- **49:** a film's parts, a file named as its own folder with its year, sequels and a saga's films
+  are films wherever they are; a season folder's "- 03" and "1.05" are its own; a "Show Season 2"
+  folder gives its season, as does "Season IV"; a season pack's release folder stands for its
+  show's folder; "Part 1 of 3" is a miniseries'; plural kinds, a trailer in a film's folder, a
+  day's file in a show's folder and a DVR's dated name are read.
+- **50:** an extra's kind must end its name, and a dated name is an episode, so "Hilltop - Scene of
+  the Crime" and "Show - 2018-04-02 - Recap" play; an anime folder tags its releases; a shows'
+  catch-all's dated names are episodes; "movie.mkv" and "1.mkv" take their folder's title; a
+  show's season folders are one show; a franchise's films are films; "1x01" among films, "3 - 01"
+  in Season 3, "(Season 1-3)", "Kausi 1", "Ep01" are read; a film's or show's "&lt;title&gt;
+  Extras" folder is its extras.
+- **51:** a loose episode beside its show's folder is that show's; "Season 5 Episode 2" names its
+  season wherever it is; "(TV Series)" and "(Miniseries)" are no part of a show's name; a
+  franchise's folder of two shows holds each as its own; three digits whose hundred is the season
+  are its episode; editions before a year are set aside; "Easter Eggs", "Credits" and "Intro" are a
+  film's extras, but an episode's titles beside marked episodes; a season's extras folder and a
+  scene's proof are skipped; "Christmas Specials" are season 0; "Saga Two" is a title, not a saga's
+  folder.
+- **52:** a shelf by letter ("TV/C/") or by what is watched ("To Watch/") names no show; files
+  numbered after a name they share ("Fizzy Fox 01", "Fizzy Cat - 02 - Paws", "01" beside "02") are
+  that show's episodes wherever they are; a group's tag last, "{Grp}" or "(Grp)" first, tags a
+  release; a fansub's "SP01" and "OVA 2" are season 0's; a year with a title's words after it is
+  the title's ("Back to 1985 Again"); a season's disc label ("SHOW_S1_D1") holds its episodes;
+  MakeMKV's "title00" and a recorded film are named by their folder and film; "シーズン1" is a
+  season folder.
+- **53:** a tracker's promo ("ETRG.mp4"), a film's credits and Q&A, and a ".partial" download are
+  no title; one show's loose episodes key alike with their year bare or bracketed, and join the
+  show a season pack beside them stands for; a franchise's films numbered in order are films; a
+  full mark beats a title's "2x4", and a season folder beats a "2x4" naming another season; "108
+  Rain" in Season 1 is its eighth beside "07 Sleet"; "1of3" with no year is a miniseries' episode;
+  an OVA with no number is season 0's; an edition last is set aside with no year; "Widescreen" is
+  a release's; "VTS_01_1" is named by its folder.
+- **54:** a show's packs, disc labels and loose copies at the top or in a shows' catch-all join one
+  show kept by its catch-all ("TV/Kettle Bay"); a film's unnamed extras beside it are extras, and a
+  show's trailer is no episode; a sequel keeps its own name; "Part 1 - Tides" titles an episode; a
+  daily show filed by year and month is one show; a recorded film keeps its film's name;
+  "Criterion" is a release's.
+- **55:** a show's folder of episodes named by their titles on an audience's shelf ("Kids/") is a
+  show's; a miniseries' folder among films numbered "Episode 1", "E01" or "Night 1" holds episodes;
+  "Show.E05.240301" is an episode; "第05集" loose beside its siblings is numbered; a film's disc or
+  version folder ("Disc 1/", "4K/") names no film; a doubled show folder, a volume's ("Vol 2"), a
+  "(TV)" tag and a bracketed day each join their show.
+- **56:** a root named as a shelf ("/media/TV", "/media/Movies", "/media/Kids", "/media/Anime") is
+  read as one, as a folder of that name in a root is.
+- **57:** a MakeMKV title named by its film keeps its folder's year; a title in brackets alone is
+  the title; a recorded film with its channel is the film; "SITE.txt.mp4" is junk; a season's disc
+  folder in its show's folder is that show's; an anime's "Ep 05" and "01-02" batch read as the
+  show's.
+- **58:** an episode titled after a spaced dash ("S01E04 - sample") is kept in any case; a show's
+  specials' folder named by it, and an anime's "OVA", are its season 0; an anime release's
+  creditless, clean, menu, preview and trailer extras are skipped; a recording named by its day
+  first is its show's on a shows' shelf; a show and its remake numbering an episode alike stay
+  two; a show's film kept with it is a film; three title-named videos with only catch-alls above
+  are a show's.
+- **59:** a show's folder grouped by volume, book, chapter, year, DVD or collection holds its
+  episodes; a season's pack, or a video named "Episode N" alone, on a films' shelf is a show's, and
+  a release pack's "S02" gives its bare numbers' season; a show called a saga on a shows' shelf is
+  a show; a film's "Specials" and any "Subs" folder are skipped; an anime release's bracketed notes
+  leave its show's name; "Sports/" is a shows' shelf.
+- **60:** a shelf no list names is read by its words ("Christmas Movies", "TV-Shows", "Movies2",
+  "DVD Rips", "Toddlers"); a show's own film beside its titled episodes leaves them its; a bare
+  "E01" in a show's folder, and a lone number in a named season's, are episodes; a film's padded
+  place, "03 Title", leaves its title; a camera's clip is its own video.
+- **61:** a show kept in several places (its folder, a second shelf's, loose downloads, a
+  release's batch folders) is one show when their names and years agree (`joinShows`); a film's
+  copy named by its cut, framing, colour or voice is a version, never skipped; ".m2t" is a video;
+  "Kame Ep 5" in a shelf is Kame's; a show's film leaves its named episodes its; a release's
+  language and a show folder's "DVD" leave the name; "Kame Specials - 01" is S0.
+- **62:** shows told apart by a bracketed tag ("(US)", "(Animated)") never join; a release's short
+  file name takes its folder's fuller title of the same year; "Show E01" beside "E02" at the top is
+  a show's; a "Creditless" folder is extras; "第1話" alone is its folder's episode; a film named as
+  its own folder stays a film; a video site's id leaves the title; a file's own `<movie>` NFO makes
+  a film of one only its folder placed as an episode.
+- **63:** an edition's word right after a film's year ends its title
+  ("Gloam.Moss.2011.Theatrical"); a year set first by a dash, dot or underscore is the year ("2010
+  - Hob Crag"); a span of years is the title's; loose "Show - Title" files sharing a show in a
+  catch-all are its episodes; a show folder its episodes name whole ("Unit S9") is no season pack;
+  one file in a season's pack is an episode; "Show Ep01" among films is one; a disc label's "WS"
+  goes.
+- **64:** a dashed file name with a release's mark ("pratt-wood-1080p") is its folder's film; an
+  episode's NFO `<showtitle>` names its show; Kodi's "Show - 214 - Title" is S2E14; an anime's
+  "Show - Special - 01" and "- Recap -" are its show's; "[Show] S01E09" names its show; a show's
+  yearless and dated folders join unless both number an episode; "Show 1-05" in its folder and a
+  "(S07)" folder's "- 01" number their episodes.
+- **65:** a kids' show numbered after its name ("Gumdrop Garage 1") with none named so alone is a
+  show; an anime's film in its release's folder is a film; a count after a year ("Part 2", "Week
+  1") runs on a title; "S01E02.Trailer" is the episode's extra.
+- **66:** a disc's MakeMKV titles number no episode; a show's yearless seasons apart from its dated
+  ones stay another show's; "Show.E11.1080p.WEB" is an episode anywhere; a year after an anime's
+  padded number is the release's; a folder's American days settle its others.
+- **67:** folders read by word families: any kind of extra names an extras folder ("Others",
+  "Bloopers", "Making Of", "S01.Bonus.Features", "S02.Extras.720p"); any label of what a show is
+  ("(Limited Series)", "(Docuseries)", "(Anime)") or the years it ran leaves its name; a show's
+  "01/", "00/" (its specials), "Part 2/", "Arc 1/", "All/" hold its episodes, as do the folders one
+  deeper ("01/Disc 1/", "All/x265/"); "Christmas_Specials", "시즌.1" and "season i" are season
+  folders; a show's home settles the folders in it (`settleFolders`); a name only its words read
+  as a shelf is one only among shelves (`shelfAt`).
+- **68:** a box set's disc folders hold the episodes or films their files name, not one film in
+  parts; a film's bonus disc ("Disc 2", "Disc 2 - Extras") holds its extras; another show's episode
+  numbered as one of its folder's own is that show's (`splitNamed`); "1of2", "_A"/"_B", "pt1" and
+  "2015 Part 1" are a film's parts; "S01E02 - Sample" beside S01E02 and "Making of Season 1" are
+  extras; "- The Directors Cut" leaves the title; "- 12 (2019)" is an anime's episode; a title's
+  "Web" or "German" in mixed case stays its; specials and a missing season keep a show whole
+  (`seasonsApart`).
+- **69:** a commentary, promo or blooper beside its episode, or named by its season
+  ("Show.S01.Bloopers"), is an extra (`extrasBeside`); a folder labelled "Miniseries" is a show's
+  on any shelf; "Sesaon 3" is a season's folder; "(Season 3)" is an anime's season; "1.01" in a
+  show's folder and "Larchmere 1" in "Larchmere Series 2" are episodes; a year first in a title,
+  "2020 Vision Street", stays the title's.
+- **70:** "101 Pilot" beside "201 Return" in a show's folder is S1E1 and S2E1
+  (`compositeNumbers`); "Show S02D1" and "S03 - 2012" are season folders; a release's "- 00" and
+  "- Recap" are its show's; a pack's "CDs" and "Scans" hold no episodes; "Holly Day Specials/"
+  alone is Holly Day's; a spin-off's episode in a film's folder is its own show's.
+- **71:** in a name written in one case, a word a title may share with a release ("THE WEB 1080p")
+  stays the title's before a mark; "Ashgrove Part 1 1080p" beside "Part 2 1080p" is a film's
+  parts; a symlink whose target is gone, or lies outside the root, is listed as a problem
+  (`broken_link`, `link_outside`).
+- **72:** a show folder's "Box Set" is no part of its name; "[01] Pilot", "(03) Found" and "#04
+  Home" in a season folder are its episodes; on a shows' shelf one "Show - Pilot" or "Show - 12 -
+  Title" names its show; "TV/Sundial Run (2017)/Sundial Run.mkv" is a film; a year dashed on,
+  "Quicksilver_Pass-2005", is the year; a name loose at the top ending with its whole day, "News
+  Hour 2024 03 14", is a daily's episode; MakeMKV's other titles beside a renamed film are its
+  extras; a show folder misspelled by one slip joins the show its episodes spell (`retypo`); a
+  fansub's number in the first season's folder, or below its season's, is that season's episode;
+  a folder inside a show's that only groups its episodes ("DVD0/", "DVD 0 /") never stands for the
+  show, whatever its name sounds like (`showFolderAbove` stops at a shelf, not a shelf's word).
+- **73:** a recording's guest or title between its show and its day, "The Late Lark - Guest -
+  2023-11-02", is no part of the show, and "DVR/" is a shows' shelf; a fansub's "[Grp] Show [06]"
+  is its episode; a code a release shortened past knowing, "Corwick Dene/CD.1080p.mkv", takes its
+  folder's name (`abbreviates`); "Hexlet 10x10" among films, or named as its own folder, is a film
+  (`crossTitle`); "TV/Ashwell Movies/" holds films (`franchiseFilms`); a hidden copy beside a video
+  is skipped; "- Ending Theme" and "Extras - Disc 2/" are extras; a daily's "24.03.19" is its
+  day (`shortDay`); a video named as its own folder, "Sample/Sample.mkv", is listed (`extraIn`).
+- **74:** a film's own dated folder holds the film and its unlabelled bonus videos ("Cast Q and
+  A.mkv"), never a second copy (`bonusBeside`); "Wexcombe Part 1" and "Part 2" in "Wexcombe
+  (2008)/" are its parts; a films' shelf's "Trailers/" and "Samples/" hold extras; a fansub's
+  "[Batch]" folder is its show's; "2019 - Season 6" is season 6's folder; a tagged pack's "-
+  Menu" is its extra; a leading "720p." is no part of a title.
+- **75:** a video beside a film in its dated folder keeps its own name and lands in Needs you,
+  never skipped: "Return to Brackmere" there may be a sequel (`fallbackName`); a site's prefix,
+  "www.Site.com - Show.S02E03", is no part of a show's name; "Show.S02.Bonus.Cast.Q&A" is its
+  season's extra (`seasonKindFirst`); "[Grp] Show Batch/" is the show's folder; an anime's "-
+  #09" is its episode; "Uncut", "Uncensored", "Redux" and "Final Cut" are editions; a tagged
+  "[Grp] Show - Movie 1 - Dawn" is a film (`animeFilm`).
+- **76:** a films' shelf's "Extras/" or "Bonus Features/", and "Trailers/" at a root's top, hold
+  extras (`shelfBonus`); "Show - Featurette - Sets", "Show - Cast Interview" and "Show -
+  Creditless ED" are extras, where "Show - The Interview" stays an episode (`dashedExtra`);
+  "1x17 1x18", "- 05-06" and "07 & 08" in a season folder hold both episodes (`throughLast`); "Show
+  - The Movie" in its show's folder is a film (`folderShowFilm`); another show's episode named in
+  full in a show's folder, "Kettlemere/Season 1/Rookholt Hollow S01E05", is that show's
+  (`strangerShow`); "S01E05 [sample]" is a sample; "Show (2019) - 2024-02-01 - Title" is a daily
+  episode (`titledDaily`).
+- **77:** a film named by a kind of extra in its own dated folder, "Featurette (1999)/Featurette.mkv",
+  is the film, never skipped (`namedAsFolder`); "TV/blackthorn.203.avi" on a shows' shelf is
+  season 2's third (`shelvedHundreds`); a fansub's "- 19.5" is its show's season 0's, never
+  episode 19's twin (`halfEpisode`).
+- **78:** a films' shelf's "Extras/" is walked, and only its videos that name no year are extras:
+  "Movies/Extras/Pinfold (2011).mkv" is a film, never skipped with its folder
+  (`shelfBonusExtras`); Plex's lower-case "-short" beside a film is its extra (`plexSuffix`); a
+  video site's archive, "Channel/20230105 - Title [abcDEF12345]", is the channel's episode of that
+  day (`videoID`); a recording named by its channel first, "Channel 9 - Show - 2024-01-01", is
+  the show's (`channelName`); a season's folder off a shelf is never a show's, whatever the
+  folders below it say (`seriesFolderOf`).
+- **79:** a name ending in a site's address is read, never skipped: "Orrin.Gate.2018.1080p-www.site.com"
+  is the film and "Show S01E02 RARBG.com" the episode; only a site's whole address, "www.Torrent.to",
+  or a known promo's, "RARBG.com", is junk (`siteName`), and ".com" is no program's extension
+  (`otherKind`); a Mac's "._" shadow in a film's folder is skipped (`namedAsFolder`); a tagged
+  release's folder holding one episode, "[Grp] Show - 07 [1080p] [ABCD1234]/", is its show's
+  (`showIdentity`, `releaseCRC`); "3D" before a film's year is its copy's (`editionWords`).
+- **80:** an episode's extra named by its kind after its mark, set apart any way, "S01E02
+  Trailer", "S01E02.Preview", beside the episode itself is its extra (`extrasBeside`); a release's
+  mark first is no part of a title only when it carries a digit, "720p.Copse.Ridge", so "HDR.Kids"
+  and "HDTV Heroes" keep their first word (`searchQuery`).
+- **81:** a shelf names no show: an episode named by its mark alone, "Downloads/S01E01.mkv",
+  "TV/S01E07.mkv", is no show's, as one loose at the top is (`showFolderIn`, `noShowIn`).
+
 ## Search
 
 Loomarr builds no search index (decision [0003](decisions/0003-federated-search.md)). `GET
@@ -695,6 +1029,11 @@ Loomarr builds no search index (decision [0003](decisions/0003-federated-search.
   through `/search/keyword`; people through `/search/person` (one exact match); a network through TMDB's
   daily network-id export. Malformed, unresolved or ambiguous qualifiers fail the call instead of
   broadening it. Mixed movie and series discovery splits the TMDB pool between types.
+- **An owned discovery hit carries the Library's own evidence** (#3006). After ownership backfill,
+  one read of `library_tags` and `library_credits` over the owned ids attaches the asked keywords
+  a title's tags hold and the asked people its credits name, filling only what TMDB left empty
+  (TMDB can attribute a keyword only for a one-keyword query). Only the matched term rides, never
+  the title's whole tag or cast list, so the prompt grows only for titles that match.
 - `GET /v1/movie-collections` expands up to 24 movie keys into their TMDB collection rosters for review;
   it never builds a lineup by itself.
 - Channel, proposal and help filtering stay client-side at household scale.

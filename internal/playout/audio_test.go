@@ -45,6 +45,20 @@ func TestPickAudioTrack_UntaggedTracksFallBackToTheFirst(t *testing.T) {
 	}
 }
 
+// "Unknown language" on the Audio sheet saves `und` (#3409): it picks the track with no language,
+// whether the container left the tag off or wrote `und`, and never a tagged one.
+func TestPickAudioTrack_UndPicksTheUntaggedTrack(t *testing.T) {
+	for _, tag := range []string{"", "und", "UND"} {
+		tracks := []AudioTrack{{Language: "eng"}, {Language: tag}}
+		if got := PickAudioTrack(tracks, "und"); got != 1 {
+			t.Errorf("untagged as %q: picked audio track %d, want 1", tag, got)
+		}
+	}
+	if got := PickAudioTrack([]AudioTrack{{Language: "fra"}, {Language: "eng"}}, "und"); got != 0 {
+		t.Fatalf("no untagged track: picked audio track %d, want the first", got)
+	}
+}
+
 // Clearing the setting restores ffmpeg's historical behaviour — an operator who wants the old
 // selection can have it, and that has to keep working.
 func TestPickAudioTrack_NoPreferenceKeepsTheFirstTrack(t *testing.T) {

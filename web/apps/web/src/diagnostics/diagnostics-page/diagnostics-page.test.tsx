@@ -20,6 +20,13 @@ const search: DiagnosticsSearch = {
 };
 
 describe("DiagnosticsPage", () => {
+  // #3404: visually-hidden text is absolutely positioned; an unpositioned scroller lets it stretch
+  // the document. jsdom cannot measure scrollHeight, so the structural cause is pinned.
+  it("keeps its scroller positioned so hidden text stays inside it", () => {
+    render(<DiagnosticsPage search={search} onSearchChange={vi.fn()} playout={<p>x</p>} />);
+    expect(screen.getByTestId("diagnostics-scroller").style.position).toBe("relative");
+  });
+
   it("uses the site navigation treatment for all three operator views", async () => {
     const onSearchChange = vi.fn();
     render(

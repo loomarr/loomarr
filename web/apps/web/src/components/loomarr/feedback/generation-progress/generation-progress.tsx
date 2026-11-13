@@ -1,6 +1,6 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import { pickCount, progressLine } from "@loomarr/core/requests";
-import { ActivityIndicator, Badge } from "@loomarr/design-system";
+import { ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
@@ -29,13 +29,29 @@ const useSecondsSince = (startedAt: string | undefined): number | undefined => {
 // A streamed title reads like a row of the lineup it is about to become: name, year, and the
 // same state wording the review uses.
 const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }) => (
-  <li className="border-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b py-2 last:border-b-0">
-    <span className="text-sm font-medium">{pick.name}</span>
-    {pick.year ? <span className="text-muted-foreground text-xs">{pick.year}</span> : null}
+  <Stack
+    align="center"
+    className="border-border border-b last:border-b-0"
+    columnGap="2"
+    direction="row"
+    flexShrink={0}
+    paddingVertical={8}
+    render="li"
+    rowGap="1"
+    wrap
+  >
+    <Text as="span" textRole="cardLabel">
+      {pick.name}
+    </Text>
+    {pick.year ? (
+      <Text as="span" textRole="hint" tone="secondary">
+        {pick.year}
+      </Text>
+    ) : null}
     <Badge shape="square" tone={pick.inLibrary ? "lock" : "tune"}>
       {pick.inLibrary ? "In your library" : "Will be added"}
     </Badge>
-  </li>
+  </Stack>
 );
 
 // A generation is a loop, not a trustworthy checklist. Show the user's current outcome in
@@ -53,36 +69,43 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   const line = progress ? progressLine(progress) : (LABELS[phase] ?? LABELS.reasoning);
   const count = progress ? pickCount(progress) : undefined;
   return (
-    <div className={cn("border-border bg-muted/35 flex items-start gap-3 rounded-lg border p-4", className)}>
+    <Stack
+      align="start"
+      className={cn("border-border bg-muted/35 rounded-lg border p-4", className)}
+      direction="row"
+      gap="control"
+    >
       {!complete && (
-        <span className="mt-0.5 flex">
+        <Stack className="mt-0.5" direction="row" render="span">
           <ActivityIndicator decorative size="compact" tone="suggest" />
-        </span>
+        </Stack>
       )}
       <div className="min-w-0 flex-1">
-        <p role="status" aria-live="polite" className="text-sm font-medium">
-          {line}
-        </p>
+        <div role="status" aria-live="polite">
+          <Text as="p" textRole="cardLabel">
+            {line}
+          </Text>
+        </div>
         {progress && progress.picks.length > 0 && (
           <>
-            <ul aria-label="Titles chosen so far" className="mt-2 flex flex-col">
+            <Stack aria-label="Titles chosen so far" className="mt-2" render="ul">
               {progress.picks.map((pick) => (
                 <PickRow key={pick.key} pick={pick} />
               ))}
-            </ul>
-            <p className="text-muted-foreground mt-1 text-xs">
+            </Stack>
+            <Text as="p" className="mt-1" textRole="hint" tone="secondary">
               {count}
               {seconds !== undefined ? ` · ${seconds} s` : ""}
-            </p>
+            </Text>
           </>
         )}
         {!complete && seconds !== undefined && seconds >= 10 && !(progress && progress.picks.length > 0) && (
-          <p className="text-muted-foreground mt-1 text-sm">
+          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
             This can take a little while. You can leave this page open.
-          </p>
+          </Text>
         )}
       </div>
-    </div>
+    </Stack>
   );
 };
 

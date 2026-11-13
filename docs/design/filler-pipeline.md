@@ -32,7 +32,9 @@ ends with a completed terminal rung that the ready commit validates against.
   `ready`, `complete` (a processed composite container, not playable), `rejected`, `dismissed`. A
   failed rung carries a stable failure code, the retryable rung and one sanctioned recovery action.
   Retrying a terminal execution failure and clearing its tombstone is one transaction, and the clip is
-  held before it reappears.
+  held before it reappears. A fetched reject a week old is let go
+  ([upkeep](filler.md#filler-lets-go-on-its-own)): its row stays `rejected` with its failure code,
+  records `files_deleted_at`, and offers no recovery action, since the bytes are gone.
 
 State lives in **`filler_clip_pipeline`, a sibling of `clips`**, because `clips` is a synced cache
 that has been dropped and rebuilt; pipeline state records work already paid for. The finished ladder
@@ -88,9 +90,9 @@ attempt is spent, and no other encode starts in that pass while playback runs. T
 splitting only wait before they start. A long recording's transcription interrupted at every tune
 would never finish.
 
-**A suggestion goes before background vision** (#1508). On a small AI server, one slot's long vision
+**A Proposal Job goes before background vision** (#1508). On a small AI server, one slot's long vision
 prefill slows decoding on every other slot. An Add a channel request running beside the vision
-backlog took 52 s instead of about 25 s. A suggestion run (Add a channel, refine, find more) holds
+backlog took 52 s instead of about 25 s. A Proposal Job (Add a channel, refine, find more) holds
 one shared interactive gate while it runs. Before every background vision model call, from the
 vision rung and from split-time grounding, the caller waits while that gate is busy. It polls every
 second, for at most 2 minutes, and then makes the call anyway, so a long run of suggestions slows

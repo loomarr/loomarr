@@ -59,7 +59,7 @@ func TestDrainGenerationQuiescesActiveStreamBeforeHTTPWait(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
 	defer cancel()
 	err = drainGeneration(
-		ctx,
+		ctx, 250*time.Millisecond,
 		server.Shutdown,
 		func(context.Context) error {
 			record("quiesce")
@@ -83,6 +83,29 @@ func TestDrainGenerationQuiescesActiveStreamBeforeHTTPWait(t *testing.T) {
 	mu.Unlock()
 	if want := []string{"quiesce", "stream-ended", "finalize"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("drain order = %v, want %v", got, want)
+	}
+}
+
+// A client holding the HTTP drain to its deadline must not spend the generation's own shutdown
+// budget: finalize waits for workers on a budget of its own, started once the drain has returned.
+func TestDrainGenerationGivesFinalizeItsOwnBudget(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	var remaining time.Duration
+	_ = drainGeneration(ctx, time.Second,
+		func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() },
+		nil,
+		func(ctx context.Context) error {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Error("finalize got no deadline")
+			}
+			remaining = time.Until(deadline)
+			return nil
+		},
+	)
+	if remaining < 500*time.Millisecond {
+		t.Fatalf("finalize had %v left after the HTTP drain used its budget, want its own second", remaining)
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/app/connectiontest"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/protectedsettings"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
@@ -199,7 +199,7 @@ func (a settingsAdapter) Test(ctx context.Context, check string) (bool, string) 
 // settings refresh. A probe is a shallow reachability check (a cheap authenticated
 // call), not a full sweep.
 func connectionTests(
-	set resolved, libraryClient *library.Client, tmdbClient *tmdb.Client,
+	set resolved, libraryClient *mediaserver.Client, tmdbClient *tmdb.Client,
 ) map[string]func(ctx context.Context) (bool, string) {
 	return connectiontest.New(connectiontest.Config{
 		Settings:  set,

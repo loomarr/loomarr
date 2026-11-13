@@ -34,6 +34,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -44,7 +45,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -136,10 +136,11 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 		Store:    st,
 		Auth:     httpcore.NewTokenAuthorizer(adminToken),
 		Log:      log,
-		Channels: engine,
-		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
-		Approver: approver,
-		Binder:   chBinder,
+		Channels: api.ChannelsOptions{Service: engine, Binder: chBinder},
+		Proposals: api.ProposalsOptions{
+			Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
+			Approver: approver,
+		},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

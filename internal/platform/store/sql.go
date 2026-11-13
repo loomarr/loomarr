@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Dialect names a backend (storedb.Dialect, re-exported so importers keep one import).
@@ -71,6 +71,8 @@ type sqlStore struct {
 	*proposalCluster
 	// The library cluster (librarystore), embedded the same way; see library.go.
 	*libraryCluster
+	// The quality-ledger cluster (qualitystore), embedded the same way; see quality.go.
+	*qualityCluster
 	// path is the SQLite file this store is backed by; empty for Postgres. Kept so a
 	// caller can find the data directory without also holding the DSN.
 	path            string
@@ -82,7 +84,7 @@ type sqlStore struct {
 // bindClusters installs every embedded cluster on s. Every constructor of a sqlStore calls it, so a
 // store never exists with a nil cluster.
 func bindClusters(s *sqlStore) *sqlStore {
-	return bindLibrary(bindProposals(bindChannels(bindChannelData(bindActivity(bindJobs(bindDiagnostics(bindCrashes(bindCatalog(bindIdentity(s))))))))))
+	return bindQuality(bindLibrary(bindProposals(bindChannels(bindChannelData(bindActivity(bindJobs(bindDiagnostics(bindCrashes(bindCatalog(bindIdentity(s)))))))))))
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's

@@ -4,8 +4,8 @@ import (
 	"context"
 	"slices"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // #1499: a request that names example titles but no era ("movies like Back to

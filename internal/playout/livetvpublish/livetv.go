@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -66,7 +66,7 @@ type LiveTVConnector struct {
 
 // LiveTVSource starts one immutable media-server operation. Production returns
 // library.Client.Snapshot; fixed tests and adapters return the same value each time.
-type LiveTVSource func() library.LiveTV
+type LiveTVSource func() mediaserver.LiveTV
 
 // NewLiveTVConnector wires a live library source. Each public connector operation
 // resolves the source exactly once and carries that bound capability through all
@@ -77,8 +77,8 @@ func NewLiveTVConnector(source LiveTVSource, urls tunarr.LiveTVURLs) *LiveTVConn
 
 // NewLiveTVConnectorFixed wires a connector to a fixed URL pair — for tests and any caller with
 // no live settings to read. Production transition and status paths use the explicit Target methods.
-func NewLiveTVConnectorFixed(lib library.LiveTV, urls tunarr.LiveTVURLs) *LiveTVConnector {
-	return NewLiveTVConnector(func() library.LiveTV { return lib }, urls)
+func NewLiveTVConnectorFixed(lib mediaserver.LiveTV, urls tunarr.LiveTVURLs) *LiveTVConnector {
+	return NewLiveTVConnector(func() mediaserver.LiveTV { return lib }, urls)
 }
 
 // WithTunerPublishingDisabled gates every tuner/listing publish and retire path on this
@@ -158,7 +158,7 @@ func (c *LiveTVConnector) Prepare(ctx context.Context, urls tunarr.LiveTVURLs) (
 	return prepare(ctx, c.library(), urls, c.tunerPublishDisabled, c.log)
 }
 
-func prepare(ctx context.Context, lib library.LiveTV, urls tunarr.LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
+func prepare(ctx context.Context, lib mediaserver.LiveTV, urls tunarr.LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
 	var res ConnectResult
 	if disabled {
 		logTunerPublishingDisabled(log)
@@ -211,7 +211,7 @@ func (c *LiveTVConnector) RetireStale(ctx context.Context, urls tunarr.LiveTVURL
 	return retireStale(ctx, c.library(), urls, c.tunerPublishDisabled, c.log)
 }
 
-func retireStale(ctx context.Context, lib library.LiveTV, urls tunarr.LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
+func retireStale(ctx context.Context, lib mediaserver.LiveTV, urls tunarr.LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
 	var res ConnectResult
 	if disabled {
 		logTunerPublishingDisabled(log)
@@ -264,7 +264,7 @@ func (c *LiveTVConnector) RefreshTarget(ctx context.Context, urls tunarr.LiveTVU
 	return refreshTarget(ctx, c.library(), urls)
 }
 
-func refreshTarget(ctx context.Context, lib library.LiveTV, urls tunarr.LiveTVURLs) error {
+func refreshTarget(ctx context.Context, lib mediaserver.LiveTV, urls tunarr.LiveTVURLs) error {
 	if err := validateLiveTVURLs(urls); err != nil {
 		return err
 	}
@@ -313,7 +313,7 @@ func withTransientRetry(ctx context.Context, op func() error) error {
 		if err == nil {
 			return nil
 		}
-		class := library.TransientClass(err)
+		class := mediaserver.TransientClass(err)
 		if class == "" || ctx.Err() != nil {
 			return err
 		}
@@ -373,7 +373,7 @@ func (c *LiveTVConnector) ReconnectTarget(ctx context.Context, urls tunarr.LiveT
 	return reconnectTarget(ctx, c.library(), urls, c.tunerPublishDisabled, c.log)
 }
 
-func reconnectTarget(ctx context.Context, lib library.LiveTV, urls tunarr.LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
+func reconnectTarget(ctx context.Context, lib mediaserver.LiveTV, urls tunarr.LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
 	var res ConnectResult
 	if disabled {
 		logTunerPublishingDisabled(log)
@@ -440,7 +440,7 @@ func (c *LiveTVConnector) WiredTarget(ctx context.Context, urls tunarr.LiveTVURL
 	return wiredTarget(ctx, c.library(), urls)
 }
 
-func wiredTarget(ctx context.Context, lib library.LiveTV, urls tunarr.LiveTVURLs) (bool, error) {
+func wiredTarget(ctx context.Context, lib mediaserver.LiveTV, urls tunarr.LiveTVURLs) (bool, error) {
 	if urls.M3U == "" || urls.XMLTV == "" {
 		return false, nil // nothing wireable ⇒ not wired; the checklist reports it as such
 	}
@@ -466,7 +466,7 @@ func (c *LiveTVConnector) PokeGuideRefresh(ctx context.Context) error {
 // plays from its own Library (#2151) has no tuner to re-scan and no guide to refresh, and every
 // reconcile would otherwise warn that it couldn't.
 func withoutServerNothingToDo(err error) error {
-	if errors.Is(err, library.ErrConnectionRequired) {
+	if errors.Is(err, mediaserver.ErrConnectionRequired) {
 		return nil
 	}
 	return err

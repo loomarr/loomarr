@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 func TestNamedBlockLabelPreservesAmbiguityAndNetworkRoles(t *testing.T) {

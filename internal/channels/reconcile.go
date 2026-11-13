@@ -11,13 +11,13 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/language"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Reconcile materializes one channel's durable desired lineup (§9). For a
@@ -313,8 +313,15 @@ func (e *Engine) planReconcile(
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now(), accepted, ch.PlayoutAnchor)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
-	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	avail, readFailed := e.reconcileAvailability(ctx)
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, avail, e.policy, ch.Policy, e.now())
 	if err != nil {
+		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
+	}
+	// A lineup computed while a read was failing has titles missing that the library holds.
+	// Committing it would take them off the air, so the reconcile stops here and the channel
+	// keeps what it had.
+	if err := readFailed(); err != nil {
 		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
 	}
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
@@ -1062,9 +1069,9 @@ func staleProgramCount(prev []schedule.Slot, eligible map[provision.Key]bool) in
 
 // lineupDiffers reports whether the desired slots differ from Tunarr's actual
 // programming in a way that requires a push. Comparison is on the pushable shape
-// (kind + library item + duration) since Tunarr can't round-trip our Key
-// (lineup.go itemToSlot). A length change or any positional difference triggers a
-// push — this is the minimal-diff decision (§9): equal ⇒ no Tunarr write.
+// (pushShape) since Tunarr can't round-trip our Key (lineup.go itemToSlot). A
+// different slot count, program, or break length triggers a push — this is the
+// minimal-diff decision (§9): equal ⇒ no Tunarr write.
 func lineupDiffers(desired, actual []schedule.Slot) bool {
 	if len(desired) != len(actual) {
 		return true
@@ -1077,25 +1084,29 @@ func lineupDiffers(desired, actual []schedule.Slot) bool {
 	return false
 }
 
-// pushEqual compares two slots by what actually reaches Tunarr. A desired
-// program/filler-with-item is a "content" item keyed by LibraryItemID; everything
-// else is flex. So two slots are push-equal iff they render to the same Tunarr
-// item type + id.
+// pushEqual compares two slots by what actually reaches Tunarr: two slots are
+// push-equal iff they render to the same pushShape.
 func pushEqual(want, got schedule.Slot) bool {
-	wType, wID := pushShape(want)
-	gType, gID := pushShape(got)
-	return wType == gType && wID == gID
+	return pushShape(want) == pushShape(got)
 }
 
-// pushShape returns the (tunarr-type, item-id) a slot renders to, matching
-// tunarr.slotToItem's logic. Kept here (not exported from tunarr) so the
-// diff is expressed in domain terms. Filler lives in a Tunarr filler-list (§10), so
-// filler slots are ALWAYS flex in the pushed lineup — only a program is content.
-func pushShape(s schedule.Slot) (string, string) {
+// slotShape is what one slot sends Tunarr: a program by its item, a break by its length.
+type slotShape struct {
+	content bool
+	itemID  string
+	flexMs  int64
+}
+
+// pushShape returns what a slot renders to, matching tunarr.slotToItem's logic. Filler
+// lives in a Tunarr filler-list (§10), so filler slots are ALWAYS flex in the pushed
+// lineup — only a program is content. A break compares by the length it is pushed with
+// (Tunarr's floor applied). A program compares by its item alone: its length is the
+// item's runtime, which Tunarr may report as its own.
+func pushShape(s schedule.Slot) slotShape {
 	if s.Kind == schedule.SlotProgram {
-		return "content", s.LibraryItemID
+		return slotShape{content: true, itemID: s.LibraryItemID}
 	}
-	return "flex", ""
+	return slotShape{flexMs: tunarr.PushedFlexMs(s.DurationMs)}
 }
 
 // isNotFound reports whether err is the store's not-found sentinel.

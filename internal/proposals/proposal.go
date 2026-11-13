@@ -13,8 +13,8 @@ import (
 	"errors"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ErrNoGroundedTitles is returned when a run produced no grounded picks at all — the intent
@@ -43,7 +43,7 @@ type ProposalItem struct {
 	TVDBID        int                 `json:"tvdbId,omitempty"`
 	Name          string              `json:"name"`
 	Year          int                 `json:"year,omitempty"`
-	Seasons       []int               `json:"seasons,omitempty"` // series ACQUISITION (what to download)
+	Seasons       []int               `json:"seasons,omitempty" maxItems:"200"` // series ACQUISITION (what to download); the longest-running series has about sixty
 	// SeasonMin/SeasonMax: optional AIRING season window for a series pick (which
 	// seasons play on the channel), distinct from Seasons (what to acquire). Set by
 	// the grounded suggester when the intent implies an era ("classic" → 1–10);
@@ -75,17 +75,20 @@ type ProposalItem struct {
 	// Genres + Overview carry from the grounded Candidate so deterministic theme
 	// scoring measures real metadata, not the title string (§8). Display/scoring
 	// only — never identity (Key ignores them).
-	Genres           []string `json:"genres,omitempty"`
+	//
+	// Ceilings, each well past what the metadata provider keeps (keywords 40, cast 20): genres,
+	// origin countries and networks 16; keywords 100; cast and creators 50.
+	Genres           []string `json:"genres,omitempty" maxItems:"16"`
 	Overview         string   `json:"overview,omitempty"`
 	OriginalLanguage string   `json:"originalLanguage,omitempty"`
-	OriginCountries  []string `json:"originCountries,omitempty"`
+	OriginCountries  []string `json:"originCountries,omitempty" maxItems:"16"`
 	RuntimeMinutes   int      `json:"runtimeMinutes,omitempty"`
 	VoteAverage      float64  `json:"voteAverage,omitempty"`
 	VoteCount        int      `json:"voteCount,omitempty"`
-	Keywords         []string `json:"keywords,omitempty"`
-	Networks         []string `json:"networks,omitempty"`
-	Cast             []string `json:"cast,omitempty"`
-	Creators         []string `json:"creators,omitempty"`
+	Keywords         []string `json:"keywords,omitempty" maxItems:"100"`
+	Networks         []string `json:"networks,omitempty" maxItems:"16"`
+	Cast             []string `json:"cast,omitempty" maxItems:"50"`
+	Creators         []string `json:"creators,omitempty" maxItems:"50"`
 	// OfficialRating carries from the grounded Candidate for ChannelPolicy audience
 	// enforcement (programming-design §4): it's stamped onto the channel's lineup
 	// entry at create time so enforcement filters without a library hit. Display/

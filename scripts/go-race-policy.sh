@@ -49,7 +49,7 @@ RACE_OFF=(
 	internal/library/titlesearch
 	internal/platform/config
 	internal/filler/taxonomy
-	internal/provision
+	internal/library/provision
 	internal/platform/activity
 	cmd/dev-docs
 	cmd/arch-docs
@@ -67,10 +67,16 @@ RACE_OFF=(
 # internal/channels/schedule (#2007): the full sample took 1021s under -race on four cores and 113s
 # without it, and shard 1 hit its 15-minute limit on every run from #1939 on.
 #
+# internal/library/scan (#2151): its scale guard builds a library of thousands of files and holds
+# the header stage while passes run over it, the shape that grew the household's backend to 12 GB.
+# It takes 3s without -race and 67s with it, so it runs only in the plain phase; the stage's
+# concurrency is raced by the package's small tests.
+#
 # Each entry runs in both phases of its lane, so its one measured weight in
 # scripts/go-race-weights.tsv (the median of its race and plain samples) is counted in both.
 RACE_AND_PLAIN=(
 	internal/channels/schedule
+	internal/library/scan
 )
 
 module_path() { go list -m; }

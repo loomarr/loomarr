@@ -8,6 +8,11 @@ import type {
 import type { ReactNode } from "react";
 
 interface GuideGridProps {
+  /**
+   * Bump to bring focus home: the grid's Tab stop takes it. For a host whose control held the
+   * focus and went away (a retry's notice); it does nothing until it changes from 0.
+   */
+  focusRequest?: number;
   layout: GuideLayout;
   /** Contextual desktop detail; native hosts retain their existing detail adapters. */
   renderPreview?: (selection: GuideSelection) => ReactNode;

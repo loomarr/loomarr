@@ -9,16 +9,15 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/textmatch"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 const (
@@ -154,15 +153,9 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		err        error
 	}
 	results := make([]result, len(titles))
-	var wg sync.WaitGroup
-	for index, title := range titles {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results[index].candidates, results[index].err = s.catalog.Search(ctx, title, titlesearch.ScopeAll, catalogSearchLimit)
-		}()
-	}
-	wg.Wait()
+	forEachBounded(len(titles), func(index int) {
+		results[index].candidates, results[index].err = s.catalog.Search(ctx, titles[index], titlesearch.ScopeAll, catalogSearchLimit)
+	})
 	anchored := make([]titlesearch.Candidate, 0, len(titles))
 	var directExamples, franchiseExamples []titlesearch.Candidate
 	for index, title := range titles {
@@ -426,8 +419,56 @@ func requiresMembershipEvidence(intent Intent) bool {
 func bareProperNameNamesSet(text string) bool {
 	name := strings.Trim(strings.TrimSpace(text), ".,;:!?()[]{}\"'")
 	if name == "" || name == "The" || name == strings.ToUpper(name) || tmdb.IsKnownGenre(name) ||
-		curatedKnownGenreInField(name) ||
+		curatedKnownGenreInField(name) || themeLabel(name) ||
 		bareProperNamePattern.FindString(name) != name {
+		return false
+	}
+	return true
+}
+
+// themeLabelWords are the words a channel theme is typed with: formats, seasons and holidays,
+// times of day and week, audiences and moods. A capitalised label made only of these and genres
+// ("Holiday Films", "Saturday Morning Cartoons", "Space Westerns") is a theme someone typed in
+// title case, not the proper name of a set, so it stays fuzzy discovery (#3363). One word outside
+// the list ("Must See TV", "Studio Ghibli", "Classic Mudpuddles") keeps the named-set reading.
+var themeLabelWords = map[string]bool{
+	// Formats.
+	"film": true, "films": true, "movie": true, "movies": true, "show": true, "shows": true,
+	"series": true, "tv": true, "television": true, "cartoon": true, "cartoons": true,
+	"sitcom": true, "sitcoms": true, "special": true, "specials": true, "episode": true,
+	"episodes": true, "classic": true, "classics": true, "favorite": true, "favorites": true,
+	"favourite": true, "favourites": true, "marathon": true, "marathons": true, "features": true,
+	"shorts": true, "anthology": true, "miniseries": true, "flicks": true, "blockbusters": true,
+	// Seasons and holidays.
+	"holiday": true, "holidays": true, "christmas": true, "xmas": true, "halloween": true,
+	"thanksgiving": true, "easter": true, "valentine's": true, "hanukkah": true, "new": true,
+	"year's": true, "summer": true, "winter": true, "spring": true, "autumn": true, "fall": true,
+	"festive": true, "spooky": true, "seasonal": true,
+	// Times of day and week.
+	"morning": true, "mornings": true, "afternoon": true, "afternoons": true, "evening": true,
+	"evenings": true, "night": true, "nights": true, "late": true, "midnight": true,
+	"weekend": true, "weekends": true, "saturday": true, "sunday": true, "friday": true,
+	"daytime": true, "primetime": true,
+	// Audiences, moods and settings. Words that also make up common titles ("Old School", "Feel
+	// Good") stay out, so such a title still reads as one.
+	"kids": true, "kid": true, "family": true, "teen": true, "cozy": true, "cosy": true,
+	"retro": true, "vintage": true, "space": true, "feel-good": true, "funny": true, "scary": true,
+	"&": true,
+}
+
+// themeLabel reports whether every word of a bare label is a theme word or a genre (in either
+// number: "Westerns", "Comedies").
+func themeLabel(name string) bool {
+	words := strings.Fields(name)
+	if len(words) == 0 {
+		return false
+	}
+	for _, word := range words {
+		w := strings.ToLower(strings.Trim(word, ".,;:!?()[]{}\"'"))
+		if themeLabelWords[w] || tmdb.IsKnownGenre(w) || tmdb.IsKnownGenre(strings.TrimSuffix(w, "s")) ||
+			(strings.HasSuffix(w, "ies") && tmdb.IsKnownGenre(strings.TrimSuffix(w, "ies")+"y")) {
+			continue
+		}
 		return false
 	}
 	return true

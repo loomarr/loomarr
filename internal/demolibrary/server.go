@@ -59,7 +59,7 @@ func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/Users":
 		writeJSON(w, []any{demoUserJSON()})
 	case "/Library/VirtualFolders":
-		// A bare array, as Emby returns it (internal/library/filler.go). Locations are the real
+		// A bare array, as Emby returns it (internal/library/mediaserver/filler.go). Locations are the real
 		// folders the demo's files sit in, so scan-root discovery (#2151) finds them.
 		// Absolute, as a media server reports them; the layout may be relative to the working dir.
 		dir, err := filepath.Abs(s.Layout.Dir)

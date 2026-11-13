@@ -197,9 +197,73 @@ describe("GuideNowNext", () => {
     expect(html.match(/aria-label="[^"]*"/g)).toEqual(['aria-label="Channel schedule"']);
   });
 
-  it("names a break and skips it when naming what is next", () => {
-    const html = markup();
+  it("names a break by the programme it leads back to, and says when it is back", () => {
+    for (const wide of [false, true]) {
+      const html = renderToStaticMarkup(
+        <LoomarrProvider>
+          <GuideNowNext layout={layout} nowMs={NOW} onWatch={vi.fn()} wide={wide} />
+        </LoomarrProvider>,
+      );
+      expect(html).not.toContain(">Commercial break<");
+      expect(html).toContain(">Two Doors Down · The Spare Key<");
+      expect(html).toContain(">Back in 3 min<");
+    }
+  });
+
+  it("falls back to a break label only when no programme follows", () => {
+    const lone = layoutGuide(
+      {
+        fromMs: FROM,
+        toMs: at(240),
+        timezone: "UTC",
+        channels: [
+          {
+            channelId: "lone",
+            name: "Quiet Ads",
+            number: 8,
+            pendingCount: 0,
+            status: "live" as const,
+            airings: [
+              { kind: "filler" as const, scheduleBlockId: "l0", startMs: at(0), stopMs: at(10), title: "" },
+            ],
+          },
+        ],
+      },
+      NOW,
+    );
+    const html = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideNowNext layout={lone} nowMs={NOW} onWatch={vi.fn()} />
+      </LoomarrProvider>,
+    );
     expect(html).toContain(">Commercial break<");
+  });
+
+  it("left-aligns every text in a row, on the desktop and compact rows", () => {
+    // Tamagui emits an atomic class per style: the text's own `_ta-…` class must exist (nothing is
+    // left to inherit a centred button's alignment) and its rule must say left.
+    const aligned = (html: string, text: string) => {
+      const tag = html.match(new RegExp(`<[^>]*class="([^"]*)"[^>]*>${text}<`));
+      expect(tag, text).not.toBeNull();
+      const cls = (tag?.[1] ?? "").split(" ").find((c) => c.startsWith("_ta-"));
+      expect(cls, text).toBeDefined();
+      expect(html).toContain(`.${cls}{text-align:left}`);
+    };
+    for (const wide of [false, true]) {
+      const html = renderToStaticMarkup(
+        <LoomarrProvider>
+          <GuideNowNext layout={layout} nowMs={NOW} onWatch={vi.fn()} wide={wide} />
+        </LoomarrProvider>,
+      );
+      expect(html).not.toContain("text-align:center");
+      aligned(html, "Kettle Kids · The Upside-Down Picnic");
+      aligned(html, "Kettle Kids · Snow Day for Gulls");
+      aligned(html, "Cartoon Classics");
+    }
+  });
+
+  it("skips a break when naming what is next", () => {
+    const html = markup();
     expect(html).toContain(">Two Doors Down · The Spare Key<");
     // Only the two programmes on now count down; a break and a downloading channel do not.
     expect(html.match(/ left</g)).toHaveLength(2);
@@ -232,59 +296,62 @@ describe("GuideNowNext number block", () => {
     IS_REACT_ACT_ENVIRONMENT: boolean;
   };
 
-  it("fills a channel's number with its decade colour and leaves the rest clear", async () => {
-    g.IS_REACT_ACT_ENVIRONMENT = true;
-    const eraLayout = layoutGuide(
-      {
-        channels: [
-          {
-            airings: [],
-            channelId: "eighties",
-            decade: 1980,
-            name: "Late Night Sci-Fi",
-            number: 3,
-            pendingCount: 0,
-            status: "live" as const,
-          },
-          {
-            airings: [],
-            channelId: "plain",
-            name: "Nature Hour",
-            number: 12,
-            pendingCount: 0,
-            status: "live" as const,
-          },
-        ],
-        fromMs: FROM,
-        timezone: "UTC",
-        toMs: at(240),
-      },
-      NOW,
-    );
-    const host = g.document.createElement("div");
-    g.document.body.append(host);
-    const root = createRoot(host);
-    await act(async () =>
-      root.render(
-        <LoomarrProvider theme="dark">
-          <GuideNowNext layout={eraLayout} nowMs={NOW} onWatch={vi.fn()} />
-        </LoomarrProvider>,
-      ),
-    );
-    const number = (text: string) => {
-      const el = Array.from(g.document.body.querySelectorAll("span")).find(
-        (n) => n.textContent === text,
-      ) as El;
-      return {
-        fill: g.getComputedStyle(el.parentElement as El).backgroundColor.toLowerCase(),
-        ink: g.getComputedStyle(el).color.toLowerCase(),
+  it.each([false, true])(
+    "fills a channel's number with its decade colour and leaves the rest clear (wide: %s)",
+    async (wide) => {
+      g.IS_REACT_ACT_ENVIRONMENT = true;
+      const eraLayout = layoutGuide(
+        {
+          channels: [
+            {
+              airings: [],
+              channelId: "eighties",
+              decade: 1980,
+              name: "Late Night Sci-Fi",
+              number: 3,
+              pendingCount: 0,
+              status: "live" as const,
+            },
+            {
+              airings: [],
+              channelId: "plain",
+              name: "Nature Hour",
+              number: 12,
+              pendingCount: 0,
+              status: "live" as const,
+            },
+          ],
+          fromMs: FROM,
+          timezone: "UTC",
+          toMs: at(240),
+        },
+        NOW,
+      );
+      const host = g.document.createElement("div");
+      g.document.body.append(host);
+      const root = createRoot(host);
+      await act(async () =>
+        root.render(
+          <LoomarrProvider theme="dark">
+            <GuideNowNext layout={eraLayout} nowMs={NOW} onWatch={vi.fn()} wide={wide} />
+          </LoomarrProvider>,
+        ),
+      );
+      const number = (text: string) => {
+        const el = Array.from(g.document.body.querySelectorAll("span")).find(
+          (n) => n.textContent === text,
+        ) as El;
+        return {
+          fill: g.getComputedStyle(el.parentElement as El).backgroundColor.toLowerCase(),
+          ink: g.getComputedStyle(el).color.toLowerCase(),
+        };
       };
-    };
-    expect(number("3")).toEqual({ fill: "var(--decade1980)", ink: "var(--decadeink)" });
-    expect(number("12")).toEqual({ fill: "rgba(0, 0, 0, 0)", ink: "var(--contentsecondary)" });
-    await act(async () => root.unmount());
-    host.remove();
-  });
+      expect(number("3")).toEqual({ fill: "var(--decade1980)", ink: "var(--decadeink)" });
+      expect(number("12")).toEqual({ fill: "rgba(0, 0, 0, 0)", ink: "var(--contentsecondary)" });
+      await act(async () => root.unmount());
+      host.remove();
+    },
+  );
 });
 
 describe("GuidePhoneHeader", () => {

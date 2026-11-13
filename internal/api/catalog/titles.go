@@ -10,8 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // --- DTOs (schemas are generated from these — §7.1) ---
@@ -74,7 +74,7 @@ func toDTO(r provision.Record) TitleDTO {
 func (s *Handlers) registerTitles(api huma.API) {
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "enqueue-title", Method: http.MethodPost, Path: "/v1/titles",
-		Summary: "Enqueue/ensure a title", Description: "Idempotent by external id (§4). Admin only.",
+		Summary: "Enqueue/ensure a title", Description: "Idempotent by external id (§4); re-enqueueing an unavailable title retries it. Admin only.",
 		Tags: []string{"titles"},
 	}, httpcore.RoleAdmin), s.enqueueTitle)
 
@@ -99,7 +99,7 @@ type enqueueInput struct {
 		TVDBID    int    `json:"tvdbId,omitempty"`
 		Name      string `json:"name,omitempty"`
 		Year      int    `json:"year,omitempty"`
-		Seasons   []int  `json:"seasons,omitempty"`
+		Seasons   []int  `json:"seasons,omitempty" maxItems:"200"` // the longest-running series has about sixty seasons
 	}
 }
 type titleOutput struct{ Body TitleDTO }
@@ -115,13 +115,24 @@ func (s *Handlers) enqueueTitle(ctx context.Context, in *enqueueInput) (*titleOu
 		return nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid title",
 			"That title's identity couldn't be resolved. Check the media type and id, then try again.", err)
 	}
-	// Idempotent enqueue (§4 inv. 3): only create if absent, else return current.
+	// Idempotent enqueue (§4 inv. 3): only create if absent, else return current — except a title
+	// that was given up, which a re-enqueue (the Requests page's Retry) asks for again.
+	now := s.clock()
 	if existing, err := s.store.GetTitle(ctx, key); err == nil {
-		return &titleOutput{Body: toDTO(existing)}, nil
+		retried, ok := provision.Retry(existing, now)
+		if !ok {
+			return &titleOutput{Body: toDTO(existing)}, nil
+		}
+		if err := s.store.UpsertTitle(ctx, retried); err != nil {
+			return nil, err
+		}
+		return &titleOutput{Body: toDTO(retried)}, nil
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
-	rec := provision.Record{Key: key, Title: t, State: provision.Wanted}
+	// A wanted title is due at once: the backstop claims only rows with a deadline, and its first
+	// claim is what submits the request downstream.
+	rec := provision.Record{Key: key, Title: t, State: provision.Wanted, Deadline: now, UpdatedAt: now}
 	if err := s.store.UpsertTitle(ctx, rec); err != nil {
 		return nil, err
 	}

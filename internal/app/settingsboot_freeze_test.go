@@ -21,8 +21,8 @@ func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {
 	if applied["filler.dir"] != "/clips/old" || applied["filler.watch_dir"] != "/watch/old" {
 		t.Fatalf("applied = %v, want canonical generation values", applied)
 	}
-	if len(applied) != 2 {
-		t.Fatalf("applied = %v, want only the filler folders frozen for the generation", applied)
+	if len(applied) != 3 || applied["security.trusted_proxies"] != "127.0.0.0/8,::1/128" {
+		t.Fatalf("applied = %v, want only the filler folders and the trusted proxies frozen for the generation", applied)
 	}
 	for _, live := range []string{"diagnostics.dir", "filler.structure_window_authority_path", "filler.structure_window_deployment_path"} {
 		if _, frozenLive := applied[live]; frozenLive {

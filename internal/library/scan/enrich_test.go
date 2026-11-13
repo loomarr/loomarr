@@ -9,19 +9,23 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
-// fakeCatalog answers fetches from a table; an unknown key is not found, and err fails every fetch.
+// fakeCatalog answers fetches from a table; an unknown key is not found, err fails every fetch, and
+// errFor fails the fetch of one id.
 type fakeCatalog struct {
 	records map[string]mp.Record
 	err     error
+	errFor  map[string]error
 	fetched []string
 }
 
@@ -46,6 +50,9 @@ func (f *fakeCatalog) Fetch(_ context.Context, ref mp.Ref) (mp.Record, error) {
 	f.fetched = append(f.fetched, string(ref.Kind)+":"+ref.ID.Value)
 	if f.err != nil {
 		return mp.Record{}, f.err
+	}
+	if err := f.errFor[ref.ID.Value]; err != nil {
+		return mp.Record{}, err
 	}
 	rec, ok := f.records[ref.ID.Value]
 	if !ok {
@@ -139,6 +146,84 @@ func TestEnricherWritesTheCatalogsDetails(t *testing.T) {
 	e.Now = func() time.Time { return time.Now().Add(enrichRetry + time.Minute) }
 	if err := e.Tick(ctx); err != nil || len(catalog.fetched) != before+1 {
 		t.Fatalf("after the hold the title was not fetched: %v, %v", catalog.fetched[before:], err)
+	}
+}
+
+// A title whose details can't be looked up is never silent: the Library says how many wait, why,
+// and when the next try is. A catalog that can't be used (no key, a key turned down, out of reach)
+// holds no title back, so every one is looked up as soon as it's fixed; a title the catalog
+// answers badly for waits on its own, and the rest go on.
+func TestDetailsSayWhyTitlesWait(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	h.file("Juliet (2016) {tmdb-90000204}/Juliet (2016) {tmdb-90000204}.mkv", 10)
+	h.file("Kilo (2017) {tmdb-90000205}/Kilo (2017) {tmdb-90000205}.mkv", 10)
+	h.file("Lima (2018) {tmdb-90000206}/Lima (2018) {tmdb-90000206}.mkv", 10)
+	h.run()
+	now := time.Now()
+	catalog := &fakeCatalog{records: map[string]mp.Record{}}
+	e := &Enricher{Store: h.st, Provider: catalog, Now: func() time.Time { return now }}
+	lib := &Library{Enricher: e, Now: func() time.Time { return now }}
+	details := func() Details {
+		t.Helper()
+		d, err := lib.Details(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+
+	nextTick := now.Add(EnrichInterval)
+	if got := details(); got.Waiting != 3 || got.State != LookupsOK || !got.RetryAt.IsZero() {
+		t.Fatalf("before any lookup: %+v, want 3 waiting, ok, no retry", got)
+	}
+
+	// As the TMDB provider says it with no key set.
+	catalog.err = fmt.Errorf("tmdb: %w", mp.ErrNotConfigured)
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsNoKey || !got.RetryAt.IsZero() {
+		t.Fatalf("with no key: %+v, want 3 waiting, no_key, no retry", got)
+	}
+
+	catalog.err = &httpx.StatusError{Method: "GET", Path: "/3/movie/90000204", Status: 401}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsKeyRefused || !got.RetryAt.Equal(nextTick) {
+		t.Fatalf("with the key turned down: %+v, want 3 waiting, key_refused, retry at the next tick", got)
+	}
+
+	catalog.err = &httpx.StatusError{Method: "GET", Path: "/3/movie/90000204", Status: 503}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 3 || got.State != LookupsUnreachable || !got.RetryAt.Equal(nextTick) {
+		t.Fatalf("with the catalog down: %+v, want 3 waiting, unreachable, retry at the next tick", got)
+	}
+
+	// The catalog is back but answers one title badly: that one waits its retry, held, and the
+	// other two are looked up in the same tick, held back by nothing that came before.
+	catalog.err = nil
+	catalog.errFor = map[string]error{"90000204": errors.New("a record that doesn't parse")}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	held := now.Add(enrichRetry).Truncate(time.Millisecond)
+	if got := details(); got.Waiting != 1 || got.State != LookupsOK || !got.RetryAt.Equal(held) {
+		t.Fatalf("with one title answered badly: %+v, want 1 waiting, ok, retry at its hold %v", got, held)
+	}
+
+	// Past its hold it is looked up, and nothing waits.
+	catalog.errFor = nil
+	now = now.Add(enrichRetry + time.Minute)
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := details(); got.Waiting != 0 || got.State != LookupsOK || !got.RetryAt.IsZero() {
+		t.Fatalf("once looked up: %+v, want nothing waiting, ok, no retry", got)
 	}
 }
 
@@ -444,6 +529,146 @@ func TestEnricherNumbersAShowByTheOrderTheHouseholdPicked(t *testing.T) {
 	}
 }
 
+// A show named by air date (a daily or weekly show: "Golf Hour - 2013-02-15 - February 15,
+// 2013.mkv", loose in its folder) is an episode of that folder's show, never a movie, and TMDB's
+// season entry that aired that day says which episode it is. Its NFO's numbering, which may be
+// another catalog's, does not stand over the date.
+func TestAShowNamedByAirDateIsPlacedByTheDay(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(season, n int, aired, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("900008%d%d", season, n)}},
+			Numbering: &mp.Numbering{Season: season, Episode: n}, Descriptive: &mp.Descriptive{Title: title, PremiereDate: aired},
+		}
+	}
+	records := map[string]mp.Record{
+		"90000801": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{
+				Title: "Golf Hour", Seasons: []mp.SeasonSize{{Number: 1, Episodes: 2}, {Number: 2, Episodes: 2}},
+				Orders: []mp.EpisodeOrder{},
+			},
+		},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, 1, "2012-02-10", "First Drive"), entry(1, 2, "2012-02-17", "Second Drive"),
+		}},
+		"90000801/2": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(2, 1, "2013-02-08", "The Long Putt"), entry(2, 2, "2013-02-15", "Into the Rough"),
+		}},
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	rel := "Golf Hour {tmdb-90000801}/Golf Hour - 2013-02-15 - February 15, 2013.mkv"
+	path := h.file(rel, 10)
+	doc := "<episodedetails><title>February 15, 2013</title><season>11</season><episode>5</episode>" +
+		"<aired>2013-02-15</aired></episodedetails>"
+	if err := os.WriteFile(path[:len(path)-len(".mkv")]+".nfo", []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	catalog := &fakeCatalog{records: records}
+	e := &Enricher{
+		Store: h.st, Provider: catalog,
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	origin := fileOrigin(h.root, rel)
+	item := h.item(origin)
+	if item.Kind != kindEpisode {
+		t.Fatalf("kind = %q, want an episode", item.Kind)
+	}
+	facts := h.origin(item, origin).Observation.Facts
+	if facts.Name != "Into the Rough" || facts.SeasonNumber != 2 || facts.EpisodeNumber != 2 {
+		t.Fatalf("episode = %q S%dE%d, want \"Into the Rough\" S2E2 (fetched %v)", facts.Name, facts.SeasonNumber,
+			facts.EpisodeNumber, catalog.fetched)
+	}
+	movies, err := h.st.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Kind: "movie"})
+	if err != nil || len(movies.Items) != 0 {
+		t.Fatalf("movies = %+v, %v; want none", movies.Items, err)
+	}
+}
+
+// An anime release numbered across its whole show ("Show - 013", as Sonarr names an anime's, or
+// "[Group] Show - 13") is placed by its series' catalog: the seasons hold the episodes one after
+// another, specials aside, so the 13th of two 12-episode seasons is season 2's first. One past the
+// catalog's last stays where its file put it, unplaced.
+func TestAnAbsoluteEpisodeIsPlacedByItsShowsSeasons(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(season, n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("900009%02d%02d", season, n)}},
+			Numbering: &mp.Numbering{Season: season, Episode: n}, Descriptive: &mp.Descriptive{Title: title},
+		}
+	}
+	season := func(n int) mp.Record {
+		rec := mp.Record{Source: src, Kind: mp.KindSeason}
+		for e := 1; e <= 12; e++ {
+			rec.Children = append(rec.Children, entry(n, e, fmt.Sprintf("Tide %d-%d", n, e)))
+		}
+		return rec
+	}
+	records := map[string]mp.Record{
+		"90000901": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000901"}},
+			Descriptive: &mp.Descriptive{
+				Title:   "Sora no Kettle",
+				Seasons: []mp.SeasonSize{{Number: 0, Episodes: 3}, {Number: 2, Episodes: 12}, {Number: 1, Episodes: 12}},
+				Orders:  []mp.EpisodeOrder{},
+			},
+		},
+		"90000901/1": season(1), "90000901/2": season(2),
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	dir := "Sora no Kettle {tmdb-90000901}/"
+	files := map[string]string{
+		dir + "Sora no Kettle - 013 - Tidewater [HDTV-1080p].mkv": "S2E1 Tide 2-1",
+		dir + "[Kumo] Sora no Kettle - 05 [1080p].mkv":            "S1E5 Tide 1-5",
+		dir + "Sora no Kettle - 025.mkv":                          "S0E0",
+	}
+	for rel := range files {
+		h.file(rel, 10)
+	}
+	h.run()
+	e := &Enricher{
+		Store: h.st, Provider: &fakeCatalog{records: records},
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rel, want := range files {
+		origin := fileOrigin(h.root, rel)
+		item := h.item(origin)
+		facts := h.origin(item, origin).Observation.Facts
+		got := fmt.Sprintf("S%dE%d", facts.SeasonNumber, facts.EpisodeNumber)
+		if facts.SeasonNumber+facts.EpisodeNumber > 0 {
+			got += " " + facts.Name
+		}
+		if item.Kind != kindEpisode || got != want {
+			t.Errorf("%s = %s %s, want episode %s", rel, item.Kind, got, want)
+		}
+	}
+}
+
 // A series record cached in an older shape is fetched again on the next tick, fresh as it is; a
 // movie record of the same age, already in the movie's current shape, is left until its refresh.
 func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {
@@ -559,4 +784,126 @@ func TestRefreshEverythingWritesEveryFileAgain(t *testing.T) {
 	if err := lib.RefreshEverything(ctx); !errors.Is(err, ErrScannerOff) {
 		t.Fatalf("scanner off = %v, want ErrScannerOff", err)
 	}
+}
+
+// tickStore tells each time the Enricher counts what is still due as new: once as a tick's last
+// read of the store, and once more in a tick that begins step 3.
+type tickStore struct {
+	EnrichStore
+	counted chan struct{}
+}
+
+func (s tickStore) CountDueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) (int, error) {
+	n, err := s.EnrichStore.CountDueLibraryCatalog(ctx, due)
+	s.counted <- struct{}{}
+	return n, err
+}
+
+// Titles written between ticks are looked up when the Enricher is woken, not at the next tick: an
+// hour away here. A woken lookup fetches only what is new; records grown old wait for a tick.
+func TestEnricherLooksUpNewTitlesWhenWoken(t *testing.T) {
+	h := newHarness(t)
+	st := tickStore{EnrichStore: h.st, counted: make(chan struct{}, 16)}
+	counts := func(n int, what string) {
+		t.Helper()
+		for range n {
+			select {
+			case <-st.counted:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timed out waiting for %s", what)
+			}
+		}
+	}
+	base := time.Now()
+	var ahead atomic.Int64
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000201": {Kind: mp.KindMovie}, "90000202": {Kind: mp.KindMovie},
+	}}
+	e := &Enricher{
+		Store: st, Provider: catalog, Rewrite: func(string, ...string) {}, Tracker: NewTracker(nil, nil),
+		Interval: time.Hour, Now: func() time.Time { return base.Add(time.Duration(ahead.Load())) },
+		Sleep: func(context.Context, time.Duration) error { return nil },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		e.Run(ctx)
+	}()
+	counts(1, "the first tick, with nothing to look up")
+
+	keys := []librarystore.LibraryCatalogKey{
+		{Provider: "tmdb", Kind: "movie", ExternalID: "90000201"},
+		{Provider: "tmdb", Kind: "movie", ExternalID: "90000202"},
+	}
+	if err := h.st.WantLibraryCatalog(ctx, keys); err != nil {
+		t.Fatal(err)
+	}
+	e.Wake()
+	counts(2, "the woken lookup of two new titles")
+	if len(catalog.fetched) != 2 {
+		t.Fatalf("woken, fetched %v; want both new titles", catalog.fetched)
+	}
+
+	// Both records are older than the refresh period now, and nothing is new.
+	ahead.Store(int64(EnrichRefresh + 24*time.Hour))
+	e.Wake()
+	counts(1, "the woken lookup with nothing new")
+	if len(catalog.fetched) != 2 {
+		t.Fatalf("woken with nothing new, fetched %v; want no old record refreshed", catalog.fetched)
+	}
+
+	cancel()
+	<-done
+	// A tick does refresh its share of them, so the records above were due as old.
+	if err := e.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.fetched) != 3 {
+		t.Fatalf("after a tick, fetched %v; want one old record refreshed", catalog.fetched)
+	}
+}
+
+// The titles looked up are written again, with their details, by a folder pass. Until that pass
+// has run, step 3 stays, done and naming no title, so the import never reads as finished over
+// titles still showing their file names. The tick after the pass ends it.
+func TestEnricherKeepsTheStepUntilItsRewritesHaveRun(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	h.file("Golf (2013) {tmdb-90000201}/Golf (2013) {tmdb-90000201}.mkv", 10)
+	h.file("Hotel (2014) {tmdb-90000202}/Hotel (2014) {tmdb-90000202}.mkv", 10)
+	h.run()
+
+	settled := false
+	e := &Enricher{
+		Store: h.st, Provider: &fakeCatalog{}, Tracker: h.im.Tracker, Rewrite: func(string, ...string) {},
+		Settled: func() bool { return settled },
+		Sleep:   func(context.Context, time.Duration) error { return nil },
+	}
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := h.im.Tracker.Snapshot(time.Now())
+	if got.Step != StepLookingUp || got.Done != 2 || got.Total != 2 || got.Current != "" {
+		t.Fatalf("with the rewrites still to run = %+v, want step 3 at 2 of 2 naming no title", got)
+	}
+
+	settled = true
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.im.Tracker.Active(StepLookingUp) {
+		t.Fatal("step 3 still runs after the rewrites have")
+	}
+}
+
+// Wake never blocks, with no Run draining it and on a nil Enricher.
+func TestEnricherWakeNeverBlocks(t *testing.T) {
+	e := &Enricher{}
+	for range 3 {
+		e.Wake()
+	}
+	var none *Enricher
+	none.Wake()
 }

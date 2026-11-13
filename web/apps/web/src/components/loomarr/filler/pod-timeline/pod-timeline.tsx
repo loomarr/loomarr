@@ -2,7 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Badge, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -64,9 +64,9 @@ const PodTimeline = ({
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
+    <Stack className={className} gap="inline">
+      <Stack align="center" direction="row" gap="inline" wrap>
+        <Text as="span" textRole="hint" tone="secondary">{`Pod · ${formatClipDuration(total)}`}</Text>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
           <Badge shape="square" tone="neutral">
@@ -74,11 +74,13 @@ const PodTimeline = ({
           </Badge>
         ) : null}
         {chip && <StatusLabel tone={chip.tone}>{chip.label}</StatusLabel>}
-      </div>
+      </Stack>
 
-      <ul
-        className="border-border flex h-9 w-full overflow-hidden rounded-md border"
+      <Stack
         aria-label="Pod segments"
+        className="border-border h-9 w-full overflow-hidden rounded-md border"
+        direction="row"
+        render="ul"
       >
         {entries.map((entry, i) => (
           <li
@@ -106,17 +108,23 @@ const PodTimeline = ({
                 </Text>
               </button>
             ) : (
-              <span className="flex h-full min-w-0 items-center justify-center px-1">
+              <Stack
+                align="center"
+                className="h-full min-w-0 px-1"
+                direction="row"
+                justify="center"
+                render="span"
+              >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
                   {segmentLabel(entry)}
                 </Text>
-              </span>
+              </Stack>
             )}
           </li>
         ))}
-      </ul>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

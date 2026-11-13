@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -152,7 +152,7 @@ func (p *Provisioner) Import(ctx context.Context, ids []string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("list media-server users: %w", err)
 	}
-	byID := make(map[string]library.User, len(serverUsers))
+	byID := make(map[string]mediaserver.User, len(serverUsers))
 	for _, su := range serverUsers {
 		byID[su.ID] = su
 	}

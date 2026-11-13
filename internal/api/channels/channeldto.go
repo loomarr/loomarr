@@ -8,8 +8,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // The channel WIRE SHAPE and the mapping to and from it (§7.1).
@@ -82,7 +82,7 @@ type LineupEntryDTO struct {
 	// key so the "not here yet" badge survives a reload (§7). Only the single-channel GET
 	// populates it (the list omits it to avoid an N-query fan-out); "" ⇒ not resolved.
 	State  string   `json:"state,omitempty" enum:"available,acquiring,pending,unavailable" doc:"available = in the library, plays now; acquiring = wanted/requested/downloading; pending = added but nothing has requested it yet; unavailable = acquisition gave up."`
-	Genres []string `json:"genres,omitempty"`
+	Genres []string `json:"genres,omitempty" maxItems:"16"` // TMDB gives a title a handful; 16 is far past that
 	// SeasonMin/SeasonMax surface a series entry's airing season window (§8/§9) so the
 	// UI can show and edit "seasons 1–10". 0 = unbounded on that end (all seasons).
 	SeasonMin int `json:"seasonMin,omitempty" doc:"series airing window: first season (0 = unbounded)"`
@@ -233,6 +233,12 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 // from the current entry by ApplyLineup's PreserveByKey, §7). Shared by the PATCH merge and
 // the programming/preview draft so a preview lowers the edit exactly as the save would.
 func LineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+	// The schema's maxItems says the same (struct tags cannot spell the constant; a test holds
+	// them together), so this is the check for a caller that did not come through the schema.
+	if len(edit) > schedule.MaxLineupEntries {
+		return nil, fmt.Errorf("lineup has %d entries, but a channel's lineup holds at most %d",
+			len(edit), schedule.MaxLineupEntries)
+	}
 	incoming := make([]schedule.LineupEntry, 0, len(edit))
 	seen := make(map[provision.Key]struct{}, len(edit))
 	for i, dto := range edit {

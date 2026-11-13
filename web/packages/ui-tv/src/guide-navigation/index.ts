@@ -1,5 +1,6 @@
 export {
   moveTvGuideFocus,
+  tvGuideChannelWindow,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,

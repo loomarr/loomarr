@@ -11,9 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Home's Channel ideas (#1665): channels the household's own library could make, built without
@@ -265,7 +265,7 @@ func (s *Handlers) requestChannelIdea(ctx context.Context, in *channelIdeaInput)
 type submitManualChannelBody struct {
 	Name        string                   `json:"name" maxLength:"200" doc:"The channel's name, as the person typed it or the chosen starter template filled it"`
 	Description string                   `json:"description,omitempty" maxLength:"2000" doc:"A one-line reason, shown on the review card where the LLM's rationale would otherwise go"`
-	Lineup      []proposals.ProposalItem `json:"lineup" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
+	Lineup      []proposals.ProposalItem `json:"lineup" maxItems:"1000" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
 }
 
 type submitManualChannelInput struct {

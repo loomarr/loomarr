@@ -209,6 +209,11 @@ splits for long clips, so review can happen later and survive restarts. Nothing 
 - **Refusals first, then the threshold.** A suggested era, `unsplittable`, a duplicate, an over-long
   or a sub-floor span refuses at any score. `boundaryScore` cannot see tag facts, so nothing
   launders a refusal into a score.
+- **A partial duplicate check is not a clean one.** A segment is marked `dedupUnchecked`, and held
+  from unattended confirmation, when its fingerprint could not be read, the catalog could not be
+  listed, or any catalog clip could not be fingerprinted so the segment was compared with only part
+  of the catalog. A copy found against the readable clips stands. The pipeline's re-check clears the
+  mark once the check can be made in full; a person can still confirm such a segment by hand.
 - **A confirmed segment is not airable.** It is a held child that still goes through conditioning,
   classification, screening and terminal readiness.
 

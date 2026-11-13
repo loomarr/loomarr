@@ -103,5 +103,22 @@ const NothingFits: Story = {
   args: { coverage: { level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, ...NO_LIMIT } },
 };
 
+// An empty catalogue (#3412): no setting is to blame, so there is one line and the way to Filler.
+const NoClipsYet: Story = {
+  args: {
+    coverage: {
+      level: "bumper_card",
+      total: 0,
+      rungs: [
+        { level: "exact", clips: 0 },
+        { level: "widened", clips: 0 },
+        { level: "audience", clips: 0 },
+      ],
+      ...NO_LIMIT,
+      criteria: HEALTHY.map((criterion) => ({ ...criterion, clips: 0 })),
+    },
+  },
+};
+
 export default meta;
-export { Exact, NothingFits, OneSettingIsEmpty, Widened };
+export { Exact, NoClipsYet, NothingFits, OneSettingIsEmpty, Widened };

@@ -4,9 +4,9 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // LibrarySearch is title search's library half (LibrarySearcher): the movies and series the
@@ -17,7 +17,7 @@ type LibrarySearch struct {
 }
 
 // Search answers with the Library's titles whose name matches term, best match first.
-func (s LibrarySearch) Search(ctx context.Context, term string, limit int) ([]library.SearchResult, error) {
+func (s LibrarySearch) Search(ctx context.Context, term string, limit int) ([]mediaserver.SearchResult, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -33,7 +33,7 @@ func (s LibrarySearch) Search(ctx context.Context, term string, limit int) ([]li
 	if err != nil {
 		return nil, err
 	}
-	out := make([]library.SearchResult, 0, len(titles))
+	out := make([]mediaserver.SearchResult, 0, len(titles))
 	for _, t := range titles {
 		f := facts[t.ID]
 		r := LibrarySearchResult(t)
@@ -46,14 +46,14 @@ func (s LibrarySearch) Search(ctx context.Context, term string, limit int) ([]li
 
 // LibrarySearchResult reads a Library title as a search result: its library item id, name, kind
 // and provider ids, so keys come from the one derivation every title uses.
-func LibrarySearchResult(t librarystore.LibraryTitle) library.SearchResult {
-	r := library.SearchResult{LibraryItemID: t.ID, Name: t.Name, MediaType: library.Movie}
+func LibrarySearchResult(t librarystore.LibraryTitle) mediaserver.SearchResult {
+	r := mediaserver.SearchResult{LibraryItemID: t.ID, Name: t.Name, MediaType: mediaserver.Movie}
 	if t.Kind == "series" {
-		r.MediaType = library.Series
+		r.MediaType = mediaserver.Series
 	}
 	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
-	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(t.IDs, string(library.TMDB)))
-	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(t.IDs, string(library.TVDB)))
+	r.TMDBID, _ = strconv.Atoi(librarystore.IDIn(t.IDs, string(mediaserver.TMDB)))
+	r.TVDBID, _ = strconv.Atoi(librarystore.IDIn(t.IDs, string(mediaserver.TVDB)))
 	return r
 }
 
@@ -66,13 +66,13 @@ type LibraryOwnership struct {
 
 // Present reports whether the Library holds the title, with its library item id and rating.
 func (o LibraryOwnership) Present(ctx context.Context, mt provision.MediaType, tmdbID, tvdbID int) (Presence, bool, error) {
-	kind, id := library.TMDB, strconv.Itoa(tmdbID)
+	kind, id := mediaserver.TMDB, strconv.Itoa(tmdbID)
 	if tmdbID == 0 && tvdbID != 0 {
-		kind, id = library.TVDB, strconv.Itoa(tvdbID)
+		kind, id = mediaserver.TVDB, strconv.Itoa(tvdbID)
 	}
-	lmt := library.Movie
+	lmt := mediaserver.Movie
 	if mt == provision.Series {
-		lmt = library.Series
+		lmt = mediaserver.Series
 	}
 	t, ok, err := OwnedTitle(ctx, o.Titles, kind, id, lmt)
 	if err != nil || !ok {
@@ -83,16 +83,16 @@ func (o LibraryOwnership) Present(ctx context.Context, mt provision.MediaType, t
 
 // OwnedTitle is the Library's movie or series a provider id names. A nil reader owns nothing.
 func OwnedTitle(
-	ctx context.Context, titles librarystore.LibraryTitleReader, kind library.ProviderKind, id string, mt library.MediaType,
+	ctx context.Context, titles librarystore.LibraryTitleReader, kind mediaserver.ProviderKind, id string, mt mediaserver.MediaType,
 ) (librarystore.LibraryTitle, bool, error) {
 	if titles == nil {
 		return librarystore.LibraryTitle{}, false, nil
 	}
 	namespace, libraryKind := "tmdb", "movie"
-	if kind == library.TVDB {
+	if kind == mediaserver.TVDB {
 		namespace = "tvdb"
 	}
-	if mt == library.Series {
+	if mt == mediaserver.Series {
 		libraryKind = "series"
 	}
 	return titles.LibraryTitleByProviderID(ctx, libraryKind, namespace, id)

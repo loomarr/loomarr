@@ -9,13 +9,13 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/outlookfixture"
 )
@@ -31,7 +31,7 @@ func TestOutlookAfterFindMoreRevisionKeepsTheSelectedLibraryPicks(t *testing.T) 
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	minute := int64(time.Minute / time.Millisecond)
-	media := &outlookfixture.OutlookLibrary{Metadata: map[string]library.ItemMetadata{
+	media := &outlookfixture.OutlookLibrary{Metadata: map[string]mediaserver.ItemMetadata{
 		"lib-a": {RuntimeMs: 100 * minute}, "lib-b": {RuntimeMs: 110 * minute}, "lib-c": {RuntimeMs: 120 * minute},
 		"lib-new-1": {RuntimeMs: 95 * minute}, "lib-new-2": {RuntimeMs: 105 * minute},
 	}}
@@ -104,7 +104,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	minute := int64(time.Minute / time.Millisecond)
-	media := &outlookfixture.OutlookLibrary{Metadata: map[string]library.ItemMetadata{"movie-one": {RuntimeMs: 90 * minute}, "movie-two": {RuntimeMs: 0}}}
+	media := &outlookfixture.OutlookLibrary{Metadata: map[string]mediaserver.ItemMetadata{"movie-one": {RuntimeMs: 90 * minute}, "movie-two": {RuntimeMs: 0}}}
 	body := proposals.Proposal{
 		Intent: proposals.Intent{Description: "An action channel"},
 		Lineup: []proposals.ProposalItem{
@@ -138,7 +138,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		}
 	}
 	t.Run("owned review addition uses the same resolved placement as approval", func(t *testing.T) {
-		media.Metadata = map[string]library.ItemMetadata{"movie-added": {RuntimeMs: 80 * minute}}
+		media.Metadata = map[string]mediaserver.ItemMetadata{"movie-added": {RuntimeMs: 80 * minute}}
 		addition := proposals.ProposalItem{
 			MediaType: provision.Movie, TMDBID: 90000004, Name: "Owned addition",
 			InLibrary: true, LibraryItemID: "movie-added",
@@ -163,7 +163,7 @@ func TestOutlookUsesActualScheduleWithoutApprovingOrCreatingAvailability(t *test
 		}
 	})
 	t.Run("series airing selector controls actual episode runway", func(t *testing.T) {
-		media.Metadata = map[string]library.ItemMetadata{"show": {}}
+		media.Metadata = map[string]mediaserver.ItemMetadata{"show": {}}
 		media.Episodes = map[string][]schedule.ResolvedProgram{"show": {
 			{LibraryItemID: "season-one", DurationMs: 90 * minute, Season: 1, Episode: 1},
 			{LibraryItemID: "season-two", DurationMs: 22 * minute, Season: 2, Episode: 1},

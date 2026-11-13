@@ -100,6 +100,19 @@ WebKit, as a dedicated serial macOS CI job with zero retries.
   interval must stay under 250 ms. Navigation starts its clock in the browser's trusted input
   handler, so driver latency never counts as product time.
 
+**Route timing (#3399).** A step of the same CI job, in Chromium on the same runner and SPA build
+(`make route-timing-e2e-host`, `tests/e2e/route-timing.spec.ts`). It clicks through Home, Guide,
+Library, Requests and Settings and opens a channel, then reads the app's own
+`loomarr:route:request-to-content` marks (click to real content painted).
+
+- Every `/v1` read is held for a fixed 100 ms, so results do not depend on the runner's backend
+  speed. A page that waits on two reads in a row costs two delays.
+- Cold is a page asked for the first time in the session; warm is the same page again with its data
+  cached. Each is asserted on the median of three fresh sessions, with zero retries.
+- The budgets are a ratchet set just above what main measures. The goal is warm 100 ms and cold
+  300 ms on every route. A PR that makes a route faster lowers its budget; none is raised without
+  a reason in the commit.
+
 **Real-runtime gate.** The real composition root over an isolated SQLite store, the real packager
 and HLS origin, and real ffmpeg and ffprobe. Only true external systems (the media-server API and
 its library) may be doubles, serving pinned representative media, never prebuilt HLS. The browser

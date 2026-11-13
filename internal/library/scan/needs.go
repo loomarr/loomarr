@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -40,13 +40,13 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	if err != nil {
 		return nil, err
 	}
+	files, err := l.ItemStore.LibraryItemsFiles(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Need, 0, len(needs))
 	for _, n := range needs {
-		files, err := l.ItemStore.LibraryItemFiles(ctx, n.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files})
+		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID]})
 	}
 	return out, nil
 }

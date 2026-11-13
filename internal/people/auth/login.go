@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 )
@@ -18,7 +18,7 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 
 // Authenticator verifies media-server credentials (the library adapter).
 type Authenticator interface {
-	AuthenticateByName(ctx context.Context, username, password string) (library.User, error)
+	AuthenticateByName(ctx context.Context, username, password string) (mediaserver.User, error)
 }
 
 // Limiter gates login attempts (per IP+username). Implemented over
@@ -77,15 +77,21 @@ func NewLoginService(lib Authenticator, st LoginStore, mgr *Manager, limiter Lim
 // the same ErrInvalidCredentials, so login never reveals which users exist.
 // rateKey is IP+username. Returns the cookie token, its expiry, and the user.
 func (s *LoginService) Login(ctx context.Context, username, password, rateKey string) (token string, expires time.Time, u identitystore.User, err error) {
-	if s.limiter != nil && !s.limiter.Allow(rateKey) {
-		return "", time.Time{}, identitystore.User{}, ErrRateLimited
-	}
-
-	u, err = s.authenticate(ctx, username, password)
+	adm, err := admit(s.limiter, rateKey)
 	if err != nil {
 		return "", time.Time{}, identitystore.User{}, err
 	}
+	defer adm.Abandon() // any path below that does not resolve it was not a guess
+
+	u, err = s.authenticate(ctx, username, password)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			adm.Failed()
+		}
+		return "", time.Time{}, identitystore.User{}, err
+	}
 	if u.Disabled {
+		adm.Failed()
 		return "", time.Time{}, identitystore.User{}, ErrInvalidCredentials
 	}
 
@@ -93,7 +99,34 @@ func (s *LoginService) Login(ctx context.Context, username, password, rateKey st
 	if err != nil {
 		return "", time.Time{}, identitystore.User{}, err
 	}
+	adm.Succeeded()
 	return token, expires, u, nil
+}
+
+// admittingLimiter is a Limiter that can hold an attempt open until its credential is checked
+// (*SourceLimiter), so only a failed one is charged to the account.
+type admittingLimiter interface {
+	Admit(key string) (*Admission, bool)
+}
+
+// admit asks limiter whether an attempt for key may proceed. A limiter that cannot hold an attempt
+// open is asked with Allow, and the admission it returns resolves to nothing.
+func admit(limiter Limiter, key string) (*Admission, error) {
+	switch l := limiter.(type) {
+	case nil:
+		return nil, nil
+	case admittingLimiter:
+		adm, ok := l.Admit(key)
+		if !ok {
+			return nil, ErrRateLimited
+		}
+		return adm, nil
+	default:
+		if !limiter.Allow(key) {
+			return nil, ErrRateLimited
+		}
+		return nil, nil
+	}
 }
 
 // DevLogin issues a session for an existing admin with NO credential (§11), for the
@@ -175,7 +208,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 	}
 	msUser, err := s.lib.AuthenticateByName(ctx, username, password)
 	if err != nil {
-		if errors.Is(err, library.ErrProviderUnavailable) && lookupErr == nil &&
+		if errors.Is(err, mediaserver.ErrProviderUnavailable) && lookupErr == nil &&
 			existingByName.MediaServerLinked && verifyPassword(existingByName.PasswordHash, password) {
 			return existingByName, nil
 		}

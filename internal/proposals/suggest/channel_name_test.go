@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // A name the requester fixed (the manual builder's, handed to AI by "Try AI suggestions", #1914)

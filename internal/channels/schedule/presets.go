@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Preset lowering (programming-design §6.6): the closed authoring vocabulary. The LLM/UI
@@ -39,7 +39,11 @@ func LowerWhen(token string, v holidayvocab.Vocabulary) (WhenPredicate, int, boo
 	if base, sub, found := strings.Cut(t, "-"); found {
 		if w1, p1, ok1 := lowerBaseWhen(base); ok1 {
 			if w2, p2, ok2 := lowerBaseWhen(sub); ok2 {
-				return andPredicate(w1, w2), maxInt(p1, p2) + 5, true
+				both, ok := andPredicate(w1, w2)
+				if !ok {
+					return WhenPredicate{}, 0, false // the parts cannot both hold: no rule, not a dead one
+				}
+				return both, maxInt(p1, p2) + 5, true
 			}
 		}
 		// fall through: "early-morning"/"late-night"/"graveyard" are single base tokens.
@@ -69,20 +73,28 @@ func lowerBaseWhen(t string) (WhenPredicate, int, bool) {
 	}
 }
 
-// andPredicate combines two sub-predicates (used for composite WHEN tokens). Only the
-// day-kind + hour-window fields compose here (the base tokens set exactly those).
-func andPredicate(a, b WhenPredicate) WhenPredicate {
+// andPredicate combines two sub-predicates (used for composite WHEN tokens) into the predicate that
+// holds when both do. Only the day-kind + hour-window fields compose here (the base tokens set
+// exactly those). It reports false when the two cannot be combined into one rule that fires: a
+// weekend and a weekday constraint share no day, and two different hour windows would otherwise
+// leave whichever came last standing, so "mornings-primetime" and "primetime-mornings" would mean
+// different things. The same constraint twice is just that constraint.
+func andPredicate(a, b WhenPredicate) (WhenPredicate, bool) {
+	hasWindow := func(w WhenPredicate) bool { return w.HourFrom != 0 || w.HourTo != 0 }
+	if hasWindow(a) && hasWindow(b) && (a.HourFrom != b.HourFrom || a.HourTo != b.HourTo) {
+		return WhenPredicate{}, false
+	}
 	out := a
-	if b.Weekend {
-		out.Weekend = true
-	}
-	if b.Weekday {
-		out.Weekday = true
-	}
-	if b.HourFrom != 0 || b.HourTo != 0 {
+	out.Weekend = a.Weekend || b.Weekend
+	out.Weekday = a.Weekday || b.Weekday
+	if hasWindow(b) {
 		out.HourFrom, out.HourTo = b.HourFrom, b.HourTo
 	}
-	return out
+	// Whatever a field added later does, the result must still fire some hour of the week.
+	if !out.matchesSomeHourOfTheWeek() {
+		return WhenPredicate{}, false
+	}
+	return out, true
 }
 
 // LowerWhat maps a WHAT token to a *ScopePolicy that only NARROWS. Returns (nil, true) for

@@ -1,4 +1,4 @@
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import {
@@ -30,25 +30,27 @@ const GROUPS: readonly { id: string; label: string; description: string; pages: 
 ];
 
 const SystemHome = () => (
-  <div className="flex h-full min-h-0 flex-col">
+  <Stack height="100%" minHeight={0}>
     <PageHeader
       title="This server"
       description="Keep playback running, protect this installation, or investigate a problem."
     />
-    <div className="min-h-0 flex-1 overflow-auto">
-      <div className="mx-auto max-w-5xl space-y-8 p-6">
+    <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} minHeight={0}>
+      <Stack gap="8" marginHorizontal="auto" maxWidth={1024} padding={24} width="100%">
         {GROUPS.map((group) => {
           const destinations = SETTINGS_DESTINATIONS.filter(
             (item): item is SystemDestination => group.pages.includes(item.id) && isSystemDestination(item),
           );
           return (
             <section key={group.id} aria-labelledby={`system-group-${group.id}`}>
-              <div className="mb-3">
-                <h2 id={`system-group-${group.id}`} className="text-base font-medium">
+              <Stack gap="0.5" marginBottom={12}>
+                <Text as="h2" id={`system-group-${group.id}`} textRole="heading">
                   {group.label}
-                </h2>
-                <p className="text-muted-foreground mt-0.5 text-sm">{group.description}</p>
-              </div>
+                </Text>
+                <Text as="p" textRole="compact" tone="secondary">
+                  {group.description}
+                </Text>
+              </Stack>
               <div className="grid gap-2 md:grid-cols-2">
                 {destinations.map((item) => (
                   <Link
@@ -56,26 +58,34 @@ const SystemHome = () => (
                     to={item.path}
                     className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{item.label}</span>
-                      <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
+                    <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+                      <Text as="span" textRole="cardLabel">
+                        {item.label}
+                      </Text>
+                      <Text as="span" textRole="hint" tone="secondary">
                         {item.description}
-                      </span>
-                    </span>
-                    <span className="text-muted-foreground group-hover:text-foreground mt-0.5 flex transition-colors">
+                      </Text>
+                    </Stack>
+                    <Stack
+                      className="text-muted-foreground group-hover:text-foreground transition-colors"
+                      direction="row"
+                      marginTop={2}
+                      render="span"
+                    >
                       <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
-                    </span>
+                    </Stack>
                   </Link>
                 ))}
               </div>
             </section>
           );
         })}
-      </div>
-    </div>
-  </div>
+      </Stack>
+    </Stack>
+  </Stack>
 );
 
+// no-loader: a static list of links to the System pages
 const Route = createFileRoute("/_authed/settings/system/")({
   component: SystemHome,
 });

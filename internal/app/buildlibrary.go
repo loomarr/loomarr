@@ -10,20 +10,20 @@ import (
 
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/arr"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/nfo"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	mptmdb "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/media/images"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
-	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -51,7 +51,7 @@ type libraryStore interface {
 
 // libraryBuild is what Settings → Library needs beyond the store and settings.
 type libraryBuild struct {
-	lib *library.Client
+	lib *mediaserver.Client
 	// watched reports whether a viewer is fetching a channel; header reads wait while one is. Nil
 	// without internal playout, when nothing on this box needs the disks first.
 	watched func() bool
@@ -104,7 +104,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	// The Library's rows follow every inventory write from here on (#2151 decision 43).
 	st.ProjectLibraryWith(scan.ProjectLibraryItem)
-	pathMap := func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) }
+	pathMap := func() mediaserver.PathMap { return mediaserver.ParsePathMap(settings.LibraryPathMap.Get(set)) }
 	roots := &scan.Roots{
 		Store:   st,
 		Sources: func() []scan.Source { return libraryRootSources(set, deps.lib) },
@@ -137,13 +137,22 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	// One Tracker records the whole import: the walk and header reads here, the lookups below.
 	tracker, titlesChanged := libraryFramesFor(deps.frames)
+	// The Enricher is built below, once the scanner it rewrites through exists; it stays nil without
+	// a catalog. Every write that changes the titles wakes it, so a title's details are looked up as
+	// soon as the title is written instead of at the Enricher's next tick.
+	var enricher *scan.Enricher
 	im := &scan.Importer{
-		Tracker:       tracker,
-		TitlesChanged: titlesChanged,
-		Store:         st,
-		Inventory:     inv,
-		Disk:          scan.OSDisk{},
-		Managers:      func() []scan.Manager { return managers },
+		Tracker: tracker,
+		TitlesChanged: func() {
+			if titlesChanged != nil {
+				titlesChanged()
+			}
+			enricher.Wake()
+		},
+		Store:     st,
+		Inventory: inv,
+		Disk:      scan.OSDisk{},
+		Managers:  func() []scan.Manager { return managers },
 		Discover: func(ctx context.Context) error {
 			_, _, err := roots.Discover(ctx)
 			return err
@@ -161,6 +170,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Log:      deps.log,
 	}
 	im.Busy = deps.watched
+	if deps.frames != nil {
+		im.RootsChanged = deps.frames.LibraryRootsChanged
+	}
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
 	}
@@ -189,7 +201,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		Orders: st, CollectionStore: st, Records: st, Keys: keys}
 	if provider != nil {
-		enricher := &scan.Enricher{
+		enricher = &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Language: func() string {
 				language, err := provider.Language()
@@ -199,11 +211,18 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 				return language
 			},
 			Enabled: im.Enabled, Log: deps.log, Tracker: tracker,
+			// The titles looked up are written again by folder passes: step 3 ends once those have
+			// run, and the end of each round wakes the Enricher to see it.
+			Settled: scanner.FoldersSettled,
 		}
+		scanner.AfterFolders = enricher.Wake
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher
 		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
 		deps.owner.goRunAfterBuild(filmographer.Run)
+		// Nightly, what TMDB changed is fetched again ahead of the refresh (#3225).
+		changes := &scan.ChangeFollower{Store: st, Feed: provider, Catalog: string(mp.NamespaceTMDB), Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(changes.Run)
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,
@@ -265,7 +284,7 @@ func libraryHeader(probe playout.SourceProber) func(context.Context, string) (he
 
 // libraryRootSources is every authority that can name a library folder: the media server when
 // its connection is complete, then Sonarr and Radarr whatever requester is chosen (decision 2).
-func libraryRootSources(set resolved, lib *library.Client) []scan.Source {
+func libraryRootSources(set resolved, lib *mediaserver.Client) []scan.Source {
 	var sources []scan.Source
 	if lib != nil && set.libraryConfigured() {
 		if name, err := lib.FlavorName(); err == nil {

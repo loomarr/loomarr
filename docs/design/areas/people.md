@@ -17,7 +17,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns how a person gets into Loomarr and back in (§11): an administrator's invitation and its bearer grants, and local-password recovery and its grants (recovery.go).
 - **`people/accountdelivery`** · 1 importer · → `people/access`, `people/auth`, `people/contact`, `people/notifications`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/identitystore`
   Delivers the messages an account depends on: invitation emails and password-recovery emails.
-- **`people/auth`** · 4 importers · → `library`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore`
+- **`people/auth`** · 4 importers · → `library/mediaserver`, `people/access`, `people/contact`, `platform/store`, `platform/store/identitystore`
   Issues and validates Loomarr sessions (design §11).
 - **`people/contact`** · 6 importers
   Owns person contact-address identity and normalization (§11).

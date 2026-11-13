@@ -8,8 +8,10 @@ services:
   loomarr:
     environment:
       # Behind the tunnel every visitor arrives from one address, so sign-in throttling would treat
-      # them as one person, and cookies would miss the Secure flag.
-      TRUST_PROXY: "true"
+      # them as one person, and cookies would miss the Secure flag. The tunnel connects from this
+      # compose network (Docker's default pools live in 172.16.0.0/12 and 192.168.0.0/16). The demo
+      # port is bound to loopback, so no other client reaches Loomarr from those ranges.
+      TRUSTED_PROXIES: "127.0.0.0/8,::1/128,172.16.0.0/12,192.168.0.0/16"
       # Visitors get the member account scripts/demo-site.sh creates, never the admin, whose
       # password it retires before the tunnel opens.
       LOOMARR_DEMO_USERNAME: guest

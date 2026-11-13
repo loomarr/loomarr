@@ -14,11 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
   PressableRow,
+  Stack,
+  Text,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -59,7 +62,7 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <div className="divide-border border-border divide-y rounded-lg border">
+  <Card className="divide-border divide-y">
     {group.rows.map((row) => (
       <PressableRow
         key={row.clipHash}
@@ -67,32 +70,45 @@ const StatusRows = ({
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
         <span className="sr-only">View details for</span>{" "}
-        <span className="bg-muted h-12 w-16 shrink-0 overflow-hidden rounded">
+        <Stack
+          backgroundColor="surfaceElevated"
+          borderRadius={4}
+          flexShrink={0}
+          height={48}
+          overflow="hidden"
+          render="span"
+          width={64}
+        >
           {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium break-words">{row.name}</span>
-          <span className="text-muted-foreground mt-0.5 block text-xs">
+        </Stack>
+        <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+          <Text as="span" className="break-words" textRole="cardLabel" tone="primary">
+            {row.name}
+          </Text>
+          <Text as="span" textRole="hint" tone="secondary">
             {row.from ? `${row.from} · ` : ""}
             {formatClipDuration(row.durationMs)}
-          </span>
-        </span>
-        <span className="text-muted-foreground shrink-0 text-xs">{row.statusLabel}</span>
+          </Text>
+        </Stack>
+        <Text flexShrink={0} textRole="hint" tone="secondary">
+          {row.statusLabel}
+        </Text>
       </PressableRow>
     ))}
     {group.nextCursor ? (
-      <div className="p-2">
+      <Stack padding={8}>
         <Action disabled={loading} onPress={onMore} style={{ width: "100%" }} variant="ghost">
           {loading ? "Loading…" : moreLabel}
         </Action>
-      </div>
+      </Stack>
     ) : null}
-  </div>
+  </Card>
 );
 
 const Incoming = () => {
   const queryClient = useQueryClient();
   const query = fillerApi.useFillerIncoming();
+  const timeZone = useHouseholdTimeZone();
   const body = unwrap(query.data, (value) => value);
   const [view, setView] = useState<IncomingView>();
   const [loadingGroup, setLoadingGroup] = useState<GroupName>();
@@ -186,8 +202,10 @@ const Incoming = () => {
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   if (!view) {
     return (
-      <Card aria-live="polite" className="text-muted-foreground text-sm" padding={24}>
-        Checking what’s on the way…
+      <Card aria-live="polite" padding={24}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking what’s on the way…
+        </Text>
       </Card>
     );
   }
@@ -196,20 +214,20 @@ const Incoming = () => {
   if (total === 0) {
     return (
       <section aria-labelledby="incoming-empty-heading">
-        <h2 id="incoming-empty-heading" className="text-2xl font-semibold">
+        <Text as="h2" id="incoming-empty-heading" textRole="display">
           Nothing on the way
-        </h2>
-        <div className="flex flex-col items-center">
+        </Text>
+        <Stack align="center">
           <EmptyState
             title="Incoming is clear"
             description="New clips will appear here after you add a source."
           />
-          <div className="-mt-7">
+          <Stack marginTop={-28}>
             <Action accessibilityRole="link" render={<Link to="/filler/sources" />}>
               Add a source
             </Action>
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       </section>
     );
   }
@@ -236,23 +254,25 @@ const Incoming = () => {
   const helpTask = view.needsHelp.rows[helpIndex];
 
   return (
-    <section aria-labelledby="incoming-heading" className="flex flex-col gap-7">
-      <div>
-        <h2 id="incoming-heading" className="text-2xl font-semibold">
+    <Stack aria-labelledby="incoming-heading" gap="7" render="section">
+      <Stack gap="1">
+        <Text as="h2" id="incoming-heading" textRole="display">
           {summary}
-        </h2>
-        <p className="text-muted-foreground mt-1 text-sm">{summaryDescription}</p>
-      </div>
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          {summaryDescription}
+        </Text>
+      </Stack>
 
       {view.preparing.total > 0 ? (
-        <section aria-labelledby="preparing-heading" className="space-y-3">
+        <Stack aria-labelledby="preparing-heading" gap="3" render="section">
           <div>
-            <h3 id="preparing-heading" className="text-lg font-semibold">
+            <Text as="h3" id="preparing-heading" textRole="headline" strong>
               Getting clips ready
-            </h3>
-            <p className="text-muted-foreground text-sm">
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               You can leave this page. Work continues on its own.
-            </p>
+            </Text>
           </div>
           <StatusRows
             group={view.preparing}
@@ -261,38 +281,58 @@ const Incoming = () => {
             onOpen={openDetails}
             onMore={() => void loadMore("preparing")}
           />
-        </section>
+        </Stack>
       ) : null}
 
       {view.needsHelp.total > 0 ? (
-        <section aria-labelledby="needs-help-heading" className="space-y-3">
+        <Stack aria-labelledby="needs-help-heading" gap="3" render="section">
           <div>
-            <h3 id="needs-help-heading" className="text-lg font-semibold">
+            <Text as="h3" id="needs-help-heading" textRole="headline" strong>
               Needs your help
-            </h3>
-            <p className="text-muted-foreground text-sm">
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               Only choices Loomarr can’t safely make for you appear here.
-            </p>
+            </Text>
           </div>
           {helpTask ? (
             <Card gap={16} padding={16}>
-              <div className="text-muted-foreground flex items-center justify-between gap-3 text-xs">
-                <span>
+              <Stack align="center" direction="row" gap="control" justify="between">
+                <Text as="span" textRole="hint" tone="secondary">
                   {helpIndex + 1} of {view.needsHelp.total}
-                </span>
-                {view.needsHelp.total > 1 ? <span>One choice at a time</span> : null}
-              </div>
-              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+                </Text>
+                {view.needsHelp.total > 1 ? (
+                  <Text as="span" textRole="hint" tone="secondary">
+                    One choice at a time
+                  </Text>
+                ) : null}
+              </Stack>
+              <Stack
+                align={{ base: "start", sm: "center" }}
+                direction={{ base: "column", sm: "row" }}
+                flexShrink={0}
+                gap="4"
+              >
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium break-words">{helpTask.name}</p>
-                  <p className="text-muted-foreground mt-1 text-sm">{helpTask.question}</p>
+                  <Text as="p" className="break-words" textRole="cardLabel">
+                    {helpTask.name}
+                  </Text>
+                  <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                    {helpTask.question}
+                  </Text>
                 </div>
                 <Action accessibilityRole="link" render={<a href={helpTask.actionHref} />}>
                   {helpTask.actionLabel}
                 </Action>
-              </div>
+              </Stack>
               {view.needsHelp.total > 1 ? (
-                <div className="border-border flex justify-end gap-2 border-t pt-3">
+                <Stack
+                  borderColor="borderDecorative"
+                  borderTopWidth={1}
+                  direction="row"
+                  gap="inline"
+                  justify="end"
+                  paddingTop={12}
+                >
                   <Action
                     disabled={helpIndex === 0}
                     onPress={() => setHelpIndex((current) => Math.max(0, current - 1))}
@@ -307,21 +347,21 @@ const Incoming = () => {
                   >
                     {loadingGroup === "needsHelp" ? "Loading…" : "Next"}
                   </Action>
-                </div>
+                </Stack>
               ) : null}
             </Card>
           ) : null}
-        </section>
+        </Stack>
       ) : null}
 
       {view.recentlyReady.total > 0 ? (
-        <section aria-labelledby="ready-heading" className="space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
+        <Stack aria-labelledby="ready-heading" gap="3" render="section">
+          <Stack align="end" direction="row" gap="inline" justify="between" wrap>
             <div>
-              <h3 id="ready-heading" className="text-lg font-semibold">
+              <Text as="h3" id="ready-heading" textRole="headline" strong>
                 Ready
-              </h3>
-              <p className="text-muted-foreground text-sm">
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
                 Added in {readyWindowLabel(view.readyWindowSeconds)}. These clips stay in your Library.{" "}
                 <Link
                   to="/filler/settings/$section"
@@ -330,12 +370,12 @@ const Incoming = () => {
                 >
                   Change
                 </Link>
-              </p>
+              </Text>
             </div>
             <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
               Open Library
             </Action>
-          </div>
+          </Stack>
           <StatusRows
             group={view.recentlyReady}
             loading={loadingGroup === "recentlyReady"}
@@ -343,7 +383,7 @@ const Incoming = () => {
             onOpen={openDetails}
             onMore={() => void loadMore("recentlyReady")}
           />
-        </section>
+        </Stack>
       ) : null}
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(undefined)}>
@@ -353,26 +393,34 @@ const Incoming = () => {
               <DialogTitle>{selected.name}</DialogTitle>
               <DialogDescription>{selected.statusLabel}</DialogDescription>
             </DialogHeader>
-            <div className="space-y-5 p-6">
+            <Stack gap="5" padding={24}>
               {selectedClip ? (
                 <ClipDetails clip={selectedClip} />
               ) : (
-                <p role="status" className="text-muted-foreground text-sm">
-                  {selectedClipQuery.isLoading
-                    ? "Loading preview…"
-                    : selectedClipQuery.error
-                      ? "Preview could not be loaded."
-                      : "Preview is not available yet."}
-                </p>
+                <div role="status">
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {selectedClipQuery.isLoading
+                      ? "Loading preview…"
+                      : selectedClipQuery.error
+                        ? "Preview could not be loaded."
+                        : "Preview is not available yet."}
+                  </Text>
+                </div>
               )}
               <IncomingPreparationSummary preparation={selected.preparation} />
-              <p className="text-muted-foreground text-xs">Updated {formatRelative(selected.updatedAt)}</p>
-              <IncomingProcessingDetails key={selected.clipHash} processing={selected.processing} />
-            </div>
+              <Text as="p" textRole="hint" tone="secondary">
+                Updated {formatRelative(selected.updatedAt)}
+              </Text>
+              <IncomingProcessingDetails
+                key={selected.clipHash}
+                processing={selected.processing}
+                timeZone={timeZone}
+              />
+            </Stack>
           </DialogContent>
         ) : null}
       </Dialog>
-    </section>
+    </Stack>
   );
 };
 

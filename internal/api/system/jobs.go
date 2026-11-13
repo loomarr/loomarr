@@ -60,7 +60,7 @@ type JobView struct {
 	// DisabledReason is non-empty when this backend cannot run the job at all — it is
 	// listed so its absence is never inferred, but it never runs and Run-now 409s.
 	DisabledReason string `json:"disabledReason,omitempty" doc:"Why this job cannot run here; empty when it can"`
-	Overdue        bool   `json:"overdue,omitempty" doc:"True when the job is past due and waiting on a worker rather than on its schedule"`
+	Overdue        bool   `json:"overdue,omitempty" doc:"True when the job is past due by more than twice its own interval and waiting on a worker rather than on its schedule"`
 }
 
 // JobHistoryView summarizes one task's retained executions. The window is explicit because

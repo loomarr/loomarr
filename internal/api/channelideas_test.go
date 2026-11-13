@@ -16,7 +16,8 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
@@ -25,7 +26,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -112,7 +112,7 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mediaServer := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
@@ -122,16 +122,14 @@ func newIdeasHarnessNotifying(t *testing.T, lib *fakeIdeaLibrary, now time.Time,
 		service := suggest.NewService(defaults.Store, flow, nil, suggest.Config{}, func() time.Time { return now }, defaults.Log).
 			WithProposalNotifier(notify)
 		return api.Router(defaults.Log, api.Options{
-			Suggest:          service,
-			ProposalWorkflow: flow,
-			Store:            defaults.Store,
-			Auth:             sessionAuth(mgr, "break-glass-token"),
-			Log:              defaults.Log,
-			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
-			Sessions:         mgr,
-			CookieSecure:     "false",
-			IdeaLibrary:      lib,
-			Now:              func() time.Time { return now },
+			Proposals:    api.ProposalsOptions{Suggest: service, Workflow: flow},
+			Store:        defaults.Store,
+			Auth:         sessionAuth(mgr, "break-glass-token"),
+			Log:          defaults.Log,
+			People:       api.PeopleOptions{Login: auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now), Sessions: mgr},
+			CookieSecure: "false",
+			Channels:     api.ChannelsOptions{IdeaLibrary: lib},
+			Now:          func() time.Time { return now },
 		})
 	})
 }
@@ -363,7 +361,7 @@ func newManualChannelHarness(
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mediaServer := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
@@ -375,18 +373,14 @@ func newManualChannelHarness(
 		approver := accept.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
 			WithApprovalAdditionResolver(resolver)
 		return api.Router(defaults.Log, api.Options{
-			Suggest:          service,
-			Approver:         approver,
-			Binder:           chBinder,
-			ProposalWorkflow: flow,
-			Store:            defaults.Store,
-			Auth:             sessionAuth(mgr, "break-glass-token"),
-			Log:              defaults.Log,
-			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
-			Sessions:         mgr,
-			CookieSecure:     "false",
-			IdeaLibrary:      &fakeIdeaLibrary{},
-			Now:              func() time.Time { return now },
+			Proposals:    api.ProposalsOptions{Suggest: service, Approver: approver, Workflow: flow},
+			Store:        defaults.Store,
+			Auth:         sessionAuth(mgr, "break-glass-token"),
+			Log:          defaults.Log,
+			People:       api.PeopleOptions{Login: auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now), Sessions: mgr},
+			CookieSecure: "false",
+			Channels:     api.ChannelsOptions{Binder: chBinder, IdeaLibrary: &fakeIdeaLibrary{}},
+			Now:          func() time.Time { return now },
 		})
 	})
 }

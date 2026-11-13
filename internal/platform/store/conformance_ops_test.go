@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/contact"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Operational tables: the settings KV, session lifecycle, the /metrics count queries,

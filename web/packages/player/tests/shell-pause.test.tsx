@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 
-const { createShellPause, useShellPause } = await import("@loomarr/player/native");
+const { createShellPause, useShellPause, useShellTune } = await import("@loomarr/player/native");
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -129,6 +129,55 @@ describe("shell pause", () => {
     expect(calls).toEqual(["pause", "replace:b.m3u8", "play"]);
     expect(controller.getSnapshot()).toMatchObject({ channel: { id: "b" } });
     await shell.unmount();
+  });
+
+  // The phone's Guide pick: one call that forgets the pause and then tunes, in that order. A tune
+  // before the forget would leave the old pause armed against the new channel's snapshot.
+  describe("tuning from outside Watching through useShellTune", () => {
+    const mountTune = async (controller: PlayerController, watching: boolean) => {
+      let tune!: (channelId: string) => void;
+      const Probe = ({ controller, watching }: { controller: PlayerController; watching: boolean }) => {
+        tune = useShellTune(controller, watching);
+        return null;
+      };
+      const container = (
+        globalThis as unknown as { document: { createElement: (tag: string) => never } }
+      ).document.createElement("div");
+      const root = createRoot(container);
+      const render = (next: PlayerController, nextWatching: boolean) =>
+        act(async () => root.render(createElement(Probe, { controller: next, watching: nextWatching })));
+      await render(controller, watching);
+      return {
+        render,
+        tune: (channelId: string) => act(async () => tune(channelId)),
+        unmount: () => act(async () => root.unmount()),
+      };
+    };
+
+    it("tunes the channel and never resumes the stream it paused", async () => {
+      const { calls, controller } = await playingOnA();
+      const shell = await mountTune(controller, true);
+      await shell.render(controller, false);
+
+      await shell.tune("b");
+      await shell.render(controller, true);
+
+      expect(calls).toEqual(["pause", "replace:b.m3u8", "play"]);
+      expect(controller.getSnapshot()).toMatchObject({ channel: { id: "b" } });
+      await shell.unmount();
+    });
+
+    it("still resumes the paused channel when the pick is that same channel", async () => {
+      const { calls, controller } = await playingOnA();
+      const shell = await mountTune(controller, true);
+      await shell.render(controller, false);
+
+      await shell.tune("a");
+      await shell.render(controller, true);
+
+      expect(calls).toEqual(["pause", "goLive"]);
+      await shell.unmount();
+    });
   });
 
   it("forgetting for another channel leaves nothing to resume, even if the snapshot still reads A paused", () => {

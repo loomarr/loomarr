@@ -3,7 +3,7 @@ package suggest
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // clampSeasonWindow is the §8 grounding gate for a model-proposed AIRING season

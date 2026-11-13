@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action, Tooltip } from "@loomarr/design-system";
+import { Action, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useState } from "react";
 import { SearchCommand } from "@/components/loomarr/shell/search-command";
 
@@ -69,60 +69,69 @@ const FillerClipList = ({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <Stack gap="inline">
       <div>
-        <p className="text-sm font-medium">{label}</p>
-        <p className="text-muted-foreground text-xs">{hint}</p>
+        <Text as="p" textRole="cardLabel">
+          {label}
+        </Text>
+        <Text as="p" textRole="hint" tone="secondary">
+          {hint}
+        </Text>
       </div>
 
-      {/* ⚠ **The clamp said nothing at all before this.** `filler.pod_max` caps how many clips one
-          break plays; pin more than that and the extras are saved, honoured, and simply cannot all
-          fit — with no count anywhere on the page. That is the same shape as the other V51f
-          defects: a control that accepts input and quietly does less than it says.
+      {/* ⚠ **This line is the only place the clamp is said.** `filler.pod_max` caps how many clips
+          one break plays; pin more than that and the extras are saved, honoured, and simply cannot
+          all fit — and without this there is no count anywhere on the page: a control that accepts
+          input and quietly does less than it says (the V51f defect shape).
           ⚠ Worded as "not all in ONE break" rather than "N will be dropped", because that is what
           actually happens: the pins are a priority pool the assembler draws from per break, so
           which ones appear varies by break rather than the list being truncated. */}
       {cap !== undefined && cap > 0 && ids.length > cap && (
-        <p className="text-signal text-xs" data-testid="pod-max-clamp">
+        <Text as="p" data-testid="pod-max-clamp" textRole="hint" tone="signal">
           A break plays at most {cap} {cap === 1 ? "clip" : "clips"}, so only some of these {ids.length}{" "}
           appear in any one break. Raise the limit in Filler settings to fit more.
-        </p>
+        </Text>
       )}
 
       {ids.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ul">
           {ids.map((id) => {
             const clip = resolve(id);
             // ⚠ **A resolved-and-missing id is a DEAD override, not a clip with a long name.**
-            // It used to render the raw 64-character content hash, and this file's own comment
-            // called that "the honest signal that the override points at something no longer
-            // airable" — honest to someone who already knew, unreadable to everyone else. The
-            // assembler silently skips it, so nothing else says the pin does nothing.
+            // Shown as such, never as the raw 64-character content hash: a hash is a signal only
+            // to someone who already knows, unreadable to everyone else. The assembler silently
+            // skips it, so nothing else says the pin does nothing.
             const gone = !clip && !resolving;
             return (
-              <li
+              <Stack
+                align="center"
+                className="border-border bg-card rounded-md border px-3 py-2"
+                direction="row"
+                gap="control"
                 key={id}
-                className="border-border bg-card flex items-center gap-3 rounded-md border px-3 py-2"
+                render="li"
               >
                 <div className="min-w-0 flex-1">
                   {gone ? (
                     <>
-                      <span className="text-onair-300 truncate text-sm font-medium">
+                      <Text as="span" className="truncate" textRole="cardLabel" tone="danger">
                         This clip is no longer in your catalog
-                      </span>
+                      </Text>
                       {/* The hash still shown, small and secondary: it is the only handle an
                           operator has if they want to work out WHICH clip this was. */}
-                      <span className="text-static-400 ml-2 truncate font-mono text-xs">
+                      <Text as="span" className="ml-2 truncate" textRole="mono">
                         {id.slice(0, 12)}…
-                      </span>
+                      </Text>
                     </>
                   ) : (
                     <>
-                      <span className="truncate text-sm font-medium">{clip?.name ?? id}</span>
+                      <Text as="span" className="truncate" textRole="cardLabel">
+                        {clip?.name ?? id}
+                      </Text>
                       {clip ? (
-                        <span className="text-static-400 ml-2 font-mono text-xs">
+                        <Text as="span" className="ml-2" textRole="mono">
                           {formatClipDuration(clip.durationMs)}
-                        </span>
+                        </Text>
                       ) : null}
                     </>
                   )}
@@ -141,14 +150,14 @@ const FillerClipList = ({
                       : `Remove ${clip?.name ?? id}`}
                   </Action>
                 </Tooltip>
-              </li>
+              </Stack>
             );
           })}
-        </ul>
+        </Stack>
       )}
 
       {adding ? (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <SearchCommand
             query={query}
             onQueryChange={setQuery}
@@ -181,7 +190,7 @@ const FillerClipList = ({
           >
             Cancel
           </Action>
-        </div>
+        </Stack>
       ) : (
         <Action
           disabled={disabled}
@@ -193,7 +202,7 @@ const FillerClipList = ({
           Add a clip…
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

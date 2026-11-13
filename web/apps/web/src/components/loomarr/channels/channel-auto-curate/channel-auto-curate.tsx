@@ -1,18 +1,17 @@
-import { Text, Toggle } from "@loomarr/design-system";
+import { Stack, Text, Toggle } from "@loomarr/design-system";
 import { CommitField } from "@loomarr/ui";
 import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelAutoCurateProps } from "./channel-auto-curate.type";
 
 // ChannelAutoCurate — the per-channel auto-curate opt-in (programming-design.md §8.2).
 //
-// ORPHANED until now, and for a structural reason worth keeping written down: **the opt-in IS
-// the object's presence.** `policy.autoCurate` is a `*AutoCurate` — nil means off, and a
+// Its own component for a structural reason worth keeping written down: **the opt-in IS the
+// object's presence.** `policy.autoCurate` is a `*AutoCurate` — nil means off, and a
 // zero-value (non-nil) object means "opted in, inherit both global thresholds". So there is no
 // boolean field to bind a checkbox to; the checkbox has to CONSTRUCT `{}` or DELETE the object.
-// A generic policy field editor could never reach it, which is exactly why nothing did.
+// A generic policy field editor cannot reach it.
 //
 // The opt-out is safe because PATCH /v1/channels/{id} replaces the policy wholesale
 // (schedule.MergeFromOperator: `out := incoming`, only `Applied` is force-preserved). Sending a
@@ -59,8 +58,8 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
   };
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex items-start gap-2.5">
+    <Stack className={className} gap="control">
+      <Stack align="start" direction="row" gap="2.5">
         <Toggle
           id="policy-auto-curate"
           label={OPT_IN_LABEL}
@@ -70,8 +69,8 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           aria-describedby="policy-auto-curate-hint"
           onCheckedChange={toggle}
         />
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <Stack gap="1">
+          <Stack align="center" direction="row" gap="1.5" wrap>
             <Text as="label" htmlFor="policy-auto-curate" textRole="label" tone="primary">
               {OPT_IN_LABEL}
             </Text>
@@ -85,20 +84,20 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
               overrideLabel="Opted in"
               defaultLabel="Default: off"
             />
-          </div>
+          </Stack>
           {/* The hint tracks the CURRENT state — it is the sentence that says what is happening
               now, not a static description of the setting. (An earlier version always read "Off,
               new titles wait for your approval", which flatly contradicted a ticked box; the
               unit tests passed and the story screenshot caught it.) */}
-          <p id="policy-auto-curate-hint" className="text-muted-foreground text-sm">
+          <Text as="p" id="policy-auto-curate-hint" textRole="compact" tone="secondary">
             {!intentBacked
               ? "Only for channels built from an intent. This one was made by hand, so there is no intent to re-check."
               : enabled
                 ? "New titles that fit are added on their own, within the limits below."
                 : "Off, new titles wait for your approval."}
-          </p>
-        </div>
-      </div>
+          </Text>
+        </Stack>
+      </Stack>
 
       {/* The two overrides appear only once opted in: they modify a behaviour that is
           otherwise not running, and showing disabled boxes for a feature that is off reads as
@@ -108,8 +107,8 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         // source badge and Reset right, in the mock's two-column grid at full width (#1877 mock).
         // Unindented, so the badge row fits beside or under the label on a phone.
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <Stack gap="1">
+            <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-score" textRole="hint" tone="secondary">
                 Quality bar
               </Text>
@@ -118,7 +117,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onReset={() => onChange(resetThreshold(policy, "minScorePct"))}
                 label="Quality bar"
               />
-            </div>
+            </Stack>
             <CommitField
               // Keyed on the stored value, so a reset re-seeds the box.
               key={auto?.minScorePct ?? 0}
@@ -134,9 +133,9 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onChange({ ...policy, autoCurate: { ...auto, minScorePct: next } });
               }}
             />
-          </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          </Stack>
+          <Stack gap="1">
+            <Stack align="center" direction="row" gap="inline" justify="between" wrap>
               <Text as="label" htmlFor="policy-auto-curate-cap" textRole="hint" tone="secondary">
                 Title cap
               </Text>
@@ -145,7 +144,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onReset={() => onChange(resetThreshold(policy, "maxTitles"))}
                 label="Title cap"
               />
-            </div>
+            </Stack>
             <CommitField
               key={auto?.maxTitles ?? 0}
               id="policy-auto-curate-cap"
@@ -159,10 +158,10 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
                 onChange({ ...policy, autoCurate: { ...auto, maxTitles: next } });
               }}
             />
-          </div>
+          </Stack>
         </div>
       )}
-    </div>
+    </Stack>
   );
 };
 
