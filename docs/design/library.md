@@ -283,8 +283,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
 - **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used or
-  added, and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and Jellyfin).
-  A pass is *asked* when Scan now, Refresh everything or using or adding a folder started it, or
+  added, when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
+  the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
+  Jellyfin). A pass is *asked* when Scan now, Refresh everything, using or adding a folder or
+  setting a mapping started it, or
   it is the start-up pass of a library with no files yet (its first import); an unasked pass with
   nothing to read or look up is *quiet*, and shows only "Checking your folders…".
   `POST /v1/library/refresh` (Refresh everything, asked first) clears every present file's identity

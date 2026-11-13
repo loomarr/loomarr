@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -365,6 +366,19 @@ func (l *Library) Add(ctx context.Context, path string) error {
 		return err
 	}
 	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// SetMapping points an authority's folder at a local folder by hand and, when it points somewhere,
+// asks for a pass: the files the mapping reaches arrive now, not at the next hourly pass, and no
+// restart is needed to make a corrected mapping take (#3359). Clearing one asks for nothing.
+func (l *Library) SetMapping(ctx context.Context, authority, authorityPath, local string) error {
+	if err := l.Roots.SetMapping(ctx, authority, authorityPath, local); err != nil {
+		return err
+	}
+	if strings.TrimSpace(local) != "" && l.Enabled() {
 		l.Scanner.Trigger()
 	}
 	return nil

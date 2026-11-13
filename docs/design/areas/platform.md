@@ -88,7 +88,7 @@ One area of the [package map](../package-map.md#start-here).
 - **`platform/store/proposalstore`** · 13 importers · → `platform/store/channelstore`, `platform/store/storedb`, `proposals`
   Persists the suggester's work: generation jobs and their attempts, the proposals they produce, and the transactions that commit a result (the proposal_jobs, proposal_job_attempts and proposals tables).
 - **`platform/store/qualitystore`** · 1 importer · → `platform/store/storedb`, `proposals/quality`
-  Persists the suggestion-quality ledger (#2147 Wave 8): per-attempt receipts, their daily roll-ups, and the immutable run snapshots an evaluation pins its facts to.
+  Persists the proposal-quality ledger (#2147 Wave 8): per-attempt receipts, their daily roll-ups, and the immutable run snapshots an evaluation pins its facts to.
 - **`platform/store/schemadoc`** · 1 importer
   The plain-words description of every table and column Loomarr's migrations create, and renders it as docs/reference/database.md for someone browsing the database (`make db-view`, sqlite3, any SQL client).
 - **`platform/store/storedb`** · 13 importers

@@ -151,9 +151,10 @@ func TestDiscoverKeepsFailedSourceAndMarksOffline(t *testing.T) {
 	}
 }
 
-// Using a folder, or typing one in, asks for a pass at once; releasing one does not.
+// Using a folder, typing one in, or mapping one by hand asks for a pass at once; releasing a folder
+// or clearing a mapping does not.
 func TestUsingAFolderAsksForAPass(t *testing.T) {
-	disk := fakeDisk{readable: map[string]bool{"/media/tv": true, "/mnt/extra": true}}
+	disk := fakeDisk{readable: map[string]bool{"/media/tv": true, "/mnt/extra": true, "/mnt/shows": true}}
 	h := newHarness(t)
 	roots := newRoots(t, disk, "", Source{Authority: "sonarr", Folders: folders("/media/tv")})
 	lib := &Library{Roots: roots, Scanner: NewScanner(h.im, time.Hour)}
@@ -190,6 +191,21 @@ func TestUsingAFolderAsksForAPass(t *testing.T) {
 	}
 	if err := lib.SetInUse(ctx, "/nowhere", true); err == nil || asked() {
 		t.Fatalf("an unknown folder: err %v, asked %v", err, asked())
+	}
+	if err := lib.SetMapping(ctx, "sonarr", "/media/tv", "/mnt/shows"); err != nil {
+		t.Fatal(err)
+	}
+	if !asked() {
+		t.Fatal("a mapping set by hand did not ask for a pass")
+	}
+	if err := lib.SetMapping(ctx, "sonarr", "/media/tv", ""); err != nil {
+		t.Fatal(err)
+	}
+	if asked() {
+		t.Fatal("clearing a mapping asked for a pass")
+	}
+	if err := lib.SetMapping(ctx, "sonarr", "/nowhere", "/mnt/shows"); err == nil || asked() {
+		t.Fatalf("an unknown mapping: err %v, asked %v", err, asked())
 	}
 }
 

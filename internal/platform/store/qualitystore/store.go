@@ -1,4 +1,4 @@
-// Package qualitystore persists the suggestion-quality ledger (#2147 Wave 8): per-attempt receipts,
+// Package qualitystore persists the proposal-quality ledger (#2147 Wave 8): per-attempt receipts,
 // their daily roll-ups, and the immutable run snapshots an evaluation pins its facts to.
 //
 // It is a cluster of the store, built on the storedb kernel and never importing the store: the
