@@ -273,9 +273,9 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 	clip, _, _ := p.clips.GetClip(ctx, hash)
 	p.publish(row, clip)
 	if p.log != nil {
-		// ⚠ Logged HERE, not at the call site: the operator-facing adapter has no logger by
-		// design, and this is the line that distinguishes "the re-detect worked and the reel is
-		// moving" from "the reel is stuck" — the one fact that was unobservable before V54a.
+		// ⚠ The success is logged HERE, so the line that distinguishes "the re-detect worked and
+		// the reel is moving" from "the reel is stuck" is written by the code that knows it moved
+		// something. The caller logs a failure.
 		p.log.Info("split: re-detected reel returned to the belt", "clip", hash)
 	}
 	return true, nil
