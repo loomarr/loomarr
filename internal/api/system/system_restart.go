@@ -7,6 +7,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
 )
 
 // /v1/system/restart* + /v1/system/reload — the restart control (§9.2, §7, V13).
@@ -111,9 +112,21 @@ func (s *Handlers) systemRestart(ctx context.Context, _ *struct{}) (*struct{}, e
 		return nil, httpcore.NotImplemented("Restart unavailable",
 			"This build can't restart itself. Restart the container or service the way you started it.")
 	}
+	// Who restarted it, and when, is kept in the activity feed (#3359): it survives the restart, so
+	// the household and the deploy tooling can both read why the generation changed.
+	s.activity.Info(ctx, activitystore.ActivityKindSystem, "", restartLine(ctx))
 	// Returns immediately; the drain happens after this response is written.
 	s.restart.Restart()
 	return &struct{}{}, nil
+}
+
+// restartLine is the activity line for a restart: who asked, by name, or the admin API token,
+// which has no user behind it.
+func restartLine(ctx context.Context) string {
+	if u, ok := httpcore.UserFrom(ctx); ok && u.Name != "" {
+		return "Loomarr was restarted by " + u.Name
+	}
+	return "Loomarr was restarted with the admin API token"
 }
 
 type systemReloadOutput struct {

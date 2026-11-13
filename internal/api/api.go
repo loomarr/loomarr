@@ -105,6 +105,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		Backups:      opts.System.Backups, Database: opts.System.Database, Encryption: opts.System.Encryption, Jobs: opts.System.Jobs,
 		SystemLLM: opts.System.LLM, Restart: opts.System.Restart, RestartDrift: opts.System.RestartDrift,
 		PlayoutObserver: opts.Playout.Observer, ConnectionChecks: setupRoutes.ConnectionChecks,
+		Activity: opts.Activity,
 	}, false).Register(humaAPI)
 	imageRoutes := imagesapi.New(imagesapi.Deps{Log: log, Images: opts.Images})
 	channelDeps := channelsapi.Deps{
