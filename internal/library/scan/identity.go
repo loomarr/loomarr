@@ -807,13 +807,18 @@ var spelledNumbers = map[string]int{
 // "Series 7 Club", "Season 25 Club".
 const seasonNotes = `(?:[ ._]*[-\[(].*|[ ._]+(?:\d{3,4}p|complete|(?:19|20)\d{2}|web(?:-?dl|rip)?|blu-?ray|bdrip|brrip|hdtv|dvd(?:rip)?|x26[45]|h\.?26[45]|hevc|uhd|4k|remux|multi|disc|disk|dvd)(?:[ ._].*)?)?`
 
+// seasonMarkNotes is what may follow a season's bare mark, "S02", in a folder's name: its disc,
+// "S02D1", "S02 Disc 1"; the year it aired after a dash, "S01 - 2010"; and bracketed notes.
+const seasonMarkNotes = `(?:[ ._-]*(?:d|disc|disk|dvd)[ ._-]*\d{1,2})?(?:[ ._]*-[ ._]*(?:19|20)\d{2})?(?:[ ._-]*[\[(][^\])]*[\])])*`
+
 var (
 	// seasonFolder matches a season folder's name and its number: "Season 1", "Season 01", "Series
-	// One", "Staffel 1", "Säsong 1", with its notes; "S01" with only bracketed notes.
-	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)` + seasonNotes + `|s(\d{1,4})(?:[ ._-]*[\[(][^\])]*[\])])*)$`)
+	// One", "Staffel 1", "Säsong 1", with its notes; "S01" with only its disc, year or bracketed
+	// notes (seasonMarkNotes).
+	seasonFolder = regexp.MustCompile(`(?i)^(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)` + seasonNotes + `|s(\d{1,4})` + seasonMarkNotes + `)$`)
 	// namedSeason matches a season folder that starts with its show's name: "Kettle Bay Season 1",
-	// "KB Season 1".
-	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)` + seasonNotes + `|s(\d{1,2}))$`)
+	// "KB Season 1", "Kettle Bay S02D1".
+	namedSeason = regexp.MustCompile(`(?i)^(.+?)[ ._-]+(?:(?:` + seasonWords + `)[ ._-]*(\d{1,4}|[a-z]+)` + seasonNotes + `|s(\d{1,2})` + seasonMarkNotes + `)$`)
 	// seasonDashEpisode matches a season's word and number, then its episode's, apart by dashes:
 	// "Series 2 - 05 - Muddy Day", "Season 1 - 03".
 	seasonDashEpisode = regexp.MustCompile(`(?i)(?:^|[^\pL0-9])(?:` + seasonWords + `)[ ._]*(\d{1,2})[ ._]*-[ ._]*(\d{1,3})(?:[ ._]*-|[ ._]*$)`)
@@ -1747,7 +1752,14 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		(atoi(m[2]) > 0 || m[2] == "" && ovaWord.MatchString(m[0])) {
 		return showSpelling(m[1]), mp.Numbering{Season: 0, Episode: atoi(m[2])}, true
 	}
-	show, number := "", 0
+	// A release's recap with no number, "[Grp] Hoshino Rail - Recap", is the show's season 0's, as
+	// "- Recap - 06.5" is: no film is tagged so.
+	if bare := leadingTags.ReplaceAllString(s, ""); tagged || grouped {
+		if m := animeAside.FindStringSubmatch(strings.TrimSpace(trimReleaseNotes(bare))); m != nil && !strings.EqualFold(m[2], "special") {
+			return showSpelling(m[1]), mp.Numbering{Season: 0}, true
+		}
+	}
+	show, number, zero := "", 0, false
 	if m := animeBrackets.FindStringSubmatch(s); m != nil {
 		show, number = m[1], atoi(m[2])
 	} else if tagged || grouped || paddedAbsolute.MatchString(plainStem(name)) ||
@@ -1769,6 +1781,9 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		}
 		if m != nil && (tagged || m[2] != "" || grouped && strings.HasPrefix(m[3], "0")) && !yearToken.MatchString(matched(m[2], m[3])) {
 			show, number = m[1], atoi(matched(m[2], m[3]))
+			// A tagged release's "- 00" is its prologue, an episode before the first: the show's,
+			// placed by the catalog.
+			zero = number == 0 && (tagged || grouped) && m[2] != ""
 		}
 	}
 	// A tagged release numbered as Japanese and Chinese write it: "[Kumo] Hoshi Kettle 第03話".
@@ -1777,7 +1792,7 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 			show, number = strings.TrimSpace(bare[:strings.Index(bare, m[0])]), atoi(matched(m[1], m[2]))
 		}
 	}
-	if number == 0 || show == "" {
+	if number == 0 && !zero || show == "" {
 		return "", mp.Numbering{}, false
 	}
 	// "Mizu no Oto Ep 05" is "Mizu no Oto"'s: the word before a number is the number's.
@@ -2023,6 +2038,11 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	}
 	if m := partOf.FindStringSubmatch(name); m != nil && atoi(m[1]) <= atoi(m[2]) {
 		return episode(atoi(m[1]))
+	}
+	// "201 Return" beside "101 Pilot" in a show's own folder is season 2's first (compositeNumbers).
+	if m := leadingComposite.FindStringSubmatch(name); m != nil && !inSeason && file.Notes.Composite {
+		n := atoi(m[1])
+		return mp.Numbering{Season: n / 100, Episode: n % 100}, true
 	}
 	// So do a show's episodes numbered alone in its own folder ("Ocean Halls/01 - The Deep.mkv").
 	if m := leadingNumber.FindStringSubmatch(name); (inSeason || namedFolder || file.Notes.Leading) && m != nil {
@@ -2356,6 +2376,10 @@ type folderNotes struct {
 	// Tidewater", "102 - Low Water" share 1), and 0 when they share none, or one is "99" or a whole
 	// hundred.
 	Hundreds int
+	// Composite is a folder whose videos all start with a season's number and an episode's run
+	// together, in two seasons or more: "101 Pilot", "102 The Well", "201 Return", "1210 Late
+	// Year" (compositeNumbers).
+	Composite bool
 	// Dump is a folder whose episodes name their shows, none of them the folder's own:
 	// "Torrents/Kettle Bay S01E01.mkv" beside "Torrents/Ferrow Lane S02E03.mkv", or a genre's
 	// "TV/Kids/Kettle Bay S01E04.mkv". It names no show, as a catch-all does.
@@ -2777,6 +2801,7 @@ func notesOf(names []string) folderNotes {
 	for prefix, n := range spelled {
 		notes.Spelled = notes.Spelled || n >= 2 && prefix != ""
 	}
+	notes.Composite = compositeNumbers(names)
 	// Every name that starts with a number of three digits starts with one in the same hundred:
 	// "101", "102", beside a "07" written plainly. A whole hundred, "100" after "99", says the
 	// numbers run on past it.
@@ -2791,12 +2816,44 @@ func notesOf(names []string) folderNotes {
 		}
 		switch hundreds := n / 100; {
 		case n < 100 || n%100 == 0 || (notes.Hundreds != 0 && notes.Hundreds != hundreds):
-			return folderNotes{Numbered: notes.Numbered, Spelled: notes.Spelled}
+			return folderNotes{Numbered: notes.Numbered, Spelled: notes.Spelled, Composite: notes.Composite}
 		default:
 			notes.Hundreds = hundreds
 		}
 	}
 	return notes
+}
+
+// leadingComposite matches a name that starts with its season's number and its episode's, run
+// together in three or four digits: "101 Pilot", "1210 - Late Year".
+var leadingComposite = regexp.MustCompile(`^(\d{3,4})(?:[ ._-]|$)`)
+
+// compositeNumbers says whether a folder's videos number themselves by season and episode run
+// together: every video that starts with a number starts with three or four digits, none a
+// year's, each an episode from 1 to 49 of its hundred's season, and the hundreds are two or more.
+// A show numbered through its whole
+// run counts on past a hundred, "99", "100", "101", so a folder with a number under a hundred, a
+// whole hundred or a high one in its hundred ("150") is none; one hundred alone, "101"-"112",
+// reads either way and is left to the season's folder (Hundreds).
+func compositeNumbers(names []string) bool {
+	seasons := map[int]bool{}
+	for _, name := range names {
+		s := plainStem(name)
+		// A video with no number first, "Pilot", "Bonus", says nothing of how the rest are numbered.
+		if s == "" || s[0] < '0' || s[0] > '9' {
+			continue
+		}
+		m := leadingComposite.FindStringSubmatch(s)
+		if m == nil || yearToken.MatchString(m[1]) {
+			return false
+		}
+		n := atoi(m[1])
+		if n%100 < 1 || n%100 > 49 {
+			return false
+		}
+		seasons[n/100] = true
+	}
+	return len(seasons) >= 2
 }
 
 // numberedName matches a name and the number after it, three or four digits or two padded, and

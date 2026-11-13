@@ -61,6 +61,28 @@ func TestSeasonsApartOnlyOnARestart(t *testing.T) {
 	}
 }
 
+// A folder numbers its videos by season and episode run together only when its numbers span two
+// seasons' hundreds or more, each low in its hundred; a show counted through its run does not.
+func TestCompositeNumbersSpanSeasons(t *testing.T) {
+	for _, c := range []struct {
+		names []string
+		want  bool
+	}{
+		{[]string{"101 Pilot.mkv", "102 The Well.mkv", "201 Return.mkv"}, true},
+		{[]string{"101 Pilot.mkv", "1210 Late Year.mkv"}, true},
+		{[]string{"101 Pilot.mkv", "102 The Well.mkv"}, false},                        // one hundred reads either way
+		{[]string{"99 Late.mkv", "100 Round.mkv", "101 On.mkv", "201 On.mkv"}, false}, // a run past a hundred
+		{[]string{"101 Pilot.mkv", "150 Mid.mkv", "201 Return.mkv"}, false},           // 150 is no season's episode
+		{[]string{"1984 Signals.mkv", "2001 Signals.mkv"}, false},                     // years
+		{[]string{"101 Pilot.mkv", "201 Return.mkv", "Bonus.mkv"}, true},              // a name with no number says nothing
+		{[]string{"101 Pilot.mkv", "201 Return.mkv", "07 Odd.mkv"}, false},            // a short number does
+	} {
+		if got := compositeNumbers(c.names); got != c.want {
+			t.Errorf("compositeNumbers(%v) = %v, want %v", c.names, got, c.want)
+		}
+	}
+}
+
 // A season's word misspelled by a letter still names a season; words of their own do not.
 func TestSeasonInReadsAMisspelledSeason(t *testing.T) {
 	for name, want := range map[string]int{

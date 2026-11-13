@@ -60,8 +60,10 @@ func (b *builder) settleFolders(ids, others []identity) {
 // way ("Corrow Fen/CF S01E01.mkv"). But an episode its file names as another show, numbered as
 // one of the folder's own, is that show's: two first episodes of season one are two shows'
 // ("Corrow Fen/Season 1/Brindle Point S01E01.mkv" beside "Corrow Fen S01E01.mkv"), and a
-// spin-off kept in its franchise's folder starts its own first season. The folder's own episodes
-// are the ones named as it is or not named at all.
+// spin-off kept in its franchise's folder starts its own first season. So is one its file names as
+// another show in a film's folder, numbered as anything: "Movies/Yarrow Lake (2001)/Yarrow Lake -
+// The Series S01E01.mkv" is the series'. The folder's own episodes are the ones named as it is or
+// not named at all.
 func (b *builder) splitNamed(ids, others []identity) {
 	type key struct {
 		dir, name string
@@ -83,7 +85,7 @@ func (b *builder) splitNamed(ids, others []identity) {
 			n := id.numbering()
 			s := b.series[id.seriesDir]
 			if id.kind != mp.KindEpisode || n == nil || ownEpisode(id) || s == nil || s.managed != nil ||
-				len(s.ids) > 0 || !b.dirs[id.seriesDir] || !own[id.seriesDir][[2]int{n.Season, n.Episode}] {
+				len(s.ids) > 0 || !b.dirs[id.seriesDir] || !own[id.seriesDir][[2]int{n.Season, n.Episode}] && !amongFilms(id.seriesDir) {
 				continue
 			}
 			split[key{id.seriesDir, normName(id.named)}] = true
