@@ -142,6 +142,9 @@ const familyOf = ({ util }) => {
     )
   )
     return "flexItem";
+  if (/^rounded(?:-|$)/.test(util)) return "radius";
+  if (/^border(?:-|$)/.test(util) && !/^border-(?:collapse|separate|spacing)/.test(util)) return "border";
+  if (/^bg-/.test(util)) return "background";
   return null;
 };
 
@@ -356,7 +359,101 @@ const convertFlexItem = (tokens) => {
   return { consumed: tokens.map((token) => token.raw), props };
 };
 
+// ---- Surface: border, radius, background ------------------------------------------------------------
+// Only what has an exact design-system token. The app's Tailwind theme is the dark palette, and its
+// semantic names resolve to these tokens' dark values: --border is static-700 (borderDecorative),
+// --card static-900 (surfaceRaised), --background static-950 (surfaceCanvas), --muted/--secondary/
+// --accent static-800 (surfaceElevated). Radii: lg is 12 (the `cardCompact` radius), md 8, sm 4.
+
+const BACKGROUNDS = {
+  "bg-accent": "surfaceElevated",
+  "bg-background": "surfaceCanvas",
+  "bg-card": "surfaceRaised",
+  "bg-muted": "surfaceElevated",
+  "bg-secondary": "surfaceElevated",
+};
+const RADII = {
+  "rounded-full": '"round"',
+  "rounded-lg": '"cardCompact"',
+  "rounded-md": "{8}",
+  "rounded-sm": "{4}",
+};
+const SIDE_WIDTH = {
+  b: "borderBottomWidth",
+  l: "borderLeftWidth",
+  r: "borderRightWidth",
+  t: "borderTopWidth",
+};
+
+const convertBackground = (tokens) => {
+  if (tokens.length !== 1) return null;
+  const [token] = tokens;
+  const value = !token.variants.length && !token.important && !token.negative && BACKGROUNDS[token.util];
+  return value
+    ? { consumed: [token.raw], props: [["backgroundColor", `backgroundColor=${JSON.stringify(value)}`]] }
+    : null;
+};
+
+const convertRadius = (tokens) => {
+  if (tokens.length !== 1) return null;
+  const [token] = tokens;
+  const value = !token.variants.length && !token.important && !token.negative && RADII[token.util];
+  return value ? { consumed: [token.raw], props: [["borderRadius", `borderRadius=${value}`]] } : null;
+};
+
+// border, border-b, border-2, border-dashed and border-border, resolved all-sides first and then by
+// side. With no colour class the border is the theme's default, which is the same border-border.
+const convertBorder = (tokens) => {
+  const widths = {};
+  let style = null;
+  let width = false;
+  const sorted = [...tokens].sort(
+    (a, b) => Number(/^border-[xytrbl]/.test(a.util)) - Number(/^border-[xytrbl]/.test(b.util)),
+  );
+  for (const token of sorted) {
+    if (token.variants.length > 0 || token.important || token.negative) return null;
+    const { util } = token;
+    if (util === "border-border") continue;
+    if (util === "border-dashed" || util === "border-dotted") {
+      style = util.slice("border-".length);
+      continue;
+    }
+    if (util === "border-solid") continue;
+    const match = /^border(?:-([xytrbl]))?(?:-(0|2|4|8))?$/.exec(util);
+    if (!match) return null;
+    const [, side, size] = match;
+    const value = size === undefined ? 1 : Number(size);
+    const targets =
+      side === undefined
+        ? ["t", "r", "b", "l"]
+        : side === "x"
+          ? ["l", "r"]
+          : side === "y"
+            ? ["t", "b"]
+            : [side];
+    for (const target of targets) widths[target] = value;
+    width = true;
+  }
+  if (!width) return null;
+  const props = [];
+  const sides = ["t", "r", "b", "l"];
+  if (sides.every((side) => widths[side] !== undefined && widths[side] === widths.t)) {
+    props.push(["borderWidth", `borderWidth={${widths.t}}`]);
+  } else {
+    for (const side of sides) {
+      if (widths[side] !== undefined) props.push([SIDE_WIDTH[side], `${SIDE_WIDTH[side]}={${widths[side]}}`]);
+    }
+  }
+  if (Object.values(widths).some((value) => value > 0))
+    props.push(["borderColor", 'borderColor="borderDecorative"']);
+  if (style) props.push(["borderStyle", `borderStyle=${JSON.stringify(style)}`]);
+  return { consumed: tokens.map((token) => token.raw), props };
+};
+
 const CONVERTERS = {
+  background: convertBackground,
+  border: convertBorder,
+  radius: convertRadius,
   align: convertAlign,
   direction: convertDirection,
   flexItem: convertFlexItem,
@@ -380,11 +477,14 @@ const STACK_AGREES = new Set(["min-w-0", "min-h-0"]);
 // layoutPlan decides what a className becomes on a Stack. `isNew` is a div being turned into one: it
 // must be a plain `flex` container and every hard family must convert. An existing Stack converts only
 // the families its base rule leaves to Tailwind.
-const layoutPlan = (tokens, { existing, isNew, block = false }) => {
+const SURFACE_FAMILIES = new Set(["background", "border", "radius"]);
+
+const layoutPlan = (tokens, { existing, isNew, block = false, surface = false }) => {
   const byFamily = {};
   for (const token of tokens) {
     const family = familyOf(token);
-    if (family) byFamily[family] = [...(byFamily[family] ?? []), token];
+    if (family && (surface || !SURFACE_FAMILIES.has(family)))
+      byFamily[family] = [...(byFamily[family] ?? []), token];
   }
   const consumed = new Set();
   const props = new Map();
@@ -753,20 +853,83 @@ const transform = (source, file = "file.tsx", options = {}) => {
   const commentsWithin = (node) =>
     ast.comments.some((comment) => comment.start >= node.start && comment.end <= node.end);
 
-  const visit = (node) => {
+  // `parent` is the nearest JSX element above, which decides whether a text span is a flex item.
+  const visit = (node, parent = null) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) {
-      for (const child of node) visit(child);
+      for (const child of node) visit(child, parent);
       return;
     }
-    if (node.type === "JSXElement") rewrite(node);
+    if (node.type === "JSXElement") rewrite(node, parent);
+    const next = node.type === "JSXElement" ? node : parent;
     for (const [key, child] of Object.entries(node)) {
       if (
         ["loc", "start", "end", "extra", "leadingComments", "trailingComments", "innerComments"].includes(key)
       )
         continue;
-      if (child && typeof child === "object") visit(child);
+      if (child && typeof child === "object") visit(child, next);
     }
+  };
+
+  // wrapperFor moves a Text's layout classes (margin, flex item, width, min-width) onto a Stack
+  // around it, because a `Text as="…"` renders a plain element that ignores layout props. The
+  // wrapper is the flex item the Text was, so the picture is the same. It returns the Stack props and
+  // the classes they replace, or null where nothing can move.
+  const wrapperFor = (element, parent, tokens, existing) => {
+    // The element a Text renders: its `as`, or the tag itself for a plain element being converted.
+    const asAttribute = element.openingElement.attributes.find(
+      (attribute) => attribute.type === "JSXAttribute" && attributeName(attribute) === "as",
+    );
+    const name =
+      elementName(element.openingElement) === "Text"
+        ? asAttribute?.value?.type === "StringLiteral"
+          ? asAttribute.value.value
+          : ""
+        : elementName(element.openingElement);
+    if (existing.has("key") || !canUse("Stack")) return null;
+    // A span is inline; only a flex item (the child of a Stack or a flex div) is blockified anyway.
+    const parentFlexes =
+      parent !== null &&
+      (elementName(parent.openingElement) === "Stack" ||
+        parent.openingElement.attributes.some(
+          (attribute) =>
+            attribute.type === "JSXAttribute" &&
+            attributeName(attribute) === "className" &&
+            (classValue(attribute) ?? "").split(/\s+/).includes("flex"),
+        ));
+    if (name === "span" ? !parentFlexes : !/^(?:p|h[1-6])$/.test(name)) return null;
+    // A clipped or ellipsed line sizes by its own content unless it was told it may shrink.
+    const names = tokens.map((token) => token.util);
+    if (
+      (names.includes("truncate") || names.some((util) => util.startsWith("whitespace-nowrap"))) &&
+      !names.includes("min-w-0")
+    )
+      return null;
+    const props = new Map();
+    const consumed = new Set();
+    for (const family of ["margin", "flexItem", "minWidth", "minHeight", "width"]) {
+      const familyTokens = tokens.filter((token) => familyOf(token) === family);
+      if (familyTokens.length === 0) continue;
+      const converted = CONVERTERS[family](familyTokens);
+      if (!converted) continue;
+      for (const [propName, text] of converted.props) props.set(propName, text);
+      for (const raw of converted.consumed) consumed.add(raw);
+    }
+    if (consumed.size === 0) return null;
+    const shrinks = tokens.some((token) => token.variants.length === 0 && /^min-[wh]-0$/.test(token.util));
+    if (shrinks && !props.has("flexShrink")) props.set("flexShrink", "flexShrink={1}");
+    return { consumed, props };
+  };
+
+  // wrap puts the Stack's tags around an element's whole source.
+  const wrap = (element, props) => {
+    const attributes = [...props.entries()]
+      .sort(([a], [b]) => (a.toLowerCase() < b.toLowerCase() ? -1 : 1))
+      .map(([, text]) => text)
+      .join(" ");
+    edits.push({ end: element.start, kind: "wrap", start: element.start, text: `<Stack ${attributes}>` });
+    edits.push({ end: element.end, kind: "wrap", start: element.end, text: "</Stack>" });
+    needs.add("Stack");
   };
 
   // attributesWith re-emits an opening tag's attributes with `added` merged in. When the attributes
@@ -799,7 +962,7 @@ const transform = (source, file = "file.tsx", options = {}) => {
     return { end: classAttribute.end, start: classAttribute.start, text: replacement };
   };
 
-  const rewrite = (element) => {
+  const rewrite = (element, parent) => {
     const { openingElement: opening, closingElement: closing } = element;
     const name = elementName(opening);
     if (!name) return;
@@ -826,20 +989,27 @@ const transform = (source, file = "file.tsx", options = {}) => {
     if (isText) {
       if (!existing.has("textRole")) return;
       const dead = deadTypography(tokens);
-      if (dead.length === 0) return;
+      const hoist = options.wrap && existing.has("as") ? wrapperFor(element, parent, tokens, existing) : null;
+      if (dead.length === 0 && !hoist) return;
+      const gone = new Set([...dead, ...(hoist?.consumed ?? [])]);
       const keep = tokens
-        .filter((token) => !dead.includes(token.raw))
+        .filter((token) => !gone.has(token.raw))
         .map((token) => token.raw)
         .join(" ");
       edits.push({ ...attributesWith(opening, classAttribute, new Map(), keep), kind: "attributes" });
-      removed += dead.length;
-      converted.push(`${where} dropped ${dead.join(" ")} (the role's own style overrides them)`);
+      removed += gone.size;
+      if (dead.length > 0)
+        converted.push(`${where} dropped ${dead.join(" ")} (the role's own style overrides them)`);
+      if (hoist) {
+        wrap(element, hoist.props);
+        converted.push(`${where} wrapped in a Stack carrying ${[...hoist.consumed].join(" ")}`);
+      }
       return;
     }
 
     if (isStack) {
       if (hasSpread) return;
-      const plan = layoutPlan(tokens, { existing, isNew: false });
+      const plan = layoutPlan(tokens, { existing, isNew: false, surface: Boolean(options.surface) });
       if (plan.consumed.size === 0) {
         if (plan.reasons.length > 0) left.push(`${where} ${plan.reasons.join("; ")}`);
         return;
@@ -860,7 +1030,10 @@ const transform = (source, file = "file.tsx", options = {}) => {
       Boolean(options.blocks) &&
       isNewStack &&
       !flexes &&
-      tokens.some((token) => familyOf(token) !== null) &&
+      tokens.some((token) => {
+        const family = familyOf(token);
+        return family !== null && (options.surface || !SURFACE_FAMILIES.has(family));
+      }) &&
       isBlockContainer(element, tokens);
     if (isNewStack && (flexes || block)) {
       if (hasSpread) {
@@ -880,7 +1053,7 @@ const transform = (source, file = "file.tsx", options = {}) => {
         left.push(`${where} Stack is bound to something else in this file`);
         return;
       }
-      const plan = layoutPlan(tokens, { block, existing, isNew: true });
+      const plan = layoutPlan(tokens, { block, existing, isNew: true, surface: Boolean(options.surface) });
       if (plan.reason) {
         // A block container that has nothing to move is just a div; it is not worth a line.
         if (!block) left.push(`${where} ${plan.reason}`);
@@ -925,16 +1098,22 @@ const transform = (source, file = "file.tsx", options = {}) => {
       return;
     }
     const props = new Map([...plan.props, ["as", `as="${name}"`]]);
+    const hoist = options.wrap ? wrapperFor(element, parent, tokens, existing) : null;
+    const gone = new Set([...plan.consumed, ...(hoist?.consumed ?? [])]);
     const keep = tokens
-      .filter((token) => !plan.consumed.has(token.raw))
+      .filter((token) => !gone.has(token.raw))
       .map((token) => token.raw)
       .join(" ");
     edits.push({ end: opening.name.end, kind: "name", start: opening.name.start, text: "Text" });
     if (closing) edits.push({ end: closing.name.end, kind: "name", start: closing.name.start, text: "Text" });
     edits.push({ ...attributesWith(opening, classAttribute, props, keep), kind: "attributes" });
     needs.add("Text");
-    removed += plan.consumed.size;
+    removed += gone.size;
     converted.push(`${where} → Text ${plan.props.map(([, attributeText]) => attributeText).join(" ")}`);
+    if (hoist) {
+      wrap(element, hoist.props);
+      converted.push(`${where} wrapped in a Stack carrying ${[...hoist.consumed].join(" ")}`);
+    }
   };
 
   visit(program);
@@ -985,7 +1164,11 @@ const run = (argv) => {
     const source = readFileSync(file, "utf8");
     let result;
     try {
-      result = transform(source, file, { blocks: argv.includes("--blocks") });
+      result = transform(source, file, {
+        blocks: argv.includes("--blocks"),
+        surface: argv.includes("--surface"),
+        wrap: argv.includes("--wrap"),
+      });
     } catch (error) {
       console.error(`${file}: skipped, ${error.message}`);
       continue;

@@ -246,6 +246,67 @@ describe("block containers, which are opt-in", () => {
   });
 });
 
+describe("surface props, which are opt-in", () => {
+  const surface = (source) => transform(source, "case.tsx", { surface: true }).output;
+  const IMPORT_STACK = 'import { Stack } from "@loomarr/design-system";\n';
+
+  it("changes nothing without the option", () => {
+    expectUntouched(
+      `${IMPORT_STACK}const A = () => <Stack className="rounded-lg border bg-card">x</Stack>;\n`,
+    );
+  });
+
+  it("maps the theme's border, radius and background to tokens", () => {
+    assert.equal(
+      surface(
+        `${IMPORT_STACK}const A = () => <Stack className="border-border bg-card rounded-lg border">x</Stack>;\n`,
+      ),
+      `${IMPORT_STACK}const A = () => <Stack backgroundColor="surfaceRaised" borderColor="borderDecorative" borderRadius="cardCompact" borderWidth={1}>x</Stack>;\n`,
+    );
+  });
+
+  it("maps a single side and a pixel radius", () => {
+    assert.equal(
+      surface(`${IMPORT_STACK}const A = () => <Stack className="border-b rounded-md">x</Stack>;\n`),
+      `${IMPORT_STACK}const A = () => <Stack borderBottomWidth={1} borderColor="borderDecorative" borderRadius={8}>x</Stack>;\n`,
+    );
+  });
+
+  it("leaves a family that has any class without an exact token", () => {
+    const keep = (source) => assert.equal(surface(source), source);
+    keep(`${IMPORT_STACK}const A = () => <Stack className="border border-signal">x</Stack>;\n`);
+    keep(`${IMPORT_STACK}const A = () => <Stack className="bg-card/40">x</Stack>;\n`);
+    keep(`${IMPORT_STACK}const A = () => <Stack className="bg-static-900">x</Stack>;\n`);
+    keep(`${IMPORT_STACK}const A = () => <Stack className="rounded-t-lg">x</Stack>;\n`);
+    keep(`${IMPORT_STACK}const A = () => <Stack className="border md:border-r">x</Stack>;\n`);
+  });
+});
+
+describe("a Text's layout classes, wrapped in a Stack on request", () => {
+  const wrapped = (source) => transform(source, "case.tsx", { wrap: true }).output;
+  const TEXT = 'import { Text } from "@loomarr/design-system";\n';
+
+  it("changes nothing without the option", () => {
+    expectUntouched(`${TEXT}const A = () => <Text as="p" className="mt-1" textRole="hint">x</Text>;\n`);
+  });
+
+  it("carries the margin on a Stack around the Text", () => {
+    assert.equal(
+      wrapped(
+        `${TEXT}import { Stack } from "@loomarr/design-system";\nconst A = () => <Text as="p" className="mt-1" textRole="hint">x</Text>;\n`,
+      ),
+      `${TEXT}import { Stack } from "@loomarr/design-system";\nconst A = () => <Stack marginTop={4}><Text as="p"  textRole="hint">x</Text></Stack>;\n`,
+    );
+  });
+
+  it("keeps a clipped line that was never told it may shrink, and a keyed element", () => {
+    const keep = (source) => assert.equal(wrapped(source), source);
+    keep(`${TEXT}const A = () => <Text as="p" className="mt-1 truncate" textRole="hint">x</Text>;\n`);
+    keep(`${TEXT}const A = () => <Text as="p" className="mt-1" key="a" textRole="hint">x</Text>;\n`);
+    keep(`${TEXT}const A = () => <Text as="span" className="mt-1" textRole="hint">x</Text>;\n`);
+  });
+});
+
 describe("the whole run", () => {
   it("is idempotent", () => {
     const source = `import { Text } from "@loomarr/design-system";
