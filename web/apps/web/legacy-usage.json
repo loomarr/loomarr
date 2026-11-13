@@ -626,7 +626,7 @@
       "tailwindClasses": 5
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 38
+      "tailwindClasses": 19
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 32
