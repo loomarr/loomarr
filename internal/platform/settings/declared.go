@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/httpx"
@@ -243,10 +244,23 @@ func countryCodeList(v any) error {
 	return nil
 }
 
-// ianaZone validates guide.timezone: empty (each viewer's device) or a zone name the server can
-// load. time.LoadLocation also answers for "Local", the server's own zone, which is no name a
-// browser's Intl knows and which would hand every client a zone that differs from the one the
-// window grid is laid on, so it is refused beside everything that does not load.
+// offeredZones is the set of values guide.timezone's picker offers (timezonePresets), built once.
+var offeredZones = sync.OnceValue(func() map[string]struct{} {
+	presets := timezonePresets()
+	set := make(map[string]struct{}, len(presets))
+	for _, p := range presets {
+		set[p.Value] = struct{}{}
+	}
+	return set
+})
+
+// ianaZone validates guide.timezone: empty (each viewer's device) or one of the zones the setting
+// offers. It does not ask time.LoadLocation, which reads the host's zoneinfo before Go's embedded
+// copy: a host that has the tz database's rule files and leap-second trees (`posixrules`,
+// `right/UTC`), its placeholder zone (`Factory`) or the legacy names (`EST5EDT`, `US/Eastern`)
+// would accept them, no client's Intl knows them, and the same value would validate differently on
+// the next host. The list is generated from Go's own data, so every name on it loads anywhere, and
+// "Local", the server's own zone, is on neither.
 func ianaZone(v any) error {
 	name, ok := v.(string)
 	if !ok {
@@ -258,8 +272,8 @@ func ianaZone(v any) error {
 	if name == "Local" {
 		return fmt.Errorf("%q is the server's own zone, not a timezone name: use an IANA name such as America/New_York, or leave it empty", name)
 	}
-	if _, err := time.LoadLocation(name); err != nil {
-		return fmt.Errorf("%q is not an IANA timezone name such as America/New_York", name)
+	if _, offered := offeredZones()[name]; !offered {
+		return fmt.Errorf("%q is not a timezone this setting offers: use a city zone from the list, such as America/New_York, or leave it empty", name)
 	}
 	return nil
 }
