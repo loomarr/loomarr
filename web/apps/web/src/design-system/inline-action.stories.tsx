@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 const Sentence = ({ disabled = false, width = 520 }: { disabled?: boolean; width?: number }) => (
   <div style={{ maxWidth: width, padding: 24 }}>
     <Text as="p" textRole="hint" tone="secondary">
-      Following this installation (US · Springfield). A channel keeps this place until you pick another.{" "}
+      Following this installation (US · Harbor Point). A channel keeps this place until you pick another.{" "}
       <InlineAction disabled={disabled} onPress={() => undefined}>
         Use another place
       </InlineAction>
