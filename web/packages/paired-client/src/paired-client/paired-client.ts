@@ -98,12 +98,18 @@ const usePairedClient = ({
         lifecycle.enterBackground();
       }
     });
+    // Picture in picture outlives the app's foreground; closing it there pauses and releases the
+    // stream, as going to the background would have.
+    const stopPictureInPicture = transport.subscribePictureInPicture((active) => {
+      if (!active && AppState.currentState !== "active") lifecycle.enterBackground();
+    });
     return () => {
       catalogRefresher.abort();
       versionRequest.current?.abort();
       subscription.remove();
+      stopPictureInPicture();
     };
-  }, [catalogRefresher, guide, lifecycle, refresh]);
+  }, [catalogRefresher, guide, lifecycle, refresh, transport]);
   const reloadAll = useCallback(() => {
     refresh();
     void guide.refresh();

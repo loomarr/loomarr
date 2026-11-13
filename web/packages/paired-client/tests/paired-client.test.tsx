@@ -61,7 +61,10 @@ const fakes = vi.hoisted(() => {
     }[],
     transport: undefined as unknown as PlayerTransport & {
       emit: (event: PlayerTransportEvent) => void;
+      inPictureInPicture: () => boolean;
       resume: ReturnType<typeof vi.fn>;
+      setPictureInPicture: (active: boolean) => void;
+      subscribePictureInPicture: (listener: (active: boolean) => void) => () => void;
       suspend: ReturnType<typeof vi.fn>;
     },
   };
@@ -168,16 +171,27 @@ const mountClient = async (
   extra: Partial<Parameters<typeof usePairedClient>[0]> = {},
 ) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
+  const pictureInPictureListeners = new Set<(active: boolean) => void>();
+  let pictureInPicture = false;
   fakes.transport = {
     dispose: vi.fn(),
     emit: (event) => {
       for (const listener of listeners) listener(event);
     },
     goLive: vi.fn(),
+    inPictureInPicture: () => pictureInPicture,
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
     resume: vi.fn(),
+    setPictureInPicture: (active) => {
+      pictureInPicture = active;
+      for (const listener of pictureInPictureListeners) listener(active);
+    },
+    subscribePictureInPicture: (listener) => {
+      pictureInPictureListeners.add(listener);
+      return () => pictureInPictureListeners.delete(listener);
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -485,6 +499,20 @@ describe("paired client", () => {
       expect(fakes.transport.resume).toHaveBeenCalledTimes(1);
       // The return asks the server for the catalog again before it retunes anything.
       expect(fakes.catalogLists).toHaveLength(2);
+      await act(async () => root.unmount());
+    });
+
+    // An iPhone's picture in picture (§9.7) is the stream playing outside the app.
+    it("keeps a picture-in-picture stream in the background, and releases it when the picture closes there", async () => {
+      const { root } = await mountClient();
+      act(() => fakes.transport.setPictureInPicture(true));
+
+      await sendAppState("background");
+      expect(fakes.transport.suspend).not.toHaveBeenCalled();
+
+      vi.spyOn(AppState, "currentState", "get").mockReturnValue("background");
+      act(() => fakes.transport.setPictureInPicture(false));
+      expect(fakes.transport.suspend).toHaveBeenCalledTimes(1);
       await act(async () => root.unmount());
     });
 

@@ -20,6 +20,14 @@ interface NativePlayerTransport extends PlayerTransport {
   /** Signals the first frame rendered by the native VideoView for the active attempt. */
   firstFrame: () => void;
   getPlayer: () => VideoPlayer | undefined;
+  /**
+   * Whether the picture is out of the app as picture in picture. The app going to the background
+   * then leaves the stream playing; closing the floating picture there pauses and releases it.
+   */
+  inPictureInPicture: () => boolean;
+  /** The picture's view reports picture in picture starting and stopping. */
+  setPictureInPicture: (active: boolean) => void;
+  subscribePictureInPicture: (listener: (active: boolean) => void) => () => void;
   resume: () => void;
   subscribePlayer: (listener: () => void) => () => void;
   suspend: () => void;
@@ -86,6 +94,8 @@ const createNativePlayerTransport = (
   let replacing = 0; // replacements queued or running
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const playerListeners = new Set<() => void>();
+  const pictureInPictureListeners = new Set<(active: boolean) => void>();
+  let pictureInPicture = false;
   let playingSubscription: { remove: () => void } | undefined;
   let statusSubscription: { remove: () => void } | undefined;
   let timeSubscription: { remove: () => void } | undefined;
@@ -239,6 +249,7 @@ const createNativePlayerTransport = (
       releasePlayer();
       listeners.clear();
       playerListeners.clear();
+      pictureInPictureListeners.clear();
     },
     firstFrame: () => {
       if (activeAttemptId === undefined) return;
@@ -247,6 +258,16 @@ const createNativePlayerTransport = (
       emit({ attemptId: activeAttemptId, type: "first-frame" });
     },
     getPlayer: () => player,
+    inPictureInPicture: () => pictureInPicture,
+    setPictureInPicture: (active) => {
+      if (disposed || active === pictureInPicture) return;
+      pictureInPicture = active;
+      for (const listener of pictureInPictureListeners) listener(active);
+    },
+    subscribePictureInPicture: (listener) => {
+      pictureInPictureListeners.add(listener);
+      return () => pictureInPictureListeners.delete(listener);
+    },
     goLive: () => {
       if (!player) return;
       seekToLiveEdge(player);
@@ -330,6 +351,8 @@ const NativePlayerView = ({ pictureInPicture = false, ref, style, transport }: N
       contentFit="contain"
       nativeControls={false}
       onFirstFrameRender={transport.firstFrame}
+      onPictureInPictureStart={() => transport.setPictureInPicture(true)}
+      onPictureInPictureStop={() => transport.setPictureInPicture(false)}
       player={player}
       ref={ref}
       startsPictureInPictureAutomatically={false}
@@ -345,12 +368,7 @@ const NativePlayerView = ({ pictureInPicture = false, ref, style, transport }: N
  * Renders nothing off iOS.
  */
 const NativeAirPlayPicker = () => (
-  <VideoAirPlayButton
-    accessibilityLabel="AirPlay"
-    activeTint="transparent"
-    style={{ height: "100%", width: "100%" }}
-    tint="transparent"
-  />
+  <VideoAirPlayButton activeTint="transparent" style={{ height: "100%", width: "100%" }} tint="transparent" />
 );
 
 const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
