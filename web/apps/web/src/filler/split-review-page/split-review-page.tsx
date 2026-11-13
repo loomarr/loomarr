@@ -5,7 +5,7 @@ import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageEx
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -151,13 +151,11 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
         {/* This route sits outside the Filler header and tabs, so it names its way back: to
             wherever review was opened (#1817, decided on #1908). The Settings index's "← Manage"
             link is the pattern. */}
-        <Link
-          to={backTo}
-          className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
-        >
-          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-          {from === "incoming" ? "Incoming" : "Library"}
-        </Link>
+        <Stack align="start" marginBottom={12}>
+          <Action accessibilityRole="link" icon="goBack" render={<Link to={backTo} />} variant="ghost">
+            {from === "incoming" ? "Incoming" : "Library"}
+          </Action>
+        </Stack>
         <Text as="h1" textRole="title">
           Review clips
         </Text>
