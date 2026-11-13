@@ -71,6 +71,7 @@ func TestApplicationOwnsHandlerAndLifecycle(t *testing.T) {
 func TestApplicationShutdownStopsResourcesAtTheDeadlineDespiteAStuckWorker(t *testing.T) {
 	lifecycle := newGenerationLifecycle(t.Context())
 	application := &Application{lifecycle: lifecycle}
+	lifecycle.stopBudget = 50 * time.Millisecond
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	lifecycle.goRun(func(context.Context) { <-release })

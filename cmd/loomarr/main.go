@@ -416,9 +416,15 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	return false, nil
 }
 
-// generationFinalizeBudget is how long a generation's workers have to unwind before its resources
-// are stopped regardless (Application.Shutdown).
-const generationFinalizeBudget = 15 * time.Second
+// generationUnwindBudget is how long a generation's workers have to unwind before Application.Shutdown
+// gives them its extra, bounded wait.
+const generationUnwindBudget = 15 * time.Second
+
+// generationFinalizeBudget is the whole of one generation's finalize: the workers' unwind, then the
+// tail Application.Shutdown keeps for a late worker and for the stops on their shared budget.
+// Shutdown returns only after its stops have finished, so nothing that follows (a restart's next
+// generation, the store close, the database cutover) runs beside the old generation's teardown.
+const generationFinalizeBudget = generationUnwindBudget + app.ShutdownTail
 
 // generationDrainBudget is how long quiescing and the HTTP drain share before finalize starts its own.
 const generationDrainBudget = 15 * time.Second

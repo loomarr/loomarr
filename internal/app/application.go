@@ -21,10 +21,22 @@ var ErrApplicationQuiescing = errors.New("application generation is quiescing")
 
 const interactiveOperationCompletionTimeout = 5 * time.Second
 
-// generationStopBudget is how long each registered stop (River's Stop, the store close, the
-// recorder flush) gets to finish. It is the stop's own: a join that used up the shutdown context
-// would otherwise hand every stop a dead one, and they degrade to forced when given one.
+// generationStopBudget is the one budget the registered stops (River's Stop, the store close, the
+// recorder flush) share. It is theirs alone: a join that used up the shutdown context would
+// otherwise hand every stop a dead one, and they degrade to forced when given one. Shutdown waits
+// for the stops, so a generation's teardown never overlaps the next generation or the cutover.
 const generationStopBudget = 10 * time.Second
+
+// generationStopGrace is how long past the budget a stop that ignores its context is waited for
+// before it is reported, so one stuck stop cannot hold Shutdown open.
+const generationStopGrace = time.Second
+
+// ShutdownTail is what Application.Shutdown keeps for itself at the end of the deadline it is
+// given: a wait for workers that outlived the join, then the stop phase and its grace. A caller
+// gives Shutdown a deadline of (the time the workers get) + ShutdownTail, so the whole teardown, stops
+// included, ends by it. A deadline shorter than the tail is the workers' alone, and the tail then
+// runs past it.
+const ShutdownTail = 2*generationStopBudget + generationStopGrace
 
 type interactiveOperationLauncher func(
 	time.Duration,
@@ -100,9 +112,11 @@ func (a *Application) Quiesce(ctx context.Context) error {
 }
 
 // Shutdown cancels generation-owned work, waits for tracked workers, and runs explicit stops in
-// reverse construction order. The first call's context bounds the wait for workers: at its deadline
-// the stops run anyway and the still-running workers are reported. It is safe to call repeatedly or
-// concurrently; every call reports the same outcome.
+// reverse construction order, returning only once they have finished. The first call's context
+// bounds the wait for workers; a worker that outlives it is waited for one more bounded budget (the
+// stops must not begin beside it) and reported, and a worker stuck past that does not hold the stops
+// back. The stops share one budget, so Shutdown outlasts ctx by at most ShutdownTail. It is safe to
+// call repeatedly or concurrently; every call waits for, and reports, the same outcome.
 func (a *Application) Shutdown(ctx context.Context) error {
 	if a == nil || a.lifecycle == nil {
 		return nil
@@ -127,15 +141,18 @@ type generationLifecycle struct {
 	stopOnce    sync.Once
 	done        chan struct{}
 	err         error
-	// stopBudget is the time each registered stop gets, whatever became of the shutdown context.
+	// stopBudget is the one shared budget for the whole stop phase, whatever became of the shutdown
+	// context. The wait for workers that outlived that context draws on a budget of the same size.
 	stopBudget time.Duration
+	// stopGrace is how long past the budget a stop is waited for to return before it is named.
+	stopGrace time.Duration
 }
 
 func newGenerationLifecycle(parent context.Context) *generationLifecycle {
 	ctx, cancel := context.WithCancel(parent)
 	return &generationLifecycle{
 		ctx: ctx, cancel: cancel, quiesced: make(chan struct{}), done: make(chan struct{}),
-		stopBudget: generationStopBudget,
+		stopBudget: generationStopBudget, stopGrace: generationStopGrace,
 	}
 }
 
@@ -313,10 +330,11 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 		go l.finish(ctx, stops)
 	})
 
-	if settled(ctx, l.done) {
-		return l.err
-	}
-	return ctx.Err()
+	// Shutdown is the barrier the next generation, the store close and the database cutover stand
+	// behind, so it returns only once the stops have finished. Every phase of finish is bounded
+	// (the join by ctx, the late-worker wait and the stops by their budgets), so this wait is too.
+	<-l.done
+	return l.err
 }
 
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
@@ -329,21 +347,62 @@ func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.C
 	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
 	// Its last writes go to the resources below, so they are stopped once it has returned, or at the
 	// deadline: a restart brings up its successor then, and this one's resources must not outlive it.
-	errs = append(errs, l.waitWorkers(ctx))
-	// The stops do not inherit what is left of ctx, which the join may have spent entirely: each
-	// gets a budget of its own, so the last of them is not handed a dead context because the
-	// first was slow, and River's Stop and the store close are not forced by one.
+	joinCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) > l.tail() {
+		// A caller that sized its deadline to include the tail (see ShutdownTail) is giving the
+		// workers what is left once it is set aside, so the whole of Shutdown ends by its deadline.
+		var cancel context.CancelFunc
+		joinCtx, cancel = context.WithDeadline(ctx, deadline.Add(-l.tail()))
+		defer cancel()
+	}
+	joinErr := l.waitWorkers(joinCtx)
+	if joinErr != nil {
+		// The caller's deadline passed with a worker still unwinding. A stop must not begin beside
+		// a worker (River's Stop and the store close race its last writes), so the worker gets one
+		// more bounded wait, reported either way: a worker stuck past it is the only thing that
+		// starts the stops beside it.
+		lateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), l.stopBudget)
+		if lateErr := l.waitWorkers(lateCtx); lateErr != nil {
+			joinErr = errors.Join(joinErr, lateErr)
+		}
+		cancel()
+	}
+	errs = append(errs, joinErr)
+	// The stops do not inherit what is left of ctx, which the join may have spent entirely: they
+	// share one live budget of their own, so River's Stop and the store close are not forced by a
+	// join that ran long. A slow stop spends the shared budget; the rest still run, on the spent
+	// context, which they treat as a request to be quick.
+	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), l.stopBudget)
+	defer cancel()
 	for _, stop := range slices.Backward(stops) {
-		errs = append(errs, l.runStop(ctx, stop))
+		errs = append(errs, l.runStop(stopCtx, stop))
 	}
 	l.err = errors.Join(errs...)
 	close(l.done)
 }
 
-func (l *generationLifecycle) runStop(ctx context.Context, stop func(context.Context) error) error {
-	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), l.stopBudget)
-	defer cancel()
-	return stop(stopCtx)
+// runStop runs one stop and waits for it to return. A stop that honours its context is waited for
+// however slowly it unwinds; one that ignores it is named at hardStop, so it cannot hold Shutdown
+// open, and the Shutdown caller is told the stop may still be running.
+// tail is how long Shutdown can run past the workers' join: the late-worker wait, then the stops.
+func (l *generationLifecycle) tail() time.Duration { return 2*l.stopBudget + l.stopGrace }
+
+func (l *generationLifecycle) runStop(stopCtx context.Context, stop func(context.Context) error) error {
+	result := make(chan error, 1)
+	go func() { result <- stop(stopCtx) }()
+	// The grace runs from the budget's end, or from now when an earlier stop already spent it.
+	hardStop := time.Now()
+	if deadline, ok := stopCtx.Deadline(); ok && deadline.After(hardStop) {
+		hardStop = deadline
+	}
+	timer := time.NewTimer(time.Until(hardStop.Add(l.stopGrace)))
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		return err
+	case <-timer.C:
+		return fmt.Errorf("stop still running %v after its budget: %w", l.stopGrace, context.DeadlineExceeded)
+	}
 }
 
 // waitWorkers waits for the generation's workers until ctx ends. A worker still running then is
