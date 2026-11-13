@@ -117,11 +117,12 @@ const ModalOverlay = ({
   dismissible = true,
   eyebrow,
   onDismiss,
+  portalContainer,
   title,
   visible,
 }: ModalOverlayProps) => (
   <Dialog dismissible={dismissible} onOpenChange={(open) => !open && onDismiss()} open={visible}>
-    <DialogContent density={density}>
+    <DialogContent density={density} portalContainer={portalContainer}>
       <DialogHeader>
         {eyebrow ? (
           <Text density={density} textRole="metadata" tone="info">

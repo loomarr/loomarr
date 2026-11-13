@@ -60,6 +60,8 @@ const OverlayWorkshop = ({
           description="Your tuned channel will stop playing on this device."
           eyebrow="LEAVE LOOMARR"
           onDismiss={() => setVisible(false)}
+          // The theme lives on the story root; a portal to the body would drop it.
+          portalContainer={document.getElementById("storybook-root")}
           title="Return to the device home screen?"
           visible={visible}
         />
