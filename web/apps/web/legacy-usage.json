@@ -233,7 +233,7 @@
       "tailwindClasses": 5
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
-      "tailwindClasses": 47,
+      "tailwindClasses": 20,
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
