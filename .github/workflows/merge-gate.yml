@@ -1,9 +1,12 @@
 name: Merge gate
 
-# The required `CI` check for a merge-queue candidate, so a queued PR merges in minutes. It proves
-# the one thing the pull request's own run cannot: that the PR still compiles on top of the main it
-# is about to join. The complete gate set runs beside it in ci.yml as `CI assurance`, which finishes
-# after the merge and files an issue if a merged commit fails (docs/contributing/ci.md).
+# The required `CI` check for a merge-queue candidate. It proves what the pull request's own run
+# cannot: that the PR still compiles on top of the main it is about to join, and, when the candidate
+# changes anything the visual or e2e suite renders, that all four Playwright shards (visual, a11y,
+# and e2e) pass on that merged tree. The pull request's own CI never runs Playwright, so without the
+# second half a broken shard reached main and stayed red there until someone read the post-merge
+# assurance (#2147). The complete gate set still runs beside it in ci.yml as `CI assurance`, which
+# finishes after the merge and files an issue if a merged commit fails (docs/contributing/ci.md).
 #
 # This is a separate workflow because ci.yml's merge-group runs share one concurrency group, and the
 # gate must never wait behind them.
@@ -18,25 +21,37 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  run:
-    name: CI
+  changes:
+    name: What the candidate changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      lane: ${{ steps.select.outputs.lane }}
+      go: ${{ steps.select.outputs.go }}
+      impact_visual: ${{ steps.select.outputs.visual }}
+      impact_e2e: ${{ steps.select.outputs.e2e }}
     steps:
       # Shallow: the selector fetches only the queue base, which took a full-history clone 13s.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Does this candidate change Go
-        id: go
+      - name: Select the candidate's gates
+        id: select
         run: ./scripts/ci-merge-gate-select.sh merge_group "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
+
+  compile:
+    name: Go — merged tree compiles
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        if: steps.go.outputs.changed == 'true'
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       # merge-gate-cache.yml keeps this fresh. The path list must match that workflow exactly:
       # GitHub versions a cache by its paths.
       - name: Restore Go caches
-        if: steps.go.outputs.changed == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
@@ -46,5 +61,36 @@ jobs:
           restore-keys: |
             merge-gate-go-${{ runner.os }}-
       - name: The merged tree compiles, tests included
-        if: steps.go.outputs.changed == 'true'
         run: make vet
+
+  # The same four-shard family CI assurance runs, selected by the same classifier decision.
+  playwright:
+    name: Playwright — visual + a11y + e2e
+    needs: changes
+    if: needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')
+    uses: ./.github/workflows/ci-playwright.yml
+
+  # The one check the ruleset requires. A skipped gate passes; anything else, cancelled included,
+  # fails, because a cancelled or timed-out shard proved nothing.
+  run:
+    name: CI
+    needs: [changes, compile, playwright]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every gate that ran must have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "gate results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *)
+                echo "::error::a merge gate reported '$result'"
+                exit 1
+                ;;
+            esac
+          done

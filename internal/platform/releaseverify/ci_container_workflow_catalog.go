@@ -28,6 +28,12 @@ func workflowAuthorityCatalog() workflowAuthorityRegistry {
 	}
 }
 
+// reusableCallerAllowed names where a family caller may appear: every family in ci.yml, and the
+// Playwright family in merge-gate.yml too, whose required `CI` check waits for its shards.
+func reusableCallerAllowed(workflow, job string) bool {
+	return workflow == "ci.yml" || (workflow == "merge-gate.yml" && job == "playwright")
+}
+
 func verifyWorkflowAuthorityCatalog(catalog workflowAuthorityRegistry) error {
 	for workflow, topology := range catalog.topology {
 		runs, ok := catalog.runs[workflow]
@@ -36,7 +42,7 @@ func verifyWorkflowAuthorityCatalog(catalog workflowAuthorityRegistry) error {
 		}
 		for job, stepCount := range topology.jobs {
 			if _, reusable := catalog.reusableCallers[job]; reusable {
-				if workflow != "ci.yml" || stepCount != 0 {
+				if !reusableCallerAllowed(workflow, job) || stepCount != 0 {
 					return fmt.Errorf("workflow authority catalog has misplaced reusable caller %s in %s", job, workflow)
 				}
 				continue

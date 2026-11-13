@@ -19,7 +19,11 @@ builds, runtime image certification, Apple mobile, Apple TV, Android TV, Expo An
 tuner matrix, or the macOS harness.
 The required `main` merge queue then builds at most eight cumulative candidates concurrently against
 the current base. A queued PR waits only for `merge-gate.yml`, which reports the required `CI` check after proving
-the merged tree compiles, so it merges in minutes. `merge-gate-cache.yml` refreshes its Go cache from
+the merged tree compiles and, when the classifier selects the visual or e2e gate, that all four
+Playwright shards pass on it. A PR that changes nothing Playwright renders merges in minutes; one that
+does waits about ten minutes more for the shards. Until #2147 the shards were post-merge assurance
+only, and a red e2e shard sat on main for a day because nothing blocked on it. The merge gate's
+`CI` job fails on any gate result but success or skipped. `merge-gate-cache.yml` refreshes its Go cache from
 main at most hourly and keeps one entry. Beside it, the `merge_group` run of `ci.yml` is the
 complete integration lane, reported as `CI assurance`: the same fail-closed classifier selects the
 complete affected gate set, and every selected result remains a dependency of that job. It finishes
@@ -27,7 +31,8 @@ after the merge, so its evidence no longer blocks one. When it fails on a commit
 files an issue. Revert first: anyone may revert the commit to get main green, and the fix lands as a
 new PR. Rerun instead when the failure is a flake or an outage. Every queue entry keeps its own run and
 none is cancelled, because a run selects gates from its own PR's diff and a later run can't replace it.
-This is a maintainer decision (2026-11-07): merge latency over pre-merge evidence. Explicit
+This is a maintainer decision (2026-11-07): merge latency over pre-merge evidence. The one
+exception, Playwright in the merge gate, came later (#2147, 2026-11-13). Explicit
 manual runs retain release-candidate and full recovery scopes plus an isolated Apple compilation
 cache portability scope. A normal queue-produced push to
 `main` runs publication workflows only rather than validating the admitted commit again.

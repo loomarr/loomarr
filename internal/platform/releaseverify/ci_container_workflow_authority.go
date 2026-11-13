@@ -460,12 +460,23 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
-		"merge-gate.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make vet": exactWorkflowStep(4, "The merged tree compiles, tests included", workflowStepAuthority{
-				targets:   []string{"vet"},
-				condition: "steps.go.outputs.changed == 'true'",
-			}),
-		}),
+		// The queue's required `CI` check: the compile job and, through the shared Playwright caller,
+		// the four shards, each selected by the candidate's diff; `run` fails on any result but
+		// success or skipped.
+		"merge-gate.yml": {
+			environment: standardWorkflowEnvironment(),
+			permissions: standardWorkflowPermissions(),
+			jobs: map[string]workflowJobAuthority{
+				"changes": {steps: map[string]workflowStepAuthority{}},
+				"compile": {
+					condition: "needs.changes.outputs.go == 'true'",
+					steps: map[string]workflowStepAuthority{
+						"make vet": exactWorkflowStep(3, "The merged tree compiles, tests included", workflowStepAuthority{targets: []string{"vet"}}),
+					},
+				},
+				"run": {condition: "always()", steps: map[string]workflowStepAuthority{}},
+			},
+		},
 		"merge-gate-cache.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: map[string]string{"actions": "write", "contents": "read"},

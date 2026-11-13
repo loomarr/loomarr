@@ -191,7 +191,7 @@ func verifyWorkflowSourceBoundSteps(workflow *yaml.Node, workflowName string, pr
 		}
 		if uses, delegated := mappingValue(job, "uses"); delegated {
 			familyWorkflows := workflowAuthorityCatalog().familyWorkflows
-			if workflowName != "ci.yml" || uses.Kind != yaml.ScalarNode || familyWorkflows[jobName] == "" || uses.Value != "./"+familyWorkflows[jobName] {
+			if !reusableCallerAllowed(workflowName, jobName) || uses.Kind != yaml.ScalarNode || familyWorkflows[jobName] == "" || uses.Value != "./"+familyWorkflows[jobName] {
 				return fmt.Errorf("workflow %s job %s delegates to an unaudited reusable workflow", workflowName, jobName)
 			}
 			continue
