@@ -94,7 +94,15 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
       className="border-border bg-card overflow-hidden rounded-lg border"
       aria-label="Current health summary"
     >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
+      <Stack
+        align="center"
+        columnGap="4"
+        direction="row"
+        paddingHorizontal={16}
+        paddingVertical={16}
+        rowGap="2"
+        wrap
+      >
         <div className="min-w-0 flex-1">
           <Text as="p" textRole="headline">
             <Verdict word={stateWord(report.state)} />
@@ -106,7 +114,7 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
         <Text as="span" textRole="mono">
           {report.version}
         </Text>
-      </div>
+      </Stack>
       <div className="border-border border-t">
         <Table caption="Current health checks" framed={false} minWidth={704}>
           <TableHeader>

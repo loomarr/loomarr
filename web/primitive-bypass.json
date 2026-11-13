@@ -6,18 +6,9 @@
       "flexStack": 6
     },
     "apps/web/src/channels/guide-page/guide-page.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/ai/refine-review/refine-review.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
@@ -47,9 +38,6 @@
     "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
       "flexStack": 1
     },
@@ -71,17 +59,11 @@
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/people/people-roster/people-roster.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "flexStack": 2
@@ -99,7 +81,7 @@
       "flexStack": 4
     },
     "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "flexStack": 1
@@ -110,23 +92,14 @@
     "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/clip-details-editor/clip-details-editor.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/clip-details/clip-details.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "flexStack": 1
@@ -134,22 +107,10 @@
     "apps/web/src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/filler/filler-overview/filler-overview.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/filler-settings/filler-settings.tsx": {
       "flexStack": 4
     },
-    "apps/web/src/filler/incoming/incoming.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/filler/split-review-page/split-review-page.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
@@ -180,10 +141,10 @@
       "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {
       "flexStack": 1

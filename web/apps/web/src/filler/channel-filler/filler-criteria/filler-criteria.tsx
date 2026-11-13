@@ -458,7 +458,7 @@ const FillerCriteria = ({
         <FieldLabel help="Which clips a break may use. Political ads and news stay off until you tick them; a nearby station's own news airs with its station IDs.">
           Clip kinds
         </FieldLabel>
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
+        <Stack columnGap="4" direction="row" rowGap="2" wrap>
           {ROLES.map((r) => (
             <Toggle
               key={r}
@@ -471,7 +471,7 @@ const FillerCriteria = ({
               }
             />
           ))}
-        </div>
+        </Stack>
         {rolesUnknown && (
           <Text as="p" textRole="hint" tone="secondary">
             Clip kinds unlock once this channel's coverage check loads.

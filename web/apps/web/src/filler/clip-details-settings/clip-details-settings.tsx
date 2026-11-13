@@ -319,7 +319,14 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       </Card>
 
       {!configured ? (
-        <div className="bg-muted/40 flex flex-col gap-3 rounded-lg p-4 sm:flex-row sm:items-center sm:justify-between">
+        <Stack
+          align={{ base: "stretch", sm: "center" }}
+          className="bg-muted/40 rounded-lg"
+          direction={{ base: "column", sm: "row" }}
+          gap="3"
+          justify={{ base: "start", sm: "between" }}
+          padding={16}
+        >
           <Stack gap="1">
             <Text as="p" textRole="cardLabel">
               Web search is optional
@@ -333,7 +340,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               Add web search
             </Action>
           </div>
-        </div>
+        </Stack>
       ) : null}
 
       {message ? (

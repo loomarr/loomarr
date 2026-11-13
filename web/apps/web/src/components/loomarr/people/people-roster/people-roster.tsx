@@ -44,7 +44,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
 
   return (
     <Stack aria-labelledby="people-roster-title" gap="control" render="section">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+      <Stack align={{ base: "stretch", lg: "end" }} direction={{ base: "column", lg: "row" }} gap="3">
         <div className="min-w-0 flex-1">
           <Text as="h2" id="people-roster-title" strong textRole="headline">
             People
@@ -70,7 +70,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
             value={status}
           />
         </div>
-      </div>
+      </Stack>
 
       {users === undefined ? (
         <div className="grid gap-2" role="status" aria-label="Loading people">

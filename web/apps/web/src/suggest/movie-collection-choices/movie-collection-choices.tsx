@@ -98,7 +98,7 @@ const MovieCollectionChoices = ({
                 <Text as="p" className="truncate" textRole="cardLabel">
                   {collection.name}
                 </Text>
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Stack align="center" columnGap="2" direction="row" marginTop={4} rowGap="1" wrap>
                   <Text as="span" textRole="hint" tone="secondary">
                     {selectedCount} of {members.length} selected
                   </Text>
@@ -108,7 +108,7 @@ const MovieCollectionChoices = ({
                   <Text as="span" textRole="hint" tone="secondary">
                     {libraryCount} in your library
                   </Text>
-                </div>
+                </Stack>
               </div>
               {editable && (
                 <Action

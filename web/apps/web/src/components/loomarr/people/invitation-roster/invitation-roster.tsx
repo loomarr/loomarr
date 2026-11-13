@@ -71,7 +71,12 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
 
           return (
             <li key={value.id} className="border-border bg-card rounded-lg border p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <Stack
+                align={{ base: "stretch", sm: "start" }}
+                direction={{ base: "column", sm: "row" }}
+                gap="4"
+                justify={{ base: "start", sm: "between" }}
+              >
                 <div className="min-w-0 space-y-2">
                   <Stack align="center" direction="row" gap="inline" wrap>
                     <Text as="span" textRole="cardLabel">
@@ -122,7 +127,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                     </Action>
                   </Stack>
                 )}
-              </div>
+              </Stack>
             </li>
           );
         })}

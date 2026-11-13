@@ -146,7 +146,11 @@ const ApprovalQueueItem = ({
   return (
     <Card gap={12} {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}>
       {/* On a phone the actions go under the pitch; beside it they left it a word per line (#1785). */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+      <Stack
+        align={{ base: "stretch", sm: "start" }}
+        direction={{ base: "column", sm: "row" }}
+        gap={{ base: "3", sm: "4" }}
+      >
         <div className="min-w-0 flex-1">
           <Stack align="center" direction="row" gap="inline" wrap>
             <Text as="p" textRole="cardLabel">
@@ -203,7 +207,7 @@ const ApprovalQueueItem = ({
             </Action>
           </Stack>
         )}
-      </div>
+      </Stack>
 
       {/* ⚠ On the row, not in a page-level banner (#1430): a failed approve/deny belongs beside
           the card it failed for, not somewhere a reviewer scanning other rows has to go find. */}

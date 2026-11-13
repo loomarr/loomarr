@@ -306,7 +306,11 @@ const Incoming = () => {
                   </Text>
                 ) : null}
               </Stack>
-              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+              <Stack
+                align={{ base: "start", sm: "center" }}
+                direction={{ base: "column", sm: "row" }}
+                gap="4"
+              >
                 <div className="min-w-0 flex-1">
                   <Text as="p" className="break-words" textRole="cardLabel">
                     {helpTask.name}
@@ -318,7 +322,7 @@ const Incoming = () => {
                 <Action accessibilityRole="link" render={<a href={helpTask.actionHref} />}>
                   {helpTask.actionLabel}
                 </Action>
-              </div>
+              </Stack>
               {view.needsHelp.total > 1 ? (
                 <Stack
                   borderColor="borderDecorative"
