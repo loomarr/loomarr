@@ -516,7 +516,27 @@ reservations and the operator-facing decision.
 - Restart forgets leases but not bytes. Automatic cleanup removes only cancelled or incomplete
   private staging, superseded temporary output and unreferenced generated artifacts under a
   retention contract; never admitted clips, pinned media, review evidence, source masters, symlinks
-  or unknown files.
+  or unknown files. The one exception is a clip let go by [upkeep](#filler-lets-go-on-its-own).
+
+### Filler lets go on its own
+
+Filler is a cache sized to the channels (#3838), so work that failed does not keep its space.
+The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decision 25 of #3838):
+
+- **A clip Loomarr fetched and rejected a week ago is let go.** In one transaction the row is
+  re-checked: still rejected for at least 7 days, fetched (it has an acquisition), and pinned by no
+  channel. Then the clip is taken off the catalog for good (removed and reaped, as
+  `RetireDefectiveCopy` does) and its pipeline row records `files_deleted_at`. The row keeps its
+  reason, so "why did this go?" stays answerable, and it is no longer offered for retry or restore.
+  A clip added by hand is never let go, and the consumed acquisition still blocks a re-download.
+- **Its files go after the commit:** the playback file, the master and evidence copy only it names,
+  then the sidecar last, since the sidecar is what names the others. A crash between the commit and
+  the move leaves only bytes, and the next pass finishes the move.
+- **Deleted files wait a day in quarantine** (`.loomarr-media/quarantine/<unix time>/`, keeping
+  their path under the clip folder) before the bytes go. A wrong delete can be put back by hand,
+  and the bytes count toward the budget until they are gone.
+- **Leftover download staging is cleaned every hour** by the same rules as the storage cleanup
+  route: a terminal run, no artifact depending on it, and 24 hours old.
 - The server projects one capacity snapshot with a state (`healthy`, `approaching`, `paused`,
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
   `change_storage_limit`. `approaching` starts at the smaller of 1 GiB and 20% of the allowance.

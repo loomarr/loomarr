@@ -367,6 +367,19 @@ func (ci *Job) merge(ctx context.Context, loser, survivor IdentityClip, referenc
 // sidecar, and the source master and evidence copy its sidecar names, unless another clip's sidecar
 // names them too. It reports each file it could not remove.
 func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
+	failed := map[string]error{}
+	for _, f := range ownFiles(clipDir, full, tags, referenced) {
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			failed[f] = err
+		}
+	}
+	return failed
+}
+
+// ownFiles is the files of a clip off the catalog: its playback file, its sidecar, and the source
+// master and evidence copy its sidecar names unless another clip's sidecar names them too. It
+// claims those assets by decrementing referenced.
+func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced map[string]int) []string {
 	files := []string{full, tools.SidecarPathFor(full)}
 	if m := tags.MediaAssets; m != nil {
 		// An asset another clip's sidecar also names is shared; it stays. The count drops either
@@ -381,13 +394,21 @@ func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map
 			referenced[asset]--
 		}
 	}
-	failed := map[string]error{}
-	for _, f := range files {
-		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
-			failed[f] = err
-		}
+	return files
+}
+
+// OwnFiles is ownFiles for a caller outside this package that retires a clip itself and disposes of
+// its files its own way: the files of the catalog clip clipRef (a clip path or hash), which the
+// caller has already taken off the catalog. clipRef resolves through ClipPath, so the playback file
+// and sidecar are inside clipDir; the master and evidence paths come from the sidecar, so the caller
+// still checks where they point before disposing of them. referenced comes from ReferencedAssets
+// and is decremented as assets are claimed.
+func OwnFiles(clipDir, clipRef string, tags asset.SidecarTags, referenced map[string]int) ([]string, error) {
+	full, err := cliplibrary.ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
+	if err != nil {
+		return nil, err
 	}
-	return failed
+	return ownFiles(clipDir, full, tags, referenced), nil
 }
 
 // RemoveRetiredCopy is removeOwnFiles for a caller outside this package that retires a clip itself:

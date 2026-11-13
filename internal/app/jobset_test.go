@@ -64,6 +64,10 @@ func TestJobSet(t *testing.T) {
 		// landing while an operator is mid-review on a reel one hour past its expiry.
 		"filler-split-sweep | filler | 0 45 4 * * * | job.filler_split_sweep.schedule",
 		"filler-sync | filler | 0 */15 * * * * | job.filler_sync.schedule",
+		// Added by #3855. Deletes the files of clips Loomarr fetched and rejected a week ago, so a
+		// future reader asking "what removes clips on its own?" is looking at this row too. Files
+		// wait a day in quarantine first. No schedule setting: decision 25 of #3838 fixes its numbers.
+		"filler-upkeep | filler | 0 40 * * * * | ",
 		"housekeeping | system | 0 30 4 * * * | job.housekeeping.schedule",
 		// ⚠ The image service (§22, V52). `images-fetch` is the SECOND job to reach out to
 		// the internet unattended — the record `filler-fetch` above carries — and it differs in a
