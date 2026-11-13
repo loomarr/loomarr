@@ -2,6 +2,7 @@ import {
   type Density,
   Icon,
   icons,
+  NonModalDialog,
   playerChrome,
   Text,
   useFocusLook,
@@ -67,9 +68,8 @@ const sheetWidth = (density: Density) => (density === "touch" ? SHEET_WIDTH.touc
 const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheetProps) => {
   const insets = useViewportInsets();
   return (
-    <View
-      aria-label={title}
-      role="dialog"
+    <NonModalDialog
+      label={title}
       style={{
         backgroundColor: playerChrome.surface,
         borderLeftColor: playerChrome.hairline,
@@ -114,7 +114,7 @@ const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheet
       >
         {children}
       </ScrollView>
-    </View>
+    </NonModalDialog>
   );
 };
 
