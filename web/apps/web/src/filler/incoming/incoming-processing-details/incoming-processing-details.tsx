@@ -11,7 +11,7 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
   const measured = stage.progress != null;
   const label = measured ? `Current step: ${stage.progress}%` : "Current step in progress";
   return (
-    <div className="mt-3 space-y-1.5">
+    <Stack gap="1.5" marginTop={12}>
       <Stack align="center" direction="row" gap="control" justify="between">
         <Text as="span" textRole="hint" tone="secondary">
           Current step
@@ -21,7 +21,7 @@ const CurrentStageProgress = ({ stage }: { stage: IncomingProcessingStageDTO }) 
         </Text>
       </Stack>
       <ProgressTrack percent={stage.progress} label={label} tone="tune" />
-    </div>
+    </Stack>
   );
 };
 
@@ -31,26 +31,26 @@ const ProcessingStage = ({ stage, timeZone }: { stage: IncomingProcessingStageDT
       aria-hidden
       className="border-background bg-muted-foreground absolute top-1.5 -left-[0.3125rem] size-2.5 rounded-full border-2"
     />
-    <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+    <Stack align="baseline" direction="row" gap="3" justify="between" minWidth={0} wrap>
       <Text as="span" textRole="cardLabel">
         {stage.label}
       </Text>
       <Text as="span" textRole="hint" tone="secondary">
         {stage.outcomeLabel}
       </Text>
-    </div>
-    <Text as="p" className="mt-1 break-words" textRole="hint" tone="secondary">
-      {stage.note}
-    </Text>
-    <time
-      dateTime={stage.at}
-      title={new Date(stage.at).toLocaleString(undefined, { timeZone })}
-      className="mt-1 block"
-    >
-      <Text as="span" textRole="hint" tone="secondary">
-        {formatRelative(stage.at)}
+    </Stack>
+    <Stack marginTop={4}>
+      <Text as="p" className="break-words" textRole="hint" tone="secondary">
+        {stage.note}
       </Text>
-    </time>
+    </Stack>
+    <Stack marginTop={4}>
+      <time dateTime={stage.at} title={new Date(stage.at).toLocaleString(undefined, { timeZone })}>
+        <Text as="span" textRole="hint" tone="secondary">
+          {formatRelative(stage.at)}
+        </Text>
+      </time>
+    </Stack>
     <CurrentStageProgress stage={stage} />
   </li>
 );
@@ -80,7 +80,7 @@ const IncomingProcessingDetails = ({
       <Text as="summary" className="cursor-pointer" textRole="cardLabel">
         Processing details
       </Text>
-      <div className="mt-4 space-y-4">
+      <Stack gap="4" marginTop={16}>
         {processing.attempts ? (
           <Text as="p" textRole="compact" tone="secondary">
             This step was tried {processing.attempts} {processing.attempts === 1 ? "time" : "times"}.
@@ -113,7 +113,7 @@ const IncomingProcessingDetails = ({
             </Action>
           </Stack>
         ) : null}
-      </div>
+      </Stack>
     </details>
   );
 };

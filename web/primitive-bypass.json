@@ -173,9 +173,6 @@
     "apps/web/src/filler/filler-settings/filler-settings.tsx": {
       "flexStack": 4
     },
-    "apps/web/src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/incoming/incoming.tsx": {
       "flexStack": 1
     },
