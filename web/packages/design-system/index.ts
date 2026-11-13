@@ -47,6 +47,8 @@ export { DockedPanel } from "./src/docked-panel";
 export { useFocusLook } from "./src/focus-look";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
+export type { InlineActionProps } from "./src/inline-action";
+export { InlineAction } from "./src/inline-action";
 export type {
   ActionProps,
   ActionVariant,
