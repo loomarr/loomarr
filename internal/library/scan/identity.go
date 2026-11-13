@@ -215,9 +215,15 @@ func embeddedRecord(file File) (mp.Record, string) {
 	}
 	// A file named as its own folder is, with its year, a film: "Series 7 (2001)/Series 7
 	// (2001).mkv", "Episode 50 (2011)/Episode 50 (2011).mkv", as Radarr and Plex keep one.
-	if len(segments) > 1 && bracketYear.MatchString(segments[len(segments)-2]) && !sxxeyy.MatchString(name) &&
-		sameWords(plainStem(name), segments[len(segments)-2]) {
-		return movieRecord(src, segments), ""
+	// So is its folder's only video named by the folder's title alone, "TV/Sundial Run
+	// (2017)/Sundial Run.mkv": the folder gives the film's year.
+	if len(segments) > 1 && bracketYear.MatchString(segments[len(segments)-2]) && !sxxeyy.MatchString(name) {
+		folder := segments[len(segments)-2]
+		title, _, _ := searchQuery(folder, 0)
+		if sameWords(plainStem(name), folder) ||
+			file.Sole && !yearAnywhere.MatchString(plainStem(name)) && title != "" && sameWords(plainStem(name), title) {
+			return movieRecord(src, segments), ""
+		}
 	}
 	// A show's film kept with it says so, with its year and no episode's mark: "Kaito Run Movie 1 -
 	// Red Sky (2010)", "Westerly Movie (2012)".
@@ -466,8 +472,9 @@ var (
 	partOfWord = regexp.MustCompile(`(?i)[ ._-]+part[ ._-]*(\d{1,3})[ ._-]*of[ ._-]*(\d{1,3})(?:[^0-9a-z]|$)`)
 	// partOf matches a miniseries' "2of6", "2 of 6", "Part 2 of 6".
 	partOf = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(\d{1,3})[ ._-]*of[ ._-]*(\d{1,3})(?:[^0-9a-z]|$)`)
-	// leadingNumber matches a name that starts with its episode's number: "05 - Tidewater".
-	leadingNumber = regexp.MustCompile(`^(\d{1,3})(?:[ ._-]|$)`)
+	// leadingNumber matches a name that starts with its episode's number, bare, bracketed or after
+	// a hash: "05 - Tidewater", "[01] Pilot", "(03) Found", "#04 Home".
+	leadingNumber = regexp.MustCompile(`^[\[(#]?(\d{1,3})[\])]?(?:[ ._-]|$)`)
 	// bracketYear matches a year in brackets.
 	bracketYear = regexp.MustCompile(`[(\[](?:19|20)\d{2}[)\]]`)
 	// seasonDashedEpisode matches a season and episode apart by a dash, "3 - 01", "2-03", read only

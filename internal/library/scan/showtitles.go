@@ -13,10 +13,15 @@ import (
 
 // dashedShows reads folderNotes.Dashed for a folder, rel to the root as the shelf predicates read
 // it, from its videos' names. Only a catch-all's or a root's top is read: in a show's own folder
-// its name is the folder's (namedSeries), and among films a franchise's films are named so.
+// its name is the folder's (namedSeries), and among films a franchise's films are named so. Two
+// videos must name a show, but on a shows' shelf ("TV/Tansy Mill - Pilot.mkv") one does.
 func dashedShows(rel string, names []string) map[string]string {
 	if rel != "." && !shelfAt(rel) || amongFilms(rel) {
 		return nil
+	}
+	least := 2
+	if rel != "." && (showsFolderNames[folderKey(path.Base(rel))] || underShows(rel)) {
+		least = 1
 	}
 	count, spelled := map[string]int{}, map[string]string{}
 	for _, name := range names {
@@ -30,7 +35,7 @@ func dashedShows(rel string, names []string) map[string]string {
 	}
 	var out map[string]string
 	for key, n := range count {
-		if n >= 2 {
+		if n >= least {
 			if out == nil {
 				out = map[string]string{}
 			}
@@ -41,9 +46,13 @@ func dashedShows(rel string, names []string) map[string]string {
 }
 
 // dashedShow is the show a name gives before a spaced dash, with a title after it and no year,
-// episode's mark or number: "Hob Duck - Big Pond" is "Hob Duck".
+// episode's mark or number: "Hob Duck - Big Pond" is "Hob Duck". So is one with its episode's
+// number between two dashes, "Gorse Hill - 12 - The End".
 func dashedShow(name string) (string, bool) {
 	s := plainStem(name)
+	if m := dashedNumberTitle.FindStringSubmatch(s); m != nil && !leadingTags.MatchString(s) && !yearAnywhere.MatchString(s) {
+		return strings.TrimSpace(m[1]), true
+	}
 	at := showTitleDash.FindStringIndex(s)
 	if at == nil || episodeMark.MatchString(s) || strings.ContainsFunc(s, unicode.IsDigit) || leadingTags.MatchString(s) {
 		return "", false
@@ -54,6 +63,10 @@ func dashedShow(name string) (string, bool) {
 	}
 	return show, true
 }
+
+// dashedNumberTitle matches a show's name, its episode's number and its title apart by spaced
+// dashes: "Gorse Hill - 12 - The End".
+var dashedNumberTitle = regexp.MustCompile(`^(\D+?)[ ._]+-[ ._]+\d{1,3}[ ._]+-[ ._]+\pL`)
 
 // dashedOf is the show a file loose among a catch-all's videos is one of by folderNotes.Dashed,
 // "" for none.

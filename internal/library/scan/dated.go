@@ -140,13 +140,18 @@ var cameraPrefixes = map[string]bool{
 }
 
 // datedRelease says whether a dated name is a release's, written as a downloader leaves it: with
-// dots for spaces, or with a release's words after its day.
+// dots for spaces, or with a release's words after its day. So is one that ends with its whole day,
+// "News Hour 2024 03 14": no film's title ends with a month and a day.
 func datedRelease(name string) bool {
-	if !strings.Contains(name, " ") {
+	if !strings.Contains(name, " ") || endingDay.MatchString(name) {
 		return true
 	}
 	return slices.ContainsFunc(strings.FieldsFunc(name, func(r rune) bool { return strings.ContainsRune(" ._[]()-", r) }), releaseMark.MatchString)
 }
+
+// endingDay matches a name's whole day at its end, its month and day each two digits apart by
+// one separator: "2024 03 14", "2024-03-14", "2024.03.14".
+var endingDay = regexp.MustCompile(`\D(?:19|20)\d{2}(?: \d{2} |\.\d{2}\.|_\d{2}_|-\d{2}-)\d{2}$`)
 
 // datedShow is the show a dated name names before its day: "Evening.Ledger.2024.03.18.720p" is
 // "Evening Ledger"; "" for none.

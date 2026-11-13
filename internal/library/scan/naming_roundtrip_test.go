@@ -198,20 +198,22 @@ func roundTripCases() []roundTripCase {
 				add("daily", name, one(rel, dated), nil)
 			}
 		}
-		for _, f := range []struct{ name, want string }{
-			{rtShow + " - S01E13 - 013 - " + rtEpisode + " [HDTV-1080p].mkv", "S1E13"},
-			{rtShow + " - S01E13-E15 - 013-015 - " + rtEpisode + ".mkv", "S1E13-15"},
-			{rtShow + " - 013 - " + rtEpisode + " [HDTV-1080p].mkv", "S?E?"},
-			{rtShow + " - 001-003 - " + rtEpisode + ".mkv", "S?E?"},
-			{"[Kumo] " + rtShow + " - 13 [1080p][A1B2C3D4].mkv", "S?E?"},
-			{"[Kumo][" + rtShow + "][13][1080p].mkv", "S?E?"},
+		// A fansub's number across the show is the first season's episode in its folder: the two
+		// count alike there.
+		for _, f := range []struct{ name, want, inFirst string }{
+			{rtShow + " - S01E13 - 013 - " + rtEpisode + " [HDTV-1080p].mkv", "S1E13", "S1E13"},
+			{rtShow + " - S01E13-E15 - 013-015 - " + rtEpisode + ".mkv", "S1E13-15", "S1E13-15"},
+			{rtShow + " - 013 - " + rtEpisode + " [HDTV-1080p].mkv", "S?E?", "S?E?"},
+			{rtShow + " - 001-003 - " + rtEpisode + ".mkv", "S?E?", "S?E?"},
+			{"[Kumo] " + rtShow + " - 13 [1080p][A1B2C3D4].mkv", "S?E?", "S1E13"},
+			{"[Kumo][" + rtShow + "][13][1080p].mkv", "S?E?", "S1E13"},
 		} {
 			for _, season := range []string{"", "Season 1"} {
-				rel := "TV/" + sf.dir + "/" + f.name
+				rel, want := "TV/"+sf.dir+"/"+f.name, f.want
 				if season != "" {
-					rel = "TV/" + sf.dir + "/" + season + "/" + f.name
+					rel, want = "TV/"+sf.dir+"/"+season+"/"+f.name, f.inFirst
 				}
-				add("anime", f.name, one(rel, "episode "+sf.show+" "+f.want+sf.ids), nil)
+				add("anime", f.name, one(rel, "episode "+sf.show+" "+want+sf.ids), nil)
 			}
 		}
 	}

@@ -135,7 +135,8 @@ func holdsWhole(name string) bool {
 // before it, if any, its word in lower case and its number. "Abbot Bear Vol 1" is "Abbot Bear",
 // "vol", 1; "Book Two" is "", "book", 2. A name whose word numbers nothing ("DVDA") is no grouping.
 func groupingOf(name string) (before, word string, n int, ok bool) {
-	m := groupingFolder.FindStringSubmatch(name)
+	// A folder named with a space left at its end, "DVD 0 ", groups as "DVD 0" does.
+	m := groupingFolder.FindStringSubmatch(strings.TrimSpace(name))
 	if m == nil {
 		return "", "", 0, false
 	}

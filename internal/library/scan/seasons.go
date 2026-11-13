@@ -3,7 +3,6 @@ package scan
 import (
 	"path"
 	"regexp"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -96,9 +95,14 @@ func seasonIn(name string) (season int, ok bool) {
 // one missing ("Seson"), one extra ("Seasoon") or one wrong ("Seasin"). It starts with the "s" a
 // typist rarely misses, so "Reason" and "Mason" are words of their own.
 func seasonTypo(word string) bool {
-	const want = "season"
 	w := strings.ToLower(word)
-	if w == want || w == "" || w[0] != 's' || !isASCIILetters(w) {
+	return w != "" && w[0] == 's' && isASCIILetters(w) && oneSlip(w, "season")
+}
+
+// oneSlip says whether w is want typed with one slip: two letters swapped, one missing, one extra
+// or one wrong. The same word is no slip.
+func oneSlip(w, want string) bool {
+	if w == want {
 		return false
 	}
 	switch len(w) - len(want) {
@@ -112,9 +116,19 @@ func seasonTypo(word string) bool {
 		return len(diff) == 1 ||
 			len(diff) == 2 && diff[1] == diff[0]+1 && w[diff[0]] == want[diff[1]] && w[diff[1]] == want[diff[0]]
 	case -1:
-		return slices.ContainsFunc([]int{0, 1, 2, 3, 4, 5}, func(i int) bool { return want[:i]+want[i+1:] == w })
+		return oneMissing(w, want)
 	case 1:
-		return slices.ContainsFunc([]int{0, 1, 2, 3, 4, 5, 6}, func(i int) bool { return w[:i]+w[i+1:] == want })
+		return oneMissing(want, w)
+	}
+	return false
+}
+
+// oneMissing says whether short is long with one letter left out.
+func oneMissing(short, long string) bool {
+	for i := range len(long) {
+		if long[:i]+long[i+1:] == short {
+			return true
+		}
 	}
 	return false
 }

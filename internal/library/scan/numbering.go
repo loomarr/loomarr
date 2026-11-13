@@ -322,6 +322,14 @@ func seasonedRule(p folderPlace) (mp.Numbering, bool, bool) {
 // animeReleaseRule: a fansub's release name, "[Kumo] Show - 07 [1080p]" (animeRelease).
 func animeReleaseRule(p folderPlace) (mp.Numbering, bool, bool) {
 	if _, n, ok := animeRelease(path.Base(p.file.Rel), p.anime); ok {
+		// Its number across the show is its season's episode where it can be nothing else: in the
+		// first season's folder the two count alike, and a number below its season's, "Season 3/[Grp]
+		// Shiroi Kumo - 01", was never counted across the show. Sonarr leaves "[Grp] Show - 13" in
+		// Season 2 when 13 is the second season's first, so a number there is the catalog's to place.
+		if abs := n.Absolute; p.inSeason && n.Season == 0 && n.Episode == 0 && abs > 0 && abs < 100 &&
+			(p.season == 1 || p.season > 1 && abs < p.season) {
+			return decide(p.episode(abs))
+		}
 		return decide(n, true)
 	}
 	return undecided()

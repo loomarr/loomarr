@@ -1083,9 +1083,18 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 		at := extraKindAt(words)
 		return !strings.Contains(stem(name), " - ") && titles[key(strings.Fields(stem(name)))] && (at <= 0 || !kindEnds(words[at:]))
 	})
+	// A video named as a household names a film, not as MakeMKV numbers what it rips, is the film:
+	// the disc's other titles left beside it, "Gilded Road_t03", are the disc's extras.
+	renamed := !shows && !episodes && slices.ContainsFunc(names, func(name string) bool {
+		return !makeMKVTitle.MatchString(plainStem(name))
+	})
 	for _, name := range names {
 		words := extraWords(name)
 		at := extraKindAt(words)
+		if renamed && makeMKVTitle.MatchString(plainStem(name)) {
+			out[name] = true
+			continue
+		}
 		// Beside that film, "<film> - <anything else>" is its extra, whatever the household called
 		// it ("- Animatic", "- Press Conference"), unless what follows says which copy of the film
 		// it is: "- 1080p", "- Directors Cut", "- Part 2".

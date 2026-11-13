@@ -81,7 +81,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 71
+const writeVersion = 72
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
