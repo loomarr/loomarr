@@ -103,14 +103,14 @@ const PodTimeline = ({
                 fill={false}
                 focusInset
                 height="100%"
-                label={`Preview ${clipName(entry)}`}
+                // The name holds the visible caption (WCAG 2.5.3), after the verb and the clip.
+                label={`Preview ${clipName(entry)}, ${segmentLabel(entry)}`}
                 onPress={() => onPreview(entry)}
                 radius="none"
                 width="100%"
               >
-                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
                 <Stack className="min-w-0 px-1" render="span">
-                  <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+                  <Text as="span" className="truncate" textRole="caption" tone="primary">
                     {segmentLabel(entry)}
                   </Text>
                 </Stack>
