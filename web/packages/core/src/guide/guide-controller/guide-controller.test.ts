@@ -259,6 +259,94 @@ describe("Guide controller", () => {
       expect(controller.getSnapshot().error).toBeUndefined();
     });
 
+    // A retry that cleared the error at once unmounted the notice that offered it, and the focus
+    // inside it fell to the page. The error holds until the retry itself answers.
+    describe("retrying a failed refresh", () => {
+      const failedOver = async () => {
+        const source = { load: vi.fn().mockResolvedValue(guide()) };
+        const controller = createGuideController({ now: () => 2_000, source });
+        await controller.refresh();
+        source.load.mockRejectedValue(new Error("Couldn't load the Guide (503)."));
+        await controller.refresh();
+        let settleRetry: (outcome: "ok" | "fail") => void = () => undefined;
+        source.load.mockImplementation(
+          () =>
+            new Promise((resolve, reject) => {
+              settleRetry = (outcome) =>
+                outcome === "ok" ? resolve(guide()) : reject(new Error("Still down."));
+            }),
+        );
+        return {
+          controller,
+          retry: () => controller.refresh(),
+          settle: (o: "ok" | "fail") => settleRetry(o),
+        };
+      };
+
+      it("keeps the error and flags the retry while it is in flight", async () => {
+        const { controller, retry, settle } = await failedOver();
+
+        const pending = retry();
+
+        expect(controller.getSnapshot()).toMatchObject({
+          error: "Couldn't load the Guide (503).",
+          refreshing: true,
+          status: "ready",
+        });
+        settle("ok");
+        await pending;
+      });
+
+      it("clears the error and the flag when the retry works", async () => {
+        const { controller, retry, settle } = await failedOver();
+        const pending = retry();
+
+        settle("ok");
+        await pending;
+
+        expect(controller.getSnapshot().error).toBeUndefined();
+        expect(controller.getSnapshot().refreshing).toBeUndefined();
+      });
+
+      it("says the new error, and drops the flag, when the retry fails too", async () => {
+        const { controller, retry, settle } = await failedOver();
+        const pending = retry();
+
+        settle("fail");
+        await pending;
+
+        expect(controller.getSnapshot()).toMatchObject({ error: "Still down.", status: "ready" });
+        expect(controller.getSnapshot().refreshing).toBeUndefined();
+      });
+
+      it("keeps the error across a paged retry as well", async () => {
+        const { controller, settle } = await failedOver();
+
+        const pending = controller.page("later");
+
+        expect(controller.getSnapshot()).toMatchObject({
+          error: "Couldn't load the Guide (503).",
+          refreshing: true,
+        });
+        settle("ok");
+        await pending;
+        expect(controller.getSnapshot().error).toBeUndefined();
+      });
+
+      it("still reads a first load as loading, with no error", async () => {
+        const source = { load: vi.fn().mockRejectedValue(new Error("offline")) };
+        const controller = createGuideController({ now: () => 2_000, source });
+        await controller.refresh();
+        expect(controller.getSnapshot()).toMatchObject({ error: "offline", status: "error" });
+
+        source.load.mockReturnValue(new Promise(() => undefined));
+        void controller.refresh();
+
+        expect(controller.getSnapshot()).toMatchObject({ status: "loading" });
+        expect(controller.getSnapshot().error).toBeUndefined();
+      });
+    });
+
     it("keeps a failed refresh's error, and a re-read in flight, across a filter change", async () => {
       const lineup: GuideOutputBody = {
         ...guide(),

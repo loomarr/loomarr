@@ -297,8 +297,14 @@ const GuidePage = () => {
   const [lastAnswered, setLastAnswered] = useState(answered);
   if (answered && answered !== lastAnswered) setLastAnswered(answered);
   const body = answered ?? lastAnswered;
+  // The notice, once a window has failed, holds through its retry (the query is pending again, with
+  // no error) until a window answers, so it stays mounted under the focus on its button.
+  const [noticeUp, setNoticeUp] = useState(false);
+  if (guide.error && !noticeUp) setNoticeUp(true);
+  if (noticeUp && guide.isSuccess && !guide.isPlaceholderData) setNoticeUp(false);
   // The window on screen is the last good one, not the one that failed.
-  const showingEarlierWindow = guide.error !== null && answered === undefined && body !== undefined;
+  const showingEarlierWindow =
+    noticeUp && body !== undefined && (answered === undefined || guide.isPlaceholderData);
   // A cold page with nothing cached reads the device's zone until the first answer names the
   // household's.
   useEffect(() => {
@@ -412,11 +418,18 @@ const GuidePage = () => {
         }
       />
 
-      {guide.error ? (
+      {guide.error || noticeUp ? (
         // The same inset the TV and phone Guide give it (GuideJourney).
         <Surface backgroundColor="transparent" borderWidth={0} padding="control">
           <Notice
-            action={{ label: "Try again", onPress: () => void guide.refetch() }}
+            // Mounted while the retry runs, so the focus on its button stays; a press during it is the
+            // same retry.
+            action={{
+              label: guide.isFetching ? "Trying again…" : "Try again",
+              onPress: () => {
+                if (!guide.isFetching) void guide.refetch();
+              },
+            }}
             body={
               showingEarlierWindow
                 ? "That time didn't load. Showing the last one that did."

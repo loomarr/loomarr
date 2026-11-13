@@ -103,9 +103,14 @@ vi.mock("@loomarr/player/native", async (importOriginal) => ({
   }),
 }));
 
-type Node = { click(): void };
+type Node = { click(): void; focus(): void; textContent: string | null };
 type Document = {
-  body: { append(node: unknown): void; querySelector(selector: string): Node | null };
+  activeElement: Node | null;
+  body: {
+    append(node: unknown): void;
+    querySelector(selector: string): Node | null;
+    querySelectorAll(selector: string): ArrayLike<Node>;
+  };
   createElement(tag: string): Parameters<typeof createRoot>[0];
 };
 const page = (globalThis as unknown as { document: Document }).document;
@@ -116,6 +121,11 @@ let root: Root;
 // On the phone a programme reads "<channel number> <channel>, <programme>, <time>".
 const label = (part: string) => page.body.querySelector(`[aria-label*="${part}"]`);
 const eventually = (check: () => void) => vi.waitFor(check, { timeout: 8_000 });
+// The Guide notice's button, which reads "Trying again…" while its retry is in flight.
+const tryAgain = () =>
+  Array.from(page.body.querySelectorAll('[role="button"]')).find((node) =>
+    /^Try(ing)? again/.test(node.textContent?.trim() ?? ""),
+  ) ?? null;
 
 beforeEach(() => {
   server = createPairedServer();
@@ -159,6 +169,35 @@ describe("the phone app", () => {
     expect(label("Cartoon Classics, ")).not.toBeNull();
     expect(server.requests).toContain("GET /v1/channels");
     expect(server.requests.filter((request) => request.endsWith("/play-url"))).toEqual([]);
+  });
+
+  it("keeps focus on the Guide notice's Try again while it retries, and when the retry fails", async () => {
+    await launch();
+    await eventually(() => expect(label("Sci-Fi Classics, ")).not.toBeNull());
+
+    const restore = server.failGuide();
+    await act(async () => server.sendFrame("channel", { id: "ch-scifi", kind: "updated" }));
+    await eventually(() => expect(tryAgain()).not.toBeNull());
+    const button = tryAgain();
+    await act(async () => button?.focus());
+    expect(page.activeElement).toBe(button);
+
+    const answer = server.holdGuide();
+    await act(async () => button?.click());
+    expect(tryAgain()).toBe(button);
+    expect(button?.textContent).toContain("Trying again");
+    expect(page.activeElement).toBe(button);
+    expect(label("Sci-Fi Classics, ")).not.toBeNull();
+
+    await act(async () => answer());
+    await eventually(() => expect(button?.textContent).not.toContain("Trying again"));
+    expect(tryAgain()).toBe(button);
+    expect(page.activeElement).toBe(button);
+
+    restore();
+    await act(async () => button?.click());
+    await eventually(() => expect(tryAgain()).toBeNull());
+    expect(label("Sci-Fi Classics, ")).not.toBeNull();
   });
 
   it("tunes the channel the viewer picks in the Guide", async () => {

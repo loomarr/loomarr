@@ -13,8 +13,9 @@ import { GuideJourney } from "../index";
 
 // This package has no DOM lib (it targets React Native too), so the slice of the jsdom document
 // the test touches is typed here.
-type Node = { click(): void; textContent: string | null };
+type Node = { click(): void; focus(): void; textContent: string | null };
 type Doc = {
+  activeElement: unknown;
   body: {
     append(node: unknown): void;
     replaceChildren(): void;
@@ -180,5 +181,110 @@ describe("GuideJourney", () => {
     expect(load.mock.calls.length).toBe(before + 1);
     expect(doc.body.textContent).not.toContain("Couldn't refresh the Guide");
     expect(controller.getSnapshot().error).toBeUndefined();
+  });
+
+  // The notice's button is where the viewer's focus (a TV remote's) sits when they press it. If the
+  // retry unmounted the notice, focus fell to the page and a remote lost its place; a retry that
+  // fails brought the notice back with nothing focused.
+  describe("retrying from the notice", () => {
+    const retryButton = () =>
+      Array.from(doc.body.querySelectorAll('[role="button"]')).find((node) =>
+        /^(Try again|Trying again…)$/.test(node.textContent?.trim() ?? ""),
+      );
+
+    const mountFailed = async () => {
+      let answer: (outcome: "ok" | "fail") => void = () => undefined;
+      const load = vi
+        .fn()
+        .mockResolvedValueOnce(sourceGuide)
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockImplementation(
+          () =>
+            new Promise((resolve, reject) => {
+              answer = (outcome) => (outcome === "ok" ? resolve(sourceGuide) : reject(new Error("offline")));
+            }),
+        );
+      const controller = createGuideController({ now: () => 900_000, source: { load } });
+      await controller.refresh("cartoons");
+      const container = doc.createElement("div");
+      doc.body.append(container);
+      await act(async () => {
+        createRoot(container).render(
+          <LoomarrProvider>
+            <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
+          </LoomarrProvider>,
+        );
+      });
+      const button = retryButton();
+      button?.focus();
+      return { answer: (o: "ok" | "fail") => answer(o), button, controller, load };
+    };
+
+    it("keeps focus on the button while the retry is in flight, and says it is trying", async () => {
+      const { button, load } = await mountFailed();
+      expect(doc.activeElement).toBe(button);
+      const before = load.mock.calls.length;
+
+      await act(async () => {
+        button?.click();
+      });
+
+      expect(load.mock.calls.length).toBe(before + 1);
+      expect(doc.body.querySelector('[role="status"]')?.textContent).toContain("Couldn't refresh the Guide");
+      expect(retryButton()).toBe(button);
+      expect(button?.textContent).toContain("Trying again…");
+      expect(doc.activeElement).toBe(button);
+    });
+
+    it("reads a second press during the retry as the same retry, not another request", async () => {
+      const { button, load } = await mountFailed();
+      await act(async () => {
+        button?.click();
+      });
+      const during = load.mock.calls.length;
+
+      await act(async () => {
+        button?.click();
+        button?.click();
+      });
+
+      expect(load.mock.calls.length).toBe(during);
+    });
+
+    it("keeps focus on the button when the retry fails again, and offers it once more", async () => {
+      const { answer, button, load } = await mountFailed();
+      await act(async () => {
+        button?.click();
+      });
+
+      await act(async () => {
+        answer("fail");
+      });
+
+      expect(retryButton()).toBe(button);
+      expect(button?.textContent).toContain("Try again");
+      expect(button?.textContent).not.toContain("Trying");
+      expect(doc.activeElement).toBe(button);
+
+      const before = load.mock.calls.length;
+      await act(async () => {
+        button?.click();
+      });
+      expect(load.mock.calls.length).toBe(before + 1);
+      expect(doc.activeElement).toBe(button);
+    });
+
+    it("drops the notice when the retry works", async () => {
+      const { answer, button } = await mountFailed();
+      await act(async () => {
+        button?.click();
+      });
+
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(doc.body.textContent).not.toContain("Couldn't refresh the Guide");
+    });
   });
 });

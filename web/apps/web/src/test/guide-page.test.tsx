@@ -288,6 +288,48 @@ describe("Guide", () => {
     expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
   });
 
+  // The notice's button is where the keyboard's focus sits when it is pressed. A retry that took
+  // the notice away while it ran dropped focus to the page, and a retry that failed again brought
+  // the notice back with nothing focused.
+  it("keeps focus on the notice's Try again while it retries, and when the retry fails", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt(GRID);
+    expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+    const isGuide = (query: { queryKey: readonly unknown[] }) =>
+      String(query.queryKey[0]).includes("/v1/guide");
+    server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+    await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+    const button = await view.findByRole("button", { name: "Try again" });
+    button.focus();
+
+    // The retry is held on its way to failing again.
+    let answer = () => {};
+    const held = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.get("*/v1/guide", async () => {
+        await held;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    await user.click(button);
+
+    const retrying = await view.findByRole("button", { name: "Trying again…" });
+    expect(retrying).toBe(button);
+    expect(button).toHaveFocus();
+    expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+    // A second press while it runs is the same retry.
+    await user.click(button);
+
+    answer();
+    await waitFor(() => expect(button).toHaveAccessibleName("Try again"));
+    expect(view.getAllByRole("button", { name: "Try again" })).toEqual([button]);
+    expect(button).toHaveFocus();
+  });
+
   // #3411: the tab read a bare "Loomarr" here while every other page named itself.
   it("names its browser tab", async () => {
     stubGuide();
@@ -514,6 +556,36 @@ describe("Guide", () => {
         await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
         expect(view.getByRole("button", { name: "Show 12 hours" })).toHaveAttribute("aria-pressed", "true");
         expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+
+      // A window with no answer has no data, so its retry starts from a clean query: the notice has to
+      // be kept by the page, or it unmounts under the focus on its button.
+      it("keeps focus on Try again while a failed window retries, and when it fails again", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+        const button = await view.findByRole("button", { name: "Try again" });
+        button.focus();
+
+        let answer = () => {};
+        const held = new Promise<void>((resolve) => {
+          answer = resolve;
+        });
+        server.use(
+          http.get("*/v1/guide", async () => {
+            await held;
+            return new HttpResponse(null, { status: 503 });
+          }),
+        );
+        await user.click(button);
+
+        expect(await view.findByRole("button", { name: "Trying again…" })).toBe(button);
+        expect(button).toHaveFocus();
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+
+        answer();
+        await waitFor(() => expect(button).toHaveAccessibleName("Try again"));
+        expect(button).toHaveFocus();
       });
 
       it("gives the page to the error only when the Guide has never answered", async () => {

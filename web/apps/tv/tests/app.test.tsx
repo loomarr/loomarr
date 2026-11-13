@@ -102,10 +102,15 @@ type Node = {
   click(): void;
   focus(): void;
   getAttribute(name: string): string | null;
+  textContent: string | null;
 };
 type Document = {
   activeElement: Node | null;
-  body: { append(node: unknown): void; querySelector(selector: string): Node | null };
+  body: {
+    append(node: unknown): void;
+    querySelector(selector: string): Node | null;
+    querySelectorAll(selector: string): ArrayLike<Node>;
+  };
   createElement(tag: string): Parameters<typeof createRoot>[0];
 };
 const page = (globalThis as unknown as { document: Document }).document;
@@ -114,6 +119,11 @@ let server: ReturnType<typeof createPairedServer>;
 let root: Root;
 
 const label = (prefix: string) => page.body.querySelector(`[aria-label^="${prefix}"]`);
+// The Guide notice's button, which reads "Trying again…" while its retry is in flight.
+const tryAgain = () =>
+  Array.from(page.body.querySelectorAll('[role="button"]')).find((node) =>
+    /^Try(ing)? again/.test(node.textContent?.trim() ?? ""),
+  ) ?? null;
 const focusedLabel = () => page.activeElement?.getAttribute("aria-label");
 const eventually = (check: () => void) => vi.waitFor(check, { timeout: 8_000 });
 
@@ -176,5 +186,42 @@ describe("the TV app", () => {
     expect(label("Programme guide")).not.toBeNull();
     expect(label("Cartoon Classics, ")).not.toBeNull();
     expect(focusedLabel()).toMatch(/^Sci-Fi Classics, /);
+  });
+
+  // The remote's place is the notice's button: if a retry unmounted the notice, the remote would
+  // have nothing focused and no way back to the Guide without a restart of the gesture.
+  it("keeps the remote on the Guide notice's Try again while it retries, and when the retry fails", async () => {
+    await launch();
+    await eventually(() => expect(label("Open programme guide")).not.toBeNull());
+    await act(async () => label("Open programme guide")?.click());
+    await eventually(() => expect(label("Sci-Fi Classics, ")).not.toBeNull());
+
+    // A channel frame makes the Guide load again, and the server is down: the grid stays, said stale.
+    const restore = server.failGuide();
+    await act(async () => server.sendFrame("channel", { id: "ch-scifi", kind: "updated" }));
+    await eventually(() => expect(tryAgain()).not.toBeNull());
+    const button = tryAgain();
+    await act(async () => button?.focus());
+    expect(page.activeElement).toBe(button);
+
+    // The retry is on its way: the same button says so, and the remote is still on it.
+    const answer = server.holdGuide();
+    await act(async () => button?.click());
+    expect(tryAgain()).toBe(button);
+    expect(button?.textContent).toContain("Trying again");
+    expect(page.activeElement).toBe(button);
+    expect(label("Sci-Fi Classics, ")).not.toBeNull();
+
+    // It fails again: the notice is back as it was, and the remote never left it.
+    await act(async () => answer());
+    await eventually(() => expect(button?.textContent).not.toContain("Trying again"));
+    expect(tryAgain()).toBe(button);
+    expect(page.activeElement).toBe(button);
+
+    // The server is back: the notice goes, the grid stays.
+    restore();
+    await act(async () => button?.click());
+    await eventually(() => expect(tryAgain()).toBeNull());
+    expect(label("Sci-Fi Classics, ")).not.toBeNull();
   });
 });

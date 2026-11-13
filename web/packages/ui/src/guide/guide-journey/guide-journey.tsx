@@ -134,7 +134,14 @@ const GuideJourney = ({
       {stale ? (
         <Surface backgroundColor="transparent" borderWidth={0} padding="control">
           <Notice
-            action={{ label: "Try again", onPress: () => void controller.refresh(preferredChannelId) }}
+            // The notice stays mounted while the retry runs, so the viewer's focus stays on its
+            // button; a press during the retry is the same retry, not another request.
+            action={{
+              label: snapshot.refreshing ? "Trying again…" : "Try again",
+              onPress: () => {
+                if (!snapshot.refreshing) void controller.refresh(preferredChannelId);
+              },
+            }}
             body="Showing what Loomarr had a moment ago."
             density={density}
             title="Couldn't refresh the Guide"
