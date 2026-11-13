@@ -363,6 +363,49 @@ describe("GuideJourney", () => {
 
       expect(focusRegistry.request).not.toHaveBeenCalled();
     });
+
+    // The press was for that one retry. When it fails, a later recovery nobody pressed for (a
+    // channel frame's refresh, a tune) must not pull the remote from wherever it has gone.
+    it("sends the remote nowhere when a background refresh recovers after a retry that failed", async () => {
+      const focusRegistry = tvRegistry();
+      const { answer, button, controller } = await mountFailed({ focusRegistry });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        answer("fail");
+      });
+
+      await act(async () => {
+        void controller.refresh("cartoons");
+      });
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(doc.body.textContent).not.toContain("Couldn't refresh the Guide");
+      expect(focusRegistry.request).not.toHaveBeenCalled();
+    });
+
+    it("still sends the remote home when a later press recovers after one that failed", async () => {
+      const focusRegistry = tvRegistry();
+      const { answer, button } = await mountFailed({ focusRegistry });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        answer("fail");
+      });
+      await act(async () => {
+        button?.click();
+      });
+      await act(async () => {
+        answer("ok");
+      });
+
+      expect(focusRegistry.request).toHaveBeenCalledTimes(1);
+      expect(focusRegistry.request).toHaveBeenCalledWith(home);
+    });
   });
 
   // The error panel is the first load's "notice": its Try again used to swap to the loading panel,

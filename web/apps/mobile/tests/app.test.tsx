@@ -200,6 +200,30 @@ describe("the phone app", () => {
     expect(label("Sci-Fi Classics, ")).not.toBeNull();
   });
 
+  // The phone has no remote to send, so a retry that failed and a frame that later recovers the
+  // Guide must take the notice away and leave the viewer wherever they were.
+  it("takes the notice away without moving focus when a frame recovers the Guide after a retry that failed", async () => {
+    await launch();
+    await eventually(() => expect(label("Sci-Fi Classics, ")).not.toBeNull());
+
+    const restore = server.failGuide();
+    await act(async () => server.sendFrame("channel", { id: "ch-scifi", kind: "updated" }));
+    await eventually(() => expect(tryAgain()).not.toBeNull());
+    const button = tryAgain();
+    await act(async () => button?.focus());
+    const answer = server.holdGuide();
+    await act(async () => button?.click());
+    await act(async () => answer());
+    await eventually(() => expect(button?.textContent).not.toContain("Trying again"));
+
+    await act(async () => (page.activeElement as unknown as { blur(): void }).blur());
+    restore();
+    await act(async () => server.sendFrame("channel", { id: "ch-scifi", kind: "updated" }));
+    await eventually(() => expect(tryAgain()).toBeNull());
+    expect(label("Sci-Fi Classics, ")).not.toBeNull();
+    expect(page.activeElement?.getAttribute("aria-label") ?? null).toBeNull();
+  });
+
   it("tunes the channel the viewer picks in the Guide", async () => {
     await launch();
     await eventually(() => expect(label("Watch ")).not.toBeNull());

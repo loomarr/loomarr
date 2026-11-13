@@ -145,9 +145,16 @@ const GuideJourney = ({
   // A retry that works takes the notice (or the error panel) away, and the focus on its button with
   // it. The Guide's home, the selected programme, is where a remote goes instead of nowhere.
   const retryPressed = useRef(false);
+  // The press is for that one retry: whichever way it settles, a later recovery that nobody pressed
+  // for (a channel frame's refresh, a tune) leaves the viewer's focus where it is.
   const recovered = snapshot.error === undefined && snapshot.status === "ready";
+  const refreshing = snapshot.refreshing === true;
   useEffect(() => {
-    if (!retryPressed.current || !recovered) return;
+    if (!retryPressed.current) return;
+    if (!recovered) {
+      if (!refreshing) retryPressed.current = false;
+      return;
+    }
     retryPressed.current = false;
     if (selectedAnchorMs === undefined || selectedChannelId === undefined) return;
     if (selectedScheduleBlockId === undefined) return;
@@ -159,7 +166,7 @@ const GuideJourney = ({
         scheduleBlockId: selectedScheduleBlockId,
       },
     });
-  }, [focusRegistry, recovered, selectedAnchorMs, selectedChannelId, selectedScheduleBlockId]);
+  }, [focusRegistry, recovered, refreshing, selectedAnchorMs, selectedChannelId, selectedScheduleBlockId]);
 
   return (
     <Surface borderRadius={0} borderWidth={0} flex={1} level="canvas">

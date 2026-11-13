@@ -446,6 +446,28 @@ describe("Guide", () => {
       await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
       expect(now).toHaveFocus();
     });
+
+    // The native Guide had a press armed that outlived a failed retry; the page keeps no such memory,
+    // so a recovery nobody pressed for, after a retry that failed, still leaves the viewer's focus.
+    it("leaves focus alone when a background refresh recovers after a retry that failed", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const view = renderAt(GRID);
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      failGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+      await user.click(await view.findByRole("button", { name: "Try again" }));
+      await view.findByRole("button", { name: "Try again" });
+
+      const now = view.getByRole("button", { name: "NOW" });
+      now.focus();
+      server.resetHandlers();
+      stubGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+
+      await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+      expect(now).toHaveFocus();
+    });
   });
 
   // #3411: the tab read a bare "Loomarr" here while every other page named itself.
