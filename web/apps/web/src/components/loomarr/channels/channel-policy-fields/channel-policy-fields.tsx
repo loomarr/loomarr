@@ -408,7 +408,7 @@ const ChannelPolicyFields = ({
                 const hasDates = Object.values(nextDates).some(
                   (ranges) => Array.isArray(ranges) && ranges.length > 0,
                 );
-                const { era: _era, dates: _dates, ...scope } = policy.scope ?? {};
+                const { dates: _dates, ...scope } = policy.scope ?? {};
                 // Editing an axis keeps this editor open even if the windows happen to line up
                 // again, so the field does not swap under the operator mid-edit.
                 setAxesRequested(true);

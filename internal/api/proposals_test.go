@@ -924,11 +924,12 @@ func TestApprove_RestampsAlternatesFromOriginalIntent(t *testing.T) {
 
 // A new channel seeds its FILLER era from its PROGRAM scope era (§10 default-from-theme),
 // so a "90s" channel gets 90s ads out of the box without the operator touching filler.
-func TestApprove_SeedsFillerEraFromScopeEra(t *testing.T) {
+func TestApprove_SeedsFillerEraFromScopeDates(t *testing.T) {
 	harness := newProposalHarness(t)
 	srv, st := harness.Server, harness.Store
 	// The proposal's policy scopes programs to the 1990s — the filler era should follow.
-	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"era":{"from":1990,"to":1999}}},` +
+	body := `{"intent":{"description":"90s action"},"policy":{"scope":{"dates":{"movieRelease":[{"from":1990,"to":1999}],` +
+		`"seriesPremiere":[{"from":1990,"to":1999}],"seriesAiring":[{"from":1990,"to":1999}]}}},` +
 		`"lineup":[{"mediaType":"movie","tmdbId":90000603,"name":"Marigold Protocol","year":1999,` +
 		`"inLibrary":true,"libraryItemId":"641641"}],"acquisitions":[]}`
 	if err := createProposalWithJob(st, context.Background(), proposalstore.Proposal{

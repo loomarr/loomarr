@@ -412,11 +412,6 @@ type ScopePolicy struct {
 	Dates       *DateScope      `json:"dates,omitempty"`       // separate movie, premiere, and episode-airing windows
 	Genres      GenreFilter     `json:"genres,omitempty"`      // include/exclude by genre name
 	RuntimeMax  int             `json:"runtimeMax,omitempty"`  // seconds; 0 = unbounded ("nothing over an hour")
-
-	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
-	// policy decodes to their intersection; a request with both is ambiguous and the API
-	// rejects it (ChannelPolicy.DateAliasConflict). Decode-only state, never serialised.
-	eraAndDates bool
 }
 
 // DateScope keeps date meanings separate: title metadata supplies movie release and

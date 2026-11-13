@@ -453,7 +453,8 @@ func TestPipeline_KidsChannel_EndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resp := r.do(t, http.MethodPatch, "/v1/channels/"+approved.ChannelID,
-		fmt.Sprintf(`{"revision":%d,"policy":{"scope":{"era":{"from":1990,"to":1999},"genres":{"include":["Animation"]}},`, current.Revision)+
+		fmt.Sprintf(`{"revision":%d,"policy":{"scope":{"dates":{"movieRelease":[{"from":1990,"to":1999}],`+
+			`"seriesPremiere":[{"from":1990,"to":1999}],"seriesAiring":[{"from":1990,"to":1999}]},"genres":{"include":["Animation"]}},`, current.Revision)+
 			`"audience":{"ceiling":"TV-Y"},"ordering":"syndication"}}`,
 	); resp.StatusCode != http.StatusOK {
 		t.Fatalf("tighten ceiling → %d, want 200", resp.StatusCode)

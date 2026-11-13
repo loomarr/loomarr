@@ -2,7 +2,6 @@ package schedule_test
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -72,21 +71,11 @@ func airedIDs(d schedule.DesiredLineup) []string {
 	return slices.Compact(ids)
 }
 
-func decodePolicy(t *testing.T, blob string) schedule.ChannelPolicy {
-	t.Helper()
-	var p schedule.ChannelPolicy
-	if err := json.Unmarshal([]byte(blob), &p); err != nil {
-		t.Fatalf("decode %s: %v", blob, err)
-	}
-	return p
-}
-
-// A policy saved with the retired `era` field must air exactly what it aired when the
-// scheduler still evaluated Era. The oracle restates the deleted evaluator independently:
-// a dated title (movie release / series premiere) and a dated episode must each fall in
-// the range, and an unknown year (0) is never excluded. The decoded legacy policy and a
-// policy written directly as era-shaped Dates must both match it.
-func TestLegacyEraPolicyAirsTheSameLineupAsDates(t *testing.T) {
+// Era-shaped dates (what migration 00230 folded a stored `era` into) must air exactly what the
+// scheduler aired when it still evaluated Era. The oracle restates the deleted evaluator
+// independently: a dated title (movie release / series premiere) and a dated episode must each
+// fall in the range, and an unknown year (0) is never excluded.
+func TestEraShapedDatesAirTheEraLineup(t *testing.T) {
 	entries, avail, years, parent := eraCorpus()
 	entryYear := map[provision.Key]int{}
 	for _, e := range entries {
@@ -103,14 +92,9 @@ func TestLegacyEraPolicyAirsTheSameLineupAsDates(t *testing.T) {
 			}
 			slices.Sort(want)
 
-			blob, _ := json.Marshal(map[string]any{"scope": map[string]any{"era": era}})
-			legacy := decodePolicy(t, string(blob))
 			normalised := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
 				Scope: schedule.ScopePolicy{Dates: schedule.EraDates(era)},
 			}}
-			if got := airedIDs(computeWithPolicy(entries, avail, legacy)); !slices.Equal(got, want) {
-				t.Errorf("legacy era policy aired %v, want %v", got, want)
-			}
 			if got := airedIDs(computeWithPolicy(entries, avail, normalised)); !slices.Equal(got, want) {
 				t.Errorf("era-shaped dates aired %v, want %v", got, want)
 			}
@@ -118,9 +102,9 @@ func TestLegacyEraPolicyAirsTheSameLineupAsDates(t *testing.T) {
 	}
 }
 
-// A stored scope that carried BOTH era and dates was the AND of the two; it decodes to their
-// per-axis intersection and keeps airing exactly that.
-func TestLegacyEraAndDatesPolicyAirsTheirIntersection(t *testing.T) {
+// A stored scope that carried BOTH era and dates was the AND of the two. Migration 00230 folds it
+// to their per-axis intersection, and that intersection must keep airing exactly the AND.
+func TestFoldedEraAndDatesAirTheirIntersection(t *testing.T) {
 	entries, avail, years, parent := eraCorpus()
 	era := schedule.Range{From: 1990, To: 1999}
 	movies := schedule.Range{From: 1995, To: 2005}
@@ -146,19 +130,16 @@ func TestLegacyEraAndDatesPolicyAirsTheirIntersection(t *testing.T) {
 	}
 	slices.Sort(want)
 
-	p := decodePolicy(t, `{"scope":{"era":{"from":1990,"to":1999},"dates":{`+
-		`"movieRelease":[{"from":1995,"to":2005}],"seriesAiring":[{"from":1985,"to":1994}]}}}`)
-	if got := airedIDs(computeWithPolicy(entries, avail, p)); !slices.Equal(got, want) {
-		t.Fatalf("legacy era+dates aired %v, want %v", got, want)
-	}
-	wantDates := &schedule.DateScope{
-		MovieRelease:   []schedule.Range{{From: 1995, To: 1999}},
-		SeriesPremiere: []schedule.Range{era},
-		SeriesAiring:   []schedule.Range{{From: 1990, To: 1994}},
-	}
-	got, _ := json.Marshal(p.Scope.Dates)
-	if want, _ := json.Marshal(wantDates); string(got) != string(want) {
-		t.Fatalf("decoded dates = %s, want %s", got, want)
+	// The fold of era 1990–1999 with movieRelease 1995–2005 and seriesAiring 1985–1994.
+	folded := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
+		Dates: &schedule.DateScope{
+			MovieRelease:   []schedule.Range{{From: 1995, To: 1999}},
+			SeriesPremiere: []schedule.Range{era},
+			SeriesAiring:   []schedule.Range{{From: 1990, To: 1994}},
+		},
+	}}}
+	if got := airedIDs(computeWithPolicy(entries, avail, folded)); !slices.Equal(got, want) {
+		t.Fatalf("folded era+dates aired %v, want %v", got, want)
 	}
 }
 
@@ -168,7 +149,9 @@ func TestLegacyEraAndDatesPolicyAirsTheirIntersection(t *testing.T) {
 func TestRuleEraDropsOutOfRangeEpisodes(t *testing.T) {
 	entries, avail, _, _ := eraCorpus()
 	for name, p := range map[string]schedule.ChannelPolicy{
-		"legacy rule era": decodePolicy(t, `{"rules":[{"id":"r","what":{"era":{"from":1990,"to":1999}}}]}`),
+		"era-shaped rule dates": {ProposalPolicy: schedule.ProposalPolicy{Rules: []schedule.SchedulingRule{{
+			ID: "r", What: &schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})},
+		}}}},
 		"era preset token": func() schedule.ChannelPolicy {
 			what, _, ok := schedule.LowerWhat("era:1990-1999")
 			if !ok {
@@ -189,13 +172,14 @@ func TestRuleEraDropsOutOfRangeEpisodes(t *testing.T) {
 	}
 }
 
-func TestEraIsReadButNeverWritten(t *testing.T) {
-	p := decodePolicy(t, `{"scope":{"era":{"from":1990}},"rules":[{"id":"r","what":{"era":{"to":1999}}}]}`)
-	if err := p.DateAliasConflict(); err != nil {
-		t.Fatalf("an era-only request is not ambiguous: %v", err)
-	}
+// Open-ended era-shaped dates stay valid, and a scope marshals no `era`.
+func TestOpenEndedEraDatesAreValidAndWriteNoEra(t *testing.T) {
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
+		Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990})},
+		Rules: []schedule.SchedulingRule{{ID: "r", What: &schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{To: 1999})}}},
+	}}
 	if err := p.Validate(); err != nil {
-		t.Fatalf("open-ended era must stay valid as dates: %v", err)
+		t.Fatalf("open-ended era dates must be valid: %v", err)
 	}
 	out, err := json.Marshal(p)
 	if err != nil {
@@ -203,30 +187,6 @@ func TestEraIsReadButNeverWritten(t *testing.T) {
 	}
 	if strings.Contains(string(out), `"era"`) {
 		t.Fatalf("the backend wrote era: %s", out)
-	}
-	if again := decodePolicy(t, string(out)); !strings.Contains(string(out), `"seriesAiring":[{"from":1990}]`) ||
-		again.Rules[0].What.Dates == nil {
-		t.Fatalf("era did not round-trip as dates: %s", out)
-	}
-}
-
-func TestAnyEraIsNoConstraint(t *testing.T) {
-	p := decodePolicy(t, `{"scope":{"era":{}}}`)
-	if p.Scope.Dates != nil || p.DateAliasConflict() != nil {
-		t.Fatalf("era {} must decode to no date scope, got %+v", p.Scope.Dates)
-	}
-}
-
-func TestRequestWithEraAndDatesIsAmbiguous(t *testing.T) {
-	for name, blob := range map[string]string{
-		"channel scope": `{"scope":{"era":{"from":1990,"to":1999},"dates":{"movieRelease":[{"from":1990,"to":1999}]}}}`,
-		"rule scope":    `{"rules":[{"id":"r","what":{"era":{"from":1990,"to":1999},"dates":{"seriesAiring":[{"from":1990,"to":1999}]}}}]}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			if err := decodePolicy(t, blob).DateAliasConflict(); !errors.Is(err, schedule.ErrEraAndDates) {
-				t.Fatalf("DateAliasConflict = %v, want ErrEraAndDates", err)
-			}
-		})
 	}
 }
 
@@ -264,11 +224,12 @@ func TestNormalizeRangesTreatsZeroAsOpen(t *testing.T) {
 	}
 }
 
-// The filler seed and the live filler inheritance both read the era the dates imply; an
-// open-ended legacy era must still seed the same open-ended filler era it always did.
+// The filler seed and the live filler inheritance both read the era the dates imply; open-ended
+// era-shaped dates must still seed the same open-ended filler era.
 func TestSeedFillerSelectionKeepsAnOpenEndedEra(t *testing.T) {
-	p := decodePolicy(t, `{"scope":{"era":{"from":1990}}}`)
-	seed := schedule.SeedFillerSelection(p.ProposalPolicy)
+	seed := schedule.SeedFillerSelection(schedule.ProposalPolicy{
+		Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990})},
+	})
 	if seed.Era == nil || *seed.Era != (schedule.Range{From: 1990}) || seed.EraWindows != nil {
 		t.Fatalf("seed = %+v, want era {1990, open}", seed)
 	}
