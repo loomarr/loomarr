@@ -22,7 +22,14 @@ import {
   usePairedRequests,
   usePairedSubtitles,
 } from "@loomarr/paired-client";
-import { NativePlayerView, PairedNativeImage, useShellTune } from "@loomarr/player/native";
+import {
+  isPictureInPictureSupported,
+  NativeAirPlayPicker,
+  NativePlayerView,
+  type NativePlayerViewHandle,
+  PairedNativeImage,
+  useShellTune,
+} from "@loomarr/player/native";
 import type { ApprovalBrowser } from "@loomarr/ui";
 import {
   ClientShell,
@@ -50,7 +57,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { nativeApp } from "../src/native-app";
 
@@ -194,6 +201,10 @@ const WatchingScreen = ({
   const keyPlaying = playing || snapshot.status === "tuning";
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
   const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
+  // An iPhone's utilities add AirPlay and picture in picture (§9.7); an Android phone has neither key.
+  const picture = useRef<NativePlayerViewHandle>(null);
+  const iPhone = Platform.OS === "ios";
+  const [pictureInPicture] = useState(() => iPhone && isPictureInPictureSupported());
   const step = (direction: -1 | 1) => () => {
     haptic.selection();
     void controller.step(direction);
@@ -297,6 +308,8 @@ const WatchingScreen = ({
     <View style={{ backgroundColor: "black", flex: 1 }}>
       {/* The picture, letterboxed and centred: a strip mid-screen upright, the whole screen on its side. */}
       <NativePlayerView
+        pictureInPicture={pictureInPicture}
+        ref={picture}
         style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         transport={transport}
       />
@@ -370,6 +383,10 @@ const WatchingScreen = ({
               : {})}
             sheet={sheet ? sheetFor(sheet) : undefined}
             utilities={{
+              ...(iPhone ? { airPlayPicker: <NativeAirPlayPicker /> } : {}),
+              ...(pictureInPicture
+                ? { onPictureInPicture: () => void picture.current?.startPictureInPicture() }
+                : {}),
               audioOpen: sheet === "audio",
               density: "touch",
               onAudio: toggleSheet("audio"),

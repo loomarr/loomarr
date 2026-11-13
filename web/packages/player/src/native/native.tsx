@@ -1,6 +1,13 @@
 import type { PairingCredential } from "@loomarr/core/pairing";
-import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
-import { useSyncExternalStore } from "react";
+import {
+  createVideoPlayer,
+  isPictureInPictureSupported,
+  VideoAirPlayButton,
+  type VideoPlayer,
+  VideoView,
+  type VideoViewProps,
+} from "expo-video";
+import { type Ref, useSyncExternalStore } from "react";
 import { Image, type ImageProps } from "react-native";
 import { createLiveClock, type LivePosition } from "../live-clock";
 import { nativeErrorCause } from "../native-playback-diagnostics";
@@ -18,7 +25,13 @@ interface NativePlayerTransport extends PlayerTransport {
   suspend: () => void;
 }
 
+/** The picture itself, for what an app asks of it directly: picture in picture from the app's own key. */
+type NativePlayerViewHandle = VideoView;
+
 interface NativePlayerViewProps {
+  /** Lets the picture leave the app as picture in picture (needs expo-video's config plugin). */
+  pictureInPicture?: boolean;
+  ref?: Ref<NativePlayerViewHandle>;
   style?: VideoViewProps["style"];
   transport: NativePlayerTransport;
 }
@@ -308,16 +321,17 @@ const createNativePlayerTransport = (
 const createExpoVideoTransport = (marks?: PlaybackMarks): NativePlayerTransport =>
   createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null), marks);
 
-const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
+const NativePlayerView = ({ pictureInPicture = false, ref, style, transport }: NativePlayerViewProps) => {
   const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);
   return player ? (
     <VideoView
-      allowsPictureInPicture={false}
+      allowsPictureInPicture={pictureInPicture}
       allowsVideoFrameAnalysis={false}
       contentFit="contain"
       nativeControls={false}
       onFirstFrameRender={transport.firstFrame}
       player={player}
+      ref={ref}
       startsPictureInPictureAutomatically={false}
       style={style}
       surfaceType="surfaceView"
@@ -325,15 +339,31 @@ const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
   ) : null;
 };
 
+/**
+ * AirPlay's route picker. iOS opens the picker only from its own button, so the AirPlay key (§9.7)
+ * lays this, with its own icon clear, over the key's face; the key draws what the viewer sees.
+ * Renders nothing off iOS.
+ */
+const NativeAirPlayPicker = () => (
+  <VideoAirPlayButton
+    accessibilityLabel="AirPlay"
+    activeTint="transparent"
+    style={{ height: "100%", width: "100%" }}
+    tint="transparent"
+  />
+);
+
 const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
   const source = pairedNativeImageSource(credential, uri);
   return source ? <Image resizeMode={resizeMode} source={source} style={style} /> : null;
 };
 
-export type { NativePlayerTransport, NativePlayerViewProps, PairedNativeImageProps };
+export type { NativePlayerTransport, NativePlayerViewHandle, NativePlayerViewProps, PairedNativeImageProps };
 export {
   createExpoVideoTransport,
   createNativePlayerTransport,
+  isPictureInPictureSupported,
+  NativeAirPlayPicker,
   NativePlayerView,
   PairedNativeImage,
   pairedNativeImageSource,
