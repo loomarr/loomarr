@@ -347,7 +347,7 @@
       "tailwindClasses": 36
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 94
+      "tailwindClasses": 55
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 2
