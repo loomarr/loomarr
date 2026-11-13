@@ -14,8 +14,8 @@ const Picture = ({ label }: { label: string }) => (
     justifyContent="center"
     width="100%"
   >
-    {/* The caption stands in for the picture's own content; it is not a visible name. */}
-    <Text aria-hidden textRole="hint" tone="secondary">
+    {/* A visible caption is always part of the tile's name (WCAG 2.5.3), as `label` carries it. */}
+    <Text textRole="hint" tone="secondary">
       {label}
     </Text>
   </Surface>
@@ -39,13 +39,13 @@ const Workshop = () => (
           radius="medium"
           width={96}
         >
-          <Picture label="Poster" />
+          <Picture label="Harbor Lights" />
         </MediaTile>
         <MediaTile current height={64} label="Preview Station ident" onPress={() => undefined} width={112}>
-          <Picture label="Current" />
+          <Picture label="Station ident" />
         </MediaTile>
         <MediaTile disabled height={64} label="Preview Unchecked clip" width={112}>
-          <Picture label="Disabled" />
+          <Picture label="Unchecked clip" />
         </MediaTile>
         <MediaTile
           height={64}
@@ -55,7 +55,7 @@ const Workshop = () => (
           tone="warning"
           width={112}
         >
-          <Picture label="Warning" />
+          <Picture label="Unsplittable reel" />
         </MediaTile>
       </Stack>
     </Stack>
@@ -63,7 +63,7 @@ const Workshop = () => (
       <Text textRole="title">As a Tooltip trigger</Text>
       <Tooltip content="Click to play this exact clip." side="bottom">
         <MediaTile height={64} label="Preview Cereal ad, 1989" onPress={() => undefined} width={112}>
-          <Picture label="Hover" />
+          <Picture label="Cereal ad, 1989" />
         </MediaTile>
       </Tooltip>
     </Stack>

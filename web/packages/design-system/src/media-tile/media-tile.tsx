@@ -10,7 +10,9 @@ type MediaTileProps = {
   /** The picture: a served image, a frame with a badge laid over it. The tile clips it to its corners. */
   children: ReactNode;
   /**
-   * The tile's accessible name. A tile whose name is better read from its own words (a still with a
+   * The tile's accessible name. When the tile shows a caption the name must contain it, so the
+   * label begins with the verb and carries the caption's words ("Preview Cereal ad, 1989" under a
+   * visible "Cereal ad, 1989"); never hide a visible caption from assistive tech (WCAG 2.5.3). A tile whose name is better read from its own words (a still with a
    * visible title) or from a marker elsewhere on the screen leaves this out and names itself with
    * `aria-labelledby`, as a button would.
    */
