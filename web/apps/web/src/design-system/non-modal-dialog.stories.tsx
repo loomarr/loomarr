@@ -4,11 +4,12 @@ import { View } from "react-native";
 
 // A non-modal dialog sits in the page, over a picture that keeps playing: no scrim, no focus trap.
 // The caller draws its surface; here it is the player's cluster menu, from the chrome tokens.
-const NonModalDialogGallery = ({ theme = "dark" }: { theme?: "dark" | "light" }) => (
-  <LoomarrProvider theme={theme}>
+// The player's chrome is dark in both themes, so the gallery is dark only.
+const NonModalDialogGallery = () => (
+  <LoomarrProvider theme="dark">
     <main
       style={{
-        background: semanticThemes[theme].surface.canvas,
+        background: semanticThemes.dark.surface.canvas,
         boxSizing: "border-box",
         minHeight: "100vh",
         padding: 32,
@@ -68,7 +69,6 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 const Dark: Story = {};
-const Light: Story = { args: { theme: "light" } };
 
 export default meta;
-export { Dark, Light };
+export { Dark };
