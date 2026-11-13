@@ -8,16 +8,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Visual baselines regenerates one pull request's committed Linux baselines on a runner and pushes
-// only the changed PNGs to that pull request's branch, in two workflows. visual-baselines.yml runs
-// from the default branch and runs none of the branch's code; visual-baselines-render.yml runs the
-// branch's code read-only, dispatched at the branch so it stays in that branch's Actions cache
-// scope. Their inline scripts are the whole of their authority, so each is pinned here verbatim;
-// the workflow authority catalog registers the same text (with the YAML block's trailing newline)
-// at its absolute step.
+// Visual baselines regenerates one pull request's committed Linux screenshot baselines (the visual
+// suite's and the e2e suite's) on a runner and pushes only the changed PNGs to that pull request's
+// branch, in two workflows. visual-baselines.yml runs on every push to a same-repository pull
+// request that touches web/, and by hand from the default branch; none of its jobs that hold a
+// write token runs the branch's code. visual-baselines-render.yml runs the branch's code read-only,
+// dispatched at the branch so it stays in that branch's Actions cache scope. Their inline scripts
+// are the whole of their authority, so each is pinned here verbatim; the workflow authority catalog
+// registers the same text (with the YAML block's trailing newline) at its absolute step.
 
 const visualBaselinesResolveCommand = `set -euo pipefail
-if [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+if [ "$EVENT" = workflow_dispatch ] && [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
   echo "::error::dispatch Visual baselines from $DEFAULT_BRANCH, not $REF"
   exit 1
 fi
@@ -55,8 +56,23 @@ if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
   echo "::error::#$PR has an unreadable head commit '$sha'"
   exit 1
 fi
-{ echo "branch=$branch"; echo "sha=$sha"; } >> "$GITHUB_OUTPUT"
-echo "Regenerating baselines for #$PR: $branch at $sha" >> "$GITHUB_STEP_SUMMARY"`
+render=true
+if [ "$EVENT" = pull_request ]; then
+  if gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[].filename' > "$RUNNER_TEMP/files.txt" &&
+    ./scripts/ci-impact.sh < "$RUNNER_TEMP/files.txt" > "$RUNNER_TEMP/impact.txt"; then
+    if ! grep -qxE 'visual=true|e2e=true' "$RUNNER_TEMP/impact.txt"; then
+      render=false
+    fi
+  else
+    echo "::warning::could not classify the changes of #$PR; rendering anyway"
+  fi
+fi
+{ echo "branch=$branch"; echo "sha=$sha"; echo "render=$render"; } >> "$GITHUB_OUTPUT"
+if [ "$render" = true ]; then
+  echo "Regenerating baselines for #$PR: $branch at $sha" >> "$GITHUB_STEP_SUMMARY"
+else
+  echo "#$PR changes nothing the visual or e2e suite renders; nothing to regenerate." >> "$GITHUB_STEP_SUMMARY"
+fi`
 
 const visualBaselinesRenderDispatchCommand = `set -euo pipefail
 inputs=(-f sha="$HEAD_SHA" -f request="$REQUEST")
@@ -121,9 +137,13 @@ if [ "$SHA" != "$WANT_SHA" ]; then
   exit 1
 fi`
 
+// visualBaselinesAllowed is the only shape of path either half lets leave the render or enter the
+// commit: a PNG directly under a visual or e2e spec's snapshot directory.
+const visualBaselinesAllowed = `allowed='^web/apps/web/tests/(visual|e2e)/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'`
+
 const visualBaselinesCollectCommand = `set -euo pipefail
 out="$RUNNER_TEMP/visual-baselines"
-allowed='^web/apps/web/tests/visual/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
+` + visualBaselinesAllowed + `
 mkdir -p "$out/files"
 git rev-parse HEAD > "$out/commit"
 : > "$out/changed.txt"
@@ -137,7 +157,7 @@ while IFS= read -r -d '' entry; do
     mkdir -p "$out/files/$(dirname "$path")"
     cp -- "$path" "$out/files/$path"
   else
-    echo "::error::the update changed something other than a visual baseline: '$status' $path"
+    echo "::error::the update changed something other than a screenshot baseline: '$status' $path"
     unexpected=1
   fi
 done < "$RUNNER_TEMP/status"
@@ -148,13 +168,13 @@ echo "$(wc -l < "$out/changed.txt") baselines changed" >> "$GITHUB_STEP_SUMMARY"
 
 const visualBaselinesCommitCommand = `set -euo pipefail
 in="$RUNNER_TEMP/visual-baselines"
-allowed='^web/apps/web/tests/visual/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
+` + visualBaselinesAllowed + `
 if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ] || [ "$(cat "$in/commit")" != "$HEAD_SHA" ]; then
-  echo "::error::$BRANCH is no longer $HEAD_SHA, the commit that was rendered; dispatch again"
+  echo "::error::$BRANCH is no longer $HEAD_SHA, the commit that was rendered; a newer run renders it"
   exit 1
 fi
 if [ ! -s "$in/changed.txt" ]; then
-  echo "No visual baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
+  echo "No baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
   echo "pushed=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -183,7 +203,7 @@ if [ -n "$(comm -23 "$RUNNER_TEMP/staged.txt" "$RUNNER_TEMP/manifest.txt")" ]; t
   exit 1
 fi
 if [ ! -s "$RUNNER_TEMP/staged.txt" ]; then
-  echo "No visual baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
+  echo "No baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
   echo "pushed=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -205,7 +225,44 @@ git push origin "HEAD:refs/heads/$BRANCH"
 { echo "pushed=true"; echo "sha=$(git rev-parse HEAD)"; } >> "$GITHUB_OUTPUT"
 echo "Pushed $count baselines to $BRANCH as $(git rev-parse HEAD)." >> "$GITHUB_STEP_SUMMARY"`
 
-const visualBaselinesCIDispatchCommand = `set -euo pipefail
+// visualBaselinesReleaseCommand approves only the runs GitHub holds for the commit the bot just
+// pushed: same commit, this repository, pull_request, started by github-actions[bot]. When no CI
+// run appears for that commit at all, it dispatches the full CI scope so the required check still
+// reports.
+const visualBaselinesReleaseCommand = `set -euo pipefail
+if [[ ! $HEAD_SHA =~ ^[0-9a-f]{40}$ ]]; then
+  echo "::error::the commit job reported no pushed commit, got '$HEAD_SHA'"
+  exit 1
+fi
+for _ in $(seq 1 24); do
+  gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" > "$RUNNER_TEMP/runs.json"
+  if jq -e '.workflow_runs | any(.path == ".github/workflows/ci.yml")' "$RUNNER_TEMP/runs.json" > /dev/null; then
+    break
+  fi
+  sleep 5
+done
+jq -r --arg repo "$REPO" --arg sha "$HEAD_SHA" '.workflow_runs[]
+  | select(.event == "pull_request" and .conclusion == "action_required"
+    and .head_sha == $sha and .repository.full_name == $repo
+    and .head_repository.full_name == $repo
+    and .triggering_actor.login == "github-actions[bot]")
+  | .id' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/held.txt"
+failed=0
+while IFS= read -r id; do
+  if gh api --method POST "repos/$REPO/actions/runs/$id/approve" > /dev/null; then
+    echo "Approved held run $SERVER_URL/$REPO/actions/runs/$id" | tee -a "$GITHUB_STEP_SUMMARY"
+  else
+    echo "::error::could not approve held run $SERVER_URL/$REPO/actions/runs/$id; approve it in the Actions tab"
+    failed=1
+  fi
+done < "$RUNNER_TEMP/held.txt"
+if [ "$failed" -ne 0 ]; then
+  exit 1
+fi
+if jq -e '.workflow_runs | any(.path == ".github/workflows/ci.yml")' "$RUNNER_TEMP/runs.json" > /dev/null; then
+  exit 0
+fi
+echo "No pull_request CI run appeared for $HEAD_SHA; dispatching CI instead." | tee -a "$GITHUB_STEP_SUMMARY"
 gh workflow run ci.yml --repo "$REPO" --ref "$BRANCH" -f scope=full
 run_url=""
 for _ in $(seq 1 24); do
@@ -225,20 +282,31 @@ echo "CI for $HEAD_SHA: $run_url" | tee -a "$GITHUB_STEP_SUMMARY"`
 
 const visualBaselinesUpdateStepName = "Regenerate the baselines in the pinned Playwright image"
 
+const visualBaselinesE2EUpdateStepName = "Regenerate the e2e baselines in the pinned Playwright image"
+
 // The dispatching run's id and attempt: the render run is named after it and the push job checks
 // that name, so a render run some other dispatch started is never mistaken for this run's.
 const visualBaselinesRequest = "${{ github.run_id }}-${{ github.run_attempt }}"
 
-// visualBaselinesStep is the audited shape of one step. An action step names only its action;
-// ci_container_workflow_actions.go pins its commit and inputs. A run step fixes its exact command,
-// name, id, shell, and environment (nil when it has none).
+// The pull request a run serves: the dispatch input, or the pull request whose push started it.
+const visualBaselinesPR = "${{ inputs.pr || github.event.pull_request.number }}"
+
+// visualBaselinesResolveCondition lets a dispatch through, and a push only when it is to a
+// same-repository pull request and was not made by the bot's own baseline commit.
+const visualBaselinesResolveCondition = "github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]')"
+
+// visualBaselinesStep is the audited shape of one step. An action step names only its action and,
+// for the one failure-only upload, its condition; ci_container_workflow_actions.go pins its commit
+// and inputs. A run step fixes its exact command, name, id, shell, and environment (nil when it has
+// none).
 type visualBaselinesStep struct {
-	action string
-	run    string
-	name   string
-	id     string
-	shell  string
-	env    map[string]string
+	action    string
+	condition string
+	run       string
+	name      string
+	id        string
+	shell     string
+	env       map[string]string
 }
 
 type visualBaselinesJob struct {
@@ -257,54 +325,76 @@ type visualBaselinesInput struct {
 	optional bool
 }
 
-// visualBaselinesWorkflow is one workflow's audited shape: its top-level keys, its name and run
-// name, its string inputs, its exact workflow-level maps, and its jobs in order.
-type visualBaselinesWorkflow struct {
-	label   string
-	keys    []string
-	name    string
-	runName string
-	inputs  []visualBaselinesInput
-	maps    map[string]map[string]string
-	jobs    []visualBaselinesJob
+// visualBaselinesPullRequest is the exact pull_request trigger a workflow may declare beside its
+// dispatch: these activity types, filtered to these paths, and nothing else.
+type visualBaselinesPullRequest struct {
+	types []string
+	paths []string
 }
 
-// visualBaselinesDispatcher never runs the branch's code. Only commit may write contents; render
-// and ci may dispatch a workflow and nothing else; commit reads the render run's artifact.
+// visualBaselinesWorkflow is one workflow's audited shape: its top-level keys, its name and run
+// name, its pull_request trigger (nil for dispatch only), its string inputs, its exact
+// workflow-level maps, and its jobs in order.
+type visualBaselinesWorkflow struct {
+	label       string
+	keys        []string
+	name        string
+	runName     string
+	pullRequest *visualBaselinesPullRequest
+	inputs      []visualBaselinesInput
+	maps        map[string]map[string]string
+	jobs        []visualBaselinesJob
+}
+
+// visualBaselinesDispatcher never runs the branch's code in a job that can write: resolve reads
+// only the CI impact classifier, with a read token. Only commit may write contents; render and
+// release may dispatch or approve a workflow run and nothing else; commit reads the render run's
+// artifact.
 func visualBaselinesDispatcher() visualBaselinesWorkflow {
 	return visualBaselinesWorkflow{
-		label:  "Visual baselines workflow",
-		keys:   []string{"name", "on", "permissions", "concurrency", "jobs"},
-		name:   "Visual baselines",
-		inputs: []visualBaselinesInput{{name: "pr"}, {name: "force", optional: true}},
+		label:       "Visual baselines workflow",
+		keys:        []string{"name", "on", "permissions", "concurrency", "jobs"},
+		name:        "Visual baselines",
+		pullRequest: &visualBaselinesPullRequest{types: []string{"opened", "synchronize", "reopened"}, paths: []string{"web/**"}},
+		inputs:      []visualBaselinesInput{{name: "pr"}, {name: "force", optional: true}},
 		maps: map[string]map[string]string{
 			"permissions": {"contents": "read"},
-			"concurrency": {"group": "visual-baselines-${{ inputs.pr }}", "cancel-in-progress": "false"},
+			"concurrency": {
+				"group":              "visual-baselines-" + visualBaselinesPR + "${{ github.actor == 'github-actions[bot]' && '-bot' || '' }}",
+				"cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+			},
 		},
 		jobs: []visualBaselinesJob{
 			{
 				name:        "resolve",
-				keys:        []string{"name", "runs-on", "timeout-minutes", "permissions", "outputs", "steps"},
+				keys:        []string{"name", "if", "runs-on", "timeout-minutes", "permissions", "outputs", "steps"},
 				permissions: map[string]string{"contents": "read", "pull-requests": "read"},
+				condition:   visualBaselinesResolveCondition,
 				outputs: map[string]string{
 					"branch": "${{ steps.pr.outputs.branch }}",
 					"sha":    "${{ steps.pr.outputs.sha }}",
+					"render": "${{ steps.pr.outputs.render }}",
 				},
-				steps: []visualBaselinesStep{{
-					run: visualBaselinesResolveCommand, name: "Resolve and vet the pull request", id: "pr", shell: "bash",
-					env: map[string]string{
-						"GH_TOKEN":       "${{ github.token }}",
-						"PR":             "${{ inputs.pr }}",
-						"REPO":           "${{ github.repository }}",
-						"REF":            "${{ github.ref }}",
-						"DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+				steps: []visualBaselinesStep{
+					{action: "actions/checkout"},
+					{
+						run: visualBaselinesResolveCommand, name: "Resolve and vet the pull request", id: "pr", shell: "bash",
+						env: map[string]string{
+							"GH_TOKEN":       "${{ github.token }}",
+							"EVENT":          "${{ github.event_name }}",
+							"PR":             visualBaselinesPR,
+							"REPO":           "${{ github.repository }}",
+							"REF":            "${{ github.ref }}",
+							"DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+						},
 					},
-				}},
+				},
 			},
 			{
 				name:        "render",
-				keys:        []string{"name", "needs", "runs-on", "timeout-minutes", "permissions", "outputs", "steps"},
+				keys:        []string{"name", "needs", "if", "runs-on", "timeout-minutes", "permissions", "outputs", "steps"},
 				permissions: map[string]string{"actions": "write", "contents": "read"},
+				condition:   "needs.resolve.outputs.render == 'true'",
 				outputs:     map[string]string{"run_id": "${{ steps.render.outputs.run_id }}"},
 				steps: []visualBaselinesStep{{
 					run: visualBaselinesRenderDispatchCommand, name: "Dispatch the render and wait for it", id: "render", shell: "bash",
@@ -344,7 +434,7 @@ func visualBaselinesDispatcher() visualBaselinesWorkflow {
 					{
 						run: visualBaselinesCommitCommand, name: "Commit and push only the changed baselines", id: "commit", shell: "bash",
 						env: map[string]string{
-							"PR":          "${{ inputs.pr }}",
+							"PR":          visualBaselinesPR,
 							"BRANCH":      "${{ needs.resolve.outputs.branch }}",
 							"HEAD_SHA":    "${{ needs.resolve.outputs.sha }}",
 							"RUN_URL":     "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
@@ -356,17 +446,18 @@ func visualBaselinesDispatcher() visualBaselinesWorkflow {
 				},
 			},
 			{
-				name:        "ci",
+				name:        "release",
 				keys:        []string{"name", "needs", "if", "runs-on", "timeout-minutes", "permissions", "steps"},
 				permissions: map[string]string{"actions": "write", "contents": "read"},
 				condition:   "needs.commit.outputs.pushed == 'true'",
 				steps: []visualBaselinesStep{{
-					run: visualBaselinesCIDispatchCommand, name: "Dispatch CI for the pushed commit", shell: "bash",
+					run: visualBaselinesReleaseCommand, name: "Approve the bot commit's held runs", shell: "bash",
 					env: map[string]string{
-						"GH_TOKEN": "${{ github.token }}",
-						"REPO":     "${{ github.repository }}",
-						"BRANCH":   "${{ needs.resolve.outputs.branch }}",
-						"HEAD_SHA": "${{ needs.commit.outputs.sha }}",
+						"GH_TOKEN":   "${{ github.token }}",
+						"REPO":       "${{ github.repository }}",
+						"BRANCH":     "${{ needs.resolve.outputs.branch }}",
+						"HEAD_SHA":   "${{ needs.commit.outputs.sha }}",
+						"SERVER_URL": "${{ github.server_url }}",
 					},
 				}},
 			},
@@ -379,12 +470,13 @@ func visualBaselinesDispatcher() visualBaselinesWorkflow {
 func visualBaselinesRender() visualBaselinesWorkflow {
 	return visualBaselinesWorkflow{
 		label:   "Visual baselines render workflow",
-		keys:    []string{"name", "run-name", "on", "permissions", "env", "jobs"},
+		keys:    []string{"name", "run-name", "on", "permissions", "concurrency", "env", "jobs"},
 		name:    "Visual baselines render",
 		runName: "Render visual baselines ${{ inputs.request }}",
 		inputs:  []visualBaselinesInput{{name: "sha"}, {name: "request"}, {name: "force", optional: true}},
 		maps: map[string]map[string]string{
 			"permissions": {"contents": "read"},
+			"concurrency": {"group": "visual-baselines-render-${{ github.ref }}", "cancel-in-progress": "true"},
 			"env":         {"NODE_VERSION": "22"},
 		},
 		jobs: []visualBaselinesJob{{
@@ -411,16 +503,19 @@ func visualBaselinesRender() visualBaselinesWorkflow {
 					run: "make fe-visual-update", name: visualBaselinesUpdateStepName,
 					env: map[string]string{"LOOMARR_PLAYWRIGHT_FORCE": "${{ inputs.force }}"},
 				},
+				{run: "make e2e-update", name: visualBaselinesE2EUpdateStepName},
 				{run: visualBaselinesCollectCommand, name: "Collect the rewritten baselines", shell: "bash"},
 				{action: "actions/upload-artifact"},
+				{action: "actions/upload-artifact", condition: "failure()"},
 			},
 		}},
 	}
 }
 
-// VerifyVisualBaselinesWorkflow keeps the baseline push manual, serialized per pull request, and
-// behind least-privilege jobs that run none of the branch's code. Every step is pinned, every step
-// is unconditional and fails closed, and no expression is interpolated into a shell.
+// VerifyVisualBaselinesWorkflow keeps the baseline push to same-repository pull requests, one run
+// per pull request, behind least-privilege jobs of which none that can write runs the branch's
+// code. Every step is pinned, every step is unconditional and fails closed, and no expression is
+// interpolated into a shell.
 func VerifyVisualBaselinesWorkflow(path string) error {
 	return verifyVisualBaselinesWorkflow(path, visualBaselinesDispatcher())
 }
@@ -482,15 +577,25 @@ func verifyVisualBaselinesWorkflow(path string, want visualBaselinesWorkflow) er
 	return nil
 }
 
-// Dispatch only: pull_request, merge_group, and push would run either workflow without anyone
-// asking, and pull_request_target would hand a fork the write token.
+// A dispatch, plus the exact pull_request trigger where the workflow declares one. merge_group and
+// push would run either workflow off a pull request, and pull_request_target would hand a fork the
+// write token, so neither is ever accepted.
 func verifyVisualBaselinesTrigger(root *yaml.Node, want visualBaselinesWorkflow) error {
 	on, err := requiredMap(root, "on")
 	if err != nil {
 		return err
 	}
-	if err := verifyOnlyKeys(on, want.label+" trigger", "workflow_dispatch"); err != nil {
+	triggers := []string{"workflow_dispatch"}
+	if want.pullRequest != nil {
+		triggers = []string{"pull_request", "workflow_dispatch"}
+	}
+	if err := verifyOnlyKeys(on, want.label+" trigger", triggers...); err != nil {
 		return err
+	}
+	if want.pullRequest != nil {
+		if err := verifyVisualBaselinesPullRequest(on, want); err != nil {
+			return err
+		}
 	}
 	dispatch, err := requiredMap(on, "workflow_dispatch")
 	if err != nil {
@@ -531,6 +636,32 @@ func verifyVisualBaselinesTrigger(root *yaml.Node, want visualBaselinesWorkflow)
 		if _, ok := mappingValue(input, "default"); !ok || scalarValue(input, "default") != "" ||
 			scalarValue(input, "type") != "string" || scalarValue(input, "required") != "false" {
 			return fmt.Errorf("%s input %s must be an optional string that defaults to empty", want.label, spec.name)
+		}
+	}
+	return nil
+}
+
+func verifyVisualBaselinesPullRequest(on *yaml.Node, want visualBaselinesWorkflow) error {
+	label := want.label + " pull_request trigger"
+	pullRequest, err := requiredMap(on, "pull_request")
+	if err != nil {
+		return err
+	}
+	if err := verifyOnlyKeys(pullRequest, label, "types", "paths"); err != nil {
+		return err
+	}
+	for key, values := range map[string][]string{"types": want.pullRequest.types, "paths": want.pullRequest.paths} {
+		got, err := requiredSequence(pullRequest, key)
+		if err != nil {
+			return err
+		}
+		if len(got.Content) != len(values) {
+			return fmt.Errorf("%s %s must be exactly %v", label, key, values)
+		}
+		for index, value := range values {
+			if got.Content[index].Kind != yaml.ScalarNode || got.Content[index].Value != value {
+				return fmt.Errorf("%s %s must be exactly %v", label, key, values)
+			}
 		}
 	}
 	return nil
@@ -587,11 +718,18 @@ func verifyVisualBaselinesStep(label string, step *yaml.Node, want visualBaselin
 		return fmt.Errorf("%s must be a mapping", label)
 	}
 	if want.action != "" {
-		if err := verifyOnlyKeys(step, label, "name", "uses", "with"); err != nil {
+		keys := []string{"name", "uses", "with"}
+		if want.condition != "" {
+			keys = append(keys, "if")
+		}
+		if err := verifyOnlyKeys(step, label, keys...); err != nil {
 			return err
 		}
 		if actionName(step) != want.action {
 			return fmt.Errorf("%s must use %s", label, want.action)
+		}
+		if got := scalarValue(step, "if"); got != want.condition {
+			return fmt.Errorf("%s condition is %q, want %q", label, got, want.condition)
 		}
 		return nil
 	}
