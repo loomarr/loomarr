@@ -15,5 +15,3 @@ export type {
   DialogProps,
   DialogSectionProps,
 } from "./dialog.type";
-export type { NonModalDialogProps } from "./non-modal-dialog";
-export { NonModalDialog } from "./non-modal-dialog";
