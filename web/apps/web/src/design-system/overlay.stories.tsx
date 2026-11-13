@@ -95,7 +95,6 @@ const TouchTransient: Story = { args: { density: "touch" } };
 const TvTransient: Story = { args: { density: "tv" } };
 const LightTransient: Story = { globals: { theme: "light" } };
 const Confirmation: Story = { args: { kind: "modal" }, tags: ["portal"] };
-const TvConfirmation: Story = { args: { density: "tv", kind: "modal" }, tags: ["portal"] };
 const InteractiveConfirmation: Story = {
   args: { initialVisible: false, kind: "modal" },
   tags: ["motion-only", "portal"],
@@ -114,6 +113,5 @@ export {
   TouchTransient,
   TransientBottom,
   TransientTop,
-  TvConfirmation,
   TvTransient,
 };
