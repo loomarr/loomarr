@@ -980,6 +980,14 @@ header is kept, so no file is opened again. Each version and what it changed:
   season's extra (`seasonKindFirst`); "[Grp] Show Batch/" is the show's folder; an anime's "-
   #09" is its episode; "Uncut", "Uncensored", "Redux" and "Final Cut" are editions; a tagged
   "[Grp] Show - Movie 1 - Dawn" is a film (`animeFilm`).
+- **76:** a films' shelf's "Extras/" or "Bonus Features/", and "Trailers/" at a root's top, hold
+  extras (`shelfBonus`); "Show - Featurette - Sets", "Show - Cast Interview" and "Show -
+  Creditless ED" are extras, where "Show - The Interview" stays an episode (`dashedExtra`);
+  "1x17 1x18", "- 05-06" and "07 & 08" in a season folder hold both episodes (`throughLast`); "Show
+  - The Movie" in its show's folder is a film (`folderShowFilm`); another show's episode named in
+  full in a show's folder, "Kettlemere/Season 1/Rookholt Hollow S01E05", is that show's
+  (`strangerShow`); "S01E05 [sample]" is a sample; "Show (2019) - 2024-02-01 - Title" is a daily
+  episode (`titledDaily`).
 
 ## Search
 

@@ -23,11 +23,11 @@ var (
 	// moreEpisodes match each further episode of a file holding several, after its mark, in every
 	// style the apps write (Sonarr's six, Plex's, Emby's): one joined on ("E03", "xE03", "x03"),
 	// one after a dash, plus, "&" or "and" ("-E03", "+E03", " and E03", " - S01E03", "-x03",
-	// " - 1x03"), or a bare number straight after a dash ("-03"). A bare number is two or three
+	// " - 1x03", " 1x03"), or a bare number straight after a dash ("-03"). A bare number is two or three
 	// digits and ends there, and is never a picture's height, so "S01E02-1080p", "S01E02-720p" and
 	// "S01E02-720" hold one episode.
 	moreEpisodesS = regexp.MustCompile(`(?i)^(?:[ ._]*(?:[-+&]|and)[ ._]*|[ ._]?)(?:s(\d{1,4})[ ._-]?)?x?e(\d{1,4})`)
-	moreEpisodesX = regexp.MustCompile(`(?i)^(?:[ ._]*[-+&][ ._]*(\d{1,2})x|-?x)(\d{2,3})(?:[^0-9]|$)`)
+	moreEpisodesX = regexp.MustCompile(`(?i)^(?:(?:[ ._]*[-+&][ ._]*|[ ._]+)(\d{1,2})x|-?x)(\d{2,3})(?:[^0-9]|$)`)
 	moreBare      = regexp.MustCompile(`(?i)^-(\d{2,3})(?:[^0-9a-z]|$)`)
 	// airDateMark matches the day a daily or weekly show's episode aired: "2013-02-15",
 	// "2013.02.15", "2013 02 15", "2013_02_15", "20130215", and Plex's day first, "15-02-2013" and
@@ -243,6 +243,12 @@ func embeddedRecord(file File) (mp.Record, string) {
 	if leadingTags.MatchString(name) && animeFilm.MatchString(stem(name)) && markIn(name) == nil {
 		return movieRecord(src, segments), ""
 	}
+	// So is one with no year named as its show's folder is, then "Movie": "TV/Ivelmoor/Ivelmoor -
+	// The Movie", "Anime/Kame Shiro/Kame Shiro Movie 2 - Red Dawn".
+	if m := folderShowFilm.FindStringSubmatch(trimReleaseNotes(leadingTags.ReplaceAllString(plainStem(name), ""))); m != nil &&
+		markIn(name) == nil && len(segments) > 1 && normName(m[1]) == normName(showFolderName(segments[len(segments)-2])) {
+		return movieRecord(src, segments), ""
+	}
 	n, ok := numberingIn(name)
 	if m := dramaRelease.FindStringSubmatch(name); !ok && m != nil {
 		n, ok = mp.Numbering{Season: 1, Episode: atoi(m[1])}, true
@@ -406,6 +412,10 @@ var paddedEpisode = regexp.MustCompile(`(?i)\S[ ._-]+(?:ep|episode)[ ._]?0\d{1,2
 // cjkEpisodeOnly matches a name that is a Japanese, Chinese or Korean episode's number alone:
 // "第1話", "第05集", "第3回", "1화".
 var cjkEpisodeOnly = regexp.MustCompile(`^(?:第\s*\d{1,4}\s*[話话集回]|\d{1,4}\s*화)$`)
+
+// folderShowFilm matches a show's name, then its film's word and number, then its title after a
+// dash or nothing: "Ivelmoor - The Movie", "Kame Shiro Movie 2 - Red Dawn".
+var folderShowFilm = regexp.MustCompile(`(?i)^(.+?)[ ._:-]+(?:the[ ._]+)?(?:movie|film|gekijouban)(?:[ ._]*\d{1,2})?(?:[ ._]+-[ ._]+.*)?$`)
 
 // showFilm matches a show's film named by the word after the show's name: "Kaito Run Movie 1",
 // "Westerly Movie", "Westerly: The Movie", "Hana Kettle Gekijouban".

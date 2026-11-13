@@ -140,11 +140,31 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	p := placeOf(file)
 	for _, rule := range numberingRules {
 		if n, ok, decided := rule(p); decided {
-			return n, ok
+			return throughLast(n, p.name), ok
 		}
 	}
-	return p.showNumbered()
+	n, ok := p.showNumbered()
+	return throughLast(n, p.name), ok
 }
+
+// throughLast is a folder's numbering for a file that holds its episode and the next few, joined
+// on after a dash, "&" or "and": "Brackwold - 03-04", "Brackwold 05 & 06" run through 4 and 6.
+// "Show 03-14" is no file's run of twelve episodes, and "Show 2-1" runs nowhere.
+func throughLast(n mp.Numbering, name string) mp.Numbering {
+	if n.Episode == 0 || n.EpisodeEnd != 0 {
+		return n
+	}
+	for _, m := range numberRun.FindAllStringSubmatch(name, -1) {
+		if last := atoi(m[2]); atoi(m[1]) == n.Episode && last > n.Episode && last-n.Episode <= 3 {
+			n.EpisodeEnd = last
+			break
+		}
+	}
+	return n
+}
+
+// numberRun matches two numbers a file runs between: "03-04", "05 & 06", "7 and 8".
+var numberRun = regexp.MustCompile(`(?i)(?:^|[^0-9a-z])(\d{1,3})(?:[ ._]*[-&+][ ._]*|[ ._]+and[ ._]+)(\d{1,3})(?:[^0-9]|$)`)
 
 // makeMKVTitleRule: MakeMKV's title, "Kite Shore Disc 1_t01", numbers its disc's titles, never the
 // show's episodes: every title on disc 1 would claim the first. Its length or the catalog places it.

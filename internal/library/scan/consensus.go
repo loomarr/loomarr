@@ -3,6 +3,7 @@ package scan
 import (
 	"path"
 	"slices"
+	"strings"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
@@ -85,7 +86,11 @@ func (b *builder) splitNamed(ids, others []identity) {
 			n := id.numbering()
 			s := b.series[id.seriesDir]
 			if id.kind != mp.KindEpisode || n == nil || ownEpisode(id) || s == nil || s.managed != nil ||
-				len(s.ids) > 0 || !b.dirs[id.seriesDir] || !own[id.seriesDir][[2]int{n.Season, n.Episode}] && !amongFilms(id.seriesDir) {
+				len(s.ids) > 0 || !b.dirs[id.seriesDir] {
+				continue
+			}
+			if !own[id.seriesDir][[2]int{n.Season, n.Episode}] && !amongFilms(id.seriesDir) &&
+				(len(own[id.seriesDir]) == 0 || !strangerShow(id.named, path.Base(id.seriesDir))) {
 				continue
 			}
 			split[key{id.seriesDir, normName(id.named)}] = true
@@ -120,6 +125,23 @@ func (b *builder) splitNamed(ids, others []identity) {
 		}
 	}
 }
+
+// strangerShow says whether a file's show, named in full beside the folder's own episodes, is
+// plainly another: two words or more, none of them the folder's, and not its initials.
+// "Kettlemere/Season 1/Rookholt Hollow S01E05.mkv" is Rookholt Hollow's; "CF S01E01" in "Corrow
+// Fen/", "Corrow S01E01", "The Fen S01E01" and "The Mere S01E01" in "Kettlemere/" may be the
+// folder's own spelt their way, and stay.
+func strangerShow(named, folder string) bool {
+	words := strings.Fields(normName(named))
+	if len(words) < 2 || abbreviates(named, showFolderName(folder)) {
+		return false
+	}
+	theirs := strings.ReplaceAll(normName(showFolderName(folder)), " ", "")
+	return !slices.ContainsFunc(words, func(w string) bool { return !articles[w] && strings.Contains(theirs, w) })
+}
+
+// articles are the words a name may lead with that say nothing of which it is.
+var articles = map[string]bool{"the": true, "a": true, "an": true, "and": true, "of": true}
 
 // ownEpisode says whether an episode is its show folder's own by its file's name: named as the
 // folder is, its year or not ("Dark Ridge (2017) - S03E02" in "Dark Ridge/"), or not named at all.

@@ -1235,6 +1235,46 @@ var namingMatrix = []namingRow{
 	// video is its extra; "- Uncut" is an edition; a batch folder named "… Batch" or "… - 08
 	// [Batch]" is its show's; "- #09" numbers an anime's episode; a fansub's "- Movie 1 - Dawn" in
 	// its show's folder is a film.
+	// A films' shelf's "Extras/" and "Bonus Features/", and a top "Trailers/", hold extras; a box's
+	// own extras folder too; a show's dashed extras are skipped where a dashed title is an episode;
+	// two episodes in one file hold both; a show's film in its folder is a film; another show named
+	// in full in a show's folder is that show's, its initials and its nickname the folder's; a
+	// bracketed sample is a sample; Sonarr's titled daily name is an episode.
+	{id: "W149", files: map[string]string{
+		"Movies/Wren Saga Box/Extras/Wren Saga Making Of.mkv":          "skip",
+		"Movies/Wren Saga Box/Bonus Disc/Wren Saga Documentary.mkv":    "skip",
+		"Movies/Wren Saga Box/Wren Saga (2001).mkv":                    "movie Wren Saga 2001",
+		"Movies/Extras/Tamber Sound Featurette.mkv":                    "skip",
+		"Movies/Bonus Features/Wren Saga Interviews.mkv":               "skip",
+		"Movies/Tamber Sound (2010)/Tamber Sound (2010).mkv":           "movie Tamber Sound 2010",
+		"Trailers/Gorse Edge (2012).mkv":                               "skip",
+		"Films/Gorse Edge (2012)/Gorse Edge (2012).mkv":                "movie Gorse Edge 2012",
+		"TV/Ashlow Run/Ashlow Run S01E01.mkv":                          "episode Ashlow Run S1E1",
+		"TV/Ashlow Run/Ashlow Run - Featurette - Sets.mkv":             "skip",
+		"TV/Ashlow Run/Ashlow Run - Cast Interview.mkv":                "skip",
+		"Anime/Kame Tsuki/Kame Tsuki - 01.mkv":                         "episode Kame Tsuki S?E?",
+		"Anime/Kame Tsuki/Kame Tsuki - Creditless ED.mkv":              "skip",
+		"Anime/Kame Tsuki/[Grp] Kame Tsuki - Next Episode Preview.mkv": "skip",
+		"TV/Tealby Moor/Tealby Moor 1x16.mkv":                          "episode Tealby Moor S1E16",
+		"TV/Tealby Moor/Tealby Moor 1x17 1x18.mkv":                     "episode Tealby Moor S1E17-18",
+		"TV/Brackwold/Season 1/Brackwold - 01.mkv":                     "episode Brackwold S1E1",
+		"TV/Brackwold/Season 1/Brackwold - 05-06.mkv":                  "episode Brackwold S1E5-6",
+		"TV/Brackwold/Season 1/Brackwold 07 & 08.mkv":                  "episode Brackwold S1E7-8",
+		"TV/Ivelmoor/Ivelmoor S01E01.mkv":                              "episode Ivelmoor S1E1",
+		"TV/Ivelmoor/Ivelmoor - The Movie.mkv":                         "movie Ivelmoor - The Movie -",
+		"Anime/Kame Shiro/Kame Shiro - 01.mkv":                         "episode Kame Shiro S?E?",
+		"Anime/Kame Shiro/Kame Shiro Movie.mkv":                        "movie Kame Shiro Movie -",
+		"TV/Kettlemere/Season 1/Kettlemere S01E01.mkv":                 "episode Kettlemere S1E1",
+		"TV/Kettlemere/Season 1/Rookholt Hollow S01E05.mkv":            "episode Rookholt Hollow S1E5",
+		"TV/Kettlemere/Season 1/Rookholt.Hollow.S01E06.720p.mkv":       "episode Rookholt Hollow S1E6",
+		"TV/Kettlemere/Season 1/The Mere S01E07.mkv":                   "episode Kettlemere S1E7",
+		"TV/Kettlemere/Season 1/KM S01E08.mkv":                         "episode Kettlemere S1E8",
+		"TV/Ashlow Run/Ashlow Run - The Interview.mkv":                 "episode Ashlow Run S?E?",
+		"TV/Ashlow Run/Ashlow Run - Trailer Park.mkv":                  "episode Ashlow Run S?E?",
+		"TV/Gullfen/Gullfen S01E04.mkv":                                "episode Gullfen S1E4",
+		"TV/Gullfen/Gullfen S01E05 [sample].mkv":                       "skip",
+		"DVR/Puzzle Lark (2019) - 2024-02-01 - The Long Clue.ts":       "episode Puzzle Lark 2019 2024-02-01",
+	}},
 	{id: "W148", files: map[string]string{
 		"Downloads/www.Torrentsite.com - Larch.Holm.S02E03.720p.mkv":              "episode Larch Holm S2E3",
 		"TV/Larch Holm/Season 2/Larch Holm S02E04.mkv":                            "episode Larch Holm S2E4",
