@@ -6,6 +6,7 @@ import type { BundlePreview } from "@loomarr/api/models/bundlePreview";
 import type { BundleSelection } from "@loomarr/api/models/bundleSelection";
 import {
   Action,
+  Card,
   CompactSelect,
   Dialog,
   DialogContent,
@@ -208,20 +209,20 @@ const SupportBundle = ({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <section className="border-border bg-muted/20 rounded-lg border p-4" aria-label="Report scope">
+          <Stack gap="4">
+            <Card aria-label="Report scope" gap={16} padding={16} render="section">
               <Stack align="start" direction="row" gap="control" justify="between" wrap>
-                <div>
+                <Stack gap="1">
                   <Text as="h3" textRole="heading">
                     Recent diagnostic evidence
                   </Text>
-                  <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                  <Text as="p" textRole="compact" tone="secondary">
                     {events ? "Application and player logs" : ""}
                     {events && processes ? " plus " : ""}
                     {processes ? "related process details" : ""}
                     {processOutput ? " and retained output" : ""}.
                   </Text>
-                </div>
+                </Stack>
                 <form.Field name="range">
                   {(field) => (
                     <CompactSelect
@@ -236,37 +237,37 @@ const SupportBundle = ({
               </Stack>
               <Stack
                 align="start"
-                className="border-success/30 bg-success/5 mt-4 rounded-md border p-3"
+                borderRadius={8}
+                className="border-success/30 bg-success/5 border"
                 direction="row"
                 gap="inline"
+                padding={12}
               >
-                <Stack className="mt-0.5" direction="row" render="span">
+                <Stack direction="row" marginTop={2} render="span">
                   <Icon decorative glyph={icons.verified} size="compact" tone="success" />
                 </Stack>
                 <Text as="p" textRole="hint" tone="secondary">
                   Secrets, URL credentials, and local paths are redacted again while the report is built.
                 </Text>
               </Stack>
-            </section>
+            </Card>
 
             {busy === "preview" && (
-              <div role="status">
-                <Text as="p" className="inline-flex items-center gap-2" textRole="compact" tone="secondary">
-                  <LoadingStrip decorative width={32} /> Reviewing the selected evidence…
+              <Stack align="center" direction="row" gap="2" role="status">
+                <LoadingStrip decorative width={32} />
+                <Text as="p" textRole="compact" tone="secondary">
+                  Reviewing the selected evidence…
                 </Text>
-              </div>
+              </Stack>
             )}
 
             {preview && (
-              <section
-                className="border-border bg-card space-y-3 rounded-lg border p-4"
-                aria-label="Troubleshooting report summary"
-              >
+              <Card aria-label="Troubleshooting report summary" gap={12} padding={16} render="section">
                 <Stack align="baseline" direction="row" gap="inline" justify="between" wrap>
                   <Text as="h3" textRole="heading">
                     What will be included
                   </Text>
-                  <span className="font-mono text-sm">About {formatBytes(preview.estimatedBytes)}</span>
+                  <Text textRole="data">About {formatBytes(preview.estimatedBytes)}</Text>
                 </Stack>
                 <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div>
@@ -303,19 +304,17 @@ const SupportBundle = ({
                   </div>
                 </dl>
                 {warnings.length > 0 ? (
-                  <Text
-                    as="p"
-                    className="border-caution/30 bg-caution/5 rounded-md border p-3"
-                    textRole="compact"
-                  >
-                    Some evidence is limited: {warnings.join(", ")}.
-                  </Text>
+                  <Stack borderRadius={8} className="border-caution/30 bg-caution/5 border" padding={12}>
+                    <Text as="p" textRole="compact">
+                      Some evidence is limited: {warnings.join(", ")}.
+                    </Text>
+                  </Stack>
                 ) : (
                   <Text as="p" textRole="hint" tone="secondary">
                     No evidence limits were reached in this review.
                   </Text>
                 )}
-              </section>
+              </Card>
             )}
 
             <details className="border-border rounded-lg border p-4">
@@ -325,25 +324,31 @@ const SupportBundle = ({
                 </span>{" "}
                 Customize report
               </Text>
-              <div className="mt-4 space-y-4">
+              <Stack gap="4" marginTop={16}>
                 <fieldset>
                   <Text as="legend" className="mb-2" textRole="cardLabel">
                     Evidence types
                   </Text>
                   <div className="grid gap-2 sm:grid-cols-3">
                     {EVIDENCE_TYPES.map(([label, kind]) => (
-                      <div key={kind} className="border-border rounded-md border px-3">
+                      <Stack
+                        borderColor="borderDecorative"
+                        borderRadius={8}
+                        borderWidth={1}
+                        key={kind}
+                        paddingHorizontal={12}
+                      >
                         <Toggle
                           label={label}
                           checked={values[kind]}
                           onCheckedChange={(next) => updateCategory(kind, next)}
                         />
-                      </div>
+                      </Stack>
                     ))}
                   </div>
                 </fieldset>
-                <div>
-                  <Text as="h4" className="mb-2" textRole="cardLabel">
+                <Stack gap="2">
+                  <Text as="h4" textRole="cardLabel">
                     Exact identifiers
                   </Text>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -353,7 +358,7 @@ const SupportBundle = ({
                       </form.AppField>
                     ))}
                   </div>
-                </div>
+                </Stack>
                 {preview && (
                   <details>
                     <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
@@ -368,16 +373,21 @@ const SupportBundle = ({
                     </Text>
                   </details>
                 )}
-              </div>
+              </Stack>
             </details>
-          </div>
+          </Stack>
 
           {error && (
-            <div role="alert" className="border-destructive/40 bg-destructive/10 rounded-md border p-3">
+            <Stack
+              borderRadius={8}
+              className="border-destructive/40 bg-destructive/10 border"
+              padding={12}
+              role="alert"
+            >
               <Text as="p" textRole="compact" tone="danger">
                 {error}
               </Text>
-            </div>
+            </Stack>
           )}
 
           <DialogFooter>

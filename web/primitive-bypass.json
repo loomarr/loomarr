@@ -141,7 +141,7 @@
       "flexStack": 1
     },
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/filler/channel-filler/channel-filler.tsx": {
       "flexStack": 1
