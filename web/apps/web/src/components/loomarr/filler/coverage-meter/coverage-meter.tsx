@@ -1,6 +1,6 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
-import { Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
+import { Card, Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -125,19 +125,19 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   }
 
   return (
-    <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
+    <Card className={className} gap={12} padding={16} render="section">
       <Stack align="start" direction="row" gap="inline">
         <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
         </span>
-        <div className="min-w-0">
+        <Stack gap="0.5" minWidth={0}>
           <Text as="p" textRole="cardLabel" tone="primary">
             {level.label}
           </Text>
-          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
+          <Text as="p" textRole="hint" tone="secondary">
             {level.hint}
           </Text>
-        </div>
+        </Stack>
       </Stack>
 
       {rungs.length > 0 && (
@@ -177,7 +177,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           rather than reporting whichever predicate happened to run first. A cumulative funnel
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
-        <Stack className="border-border/60 border-t pt-3" gap="1.5">
+        <Stack borderColor="borderDecorative" borderTopWidth={1} gap="1.5" paddingTop={12}>
           <Text as="span" textRole="mono">
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"
@@ -228,16 +228,18 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
         {isThin && (
           <Link
             to="/filler"
-            className="text-signal text-xs underline-offset-2 hover:underline"
+            className="underline-offset-2 hover:underline"
             data-testid="find-clips"
             // One line of 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
             data-touch-target
           >
-            Propose a pull →
+            <Text as="span" textRole="hint" tone="signal">
+              Propose a pull →
+            </Text>
           </Link>
         )}
       </Stack>
-    </Stack>
+    </Card>
   );
 };
 

@@ -163,8 +163,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
-      "tailwindClasses": 36,
-      "rawTypeSize": 1
+      "tailwindClasses": 25
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
       "tailwindClasses": 50
@@ -427,7 +426,7 @@
       "tailwindClasses": 8
     },
     "src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "tailwindClasses": 36
+      "tailwindClasses": 22
     },
     "src/filler/incoming/incoming.tsx": {
       "tailwindClasses": 42
