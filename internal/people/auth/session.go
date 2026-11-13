@@ -11,6 +11,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -37,6 +39,7 @@ type Manager struct {
 	store SessionStore
 	ttl   time.Duration // sliding SESSION_TTL (§11)
 	now   func() time.Time
+	touch touchWarner
 }
 
 // NewManager builds a session manager. now defaults to time.Now.
@@ -120,7 +123,11 @@ func (m *Manager) Resolve(ctx context.Context, token, clientLabel string) (ident
 	}
 	// Slide the expiry (§11 sliding TTL) and record the use, at most once per touchGranularity.
 	if touchDue(sess.LastSeenAt, now) || (clientLabel != "" && clientLabel != sess.ClientLabel) {
-		_ = m.store.TouchSession(ctx, hashToken(token), identitystore.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel})
+		// Best-effort: a failed write must not fail the request that carried a valid cookie, but it
+		// is reported, since a store that keeps failing stops the expiry from sliding.
+		if err := m.store.TouchSession(ctx, hashToken(token), identitystore.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel}); err != nil {
+			m.touch.warn(ctx, "session", now, err)
+		}
 	}
 	return u, nil
 }
@@ -135,6 +142,27 @@ const touchGranularity = time.Minute
 // touchDue reports whether a credential last used at lastSeen should record a use at now.
 func touchDue(lastSeen, now time.Time) bool {
 	return now.Sub(lastSeen) >= touchGranularity
+}
+
+// touchWarner reports a failed use-recording write without flooding the log: a failing store fails
+// every authenticated request, so it warns at most once per touchGranularity. The zero value is
+// ready to use.
+type touchWarner struct {
+	last atomic.Int64 // unix nanoseconds of the last warning
+}
+
+// warn logs err for the named credential kind when no warning has been logged within
+// touchGranularity of now.
+func (w *touchWarner) warn(ctx context.Context, kind string, now time.Time, err error) {
+	prev := w.last.Load()
+	if prev != 0 && now.Sub(time.Unix(0, prev)) < touchGranularity {
+		return
+	}
+	if !w.last.CompareAndSwap(prev, now.UnixNano()) {
+		return
+	}
+	slog.WarnContext(ctx, "could not record a credential use; its last-seen time and sliding expiry are not advancing",
+		"event", "auth.touch_failed", "subsystem", "auth", "credential", kind, "err", err)
 }
 
 // Revoke ends a single session (logout).

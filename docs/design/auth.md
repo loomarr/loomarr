@@ -29,7 +29,10 @@ stable per install.
 **Sessions.** Every path issues Loomarr's own session: an opaque 256-bit token in an HTTP-only
 `SameSite=Strict` cookie, SHA-256-hashed at rest and resolved on every request. Sessions are listable
 and revocable (`GET /v1/users/{id}/sessions`, `DELETE /v1/sessions/{hash}`); disabling a user ends
-them at once; `SESSION_TTL` slides. `cookie.secure=auto|always|never`. Mutating routes also require
+them at once; `SESSION_TTL` slides. `POST /v1/auth/logout` revokes the session before it clears the
+cookie: if the revoke fails the answer is a 500 that keeps the cookie, so a session that is still live
+is never reported as ended. A failed last-seen write never fails a request, and is logged at most
+once a minute per credential kind. `cookie.secure=auto|always|never`. Mutating routes also require
 `X-Loomarr-Csrf: 1`. Login is rate-limited by client IP. Forwarding headers (`X-Forwarded-For`,
 `X-Forwarded-Proto`, and the `X-Loomarr-Geo-*` / CDN geography headers) are trusted only from a socket
 peer inside `security.trusted_proxies`, an explicit list of addresses and CIDR ranges (default:
@@ -148,7 +151,9 @@ secure store. The device acts as the person who paired it, with that person's fa
 audience and role ([ADR 0043](decisions/0043-devices-act-with-their-approvers-role.md)). An
 admin-paired phone or TV is an admin, and a member-paired device stays a member. The role is read
 from the user's row on every request, so a demotion applies on the device's next request.
-Disabling a user deletes their paired devices along with their sessions, so re-enabling the user
+Redeeming consumes the pairing and issues the token in one transaction, so overlapping polls of one
+approved code yield one device; the others get the not-found answer of any spent code, and a store
+failure leaves the pairing redeemable for the next poll. Disabling a user deletes their paired devices along with their sessions, so re-enabling the user
 does not bring a lost device back. It also deletes pairings they approved that no device has redeemed
 yet, and a disabled user can neither approve a pairing nor have one redeemed. A pairing in flight at
 the disable therefore yields no device either. To take admin away from a device in a shared room, use
