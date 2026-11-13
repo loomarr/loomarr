@@ -295,6 +295,19 @@ func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*
 	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
 
+// InvalidPolicyProblem is the 422 for a policy the write checks refuse. A failure in one rule says
+// which rule and why, in its own words; any other failure keeps the general wording. The writers that
+// check a draft the same way (the programming previews) use it too, so a draft is refused in the
+// words the save would use.
+func InvalidPolicyProblem(verr error) error {
+	detail := "Some programming policy settings are invalid. Check the audience and filler options, then try again."
+	var rule *schedule.RuleError
+	if errors.As(verr, &rule) {
+		detail = rule.Describe()
+	}
+	return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy", detail, verr)
+}
+
 // applyChannelPatch applies a PATCH body's fields. The edit rules around it (number check,
 // `building` signal, deadline, revision, reconcile) are channeledit's.
 func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput, holidays holidayvocab.Vocabulary) error {
@@ -327,9 +340,10 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput, holiday
 			return httpcore.AmbiguousDatesError(err)
 		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
-		if verr := next.ValidateWithHolidays(holidays); verr != nil {
-			return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
-				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
+		// A rule saved before today's checks (one that never fires) is not held against an edit that
+		// leaves it alone; one the edit touches is, and the 422 names it.
+		if verr := next.ValidateEditOf(ch.Policy, holidays); verr != nil {
+			return InvalidPolicyProblem(verr)
 		}
 		ch.Policy = next
 	}
