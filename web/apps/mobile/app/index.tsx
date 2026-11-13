@@ -190,6 +190,8 @@ const WatchingScreen = ({
   const formatTime = (ms: number) => formatGuideTime(ms, guideSnapshot.layout?.timezone);
   const live = snapshot.livePlayback ?? LIVE;
   const playing = snapshot.status === "playing";
+  // A tune under way is a picture on its way, so the key offers Pause, as J draws it and the web does.
+  const keyPlaying = playing || snapshot.status === "tuning";
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
   const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
   const step = (direction: -1 | 1) => () => {
@@ -347,8 +349,8 @@ const WatchingScreen = ({
               onChannelDown: snapshot.catalog.length > 1 ? step(-1) : undefined,
               onChannelUp: snapshot.catalog.length > 1 ? step(1) : undefined,
               onMore: toggleSheet("more"),
-              onTogglePlay: playing ? controller.pause : () => void controller.play(),
-              playing,
+              onTogglePlay: keyPlaying ? controller.pause : () => void controller.play(),
+              playing: keyPlaying,
               pointer: false,
             }}
             layout={onSide ? "overlay" : "portrait"}

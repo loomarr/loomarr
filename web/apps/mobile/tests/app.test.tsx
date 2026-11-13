@@ -273,6 +273,18 @@ describe("the phone app", () => {
     await eventually(() => expect(server.requests).toContain("POST /v1/channels/ch-action/play-url"));
   });
 
+  // A tune is a picture on its way, so the key offers Pause, as J draws it (#3449), not Play.
+  it("offers Pause while the channel the viewer picked is still tuning", async () => {
+    await launch();
+    await eventually(() => expect(label("Watch ")).not.toBeNull());
+
+    await act(async () => label("Watch ")?.click());
+
+    const key = (name: string) => page.body.querySelector(`[role="button"][aria-label="${name}"]`);
+    await eventually(() => expect(key("Pause")).not.toBeNull());
+    expect(key("Play")).toBeNull();
+  });
+
   // Back with a sheet open used to leave the app, and the sheet was still open on return.
   it("closes an open sheet with Android's Back before Back leaves Watching", async () => {
     await launch();
