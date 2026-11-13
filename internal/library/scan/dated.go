@@ -121,9 +121,15 @@ func datedEpisode(file File) bool {
 
 // recordedFilm says whether a dated name loose at the top or in a catch-all is a film's recording:
 // its year in brackets ends what it names before its day, "Grey Harbour (1958) 2022-01-01".
+// One titled after its day, "Puzzle Lark (2019) - 2024-02-01 - The Long Clue", is Sonarr's daily
+// episode of the 2019 show: a guide titles no film's recording so.
 func recordedFilm(name, dir string) bool {
-	return (dir == "." || shelfAt(dir)) && recordedTitle(name) != ""
+	return (dir == "." || shelfAt(dir)) && recordedTitle(name) != "" && !titledDaily.MatchString(name)
 }
+
+// titledDaily matches Sonarr's name for a daily show's episode, its year in brackets, its day and
+// its title, each after a dash: "(2019) - 2024-02-01 - The Long Clue".
+var titledDaily = regexp.MustCompile(`\((?:19|20)\d{2}\) - (?:19|20)\d{2}-\d{2}-\d{2} - \S`)
 
 // recordedTitle is a recorded film's name and year from its recording's, "" for none: the name
 // before its day ends with its year in brackets, or with its year and the channel it was on,

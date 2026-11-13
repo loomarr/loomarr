@@ -153,7 +153,10 @@ func skippedDir(parent, name string, titled bool) bool {
 	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !shelfAt(parent)
 	// A films' shelf's "Trailers/" or "Samples/" holds its films' trailers and samples, named as
 	// the films are; a film called so names its folder with its year, "Trailers (2019)/".
-	shelfTrailers := shelfExtras[lower] && parent != "." && amongFilms(parent)
+	// So does its "Extras/" or "Bonus Features/": a films' shelf keeps no film in a folder so named.
+	// "Trailers/" at a root's top, or on a shelf of shelves ("Media/Library/"), holds trailers too.
+	shelfTrailers := (shelfExtras[lower] || shelfBonus[normName(name)]) && parent != "." && amongFilms(parent) ||
+		shelfExtras[lower] && (parent == "." || shelfAt(parent) && !underShows(name) && !showsFolderNames[folderKey(path.Base(parent))])
 	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] || shelfTrailers ||
 		(parent != "." && extrasFolder(name, parent) && titled && !shelfAt(parent)) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
@@ -161,6 +164,12 @@ func skippedDir(parent, name string, titled bool) bool {
 
 // shelfExtras are the folders a films' shelf keeps its films' trailers and samples in.
 var shelfExtras = map[string]bool{"trailers": true, "teasers": true, "samples": true}
+
+// shelfBonus are the folders a films' shelf keeps its films' bonus videos in, by normName.
+var shelfBonus = map[string]bool{
+	"extras": true, "bonus": true, "bonus features": true, "special features": true, "featurettes": true,
+	"behind the scenes": true, "deleted scenes": true, "interviews": true, "bonus material": true,
+}
 
 // holdsTitle says whether a folder, rel to the root with its entries, is a title's own: a season
 // folder, one named as a title is with its year ("Ashgrove (2015)"), or one holding a video, a
@@ -876,7 +885,9 @@ func extraName(lowerName string) bool {
 	}
 	// Joined with a dash, a release's sample: "Movie (2001)-sample.mkv"; and its proof after its year
 	// or tags, "Brigg (2008)-proof.mkv" ("Bullet-proof" is a title's word).
-	if strings.HasSuffix(base, "-sample") || releaseProof.MatchString(base) {
+	// Bracketed, it is a release's note: "Gullfen S01E05 [sample]", "Ashgrove (2015) (Sample)".
+	if strings.HasSuffix(base, "-sample") || strings.HasSuffix(base, "[sample]") || strings.HasSuffix(base, "(sample)") ||
+		releaseProof.MatchString(base) {
 		return true
 	}
 	// An episode's title set apart by a spaced dash after its mark, "Thornbury S01E07 - Sample", is
@@ -957,7 +968,7 @@ var extraKinds = [][]string{
 	{"promos"}, {"previews"}, {"recaps"}, {"clips"}, {"extras"},
 	{"trailer"}, {"teaser"}, {"featurette"}, {"interview"}, {"behindthescenes"}, {"deletedscene"},
 	{"deletedscenes"}, {"deleted"}, {"bloopers"}, {"outtakes"}, {"commentary"}, {"scene"}, {"short"},
-	{"clip"}, {"extra"}, {"other"}, {"theme"},
+	{"clip"}, {"extra"}, {"other"}, {"theme"}, {"creditless"}, {"textless"}, {"ncop"}, {"nced"},
 }
 
 // extraKindAt is where in a name's words its extra's kind starts, -1 for none. A number joined on
@@ -1028,7 +1039,7 @@ func extrasBeside(names []string) map[string]bool {
 	for _, name := range names {
 		mark, marked := numberingIn(name)
 		if !marked {
-			if seasonExtrasFolder(stem(name)) || seasonKindFirst(name) {
+			if seasonExtrasFolder(stem(name)) || seasonKindFirst(name) || dashedExtra(name) {
 				add(name)
 			}
 			continue
@@ -1062,6 +1073,44 @@ func seasonKindFirst(name string) bool {
 		})
 	}
 	return false
+}
+
+// dashedExtra says whether a video with no episode's mark is named by its title, a dash, then a
+// kind of extra: first, of the kinds no title starts with, "Ashlow Run - Featurette - Sets", "Kame
+// Tsuki - Creditless ED", or after a word that says whose it is, "Ashlow Run - Cast Interview",
+// "[Grp] Kame Tsuki - Next Episode Preview". "Ashlow Run - The Interview" and "Hilltop - Interview
+// with a Ghost" may be episodes' titles, and stay them; so does a recap, its show's season 0's.
+func dashedExtra(name string) bool {
+	head, after, ok := strings.Cut(stem(leadingTags.ReplaceAllString(name, "")), " - ")
+	if !ok || strings.TrimSpace(head) == "" {
+		return false
+	}
+	words := extraWords(trimReleaseNotes(after))
+	if len(words) == 0 {
+		return false
+	}
+	if extraFirst[words[0]] {
+		return true
+	}
+	for i := 1; i < len(words); i++ {
+		if extraOwners[words[i-1]] && kindEnds(words[i:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// extraFirst are the kinds of extra no episode's title starts with.
+var extraFirst = map[string]bool{
+	"featurette": true, "featurettes": true, "creditless": true, "textless": true, "ncop": true, "nced": true,
+	"bloopers": true, "outtakes": true, "storyboards": true, "behindthescenes": true, "deletedscenes": true,
+}
+
+// extraOwners are words before a kind of extra that say whose it is: "Cast Interview", "Next
+// Episode Preview", "Creditless Opening".
+var extraOwners = map[string]bool{
+	"cast": true, "crew": true, "director": true, "directors": true, "creator": true, "episode": true,
+	"season": true, "series": true, "creditless": true, "textless": true, "extended": true, "bonus": true,
 }
 
 // everydayKinds are kinds of extra that are everyday words too, and so start titles.
