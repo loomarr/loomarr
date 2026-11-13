@@ -859,8 +859,16 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []split.
 // store keyed clips by path, so the fixture made `hash` and `path` the same string (§10 V51a).
 func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []split.Segment) {
 	catalog, err := sp.store.ListClips(ctx)
-	if err != nil || len(catalog) == 0 {
+	if err != nil {
+		markDedupUnchecked(segs)
+		if sp.log != nil {
+			sp.log.Warn("split dedup: the catalog could not be listed; every segment was left unchecked against it",
+				"clip", clipHash, "segments", len(segs), "err", err)
+		}
 		return
+	}
+	if len(catalog) == 0 {
+		return // nothing to be a copy of: that is a finding, not a failure
 	}
 	type candidate struct {
 		path string
@@ -871,17 +879,29 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 	if cacheErr != nil && sp.log != nil {
 		sp.log.Warn("catalog fingerprint cache read failed; missing entries will be recomputed", "err", cacheErr)
 	}
+	others, unreadable := 0, 0
 	for _, c := range catalog {
 		if c.Hash == clipHash {
 			continue // the compilation itself — segments trivially live inside it
 		}
+		others++
 		fp, ok := sp.catalogFingerprint(ctx, c, cached[c.Hash])
 		if !ok {
+			unreadable++
 			continue
 		}
 		candidates = append(candidates, candidate{path: c.Path, fp: fp})
 	}
+	if unreadable > 0 && sp.log != nil {
+		sp.log.Warn("split dedup: catalog clips could not be fingerprinted and were not compared against",
+			"clip", clipHash, "unreadable", unreadable, "catalog", others)
+	}
 	if len(candidates) == 0 {
+		if others > 0 {
+			// There were clips to compare against and none could be read: the segments were checked
+			// against nothing, which is not the same as being found new.
+			markDedupUnchecked(segs)
+		}
 		return
 	}
 	// Only a copy is a duplicate. A segment that is a variant of a catalog clip, such as a
@@ -891,7 +911,9 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 	for i := range segs {
 		fp, err := sp.tools.Fingerprint(ctx, file, segs[i].StartMs, segs[i].EndMs)
 		if err != nil {
-			// The segment keeps no DupOf verdict, so the review sees it as new; say so once.
+			// The segment keeps no DupOf verdict. It is marked, so the review does not read the
+			// empty verdict as "checked and new", and the pass says so once.
+			segs[i].DedupUnchecked = true
 			unchecked++
 			if firstErr == nil {
 				firstErr = err
@@ -908,6 +930,16 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 	if unchecked > 0 && sp.log != nil {
 		sp.log.Warn("split dedup: segments could not be fingerprinted and were left unchecked against the catalog",
 			"clip", clipHash, "unchecked", unchecked, "segments", len(segs), "err", firstErr)
+	}
+}
+
+// markDedupUnchecked records, on every segment that carries no finding, that the comparison with the
+// catalog could not be made. A segment already flagged a copy has its finding and is left alone.
+func markDedupUnchecked(segs []split.Segment) {
+	for i := range segs {
+		if segs[i].DupOf == "" {
+			segs[i].DedupUnchecked = true
+		}
 	}
 }
 

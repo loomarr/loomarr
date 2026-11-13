@@ -46,7 +46,7 @@ func (r *Resolver) reuseEncoderEvidence(ctx context.Context) {
 		} else {
 			bin, gpu, root := r.capabilityInputs()
 			capacity, ok = playout.LoadMatchingObservedCapabilityEvidence(
-				ctx, bin, playout.DefaultProfile(), gpu, root,
+				ctx, bin, playout.DefaultProfile(), gpu, root, r.log,
 			)
 		}
 		if ok {
@@ -81,7 +81,7 @@ func (r *Resolver) detectedEncoder(ctx context.Context) encode.Encoder {
 	r.detectOnce.Do(func() {
 		bin, gpu, root := r.capabilityInputs()
 		cap, reused := playout.DetectObservedWithEvidence(
-			ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics,
+			ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics, r.log,
 		)
 		r.publishDetectedCapacity(cap, reused)
 	})

@@ -12356,6 +12356,8 @@ components:
           type: integer
         category:
           type: string
+        dedupUnchecked:
+          type: boolean
         dupOf:
           type: string
         endEvidence:
@@ -12420,6 +12422,8 @@ components:
           type: integer
         category:
           type: string
+        dedupUnchecked:
+          type: boolean
         dupOf:
           type: string
         endEvidence:

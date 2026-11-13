@@ -5,7 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +44,15 @@ type capabilityEvidenceDependencies struct {
 	fingerprint func(context.Context, string, string, Profile) (string, error)
 	detect      func(context.Context, string, Profile, string) Capacity
 	validate    func(context.Context, string, encode.Encoder, Profile) Capability
+	// log reports what stops the evidence from being kept or reused; nil is silent.
+	log *slog.Logger
+}
+
+// warn logs a failure that sends the host back to a full measurement at every start.
+func (d capabilityEvidenceDependencies) warn(msg string, args ...any) {
+	if d.log != nil {
+		d.log.Warn(msg, args...)
+	}
 }
 
 // DetectObservedWithEvidence reuses a persisted hardware measurement only after a short real
@@ -48,10 +60,11 @@ type capabilityEvidenceDependencies struct {
 // reused distinguishes that bounded restart validation from a full candidate/capacity benchmark.
 func DetectObservedWithEvidence(
 	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
-	manager *diagnostics.ProcessManager,
+	manager *diagnostics.ProcessManager, log *slog.Logger,
 ) (capacity Capacity, reused bool) {
 	return detectObservedWithEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
 		now:         time.Now,
+		log:         log,
 		fingerprint: hostCapabilityFingerprint,
 		detect: func(ctx context.Context, ffmpeg string, profile Profile, gpu string) Capacity {
 			return DetectObserved(ctx, ffmpeg, profile, gpu, manager)
@@ -67,10 +80,11 @@ func DetectObservedWithEvidence(
 // still-fresh measurement immediately when the FFmpeg/GPU/profile fingerprint is unchanged, while
 // DetectObservedWithEvidence revalidates that measurement asynchronously.
 func LoadMatchingObservedCapabilityEvidence(
-	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string,
+	ctx context.Context, ffmpegPath string, profile Profile, gpu, root string, log *slog.Logger,
 ) (Capacity, bool) {
 	capacity, _, ok := matchingCapabilityEvidence(ctx, ffmpegPath, profile, gpu, root, capabilityEvidenceDependencies{
 		now:         time.Now,
+		log:         log,
 		fingerprint: hostCapabilityFingerprint,
 	})
 	return capacity, ok
@@ -90,11 +104,16 @@ func detectObservedWithEvidence(
 
 	capacity := deps.detect(ctx, ffmpegPath, profile, gpu)
 	// A cancelled run measured under a dying context; storing it would make the next start trust it.
-	if ctx.Err() == nil && fingerprint != "" && !encode.IsSoftware(capacity.Chosen) && capacity.MaxChannels > 0 {
-		_ = storeCapabilityEvidence(root, capabilityEvidence{
+	// No root is an install that keeps no evidence, not a failure to keep it.
+	if ctx.Err() == nil && fingerprint != "" && strings.TrimSpace(root) != "" &&
+		!encode.IsSoftware(capacity.Chosen) && capacity.MaxChannels > 0 {
+		if err := storeCapabilityEvidence(root, capabilityEvidence{
 			Version: capabilityEvidenceVersion, Fingerprint: fingerprint,
 			Encoder: capacity.Chosen, MaxChannels: capacity.MaxChannels, ObservedAt: deps.now().UTC(),
-		})
+		}); err != nil {
+			deps.warn("playout: could not store the host's encoder measurement; it will be measured again at every start",
+				"root", root, "err", err)
+		}
 	}
 	return capacity, false
 }
@@ -126,25 +145,43 @@ func matchingCapabilityEvidence(
 	}
 	fingerprint, err := deps.fingerprint(ctx, ffmpegPath, gpu, profile)
 	if err != nil {
+		deps.warn("playout: could not identify the host to reuse its encoder measurement; it will be measured again at every start",
+			"err", err)
 		return Capacity{}, "", false
 	}
-	evidence, ok := loadCapabilityEvidence(root, fingerprint, deps.now())
+	evidence, ok := loadCapabilityEvidence(root, fingerprint, deps.now(), deps.warn)
 	if !ok {
 		return Capacity{}, fingerprint, false
 	}
 	return Capacity{Chosen: evidence.Encoder, MaxChannels: evidence.MaxChannels}, fingerprint, true
 }
 
-func loadCapabilityEvidence(root, fingerprint string, now time.Time) (capabilityEvidence, bool) {
+// loadCapabilityEvidence reads the stored measurement and reports whether it is one this host may
+// reuse. No file, a file from another host, an old one or one an older build wrote are the ordinary
+// reasons to measure afresh and are silent; a file that cannot be read or parsed is not, and goes
+// to warn.
+func loadCapabilityEvidence(
+	root, fingerprint string, now time.Time, warn func(msg string, args ...any),
+) (capabilityEvidence, bool) {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(fingerprint) == "" {
 		return capabilityEvidence{}, false
 	}
-	body, err := os.ReadFile(filepath.Join(root, capabilityEvidenceName))
+	path := filepath.Join(root, capabilityEvidenceName)
+	body, err := os.ReadFile(path)
 	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			warn("playout: could not read the host's stored encoder measurement; it will be measured again",
+				"path", path, "err", err)
+		}
 		return capabilityEvidence{}, false
 	}
 	var evidence capabilityEvidence
-	if err := json.Unmarshal(body, &evidence); err != nil || evidence.Version != capabilityEvidenceVersion ||
+	if err := json.Unmarshal(body, &evidence); err != nil {
+		warn("playout: could not read the host's stored encoder measurement; it will be measured again",
+			"path", path, "err", err)
+		return capabilityEvidence{}, false
+	}
+	if evidence.Version != capabilityEvidenceVersion ||
 		evidence.Fingerprint != fingerprint || evidence.ObservedAt.IsZero() || now.Before(evidence.ObservedAt) ||
 		now.Sub(evidence.ObservedAt) > capabilityEvidenceMaxAge || evidence.MaxChannels <= 0 ||
 		encode.IsSoftware(evidence.Encoder) || !supportedHardwareEncoder(evidence.Encoder) {

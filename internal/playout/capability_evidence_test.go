@@ -76,7 +76,7 @@ func TestLoadMatchingCapabilityEvidenceBoundsAStalledIdentityCommand(t *testing.
 	}
 	before := time.Now()
 	_, ok := LoadMatchingObservedCapabilityEvidence(
-		t.Context(), ffmpeg, DefaultProfile(), "test-gpu", t.TempDir(),
+		t.Context(), ffmpeg, DefaultProfile(), "test-gpu", t.TempDir(), nil,
 	)
 	if elapsed := time.Since(before); ok || elapsed >= time.Second {
 		t.Fatalf("matching stalled executable: ok=%v elapsed=%s, want miss below one second", ok, elapsed)

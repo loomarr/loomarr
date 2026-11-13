@@ -167,7 +167,12 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 // next pass can still find them.
 func (j *Job) quarantine(ctx context.Context, hash string, referenced map[string]int) bool {
 	clip, found, err := j.store.GetClip(ctx, hash)
-	if err != nil || !found {
+	if err != nil {
+		j.warn("upkeep: a rejected clip could not be read; the next pass tries again", "clip", hash, "err", err)
+		return false
+	}
+	if !found {
+		j.warn("upkeep: a rejected clip has no catalog row, so its files cannot be found; the next pass looks again", "clip", hash)
 		return false
 	}
 	full, err := cliplibrary.ClipPath(j.clipDir, clip.Path, filepath.Ext(clip.Path))
@@ -175,9 +180,19 @@ func (j *Job) quarantine(ctx context.Context, hash string, referenced map[string
 		j.warn("upkeep: a rejected clip has no usable path", "clip", hash, "err", err)
 		return false
 	}
-	tags, _ := asset.ReadSidecarTags(full)
+	// The sidecar names the master and the evidence copy, so a clip's files are only set aside when
+	// it can be read: moving the sidecar of a clip whose sidecar could not be parsed would leave
+	// those copies where nothing points. No sidecar at all, or a valid one with nothing of Loomarr's
+	// in it, names nothing and is ordinary.
+	tags, state := asset.ReadSidecarTagsState(full)
+	if state == asset.SidecarInvalid {
+		j.warn("upkeep: a rejected clip's sidecar could not be read, so its files are left where they are; the next pass tries again",
+			"clip", hash, "sidecar", tools.SidecarPathFor(full))
+		return false
+	}
 	files, err := identity.OwnFiles(j.clipDir, clip.Path, tags, referenced)
 	if err != nil {
+		j.warn("upkeep: a rejected clip's files could not be listed; the next pass tries again", "clip", hash, "err", err)
 		return false
 	}
 	sidecar := tools.SidecarPathFor(full)
