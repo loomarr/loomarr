@@ -355,45 +355,47 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
               <Text as="legend" textRole="cardLabel">
                 Choose a provider
               </Text>
-              <label className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 flex cursor-pointer items-start gap-3 rounded-lg border p-4">
-                <input
-                  type="radio"
-                  name="web-search-provider"
-                  value="brave"
-                  checked={provider === "brave"}
-                  onChange={() => form.setFieldValue("provider", "brave")}
-                />
-                <Stack gap="1" render="span">
-                  <Text as="span" textRole="cardLabel">
-                    Brave Search
-                  </Text>
-                  <Text as="span" textRole="hint" tone="secondary">
-                    Recommended hosted option.
-                  </Text>
-                </Stack>
-              </label>
-              <Card padding={16} render="details">
-                <Text as="summary" className="cursor-pointer" textRole="cardLabel">
-                  Advanced / self-hosted
-                </Text>
-                <label className="mt-4 flex cursor-pointer items-start gap-3">
+              <Stack gap="3" marginTop={12}>
+                <label className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 flex cursor-pointer items-start gap-3 rounded-lg border p-4">
                   <input
                     type="radio"
                     name="web-search-provider"
-                    value="searxng"
-                    checked={provider === "searxng"}
-                    onChange={() => form.setFieldValue("provider", "searxng")}
+                    value="brave"
+                    checked={provider === "brave"}
+                    onChange={() => form.setFieldValue("provider", "brave")}
                   />
                   <Stack gap="1" render="span">
                     <Text as="span" textRole="cardLabel">
-                      SearXNG
+                      Brave Search
                     </Text>
                     <Text as="span" textRole="hint" tone="secondary">
-                      Use a server you operate.
+                      Recommended hosted option.
                     </Text>
                   </Stack>
                 </label>
-              </Card>
+                <Card padding={16} render="details">
+                  <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+                    Advanced / self-hosted
+                  </Text>
+                  <label className="mt-4 flex cursor-pointer items-start gap-3">
+                    <input
+                      type="radio"
+                      name="web-search-provider"
+                      value="searxng"
+                      checked={provider === "searxng"}
+                      onChange={() => form.setFieldValue("provider", "searxng")}
+                    />
+                    <Stack gap="1" render="span">
+                      <Text as="span" textRole="cardLabel">
+                        SearXNG
+                      </Text>
+                      <Text as="span" textRole="hint" tone="secondary">
+                        Use a server you operate.
+                      </Text>
+                    </Stack>
+                  </label>
+                </Card>
+              </Stack>
             </Stack>
 
             {provider === "brave" ? (
