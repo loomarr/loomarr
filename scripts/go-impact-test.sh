@@ -61,6 +61,15 @@ ignore_selection="$(cd "$ignore_fixture" && go list ./...)"
   exit 1
 }
 
+# A guard that reads a package's source from disk without importing it is selected with that
+# package: the provider-neutral Library gate in internal/library/metadataprovider parses
+# internal/library/scan's files, and a scanner-only change once skipped it while main went red.
+scan_selection="$($SELECTOR internal/library/scan/managers.go)"
+grep -qx "$module/internal/library/metadataprovider" <<<"$scan_selection" || {
+  echo 'go-impact-test: a scanner change did not select the metadataprovider guard that reads its source' >&2
+  exit 1
+}
+
 [[ -z "$($SELECTOR docs/contributing/testing.md)" ]] || {
   echo 'go-impact-test: docs-only change selected Go packages' >&2
   exit 1

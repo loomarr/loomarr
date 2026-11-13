@@ -123,12 +123,9 @@ func (idx managerIndex) refresh(authority string, local func(string) string, ref
 	}
 }
 
-// ownerKey names an arr item by the id the arr fetches it by: a series' TVDB id, a movie's TMDB id.
+// ownerKey names an arr item by the id the arr fetches it by (arrKeyNamespace).
 func ownerKey(authority string, rec mp.Record) string {
-	ns := mp.NamespaceTMDB
-	if rec.Kind == mp.KindSeries {
-		ns = mp.NamespaceTVDB
-	}
+	ns := arrKeyNamespace(rec.Kind)
 	for _, id := range rec.IDs {
 		if id.Namespace == ns {
 			return authority + "|" + string(ns) + ":" + id.Value
