@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -159,6 +160,103 @@ func TestPropose_DedupMarksSegmentsItCouldNotCheck(t *testing.T) {
 				t.Errorf("WARN logged = %v, want %v; log:\n%s", warned, tc.wantWarn, logs.String())
 			}
 		})
+	}
+}
+
+// uncheckedProposal proposes a two-segment reel whose second segment cannot be fingerprinted, with
+// one readable clip in the catalog, and returns what a later pass needs to re-check it.
+func uncheckedProposal(t *testing.T) (*splitMemStore, *fakeTools, *filler.Splitter, *filler.SplitProposal) {
+	t.Helper()
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/clean.mp4", 60_000)
+	known := clipstore.Clip{}
+	known.Hash, known.Path, known.DurationMs = "hash-of-known.mp4", "old/known.mp4", 30_000
+	st.clips[known.Hash] = known
+	fake := &fakeTools{blacks: []tools.Interval{{StartMs: 29800, EndMs: 30200}}, spans: map[string]creative.Fingerprint{
+		key3("clean.mp4", 0, 30000): spot(11), key3("known.mp4", 0, 30_000): spot(14),
+		// the second segment has no entry yet: its check cannot run
+	}}
+	splitter := newSplitter(st, fake, nil, t.TempDir())
+	p, err := splitter.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Segments) != 2 || p.Segments[0].DedupUnchecked || !p.Segments[1].DedupUnchecked {
+		t.Fatalf("segments = %+v, want only the second unchecked", p.Segments)
+	}
+	return st, fake, splitter, p
+}
+
+// gateReady makes the proposal's segments pass every other part of the gate, so only the duplicate
+// check decides.
+func gateReady(p filler.SplitProposal) filler.SplitProposal {
+	segs := append([]split.Segment(nil), p.Segments...)
+	for i := range segs {
+		segs[i].Era, segs[i].Audience, segs[i].Category = 1993, "kids", "toys"
+		segs[i].BoundaryConfidence = 90
+	}
+	p.Segments = segs
+	return p
+}
+
+// Auto-confirm holds an unchecked segment back and releases it on a later pass once the check works.
+func TestRecheckDedup_ReleasesAHeldSegmentOnceTheCheckWorks(t *testing.T) {
+	st, fake, splitter, p := uncheckedProposal(t)
+	pol := policy(true, 85, 120*time.Second)
+
+	first := filler.AutoConfirmable(gateReady(*p), pol, 0)
+	if len(first.Confirm) != 1 || len(first.Hold) != 1 || first.Hold[0].HoldReason != string(filler.RejectDedupUnchecked) {
+		t.Fatalf("first pass = %+v, want one confirmed and the unchecked one held", first)
+	}
+
+	// Tooling still down: the segment stays unchecked and the proposal is untouched.
+	remaining, err := splitter.RecheckDedup(context.Background(), p)
+	if err != nil || remaining != 1 || !p.Segments[1].DedupUnchecked {
+		t.Fatalf("recheck while down = %d, %v, segments %+v", remaining, err, p.Segments)
+	}
+
+	// Tooling back: the segment is checked, the stored proposal agrees, and it now confirms.
+	fake.spans[key3("clean.mp4", 30000, 60_000)] = spot(12)
+	remaining, err = splitter.RecheckDedup(context.Background(), p)
+	if err != nil || remaining != 0 {
+		t.Fatalf("recheck once up = %d, %v", remaining, err)
+	}
+	stored, err := st.GetSplitProposal(context.Background(), p.ID)
+	if err != nil || stored.Segments[1].DedupUnchecked {
+		t.Fatalf("stored = %+v, %v; the check result was not persisted", stored.Segments, err)
+	}
+	second := filler.AutoConfirmable(gateReady(stored), pol, 0)
+	if len(second.Confirm) != 2 || len(second.Hold) != 0 {
+		t.Fatalf("second pass = %+v, want both confirmed", second)
+	}
+}
+
+// A re-check that finds a copy records it as a copy, which the stage then discards.
+func TestRecheckDedup_AFoundCopyIsRecordedAsACopy(t *testing.T) {
+	_, fake, splitter, p := uncheckedProposal(t)
+	fake.spans[key3("clean.mp4", 30000, 60_000)] = spot(14) // the catalog clip's advert
+
+	if remaining, err := splitter.RecheckDedup(context.Background(), p); err != nil || remaining != 0 {
+		t.Fatalf("recheck = %d, %v", remaining, err)
+	}
+	if got := p.Segments[1]; got.DedupUnchecked || got.DupOf != "old/known.mp4" {
+		t.Fatalf("segment = %+v, want a recorded copy", got)
+	}
+}
+
+// A person can still confirm a segment the check could not clear: the hold is for unattended
+// confirmation only.
+func TestConfirm_ManualConfirmAcceptsAnUncheckedSegment(t *testing.T) {
+	st, fake, splitter, p := uncheckedProposal(t)
+	stageParentForSplitReview(st, p.ClipHash)
+	if _, err := splitter.Confirm(context.Background(), p.ID, p.Segments); err != nil {
+		t.Fatalf("manual confirm of an unchecked segment: %v", err)
+	}
+	if len(fake.cutCalls) != 2 {
+		t.Fatalf("cuts = %v, want both segments cut", fake.cutCalls)
+	}
+	if _, err := st.GetSplitProposal(context.Background(), p.ID); err == nil {
+		t.Error("proposal survived a manual confirm")
 	}
 }
 
