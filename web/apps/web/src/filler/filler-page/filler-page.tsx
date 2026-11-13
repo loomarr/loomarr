@@ -144,7 +144,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {/* Manage's children say where they return to, as the Settings index already did: the lit
             Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
         {tab === "incoming" || tab === "sources" || tab === "taxonomy" || tab === "quality" ? (
-          <Stack align="start">
+          <Stack align="start" flexShrink={0}>
             <Action accessibilityRole="link" icon="goBack" render={<Link to="/filler/manage" />} variant="ghost">
               Manage
             </Action>
