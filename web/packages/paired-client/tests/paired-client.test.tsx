@@ -83,7 +83,8 @@ vi.mock("@loomarr/core/events", () => ({
     };
   },
 }));
-vi.mock("@loomarr/core/guide", () => ({
+vi.mock("@loomarr/core/guide", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@loomarr/core/guide")>()),
   createGuideController: (options: { resolveWindow?: (at: Date) => unknown }) => {
     fakes.guideOptions.push(options);
     fakes.lifetimes.push("guide:create");
@@ -147,6 +148,7 @@ vi.mock("@loomarr/player/server", () => ({
 }));
 
 const { phoneClientOptions, retryPairedClient, usePairedClient } = await import("@loomarr/paired-client");
+const { defaultGuideWindow } = await import("@loomarr/core/guide");
 type PairedClient = ReturnType<typeof usePairedClient>;
 
 const credential = { deviceName: "Test", serverUrl: "https://loomarr.test", token: "t" } as PairingCredential;
@@ -363,8 +365,9 @@ describe("paired client", () => {
     });
 
     // Frames sent while the stream was down (a server restarting for an update) are gone, so a
-    // reconnect reloads what they would have changed. The first open needs none: the catalog and
-    // guide load as the stream opens, on launch and on every return to the foreground.
+    // reconnect reloads what they would have changed. The first open needs none: the app's own
+    // launch and return to the foreground load the catalog and the guide (see "the app's foreground
+    // and background"), so the stream's first open would only ask twice.
     it("reloads the catalog and the guide when the stream comes back, not when it first opens", async () => {
       const { root } = await mountClient();
       expect(fakes.catalogLists).toHaveLength(1);
@@ -394,6 +397,75 @@ describe("paired client", () => {
       await act(async () => root.unmount());
       expect(fakes.streams.map(({ closed }) => closed)).toEqual([true, true]);
       expect(appListeners.size).toBe(0);
+    });
+  });
+
+  describe("the guide's freshness", () => {
+    // A phone or TV left overnight shows yesterday's window until something reads the guide again.
+    it("reads the guide again on every return to the foreground, and not while in the background", async () => {
+      const { root } = await mountClient();
+      fakes.guide.refresh.mockClear();
+
+      await sendAppState("background");
+      expect(fakes.guide.refresh).not.toHaveBeenCalled();
+
+      await sendAppState("active");
+      expect(fakes.guide.refresh).toHaveBeenCalledTimes(1);
+
+      await sendAppState("background");
+      await sendAppState("active");
+      expect(fakes.guide.refresh).toHaveBeenCalledTimes(2);
+      await act(async () => root.unmount());
+    });
+
+    it("reads the guide once on return, even when the catalog fails to load", async () => {
+      fakes.catalogFails = true;
+      const { root } = await mountClient();
+      fakes.guide.refresh.mockClear();
+
+      await sendAppState("background");
+      await sendAppState("active");
+
+      expect(fakes.guide.refresh).toHaveBeenCalledTimes(1);
+      await act(async () => root.unmount());
+    });
+
+    describe("with the clock", () => {
+      const MINUTE = 60_000;
+      beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.UTC(2026, 10, 2, 20, 0, 0));
+      });
+      afterEach(() => vi.useRealTimers());
+
+      // The guide controller reads the live window when asked; left alone on a screen, it would keep
+      // the window it read at launch after that window had run out of schedule.
+      it("reads the guide again as the window nears its end, and keeps to the one read until then", async () => {
+        const { root } = await mountClient();
+        fakes.guide.refresh.mockClear();
+
+        await act(async () => void vi.advanceTimersByTime(90 * MINUTE));
+        expect(fakes.guide.refresh).not.toHaveBeenCalled();
+
+        await act(async () => void vi.advanceTimersByTime(4 * 60 * MINUTE));
+        expect(fakes.guide.refresh).toHaveBeenCalled();
+        const reads = fakes.guide.refresh.mock.calls.length;
+
+        // Having read again, the new window is fresh for another long while.
+        await act(async () => void vi.advanceTimersByTime(30 * MINUTE));
+        expect(fakes.guide.refresh).toHaveBeenCalledTimes(reads);
+        await act(async () => root.unmount());
+      });
+
+      it("stops reading when the client is unmounted", async () => {
+        const { root } = await mountClient();
+        await act(async () => root.unmount());
+        fakes.guide.refresh.mockClear();
+
+        await act(async () => void vi.advanceTimersByTime(12 * 60 * MINUTE));
+
+        expect(fakes.guide.refresh).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -582,7 +654,7 @@ describe("paired client", () => {
       await act(async () => phone.root.unmount());
 
       const tv = await mountClient();
-      expect(fakes.guideOptions[1]?.resolveWindow).toBeUndefined();
+      expect(fakes.guideOptions[1]?.resolveWindow).toBe(defaultGuideWindow);
       await act(async () => tv.root.unmount());
     });
   });

@@ -140,9 +140,21 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
+  Reflect.deleteProperty(globalThis.document, "visibilityState");
   vi.unstubAllGlobals();
   device.store.clear();
 });
+
+// The app going to the background and coming back, as react-native-web reports it: the page's
+// visibility.
+const setVisibility = async (state: "hidden" | "visible") => {
+  const target = globalThis as unknown as {
+    document: object & { dispatchEvent(event: unknown): boolean };
+    Event: new (type: string) => unknown;
+  };
+  Object.defineProperty(target.document, "visibilityState", { configurable: true, value: state });
+  await act(async () => void target.document.dispatchEvent(new target.Event("visibilitychange")));
+};
 
 const { default: Index } = await import("../app/index");
 const { nativeApp } = await import("../src/native-app");
@@ -169,6 +181,18 @@ describe("the phone app", () => {
     expect(label("Cartoon Classics, ")).not.toBeNull();
     expect(server.requests).toContain("GET /v1/channels");
     expect(server.requests.filter((request) => request.endsWith("/play-url"))).toEqual([]);
+  });
+
+  // A phone left in a pocket overnight shows yesterday's window until the Guide is read again.
+  it("reads the Guide again when the app returns to the foreground", async () => {
+    await launch();
+    await eventually(() => expect(label("Sci-Fi Classics, ")).not.toBeNull());
+    await setVisibility("hidden");
+    const before = server.guideLoads();
+
+    await setVisibility("visible");
+
+    await eventually(() => expect(server.guideLoads()).toBeGreaterThan(before));
   });
 
   it("keeps focus on the Guide notice's Try again while it retries, and when the retry fails", async () => {

@@ -86,6 +86,11 @@ const usePairedClient = ({
     else lifecycle.enterBackground();
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
+        // A phone or TV left overnight shows yesterday's window; the guide is read again with the
+        // catalog, whichever of the two fails.
+        // A phone or TV left overnight shows yesterday's window; the guide is read again with the
+        // catalog, whichever of the two fails.
+        void guide.refresh();
         void lifecycle.enterForeground().catch(() => undefined);
       } else {
         catalogRefresher.abort();
@@ -98,7 +103,7 @@ const usePairedClient = ({
       versionRequest.current?.abort();
       subscription.remove();
     };
-  }, [catalogRefresher, lifecycle, refresh]);
+  }, [catalogRefresher, guide, lifecycle, refresh]);
   const reloadAll = useCallback(() => {
     refresh();
     void guide.refresh();
