@@ -21,7 +21,7 @@ var extrasKinds = [][]string{
 	{"blooper"}, {"outtake"}, {"gag", "reel"}, {"making", "of"}, {"behind", "the", "scene"},
 	{"deleted", "scene"}, {"special", "feature"}, {"bonu", "feature"}, {"bonu", "material"},
 	{"bonu", "content"}, {"bonu", "disc"}, {"extra", "disc"}, {"dvd", "extra"}, {"extra", "and", "bonu"},
-	{"theme", "music"},
+	{"theme", "music"}, {"promo"}, {"commentary"},
 	// An anime release's openings and endings without their credits, and its menus.
 	{"creditless"}, {"nc"}, {"ncop"}, {"nced"}, {"ncop", "and", "nced"}, {"op", "and", "ed"}, {"op", "ed"},
 	{"opening"}, {"ending"}, {"menu"},
@@ -67,10 +67,33 @@ var showKinds = map[string]bool{
 // showLabel matches a bracketed group at a show's name's end.
 var showLabel = regexp.MustCompile(`[ ._]*[(\[]([^)\]]*)[)\]][ ._]*$`)
 
+// bareShowLabel matches a label after a show's name with no brackets that says it is a show:
+// "The Long Watch Miniseries", "Cold Mere Limited Series", "Ashby TV Series". "Series" alone ends
+// many a title's name ("Star Series").
+var bareShowLabel = regexp.MustCompile(`(?i)[ ._-]+(?:mini[ ._-]?series|limited[ ._-]series|tv[ ._-]series|docu[ ._-]?series)$`)
+
+// showLabelled says whether a folder's name labels it a show's, bracketed or not: "The Long Watch
+// Miniseries", "Cold Mere (Limited Series)". It is a show's on any shelf, a films' too.
+func showLabelled(name string) bool {
+	if bareShowLabel.MatchString(name) {
+		return true
+	}
+	m := showLabel.FindStringSubmatch(name)
+	if m == nil {
+		return false
+	}
+	words := strings.Fields(normName(m[1]))
+	return slices.ContainsFunc(words, func(w string) bool { return w == "mini" || w == "miniseries" || w == "limited" || w == "docuseries" }) &&
+		!slices.ContainsFunc(words, func(w string) bool { return !showKinds[w] })
+}
+
 // withoutShowLabels is a show's name less the labels after it that say what it is or when it ran
-// (showKinds, a span of years "(2010-2015)" or "(2010 - )"), as many as it has; a name of nothing
-// but a label keeps it.
+// (showKinds, a span of years "(2010-2015)" or "(2010 - )", a bare "Miniseries"), as many as it
+// has; a name of nothing but a label keeps it.
 func withoutShowLabels(name string) string {
+	if loc := bareShowLabel.FindStringIndex(name); loc != nil && strings.TrimSpace(name[:loc[0]]) != "" {
+		name = strings.TrimSpace(name[:loc[0]])
+	}
 	for {
 		m := showLabel.FindStringSubmatchIndex(name)
 		if m == nil {
