@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 func recipientHTTPOrigin(value any) error {
@@ -260,6 +262,17 @@ func ianaZone(v any) error {
 		return fmt.Errorf("%q is not an IANA timezone name such as America/New_York", name)
 	}
 	return nil
+}
+
+// trustedProxyList validates security.trusted_proxies: every entry an address or a CIDR range.
+// An entry that isn't is refused, not skipped, so a typo can't leave a proxy silently untrusted.
+func trustedProxyList(v any) error {
+	list, ok := v.([]string)
+	if !ok {
+		return fmt.Errorf("want a list of addresses or ranges")
+	}
+	_, err := httpx.ParseProxyPrefixes(list)
+	return err
 }
 
 // optionalPlaceID accepts an empty place or a city id from the embedded location index (numeric

@@ -118,7 +118,7 @@ func (s *Handlers) locationSuggestion(ctx context.Context, _ *struct{}) (*locati
 	if request == nil {
 		return out, nil
 	}
-	if s.origin.TrustProxy {
+	if s.origin.FromTrustedProxy(request) {
 		if place, source, ok := trustedLocationHeader(index, request); ok {
 			dto := locationDTOFrom(place)
 			dto.Source, dto.Approximate = source, true

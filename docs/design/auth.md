@@ -31,14 +31,21 @@ stable per install.
 and revocable (`GET /v1/users/{id}/sessions`, `DELETE /v1/sessions/{hash}`); disabling a user ends
 them at once; `SESSION_TTL` slides. `cookie.secure=auto|always|never`. Mutating routes also require
 `X-Loomarr-Csrf: 1`. Login is rate-limited by client IP. Forwarding headers (`X-Forwarded-For`,
-`X-Forwarded-Proto`) are trusted only when `security.trust_proxy=true`; otherwise the socket peer is
-used, so a direct client cannot forge its way past the throttle or downgrade its cookie. With the
-setting on, `X-Forwarded-For` is read only when the socket peer is a proxy (loopback, private,
-link-local, or Tailscale's 100.64.0.0/10), and the client is its right-most hop: a proxy appends the address it saw, and
-everything to its left was written by whoever sent the request. No hop further left is taken, even
-past a private address, because a private address cannot be told apart from a LAN client. Behind a
-chain of proxies every client therefore shares the inner proxy's throttle key. A proxy on a public
-address is not honored: every client then shares the proxy's throttle key.
+`X-Forwarded-Proto`, and the `X-Loomarr-Geo-*` / CDN geography headers) are trusted only from a socket
+peer inside `security.trusted_proxies`, an explicit list of addresses and CIDR ranges (default:
+loopback, `127.0.0.0/8` and `::1/128`). From any other peer the socket address is used, so a direct
+client, on the LAN or the tailnet or the internet alike, cannot forge its way past the throttle or
+downgrade its cookie. Being on a private network confers no trust: a deployment behind a reverse
+proxy on another host or container lists that proxy's address. One peer check
+(`httpcore.Origin.FromTrustedProxy`) serves the client address, the protocol and the geography
+headers. For a listed peer the client is the right-most `X-Forwarded-For` hop: a proxy appends the
+address it saw, and everything to its left was written by whoever sent the request. No hop further
+left is taken, even past a private address, because a private address cannot be told apart from a
+LAN client. Behind a chain of proxies every client therefore shares the inner proxy's throttle key.
+A proxy that is not listed is a client: every visitor then shares the proxy's throttle key. The
+retired `security.trust_proxy` switch grants nothing: an install that had it on and has not written
+the list trusts loopback only and logs a startup warning to list its proxy in
+`security.trusted_proxies`. The list is read once per application generation.
 
 **Machine access.** The generated `API_TOKEN` authenticates scripts through `Authorization: Bearer`
 and is the break-glass admin when no user can sign in.

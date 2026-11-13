@@ -104,19 +104,26 @@ func buildHTTP(deps httpBuild) http.Handler {
 	guideSvc, settingsSvc := deps.guide, deps.settings
 	liveSettings, libraryConfigured := deps.liveSettings, deps.libraryConfigured
 	jobsSvc, databaseSvc, residentLLM := deps.jobs, deps.database, deps.residentLLM
+	proxies, err := trustedProxies(set, log)
+	if err != nil {
+		// Validated when saved and when pinned, so this is unreachable; if it ever is reached,
+		// trusting no proxy is the safe direction (every visitor shares the proxy's address).
+		log.Error("trusted proxies unreadable: trusting no reverse proxy", "error", err)
+		proxies = nil
+	}
 	return api.Router(log, api.Options{
-		Store:        st,
-		Auth:         authorizer,
-		Log:          log,
-		Metrics:      deps.foundation.metrics,
-		Ready:        ready,
-		Shutdown:     rootCtx.Done(),
-		LiveSettings: liveSettings,
-		Settings:     settingsSvc,
-		Activity:     activityRec,
-		Images:       imageService(imageSvc),
-		CookieSecure: settings.CookieSecure.Get(set),
-		TrustProxy:   settings.SecurityTrustProxy.Get(set),
+		Store:          st,
+		Auth:           authorizer,
+		Log:            log,
+		Metrics:        deps.foundation.metrics,
+		Ready:          ready,
+		Shutdown:       rootCtx.Done(),
+		LiveSettings:   liveSettings,
+		Settings:       settingsSvc,
+		Activity:       activityRec,
+		Images:         imageService(imageSvc),
+		CookieSecure:   settings.CookieSecure.Get(set),
+		TrustedProxies: proxies,
 		People: api.PeopleOptions{
 			Login:                loginSvc,
 			Sessions:             sessMgr,

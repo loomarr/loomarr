@@ -15,10 +15,18 @@ func declaredAccess() []Setting {
 			Doc: "When to mark the login cookie secure: auto (match the request), always, or never (for local dev only).",
 		},
 		{
+			Key: "security.trusted_proxies", Label: "Trusted reverse proxies", EnvVar: "TRUSTED_PROXIES", Group: GroupUsersSecurity,
+			Kind: KindStringList, Default: "127.0.0.0/8,::1/128", Advanced: true, Apply: ApplyRestart, Validate: trustedProxyList,
+			Doc:    "The addresses of the reverse proxies in front of Loomarr, whose forwarding headers it believes.",
+			Detail: "Addresses or ranges separated by commas, such as 192.0.2.10 or 192.0.2.0/24, as the proxy connects to Loomarr (inside Docker, the proxy container's network address). Only a connection from one of these has its X-Forwarded-For, X-Forwarded-Proto and location headers believed; from anyone else they are ignored, so a client can't forge them to bypass the sign-in rate limit or downgrade its cookie. The default trusts only the machine Loomarr runs on. Behind a proxy on another machine or container, list its address here, or every visitor shares the proxy's address. Empty trusts no one.",
+		},
+		{
+			// Retired by security.trusted_proxies: a bare on/off could not say WHICH peers were
+			// proxies, so every private and tailnet address was one. Kept only so an install that
+			// had it on is warned at startup to list its proxy; it grants no trust.
 			Key: "security.trust_proxy", Label: "Trust reverse proxy", EnvVar: "TRUST_PROXY", Group: GroupUsersSecurity,
-			Kind: KindBool, Default: "false", Advanced: true,
-			Doc:    "Turn on only when a reverse proxy sits in front of Loomarr.",
-			Detail: "Trust the X-Forwarded-For and X-Forwarded-Proto headers. Turn this on only if a reverse proxy sits in front of Loomarr and sets them. The proxy must reach Loomarr from a loopback, private, link-local or Tailscale (100.64.0.0/10) address. Off by default so a direct client can't forge them to bypass the login rate limit or downgrade its cookie.",
+			Kind: KindBool, Default: "false", MigrationOnly: true,
+			Doc: "Retired: list the proxies in security.trusted_proxies.",
 		},
 
 		// --- SSO: a third CREDENTIAL path, never a provisioning one (§11, D-F, V8) ---

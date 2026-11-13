@@ -122,7 +122,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `platform/llm` | `platform/httpx`, `platform/metrics` |
 | `platform/metrics` | `library/provision` |
 | `platform/rating` | — |
-| `platform/settings` | `library/mediaserver`, `platform/buildinfo`, `platform/config` |
+| `platform/settings` | `library/mediaserver`, `platform/buildinfo`, `platform/config`, `platform/httpx` |
 | `platform/storagegovernor` | — |
 | `platform/store` | `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `library/inventory`, `library/provision`, `media/creative`, `media/defects`, `people/access`, `people/contact`, `people/notifications`, `people/secretprotection`, `platform/diagnostics`, `platform/holidayvocab`, `platform/store/activitystore`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/clipstore`, `platform/store/identitystore`, `platform/store/librarystore`, `platform/store/proposalstore`, `platform/store/storedb`, `proposals`, `proposals/quality` |
 | `platform/store/activitystore` | `platform/store/storedb` |
