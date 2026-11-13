@@ -153,6 +153,9 @@ type LibraryStream struct {
 	Channels               int
 	ChannelLayout          string
 	SampleRate             int
+	// BitRate is the track's own rate in bit/s, 0 when its container states none; BitDepth is
+	// bits per sample, 0 for lossy audio or unknown (#3228).
+	BitRate, BitDepth int
 	// AudioFormat names an audio track's format, such as "Dolby Digital Plus".
 	AudioFormat string
 	Width       int

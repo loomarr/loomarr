@@ -121,25 +121,31 @@ type Disposition struct {
 // Stream is ordered by Index, the source-global stream index. Audio consumers derive ffmpeg's
 // 0:a:N ordinal from the ordered audio subset rather than treating the global index as an ordinal.
 type Stream struct {
-	Index          int         `json:"index"`
-	Kind           StreamKind  `json:"kind"`
-	Codec          string      `json:"codec,omitempty"`
-	Profile        string      `json:"profile,omitempty"`
-	Level          string      `json:"level,omitempty"`
-	Language       string      `json:"language,omitempty"`
-	Title          string      `json:"title,omitempty"`
-	Disposition    Disposition `json:"disposition,omitempty"`
-	Channels       int         `json:"channels,omitempty"`
-	ChannelLayout  string      `json:"channelLayout,omitempty"`
-	SampleRate     int         `json:"sampleRate,omitempty"`
-	Width          int         `json:"width,omitempty"`
-	Height         int         `json:"height,omitempty"`
-	FrameRate      string      `json:"frameRate,omitempty"`
-	PixelFormat    string      `json:"pixelFormat,omitempty"`
-	ColorSpace     string      `json:"colorSpace,omitempty"`
-	ColorTransfer  string      `json:"colorTransfer,omitempty"`
-	ColorPrimaries string      `json:"colorPrimaries,omitempty"`
-	HDR            bool        `json:"hdr,omitempty"`
+	Index         int         `json:"index"`
+	Kind          StreamKind  `json:"kind"`
+	Codec         string      `json:"codec,omitempty"`
+	Profile       string      `json:"profile,omitempty"`
+	Level         string      `json:"level,omitempty"`
+	Language      string      `json:"language,omitempty"`
+	Title         string      `json:"title,omitempty"`
+	Disposition   Disposition `json:"disposition,omitempty"`
+	Channels      int         `json:"channels,omitempty"`
+	ChannelLayout string      `json:"channelLayout,omitempty"`
+	SampleRate    int         `json:"sampleRate,omitempty"`
+	// BitRate is the track's own rate in bit/s as the container states it (Matroska BPS tag) or
+	// its sample table measures it (MP4); 0 when the container says nothing (#3228).
+	BitRate int `json:"bitRate,omitempty"`
+	// BitDepth is bits per sample: a video's luma depth, or a lossless or PCM audio track's
+	// sample size; 0 when the stream has none to state (lossy audio) or it is unknown (#3228).
+	BitDepth       int    `json:"bitDepth,omitempty"`
+	Width          int    `json:"width,omitempty"`
+	Height         int    `json:"height,omitempty"`
+	FrameRate      string `json:"frameRate,omitempty"`
+	PixelFormat    string `json:"pixelFormat,omitempty"`
+	ColorSpace     string `json:"colorSpace,omitempty"`
+	ColorTransfer  string `json:"colorTransfer,omitempty"`
+	ColorPrimaries string `json:"colorPrimaries,omitempty"`
+	HDR            bool   `json:"hdr,omitempty"`
 	// DolbyVision is a video stream's Dolby Vision profile, 0 for none.
 	DolbyVision    int    `json:"dolbyVision,omitempty"`
 	Interlaced     bool   `json:"interlaced,omitempty"`

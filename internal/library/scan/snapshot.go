@@ -350,6 +350,7 @@ func libraryStream(st inventory.Stream) librarystore.LibraryStream {
 		Commentary: st.Disposition.Comment, HearingImpaired: st.Disposition.HearingImpaired,
 		Descriptive: st.Disposition.VisualImpaired,
 		Channels:    st.Channels, ChannelLayout: st.ChannelLayout, SampleRate: st.SampleRate,
+		BitRate: st.BitRate, BitDepth: st.BitDepth,
 		Width: st.Width, Height: st.Height, FrameRate: st.FrameRate, PixelFormat: st.PixelFormat,
 		ColorTransfer: st.ColorTransfer,
 	}
