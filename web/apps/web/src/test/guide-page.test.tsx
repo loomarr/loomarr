@@ -420,6 +420,119 @@ describe("Guide", () => {
       expect(view.queryByRole("status", { name: /loading guide/i })).not.toBeInTheDocument();
     });
 
+    // TanStack v5 shows placeholder data only while a query is pending, so a NEW window that fails
+    // has no data at all. The page used to give itself to the error then, taking the controls (and
+    // the way back to a window that works) with it.
+    describe("that fails to load", () => {
+      // The first windows answer (the opened one and its prefetched neighbours); `fail()` then makes
+      // the server error for everything not already cached.
+      const stubFailingServer = async () => {
+        stubGuide();
+        let failing = false;
+        const asked: number[] = [];
+        server.use(
+          http.get("*/v1/guide", ({ request }) => {
+            asked.push(Number(new URL(request.url).searchParams.get("from")));
+            if (failing) return new HttpResponse(null, { status: 503 });
+            return undefined;
+          }),
+        );
+        const view = renderAt(GRID);
+        expect(
+          await view.findByRole("button", { name: /actions for saturday cartoons/i }),
+        ).toBeInTheDocument();
+        // The neighbours (one hour either side, tomorrow) are warmed once the opened window settles.
+        await vi.waitFor(() => expect(asked.length).toBeGreaterThanOrEqual(4));
+        await vi.waitFor(() => expect(clients.at(-1)?.isFetching()).toBe(0));
+        failing = true;
+        return view;
+      };
+
+      it.each([
+        [
+          "a span change",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) =>
+            userEvent.click(view.getByRole("button", { name: "Show 12 hours" })),
+        ],
+        [
+          "stepping two hours past the prefetched one",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) => {
+            await userEvent.click(view.getByRole("button", { name: "Forward an hour" }));
+            await userEvent.click(view.getByRole("button", { name: "Forward an hour" }));
+          },
+        ],
+        [
+          "stepping two hours back past the prefetched one",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) => {
+            await userEvent.click(view.getByRole("button", { name: "Back an hour" }));
+            await userEvent.click(view.getByRole("button", { name: "Back an hour" }));
+          },
+        ],
+        [
+          "a day two past the prefetched one",
+          async (view: Awaited<ReturnType<typeof stubFailingServer>>) =>
+            userEvent.selectOptions(view.getByRole("combobox", { name: "Day" }), "3"),
+        ],
+      ])("keeps the last Guide and its controls under a notice on %s", async (_name, change) => {
+        const view = await stubFailingServer();
+
+        await change(view);
+
+        expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+        expect(view.getByRole("button", { name: "NOW" })).toBeInTheDocument();
+        expect(view.getByRole("button", { name: "Forward an hour" })).toBeInTheDocument();
+        expect(view.getByRole("combobox", { name: "Day" })).toBeInTheDocument();
+        // One Try again (the notice's), not the page-wide error's as well.
+        expect(view.getAllByRole("button", { name: "Try again" })).toHaveLength(1);
+      });
+
+      it("keeps the controls working after a failure, so the viewer can pick another window", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+        expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+
+        server.resetHandlers();
+        stubGuide();
+        await user.click(view.getByRole("button", { name: "Show 4 hours" }));
+
+        await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+
+      it("loads the window the viewer asked for when Try again is pressed and the server has recovered", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+        expect(await view.findByText("Couldn't refresh the Guide")).toBeInTheDocument();
+
+        server.resetHandlers();
+        stubGuide();
+        await user.click(view.getByRole("button", { name: "Try again" }));
+
+        await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+        expect(view.getByRole("button", { name: "Show 12 hours" })).toHaveAttribute("aria-pressed", "true");
+        expect(view.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+
+      it("gives the page to the error only when the Guide has never answered", async () => {
+        const user = userEvent.setup();
+        stubGuide();
+        server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+        const view = renderAt(GRID);
+
+        expect(await view.findByRole("button", { name: "Try again" })).toBeInTheDocument();
+        expect(view.queryByRole("button", { name: "NOW" })).not.toBeInTheDocument();
+        expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument();
+
+        server.resetHandlers();
+        stubGuide();
+        await user.click(view.getByRole("button", { name: "Try again" }));
+        expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      });
+    });
+
     it("prefetches the adjacent windows once the current one has loaded", async () => {
       stubGuide();
       const { froms, release } = stubSlowNextWindow();

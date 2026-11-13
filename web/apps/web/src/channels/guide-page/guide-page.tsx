@@ -289,7 +289,16 @@ const GuidePage = () => {
   // becoming available fires BEFORE the backfill that places it, so refetching there would race
   // and often return the pre-backfill lineup.
 
-  const body = unwrap(guide.data);
+  // The newest window that answered. TanStack v5 drops `placeholderData` once the query errors, so
+  // a NEW window that fails (a span, a day, two hours on) has no data at all; the Guide the viewer
+  // was just looking at stays on screen instead, under the notice, and only a page that has never
+  // answered is given to the error.
+  const answered = unwrap(guide.data);
+  const [lastAnswered, setLastAnswered] = useState(answered);
+  if (answered && answered !== lastAnswered) setLastAnswered(answered);
+  const body = answered ?? lastAnswered;
+  // The window on screen is the last good one, not the one that failed.
+  const showingEarlierWindow = guide.error !== null && answered === undefined && body !== undefined;
   // A cold page with nothing cached reads the device's zone until the first answer names the
   // household's.
   useEffect(() => {
@@ -408,7 +417,11 @@ const GuidePage = () => {
         <Surface backgroundColor="transparent" borderWidth={0} padding="control">
           <Notice
             action={{ label: "Try again", onPress: () => void guide.refetch() }}
-            body="Showing what Loomarr had a moment ago."
+            body={
+              showingEarlierWindow
+                ? "That time didn't load. Showing the last one that did."
+                : "Showing what Loomarr had a moment ago."
+            }
             title="Couldn't refresh the Guide"
             tone="warn"
           />
@@ -424,7 +437,9 @@ const GuidePage = () => {
           subtitle={
             nowNextView
               ? `${formatGuideTime(nowMs, body?.timezone)} · ${pluralize(channels.length, "channel")}`
-              : formatGuideTimeRange(from, to, body?.timezone)
+              : showingEarlierWindow && body
+                ? formatGuideTimeRange(body.fromMs, body.toMs, body.timezone)
+                : formatGuideTimeRange(from, to, body?.timezone)
           }
           wide={!phoneWidth}
         >
