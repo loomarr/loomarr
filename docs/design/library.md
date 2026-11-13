@@ -1009,6 +1009,8 @@ header is kept, so no file is opened again. Each version and what it changed:
   Trailer", "S01E02.Preview", beside the episode itself is its extra (`extrasBeside`); a release's
   mark first is no part of a title only when it carries a digit, "720p.Copse.Ridge", so "HDR.Kids"
   and "HDTV Heroes" keep their first word (`searchQuery`).
+- **81:** a shelf names no show: an episode named by its mark alone, "Downloads/S01E01.mkv",
+  "TV/S01E07.mkv", is no show's, as one loose at the top is (`showFolderIn`, `noShowIn`).
 
 ## Search
 
