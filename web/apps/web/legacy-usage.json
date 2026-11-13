@@ -428,7 +428,7 @@
       "tailwindClasses": 36
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 42
+      "tailwindClasses": 16
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 13
