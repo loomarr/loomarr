@@ -146,9 +146,6 @@
     "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
       "flexStack": 1
     },

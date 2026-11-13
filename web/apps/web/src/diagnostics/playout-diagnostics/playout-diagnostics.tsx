@@ -4,6 +4,7 @@ import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosti
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
 import {
   Action,
+  Card,
   CompactSelect,
   Field,
   Icon,
@@ -125,15 +126,19 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
 
   if (query.error instanceof OutputError && query.error.status === 410)
     return (
-      <Text as="p" className="border-border rounded-md border p-4" textRole="compact" tone="secondary">
-        Output retention expired. Run metadata remains available.
-      </Text>
+      <Card padding={16}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Output retention expired. Run metadata remains available.
+        </Text>
+      </Card>
     );
   if (query.error instanceof OutputError && query.error.status === 501)
     return (
-      <Text as="p" className="border-border rounded-md border p-4" textRole="compact" tone="secondary">
-        Process output is unavailable in this runtime.
-      </Text>
+      <Card padding={16}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Process output is unavailable in this runtime.
+        </Text>
+      </Card>
     );
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   if (query.isPending)
@@ -144,7 +149,7 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
     );
 
   return (
-    <div className="space-y-2">
+    <Stack gap="2">
       <Stack align="center" direction="row" gap="inline" wrap>
         <Surface backgroundColor="transparent" borderWidth={0} flexBasis={192} flexGrow={1} minWidth={0}>
           <SearchField
@@ -195,7 +200,7 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
           {visible || "No retained output matches this search."}
         </Text>
       </pre>
-    </div>
+    </Stack>
   );
 };
 
@@ -212,10 +217,7 @@ const ProcessDetail = ({
   const detail = query.data?.status === 200 ? query.data.data : undefined;
   const latest = detail?.progress.at(-1);
   return (
-    <section
-      className="border-border bg-card space-y-4 rounded-lg border p-4"
-      aria-label="Selected media process"
-    >
+    <Card aria-label="Selected media process" gap={16} padding={16} render="section">
       <Stack align="start" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h3" textRole="heading">
@@ -225,9 +227,11 @@ const ProcessDetail = ({
             Started {formatTime(run.startedAt)}
           </Text>
         </div>
-        <Text as="span" className="inline-flex items-center gap-2" textRole="compact">
-          <StatusDot tone={tone(run.status)} label={run.status} />
-          {run.status}
+        <Text as="span" textRole="compact">
+          <Stack align="center" direction="row" gap="2" render="span">
+            <StatusDot tone={tone(run.status)} label={run.status} />
+            {run.status}
+          </Stack>
         </Text>
       </Stack>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -296,9 +300,10 @@ const ProcessDetail = ({
       ) : latest ? (
         <Stack
           aria-label="Latest Process progress"
-          className="bg-muted/30 rounded-md p-3"
+          className="bg-muted/30 rounded-md"
           direction="row"
           gap="5"
+          padding={12}
           role="status"
           wrap
         >
@@ -323,7 +328,7 @@ const ProcessDetail = ({
         </Text>
       )}
       <ProcessOutput key={run.id} run={run} />
-    </section>
+    </Card>
   );
 };
 
@@ -383,7 +388,7 @@ const PlayoutDiagnostics = ({
     onFiltersChange(next);
   };
   return (
-    <section className="space-y-4" aria-labelledby="media-processes-title">
+    <Stack aria-labelledby="media-processes-title" gap="4" render="section">
       <Stack align="start" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h2" id="media-processes-title" textRole="headline">
@@ -462,23 +467,17 @@ const PlayoutDiagnostics = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
-        <Text
-          as="p"
-          className="border-border bg-card rounded-lg border px-4 py-8 text-center"
-          textRole="compact"
-          tone="secondary"
-        >
-          Loading media processes…
-        </Text>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            Loading media processes…
+          </Text>
+        </Card>
       ) : runs.length === 0 ? (
-        <Text
-          as="p"
-          className="border-border bg-card rounded-lg border px-4 py-8 text-center"
-          textRole="compact"
-          tone="secondary"
-        >
-          No media processes match this bounded window.
-        </Text>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            No media processes match this bounded window.
+          </Text>
+        </Card>
       ) : (
         <DiagnosticsSplitPane
           storageKey="diagnostics-media-process-details"
@@ -521,14 +520,11 @@ const PlayoutDiagnostics = ({
                             <Text as="strong" className="truncate" strong textRole="cardLabel" tone="primary">
                               {run.purpose}
                             </Text>
-                            <Text
-                              as="span"
-                              className="inline-flex items-center gap-1"
-                              textRole="hint"
-                              tone="primary"
-                            >
-                              <StatusDot tone={tone(run.status)} label={run.status} />
-                              {run.status}
+                            <Text as="span" textRole="hint" tone="primary">
+                              <Stack align="center" direction="row" gap="1" render="span">
+                                <StatusDot tone={tone(run.status)} label={run.status} />
+                                {run.status}
+                              </Stack>
                             </Text>
                           </Stack>
                           <Text as="span" className="truncate" textRole="hint" tone="secondary">
@@ -549,19 +545,17 @@ const PlayoutDiagnostics = ({
             selected ? (
               <ProcessDetail run={selected} onOpenChannel={onOpenChannel} />
             ) : (
-              <Text
-                as="p"
-                className="border-border rounded-lg border p-6"
-                textRole="compact"
-                tone="secondary"
-              >
-                The selected media process is outside this page. Adjust the filters or return to a newer page.
-              </Text>
+              <Card backgroundColor="transparent" padding={24}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  The selected media process is outside this page. Adjust the filters or return to a newer
+                  page.
+                </Text>
+              </Card>
             )
           }
         />
       )}
-    </section>
+    </Stack>
   );
 };
 
