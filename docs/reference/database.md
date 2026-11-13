@@ -2179,7 +2179,6 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `received_at_ms` | When the server received it, in Unix milliseconds. | `BIGINT` |
 | `occurred_at_ms` | When the crash happened by the device's clock, in Unix milliseconds. | `BIGINT` |
 | `user_id` | The person signed in on the app that sent it, pointing at users. Empty if unknown or the person has been deleted. | `TEXT` · may be empty · → `users.id` |
-| `device_id` | The paired device that sent it, matching device_tokens.token_hash. Empty when not sent from a paired device. | `TEXT` |
 | `device_name` | The paired device's name at the time, or empty. | `TEXT` |
 | `kind` | What crashed. js-fatal is an app error that closed the app, js-error is an app error that was caught, native is a crash of the app's native code. | `TEXT` |
 | `platform` | Which app sent it. ios, android, tvos (Apple TV), or android-tv. | `TEXT` |
@@ -2191,6 +2190,7 @@ One crash report sent by the Loomarr TV or phone app, cleaned of secrets before 
 | `stack` | The stack trace, or empty. | `TEXT` |
 | `breadcrumbs_json` | A JSON list of up to 50 things the app did just before the crash, each with a time, a category (navigation, http, lifecycle or log) and a short message. | `TEXT` |
 | `native_payload` | For native crashes, the crash report from Apple's MetricKit as JSON. Empty otherwise. | `TEXT` |
+| `device_id` | The paired device that sent it (device_tokens.token_hash). Null when not sent from a paired device, or once that device is unpaired; device_name still says which it was. | `TEXT` · may be empty · → `device_tokens.token_hash` |
 
 ### database_table_rows
 
