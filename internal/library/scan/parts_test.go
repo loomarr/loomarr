@@ -40,6 +40,10 @@ func TestPartsOf(t *testing.T) {
 		// "Part" straight after a title word is the title's: sequels, not a movie in parts. A title
 		// never writes "pt", and a year or a release's mark before "Part" ends the title.
 		{"two titles' own parts, no year", []string{"Harbor Saga Part 1.mkv", "Harbor Saga Part 2.mkv"}, nil},
+		// A release's mark straight after the part's number is a rip's: a sequel gives its year first.
+		{"part then a release's mark", []string{"Ashgrove Part 1 1080p.mkv", "Ashgrove Part 2 1080p.mkv"},
+			map[string]int{"Ashgrove Part 1 1080p.mkv": 1, "Ashgrove Part 2 1080p.mkv": 2}},
+		{"sequels, their years before the mark", []string{"Harbor Saga Part 1 (2010) 1080p.mkv", "Harbor Saga Part 2 (2011) 1080p.mkv"}, nil},
 		{"pts after a title word", []string{"Harbor Saga pt 1.mkv", "Harbor Saga pt 2.mkv"},
 			map[string]int{"Harbor Saga pt 1.mkv": 1, "Harbor Saga pt 2.mkv": 2}},
 		{"pt joined", []string{"Ashgrove pt1.mkv", "Ashgrove pt2.mkv"},

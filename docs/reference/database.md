@@ -588,7 +588,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `identity` | A digest of what said what the file is (its arr record, ids in its name, its NFO sidecar) when it was last written to the library. Cleared to make the scanner write the file again. | `TEXT` |
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
-| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), or invalid_facts (the library refused what was read from it). | `TEXT` |
+| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), invalid_facts (the library refused what was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink to a path outside the root, which the scan never follows). | `TEXT` |
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |

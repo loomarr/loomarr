@@ -23,7 +23,18 @@ const (
 	ProblemIdentityConflict = "identity_conflict"
 	// ProblemInvalid is a file whose facts the inventory refused.
 	ProblemInvalid = "invalid_facts"
+	// ProblemBrokenLink is a symlink whose target is gone: what it held can't be read.
+	ProblemBrokenLink = "broken_link"
+	// ProblemLinkOutside is a symlink to a file or folder outside the root, which a walk never
+	// follows: the root is all the library reads.
+	ProblemLinkOutside = "link_outside"
 )
+
+// walkProblem says whether a problem is one the walk finds, a path it never reads, rather than
+// one a file read was refused with.
+func walkProblem(problem string) bool {
+	return problem == ProblemDiscImage || problem == ProblemBrokenLink || problem == ProblemLinkOutside
+}
 
 // videoExtensions are the containers the scanner imports: every one ffmpeg reads that a library
 // keeps films and episodes in, old rips' among them (DivX, Flash, OGM, RealMedia, a lone VOB).
@@ -507,12 +518,20 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		lower := strings.ToLower(e.Name())
 		isDir := e.IsDir()
 		if e.Type()&fs.ModeSymlink != 0 {
-			target, ok := w.inside(path)
-			if !ok {
+			// A link the walk can't follow is listed, not passed over in silence: its target is
+			// gone, or lies outside the root.
+			target, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				w.problem(path, Stat{}, ProblemBrokenLink)
+				continue
+			}
+			if _, ok := canonicalPath(w.root, w.realRoot, target); !ok {
+				w.problem(path, Stat{}, ProblemLinkOutside)
 				continue
 			}
 			info, err := os.Stat(target)
 			if err != nil {
+				w.problem(path, Stat{}, ProblemBrokenLink)
 				continue
 			}
 			isDir = info.IsDir()
@@ -708,19 +727,6 @@ func canonicalPath(root, realRoot, real string) (string, bool) {
 		return "", false
 	}
 	return filepath.Join(root, rel), true
-}
-
-// inside resolves a symlink, reporting its target only when the target stays inside the root.
-func (w *walker) inside(path string) (string, bool) {
-	target, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return "", false
-	}
-	rel, err := filepath.Rel(w.realRoot, target)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return target, true
 }
 
 func (w *walker) stat(path string, e fs.DirEntry) (Stat, bool) {

@@ -68,8 +68,9 @@ tables:
         (it can't be read, so the file can't be played).
       problem: >
         Why the file is skipped, or empty for none. One of disc_image (a disc image),
-        identity_conflict (what names the file disagrees), or invalid_facts (the library refused what
-        was read from it).
+        identity_conflict (what names the file disagrees), invalid_facts (the library refused what
+        was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink
+        to a path outside the root, which the scan never follows).
       held: >
         1 when a walk no longer found the file and that walk's removals are waiting for a person to
         confirm them. A held file still counts as present.

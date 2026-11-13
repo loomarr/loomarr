@@ -1,5 +1,4 @@
-# Files whose non-test Go comments narrate history ("re-score #N", "write version N" outside a
-# version constant's doc, "now" as "as of this change"), held by TestCommentsDoNotNarrateHistory.
+# Files whose non-test Go comments narrate history ("re-score #N", "write version N", "now" as "as
+# of this change"), held by TestCommentsDoNotNarrateHistory.
 # One "path count" line per file. This list only shrinks: reword a comment to the present tense and
 # lower the count, delete the line when the file reaches zero.
-internal/library/scan/snapshot.go 1

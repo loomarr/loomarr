@@ -81,6 +81,15 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		{"Charlotte's Web (2006)", 0, "Charlotte's Web", 2006},
 		{"Charlotte's.Web.2006.1080p.WEB-DL", 0, "Charlotte's Web", 2006},
 		{"The Extended Family 1999 EXTENDED 1080p", 0, "The Extended Family", 1999},
+		// In a name written in one case a release's word a title may carry is the title's before a
+		// mark; one only a release carries is the release's.
+		{"THE WEB 1080p", 0, "THE WEB", 0},
+		{"the web 1080p", 0, "the web", 0},
+		{"the.cam.720p", 0, "the cam", 0},
+		{"lantern.multi.vostfr", 0, "lantern", 0},
+		{"LANTERN AMZN 1080p", 0, "LANTERN", 0},
+		{"LANTERN GERMAN DL 1080p", 0, "LANTERN", 0},
+		{"lantern.2019.web.1080p", 0, "lantern", 2019},
 		// So is one a title writes as its own in a name in mixed case, with no year: a release
 		// writes its words in capitals, or runs them on.
 		{"Bramble Web 1080p", 0, "Bramble Web", 0},

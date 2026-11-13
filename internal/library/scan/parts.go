@@ -227,7 +227,13 @@ func partIn(name string) (set string, number int, ok bool) {
 	}
 	// "Part 1 of 3" counts a miniseries' episodes, and "- Part 1 - Tides" titles one: a film's
 	// parts never say how many, nor have titles of their own.
-	if partCount.MatchString(after) || titledPart.MatchString(stem) || titlesOwnPart(before, stem[m[3]:m[4]]) {
+	// A release's mark straight after the part's number, "Ashgrove Part 1 1080p", says a rip marks
+	// its parts: a sequel's name gives its year first, "Harbor Saga Part 2 (2011) 1080p".
+	ripped := false
+	if words := strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(after)); len(words) > 0 {
+		ripped = releaseMark.MatchString(words[0])
+	}
+	if partCount.MatchString(after) || titledPart.MatchString(stem) || !ripped && titlesOwnPart(before, stem[m[3]:m[4]]) {
 		return "", 0, false
 	}
 	before = strings.TrimRight(before, " ._-([")

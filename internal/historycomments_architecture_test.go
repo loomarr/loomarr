@@ -2,7 +2,6 @@ package internal_test
 
 import (
 	"bufio"
-	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/token"
@@ -44,8 +43,8 @@ var historyRules = []struct {
 		re:   regexp.MustCompile(`(?i)\bre-?scores?\s*(?:#\d+|\d{1,2}-\d{1,2}\b|round \d+|no\.?\s*\d+)`),
 	},
 	{
-		// "Write version N" narrates which release changed a rule. The only home for a write
-		// version number is the version constant's own doc, which the scan exempts.
+		// "Write version N" narrates which release changed a rule. What each version changed
+		// lives in docs/ (the scanner's in docs/design/library.md), never in a comment.
 		name: "write version N",
 		re:   regexp.MustCompile(`(?i)\bwrite[- ]version\s+\d+`),
 	},
@@ -68,35 +67,12 @@ func historyComments(t *testing.T, filename string, src any) []string {
 	if err != nil {
 		t.Fatalf("parse %s: %v", filename, err)
 	}
-	// The version constant's own doc may carry "write version N": that is where the number lives.
-	versionDoc := map[*ast.CommentGroup]bool{}
-	for _, decl := range file.Decls {
-		gen, ok := decl.(*ast.GenDecl)
-		if !ok || (gen.Tok != token.CONST && gen.Tok != token.VAR) {
-			continue
-		}
-		for _, spec := range gen.Specs {
-			value, ok := spec.(*ast.ValueSpec)
-			if !ok {
-				continue
-			}
-			for _, name := range value.Names {
-				if !strings.Contains(strings.ToLower(name.Name), "version") {
-					continue
-				}
-				versionDoc[gen.Doc], versionDoc[value.Doc], versionDoc[value.Comment] = true, true, true
-			}
-		}
-	}
 	var found []string
 	for _, group := range file.Comments {
 		for _, comment := range group.List {
 			start := fset.Position(comment.Slash).Line
 			for offset, text := range strings.Split(comment.Text, "\n") {
 				for _, rule := range historyRules {
-					if rule.name == "write version N" && versionDoc[group] {
-						continue
-					}
 					if rule.re.MatchString(text) {
 						found = append(found, strconv.Itoa(start+offset)+": "+rule.name)
 					}
@@ -192,7 +168,7 @@ const writeVersion = 66
 func f() {}
 `
 	got := strings.Join(historyComments(t, "p.go", src), " | ")
-	want := `4: re-score round | 6: "now" as of this change | 7: write version N | 13: "now" as of this change`
+	want := `4: re-score round | 6: "now" as of this change | 7: write version N | 9: write version N | 13: "now" as of this change`
 	if got != want {
 		t.Fatalf("flagged\n %s\nwant\n %s", got, want)
 	}
