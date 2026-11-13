@@ -156,7 +156,14 @@ export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
-export type { StackAlign, StackGap, StackJustify, StackProps } from "./src/stack";
+export type {
+  StackAlign,
+  StackBreakpoint,
+  StackGap,
+  StackJustify,
+  StackProps,
+  StackResponsive,
+} from "./src/stack";
 export { Stack } from "./src/stack";
 export type { StatusLabelProps } from "./src/status-label";
 export { StatusLabel } from "./src/status-label";
@@ -178,6 +185,7 @@ export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens
 export {
   brandChroma,
   brandContract,
+  breakpoints,
   decadeFill,
   decadeFillColor,
   iconography,

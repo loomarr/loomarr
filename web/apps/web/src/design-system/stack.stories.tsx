@@ -147,6 +147,35 @@ const AxisGapsWorkshop = () => (
   </Screen>
 );
 
+// Responsive values: a column of title over actions below 640 wide, a row with the actions pushed to
+// the far end from there up (`{ base, sm }`, as Tailwind's `flex-col sm:flex-row`). Resize the
+// window across 640 to watch it flip; at the width the visual suite renders, it is the row.
+const ResponsiveWorkshop = () => (
+  <Screen gap="section">
+    <Surface padding="section">
+      <Stack
+        align={{ base: "stretch", sm: "center" }}
+        direction={{ base: "column", sm: "row" }}
+        gap={{ base: "control", sm: "section" }}
+        justify={{ base: "start", sm: "between" }}
+      >
+        <Stack gap="inline">
+          <Text textRole="title">Saturday Cartoons</Text>
+          <Text textRole="body" tone="secondary">
+            Stacks under its actions on a phone and sits beside them from a tablet up.
+          </Text>
+        </Stack>
+        <Stack direction="row" gap="inline">
+          <Action onPress={() => undefined} variant="outline">
+            Cancel
+          </Action>
+          <Action onPress={() => undefined}>Save</Action>
+        </Stack>
+      </Stack>
+    </Surface>
+  </Screen>
+);
+
 const meta = {
   title: "Loomarr Components/Stack",
   component: Workshop,
@@ -158,6 +187,7 @@ const Default: Story = {};
 const Light: Story = { globals: { theme: "light" } };
 const AsForm: Story = { render: () => <FormWorkshop /> };
 const AxisGaps: Story = { render: () => <AxisGapsWorkshop /> };
+const Responsive: Story = { render: () => <ResponsiveWorkshop /> };
 
 export default meta;
-export { AsForm, AxisGaps, Default, Light };
+export { AsForm, AxisGaps, Default, Light, Responsive };

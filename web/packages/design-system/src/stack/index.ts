@@ -1,2 +1,9 @@
-export type { StackAlign, StackGap, StackJustify, StackProps } from "./stack";
+export type {
+  StackAlign,
+  StackBreakpoint,
+  StackGap,
+  StackJustify,
+  StackProps,
+  StackResponsive,
+} from "./stack";
 export { Stack } from "./stack";
