@@ -309,6 +309,7 @@ const Incoming = () => {
               <Stack
                 align={{ base: "start", sm: "center" }}
                 direction={{ base: "column", sm: "row" }}
+                flexShrink={0}
                 gap="4"
               >
                 <div className="min-w-0 flex-1">

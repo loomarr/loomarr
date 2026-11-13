@@ -593,6 +593,7 @@ const GuidePage = () => {
               className="border-border/60 bg-card/40 border-b"
               columnGap="6"
               direction="row"
+              flexShrink={0}
               id="guide-view-options"
               justify={{ base: "start", sm: "end" }}
               paddingHorizontal={28}

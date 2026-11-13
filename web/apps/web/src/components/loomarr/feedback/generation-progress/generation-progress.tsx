@@ -34,6 +34,7 @@ const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }
     className="border-border border-b last:border-b-0"
     columnGap="2"
     direction="row"
+    flexShrink={0}
     paddingVertical={8}
     render="li"
     rowGap="1"
