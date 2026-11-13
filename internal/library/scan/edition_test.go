@@ -3,6 +3,8 @@ package scan
 import (
 	"context"
 	"testing"
+
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 // An edition is shown as its source gave it, fixed only when it came in one case; the theatrical
@@ -29,6 +31,22 @@ func TestEditionLabel(t *testing.T) {
 	}
 	if editionKey("Extended") == editionKey("Unrated") {
 		t.Error("Extended and Unrated are one edition")
+	}
+}
+
+// A duplicated file is named as its original, so a film's name never depends on which of its
+// copies names the item (#4010); a title that holds the word keeps it.
+func TestADuplicatedFileIsNamedAsItsOriginal(t *testing.T) {
+	for rel, want := range map[string]string{
+		"Kilo (2016) {tmdb-90000301}/Kilo (2016) {tmdb-90000301} copy.mkv": "Kilo (2016)",
+		"Kilo (2016)/Kilo (2016) copy 2.mkv":                               "Kilo (2016)",
+		"Kilo (2016)/Kilo (2016) - Copy (2).mkv":                           "Kilo (2016)",
+		"Kilo (2016)/Kilo (2016) - Copy.mkv":                               "Kilo (2016)",
+		"Certified Copy (2010)/Certified Copy (2010).mkv":                  "Certified Copy (2010)",
+	} {
+		if got := fallbackName(rel, mp.KindMovie, 0, false); got != want {
+			t.Errorf("fallbackName(%q) = %q, want %q", rel, got, want)
+		}
 	}
 }
 

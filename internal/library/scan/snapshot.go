@@ -522,6 +522,12 @@ func runsOn(title, other string) bool {
 	return len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own)
 }
 
+// duplicateMark is the word a file manager adds to a duplicated file, after the film's year:
+// "Kilo (2016) copy", "Kilo (2016) copy 2", "Kilo (2016) - Copy (2)". Only after a year, so a
+// title that holds the word ("Certified Copy (2010)") keeps it. Every copy of one film is then
+// named alike, whichever file the item takes its name from (#4010).
+var duplicateMark = regexp.MustCompile(`(?i)(\(\d{4}\))\s*(?:-\s*)?copy(?:\s*\(?\d+\)?)?$`)
+
 // fallbackName is a title from a file name when no source names the item. A movie whose file name
 // has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
@@ -534,7 +540,8 @@ func runsOn(title, other string) bool {
 // is its own title. Either is listed, never skipped.
 func fallbackName(rel string, kind mp.Kind, part int, sole bool) string {
 	clean := func(name string) string {
-		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
+		name = strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
+		return duplicateMark.ReplaceAllString(name, "$1")
 	}
 	// The name keeps its release's notes, which the catalog's search sets aside; what the name is
 	// is read without them ("bc [1080p]" is the folder's initials).
