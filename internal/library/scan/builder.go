@@ -522,6 +522,13 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			if whole := strings.TrimSpace(embeddedID.ReplaceAllString(base, "")); whole != facts.Name && s.named[normName(whole)] > 0 {
 				facts.Name = whole
 			}
+			// A tagged release's folder holding one episode, "[Grp] Ame Furu - 07 [1080p] [ABCD1234]",
+			// names its show before the number (showIdentity).
+			if bare := strings.TrimSpace(trimReleaseNotes(leadingTags.ReplaceAllString(base, ""))); bare != base {
+				if m := animeDashed.FindStringSubmatch(bare); m != nil && strings.TrimSpace(m[1]) != "" {
+					facts.Name = strings.TrimSpace(m[1])
+				}
+			}
 			// A show's specials kept in a folder of their own with no show's above it, "Holly Day
 			// Specials/Holly Day S00E05.mkv", are the show its episodes name.
 			if m := showSpecials.FindStringSubmatch(facts.Name); m != nil && s.named[normName(m[1])] > 0 {

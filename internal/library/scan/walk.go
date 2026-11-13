@@ -902,7 +902,7 @@ func extraName(lowerName string) bool {
 	hidden := strings.HasPrefix(lowerName, "._") || strings.HasPrefix(lowerName, ".") && !strings.Contains(lowerName, " ")
 	if hidden || strings.HasPrefix(lowerName, "~") || base == "sample" || strings.HasPrefix(base, "sample-") ||
 		creditless.MatchString(lowerName) || (leadingTags.MatchString(lowerName) && animeOpening.MatchString(lowerName)) ||
-		siteName.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) ||
+		siteName(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) ||
 		promoNames[strings.TrimSuffix(lowerName, filepath.Ext(lowerName))] || strings.HasSuffix(base, ".partial") ||
 		otherKind.MatchString(strings.TrimSuffix(lowerName, filepath.Ext(lowerName))) {
 		return true
@@ -956,8 +956,9 @@ func extraIn(name, folder string) bool {
 
 // namedAsFolder says whether a video is named as its folder is, with or without the folder's year
 // and notes: "Sample/Sample.mkv", "Featurette (1999)/Featurette.mkv". folder is "" for a root's top.
+// A hidden file, "._Bog Wizard (2010).mkv", is a Mac's shadow of one, never named so.
 func namedAsFolder(name, folder string) bool {
-	if folder == "" {
+	if folder == "" || strings.HasPrefix(name, ".") {
 		return false
 	}
 	if strings.EqualFold(stem(name), folder) {
@@ -973,14 +974,29 @@ func namedAsFolder(name, folder string) bool {
 // apart: "S01E07 - Sample", "S01E07.-.Sample".
 var titledSample = regexp.MustCompile(`(?i:s\d{1,4}[ ._]?e\d{1,4})[ ._]-[ ._]Sample$`)
 
-// siteName matches a video named by nothing but a site, the promo a tracker or a release group
-// leaves in a download: "RARBG.com.mp4", "www.Torrent.to.mkv". A suffix that is also a word needs
-// the "www.": "Trust.Me.mkv" and "Nine.To.mkv" are films.
-var siteName = regexp.MustCompile(`^(?:www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}|[a-z0-9-]+\.(?:com|org|net|info|xyz|biz|club))$`)
+// siteName says whether a video is named by nothing but a site, the promo a tracker or a release
+// group leaves in a download: "www.Torrent.to.mkv", and a known promo's "RARBG.com.mp4". Any other
+// name a site's ending follows is a title's, "Lovebirds.com", "Trust.Me", "Nine.To"; and so is a
+// release's name that ends in its site, "Orrin.Gate.2018.1080p-www.site.com", read as its release.
+func siteName(lowerStem string) bool {
+	if wwwSite.MatchString(lowerStem) {
+		return true
+	}
+	head, tld, ok := strings.Cut(lowerStem, ".")
+	return ok && promoNames[head] && siteEnding.MatchString(tld)
+}
+
+var (
+	// wwwSite matches a site's whole address: "www.torrent.to".
+	wwwSite = regexp.MustCompile(`^www\.[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,6}$`)
+	// siteEnding matches a site's ending: "com", "to", "co.uk".
+	siteEnding = regexp.MustCompile(`^[a-z]{2,6}(?:\.[a-z]{2})?$`)
+)
 
 // otherKind matches a name that ends in another kind of file's extension before a video's, as a
-// site's junk does to pass for one: "RARBG.txt.mp4", "Read Me.url.mkv", "setup.exe.avi".
-var otherKind = regexp.MustCompile(`\.(?:txt|nfo|url|lnk|exe|scr|bat|com|htm|html|pdf|jpg|jpeg|png|gif|torrent|zip|rar)$`)
+// site's junk does to pass for one: "RARBG.txt.mp4", "Read Me.url.mkv", "setup.exe.avi". ".com" is
+// far more often a site's ending, "… RARBG.com.mp4", than a program's: siteName reads it.
+var otherKind = regexp.MustCompile(`\.(?:txt|nfo|url|lnk|exe|scr|bat|htm|html|pdf|jpg|jpeg|png|gif|torrent|zip|rar)$`)
 
 // releaseProof matches a release's proof clip, joined after its year, tags or group: "brigg
 // (2008)-proof", "brigg.2008.1080p.bluray.x264-grp-proof".

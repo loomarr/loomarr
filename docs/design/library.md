@@ -999,6 +999,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   day (`videoID`); a recording named by its channel first, "Channel 9 - Show - 2024-01-01", is
   the show's (`channelName`); a season's folder off a shelf is never a show's, whatever the
   folders below it say (`seriesFolderOf`).
+- **79:** a name ending in a site's address is read, never skipped: "Orrin.Gate.2018.1080p-www.site.com"
+  is the film and "Show S01E02 RARBG.com" the episode; only a site's whole address, "www.Torrent.to",
+  or a known promo's, "RARBG.com", is junk (`siteName`), and ".com" is no program's extension
+  (`otherKind`); a Mac's "._" shadow in a film's folder is skipped (`namedAsFolder`); a tagged
+  release's folder holding one episode, "[Grp] Show - 07 [1080p] [ABCD1234]/", is its show's
+  (`showIdentity`, `releaseCRC`); "3D" before a film's year is its copy's (`editionWords`).
 
 ## Search
 

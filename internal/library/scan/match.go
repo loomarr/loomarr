@@ -717,7 +717,7 @@ var editionWords = [][]string{
 	{"extended", "edition"}, {"extended", "cut"}, {"directors", "cut"}, {"director's", "cut"}, {"special", "edition"},
 	{"ultimate", "edition"}, {"collectors", "edition"}, {"collector's", "edition"}, {"anniversary", "edition"},
 	{"theatrical", "cut"}, {"remastered"}, {"unrated"}, {"extended"}, {"uncut"}, {"uncensored"}, {"redux"},
-	{"final", "cut"},
+	{"final", "cut"}, {"3d"},
 }
 
 // titleWords says whether words, the last of name's, run on a title: each a word written as name

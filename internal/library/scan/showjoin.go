@@ -241,6 +241,7 @@ func sameIDs(a, c []mp.ExternalID) bool {
 // "[Grp] Usagi Hana S2 (13-24) [1080p]" is "usagi hana", "Haven Hill (2019)" "haven hill" 2019.
 func showIdentity(base string) (string, int) {
 	s := leadingTags.ReplaceAllString(base, "")
+	tagged := s != base
 	year := 0
 	if m := bracketYear.FindString(s); m != "" {
 		year = atoi(m[1 : len(m)-1])
@@ -251,12 +252,17 @@ func showIdentity(base string) (string, int) {
 	s = bracketGroup.ReplaceAllStringFunc(s, func(g string) string {
 		inner := strings.TrimSpace(g[1 : len(g)-1])
 		if bracketYear.MatchString(g) || episodeRange.MatchString(g) || releaseNotes.MatchString(g) || batchNote.MatchString(inner) ||
-			trailingSeason.MatchString(" "+inner) || digits(strings.ReplaceAll(inner, "-", "")) {
+			trailingSeason.MatchString(" "+inner) || digits(strings.ReplaceAll(inner, "-", "")) || releaseCRC.MatchString(inner) {
 			return " "
 		}
 		return g
 	})
 	s = trailingSeason.ReplaceAllString(strings.TrimSpace(s), "")
+	// A tagged release's folder holding one episode, "[Grp] Ame Furu - 07 [1080p] [ABCD1234]", is
+	// its show's: the number is the episode's.
+	if m := animeDashed.FindStringSubmatch(s); tagged && m != nil && strings.TrimSpace(m[1]) != "" {
+		s = m[1]
+	}
 	title, y, _ := searchQuery(showFolderName(strings.TrimSpace(s)), 0)
 	if year == 0 {
 		year = y
@@ -267,6 +273,8 @@ func showIdentity(base string) (string, int) {
 var (
 	// batchNote matches a release's note that it holds a run whole: "[Batch]", "(Complete)", "[Fin]".
 	batchNote = regexp.MustCompile(`(?i)^(?:batch|complete|fin|final|end)$`)
+	// releaseCRC matches a release's checksum, eight hex digits: "ABCD1234".
+	releaseCRC = regexp.MustCompile(`^[0-9A-Fa-f]{8}$`)
 	// bracketGroup matches a bracketed group anywhere in a folder's name.
 	bracketGroup = regexp.MustCompile(`[(\[][^)\]]*[)\]]`)
 	// trailingSeason matches a season's mark at a folder's name's end: "S2", "Season 2", "- S02".
