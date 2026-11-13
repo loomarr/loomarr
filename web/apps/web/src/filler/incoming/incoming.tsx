@@ -62,7 +62,7 @@ const StatusRows = ({
   onOpen: (row: IncomingStatusDTO, trigger: HTMLElement) => void;
   onMore: () => void;
 }) => (
-  <div className="divide-border border-border divide-y rounded-lg border">
+  <Card className="divide-border divide-y">
     {group.rows.map((row) => (
       <PressableRow
         key={row.clipHash}
@@ -70,31 +70,39 @@ const StatusRows = ({
       >
         {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
         <span className="sr-only">View details for</span>{" "}
-        <span className="bg-muted h-12 w-16 shrink-0 overflow-hidden rounded">
+        <Stack
+          backgroundColor="surfaceElevated"
+          borderRadius={4}
+          flexShrink={0}
+          height={48}
+          overflow="hidden"
+          render="span"
+          width={64}
+        >
           {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
-        </span>
-        <span className="min-w-0 flex-1">
-          <Text as="span" className="block break-words" textRole="cardLabel" tone="primary">
+        </Stack>
+        <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+          <Text as="span" className="break-words" textRole="cardLabel" tone="primary">
             {row.name}
           </Text>
-          <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
+          <Text as="span" textRole="hint" tone="secondary">
             {row.from ? `${row.from} · ` : ""}
             {formatClipDuration(row.durationMs)}
           </Text>
-        </span>
-        <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+        </Stack>
+        <Text flexShrink={0} textRole="hint" tone="secondary">
           {row.statusLabel}
         </Text>
       </PressableRow>
     ))}
     {group.nextCursor ? (
-      <div className="p-2">
+      <Stack padding={8}>
         <Action disabled={loading} onPress={onMore} style={{ width: "100%" }} variant="ghost">
           {loading ? "Loading…" : moreLabel}
         </Action>
-      </div>
+      </Stack>
     ) : null}
-  </div>
+  </Card>
 );
 
 const Incoming = () => {
@@ -214,11 +222,11 @@ const Incoming = () => {
             title="Incoming is clear"
             description="New clips will appear here after you add a source."
           />
-          <div className="-mt-7">
+          <Stack marginTop={-28}>
             <Action accessibilityRole="link" render={<Link to="/filler/sources" />}>
               Add a source
             </Action>
-          </div>
+          </Stack>
         </Stack>
       </section>
     );
@@ -247,17 +255,17 @@ const Incoming = () => {
 
   return (
     <Stack aria-labelledby="incoming-heading" gap="7" render="section">
-      <div>
+      <Stack gap="1">
         <Text as="h2" id="incoming-heading" textRole="display">
           {summary}
         </Text>
-        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           {summaryDescription}
         </Text>
-      </div>
+      </Stack>
 
       {view.preparing.total > 0 ? (
-        <section aria-labelledby="preparing-heading" className="space-y-3">
+        <Stack aria-labelledby="preparing-heading" gap="3" render="section">
           <div>
             <Text as="h3" id="preparing-heading" textRole="headline" strong>
               Getting clips ready
@@ -273,11 +281,11 @@ const Incoming = () => {
             onOpen={openDetails}
             onMore={() => void loadMore("preparing")}
           />
-        </section>
+        </Stack>
       ) : null}
 
       {view.needsHelp.total > 0 ? (
-        <section aria-labelledby="needs-help-heading" className="space-y-3">
+        <Stack aria-labelledby="needs-help-heading" gap="3" render="section">
           <div>
             <Text as="h3" id="needs-help-heading" textRole="headline" strong>
               Needs your help
@@ -312,7 +320,14 @@ const Incoming = () => {
                 </Action>
               </div>
               {view.needsHelp.total > 1 ? (
-                <Stack className="border-border border-t pt-3" direction="row" gap="inline" justify="end">
+                <Stack
+                  borderColor="borderDecorative"
+                  borderTopWidth={1}
+                  direction="row"
+                  gap="inline"
+                  justify="end"
+                  paddingTop={12}
+                >
                   <Action
                     disabled={helpIndex === 0}
                     onPress={() => setHelpIndex((current) => Math.max(0, current - 1))}
@@ -331,11 +346,11 @@ const Incoming = () => {
               ) : null}
             </Card>
           ) : null}
-        </section>
+        </Stack>
       ) : null}
 
       {view.recentlyReady.total > 0 ? (
-        <section aria-labelledby="ready-heading" className="space-y-3">
+        <Stack aria-labelledby="ready-heading" gap="3" render="section">
           <Stack align="end" direction="row" gap="inline" justify="between" wrap>
             <div>
               <Text as="h3" id="ready-heading" textRole="headline" strong>
@@ -363,7 +378,7 @@ const Incoming = () => {
             onOpen={openDetails}
             onMore={() => void loadMore("recentlyReady")}
           />
-        </section>
+        </Stack>
       ) : null}
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(undefined)}>
@@ -373,7 +388,7 @@ const Incoming = () => {
               <DialogTitle>{selected.name}</DialogTitle>
               <DialogDescription>{selected.statusLabel}</DialogDescription>
             </DialogHeader>
-            <div className="space-y-5 p-6">
+            <Stack gap="5" padding={24}>
               {selectedClip ? (
                 <ClipDetails clip={selectedClip} />
               ) : (
@@ -396,7 +411,7 @@ const Incoming = () => {
                 processing={selected.processing}
                 timeZone={timeZone}
               />
-            </div>
+            </Stack>
           </DialogContent>
         ) : null}
       </Dialog>
