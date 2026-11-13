@@ -140,9 +140,6 @@
     "apps/web/src/design/spacing/spacing.tsx": {
       "flexStack": 15
     },
-    "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "flexStack": 5
-    },
     "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "flexStack": 1
     },

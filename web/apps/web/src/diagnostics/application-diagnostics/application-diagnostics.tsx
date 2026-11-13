@@ -6,6 +6,7 @@ import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnos
 import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
 import {
   Action,
+  Card,
   Chip,
   CompactSelect,
   Field,
@@ -136,21 +137,25 @@ const EventDetail = ({
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
   const copyLog = () => void copy(JSON.stringify(event, null, 2));
   return (
-    <div className="bg-muted/20 space-y-4 p-4">
+    <Stack className="bg-muted/20" gap="4" padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
-        <div>
-          <Text as="span" className="inline-flex items-center gap-2" textRole="hint" tone="secondary">
-            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-            {levelLabel(event.level)} · {sourceLabel(event.source)}
+        <Stack gap="2">
+          <Text as="span" textRole="hint" tone="secondary">
+            <Stack align="center" direction="row" gap="2" render="span">
+              <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+              {levelLabel(event.level)} · {sourceLabel(event.source)}
+            </Stack>
           </Text>
-          <Text as="h3" className="mt-2" textRole="headline">
-            {event.message || fallbackMessage(event)}
-          </Text>
-          <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-            {formatTime(event.occurredAt)}
-            {event.subsystem ? ` · ${event.subsystem}` : ""}
-          </Text>
-        </div>
+          <Stack gap="1">
+            <Text as="h3" textRole="headline">
+              {event.message || fallbackMessage(event)}
+            </Text>
+            <Text as="p" textRole="hint" tone="secondary">
+              {formatTime(event.occurredAt)}
+              {event.subsystem ? ` · ${event.subsystem}` : ""}
+            </Text>
+          </Stack>
+        </Stack>
         <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
           <Action
             icon={copied ? "success" : "copy"}
@@ -180,43 +185,42 @@ const EventDetail = ({
           </Action>
         )}
       </Stack>
-      <details className="border-border bg-background rounded-md border p-3">
+      <Card padding={12} render="details">
         <Text as="summary" className="cursor-pointer" textRole="cardLabel">
           Technical details
         </Text>
-        <div className="mt-3 space-y-3">
+        <Stack gap="3" marginTop={12}>
           <Text as="p" textRole="mono">
             {event.event}
           </Text>
           {correlations.length > 0 && (
-            <div className="grid gap-1">
+            <Stack gap="1">
               {correlations.map(([label, value]) => (
-                <Stack align="center" className="min-w-0" direction="row" gap="1" key={label}>
-                  <Text as="span" className="w-28 shrink-0" textRole="hint" tone="secondary">
-                    {label}
-                  </Text>
+                <Stack align="center" direction="row" gap="1" key={label} minWidth={0}>
+                  <Stack flexShrink={0} render="span" width={112}>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      {label}
+                    </Text>
+                  </Stack>
                   <CopyValue label={label} value={value} />
                 </Stack>
               ))}
-            </div>
+            </Stack>
           )}
           {Object.keys(event.attributes).length === 0 ? (
             <Text as="p" textRole="hint" tone="secondary">
               No structured attributes.
             </Text>
           ) : (
-            <Text
-              as="pre"
-              className="border-border bg-card max-h-56 overflow-auto rounded-md border p-3"
-              textRole="mono"
-              tone="primary"
-            >
-              {JSON.stringify(event.attributes, null, 2)}
-            </Text>
+            <Card maxHeight={224} overflow="auto" padding={12}>
+              <Text as="pre" textRole="mono" tone="primary">
+                {JSON.stringify(event.attributes, null, 2)}
+              </Text>
+            </Card>
           )}
-        </div>
-      </details>
-    </div>
+        </Stack>
+      </Card>
+    </Stack>
   );
 };
 
@@ -244,9 +248,9 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
     await query.refetch();
   };
   return (
-    <section className="border-border bg-card rounded-lg border p-3" aria-labelledby="verbose-capture-title">
+    <Card aria-labelledby="verbose-capture-title" gap={8} padding={12} render="section">
       <Stack align="center" direction="row" gap="control" wrap>
-        <div className="min-w-64 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
           <Text as="h3" id="verbose-capture-title" textRole="cardLabel">
             Verbose capture
           </Text>
@@ -256,12 +260,14 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
             {filters.channelId ? ` on Channel ${filters.channelId}` : ""}. The same redaction, queue, and
             retention limits still apply.
           </Text>
-        </div>
+        </Stack>
         {capture?.active ? (
           <>
-            <Text as="span" className="inline-flex items-center gap-2" textRole="compact">
-              <Icon decorative glyph={icons.capture} size="compact" tone="warning" />
-              Active until {formatTime(capture.endsAt ?? Date.now())}
+            <Text as="span" textRole="compact">
+              <Stack align="center" direction="row" gap="2" render="span">
+                <Icon decorative glyph={icons.capture} size="compact" tone="warning" />
+                Active until {formatTime(capture.endsAt ?? Date.now())}
+              </Stack>
             </Text>
             <Action disabled={busy} icon="stop" onPress={() => void stopCapture()} variant="outline">
               Stop
@@ -293,16 +299,16 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
         )}
       </Stack>
       {query.isError && (
-        <Text as="p" className="mt-2" textRole="hint" tone="danger">
+        <Text as="p" textRole="hint" tone="danger">
           Verbose capture is unavailable.
         </Text>
       )}
       {(start.isError || stop.isError) && (
-        <Text as="p" className="mt-2" textRole="hint" tone="danger">
+        <Text as="p" textRole="hint" tone="danger">
           The capture control could not be updated.
         </Text>
       )}
-    </section>
+    </Card>
   );
 };
 
@@ -386,14 +392,7 @@ const ApplicationDiagnostics = ({
   ] as const;
 
   return (
-    <Stack
-      aria-labelledby="logs-title"
-      className="min-h-0"
-      flexBasis="0%"
-      flexGrow={1}
-      gap="4"
-      render="section"
-    >
+    <Stack aria-labelledby="logs-title" flexBasis="0%" flexGrow={1} gap="4" render="section">
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div>
           <Text as="h2" id="logs-title" textRole="headline">
@@ -416,7 +415,7 @@ const ApplicationDiagnostics = ({
         </Stack>
       </Stack>
 
-      <Stack className="border-border bg-card rounded-lg border p-3" direction="row" gap="inline" wrap>
+      <Card flexDirection="row" flexWrap="wrap" gap={8} padding={12}>
         <Surface backgroundColor="transparent" borderWidth={0} flexBasis={256} flexGrow={1} minWidth={0}>
           <SearchField
             label="Search logs"
@@ -451,13 +450,10 @@ const ApplicationDiagnostics = ({
         <Action aria-expanded={advanced} icon="filter" onPress={() => setAdvanced(!advanced)} variant="ghost">
           More filters
         </Action>
-      </Stack>
+      </Card>
 
       {advanced && (
-        <section
-          className="border-border bg-card space-y-4 rounded-lg border p-4"
-          aria-label="More log filters"
-        >
+        <Card aria-label="More log filters" gap={16} padding={16} render="section">
           <div>
             <Text as="h3" textRole="cardLabel">
               More filters
@@ -507,11 +503,11 @@ const ApplicationDiagnostics = ({
             <Text as="summary" className="cursor-pointer" textRole="cardLabel">
               Verbose capture
             </Text>
-            <div className="mt-3">
+            <Stack marginTop={12}>
               <VerboseCaptureControl filters={filters} />
-            </div>
+            </Stack>
           </details>
-        </section>
+        </Card>
       )}
 
       <Stack align="center" direction="row" gap="inline" render="fieldset" wrap>
@@ -547,14 +543,18 @@ const ApplicationDiagnostics = ({
           </Chip>
         )}
         {downloadState === "failed" && (
-          <Text as="span" className="inline-flex items-center gap-1" textRole="hint" tone="danger">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Download failed
+          <Text as="span" textRole="hint" tone="danger">
+            <Stack align="center" direction="row" gap="1" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Download failed
+            </Stack>
           </Text>
         )}
         {dropped > 0 && (
-          <Text as="span" className="inline-flex items-center gap-1" textRole="hint" tone="warning">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> {dropped} events dropped
-            since startup
+          <Text as="span" textRole="hint" tone="warning">
+            <Stack align="center" direction="row" gap="1" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> {dropped} events dropped
+              since startup
+            </Stack>
           </Text>
         )}
       </Stack>
@@ -578,23 +578,17 @@ const ApplicationDiagnostics = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
-        <Text
-          as="p"
-          className="border-border bg-card rounded-lg border px-4 py-8 text-center"
-          textRole="compact"
-          tone="secondary"
-        >
-          Loading retained diagnostics…
-        </Text>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            Loading retained diagnostics…
+          </Text>
+        </Card>
       ) : events.length === 0 ? (
-        <Text
-          as="p"
-          className="border-border bg-card rounded-lg border px-4 py-8 text-center"
-          textRole="compact"
-          tone="secondary"
-        >
-          No logs match these filters. Try a longer time range or clear More filters.
-        </Text>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            No logs match these filters. Try a longer time range or clear More filters.
+          </Text>
+        </Card>
       ) : (
         <DiagnosticsSplitPane
           storageKey="diagnostics-log-details"
@@ -607,7 +601,7 @@ const ApplicationDiagnostics = ({
               aria-label="Logs"
               style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}px` }}
             >
-              <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+              <Stack height={virtualizer.getTotalSize()} position="relative" width="100%">
                 {virtualizer.getVirtualItems().map((virtualRow) => {
                   const event = events[virtualRow.index];
                   if (!event) return null;
@@ -626,26 +620,23 @@ const ApplicationDiagnostics = ({
                         selected={open}
                       >
                         <div className="grid w-full gap-2 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start">
-                          <Text
-                            as="span"
-                            className="inline-flex items-center gap-2"
-                            textRole="hint"
-                            tone="primary"
-                          >
-                            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-                            {levelLabel(event.level)}
+                          <Text as="span" textRole="hint" tone="primary">
+                            <Stack align="center" direction="row" gap="2" render="span">
+                              <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                              {levelLabel(event.level)}
+                            </Stack>
                           </Text>
-                          <span className="min-w-0">
-                            <Text as="span" className="block" textRole="cardLabel" tone="primary">
+                          <Stack gap="1" minWidth={0} render="span">
+                            <Text as="span" textRole="cardLabel" tone="primary">
                               {event.message || fallbackMessage(event)}
                             </Text>
-                            <Text as="span" className="mt-1 block" textRole="hint" tone="secondary">
+                            <Text as="span" textRole="hint" tone="secondary">
                               {sourceLabel(event.source)}
                               {event.subsystem ? ` · ${event.subsystem}` : ""}
                               {event.channelId ? " · Channel involved" : ""}
                               {event.processRunId ? " · Process output available" : ""}
                             </Text>
-                          </span>
+                          </Stack>
                           <time className="sm:text-right" dateTime={new Date(event.occurredAt).toISOString()}>
                             <Text as="span" textRole="mono" tone="secondary">
                               {formatTime(event.occurredAt)}
@@ -665,7 +656,7 @@ const ApplicationDiagnostics = ({
                     </article>
                   );
                 })}
-              </div>
+              </Stack>
             </section>
           }
           secondary={
@@ -680,14 +671,14 @@ const ApplicationDiagnostics = ({
                   onOpenRelated={onOpenRelated}
                 />
               ) : (
-                <div className="p-6">
+                <Stack gap="1" padding={24}>
                   <Text as="p" textRole="cardLabel">
                     Select a log to see more
                   </Text>
-                  <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                  <Text as="p" textRole="compact" tone="secondary">
                     Related actions and technical details will appear here.
                   </Text>
-                </div>
+                </Stack>
               )}
             </aside>
           }

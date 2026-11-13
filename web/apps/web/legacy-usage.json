@@ -275,7 +275,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/login-shell/login-shell.tsx": {
-      "tailwindClasses": 7
+      "tailwindClasses": 6
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
       "tailwindClasses": 39,
@@ -332,7 +332,7 @@
       "rawTypeSize": 9
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 128
+      "tailwindClasses": 48
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,
