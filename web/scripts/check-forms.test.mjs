@@ -263,6 +263,163 @@ describe("isHandRolledForm, a filter's name does not excuse a form", () => {
   });
 });
 
+// The design system submits through `Action onPress`, not `<form onSubmit>` or `type="submit"`, and
+// the UI package has no `<form>` at all. A press that reads two drafts saves them together, so it
+// is a submit, whatever the setters are called.
+describe("isHandRolledForm, a press that saves two drafts", () => {
+  const filterNamed = (press) => `
+    import { useState } from "react";
+    import { Action } from "@loomarr/design-system";
+    export const Server = () => {
+      const [statusName, setStatusName] = useState("");
+      const [filterHost, setFilterHost] = useState("");
+      const save = () => submit(statusName, filterHost);
+      const saveHost = () => submit(filterHost);
+      return (
+        <Stack>
+          <Field onChangeText={setStatusName} value={statusName} />
+          <Field onChangeText={setFilterHost} value={filterHost} />
+          ${press}
+        </Stack>
+      );
+    };
+  `;
+
+  it("flags filter-named inputs saved by an Action's onPress", () => {
+    assert.equal(
+      isHandRolledForm(filterNamed("<Action onPress={() => submit(statusName, filterHost)} />")),
+      true,
+    );
+  });
+
+  it("flags a Pressable, and a press that names a function of the file reading both", () => {
+    assert.equal(
+      isHandRolledForm(filterNamed("<Pressable onPress={() => submit(statusName, filterHost)} />")),
+      true,
+    );
+    assert.equal(isHandRolledForm(filterNamed("<Action onPress={save} />")), true);
+  });
+
+  it("passes a press that reads one draft, or none, since one input beside a button is a lone filter", () => {
+    assert.equal(isHandRolledForm(filterNamed("<Action onPress={() => submit(filterHost)} />")), false);
+    assert.equal(isHandRolledForm(filterNamed("<Action onPress={saveHost} />")), false);
+    assert.equal(isHandRolledForm(filterNamed("<Action onPress={() => clear()} />")), false);
+  });
+
+  it("passes a press that reads two drafts in another component than the inputs", () => {
+    const source = `
+      import { useState } from "react";
+      const Boxes = () => {
+        const [statusName, setStatusName] = useState("");
+        const [filterHost, setFilterHost] = useState("");
+        return <><Field onChangeText={setStatusName} value={statusName} /><Field onChangeText={setFilterHost} value={filterHost} /></>;
+      };
+      export const Other = ({ statusName, filterHost }) => (
+        <Action onPress={() => submit(statusName, filterHost)} />
+      );
+    `;
+    assert.equal(isHandRolledForm(source), false);
+  });
+});
+
+describe("isHandRolledForm, a draft kept outside useState", () => {
+  it("flags two inputs written through one useReducer's dispatch", () => {
+    const source = `
+      import { useReducer } from "react";
+      export const Server = () => {
+        const [state, dispatch] = useReducer((current, next) => ({ ...current, ...next }), { host: "", name: "" });
+        return (
+          <form onSubmit={() => save(state)}>
+            <input onChange={(event) => dispatch({ name: event.target.value })} value={state.name} />
+            <input onChange={(event) => dispatch({ host: event.target.value })} value={state.host} />
+          </form>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(source), true);
+  });
+
+  it("passes a dispatch an input's handler never hands what was typed", () => {
+    const source = `
+      import { useReducer } from "react";
+      export const Panel = () => {
+        const [state, dispatch] = useReducer(reduce, { open: false });
+        return <input onChange={() => dispatch({ type: "toggle" })} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(source), false);
+  });
+
+  it("flags two inputs written into a useRef object, inside a form", () => {
+    const source = `
+      import { useRef } from "react";
+      export const Server = () => {
+        const draft = useRef({ host: "", name: "" });
+        return (
+          <form onSubmit={() => save(draft.current)}>
+            <input onChange={(event) => { draft.current.name = event.target.value; }} />
+            <input onChange={(event) => { draft.current.host = event.target.value; }} />
+          </form>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(source), true);
+    // The same refs outside any submit are two uncontrolled boxes read on demand, not a form.
+    assert.equal(
+      isHandRolledForm(
+        source.replace("<form onSubmit={() => save(draft.current)}>", "<div>").replace("</form>", "</div>"),
+      ),
+      false,
+    );
+  });
+
+  it("counts a ref written through a function of the file the input names", () => {
+    const source = `
+      import { useRef } from "react";
+      export const Server = () => {
+        const draft = useRef({ host: "", name: "" });
+        const edit = (key, value) => { draft.current[key] = value; };
+        return (
+          <form>
+            <input onChange={(event) => edit("name", event.target.value)} />
+          </form>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(source), true);
+  });
+
+  it("counts the committed draft under an alias, so a second one is still a form", () => {
+    const source = `
+      import { useCommittedDraft } from "@loomarr/ui";
+      const useName = useCommittedDraft;
+      export const Server = ({ server }) => {
+        const name = useName(server.name);
+        const host = useCommittedDraft(server.host);
+        return (
+          <>
+            <Field onChangeText={name.edit} value={name.draft} />
+            <Field onChangeText={host.edit} value={host.draft} />
+          </>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(source), true);
+    // One draft through the alias is still one single input.
+    assert.equal(
+      isHandRolledForm(`
+        import { useCommittedDraft } from "@loomarr/ui";
+        const useName = useCommittedDraft;
+        export const NameBox = ({ server }) => {
+          const name = useName(server.name);
+          return <Field onChangeText={name.edit} value={name.draft} />;
+        };
+      `),
+      false,
+    );
+  });
+});
+
 describe("the committed draft", () => {
   const sanctioned = `
     import { useCommittedDraft } from "../use-committed-draft";
