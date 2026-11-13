@@ -88,16 +88,6 @@ const parseMmSs = (text: string): number | undefined => {
   return (Number(m[1]) * 60 + Number(m[2])) * 1000;
 };
 
-// "8:00 PM" for the EPG. Fixed 12-hour, zero-padded minutes, locale-independent.
-const formatEpgTime = (t: Instant): string => {
-  const d = new Date(msOf(t));
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12 || 12;
-  return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
-};
-
 // A 0–1 ratio as a percentage: 0.87 → "87%". The domain is documented and enforced
 // here BECAUSE it is ambiguous: the suggester's confidence is a ratio, while the LLM
 // pull's progress is already 0–100. Two conventions with no named helper is how one
@@ -319,7 +309,6 @@ export {
   formatClipDuration,
   formatCompactCount,
   formatDuration,
-  formatEpgTime,
   formatGiB,
   formatMmSs,
   formatPercent,

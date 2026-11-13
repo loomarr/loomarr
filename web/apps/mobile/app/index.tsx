@@ -410,7 +410,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
     lastChannel,
     session,
   });
-  const { controller, guide, myChannelsSnapshot, snapshot } = client;
+  const { controller, guide, guideSnapshot, myChannelsSnapshot, snapshot } = client;
   // Opening Watching with nothing tuned yet resumes the channel the device last watched, or, on a
   // device that has watched nothing, the lineup's first channel (#3836): Watching has nothing to show
   // without a channel, and its Leave is in the chrome a channel brings.
@@ -467,6 +467,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             footer={navigation}
             headerAction={deviceAction}
             onOpenChannel={watchChannel}
+            timeZone={guideSnapshot.layout?.timezone}
           />
         )
       ) : active === "guide" ? (
