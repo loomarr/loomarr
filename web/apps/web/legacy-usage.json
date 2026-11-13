@@ -563,7 +563,7 @@
       "tailwindClasses": 6
     },
     "src/routes/_authed/settings/system/index.tsx": {
-      "tailwindClasses": 40
+      "tailwindClasses": 24
     },
     "src/routes/_authed/settings/system/storage.tsx": {
       "tailwindClasses": 6
