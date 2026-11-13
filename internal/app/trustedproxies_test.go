@@ -78,42 +78,61 @@ func TestTrustedProxiesMalformedStoredListFallsBackToLoopback(t *testing.T) {
 	}
 }
 
-// The retired trust_proxy switch: an install that had it on keeps a working proxy until the
-// operator writes the list, and is told so. Anything the operator wrote for the list wins.
-func TestTrustedProxiesMigratesTheRetiredSwitch(t *testing.T) {
-	legacyRanges := []string{"127.0.0.1", "::1", "10.0.0.2", "172.16.0.2", "172.31.255.255", "192.168.1.2", "169.254.1.1", "fd00::2", "fe80::2", "100.101.102.103", "100.127.255.255"}
-	public := []string{"203.0.113.9", "198.51.100.7", "100.63.255.255", "100.128.0.1", "172.32.0.1", "2001:db8::1", "2606:4700:4700::1111"}
+// The retired trust_proxy switch grants nothing: an install that had it on and wrote no list trusts
+// loopback only, like any other, and is warned to list its proxy. Anything written for the list wins.
+func TestTrustedProxiesRetiredSwitchGrantsNothing(t *testing.T) {
+	notTrusted := []string{"10.0.0.2", "172.16.0.2", "172.31.255.255", "192.168.1.2", "169.254.1.1", "fd00::2", "fe80::2",
+		"100.101.102.103", "100.127.255.255", "203.0.113.9", "2001:db8::1"}
+	assertLoopbackOnly := func(t *testing.T, got []netip.Prefix) {
+		t.Helper()
+		for _, addr := range []string{"127.0.0.1", "::1"} {
+			if !contains(got, addr) {
+				t.Errorf("loopback %s is not trusted", addr)
+			}
+		}
+		for _, addr := range notTrusted {
+			if contains(got, addr) {
+				t.Errorf("%s is trusted: the retired switch must not widen trust", addr)
+			}
+		}
+	}
+	warned := func(t *testing.T, logs string) {
+		t.Helper()
+		for _, want := range []string{"security.trust_proxy", "security.trusted_proxies", "TRUSTED_PROXIES"} {
+			if !strings.Contains(logs, want) {
+				t.Errorf("startup warning does not name %q; log = %q", want, logs)
+			}
+		}
+	}
 
-	t.Run("stored on, no list: the old ranges, with a warning", func(t *testing.T) {
+	t.Run("stored on, no list: loopback only, with a warning", func(t *testing.T) {
 		var logs bytes.Buffer
-		log := slog.New(slog.NewTextHandler(&logs, nil))
-		got, err := trustedProxies(visionSet(t, map[string]string{"security.trust_proxy": "true"}), log)
+		got, err := trustedProxies(visionSet(t, map[string]string{"security.trust_proxy": "true"}), slog.New(slog.NewTextHandler(&logs, nil)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, addr := range legacyRanges {
-			if !contains(got, addr) {
-				t.Errorf("migrated list does not trust %s, which the switch did", addr)
-			}
-		}
-		for _, addr := range public {
-			if contains(got, addr) {
-				t.Errorf("migrated list trusts %s, which the switch never did", addr)
-			}
-		}
-		if !strings.Contains(logs.String(), "security.trusted_proxies") {
-			t.Errorf("no warning naming the setting to narrow; log = %q", logs.String())
-		}
+		assertLoopbackOnly(t, got)
+		warned(t, logs.String())
 	})
 
-	t.Run("environment on, no list", func(t *testing.T) {
+	t.Run("environment on, no list: loopback only, with a warning", func(t *testing.T) {
 		t.Setenv("TRUST_PROXY", "true")
-		got, err := trustedProxies(visionSet(t, nil), slog.New(slog.DiscardHandler))
+		var logs bytes.Buffer
+		got, err := trustedProxies(visionSet(t, nil), slog.New(slog.NewTextHandler(&logs, nil)))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !contains(got, "10.0.0.2") || !contains(got, "100.101.102.103") {
-			t.Fatalf("env TRUST_PROXY=true with no list trusts %v, want the old ranges", got)
+		assertLoopbackOnly(t, got)
+		warned(t, logs.String())
+	})
+
+	t.Run("switch off: no warning", func(t *testing.T) {
+		var logs bytes.Buffer
+		if _, err := trustedProxies(visionSet(t, map[string]string{"security.trust_proxy": "false"}), slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
+			t.Fatal(err)
+		}
+		if logs.Len() != 0 {
+			t.Errorf("unexpected log with the switch off: %q", logs.String())
 		}
 	})
 

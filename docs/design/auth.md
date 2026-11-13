@@ -43,9 +43,9 @@ address it saw, and everything to its left was written by whoever sent the reque
 left is taken, even past a private address, because a private address cannot be told apart from a
 LAN client. Behind a chain of proxies every client therefore shares the inner proxy's throttle key.
 A proxy that is not listed is a client: every visitor then shares the proxy's throttle key. The
-retired `security.trust_proxy` switch still applies, with a warning, to an install that had it on and
-has not yet written the list: it trusts the old loopback, private, link-local and tailnet ranges
-until `security.trusted_proxies` is set. The list is read once per application generation.
+retired `security.trust_proxy` switch grants nothing: an install that had it on and has not written
+the list trusts loopback only and logs a startup warning to list its proxy in
+`security.trusted_proxies`. The list is read once per application generation.
 
 **Machine access.** The generated `API_TOKEN` authenticates scripts through `Authorization: Bearer`
 and is the break-glass admin when no user can sign in.

@@ -1555,7 +1555,7 @@ func declared() []Setting {
 		{
 			// Retired by security.trusted_proxies: a bare on/off could not say WHICH peers were
 			// proxies, so every private and tailnet address was one. Kept only so an install that
-			// had it on keeps its proxy working while the operator writes the list.
+			// had it on is warned at startup to list its proxy; it grants no trust.
 			Key: "security.trust_proxy", Label: "Trust reverse proxy", EnvVar: "TRUST_PROXY", Group: GroupUsersSecurity,
 			Kind: KindBool, Default: "false", MigrationOnly: true,
 			Doc: "Retired: list the proxies in security.trusted_proxies.",
