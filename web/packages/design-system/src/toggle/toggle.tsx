@@ -4,7 +4,7 @@ import { Pressable } from "react-native";
 import { useFocusLook } from "../focus-look";
 import { Icon } from "../icon";
 import { icons } from "../icons";
-import { boxFocusRing } from "../interaction/interaction";
+import { boxFocusRing } from "../interaction";
 import { Surface } from "../primitives";
 import { Text } from "../text";
 import { semanticSpace, semanticTargets } from "../tokens";
