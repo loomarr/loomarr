@@ -577,6 +577,22 @@ func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 		}
 		p = &assessed
 	}
+	// A segment whose duplicate check could not run is checked again on every pass, before the gate
+	// reads it: the tooling may be back. One that still cannot be checked is held back below, never
+	// accepted, because an aired duplicate cannot be recalled while a stalled split can.
+	if countDedupUnchecked(p.Segments) > 0 {
+		remaining, recheckErr := s.splitter.RecheckDedup(ctx, p)
+		if errors.Is(recheckErr, ErrProposalGone) {
+			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
+		}
+		if recheckErr != nil {
+			return StageResult{}, recheckErr
+		}
+		if remaining > 0 && s.log != nil {
+			s.log.WarnContext(ctx, "split auto-confirm: segments held back because they could not be checked for duplicates",
+				"clip", c.Hash, "held", remaining, "segments", len(p.Segments))
+		}
+	}
 	// Deterministic outcomes are curation, not decisions. Persist them before any model work so a
 	// restart and the review UI see the same smaller reel.
 	kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
@@ -753,9 +769,28 @@ func (s *SplitStage) minClipFloor() time.Duration {
 // resumableReviewHashes finds older review rows that the current stage can improve without a
 // person: incomplete detection, deterministic discards, or unlooked segments with runnable vision.
 func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]struct{}, error) {
+	return s.reviewHashes(ctx, false)
+}
+
+// uncheckedReviewHashes finds the review rows holding a segment whose duplicate check could not run,
+// so a later pass can check it again once the tooling is back.
+func (s *SplitStage) uncheckedReviewHashes(ctx context.Context) (map[string]struct{}, error) {
+	return s.reviewHashes(ctx, true)
+}
+
+func (s *SplitStage) reviewHashes(ctx context.Context, uncheckedOnly bool) (map[string]struct{}, error) {
 	proposals, err := s.store.ListSplitProposals(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if uncheckedOnly {
+		out := make(map[string]struct{})
+		for _, p := range proposals {
+			if p.Ready() && countDedupUnchecked(p.Segments) > 0 {
+				out[p.ClipHash] = struct{}{}
+			}
+		}
+		return out, nil
 	}
 	canGround := s.autoConfirm != nil && s.autoConfirm.Enabled != nil && s.autoConfirm.Enabled() &&
 		s.vision != nil && s.vision.Provider != nil && s.vision.Tools != nil
@@ -794,6 +829,10 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 		}
 		kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
 		if len(kept) != len(p.Segments) || discarded.duplicates > 0 || discarded.short > 0 {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		if countDedupUnchecked(p.Segments) > 0 {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}

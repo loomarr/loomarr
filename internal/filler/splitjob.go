@@ -933,6 +933,72 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 	}
 }
 
+// countDedupUnchecked counts the segments whose catalog comparison has not been made.
+func countDedupUnchecked(segs []split.Segment) int {
+	n := 0
+	for i := range segs {
+		if segs[i].DedupUnchecked && segs[i].DupOf == "" {
+			n++
+		}
+	}
+	return n
+}
+
+// RecheckDedup re-runs the catalog comparison for the proposal's unchecked segments, so a segment
+// held back because the dedup tooling was down is released once it is back. A segment that is now
+// checked loses its mark (a copy gets its DupOf); one that still cannot be checked keeps it. The
+// proposal is saved only when something changed. It returns how many segments are still unchecked.
+//
+// A lookup failure is logged and leaves the segments unchecked, never checked: a failed re-check
+// must not read as a clean result.
+func (sp *Splitter) RecheckDedup(ctx context.Context, p *SplitProposal) (int, error) {
+	var idx []int
+	for i := range p.Segments {
+		if p.Segments[i].DedupUnchecked && p.Segments[i].DupOf == "" {
+			idx = append(idx, i)
+		}
+	}
+	if len(idx) == 0 {
+		return 0, nil
+	}
+	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
+	if err == nil && !found {
+		err = errors.New("clip not found")
+	}
+	var file string
+	if err == nil {
+		_, file, err = resolveSplitSource(ctx, sp.dropDir, clip, p.Source)
+	}
+	if err != nil {
+		if sp.log != nil {
+			sp.log.Warn("split dedup re-check: the source could not be resolved; segments stay unchecked",
+				"clip", p.ClipHash, "unchecked", len(idx), "err", err)
+		}
+		return len(idx), nil
+	}
+	sub := make([]split.Segment, len(idx))
+	for j, i := range idx {
+		sub[j] = p.Segments[i]
+		sub[j].DedupUnchecked = false
+	}
+	sp.dedup(ctx, file, p.ClipHash, sub)
+	remaining, changed := 0, false
+	for j, i := range idx {
+		if sub[j].DedupUnchecked {
+			remaining++
+			continue
+		}
+		p.Segments[i] = sub[j]
+		changed = true
+	}
+	if changed {
+		if err := sp.saveProposal(ctx, *p); err != nil {
+			return remaining, err
+		}
+	}
+	return remaining, nil
+}
+
 // markDedupUnchecked records, on every segment that carries no finding, that the comparison with the
 // catalog could not be made. A segment already flagged a copy has its finding and is left alone.
 func markDedupUnchecked(segs []split.Segment) {
