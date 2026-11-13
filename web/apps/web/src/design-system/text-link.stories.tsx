@@ -26,6 +26,10 @@ const Workshop = ({ width = 520 }: { width?: number }) => (
       <TextLink href="/help?page=concepts">the page that explains every part of a channel</TextLink>.
     </Text>
     <Text as="p" textRole="compact" tone="primary">
+      A page that routes its own references reads them the same: see{" "}
+      <TextLink onPress={() => undefined}>the approval gate</TextLink>.
+    </Text>
+    <Text as="p" textRole="compact" tone="primary">
       <TextLink href="/filler" icon="goBack" iconPlacement="start">
         Back to filler
       </TextLink>

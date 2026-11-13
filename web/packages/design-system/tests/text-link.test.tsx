@@ -91,6 +91,20 @@ describe("TextLink", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it("is a button drawn as a link when it has a press and no address", async () => {
+    const onPress = vi.fn();
+    const user = userEvent.setup();
+    render(inTheme(<TextLink onPress={onPress}>the approval gate</TextLink>));
+
+    const button = screen.getByRole("button", { name: "the approval gate" });
+    expect(button.getAttribute("type")).toBe("button");
+    expect(button.style.textDecorationLine).toBe("underline");
+    expect(button.style.borderWidth).toMatch(/^0/);
+    await user.click(button);
+    await user.keyboard("{Enter}");
+    expect(onPress).toHaveBeenCalledTimes(2);
+  });
+
   it("draws the focus outline only while focused", async () => {
     const user = userEvent.setup();
     render(inTheme(<TextLink href="/help">Read the guide</TextLink>));

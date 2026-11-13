@@ -22,7 +22,10 @@ type TextLinkProps = {
   icon?: IconName;
   /** `end` (the default) points the way the link goes; `start` leads the label, as a "Back" does. */
   iconPlacement?: "end" | "start";
-  /** Native: the press. The web follows `href` or the `render` element. */
+  /**
+   * Native: the press. On the web a link with an address or a `render` element follows that; a link
+   * with a press and no address is a button drawn as a link, for a reference the page routes itself.
+   */
   onPress?: () => void;
   /**
    * Web: draws the link's look onto this element in place of an `<a>`, so an in-app link is the
@@ -122,7 +125,23 @@ const TextLink = ({
     );
   }
 
-  return createElement("a", { ...own, href, style }, content);
+  // With no address, a press is the whole link: a cross-page reference inside rendered documentation
+  // that routes through the page's own handler. It stays a button (Enter, Space, a focus stop) with
+  // the browser's button chrome reset, drawn as the same link.
+  if (!href && onPress) {
+    return createElement(
+      "button",
+      {
+        ...own,
+        onClick: () => onPress(),
+        style: { ...style, background: "none", border: 0, margin: 0, padding: 0 },
+        type: "button",
+      },
+      content,
+    );
+  }
+
+  return createElement("a", { ...own, href, onClick: onPress ? () => onPress() : undefined, style }, content);
 };
 
 export type { TextLinkProps };
