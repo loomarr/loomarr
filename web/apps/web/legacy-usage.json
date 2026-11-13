@@ -513,7 +513,7 @@
       "tailwindClasses": 11
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 35
+      "tailwindClasses": 17
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 6

@@ -86,7 +86,7 @@ const AccountScreen = () => {
   const [confirmingSession, setConfirmingSession] = useState<string>();
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Your account"
         description="Your sign-in, your password, and the devices holding a session."
@@ -94,22 +94,30 @@ const AccountScreen = () => {
 
       <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
         <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
-          <Stack align="center" className="bg-muted size-10 rounded-full" direction="row" justify="center">
+          <Stack
+            align="center"
+            backgroundColor="surfaceElevated"
+            borderRadius={20}
+            direction="row"
+            height={40}
+            justify="center"
+            width={40}
+          >
             <Text as="span" textRole="cardLabel">
               {(user?.name ?? "?").slice(0, 2).toUpperCase()}
             </Text>
           </Stack>
-          <div className="min-w-0">
+          <Stack gap="0.5" minWidth={0}>
             <Text as="p" textRole="cardLabel">
               {user?.name}
             </Text>
-            <Stack align="center" className="mt-0.5" direction="row" gap="1.5" wrap>
+            <Stack align="center" direction="row" gap="1.5" wrap>
               <StatusLabel tone="off">{isLocal ? "Local account" : "Media-server account"}</StatusLabel>
               <StatusLabel tone={user?.role === "admin" ? "notice" : "off"}>
                 {user?.role === "admin" ? "Admin" : "Member"}
               </StatusLabel>
             </Stack>
-          </div>
+          </Stack>
         </Card>
 
         <Card gap={12} padding={20}>
@@ -166,18 +174,30 @@ const AccountScreen = () => {
             labelled yet keeps today's "Signed in …" title. */}
         {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
         <Card flexShrink={0} overflow="hidden">
-          <Text as="h2" className="border-border border-b px-4 py-3.5" strong textRole="cardLabel">
-            Where you're signed in
-          </Text>
-          {sessions.isLoading && (
-            <Text as="p" className="px-4 py-3" textRole="compact" tone="secondary">
-              Loading sessions…
+          <Stack
+            borderBottomWidth={1}
+            borderColor="borderDecorative"
+            flexShrink={0}
+            paddingHorizontal={16}
+            paddingVertical={14}
+          >
+            <Text as="h2" strong textRole="cardLabel">
+              Where you're signed in
             </Text>
+          </Stack>
+          {sessions.isLoading && (
+            <Stack paddingHorizontal={16} paddingVertical={12}>
+              <Text as="p" textRole="compact" tone="secondary">
+                Loading sessions…
+              </Text>
+            </Stack>
           )}
           {!sessions.isLoading && sessionRows.length === 0 && (
-            <Text as="p" className="px-4 py-3" textRole="compact" tone="secondary">
-              No other sessions.
-            </Text>
+            <Stack paddingHorizontal={16} paddingVertical={12}>
+              <Text as="p" textRole="compact" tone="secondary">
+                No other sessions.
+              </Text>
+            </Stack>
           )}
           <ul>
             {sessionRows.map((s) => (
@@ -203,16 +223,16 @@ const AccountScreen = () => {
                   />
                 ) : (
                   <>
-                    <div className="min-w-0 flex-1">
+                    <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
                       <Text as="p" textRole="cardLabel">
                         {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
                       </Text>
                       {s.lastSeenAt !== undefined && (
-                        <Text as="p" className="mt-0.5" textRole="mono">
+                        <Text as="p" textRole="mono">
                           {formatRelative(s.lastSeenAt)}
                         </Text>
                       )}
-                    </div>
+                    </Stack>
                     {s.current && <StatusLabel tone="notice">This device</StatusLabel>}
                     {/* No Sign out on your own session: the shell's Sign out is for that. */}
                     {!s.current && (
