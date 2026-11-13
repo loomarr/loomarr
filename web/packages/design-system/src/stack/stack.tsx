@@ -99,23 +99,36 @@ const minWidth = (name: StackBreakpoint) => `(min-width: ${breakpoints[name]}px)
 // On the web the breakpoints are the browser's own min-width media queries, so a layout flips at
 // exactly the width Tailwind's `sm:` does (the window's width counts its scrollbar, which React
 // Native's Dimensions leaves out). Native has no media queries: it reads the window's width.
-const hasMediaQueries = () =>
-  isWeb && typeof window !== "undefined" && typeof window.matchMedia === "function";
+type MediaQuery = {
+  addEventListener: (type: "change", listener: () => void) => void;
+  matches: boolean;
+  removeEventListener: (type: "change", listener: () => void) => void;
+};
 
-const readBreakpoint = (): Active =>
-  breakpointNames.reduce<Active>((active, name) => {
-    const reached = hasMediaQueries()
-      ? window.matchMedia(minWidth(name)).matches
+// Read off the global rather than named as `window`: the native packages typecheck this file
+// without the DOM types, and there the answer is always "no media queries".
+const matchMedia = (): ((query: string) => MediaQuery) | undefined =>
+  isWeb
+    ? (globalThis as { matchMedia?: (query: string) => MediaQuery }).matchMedia?.bind(globalThis)
+    : undefined;
+
+const readBreakpoint = (): Active => {
+  const query = matchMedia();
+  return breakpointNames.reduce<Active>((active, name) => {
+    const reached = query
+      ? query(minWidth(name)).matches
       : Dimensions.get("window").width >= breakpoints[name];
     return reached ? name : active;
   }, "base");
+};
 
 const subscribeToWidth = (onChange: () => void) => {
-  if (hasMediaQueries()) {
-    const queries = breakpointNames.map((name) => window.matchMedia(minWidth(name)));
-    for (const query of queries) query.addEventListener("change", onChange);
+  const query = matchMedia();
+  if (query) {
+    const queries = breakpointNames.map((name) => query(minWidth(name)));
+    for (const list of queries) list.addEventListener("change", onChange);
     return () => {
-      for (const query of queries) query.removeEventListener("change", onChange);
+      for (const list of queries) list.removeEventListener("change", onChange);
     };
   }
   const subscription = Dimensions.addEventListener("change", onChange);
