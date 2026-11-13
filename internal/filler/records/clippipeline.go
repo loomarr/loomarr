@@ -44,6 +44,7 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 		dispo                  string
 		reason                 string
 		raw                    string
+		acquisitionID          storedb.OptionalID
 		nextRun                int64
 		preparationStartedAt   int64
 		preparationStartReason string
@@ -53,12 +54,13 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 		updatedAt              int64
 		filesDeletedAt         int64
 	)
-	if err := sc.Scan(&p.ClipHash, &p.AcquisitionID, &stage, &status, &p.Progress, &dispo,
+	if err := sc.Scan(&p.ClipHash, &acquisitionID, &stage, &status, &p.Progress, &dispo,
 		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun,
 		&p.PreparationAttempt, &preparationStartedAt, &preparationStartReason, &p.PreparationProgress,
 		&stageQueuedAt, &stageStartedAt, &raw, &enrolledAt, &updatedAt, &filesDeletedAt); err != nil {
 		return pipelinestate.ClipPipeline{}, err
 	}
+	p.AcquisitionID = string(acquisitionID)
 	p.Stage = pipelinestate.StageID(stage)
 	p.Status = pipelinestate.StageStatus(status)
 	p.Disposition = pipelinestate.Disposition(dispo)
@@ -126,7 +128,7 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 		   stage_started_at=excluded.stage_started_at,
 		   next_run=excluded.next_run, stages_json=excluded.stages_json,
 		   updated_at=excluded.updated_at`),
-		p.ClipHash, p.AcquisitionID, string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
+		p.ClipHash, storedb.OptionalID(p.AcquisitionID), string(p.Stage), string(p.Status), p.Progress, string(p.Disposition),
 		string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun, epoch(p.NextRun),
 		p.PreparationAttempt, epoch(p.PreparationStartedAt), string(p.PreparationStartReason), p.PreparationProgress,
 		epoch(p.StageQueuedAt), epoch(p.StageStartedAt), string(raw), epoch(p.EnrolledAt), epoch(p.UpdatedAt))

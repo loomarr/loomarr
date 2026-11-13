@@ -1462,8 +1462,6 @@ One row per download run: a source check, an approved pull or URLs an admin type
 | --- | --- | --- |
 | `id` | Identifies the run. Downloaded files and prepared clips point here. | `TEXT` · key |
 | `trigger` | What started it: source (a registered source's check), pull (an approved pull) or manual (URLs typed by an admin). scheduled is also allowed. | `TEXT` |
-| `source_id` | The registered source every item came from (filler_sources.id). Empty when items came from several sources or none. | `TEXT` |
-| `pull_id` | The approved pull that started it (filler_pulls.id). Empty for other triggers. | `TEXT` |
 | `status` | queued, running, success or error. | `TEXT` |
 | `requested` | How many items were asked for. | `INTEGER` |
 | `fetched` | How many files were downloaded. | `INTEGER` |
@@ -1474,6 +1472,8 @@ One row per download run: a source check, an approved pull or URLs an admin type
 | `started_at` | When the run started, in Unix seconds. | `INTEGER` |
 | `completed_at` | When the run finished, in Unix seconds; 0 while still going. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
+| `source_id` | The registered source every item came from, pointing at filler_sources. NULL when items came from several sources or none, or the source has since been deleted. | `TEXT` · may be empty · → `filler_sources.id` |
+| `pull_id` | The approved pull that started it, pointing at filler_pulls. NULL for other triggers, or once the pull is purged. | `TEXT` · may be empty · → `filler_pulls.id` |
 
 ### filler_acquisition_artifacts
 
@@ -1485,7 +1485,7 @@ One row per file a download produced, tracking it from download to the clip fold
 | --- | --- | --- |
 | `id` | Identifies the downloaded file. | `TEXT` · key |
 | `acquisition_id` | The download run that produced it (filler_acquisition_runs.id). | `TEXT` · → `filler_acquisition_runs.id` |
-| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. Deliberately not a foreign key: with provider and remote_id it is how the fetcher knows it already has an item, and that row is kept after the source is deleted. | `TEXT` |
 | `provider` | The provider that downloaded it, such as archive or youtube. | `TEXT` |
 | `source_url` | The address that was downloaded. | `TEXT` |
 | `staging_path` | Where the file was put while it was being checked, relative to the clip folder. Empty when not staged. | `TEXT` |
@@ -1524,7 +1524,6 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `enrolled_at` | When the clip entered preparation, in Unix seconds. | `INTEGER` |
 | `updated_at` | When the row last changed, in Unix seconds. | `INTEGER` |
 | `force_run` | 1 when a person asked to re-run the current step, so it runs even if it would normally be skipped. Cleared once the step runs. | `BOOLEAN` |
-| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips dropped into the folder by hand. | `TEXT` |
 | `preparation_attempt` | Which attempt at preparing the clip this is, counting from 1. 0 for clips enrolled before this was tracked. | `INTEGER` |
 | `preparation_started_at` | When the current preparation attempt began, in Unix seconds. | `INTEGER` |
 | `preparation_start_reason` | Why the current attempt began: enrollment (the clip was new) or restart. | `TEXT` |
@@ -1532,6 +1531,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
 | `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
+| `acquisition_id` | The download run that brought the clip in, pointing at filler_acquisition_runs, which is kept while this row names it. NULL for clips dropped into the folder by hand. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_clip_variants
 
@@ -1603,11 +1603,11 @@ A record written when a clip becomes ready to air, at the same moment it joins t
 | --- | --- | --- |
 | `id` | Identifies the event, as ready:<clip hash>. | `TEXT` · key |
 | `clip_hash` | The clip that became ready (clips.hash). | `TEXT` |
-| `acquisition_id` | The download run that brought the clip in (filler_acquisition_runs.id). Empty for clips from a folder. | `TEXT` |
 | `enrollment_kind` | What let the clip into filler: acquisition (a download run) or source (a clip folder or source the operator chose). | `TEXT` |
 | `enrollment_ref` | The download run id or source id behind enrollment_kind. | `TEXT` |
 | `placement` | Where it may be scheduled, break_body or bookend. | `TEXT` |
 | `created_at` | When the clip became ready, in Unix seconds. | `INTEGER` |
+| `acquisition_id` | The download run that brought the clip in, pointing at filler_acquisition_runs. NULL for clips from a folder, or once the run is purged. | `TEXT` · may be empty · → `filler_acquisition_runs.id` |
 
 ### filler_curated_offers
 
@@ -1617,7 +1617,7 @@ Which entries from Loomarr's shipped list of curated sources this install has be
 
 | Column | What it holds | Type |
 | --- | --- | --- |
-| `source_id` | The offered source (filler_sources.id). | `TEXT` · key |
+| `source_id` | The offered source (filler_sources.id). Deliberately not a foreign key: the row outlives the source so a curated source the operator deleted is not offered again. | `TEXT` · key |
 | `list_version` | The version of the shipped list that first offered it. | `TEXT` |
 | `offered_at` | When it was offered, in Unix seconds. | `INTEGER` |
 | `stations` | Comma-separated station ids the shipped list ties the source to, refreshed on every offer. | `TEXT` |
@@ -1899,7 +1899,7 @@ A side-by-side record, made while a new splitting rule is being trialled, of wha
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the decision, derived from its content. | `TEXT` · key |
-| `proposal_id` | The split proposal it was made for (filler_split_proposals.id). The proposal may since have been removed. | `TEXT` |
+| `proposal_id` | The split proposal it was made for (filler_split_proposals.id). Deliberately not a foreign key: the decision is kept for 180 days after the proposal is removed. | `TEXT` |
 | `clip_hash` | The compilation reel (clips.hash). | `TEXT` |
 | `source_sha256` | SHA-256 of the reel's source file. Empty when not known. | `TEXT` |
 | `assessment_sha256` | SHA-256 of the structure assessment the new rule used. Empty when there was none. | `TEXT` |

@@ -51,6 +51,7 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	testkit.SaveFillerSources(t, st, "youtube:classic", "archive:classic")
 	if err := st.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
 		ID: "acq-1", Trigger: acquisition.TriggerSource, SourceID: "youtube:classic",
 		Status: acquisition.RunRunning, Requested: 1, StartedAt: now, UpdatedAt: now,
@@ -136,6 +137,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	testkit.SaveFillerSources(t, st, "youtube:classic", "archive:classic")
 	if err := st.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
 		ID: "acq-failed-move", Trigger: acquisition.TriggerSource, SourceID: "youtube:classic",
 		Status: acquisition.RunRunning, Requested: 2, StartedAt: now, UpdatedAt: now,
@@ -314,6 +316,7 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 	}
 	defer func() { _ = st.Close() }()
 	now := time.Unix(1_800_000_000, 0).UTC()
+	testkit.SaveFillerSources(t, st, "youtube:classic", "archive:classic")
 	if err := st.UpsertAcquisitionRun(t.Context(), acquisition.AcquisitionRun{
 		ID: "acq-sparse-collision", Trigger: acquisition.TriggerSource, SourceID: "archive:classic",
 		Status: acquisition.RunRunning, Requested: 1, StartedAt: now, UpdatedAt: now,
