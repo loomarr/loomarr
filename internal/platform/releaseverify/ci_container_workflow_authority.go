@@ -721,23 +721,27 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
-		// Only the commit job may write contents; render and ci may only dispatch a workflow. None of
-		// these jobs runs the branch's code: that happens in visual-baselines-render.yml, dispatched
-		// at the branch (visual_baselines_workflow.go).
+		// Only the commit job may write contents; render and release may only dispatch or approve a
+		// workflow run. None of the jobs that can write runs the branch's code: resolve reads only the
+		// CI impact classifier with a read token, and the render happens in
+		// visual-baselines-render.yml, dispatched at the branch (visual_baselines_workflow.go).
 		"visual-baselines.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{
 				"resolve": {
 					permissions: map[string]string{"contents": "read", "pull-requests": "read"},
+					condition:   visualBaselinesResolveCondition,
 					steps: map[string]workflowStepAuthority{
-						visualBaselinesResolveCommand + "\n": exactWorkflowStep(0, "Resolve and vet the pull request", workflowStepAuthority{shell: "bash", environment: map[string]string{
-							"GH_TOKEN": "${{ github.token }}", "PR": "${{ inputs.pr }}", "REPO": "${{ github.repository }}",
-							"REF": "${{ github.ref }}", "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+						visualBaselinesResolveCommand + "\n": exactWorkflowStep(1, "Resolve and vet the pull request", workflowStepAuthority{shell: "bash", environment: map[string]string{
+							"GH_TOKEN": "${{ github.token }}", "EVENT": "${{ github.event_name }}", "PR": visualBaselinesPR,
+							"REPO": "${{ github.repository }}", "REF": "${{ github.ref }}",
+							"DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
 						}}),
 					},
 				},
 				"render": {
 					permissions: map[string]string{"actions": "write", "contents": "read"},
+					condition:   "needs.resolve.outputs.render == 'true'",
 					steps: map[string]workflowStepAuthority{
 						visualBaselinesRenderDispatchCommand + "\n": exactWorkflowStep(0, "Dispatch the render and wait for it", workflowStepAuthority{shell: "bash", environment: map[string]string{
 							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
@@ -756,7 +760,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 							"RENDER_RUN": "${{ needs.render.outputs.run_id }}", "REQUEST": visualBaselinesRequest,
 						}}),
 						visualBaselinesCommitCommand + "\n": exactWorkflowStep(3, "Commit and push only the changed baselines", workflowStepAuthority{shell: "bash", environment: map[string]string{
-							"PR": "${{ inputs.pr }}", "BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
+							"PR": visualBaselinesPR, "BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.resolve.outputs.sha }}",
 							"RUN_URL":     "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
 							"RUN_ATTEMPT": "${{ github.run_attempt }}",
 							"RENDER_RUN":  "${{ needs.render.outputs.run_id }}",
@@ -764,13 +768,14 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						}}),
 					},
 				},
-				"ci": {
+				"release": {
 					permissions: map[string]string{"actions": "write", "contents": "read"},
 					condition:   "needs.commit.outputs.pushed == 'true'",
 					steps: map[string]workflowStepAuthority{
-						visualBaselinesCIDispatchCommand + "\n": exactWorkflowStep(0, "Dispatch CI for the pushed commit", workflowStepAuthority{shell: "bash", environment: map[string]string{
+						visualBaselinesReleaseCommand + "\n": exactWorkflowStep(0, "Approve the bot commit's held runs", workflowStepAuthority{shell: "bash", environment: map[string]string{
 							"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
 							"BRANCH": "${{ needs.resolve.outputs.branch }}", "HEAD_SHA": "${{ needs.commit.outputs.sha }}",
+							"SERVER_URL": "${{ github.server_url }}",
 						}}),
 					},
 				},
@@ -795,7 +800,10 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 							targets: []string{"fe-visual-update"}, allowsAcquisition: true,
 							environment: map[string]string{"LOOMARR_PLAYWRIGHT_FORCE": "${{ inputs.force }}"},
 						}),
-						visualBaselinesCollectCommand + "\n": exactWorkflowStep(8, "Collect the rewritten baselines", workflowStepAuthority{shell: "bash"}),
+						"make e2e-update": exactWorkflowStep(8, visualBaselinesE2EUpdateStepName, workflowStepAuthority{
+							targets: []string{"e2e-update"}, allowsAcquisition: true,
+						}),
+						visualBaselinesCollectCommand + "\n": exactWorkflowStep(9, "Collect the rewritten baselines", workflowStepAuthority{shell: "bash"}),
 					},
 				},
 			},

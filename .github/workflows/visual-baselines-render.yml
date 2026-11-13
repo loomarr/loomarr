@@ -2,10 +2,11 @@ name: Visual baselines render
 
 # The read-only half of Visual baselines (visual-baselines.yml), which dispatches it at a pull
 # request's branch and is the only thing that should. It runs the branch's own code (pnpm install,
-# Storybook, Playwright), so it must run in that branch's Actions cache scope, as the pull request's
-# CI does: dispatched from the default branch, a postinstall script could write caches that main's
-# CI and release builds restore. It hands back only the rewritten PNGs; the dispatching workflow
-# verifies this run and the artifact before anything is pushed. Inputs reach a shell only through env.
+# Storybook, the SPA build, Playwright), so it must run in that branch's Actions cache scope, as the
+# pull request's CI does: dispatched from the default branch, a postinstall script could write
+# caches that main's CI and release builds restore. It hands back only the rewritten PNGs of the
+# visual and e2e suites; the dispatching workflow verifies this run and the artifact before
+# anything is pushed. Inputs reach a shell only through env.
 run-name: Render visual baselines ${{ inputs.request }}
 
 on:
@@ -28,14 +29,20 @@ on:
 permissions:
   contents: read
 
+# A newer render of the same branch supersedes an older one: the dispatching run of the older head
+# has been cancelled, or its push would fail on the moved branch.
+concurrency:
+  group: visual-baselines-render-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: "22"
 
 jobs:
   render:
-    name: Render the visual baselines
+    name: Render the visual and e2e baselines
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -86,14 +93,19 @@ jobs:
         env:
           LOOMARR_PLAYWRIGHT_FORCE: ${{ inputs.force }}
         run: make fe-visual-update
-      # Only a rewritten or new PNG under a visual snapshot directory may leave this job. Any other
-      # change to the tree fails it, so a build that edits a tracked file cannot ride along.
+      # The e2e suite's page snapshots (tests/e2e/*-snapshots), from the same pinned image and the
+      # SPA build CI's `make e2e` serves. `make e2e-update` rewrites only failed or missing
+      # snapshots, and a flow that fails for any other reason fails the render.
+      - name: Regenerate the e2e baselines in the pinned Playwright image
+        run: make e2e-update
+      # Only a rewritten or new PNG under a visual or e2e snapshot directory may leave this job. Any
+      # other change to the tree fails it, so a build that edits a tracked file cannot ride along.
       - name: Collect the rewritten baselines
         shell: bash
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/visual-baselines"
-          allowed='^web/apps/web/tests/visual/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
+          allowed='^web/apps/web/tests/(visual|e2e)/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
           mkdir -p "$out/files"
           git rev-parse HEAD > "$out/commit"
           : > "$out/changed.txt"
@@ -107,7 +119,7 @@ jobs:
               mkdir -p "$out/files/$(dirname "$path")"
               cp -- "$path" "$out/files/$path"
             else
-              echo "::error::the update changed something other than a visual baseline: '$status' $path"
+              echo "::error::the update changed something other than a screenshot baseline: '$status' $path"
               unexpected=1
             fi
           done < "$RUNNER_TEMP/status"
@@ -122,3 +134,13 @@ jobs:
           path: ${{ runner.temp }}/visual-baselines/
           if-no-files-found: error
           retention-days: 1
+      # A render that fails (an axe violation, a crashing story, a broken e2e flow) keeps Playwright's
+      # expected, actual, and diff images, as CI's Playwright job does. Nothing here is pushed.
+      - name: Keep the failure images
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: playwright-render-failures
+          path: web/apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

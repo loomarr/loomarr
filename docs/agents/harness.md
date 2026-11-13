@@ -382,6 +382,14 @@ debugged with its failing focused command before one final rerun. CI owns expens
 matrices.
 Never run `make smoke*` from an agent session; those commands drive the maintainer's live stack.
 
+Screenshot baselines render on their own. Every push to a pull request that touches `web/` starts the
+**Visual baselines** workflow, which commits the visual and e2e PNGs that changed as
+`github-actions[bot]` and approves the checks GitHub holds on that commit. Don't dispatch it after a
+push, don't copy PNGs out of failure artifacts, and don't approve held runs by hand. Wait for its run
+on the head before you arm auto-merge, then read the bot's PNGs in the diff. A red render pushes
+nothing; its `playwright-render-failures` artifact holds the images. See
+[Updating visual baselines](../contributing/testing.md#updating-visual-baselines).
+
 ## Finish and clean up
 
 After the PR is merged and its required evidence is complete, release its claims and audit the

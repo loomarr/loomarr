@@ -1,17 +1,26 @@
 name: Visual baselines
 
-# Regenerates the committed Linux visual baselines for one pull request's branch, on a runner, so a
-# baseline update never runs Playwright on a workstation (docs/contributing/testing.md). It commits
-# only the PNGs the update rewrote and then re-dispatches CI, because a push made with GITHUB_TOKEN
-# starts no pull_request run and the PR's required `CI` check would otherwise never report.
+# Regenerates the committed Linux screenshot baselines (the visual suite's and the e2e suite's) for
+# one pull request's branch, on a runner, so a baseline update never runs Playwright on a
+# workstation (docs/contributing/testing.md). It runs on its own for every push to a same-repository
+# pull request whose changes the visual or e2e suite renders, and by hand through workflow_dispatch.
+# It commits only the PNGs the update rewrote, then releases the checks GitHub holds on that commit.
 #
-# None of the branch's code runs here. This workflow runs from the default branch, so it shares that
-# branch's Actions cache scope; it dispatches visual-baselines-render.yml at the pull request's own
-# branch instead, where pnpm install, Storybook, and Playwright run read-only in the branch's scope,
-# as its CI does. Each job here holds only what it needs: the push job verifies that the render run
-# is the one this run dispatched, at the resolved commit, then copies in its PNG bytes and commits
-# them with git. Inputs reach a shell only through env.
+# None of the branch's code runs here with a write token. The render runs in
+# visual-baselines-render.yml, dispatched at the pull request's own branch, where pnpm install,
+# Storybook, and Playwright run read-only in the branch's Actions cache scope, as its CI does. Each
+# job here holds only what it needs: the push job verifies that the render run is the one this run
+# dispatched, at the resolved commit, then copies in its PNG bytes and commits them with git. Inputs
+# reach a shell only through env.
+#
+# Forks never get here: the resolve job refuses a pull request from another repository before any
+# job holds a write token, and GitHub gives a fork's pull_request run a read-only token anyway. This
+# is pull_request, never pull_request_target.
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "web/**"
   workflow_dispatch:
     inputs:
       pr:
@@ -19,8 +28,8 @@ on:
         required: true
         type: string
       # Empty, the render rewrites only the baselines whose comparison failed. A regex narrows the
-      # render to the matching tests and rewrites all of their baselines, for an intended change too
-      # subtle to fail the comparison (#1956).
+      # visual render to the matching tests and rewrites all of their baselines, for an intended
+      # change too subtle to fail the comparison (#1956).
       force:
         description: Optional Playwright --grep regex of story or test names to re-render and commit even under the threshold
         required: false
@@ -30,14 +39,19 @@ on:
 permissions:
   contents: read
 
-# One run per pull request at a time; a second dispatch waits instead of racing the first push.
+# One run per pull request at a time. A newer push cancels the render of the older head, whose
+# pixels could no longer be pushed anyway; a second manual dispatch waits instead. The bot's own
+# baseline commit gets a group of its own: its held run, once released below, must not cancel the
+# run that released it, and its resolve job skips it.
 concurrency:
-  group: visual-baselines-${{ inputs.pr }}
-  cancel-in-progress: false
+  group: visual-baselines-${{ inputs.pr || github.event.pull_request.number }}${{ github.actor == 'github-actions[bot]' && '-bot' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   resolve:
     name: Resolve the pull request's branch
+    # A fork's pull request, and the bot's own baseline commit, never start a render.
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -46,22 +60,30 @@ jobs:
     outputs:
       branch: ${{ steps.pr.outputs.branch }}
       sha: ${{ steps.pr.outputs.sha }}
+      render: ${{ steps.pr.outputs.render }}
     steps:
+      # Only the CI impact classifier is read from this checkout, and it keeps no token.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
       # Refuses a fork, a closed pull request, and the default branch: the push below may only
-      # land on an open pull request's own branch in this repository. This copy must be the
-      # default branch's: a branch's copy would vet and push on that branch's own terms.
+      # land on an open pull request's own branch in this repository. A dispatch must come from the
+      # default branch. On a push, the pull request's changes go through scripts/ci-impact.sh, and
+      # only a change that selects the visual or e2e suite renders; a classifier failure renders.
       - name: Resolve and vet the pull request
         id: pr
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          if [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+          if [ "$EVENT" = workflow_dispatch ] && [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
             echo "::error::dispatch Visual baselines from $DEFAULT_BRANCH, not $REF"
             exit 1
           fi
@@ -99,14 +121,30 @@ jobs:
             echo "::error::#$PR has an unreadable head commit '$sha'"
             exit 1
           fi
-          { echo "branch=$branch"; echo "sha=$sha"; } >> "$GITHUB_OUTPUT"
-          echo "Regenerating baselines for #$PR: $branch at $sha" >> "$GITHUB_STEP_SUMMARY"
+          render=true
+          if [ "$EVENT" = pull_request ]; then
+            if gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[].filename' > "$RUNNER_TEMP/files.txt" &&
+              ./scripts/ci-impact.sh < "$RUNNER_TEMP/files.txt" > "$RUNNER_TEMP/impact.txt"; then
+              if ! grep -qxE 'visual=true|e2e=true' "$RUNNER_TEMP/impact.txt"; then
+                render=false
+              fi
+            else
+              echo "::warning::could not classify the changes of #$PR; rendering anyway"
+            fi
+          fi
+          { echo "branch=$branch"; echo "sha=$sha"; echo "render=$render"; } >> "$GITHUB_OUTPUT"
+          if [ "$render" = true ]; then
+            echo "Regenerating baselines for #$PR: $branch at $sha" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "#$PR changes nothing the visual or e2e suite renders; nothing to regenerate." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   render:
     name: Render on the pull request's branch
     needs: resolve
+    if: needs.resolve.outputs.render == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     permissions:
       actions: write
       contents: read
@@ -225,7 +263,7 @@ jobs:
         id: commit
         shell: bash
         env:
-          PR: ${{ inputs.pr }}
+          PR: ${{ inputs.pr || github.event.pull_request.number }}
           BRANCH: ${{ needs.resolve.outputs.branch }}
           HEAD_SHA: ${{ needs.resolve.outputs.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -235,13 +273,13 @@ jobs:
         run: |
           set -euo pipefail
           in="$RUNNER_TEMP/visual-baselines"
-          allowed='^web/apps/web/tests/visual/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
+          allowed='^web/apps/web/tests/(visual|e2e)/[A-Za-z0-9._-]+\.spec\.ts-snapshots/[A-Za-z0-9._-]+\.png$'
           if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ] || [ "$(cat "$in/commit")" != "$HEAD_SHA" ]; then
-            echo "::error::$BRANCH is no longer $HEAD_SHA, the commit that was rendered; dispatch again"
+            echo "::error::$BRANCH is no longer $HEAD_SHA, the commit that was rendered; a newer run renders it"
             exit 1
           fi
           if [ ! -s "$in/changed.txt" ]; then
-            echo "No visual baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "No baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -270,7 +308,7 @@ jobs:
             exit 1
           fi
           if [ ! -s "$RUNNER_TEMP/staged.txt" ]; then
-            echo "No visual baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "No baseline changed for #$PR at $HEAD_SHA; nothing pushed." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -292,8 +330,8 @@ jobs:
           { echo "pushed=true"; echo "sha=$(git rev-parse HEAD)"; } >> "$GITHUB_OUTPUT"
           echo "Pushed $count baselines to $BRANCH as $(git rev-parse HEAD)." >> "$GITHUB_STEP_SUMMARY"
 
-  ci:
-    name: Re-run CI on the new head
+  release:
+    name: Release the checks held on the new head
     needs: [resolve, commit]
     if: needs.commit.outputs.pushed == 'true'
     runs-on: ubuntu-latest
@@ -302,18 +340,57 @@ jobs:
       actions: write
       contents: read
     steps:
-      # The release path's manual CI entry point (docs/contributing/releasing.md). The `full` scope
-      # is the one a branch may run; its `CI` job reports on the new head commit, which is the
-      # status branch protection requires before the pull request may enter the merge queue.
-      - name: Dispatch CI for the pushed commit
+      # The push above starts the pull request's `pull_request` runs (CI, CodeQL, this workflow),
+      # but their actor is github-actions[bot], which the repository's "approval for first-time
+      # contributors" rule treats as a first-time contributor: GitHub parks every one at
+      # action_required, and the parked CI keeps the pull request out of the merge queue. This step
+      # approves exactly those runs: the commit this run pushed, in this repository, started by the
+      # bot. A fork's run is never one of them. If no CI run appears for the commit at all, it
+      # dispatches CI with `scope=full` (the release path's manual entry point,
+      # docs/contributing/releasing.md), whose `CI` job then reports the required check.
+      - name: Approve the bot commit's held runs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ needs.resolve.outputs.branch }}
           HEAD_SHA: ${{ needs.commit.outputs.sha }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
           set -euo pipefail
+          if [[ ! $HEAD_SHA =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the commit job reported no pushed commit, got '$HEAD_SHA'"
+            exit 1
+          fi
+          for _ in $(seq 1 24); do
+            gh api "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" > "$RUNNER_TEMP/runs.json"
+            if jq -e '.workflow_runs | any(.path == ".github/workflows/ci.yml")' "$RUNNER_TEMP/runs.json" > /dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          jq -r --arg repo "$REPO" --arg sha "$HEAD_SHA" '.workflow_runs[]
+            | select(.event == "pull_request" and .conclusion == "action_required"
+              and .head_sha == $sha and .repository.full_name == $repo
+              and .head_repository.full_name == $repo
+              and .triggering_actor.login == "github-actions[bot]")
+            | .id' "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/held.txt"
+          failed=0
+          while IFS= read -r id; do
+            if gh api --method POST "repos/$REPO/actions/runs/$id/approve" > /dev/null; then
+              echo "Approved held run $SERVER_URL/$REPO/actions/runs/$id" | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::could not approve held run $SERVER_URL/$REPO/actions/runs/$id; approve it in the Actions tab"
+              failed=1
+            fi
+          done < "$RUNNER_TEMP/held.txt"
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+          if jq -e '.workflow_runs | any(.path == ".github/workflows/ci.yml")' "$RUNNER_TEMP/runs.json" > /dev/null; then
+            exit 0
+          fi
+          echo "No pull_request CI run appeared for $HEAD_SHA; dispatching CI instead." | tee -a "$GITHUB_STEP_SUMMARY"
           gh workflow run ci.yml --repo "$REPO" --ref "$BRANCH" -f scope=full
           run_url=""
           for _ in $(seq 1 24); do

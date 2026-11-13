@@ -188,12 +188,14 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		// The render checks out the commit it was dispatched at, without a persisted token; only the
 		// commit job's checkout keeps the token, for its push, and it reads only the render run's
 		// artifact, by the run id the render job reported and the push job verified.
-		{workflow: "visual-baselines-render.yml", job: "render", step: 1}: `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"persist-credentials":false}}`,
-		{workflow: "visual-baselines-render.yml", job: "render", step: 2}: `{"uses":"actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1","with":{"node-version":"${{ env.NODE_VERSION }}"}}`,
-		{workflow: "visual-baselines-render.yml", job: "render", step: 4}: `{"name":"Restore pnpm store","uses":"actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"~/.local/share/pnpm/store","key":"pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}","restore-keys":"pnpm-${{ runner.os }}-"}}`,
-		{workflow: "visual-baselines-render.yml", job: "render", step: 9}: `{"name":"Hand the baselines to the dispatching run","uses":"actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9","with":{"name":"visual-baselines","path":"${{ runner.temp }}/visual-baselines/","if-no-files-found":"error","retention-days":1}}`,
-		{workflow: "visual-baselines.yml", job: "commit", step: 0}:        `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"ref":"${{ needs.resolve.outputs.branch }}"}}`,
-		{workflow: "visual-baselines.yml", job: "commit", step: 2}:        `{"uses":"actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333","with":{"name":"visual-baselines","path":"${{ runner.temp }}/visual-baselines","run-id":"${{ needs.render.outputs.run_id }}","github-token":"${{ github.token }}"}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 1}:  `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"persist-credentials":false}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 2}:  `{"uses":"actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1","with":{"node-version":"${{ env.NODE_VERSION }}"}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 4}:  `{"name":"Restore pnpm store","uses":"actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"~/.local/share/pnpm/store","key":"pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}","restore-keys":"pnpm-${{ runner.os }}-"}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 10}: `{"name":"Hand the baselines to the dispatching run","uses":"actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9","with":{"name":"visual-baselines","path":"${{ runner.temp }}/visual-baselines/","if-no-files-found":"error","retention-days":1}}`,
+		{workflow: "visual-baselines-render.yml", job: "render", step: 11}: `{"name":"Keep the failure images","if":"failure()","uses":"actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9","with":{"name":"playwright-render-failures","path":"web/apps/web/test-results/","if-no-files-found":"ignore","retention-days":7}}`,
+		{workflow: "visual-baselines.yml", job: "resolve", step: 0}:        `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"persist-credentials":false,"sparse-checkout":"scripts"}}`,
+		{workflow: "visual-baselines.yml", job: "commit", step: 0}:         `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"ref":"${{ needs.resolve.outputs.branch }}"}}`,
+		{workflow: "visual-baselines.yml", job: "commit", step: 2}:         `{"uses":"actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333","with":{"name":"visual-baselines","path":"${{ runner.temp }}/visual-baselines","run-id":"${{ needs.render.outputs.run_id }}","github-token":"${{ github.token }}"}}`,
 	}
 	entries[workflowActionKey{workflow: "codeql.yml", job: "changes", step: 0}] = `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"fetch-depth":0}}`
 	codeQLJobs := map[string][2]string{

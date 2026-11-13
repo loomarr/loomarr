@@ -865,6 +865,25 @@ Don't — a warning printed by a job that exits 0 is one nobody reads.
 The CI path filter includes `scripts/`, so a PR editing only a guard still runs the job that
 executes it.
 
+## Screenshot baselines render on every frontend push
+
+`visual-baselines.yml` is outside the required PR gate. It runs on every `pull_request` push
+(opened, synchronize, reopened) from a branch of this repository that touches `web/`, and by manual
+dispatch. Its resolve job feeds the pull request's changed files to `scripts/ci-impact.sh` and renders
+only when the visual or e2e gate is selected, so it follows the same classifier as the Playwright
+job. The render (`visual-baselines-render.yml`, dispatched at the branch, read-only) regenerates the
+visual and e2e snapshots in the pinned Playwright image. The push job commits only PNGs under a
+`tests/visual/` or `tests/e2e/` snapshot directory. It has a workflow-level `paths:` filter, which a
+required check must never have; this workflow is not one.
+
+The bot's push starts `pull_request` runs whose actor is `github-actions[bot]`. The repository's
+fork-run approval policy is "first-time contributors", and the bot counts as one, so GitHub parks
+those runs at `action_required` and the parked CI keeps the pull request out of the merge queue. The
+workflow's release job approves exactly the parked runs on the commit it pushed, which needs only
+`actions: write`. Forks are untouched: their runs keep the approval rule, and the resolve job refuses
+a fork before any job holds a write token. A newer push cancels the older head's run, and the bot's
+own commit never starts a render. [Testing](testing.md#updating-visual-baselines) has the full flow.
+
 ## Scheduled Go dead code report
 
 `deadcode.yml` is also outside the required PR gate. On the first of each month, and on manual
