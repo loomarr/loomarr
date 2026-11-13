@@ -110,7 +110,7 @@ const SettingsHome = () => {
   return (
     <Stack height="100%" minHeight={0}>
       <PageHeader title="Settings" description="Search reaches any setting directly." />
-      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} minHeight={0}>
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
         <SettingsOverview
           advanced={
             advanced
@@ -177,7 +177,14 @@ const SettingsHome = () => {
                             onKeyDown={(event) => moveResultFocus(event, index)}
                             className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                           >
-                            <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+                            <Stack
+                              flexBasis="0%"
+                              flexGrow={1}
+                              flexShrink={1}
+                              gap="0.5"
+                              minWidth={0}
+                              render="span"
+                            >
                               <Text as="span" textRole="cardLabel">
                                 {result.setting?.label || result.destination.label}
                               </Text>

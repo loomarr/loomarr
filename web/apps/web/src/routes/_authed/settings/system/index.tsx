@@ -35,7 +35,7 @@ const SystemHome = () => (
       title="This server"
       description="Keep playback running, protect this installation, or investigate a problem."
     />
-    <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} minHeight={0}>
+    <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
       <Stack gap="8" marginHorizontal="auto" maxWidth={1024} padding={24} width="100%">
         {GROUPS.map((group) => {
           const destinations = SETTINGS_DESTINATIONS.filter(
@@ -58,7 +58,7 @@ const SystemHome = () => (
                     to={item.path}
                     className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
-                    <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+                    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0} render="span">
                       <Text as="span" textRole="cardLabel">
                         {item.label}
                       </Text>

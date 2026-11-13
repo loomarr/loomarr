@@ -36,7 +36,7 @@ const AddFolder = ({ onAddFolder }: Pick<LibrarySettingsProps, "onAddFolder">) =
   const submit = () => void form.handleSubmit();
   return (
     <Line alignItems="flex-end" gap="control">
-      <Stack flexBasis={240} flexGrow={1}>
+      <Stack flexBasis={240} flexGrow={1} flexShrink={1}>
         <form.AppField listeners={{ onChange: () => setError(undefined) }} name="path">
           {(field) => (
             <field.TextField

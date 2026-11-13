@@ -72,7 +72,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
         >
           <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
-          <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
             <Text as="span" textRole="hint" tone="secondary">
               New channel
             </Text>
@@ -109,7 +109,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         // as a container query so it holds whatever chrome shares the viewport.
         <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5 @max-[284px]:grid-cols-1">
           {titles.slice(0, POSTERS).map((t) => (
-            <Stack gap="1.5" key={t.key} minWidth={0}>
+            <Stack flexShrink={1} gap="1.5" key={t.key} minWidth={0}>
               <Stack
                 aspectRatio={2 / 3}
                 borderColor="borderDecorative"

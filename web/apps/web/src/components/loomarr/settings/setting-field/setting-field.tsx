@@ -482,6 +482,7 @@ const SettingField = ({
             direction="row"
             flexBasis="0%"
             flexGrow={1}
+            flexShrink={1}
             render="span"
           >
             {entry.preview ?? "stored"}

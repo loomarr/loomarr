@@ -121,7 +121,7 @@ const AdvancedSettingsTable = ({
                 key={entry.key}
                 className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-b px-4 py-2 last:border-b-0"
               >
-                <Stack align="center" className="min-w-0" direction="row" gap="inline">
+                <Stack align="center" className="min-w-0" direction="row" flexShrink={1} gap="inline">
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
                     why it carries an id. A table row already shows the name; a <label> beside
                     the input would duplicate it on screen for no one's benefit. */}

@@ -148,7 +148,7 @@ const ProposalReview = ({
       width="100%"
     >
       <Stack align="start" direction="row" gap="control" justify="between" render="header" wrap>
-        <Stack gap="1" minWidth={0}>
+        <Stack flexShrink={1} gap="1" minWidth={0}>
           {showWorkflowHeading ? (
             <>
               <Text as="h2" strong textRole="headline">
@@ -241,7 +241,7 @@ const ProposalReview = ({
           paddingVertical={12}
           wrap
         >
-          <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
             <Text as="p" textRole="compact" tone="secondary">
               “{proposal.intent.description}”
             </Text>

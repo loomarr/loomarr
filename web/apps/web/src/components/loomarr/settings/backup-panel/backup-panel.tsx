@@ -56,7 +56,7 @@ const BackupPanel = ({
   return (
     <Card className={className} padding={16} render="section">
       <Stack align="start" direction="row" gap="4">
-        <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="1" minWidth={0}>
           <Text as="h2" textRole="cardLabel">
             Backups
           </Text>

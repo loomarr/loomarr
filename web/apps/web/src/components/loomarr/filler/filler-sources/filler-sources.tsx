@@ -234,8 +234,8 @@ const FillerSources = ({
   };
 
   return (
-    <Stack className={className} flexShrink={0} gap="section">
-      <Stack align="start" direction="row" flexShrink={0} gap="4" wrap>
+    <Stack className={className} gap="section">
+      <Stack align="start" direction="row" gap="4" wrap>
         <div className="min-w-0 flex-1">
           <Text as="h2" strong textRole="cardLabel">
             Where filler comes from

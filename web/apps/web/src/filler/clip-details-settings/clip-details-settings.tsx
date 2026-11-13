@@ -196,7 +196,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 <Icon decorative glyph={icons.search} size="default" tone="muted" />
               </Stack>
             )}
-            <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="1" minWidth={0}>
               <Text as="p" textRole="cardLabel">
                 {statusQuery.isError
                   ? "Web search status is unavailable"

@@ -96,6 +96,7 @@ const AccountScreen = () => {
         className="max-w-form mx-auto overflow-auto p-6"
         flexBasis="0%"
         flexGrow={1}
+        flexShrink={1}
         gap="4"
         width="100%"
       >
@@ -113,7 +114,7 @@ const AccountScreen = () => {
               {(user?.name ?? "?").slice(0, 2).toUpperCase()}
             </Text>
           </Stack>
-          <Stack gap="0.5" minWidth={0}>
+          <Stack flexShrink={1} gap="0.5" minWidth={0}>
             <Text as="p" textRole="cardLabel">
               {user?.name}
             </Text>
@@ -230,7 +231,7 @@ const AccountScreen = () => {
                   />
                 ) : (
                   <>
-                    <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
+                    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
                       <Text as="p" textRole="cardLabel">
                         {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
                       </Text>

@@ -196,7 +196,7 @@ const EventDetail = ({
           {correlations.length > 0 && (
             <Stack gap="1">
               {correlations.map(([label, value]) => (
-                <Stack align="center" direction="row" gap="1" key={label} minWidth={0}>
+                <Stack align="center" direction="row" flexShrink={1} gap="1" key={label} minWidth={0}>
                   <Stack flexShrink={0} render="span" width={112}>
                     <Text as="span" textRole="hint" tone="secondary">
                       {label}
@@ -250,7 +250,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
   return (
     <Card aria-labelledby="verbose-capture-title" gap={8} padding={12} render="section">
       <Stack align="center" direction="row" gap="control" wrap>
-        <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={256}>
           <Text as="h3" id="verbose-capture-title" textRole="cardLabel">
             Verbose capture
           </Text>
@@ -392,7 +392,7 @@ const ApplicationDiagnostics = ({
   ] as const;
 
   return (
-    <Stack aria-labelledby="logs-title" flexBasis="0%" flexGrow={1} gap="4" render="section">
+    <Stack aria-labelledby="logs-title" flexBasis="0%" flexGrow={1} flexShrink={1} gap="4" render="section">
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div>
           <Text as="h2" id="logs-title" textRole="headline">
@@ -626,7 +626,7 @@ const ApplicationDiagnostics = ({
                               {levelLabel(event.level)}
                             </Stack>
                           </Text>
-                          <Stack gap="1" minWidth={0} render="span">
+                          <Stack flexShrink={1} gap="1" minWidth={0} render="span">
                             <Text as="span" textRole="cardLabel" tone="primary">
                               {event.message || fallbackMessage(event)}
                             </Text>

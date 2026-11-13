@@ -263,7 +263,7 @@ const TasksPage = () => {
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
       />
 
-      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} gap="2" padding={24}>
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} gap="2" padding={24}>
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;
@@ -284,7 +284,7 @@ const TasksPage = () => {
                 <Text as="span" textRole="cardLabel">
                   {group.label}
                 </Text>
-                <Stack align="center" direction="row" flexGrow={1} gap="inline" justify="end">
+                <Stack align="center" direction="row" flexGrow={1} flexShrink={1} gap="inline" justify="end">
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
                   <Text as="span" textRole="hint" tone="secondary">

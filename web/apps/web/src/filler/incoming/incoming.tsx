@@ -81,7 +81,7 @@ const StatusRows = ({
         >
           {row.thumbImage ? <ServedImage image={row.thumbImage} alt="" sizes="64px" /> : null}
         </Stack>
-        <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0} render="span">
           <Text as="span" className="break-words" textRole="cardLabel" tone="primary">
             {row.name}
           </Text>

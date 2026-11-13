@@ -18,7 +18,14 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
     justify="between"
   >
     <nav aria-label="Settings location" className="min-w-0">
-      <Stack align="center" className="min-w-0 text-sm" direction="row" gap="inline" render="ol">
+      <Stack
+        align="center"
+        className="min-w-0 text-sm"
+        direction="row"
+        flexShrink={1}
+        gap="inline"
+        render="ol"
+      >
         <li>
           <Action accessibilityRole="link" icon="goBack" render={<Link to="/settings" />} variant="ghost">
             Settings

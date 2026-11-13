@@ -35,7 +35,7 @@ const Thumb = ({ member }: { member: LibraryCollectionMember }) => (
 );
 
 const NameYear = ({ member }: { member: LibraryCollectionMember }) => (
-  <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+  <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
     <Text textRole="body">{member.name}</Text>
     {member.year ? (
       <Text textRole="compact" tone="secondary">

@@ -484,7 +484,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   }
 
   return (
-    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} render="section">
+    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} flexShrink={1} render="section">
       <div className="relative min-h-0 flex-1">
         {playerEl}
         {/* The wash's centred channel line is the visible readout; this is the same line for a

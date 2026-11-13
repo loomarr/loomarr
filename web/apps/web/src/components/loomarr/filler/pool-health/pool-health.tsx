@@ -35,7 +35,7 @@ const Stat = ({
   note: string;
   tone?: "warn";
 }) => (
-  <Stack className="min-w-0" gap="0.5">
+  <Stack className="min-w-0" flexShrink={1} gap="0.5">
     <Text as="span" textRole="metadata">
       {label}
     </Text>

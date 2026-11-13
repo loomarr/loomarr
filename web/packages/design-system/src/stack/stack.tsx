@@ -181,6 +181,11 @@ type StackProps = StackOwnProps &
  * own (no colour, border or padding), so a call site keeps what it is for in its own element and
  * hands the arrangement here. Web and native share one implementation (Tamagui's View maps to a
  * flex <div> on web and a View on native), so a row reads the same on both.
+ *
+ * A Stack never shrinks unless asked (`flexShrink` is 0, as in React Native): a Stack that shrank by
+ * default collapsed below its content in a height-capped column. One that must give way, usually a
+ * truncating cell in a row, sets `flexShrink={1}` and `minWidth={0}`; a `flexBasis="0%" flexGrow={1}`
+ * child sets `flexShrink={1}` too.
  */
 const Stack = ({
   align = "stretch",
@@ -209,10 +214,11 @@ const Stack = ({
           rowGap: space(resolvedRowGap ?? resolvedGap),
         };
   return (
-    // Tamagui's View never shrinks as a flex item (flex-shrink 0), unlike the <div> a call site moves
-    // from, so a Stack in a flex row would overflow rather than give way. A caller can still set it.
+    // A Stack does not shrink as a flex item (flex-shrink 0), as in React Native: in a height-capped
+    // column a shrinking Stack collapses below its content. A Stack that must give way, usually a
+    // truncating cell in a row, sets `flexShrink={1}` and `minWidth={0}` itself.
     <View
-      flexShrink={1}
+      flexShrink={0}
       {...props}
       alignItems={alignItems[resolve(align, active)]}
       flexDirection={resolve(direction, active)}

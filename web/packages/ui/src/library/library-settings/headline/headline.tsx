@@ -59,7 +59,7 @@ const Headline = ({
               </Text>
               {words.current ? (
                 // A clipped, min-width-0 box is what lets the design system truncate.
-                <Stack minWidth={0} overflow="hidden">
+                <Stack flexShrink={1} minWidth={0} overflow="hidden">
                   <Text numberOfLines={1} textRole="mono" tone="secondary">
                     {words.current}
                   </Text>

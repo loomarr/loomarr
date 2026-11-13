@@ -258,7 +258,7 @@ const AppShell = ({
                 )}
               >
                 <Text as="span" style={versionTextStyle} textRole="mono">
-                  <Stack align="center" direction="row" gap="2" minWidth={0} render="span">
+                  <Stack align="center" direction="row" flexShrink={1} gap="2" minWidth={0} render="span">
                     {versionLabel}
                   </Stack>
                 </Text>
@@ -267,6 +267,7 @@ const AppShell = ({
               <Stack
                 align="center"
                 direction="row"
+                flexShrink={1}
                 gap="inline"
                 marginTop="auto"
                 minWidth={0}
@@ -339,7 +340,7 @@ const AppShell = ({
           viewport instead of being added to main's scrollable content (a second scroller at phone
           width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
-      <Stack flexBasis="0%" flexGrow={1}>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
         {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
             top right on every page (#2751). It opens the same search the rail's button does. */}
         {phoneWidth && (
@@ -354,6 +355,7 @@ const AppShell = ({
           className="overflow-auto overscroll-contain focus:outline-none"
           flexBasis="0%"
           flexGrow={1}
+          flexShrink={1}
           id={MAIN_ID}
           render="main"
           tabIndex={-1}

@@ -112,6 +112,7 @@ const PodTimeline = ({
                 align="center"
                 className="h-full min-w-0 px-1"
                 direction="row"
+                flexShrink={1}
                 justify="center"
                 render="span"
               >

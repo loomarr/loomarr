@@ -31,7 +31,7 @@ const ProcessingStage = ({ stage, timeZone }: { stage: IncomingProcessingStageDT
       aria-hidden
       className="border-background bg-muted-foreground absolute top-1.5 -left-[0.3125rem] size-2.5 rounded-full border-2"
     />
-    <Stack align="baseline" direction="row" gap="3" justify="between" minWidth={0} wrap>
+    <Stack align="baseline" direction="row" flexShrink={1} gap="3" justify="between" minWidth={0} wrap>
       <Text as="span" textRole="cardLabel">
         {stage.label}
       </Text>

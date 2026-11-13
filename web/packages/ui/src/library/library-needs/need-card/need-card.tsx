@@ -52,7 +52,7 @@ const NeedCard = ({
         <Stack flexShrink={0} width={wide ? 144 : 112}>
           <LibraryPoster art={best?.poster} big name={needName(need)} />
         </Stack>
-        <Stack flexBasis={240} flexGrow={1} gap="control" minWidth={0}>
+        <Stack flexBasis={240} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
           {phase ? (
             <Line paddingVertical="section">
               <StatusDot label="Done" tone="ok" />

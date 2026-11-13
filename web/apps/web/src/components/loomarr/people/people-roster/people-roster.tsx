@@ -44,14 +44,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
 
   return (
     <Stack aria-labelledby="people-roster-title" gap="control" render="section">
-      {/* flexShrink 0: a Stack's View base lets it shrink below its content, which squashes this
-          header into the filters and list under it when the page's column is height-capped. */}
-      <Stack
-        align={{ base: "stretch", lg: "end" }}
-        direction={{ base: "column", lg: "row" }}
-        flexShrink={0}
-        gap="3"
-      >
+      <Stack align={{ base: "stretch", lg: "end" }} direction={{ base: "column", lg: "row" }} gap="3">
         <div className="min-w-0 flex-1">
           <Text as="h2" id="people-roster-title" strong textRole="headline">
             People

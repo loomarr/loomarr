@@ -130,7 +130,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
         <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
         </span>
-        <Stack gap="0.5" minWidth={0}>
+        <Stack flexShrink={1} gap="0.5" minWidth={0}>
           <Text as="p" textRole="cardLabel" tone="primary">
             {level.label}
           </Text>
