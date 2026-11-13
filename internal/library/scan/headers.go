@@ -226,7 +226,15 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 	}
 	facts := h.SourceFacts()
 	now := im.now()
-	snapshot := job.b.snapshot(ctx, job.file, job.id, now)
+	// The item's observation keeps the pass's time, not the moment this worker finished: several
+	// workers read at once, and the item takes its name from its newest present origin, so a
+	// per-read time would let whichever copy's header was read last (an extra copy included) name
+	// the title. Origins of one pass tie, and the tie breaks by key, so the pick is stable.
+	seen := job.row.SeenAt
+	if seen.IsZero() {
+		seen = now
+	}
+	snapshot := job.b.snapshot(ctx, job.file, job.id, seen)
 	snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(job.file, &facts, im.reader(), now)}
 	itemID, problem, err := im.applyFile(ctx, snapshot)
 	if err != nil {
