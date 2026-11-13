@@ -1,5 +1,6 @@
 import * as libraryApi from "@loomarr/api/endpoints/library";
 import { LibrarySettings, StatePanel } from "@loomarr/ui";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { readyTitleOf } from "../ready-title";
 import { useLibraryFolders } from "../use-library-folders";
@@ -10,6 +11,7 @@ import { useLibraryFolders } from "../use-library-folders";
 
 const SettingsLibrary = () => {
   const folders = useLibraryFolders();
+  const timeZone = useHouseholdTimeZone();
   const mutation = { mutation: { onSettled: folders.refresh } };
   const map = libraryApi.useSetLibraryPathMapping(mutation);
   const rescan = libraryApi.useRescanLibrary(mutation);
@@ -32,7 +34,10 @@ const SettingsLibrary = () => {
         folders={body.roots}
         health={health}
         held={current.held}
+        unreadable={current.unreadable}
+        skipped={current.skipped}
         hooks={current.hooks}
+        details={current.details}
         scan={current.scan}
         readySoFar={folders.readySoFar.map(readyTitleOf)}
         onRescan={() => rescan.mutate()}
@@ -43,6 +48,7 @@ const SettingsLibrary = () => {
         onMapFolder={(row) => map.mutate({ data: row })}
         onUseFolder={folders.onUseFolder}
         pathMap={body.pathMap}
+        timeZone={timeZone}
       />
     </>
   );

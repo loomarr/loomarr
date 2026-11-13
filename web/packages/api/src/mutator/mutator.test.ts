@@ -102,6 +102,28 @@ describe("customFetch", () => {
     });
   });
 
+  // A proxy in front of the server answers with an HTML page: the status still decides, so a
+  // gateway failure is the same typed ApiError every error surface renders, never a SyntaxError.
+  it("throws a typed ApiError for a failure whose body is not JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("<html>502 Bad Gateway</html>", { status: 502 }))),
+    );
+    const failure = customFetch("/v1/channels");
+    await expect(failure).rejects.toBeInstanceOf(ApiError);
+    await expect(failure).rejects.toMatchObject({ status: 502, problem: { status: 502 } });
+  });
+
+  // An HTML page that answers 200 for an API path (a fallback serving the app) is not the answer
+  // asked for: it fails as a typed ApiError too, rather than throwing the parser's error.
+  it("throws a typed ApiError for a success whose body is not JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("<!doctype html>", { status: 200 }))),
+    );
+    await expect(customFetch("/v1/channels")).rejects.toBeInstanceOf(ApiError);
+  });
+
   it("ApiError is an Error subclass with the problem attached", () => {
     const err = new ApiError(404, { title: "Not found" });
     expect(err).toBeInstanceOf(Error);

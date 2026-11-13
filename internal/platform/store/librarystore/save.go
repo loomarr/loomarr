@@ -149,8 +149,8 @@ func (s *Store) saveLibraryFilesAndArt(ctx context.Context, tx storedb.Tx, it Li
 		}
 		paths[src.Path] = true
 		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO library_sources (item_id, path, container, size_bytes,
-			bitrate, duration_ms, edition, plays) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-			it.ID, src.Path, src.Container, src.SizeBytes, src.Bitrate, src.DurationMs, src.Edition, src.Plays); err != nil {
+			bitrate, duration_ms, edition, part, plays) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			it.ID, src.Path, src.Container, src.SizeBytes, src.Bitrate, src.DurationMs, src.Edition, src.Part, src.Plays); err != nil {
 			return fmt.Errorf("save library source: %w", err)
 		}
 		refs := map[string]bool{}

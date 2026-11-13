@@ -52,6 +52,10 @@ type RewindStore interface {
 // ErrTranscodeNeedsForce is returned when a rewind would re-encode a clip without `force`.
 var ErrTranscodeNeedsForce = errors.New("re-encoding loses a generation of quality and the original is gone; pass force to do it anyway")
 
+// ErrFilesDeleted refuses to re-run a clip Loomarr let go (#3855): its files are gone, and its row
+// is the record of why.
+var ErrFilesDeleted = errors.New("this clip's files were deleted a week after it was turned down; there is nothing to run again")
+
 // ErrPipelineNotRetryable distinguishes an execution retry from an arbitrary rewind or content
 // override. API callers map it to a conflict after reloading the authoritative row.
 var ErrPipelineNotRetryable = errors.New("pipeline row does not have a retryable execution failure")
@@ -99,6 +103,11 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from pipelinestate.S
 	}
 	if clip.Path == "" {
 		return fmt.Errorf("clip %s has no playable path", hash)
+	}
+	if current, found, err := p.store.GetClipPipeline(ctx, hash); err != nil {
+		return err
+	} else if found && !current.FilesDeletedAt.IsZero() {
+		return ErrFilesDeleted
 	}
 	// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
 	// "preparing", and the terminal Ready transaction then rejects it forever because publication
@@ -264,9 +273,9 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 	clip, _, _ := p.clips.GetClip(ctx, hash)
 	p.publish(row, clip)
 	if p.log != nil {
-		// ⚠ Logged HERE, not at the call site: the operator-facing adapter has no logger by
-		// design, and this is the line that distinguishes "the re-detect worked and the reel is
-		// moving" from "the reel is stuck" — the one fact that was unobservable before V54a.
+		// ⚠ The success is logged HERE, so the line that distinguishes "the re-detect worked and
+		// the reel is moving" from "the reel is stuck" is written by the code that knows it moved
+		// something. The caller logs a failure.
 		p.log.Info("split: re-detected reel returned to the belt", "clip", hash)
 	}
 	return true, nil

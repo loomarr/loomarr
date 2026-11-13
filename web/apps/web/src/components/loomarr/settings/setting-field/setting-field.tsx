@@ -12,6 +12,7 @@ import {
   FieldHint,
   Icon,
   icons,
+  Stack,
   StatusLabel,
   Surface,
   Text,
@@ -70,12 +71,20 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
 
 // A number box with its unit beside it: the bytes editor's MiB, or a registry-declared unit.
 const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => (
-  <div className="flex gap-2">
+  <Stack direction="row" gap="inline">
     {children}
-    <span className="border-input text-muted-foreground flex h-10 w-16 shrink-0 items-center justify-center rounded-md border text-sm">
-      {unit}
-    </span>
-  </div>
+    <Stack
+      align="center"
+      className="border-input h-10 w-16 rounded-md border"
+      flexShrink={0}
+      justify="center"
+      render="span"
+    >
+      <Text as="span" textRole="compact" tone="secondary">
+        {unit}
+      </Text>
+    </Stack>
+  </Stack>
 );
 
 const SettingField = ({
@@ -94,7 +103,7 @@ const SettingField = ({
   const [editingCustomSchedule, setEditingCustomSchedule] = useState(false);
   const id = `setting-${entry.key}`;
   const label = entry.label || humanizeSettingKey(entry.key);
-  // `pinned` is the LOCK STATE, which is no longer the same question as "is this env's key".
+  // `pinned` is the LOCK STATE, which is not the same question as "is this env's key".
   // An unlocked key (§3.1) resolves as `db` while its variable is still set, so it is
   // editable — but still overriding, which the badge below has to say.
   const pinned = entry.provenance === SettingEntryProvenance.env;
@@ -178,7 +187,7 @@ const SettingField = ({
       const matched = presets.find((option) => option.value === value);
       const preset = editingCustomSchedule || !matched ? CUSTOM_PRESET : matched.value;
       return (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <CompactSelect
             aria-describedby={describedBy}
             aria-labelledby={labelledBy}
@@ -208,7 +217,7 @@ const SettingField = ({
               units={["days", "hours", "minutes"]}
             />
           )}
-        </div>
+        </Stack>
       );
     }
     if (entry.kind === SettingKind.cron) {
@@ -336,7 +345,9 @@ const SettingField = ({
     return (
       <div className={cn("min-w-0", className)}>
         {secretLocked ? (
-          <span className="text-muted-foreground font-mono text-xs">{entry.preview ?? "stored"}</span>
+          <Text as="span" textRole="mono">
+            {entry.preview ?? "stored"}
+          </Text>
         ) : (
           control()
         )}
@@ -356,7 +367,7 @@ const SettingField = ({
         className,
       )}
     >
-      <div className="flex items-center gap-2">
+      <Stack align="center" direction="row" gap="inline">
         <Text as="label" htmlFor={id} textRole="label">
           {label}
         </Text>
@@ -413,17 +424,31 @@ const SettingField = ({
                   text — a swap that changes width would make the label twitch on hover. The
                   padlock is the control and keeps its open-on-hover tell; the state itself is
                   the quiet dot and word, not a filled chip (#2784). */}
-              <span className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal flex items-center gap-1.5">
+              <Stack
+                align="center"
+                className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal"
+                direction="row"
+                gap="1.5"
+                render="span"
+              >
                 <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
-                  <span className="absolute flex transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0">
+                  <Stack
+                    className="absolute transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0"
+                    direction="row"
+                    render="span"
+                  >
                     <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
-                  </span>
-                  <span className="absolute flex opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100">
+                  </Stack>
+                  <Stack
+                    className="absolute opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100"
+                    direction="row"
+                    render="span"
+                  >
                     <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
-                  </span>
+                  </Stack>
                 </span>
                 <StatusLabel tone="off">Set via environment</StatusLabel>
-              </span>
+              </Stack>
             </button>
           ) : (
             <StatusLabel tone="off">Set via environment</StatusLabel>
@@ -447,13 +472,20 @@ const SettingField = ({
         {result?.status === SettingResultStatus.pinned && !pinned && (
           <StatusLabel tone="warn">Not saved: pinned</StatusLabel>
         )}
-      </div>
+      </Stack>
 
       {secretLocked ? (
-        <div className="flex items-center gap-2">
-          <span className="border-input text-muted-foreground flex h-9 flex-1 items-center rounded-md border px-3 font-mono text-sm">
+        <Stack align="center" direction="row" gap="inline">
+          <Stack
+            align="center"
+            className="border-input text-muted-foreground h-9 rounded-md border px-3 font-mono text-sm"
+            direction="row"
+            flexBasis="0%"
+            flexGrow={1}
+            render="span"
+          >
             {entry.preview ?? "stored"}
-          </span>
+          </Stack>
           <Action
             onPress={() => {
               setReplacing(true);
@@ -463,7 +495,7 @@ const SettingField = ({
           >
             Replace
           </Action>
-        </div>
+        </Stack>
       ) : (
         control()
       )}
@@ -476,9 +508,11 @@ const SettingField = ({
       )}
 
       {entry.caution && (
-        <FieldHint tone="error" className={cn("flex items-center gap-1", inlineSwitch && "col-span-2")}>
-          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          The stored value was invalid and has been reset to the default.
+        <FieldHint tone="error" className={cn(inlineSwitch && "col-span-2")}>
+          <Stack align="center" direction="row" gap="1" render="span">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+            The stored value was invalid and has been reset to the default.
+          </Stack>
         </FieldHint>
       )}
 
@@ -487,12 +521,14 @@ const SettingField = ({
           id={`${id}-unavailable`}
           role="alert"
           tone="error"
-          className={cn("flex items-start gap-1", inlineSwitch && "col-span-2")}
+          className={cn(inlineSwitch && "col-span-2")}
         >
-          <span className="mt-0.5 flex">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
-          {disabledReason}
+          <Stack align="start" direction="row" gap="1" render="span">
+            <Stack className="mt-0.5" direction="row" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+            </Stack>
+            {disabledReason}
+          </Stack>
         </FieldHint>
       )}
 
@@ -503,11 +539,14 @@ const SettingField = ({
           screen readers; the transition is frozen under reduced-motion. Only for a value a
           PERSON set: an env pin or built-in default has no author to name. */}
       {entry.updatedAt && (
-        <p
+        <Text
+          as="p"
           className={cn(
-            "text-muted-foreground pointer-events-none text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
+            "pointer-events-none opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
             inlineSwitch && "col-span-2",
           )}
+          textRole="hint"
+          tone="secondary"
         >
           {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
           {entry.updatedByYou
@@ -515,7 +554,7 @@ const SettingField = ({
             : entry.updatedBy
               ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
               : `Changed ${formatAgo(entry.updatedAt)}`}
-        </p>
+        </Text>
       )}
 
       {problem && (

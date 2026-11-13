@@ -1,5 +1,5 @@
 import { Icon, type IconName, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-system";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { nativeFocus, raised, webOnly } from "../flat";
@@ -16,13 +16,18 @@ const UTILITY_SIZE = { pointer: 40, touch: 44 } as const;
 interface UtilityKeyProps {
   /** Subtitles on: a small white dot, never amber. */
   active?: boolean | undefined;
+  /**
+   * A system control laid over the key's face that takes its taps (AirPlay's route picker); the key
+   * then only draws, and leaves the control to be the one a screen reader finds.
+   */
+  cover?: ReactNode;
   /** The key that does this on a keyboard, named in the tooltip. */
   hint?: string;
   icon: IconName;
   label: string;
-  onPress: () => void;
+  onPress?: () => void;
   pointer: boolean;
-  /** What it opens is open: a tone lighter, and it says it is expanded. */
+  /** What it opens is open: a tone lighter, and it says it is expanded. Left out on a key that opens nothing. */
   pressed?: boolean | undefined;
   /** The tooltip opens downward (Leave, at the top of the screen); otherwise upward. */
   tipBelow?: boolean;
@@ -30,12 +35,13 @@ interface UtilityKeyProps {
 
 const UtilityKey = ({
   active,
+  cover,
   hint,
   icon,
   label,
   onPress,
   pointer,
-  pressed = false,
+  pressed,
   tipBelow = false,
 }: UtilityKeyProps) => {
   const [hovered, setHovered] = useState(false);
@@ -45,8 +51,11 @@ const UtilityKey = ({
     <View>
       <Pressable
         accessibilityLabel={label}
+        aria-hidden={cover !== undefined}
+        focusable={cover === undefined}
         accessibilityRole="button"
-        accessibilityState={{ expanded: pressed || undefined }}
+        // aria-expanded, not accessibilityState: React Native for Web 0.21 drops the latter.
+        aria-expanded={pressed}
         {...focusHandlers}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}
@@ -92,6 +101,9 @@ const UtilityKey = ({
           />
         ) : null}
       </Pressable>
+      {cover ? (
+        <View style={{ height: size, left: 0, position: "absolute", top: 0, width: size }}>{cover}</View>
+      ) : null}
       {pointer && (hovered || focused) ? (
         <View
           pointerEvents="none"
@@ -125,9 +137,9 @@ const UtilityKey = ({
 };
 
 const PlayerUtilities = ({
+  airPlayPicker,
   audioOpen,
   fullscreen,
-  onAirPlay,
   onAudio,
   onFullscreen,
   onPictureInPicture,
@@ -158,7 +170,9 @@ const PlayerUtilities = ({
         pressed={audioOpen}
       />
     ) : null}
-    {onAirPlay ? <UtilityKey icon="airplay" label="AirPlay" onPress={onAirPlay} pointer={pointer} /> : null}
+    {airPlayPicker ? (
+      <UtilityKey cover={airPlayPicker} icon="airplay" label="AirPlay" pointer={pointer} />
+    ) : null}
     {onPictureInPicture ? (
       <UtilityKey
         icon="pictureInPicture"

@@ -16,6 +16,7 @@ import {
   PlayerOptions,
   PlayerSheet,
   type PlayerUtilitiesProps,
+  PlayerVolume,
 } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -78,7 +79,7 @@ const keys = (overrides: Partial<PlayerKeysProps> = {}): PlayerKeysProps => ({
   onTogglePlay: vi.fn(),
   playing: true,
   pointer: true,
-  volume: { muted: false, onToggleMute: vi.fn() },
+  volume: { muted: false, onPress: vi.fn(), open: false },
   ...overrides,
 });
 
@@ -167,7 +168,7 @@ describe("PlayerChrome", () => {
       "Channel up",
       "Channel down",
       "Pause",
-      "Mute",
+      "Volume",
       "More",
       "Audio",
       "Fullscreen",
@@ -183,6 +184,27 @@ describe("PlayerChrome", () => {
         el.getAttribute("aria-label"),
       ),
     ).toEqual(expect.arrayContaining(["Audio", "Fullscreen", "Pause", "More"]));
+  });
+
+  // iOS opens AirPlay's picker only from its own button, so the key draws and the picker takes the tap.
+  it("gives an iPhone AirPlay, with the system's picker over the key, and picture in picture", () => {
+    const onPictureInPicture = vi.fn();
+    const host = mount(
+      chrome({
+        utilities: utilities({
+          airPlayPicker: <span data-testid="route-picker" />,
+          density: "touch",
+          onPictureInPicture,
+          pointer: false,
+        }),
+      }),
+    );
+
+    expect(host.querySelector('[data-testid="player-cluster"] [data-testid="route-picker"]')).not.toBeNull();
+    // The picker is the AirPlay control; the key under it is drawing only, not a second button.
+    expect(button(host, "AirPlay")?.getAttribute("aria-hidden")).toBe("true");
+    act(() => button(host, "Picture in picture")?.click());
+    expect(onPictureInPicture).toHaveBeenCalledOnce();
   });
 
   it("sets the programme's rating beside Leave, and leaves", () => {
@@ -231,17 +253,34 @@ describe("PlayerChrome", () => {
     expect(onPress).toHaveBeenCalledOnce();
   });
 
-  it("flips channels, plays and mutes from the keys", () => {
+  it("flips channels, plays and opens the volume level from the keys", () => {
     const k = keys();
     const host = mount(chrome({ keys: k }));
     act(() => button(host, "Channel up")?.click());
     act(() => button(host, "Channel down")?.click());
     act(() => button(host, "Pause")?.click());
-    act(() => button(host, "Mute")?.click());
+    act(() => button(host, "Volume")?.click());
     expect(k.onChannelUp).toHaveBeenCalledOnce();
     expect(k.onChannelDown).toHaveBeenCalledOnce();
     expect(k.onTogglePlay).toHaveBeenCalledOnce();
-    expect(k.volume?.onToggleMute).toHaveBeenCalledOnce();
+    expect(k.volume?.onPress).toHaveBeenCalledOnce();
+  });
+
+  it("draws the volume level in the menu's place: Off when muted", () => {
+    const host = mount(
+      chrome({
+        keys: keys({ volume: { muted: true, onPress: vi.fn(), open: true } }),
+        menu: <PlayerVolume muted onVolume={vi.fn()} volume={0.4} />,
+      }),
+    );
+    // What a key opens says so to a screen reader; a key that opens nothing says nothing about it.
+    expect(button(host, "Volume")?.getAttribute("aria-expanded")).toBe("true");
+    expect(button(host, "More")?.getAttribute("aria-expanded")).toBe("false");
+    expect(button(host, "Pause")?.getAttribute("aria-expanded")).toBeNull();
+    expect(host.querySelector('[data-testid="player-volume"]')?.textContent).toContain("Off");
+    expect(
+      host.querySelector('[data-testid="player-volume"] [role="slider"]')?.getAttribute("aria-label"),
+    ).toBe("Volume");
   });
 
   it("leaves out the rocker where the player cannot tune, and Volume where the device has its own", () => {
@@ -523,6 +562,25 @@ describe("PlayerCover", () => {
     act(() => button(host, "Leave")?.click());
     expect(onRetry).toHaveBeenCalledOnce();
     expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("draws Retry as the white disc, never amber, since amber means live (§9.6)", () => {
+    const g = globalThis as unknown as { getComputedStyle(n: Node): { backgroundColor: string } };
+    const rgb = (hex: string) =>
+      `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+    const host = mount(
+      <PlayerCover
+        channelLabel="CH 7 · Coast 90s"
+        density="touch"
+        kind="error"
+        onLeave={vi.fn()}
+        onRetry={vi.fn()}
+        title="The stream stopped."
+      />,
+    );
+
+    const retry = button(host, "Retry channel") as Node;
+    expect(g.getComputedStyle(retry).backgroundColor).toBe(rgb(playerChrome.disc));
   });
 
   it("is a status for an off-air channel, with only the way out", () => {

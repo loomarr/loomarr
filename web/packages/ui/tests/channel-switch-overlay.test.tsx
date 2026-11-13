@@ -57,8 +57,11 @@ const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof Watc
       formatTime={String}
       onDismissControls={vi.fn()}
       onGoLive={vi.fn()}
+      onLayer={vi.fn()}
       onOpenGuide={vi.fn()}
+      onOpenSurf={vi.fn()}
       onRetry={vi.fn()}
+      onSeek={vi.fn()}
       onTuneChannel={vi.fn()}
       playheadMs={0}
       player={<div data-player="one-native-player" />}

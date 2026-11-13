@@ -2,10 +2,24 @@
 // apps/web, `@tanstack/react-form` elsewhere): its values, validation and submit state live in one
 // place rather than in a `useState` per input.
 //
-// A source is a hand-rolled form when it keeps a text, number or choice input's draft in `useState`:
-// a `useState` setter is called from an input's `onChangeText`, `onChange` or `onValueChange`, and
-// the file does not import `@tanstack/react-form` (or `@/lib/app-form`). Tests and stories are not
-// production code and are not counted.
+// A source is a hand-rolled form when it keeps a typed input's draft in `useState`: a `useState`
+// setter is called from an input's `onChangeText` or `onChange` (a select's `onValueChange` picks
+// what to show, which is a view setting, not a draft). A handler counts when it names a function of
+// the same file that stores what it was handed (`onChangeText={changeNote}` with a `changeNote` that
+// calls `setNote(value)`), and so does a text state's setter handed whole to a change prop
+// (`onDsnChange={setDsn}`). Each input is judged on its own: a file that
+// also holds a TanStack form is not excused, since a field's `handleChange` is never a `useState`
+// setter and so never counts. A search box or filter
+// (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, unless it sits inside a
+// `<form>` or in a component that holds a submit (an `onSubmit`, a `type="submit"`, or an `Action` or
+// `Pressable` whose `onPress` reads two or more of the component's drafts, which is how the design
+// system submits): there the name excuses nothing. A `useReducer` dispatch handed what was typed is
+// a draft like a setter, and so is a `useRef` object an input writes inside a submitted form. Neither is a flag
+// a handler raises (`setOpen(true)`). Tests and stories are not production code and are not counted.
+// Two buffers are sanctioned that are not a TanStack form: a settings draft (`useSettingsDraft`) and
+// a single input's draft-until-commit (`useCommittedDraft`, once per component: a second in the same
+// component makes it a form, also when it is called through a hook of the same file that wraps it);
+// see SANCTIONED_DRAFT_HOOKS below.
 //
 // The committed ledger (hand-rolled-forms.json) is a ratchet:
 //   - the check fails when a file not in the ledger is a hand-rolled form;
@@ -22,8 +36,7 @@ const webRoot = fileURLToPath(new URL("../", import.meta.url));
 const roots = [join(webRoot, "apps", "web", "src"), join(webRoot, "packages", "ui", "src")];
 const ledgerPath = join(webRoot, "hand-rolled-forms.json");
 
-const INPUT_HANDLERS = new Set(["onChangeText", "onChange", "onValueChange"]);
-const FORM_MODULES = ["@tanstack/react-form", "@/lib/app-form"];
+const INPUT_HANDLERS = new Set(["onChangeText", "onChange"]);
 const NON_CHILD_KEYS = new Set([
   "loc",
   "start",
@@ -60,9 +73,16 @@ const walk = (node, visit) => {
   }
 };
 
-// stateSetters names every setter a `const [value, setValue] = useState(…)` declares.
+// A search box or a list filter narrows what is shown; nothing submits it, so it is not a form.
+// The name only says what a lone input is for: it excuses nothing that structure shows is a form.
+// An input inside a `<form>`, or in a component that holds a submit, is a form whatever its setter
+// is called (see `submittedElements`).
+const FILTER_SETTER = /^set(?:Query|Search|Filter|Q|Needle|Role|Status)\w*$/;
+
+// stateSetters names every setter a `const [value, setValue] = useState(…)` declares: the draft
+// setters, and apart from them the ones named like a filter's.
 const stateSetters = (program) => {
-  const setters = new Set();
+  const setters = { draft: new Set(), filter: new Set() };
   walk(program, (node) => {
     if (
       node.type === "VariableDeclarator" &&
@@ -72,27 +92,562 @@ const stateSetters = (program) => {
       node.init.callee.type === "Identifier" &&
       node.init.callee.name === "useState"
     ) {
+      const setter = node.id.elements[1].name;
+      (FILTER_SETTER.test(setter) ? setters.filter : setters.draft).add(setter);
+    }
+  });
+  return setters;
+};
+
+// submittedElements: the elements that sit inside a `<form>`, or in a function that holds a submit
+// (an `onSubmit` or a `type="submit"`, which is how a submit button is spelled), so that what they
+// write is submitted together, whatever it is called.
+const isSubmitAttribute = (attribute) =>
+  attribute.type === "JSXAttribute" &&
+  attribute.name.type === "JSXIdentifier" &&
+  (attribute.name.name === "onSubmit" ||
+    (attribute.name.name === "type" && attribute.value?.value === "submit"));
+
+// The design system submits through a press, not a `<form>`: an `Action` or a `Pressable` whose
+// `onPress` reads two or more drafts of the component it sits in saves them together, so it is a
+// submit too. That includes a press that names a function of the file which reads them.
+const PRESS_ELEMENTS = new Set(["Action", "Pressable"]);
+
+// declaredDrafts lists the `useState` and `useReducer` values each function declares, with the
+// function that owns them: a press reads the drafts of the component it is in, not a prop of
+// another that happens to share a name.
+const declaredDrafts = (program) => {
+  const drafts = [];
+  const visit = (node, owner) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, owner);
+      return;
+    }
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id.type === "ArrayPattern" &&
+      node.id.elements[0]?.type === "Identifier" &&
+      node.init?.type === "CallExpression" &&
+      node.init.callee.type === "Identifier" &&
+      (node.init.callee.name === "useState" || node.init.callee.name === "useReducer")
+    ) {
+      drafts.push({ name: node.id.elements[0].name, owner });
+    }
+    const next = FUNCTION_NODES.has(node.type) ? node : owner;
+    for (const [key, child] of Object.entries(node)) {
+      if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") visit(child, next);
+    }
+  };
+  visit(program, undefined);
+  return drafts;
+};
+
+// pressReadsDrafts: the press handler reads at least two of the drafts owned by `owners`, looking
+// into the functions of the file it names.
+const pressReadsDrafts = (handler, owners, drafts, functions) => {
+  const names = new Set(drafts.filter((draft) => owners.includes(draft.owner)).map((draft) => draft.name));
+  const read = new Set();
+  const seen = new Set();
+  const look = (root) =>
+    walk(root, (inner) => {
+      if (inner.type !== "Identifier") return;
+      if (names.has(inner.name)) read.add(inner.name);
+      if (functions.has(inner.name) && !seen.has(inner.name)) {
+        seen.add(inner.name);
+        look(functions.get(inner.name).body);
+      }
+    });
+  look(handler);
+  return read.size >= 2;
+};
+
+const submittedElements = (program, functions) => {
+  const drafts = declaredDrafts(program);
+  const found = [];
+  const submitting = new Set();
+  const visit = (node, inForm, owners) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, inForm, owners);
+      return;
+    }
+    const nextOwners = FUNCTION_NODES.has(node.type) ? [...owners, node] : owners;
+    const nextInForm =
+      inForm ||
+      (node.type === "JSXElement" &&
+        node.openingElement.name.type === "JSXIdentifier" &&
+        node.openingElement.name.name === "form");
+    if (node.type === "JSXOpeningElement") {
+      found.push({ element: node, inForm, owners });
+      if (node.attributes.some(isSubmitAttribute)) for (const owner of owners) submitting.add(owner);
+      if (node.name.type === "JSXIdentifier" && PRESS_ELEMENTS.has(node.name.name)) {
+        const press = node.attributes.find(
+          (attribute) =>
+            attribute.type === "JSXAttribute" &&
+            attribute.name.type === "JSXIdentifier" &&
+            attribute.name.name === "onPress",
+        );
+        if (press?.value && pressReadsDrafts(press.value, owners, drafts, functions)) {
+          for (const owner of owners) submitting.add(owner);
+        }
+      }
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object")
+        visit(child, nextInForm, nextOwners);
+    }
+  };
+  visit(program, false, []);
+  return new Set(
+    found
+      .filter(({ inForm, owners }) => inForm || owners.some((owner) => submitting.has(owner)))
+      .map(({ element }) => element),
+  );
+};
+
+// Two buffers are sanctioned that are not a TanStack form. Each is a named rule, not a side effect:
+// before them, such a buffer passed only because its setter did not come from a `useState` in the
+// file.
+//
+//   settings — Settings and the setup wizard draw their fields from the settings registry
+//   (`SettingsFields`), so a field is a registry row, not a named form field; what they share is
+//   the buffer of changed keys. That buffer is `useSettingsDraft` (and the Settings layout's
+//   `useSettingsEdits`, built on it), imported from the settings-draft or settings-edits module.
+//
+//   committed — a single input that is not a form: a value edited beside the stored one and handed
+//   over on blur or Enter (a box that saves on leaving it, a path-map row, a From/To pair). That
+//   draft is `useCommittedDraft`, imported from the use-committed-draft module. Inputs submitted
+//   together, with validation, are a form and use `useUiForm` / `useAppForm`.
+//
+// The rules are two-sided. A draft setter (`setEdit`, `setEdits`, `editDraft`) destructured from a
+// sanctioned hook, imported from its own module, is the sanctioned buffer. One bound from any other
+// hook (an object pattern, or the `[value, setValue]` pair a lookalike of `useState` returns) is a
+// draft kept somewhere this check cannot see into, so it counts like a `useState` setter and fails
+// when an input writes it. A `useState` in the file is judged as before; the rules excuse nothing
+// else.
+const SANCTIONED_DRAFT_HOOKS = [
+  {
+    group: "settings",
+    hooks: new Set(["useSettingsDraft", "useSettingsEdits"]),
+    module: /(?:^|\/)settings-(?:draft|edits)$/,
+  },
+  {
+    group: "committed",
+    hooks: new Set(["useCommittedDraft"]),
+    // Inside the UI package it is imported from its own module; the app takes it from the package.
+    module: /(?:^|\/)use-committed-draft$|^@loomarr\/ui$/,
+  },
+];
+const DRAFT_SETTER = /^(?:set(?:Edit|Edits)|editDraft)$/;
+const PAIR_SETTER = /^set[A-Z]\w*$/;
+
+// sanctionedHookNames: the local names of the sanctioned draft hooks the file imports from their
+// module. `groups` narrows it to some of them; by default every sanctioned hook counts.
+const sanctionedHookNames = (program, groups = SANCTIONED_DRAFT_HOOKS.map((entry) => entry.group)) => {
+  const names = new Set();
+  for (const node of program.body) {
+    if (node.type !== "ImportDeclaration") continue;
+    for (const entry of SANCTIONED_DRAFT_HOOKS) {
+      if (!groups.includes(entry.group) || !entry.module.test(node.source.value)) continue;
+      for (const specifier of node.specifiers) {
+        if (specifier.type === "ImportSpecifier" && entry.hooks.has(specifier.imported.name)) {
+          names.add(specifier.local.name);
+        }
+      }
+    }
+  }
+  // `const useName = useCommittedDraft` is the same hook under another name.
+  for (let grown = names.size > 0; grown; ) {
+    grown = false;
+    for (const node of program.body) {
+      if (node.type !== "VariableDeclaration") continue;
+      for (const declarator of node.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          declarator.init?.type === "Identifier" &&
+          names.has(declarator.init.name) &&
+          !names.has(declarator.id.name)
+        ) {
+          names.add(declarator.id.name);
+          grown = true;
+        }
+      }
+    }
+  }
+  return names;
+};
+
+const isHookCall = (init) =>
+  init?.type === "CallExpression" &&
+  init.callee.type === "Identifier" &&
+  init.callee.name.startsWith("use") &&
+  init.callee.name !== "useState";
+
+// draftHookCalls lists every `const { …, setEdit } = useSomething()` and every
+// `const [value, setValue] = useSomething()`: the hook's name and the local names its draft setters
+// were bound to.
+const draftHookCalls = (program) => {
+  const calls = [];
+  walk(program, (node) => {
+    if (node.type !== "VariableDeclarator" || !isHookCall(node.init)) return;
+    let setters = [];
+    if (node.id.type === "ObjectPattern") {
+      setters = node.id.properties
+        .filter(
+          (property) =>
+            property.type === "ObjectProperty" &&
+            property.key.type === "Identifier" &&
+            DRAFT_SETTER.test(property.key.name) &&
+            property.value.type === "Identifier",
+        )
+        .map((property) => property.value.name);
+    } else if (
+      node.id.type === "ArrayPattern" &&
+      node.id.elements[1]?.type === "Identifier" &&
+      PAIR_SETTER.test(node.id.elements[1].name)
+    ) {
+      setters = [node.id.elements[1].name];
+    }
+    if (setters.length > 0) calls.push({ hook: node.init.callee.name, setters });
+  });
+  return calls;
+};
+
+// usesDraftHook: the file buffers a draft through a sanctioned hook of this group.
+const usesDraftHook = (source, group) => {
+  const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
+  const sanctioned = sanctionedHookNames(program, [group]);
+  const calls = draftHookCalls(program);
+  if (calls.some((call) => sanctioned.has(call.hook))) return true;
+  // A provider (settings-edits) calls the hook for its edits without naming a setter.
+  let called = false;
+  walk(program, (node) => {
+    if (
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      sanctioned.has(node.callee.name)
+    ) {
+      called = true;
+    }
+  });
+  return called;
+};
+
+// usesSettingsDraft: the file buffers a settings draft through the sanctioned hook.
+const usesSettingsDraft = (source) => usesDraftHook(source, "settings");
+
+// usesCommittedDraft: the file keeps a single input's draft through the sanctioned hook.
+const usesCommittedDraft = (source) => usesDraftHook(source, "committed");
+
+// FUNCTION_NODES are the nodes that own the hooks called directly in their body.
+const FUNCTION_NODES = new Set(["ArrowFunctionExpression", "FunctionExpression", "FunctionDeclaration"]);
+
+// doubledCommittedDraft: one function calls the committed-draft hook twice or more. That hook is
+// one input's draft, so two in one component are several inputs edited together, a form kept in
+// renamed state; two components with one each are two single inputs.
+//
+// A hook of the file that returns the committed draft (`const useName = () => useCommittedDraft("")`)
+// is the committed draft under another name, and so is one that calls such a hook, so a component
+// cannot hide its second draft behind a wrapper.
+const doubledCommittedDraft = (program) => {
+  const sanctioned = sanctionedHookNames(program, ["committed"]);
+  if (sanctioned.size === 0) return false;
+  const functions = localFunctions(program);
+  for (let grown = true; grown; ) {
+    grown = false;
+    for (const [name, fn] of functions) {
+      if (sanctioned.has(name) || !name.startsWith("use")) continue;
+      let wraps = false;
+      walk(fn.body, (inner) => {
+        if (
+          inner.type === "CallExpression" &&
+          inner.callee.type === "Identifier" &&
+          sanctioned.has(inner.callee.name)
+        ) {
+          wraps = true;
+        }
+      });
+      if (wraps) {
+        sanctioned.add(name);
+        grown = true;
+      }
+    }
+  }
+  let doubled = false;
+  const visit = (node, owner, counts) => {
+    if (doubled || !node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, owner, counts);
+      return;
+    }
+    const nextOwner = FUNCTION_NODES.has(node.type) ? node : owner;
+    if (
+      node.type === "CallExpression" &&
+      node.callee.type === "Identifier" &&
+      sanctioned.has(node.callee.name)
+    ) {
+      const count = (counts.get(owner) ?? 0) + 1;
+      counts.set(owner, count);
+      if (owner && count > 1) doubled = true;
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") visit(child, nextOwner, counts);
+    }
+  };
+  visit(program, undefined, new Map());
+  return doubled;
+};
+
+// unsanctionedDraftSetters: draft setters bound from a hook that is not a sanctioned one, split like
+// stateSetters into the draft setters and the ones named like a filter's.
+const unsanctionedDraftSetters = (program) => {
+  const sanctioned = sanctionedHookNames(program);
+  const setters = { draft: new Set(), filter: new Set() };
+  for (const call of draftHookCalls(program)) {
+    if (sanctioned.has(call.hook)) continue;
+    for (const setter of call.setters)
+      (FILTER_SETTER.test(setter) ? setters.filter : setters.draft).add(setter);
+  }
+  return setters;
+};
+
+// localFunctions maps the name of every function the file binds (`const f = () => …`,
+// `const f = function () …`, `function f() …`) to the function, so a handler that names one is
+// followed into it.
+const localFunctions = (program) => {
+  const functions = new Map();
+  walk(program, (node) => {
+    if (node.type === "FunctionDeclaration" && node.id) functions.set(node.id.name, node);
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id.type === "Identifier" &&
+      (node.init?.type === "ArrowFunctionExpression" || node.init?.type === "FunctionExpression")
+    ) {
+      functions.set(node.id.name, node.init);
+    }
+  });
+  return functions;
+};
+
+// storesArgument: the function calls one of `setters` with something derived from its own
+// parameters, which is how a wrapper stores what an input handed it. A wrapper that resets a page
+// or a cursor beside navigating carries nothing the viewer typed.
+const storesArgument = (fn, setters) => {
+  const parameters = new Set();
+  for (const parameter of fn.params) {
+    walk(parameter, (inner) => {
+      if (inner.type === "Identifier") parameters.add(inner.name);
+    });
+  }
+  let stores = false;
+  walk(fn.body, (inner) => {
+    if (inner.type !== "CallExpression" || inner.callee.type !== "Identifier") return;
+    if (!setters.has(inner.callee.name)) return;
+    for (const argument of inner.arguments) {
+      walk(argument, (name) => {
+        if (name.type === "Identifier" && parameters.has(name.name)) stores = true;
+      });
+    }
+  });
+  return stores;
+};
+
+// A change prop is where a component hands back what the viewer typed. A select's `onValueChange`,
+// a dialog's `onOpenChange` and a switch's `onCheckedChange` pick a view or raise a flag.
+const CHANGE_PROP = /^on[A-Z]\w*Change(?:Text)?$/;
+const VIEW_CHANGE_PROPS = new Set(["onValueChange", "onOpenChange", "onCheckedChange"]);
+
+// textSetters names the setters of `useState` calls that hold text: a string, a template or a
+// `useState<string>`. A bare setter handed to a change prop is a draft only when it holds text; a
+// stepper's position or a chosen view is client state, not something typed.
+const textSetters = (program) => {
+  const setters = new Set();
+  walk(program, (node) => {
+    if (
+      node.type !== "VariableDeclarator" ||
+      node.id.type !== "ArrayPattern" ||
+      node.id.elements[1]?.type !== "Identifier" ||
+      node.init?.type !== "CallExpression" ||
+      node.init.callee.type !== "Identifier" ||
+      node.init.callee.name !== "useState"
+    ) {
+      return;
+    }
+    const initial = node.init.arguments[0];
+    const declared = node.init.typeArguments?.params?.[0];
+    if (
+      initial?.type === "StringLiteral" ||
+      initial?.type === "TemplateLiteral" ||
+      declared?.type === "TSStringKeyword"
+    ) {
       setters.add(node.id.elements[1].name);
     }
   });
   return setters;
 };
 
-const usesFormLibrary = (program) =>
-  program.body.some((node) => node.type === "ImportDeclaration" && FORM_MODULES.includes(node.source.value));
+// hookBindings names what `const <pattern> = hook(…)` binds: the element of the pair at `index`
+// (the dispatch of a `useReducer` is the second), or the whole value when there is no index (the
+// object a `useRef` returns).
+const hookBindings = (program, hook, index) => {
+  const names = new Set();
+  walk(program, (node) => {
+    if (
+      node.type !== "VariableDeclarator" ||
+      node.init?.type !== "CallExpression" ||
+      node.init.callee.type !== "Identifier" ||
+      node.init.callee.name !== hook
+    ) {
+      return;
+    }
+    const target = index === undefined ? node.id : node.id.type === "ArrayPattern" && node.id.elements[index];
+    if (target?.type === "Identifier") names.add(target.name);
+  });
+  return names;
+};
 
-// isHandRolledForm: a state setter is reachable from an input's change handler.
+// writesRefDraft: `root` assigns into the object of a `useRef` (`draft.current.name = value`,
+// `draft.current[key] = value`, `draft.current = value`), looking into the functions of the file it
+// names. A flag (`ref.current = true`) carries nothing typed.
+const writesRefDraft = (root, refs, functions, seen = new Set()) => {
+  let writes = false;
+  const rootedInRef = (target) => {
+    let current = target;
+    while (current?.type === "MemberExpression") {
+      if (
+        current.object.type === "Identifier" &&
+        refs.has(current.object.name) &&
+        current.property.type === "Identifier" &&
+        current.property.name === "current"
+      ) {
+        return true;
+      }
+      current = current.object;
+    }
+    return false;
+  };
+  walk(root, (inner) => {
+    if (writes) return;
+    if (
+      inner.type === "AssignmentExpression" &&
+      rootedInRef(inner.left) &&
+      inner.right.type !== "BooleanLiteral" &&
+      inner.right.type !== "NullLiteral"
+    ) {
+      writes = true;
+    } else if (inner.type === "Identifier" && functions.has(inner.name) && !seen.has(inner.name)) {
+      seen.add(inner.name);
+      writes = writesRefDraft(functions.get(inner.name).body, refs, functions, seen);
+    }
+  });
+  return writes;
+};
+
+// isHandRolledForm: a state setter is reachable from an input's change handler, whether the
+// handler is the setter, calls it, or names a function in this file that does; or a text state's
+// setter is handed to a change prop for another component to write from its own input.
 const isHandRolledForm = (source) => {
   const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
-  if (usesFormLibrary(program)) return false;
-  const setters = stateSetters(program);
-  if (setters.size === 0) return false;
-  let found = false;
-  walk(program, (node) => {
-    if (found || node.type !== "JSXAttribute" || !INPUT_HANDLERS.has(node.name.name)) return;
-    walk(node.value, (inner) => {
-      if (inner.type === "Identifier" && setters.has(inner.name)) found = true;
+  if (doubledCommittedDraft(program)) return true;
+  const state = stateSetters(program);
+  const unsanctioned = unsanctionedDraftSetters(program);
+  // What a lone input writes is a draft unless its setter is named like a filter's; what an input in
+  // a submitted form writes is a draft whatever the setter is called.
+  const draftSetters = new Set([...state.draft, ...unsanctioned.draft]);
+  const submittedSetters = new Set([...draftSetters, ...state.filter, ...unsanctioned.filter]);
+  // A `useReducer`'s dispatch is a draft setter when an input hands it what was typed; a ref's
+  // object is one when an input writes into it inside a submitted form.
+  const dispatchers = hookBindings(program, "useReducer", 1);
+  const refs = hookBindings(program, "useRef");
+  if (submittedSetters.size === 0 && dispatchers.size === 0 && refs.size === 0) return false;
+  const functions = localFunctions(program);
+  const text = textSetters(program);
+  const submitted = submittedElements(program, functions);
+
+  // storesThrough: a function an input's handler names stores what it is handed, directly or
+  // through another function in the file.
+  const storesThrough = (fn, seen, setters) => {
+    if (storesArgument(fn, setters)) return true;
+    let stores = false;
+    walk(fn.body, (inner) => {
+      if (stores || inner.type !== "Identifier" || !functions.has(inner.name) || seen.has(inner.name)) return;
+      seen.add(inner.name);
+      stores = storesThrough(functions.get(inner.name), seen, setters);
     });
+    return stores;
+  };
+
+  // writesSetter: `root` writes a setter, looking into the local functions it names. `setOpen(true)`
+  // raises a flag and `setError(undefined)` clears what the last submit said; neither carries
+  // anything the viewer typed. An `onChange` prop on a component that is not an input (an editor
+  // that reports a changed list) often does the first.
+  const writesSetter = (root, follow, setters, seen = new Set()) => {
+    const flags = new Set();
+    walk(root, (inner) => {
+      const argument = inner.type === "CallExpression" ? inner.arguments[0] : undefined;
+      if (
+        inner.type === "CallExpression" &&
+        inner.callee.type === "Identifier" &&
+        inner.arguments.length === 1 &&
+        (argument.type === "BooleanLiteral" ||
+          argument.type === "NullLiteral" ||
+          (argument.type === "Identifier" && argument.name === "undefined"))
+      ) {
+        flags.add(inner.callee);
+      }
+    });
+    let writes = false;
+    walk(root, (inner) => {
+      if (writes || inner.type !== "Identifier" || flags.has(inner)) return;
+      if (setters.has(inner.name)) {
+        writes = true;
+      } else if (follow && functions.has(inner.name) && !seen.has(inner.name)) {
+        seen.add(inner.name);
+        writes = storesThrough(functions.get(inner.name), seen, setters);
+      }
+    });
+    return writes;
+  };
+
+  // dispatchesTyped: the handler calls a dispatch with something derived from what it was handed.
+  // `dispatch({ type: "toggle" })` raises a flag, as `setOpen(true)` does.
+  const dispatchesTyped = (value, follow) => {
+    const handler = value?.type === "JSXExpressionContainer" ? value.expression : value;
+    if (!handler) return false;
+    if (handler.type === "Identifier") {
+      if (dispatchers.has(handler.name)) return true;
+      const fn = follow && functions.get(handler.name);
+      return Boolean(fn) && storesThrough(fn, new Set([handler.name]), dispatchers);
+    }
+    return FUNCTION_NODES.has(handler.type) && storesThrough(handler, new Set(), dispatchers);
+  };
+
+  let found = false;
+  walk(program, (element) => {
+    if (found || element.type !== "JSXOpeningElement") return;
+    // A handler is followed into a function of the file when it is an input's: a field's
+    // `onChangeText`, or a DOM input's `onChange`. A component's `onChange` reports a structured
+    // value (an editor's changed list), so only a setter it names outright counts.
+    const intrinsic = element.name.type === "JSXIdentifier" && /^[a-z]/.test(element.name.name);
+    const setters = submitted.has(element) ? submittedSetters : draftSetters;
+    for (const node of element.attributes) {
+      if (node.type !== "JSXAttribute" || node.name.type !== "JSXIdentifier") continue;
+      const name = node.name.name;
+      if (INPUT_HANDLERS.has(name)) {
+        const follow = name === "onChangeText" || intrinsic;
+        found ||= writesSetter(node.value, follow, setters);
+        found ||= dispatchers.size > 0 && dispatchesTyped(node.value, follow);
+        found ||= refs.size > 0 && submitted.has(element) && writesRefDraft(node.value, refs, functions);
+      } else if (
+        CHANGE_PROP.test(name) &&
+        !VIEW_CHANGE_PROPS.has(name) &&
+        node.value?.type === "JSXExpressionContainer" &&
+        node.value.expression.type === "Identifier"
+      ) {
+        found ||= text.has(node.value.expression.name) && setters.has(node.value.expression.name);
+      }
+    }
   });
   return found;
 };
@@ -102,6 +657,24 @@ const measure = (directories = roots) =>
   directories
     .flatMap((directory) => productionFiles(directory))
     .filter((file) => isHandRolledForm(readFileSync(file, "utf8")))
+    .map((file) => relative(webRoot, file).split(sep).join("/"))
+    .sort();
+
+// settingsDraftUsers returns the sorted paths (relative to web/) of every file that buffers a
+// settings draft through the sanctioned hook.
+const settingsDraftUsers = (directories = roots) =>
+  directories
+    .flatMap((directory) => productionFiles(directory))
+    .filter((file) => usesSettingsDraft(readFileSync(file, "utf8")))
+    .map((file) => relative(webRoot, file).split(sep).join("/"))
+    .sort();
+
+// committedDraftUsers returns the sorted paths (relative to web/) of every file that keeps a single
+// input's draft through the sanctioned hook.
+const committedDraftUsers = (directories = roots) =>
+  directories
+    .flatMap((directory) => productionFiles(directory))
+    .filter((file) => usesCommittedDraft(readFileSync(file, "utf8")))
     .map((file) => relative(webRoot, file).split(sep).join("/"))
     .sort();
 
@@ -140,4 +713,13 @@ if (isMain) {
   }
 }
 
-export { compareToLedger, isHandRolledForm, measure, shrinkLedger };
+export {
+  committedDraftUsers,
+  compareToLedger,
+  isHandRolledForm,
+  measure,
+  settingsDraftUsers,
+  shrinkLedger,
+  usesCommittedDraft,
+  usesSettingsDraft,
+};

@@ -1,9 +1,11 @@
 import type { ChannelTracksOutputBody } from "@loomarr/api";
 import {
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
+import { layoutGuide } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -43,6 +45,7 @@ const diagnosticsRecord = vi.hoisted(() => vi.fn());
 const watchPlayer = (overrides: Partial<WatchPlayer> = {}): WatchPlayer => ({
   attach: hls.attach,
   canSurf: true,
+  catalog: [],
   ladder: { rungs: [] },
   liveTransport: hls.liveTransport,
   playbackSessionId: "playback_1",
@@ -92,26 +95,30 @@ const wash = () => document.querySelector<HTMLElement>("[data-wash]");
 const SIGNATURE_WAIT = { timeout: 3_000 };
 const tuningIn = () => waitFor(() => expect(wash()).not.toBeNull(), SIGNATURE_WAIT);
 
-// The Audio sheet, opened from the top row's Audio key.
+// On a pointer, what a key opens is a menu in the control cluster (§9.5, variant J): a non-modal
+// dialog named for what it holds.
+const menu = (name: string) => screen.getByRole("dialog", { name });
+
+// The Audio menu, opened from the utilities' Audio key.
 const openAudio = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
-  return screen.getByRole("dialog", { name: "Audio" });
+  return menu("Audio");
 };
 
-// The More sheet, opened from the keys' More.
+// The More menu, opened from the keys' More.
 const openMore = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "More" }));
-  return screen.getByRole("dialog", { name: "More" });
+  return menu("More");
 };
 
-// A sheet reached through More: its row, then the sheet it opens.
+// A menu reached through More: its row, then the page it opens.
 // A More row with a detail ("Picture  Auto · 1080p") is named by what it shows, so the row is found by
-// its leading words; the sheet it opens is titled with the row's label alone.
+// its leading words; the page it opens is titled with the row's label alone.
 const openFromMore = async (row: string) => {
   const more = await openMore();
   const named = new RegExp(`^${row}(?! in picture)`);
   await userEvent.click(within(more).getByRole("button", { name: named }));
-  return screen.getByRole("dialog", { name: row });
+  return menu(row);
 };
 
 // stubTracks makes GET /v1/channels/:id/tracks return the given media tracks, and
@@ -141,6 +148,8 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
       probed = true;
       return { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] };
     }),
+    // The subtitles beside the stream, read along the playhead: a programme with none.
+    getChannelSubtitlesMockHandler({ cues: [], pending: false, tracks: [] }),
   );
   return { wasProbed: () => probed };
 };
@@ -209,6 +218,45 @@ describe("ChannelWatch pickers", () => {
     expect(within(languages).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
   });
 
+  it("lists the programme's subtitles, draws the chosen track's line, and remembers it; C steps on", async () => {
+    stubTracks();
+    // The programme on air has English and English for the deaf and hard of hearing; each track's
+    // cue at the playhead (1,000,000) names the track it was asked for.
+    const asked: (string | null)[] = [];
+    server.use(
+      getChannelSubtitlesMockHandler(({ request }) => {
+        const track = new URL(request.url).searchParams.get("track");
+        asked.push(track);
+        return {
+          cues: track ? [{ endMs: 1_002_000, startMs: 999_000, text: `Line in ${track}` }] : [],
+          pending: false,
+          tracks: [
+            { forced: false, hearingImpaired: false, key: "en", language: "en", title: "" },
+            { forced: false, hearingImpaired: true, key: "en-sdh", language: "en", title: "SDH" },
+          ],
+        };
+      }),
+    );
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Subtitles" }));
+    const choices = within(menu("Subtitles")).getByRole("radiogroup", { name: "Subtitles" });
+    await waitFor(() => expect(within(choices).getAllByRole("radio")).toHaveLength(3));
+    expect(within(choices).getByRole("radio", { name: "Off" })).toHaveAttribute("aria-checked", "true");
+    expect(within(choices).getByRole("radio", { name: "English, with sounds" })).toBeInTheDocument();
+    // Off reads the tracks alone: no track is read from the media until one is chosen.
+    expect(asked).toEqual([null]);
+
+    await userEvent.click(within(choices).getByRole("radio", { name: "English" }));
+    expect(await screen.findByText("Line in en")).toBeInTheDocument();
+    expect(localStorage.getItem("loomarr.player.subtitles")).toBe("en");
+
+    await userEvent.keyboard("{Escape}c");
+    expect(await screen.findByText("Line in en-sdh")).toBeInTheDocument();
+    localStorage.clear();
+  });
+
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
     const { wasProbed } = stubTracks();
 
@@ -243,9 +291,9 @@ describe("ChannelWatch pickers", () => {
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await startWatching();
 
-    const mute = screen.getByRole("button", { name: "Mute" });
-    await userEvent.click(mute);
-    expect(screen.getByRole("button", { name: "Unmute" })).toHaveFocus();
+    const volume = screen.getByRole("button", { name: "Volume" });
+    await userEvent.click(volume);
+    expect(volume).toHaveFocus();
     await userEvent.keyboard("{ArrowUp}");
     // One press, one step.
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1]);
@@ -413,6 +461,74 @@ describe("ChannelWatch — full-bleed route", () => {
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
   });
 
+  it("puts the channel cards in the band's place while Channel up and down flip, the readout naming the channel", async () => {
+    stubTracks();
+    const catalog = [
+      { id: "ch-1", inAppPlayable: true, name: "Late Night Noir", number: 42 },
+      { id: "ch-9", inAppPlayable: true, name: "Movie Matinee", number: 9 },
+    ];
+    const nowMs = Date.now();
+    const hour = 3_600_000;
+    const guide = {
+      layout: layoutGuide(
+        {
+          channels: [
+            {
+              airings: [
+                {
+                  kind: "program" as const,
+                  scheduleBlockId: "b",
+                  startMs: nowMs - hour,
+                  stopMs: nowMs + hour,
+                  title: "A heist film",
+                },
+              ],
+              channelId: "ch-9",
+              name: "Movie Matinee",
+              number: 9,
+              pendingCount: 0,
+              status: "live" as const,
+            },
+          ],
+          fromMs: nowMs - hour,
+          timezone: "UTC",
+          toMs: nowMs + hour,
+        },
+        nowMs,
+      ),
+      nowMs,
+    };
+    const watch = (flipKey?: string) => (
+      <ChannelWatch
+        channel={live}
+        isAdmin={false}
+        onLeave={vi.fn()}
+        player={{ catalog, ...(flipKey ? { flipKey } : {}) }}
+        channels={{
+          drawer: { channels: [], favourites: [], recent: [], nowPercent: 0, onFavourite: vi.fn() },
+          guide,
+          onTuneSettled: vi.fn(),
+        }}
+      />
+    );
+    // Opened on a channel: no flip yet, so the band.
+    const view = render(watch(), { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "Channel up" });
+    expect(screen.queryByRole("list", { name: "Channels" })).not.toBeInTheDocument();
+
+    // A flip tuned this channel: the cards come up, each saying what is on, and the readout names it.
+    view.rerender(watch("ch-1"));
+    const cards = await screen.findByRole("list", { name: "Channels" });
+    expect(within(cards).getByText("Watching now")).toBeInTheDocument();
+    expect(within(cards).getByText("A heist film")).toBeInTheDocument();
+    // Drawn, not announced: the tuner's own status announces the tune, and a second would repeat it.
+    const quiet = Array.from(document.querySelectorAll('[aria-hidden="true"]')).map((el) => el.textContent);
+    expect(quiet).toContain("42Late Night Noir");
+    expect(screen.queryAllByRole("status").map((el) => el.textContent)).not.toContain("42Late Night Noir");
+    // Leave steps away while flipping.
+    expect(screen.queryByRole("button", { name: "Leave" })).not.toBeInTheDocument();
+  });
+
   it("has no Last key until there is a channel to return to, then tunes it from the key and from L", async () => {
     stubTracks();
     const rows = [
@@ -537,12 +653,12 @@ describe("ChannelWatch — full-bleed route", () => {
     });
   });
 
-  it("closes a sheet from its close key and from Escape, handing focus back to what opened it", async () => {
+  it("closes a menu from the key that opened it and from Escape, handing focus back to that key", async () => {
     stubTracks();
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
     await openAudio();
-    await userEvent.click(screen.getByRole("button", { name: "Close Audio" }));
+    await userEvent.click(screen.getByRole("button", { name: "Audio" }));
     expect(screen.queryByRole("dialog", { name: "Audio" })).not.toBeInTheDocument();
 
     await openAudio();
@@ -551,13 +667,28 @@ describe("ChannelWatch — full-bleed route", () => {
     expect(screen.getByRole("button", { name: "Audio" })).toHaveFocus();
   });
 
-  it("keeps the keys up with a sheet open, and names the channel in the sheet's header", async () => {
+  // Variant J: the menu sits in the control cluster over the keys, and the rest of the chrome stays.
+  it("opens a menu in the control cluster, with the keys and the band still up", async () => {
     stubTracks();
     render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
     const more = await openMore();
+    expect(screen.getByTestId("player-cluster")).toContainElement(more);
     expect(screen.getByRole("button", { name: /^(Play|Pause)$/ })).toBeInTheDocument();
-    expect(within(more).getByText("Late Night Noir")).toBeInTheDocument();
+    expect(screen.getByText("Late Night Noir")).toBeInTheDocument();
+  });
+
+  it("opens Picture as More's second page, its heading the way back", async () => {
+    stubTracks();
+    const ladder = { height: 1080, rungs: [{ height: 1080, index: 0 }] };
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} player={{ ladder }} />, {
+      wrapper: makeWrapper(),
+    });
+
+    await openFromMore("Picture");
+    await userEvent.click(screen.getByRole("button", { name: "Back from Picture" }));
+    expect(menu("More")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Picture" })).not.toBeInTheDocument();
   });
 
   // Info (#2088 decision 9): the programme on air and the next one, from ⓘ or I.
@@ -590,20 +721,27 @@ describe("ChannelWatch — full-bleed route", () => {
 
     afterEach(() => vi.useRealTimers());
 
-    it("opens Info from More, reading the programme and what is up next", async () => {
+    // Info on a pointer (variant J): the block on air's own card on the film strip, opened in full.
+    const openInfo = async () => {
+      await userEvent.click(within(await openMore()).getByRole("button", { name: "Info" }));
+    };
+    const synopsis = () => screen.queryByText("A storm cuts the island off.");
+
+    it("opens Info from More as the on-air block's card, pinned open on the strip", async () => {
       stubTracks();
       withProgramme();
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await screen.findByText("Airing Programme");
-      await openFromMore("Info");
-      const info = screen.getByRole("dialog", { name: "Info" });
-      expect(within(info).getByText("A storm cuts the island off.")).toBeInTheDocument();
-      expect(within(info).getByText("1994 · TV-PG")).toBeInTheDocument();
-      expect(within(info).getByText(/^Up next · .+ · Next Programme$/)).toBeInTheDocument();
+      expect(synopsis()).not.toBeInTheDocument();
+      await openInfo();
+      expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument();
+      expect(
+        within(screen.getByRole("group", { name: "Schedule" })).getByText("A storm cuts the island off."),
+      ).toBeInTheDocument();
 
       await userEvent.keyboard("{Escape}");
-      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+      expect(synopsis()).not.toBeInTheDocument();
     });
 
     it("has no Info while nothing is known to be airing", async () => {
@@ -621,11 +759,11 @@ describe("ChannelWatch — full-bleed route", () => {
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await screen.findByText("Airing Programme");
-      await openFromMore("Info");
+      await openInfo();
       act(() => vi.advanceTimersByTime(7_000));
-      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+      expect(synopsis()).toBeInTheDocument();
       act(() => vi.advanceTimersByTime(1_500));
-      expect(screen.queryByRole("dialog", { name: "Info" })).not.toBeInTheDocument();
+      expect(synopsis()).not.toBeInTheDocument();
     });
 
     it("keeps Info open while the viewer is paused", async () => {
@@ -641,9 +779,9 @@ describe("ChannelWatch — full-bleed route", () => {
       render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
 
       await screen.findByText("Airing Programme");
-      await openFromMore("Info");
+      await openInfo();
       act(() => vi.advanceTimersByTime(20_000));
-      expect(screen.getByRole("dialog", { name: "Info" })).toBeInTheDocument();
+      expect(synopsis()).toBeInTheDocument();
     });
 
     it("names the station's era and place on the card a settled tune shows, for five seconds", async () => {
@@ -1097,7 +1235,7 @@ describe("ChannelWatch at phone width", () => {
   it("draws the phone's keys at phone width even with a fine pointer", async () => {
     renderPhone();
     expect(await screen.findByRole("button", { name: "More" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^(Mute|Unmute)$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Volume" })).not.toBeInTheDocument();
   });
 
   // Variant J (§9.7): the picture fills the frame, letterboxed and centred by the <video> — a strip
@@ -1110,6 +1248,16 @@ describe("ChannelWatch at phone width", () => {
     expect(video.style.objectPosition).not.toBe("center top");
     for (const name of ["Channel up", "Channel down", /^(Play|Pause)$/, "More", "Audio"])
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
+  });
+
+  // Variant J: held upright, what a key opens rises from the bottom, not over the keys.
+  it("opens More as a sheet from the bottom, closed by its own key", async () => {
+    renderPhone();
+    await userEvent.click(await screen.findByRole("button", { name: "More" }));
+    const more = screen.getByRole("dialog", { name: "More" });
+    expect(screen.queryByTestId("player-menu")).not.toBeInTheDocument();
+    await userEvent.click(within(more).getByRole("button", { name: "Close More" }));
+    expect(screen.queryByRole("dialog", { name: "More" })).not.toBeInTheDocument();
   });
 
   it("never hides the controls: nothing covers the picture, so there is nothing to uncover", async () => {
@@ -1159,13 +1307,73 @@ describe("ChannelWatch first play of the session", () => {
     expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
   });
 
-  it("drops the pill when the sound comes on by the Mute key too", async () => {
+  it("drops the pill when the sound comes on by M too", async () => {
     stubTracks();
     render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
     await screen.findByRole("button", { name: "Tap to unmute" });
-    await userEvent.click(screen.getByRole("button", { name: "Unmute" }));
+    await userEvent.keyboard("m");
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Tap to unmute" })).not.toBeInTheDocument(),
     );
+  });
+
+  // The first play's own mute is the pill's to say; the level stays away until someone changes it.
+  it("does not flash the volume level for the first play's own mute", async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin={false} onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "Tap to unmute" });
+    expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument();
+  });
+});
+
+// The volume level (§9.5, desktop): the Volume key opens it in the menu's place; M and the slider
+// flash it for a moment.
+describe("ChannelWatch volume level", () => {
+  beforeEach(() => {
+    hls.status = "playing";
+    // Not the session's first play: the sound starts on, as the viewer left it.
+    sessionStorage.setItem("loomarr.player.first-play", "1");
+  });
+
+  const watch = async () => {
+    stubTracks();
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    expect(await screen.findByRole("button", { name: "More" })).toBeInTheDocument();
+  };
+
+  it("opens from the Volume key, sets the level, and closes on Esc", async () => {
+    await watch();
+    const key = screen.getByRole("button", { name: "Volume" });
+    await userEvent.click(key);
+    const level = await screen.findByTestId("player-volume");
+    expect(key).toHaveAttribute("aria-expanded", "true");
+    expect(within(level).getByText("100")).toBeInTheDocument();
+
+    within(level).getByRole("slider", { name: "Volume" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect((document.querySelector("video") as HTMLVideoElement).volume).toBeLessThan(1);
+
+    key.focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument();
+  });
+
+  it("gives the menu's place back to More", async () => {
+    await watch();
+    await userEvent.click(screen.getByRole("button", { name: "Volume" }));
+    expect(await screen.findByTestId("player-volume")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument();
+    expect(screen.getByTestId("player-menu")).toBeInTheDocument();
+  });
+
+  it("shows for a moment when M mutes, saying Off", async () => {
+    await watch();
+    await userEvent.keyboard("m");
+    const level = await screen.findByTestId("player-volume");
+    expect(within(level).getByText("Off")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("player-volume")).not.toBeInTheDocument(), {
+      timeout: 3_000,
+    });
   });
 });

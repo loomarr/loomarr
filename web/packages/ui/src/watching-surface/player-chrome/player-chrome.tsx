@@ -3,11 +3,15 @@ import { memo, useDeferredValue, useState } from "react";
 import { type LayoutChangeEvent, Platform, View } from "react-native";
 
 import { ChannelBand } from "./channel-band";
+import { ChannelCards } from "./channel-cards";
 import { gradientOr, webOnly } from "./flat";
 import { IdentBackdrop } from "./ident-backdrop";
+import { PlayerCaption } from "./player-caption";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
+import { menuWidth } from "./player-menu";
 import { PlayerReadout } from "./player-readout";
+import { sheetWidth } from "./player-sheet";
 import { PlayerLeave, PlayerUtilities, UTILITY_SIZE } from "./player-utilities";
 import { PortraitChrome } from "./portrait-chrome";
 import { TuneDip } from "./tune-dip";
@@ -34,18 +38,21 @@ const READOUT_REACH = { pointer: 150, touch: 100 } as const;
 const ChromeBody = memo(
   ({
     band,
+    captions = [],
     density,
     formatTime,
     ident = false,
     keys,
     layout = "overlay",
     live,
+    menu,
     onGoLive,
     onLeave,
     panel,
     readout,
     schedule,
     sheet,
+    surf,
     unmute,
     utilities,
     visible,
@@ -54,9 +61,13 @@ const ChromeBody = memo(
     const tv = layout === "tv";
     const touch = density === "touch";
     const pointer = keys.pointer;
+    // Flipping channels (§9.2): the cards take the band's place with the keys up beside them, and the
+    // utilities and Leave step away until the flipping stops. A television's keys step away too: the
+    // remote is what flips, so the cards have the whole width (J's `tv--surfing` tile).
+    const surfing = surf !== undefined && !sheet;
     // The station-ID card stands in for hidden controls: the band alone, fuller.
-    const card = ident && !visible && !sheet;
-    const controls = visible;
+    const card = ident && !visible && !sheet && !surfing;
+    const controls = visible || surfing;
     const shown = controls || card;
     // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540. A phone keeps clear
     // of its safe areas: the Dynamic Island, the home indicator and, on its side, both ends (§9.7).
@@ -92,7 +103,28 @@ const ChromeBody = memo(
     const bandLift = liftOf(bandHeight, "left");
     const clusterLift = liftOf(clusterHeight, "right");
 
-    // The open sheet, over a dimmed picture, above either layout.
+    // The open sheet. A phone held upright's rises from the bottom over a picture left undimmed, so a
+    // choice shows as it is made; otherwise the right-hand sheet dims the picture.
+    if (layout === "portrait")
+      return (
+        <ThemeScope theme="dark">
+          <PortraitChrome
+            band={band}
+            captions={captions}
+            formatTime={formatTime}
+            insets={insets}
+            keys={keys}
+            live={live}
+            onGoLive={onGoLive}
+            onLeave={onLeave}
+            readout={readout}
+            surf={sheet ? undefined : surf}
+            unmute={unmute}
+            utilities={utilities}
+          />
+          {sheet}
+        </ThemeScope>
+      );
     const sheetLayer = sheet ? (
       <>
         <View
@@ -110,23 +142,6 @@ const ChromeBody = memo(
         {sheet}
       </>
     ) : null;
-    if (layout === "portrait")
-      return (
-        <ThemeScope theme="dark">
-          <PortraitChrome
-            band={band}
-            formatTime={formatTime}
-            insets={insets}
-            keys={keys}
-            live={live}
-            onGoLive={onGoLive}
-            onLeave={onLeave}
-            unmute={unmute}
-            utilities={utilities}
-          />
-          {sheetLayer}
-        </ThemeScope>
-      );
     return (
       <ThemeScope theme="dark">
         <View
@@ -138,9 +153,11 @@ const ChromeBody = memo(
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
+        {/* The scrim passes touches through to the picture but not its keys: native's "none" would
+            silence every key under it whatever they say, where the web lets a child take them back. */}
         <View
           aria-hidden={hiddenFromReaders(!shown)}
-          pointerEvents="none"
+          pointerEvents="box-none"
           style={{
             bottom: 0,
             left: 0,
@@ -170,21 +187,26 @@ const ChromeBody = memo(
               onLayout={(e: LayoutChangeEvent) => setBandHeight(e.nativeEvent.layout.height)}
               style={{ flex: 1, marginBottom: bandLift, minWidth: 0 }}
             >
-              <ChannelBand
-                band={band}
-                density={density}
-                formatTime={formatTime}
-                ident={card}
-                live={live}
-                onGoLive={onGoLive}
-                schedule={schedule}
-                tv={tv}
-              />
+              {surf && surfing ? (
+                <ChannelCards density={density} surf={surf} />
+              ) : (
+                <ChannelBand
+                  band={band}
+                  density={density}
+                  formatTime={formatTime}
+                  ident={card}
+                  live={live}
+                  onGoLive={onGoLive}
+                  schedule={schedule}
+                  tv={tv}
+                />
+              )}
             </View>
-            {card ? null : (
+            {card || (tv && surfing) ? null : (
               // The control cluster: everything you can press, in one place. The utilities are a smaller
               // row over the main keys, sharing their right edge (§9.3). A television has none: its
-              // Subtitles and Audio are main keys, and the remote has the rest.
+              // Subtitles and Audio are main keys, and the remote has the rest. What a key opens is a
+              // menu over them all (§9.5), so the rest of the chrome stays where it is.
               <View
                 aria-hidden={hiddenFromReaders(!controls)}
                 onLayout={(e: LayoutChangeEvent) => setClusterHeight(e.nativeEvent.layout.height)}
@@ -197,13 +219,14 @@ const ChromeBody = memo(
                 }}
                 testID="player-cluster"
               >
-                {tv ? null : <PlayerUtilities {...utilities} />}
+                {menu}
+                {tv || surfing ? null : <PlayerUtilities {...utilities} />}
                 <PlayerKeys {...keys} {...(tv ? { audio: utilities } : {})} />
               </View>
             )}
           </View>
         </View>
-        {onLeave && !tv ? (
+        {onLeave && !tv && !surfing ? (
           // Leave: the top left corner, where people reach to leave (§9.3). The rating sits beside it.
           // A television has none: the remote's Back leaves.
           <View
@@ -238,6 +261,16 @@ const ChromeBody = memo(
           </View>
         ) : null}
         {readout ? <PlayerReadout density={density} top={readoutAt} {...readout} /> : null}
+        {/* The subtitle: lifted clear of the band while it is up, at the picture's foot while it is
+            down. A side sheet keeps the line in what shows of the picture, at its foot; an open menu
+            keeps it centred left of the menu, which rises over the keys beside it (#3905). */}
+        <PlayerCaption
+          bottom={shown && !sheet ? bottomBase + bandLift + bandHeight + 16 : bottomBase + 12}
+          density={density}
+          lines={captions}
+          right={sheet ? sheetWidth(density) + insets.right : shown && menu ? side + menuWidth(density) : 0}
+          where={tv ? "tv" : touch ? "landscape" : "pointer"}
+        />
         {panel}
         {sheetLayer}
       </ThemeScope>

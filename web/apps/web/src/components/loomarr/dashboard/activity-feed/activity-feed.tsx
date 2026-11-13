@@ -1,5 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Surface } from "@loomarr/design-system";
+import { Surface, Text } from "@loomarr/design-system";
 import { ListGroup, PanelRow } from "@loomarr/ui";
 import { cn } from "@/lib/utils";
 import type { ActivityFeedProps } from "./activity-feed.type";
@@ -26,14 +26,16 @@ const LEVEL_DOT: Record<string, string> = {
 
 const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProps) => (
   <section className={cn("border-border overflow-hidden rounded-lg border", className)}>
-    <h2 className="border-border border-b px-4 py-3.5 text-sm font-medium">Recent activity</h2>
+    <Text as="h2" className="border-border border-b px-4 py-3.5" textRole="cardLabel">
+      Recent activity
+    </Text>
 
     {entries.length === 0 ? (
       // A fresh install has done nothing yet. Saying so beats an empty box, which reads as a
       // panel that failed to load.
-      <p className="text-muted-foreground px-4 py-6 text-center text-sm">
+      <Text as="p" className="px-4 py-6 text-center" textRole="compact" tone="secondary">
         Nothing yet. Activity shows up here as Loomarr acquires titles and builds channels.
-      </p>
+      </Text>
     ) : (
       <ListGroup framed={false}>
         {entries.map((e) => (
@@ -45,16 +47,18 @@ const ActivityFeed = ({ entries, now = Date.now(), className }: ActivityFeedProp
               flexDirection="row"
               gap={12}
             >
-              <span className="text-muted-foreground w-14 shrink-0 font-mono text-xs whitespace-nowrap">
+              <Text as="span" className="w-14 shrink-0 whitespace-nowrap" textRole="mono">
                 {/* `at` is unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
                 {formatRelative(e.at * 1000, now)}
-              </span>
+              </Text>
               <span
                 role="img"
                 aria-label={e.level}
                 className={cn("size-1.5 shrink-0 rounded-full", LEVEL_DOT[e.level] ?? "bg-static-500")}
               />
-              <span className="min-w-0 flex-1 text-sm">{e.text}</span>
+              <Text as="span" className="min-w-0 flex-1" textRole="compact">
+                {e.text}
+              </Text>
             </Surface>
           </PanelRow>
         ))}

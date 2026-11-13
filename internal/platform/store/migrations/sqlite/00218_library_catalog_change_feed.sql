@@ -3,7 +3,7 @@
 -- `changed` marks a cached record the feed named, so the Enricher fetches it again ahead of the
 -- 90-day refresh; saving the record clears it. `library_catalog_feeds` keeps, per catalog, when
 -- its feed was last read, so a restart picks up where it left off.
-ALTER TABLE library_catalog ADD COLUMN changed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE library_catalog ADD COLUMN changed BOOLEAN NOT NULL DEFAULT FALSE CHECK (changed IN (0, 1));
 
 CREATE TABLE library_catalog_feeds (
     provider TEXT PRIMARY KEY,

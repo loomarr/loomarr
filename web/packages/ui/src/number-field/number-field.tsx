@@ -1,6 +1,6 @@
 import { Field, Surface } from "@loomarr/design-system";
-import { useState } from "react";
 
+import { useCommittedDraft } from "../use-committed-draft";
 import type { NumberFieldProps } from "./number-field.type";
 
 // NumberField — a number in a design-system Field. While the operator types, the box shows their
@@ -10,18 +10,19 @@ import type { NumberFieldProps } from "./number-field.type";
 // The flexible Surface fills its row and lets the box shrink beside a unit; a web View does not
 // shrink by default. Its basis stays automatic so that in a column it keeps the box's own height.
 const NumberField = ({ amount, onAmount, onBlur, ...field }: NumberFieldProps) => {
-  const [draft, setDraft] = useState<string>();
+  // The amount is the parent's and changes on every keystroke; the draft is only the typed text.
+  const { discard, draft, editDraft } = useCommittedDraft<string | undefined>(undefined);
   return (
     <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
       <Field
         {...field}
         keyboardType="decimal-pad"
         onBlur={() => {
-          setDraft(undefined);
+          discard();
           onBlur?.();
         }}
         onChangeText={(text) => {
-          setDraft(text);
+          editDraft(text);
           onAmount(Number(text));
         }}
         value={draft !== undefined && Number(draft) === amount ? draft : String(amount)}

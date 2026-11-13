@@ -18,6 +18,8 @@ import { CARD_WIDTH, PreviewCard } from "../preview-card";
 const GAP = 4;
 const MIN_BREAK = 40;
 const TICK_MINUTES = [30, 60, 90] as const;
+/** The least room between the scale's "−15m" and "Live" for both to show. */
+const LABEL_GAP = 8;
 /** The block on air's quiet outline. */
 const NOW_EDGE = "rgba(255, 255, 255, 0.4)";
 
@@ -35,6 +37,8 @@ interface PreviewPlaybarProps {
   onSeek?: (wallClockMs: number) => void;
   /** Pressing a block that does not seek (a television's OK opens the Guide). */
   onSelect?: () => void;
+  /** Info (§9.5): the block on air's card stays open, in full, until pointing elsewhere moves it. */
+  pinNow?: boolean;
   playheadMs: number;
   /** Pointer devices preview on hover. */
   pointer: boolean;
@@ -64,6 +68,7 @@ const PreviewPlaybar = ({
   onPreviewChange,
   onSeek,
   onSelect,
+  pinNow = false,
   playheadMs,
   pointer,
   quietNow = false,
@@ -72,16 +77,24 @@ const PreviewPlaybar = ({
   window,
 }: PreviewPlaybarProps) => {
   const [width, setWidth] = useState(0);
-  const [open, setOpen] = useState<string | undefined>(undefined);
+  const [pointed, setPointed] = useState<string | undefined>(undefined);
+  const [pastLabel, setPastLabel] = useState(0);
+  const [liveLabel, setLiveLabel] = useState(0);
   const show = (id: string | undefined) => {
-    setOpen(id);
+    setPointed(id);
     onPreviewChange?.(id !== undefined);
   };
   const height = pointer || tv ? 72 : 52;
   const { boxes, xAt } = layoutPlaybar(segments, window, width, { gap: GAP, minBreak: MIN_BREAK });
   const head = xAt(Math.min(playheadMs, window.nowMs));
   const liveX = xAt(window.nowMs);
+  // Fifteen minutes is a sliver of a touch strip, so "Live" can sit on the left edge: "−15m" shows
+  // only where it clears "Live" (#3566), once both are measured so neither flashes in first.
+  const pastShown = pastLabel > 0 && liveLabel > 0 && pastLabel + LABEL_GAP <= liveX - liveLabel / 2;
   const behind = playheadMs < window.nowMs - 1000;
+  const nowId = boxes.find((b) => b.segment.startMs <= window.nowMs && window.nowMs < b.segment.stopMs)?.id;
+  const open = pointed ?? (pinNow ? nowId : undefined);
+  const full = pinNow && open === nowId;
   const openBox = boxes.find((b) => b.id === open);
   const openMid = openBox ? openBox.x + openBox.width / 2 : 0;
   const previews = pointer || tv;
@@ -102,6 +115,7 @@ const PreviewPlaybar = ({
           <PreviewCard
             density={density}
             formatTime={formatTime}
+            full={full}
             nowMs={window.nowMs}
             onNowSpot={openBox.segment.kind === "break" ? onNowSpot(openBox.segment, playheadMs) : undefined}
             segment={openBox.segment}
@@ -302,9 +316,11 @@ const PreviewPlaybar = ({
       >
         {width > 0 ? (
           <>
+            {/* Kept laid out while hidden, so its width is known when room returns. */}
             <Text
               density={density}
-              style={{ left: 0, position: "absolute" }}
+              onLayout={(e: LayoutChangeEvent) => setPastLabel(e.nativeEvent.layout.width)}
+              style={{ left: 0, opacity: pastShown ? 1 : 0, position: "absolute" }}
               textRole="cardMeta"
               tone="muted"
             >
@@ -312,6 +328,7 @@ const PreviewPlaybar = ({
             </Text>
             <Text
               density={density}
+              onLayout={(e: LayoutChangeEvent) => setLiveLabel(e.nativeEvent.layout.width)}
               strong
               style={{ left: liveX, position: "absolute", transform: [{ translateX: "-50%" }] }}
               textRole="cardMeta"

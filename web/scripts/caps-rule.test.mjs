@@ -20,7 +20,7 @@ const WEB = fileURLToPath(new URL("..", import.meta.url));
 // Where capitals are the accent the rule keeps. Each entry says what is in capitals there.
 const ALLOWED = [
   // The Text primitive: `shout` is implemented here.
-  "packages/design-system/src/primitives/",
+  "packages/design-system/src/text/",
   // The player band's channel number block ("CH").
   "packages/ui/src/watching-surface/player-chrome/channel-band/",
   // The Info sheet's "Up next" chip.

@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/subtitles"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -171,8 +172,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	})
 	playoutRes = playoutresolve.New(playoutresolve.Config{
 		Engine: channelEngine, Now: time.Now,
-		Metrics:       deps.metrics,
-		DetectContext: rootCtx,
+		Metrics:  deps.metrics,
+		GoDetect: owner.goOnDemand,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.
 		Titles: st,
@@ -238,6 +239,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.SetMeasurer(measurer, st)
 	owner.goRun(measurer.Run)
+	// Soft subtitles (#2088 decision 5): each text track is read once, at background priority, and
+	// kept under the playout state directory so a restart doesn't read it again.
+	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
+	playoutRes.SetSubtitles(st, subtitleReader)
+	owner.goRun(subtitleReader.Run)
 	playoutResolverSvc = playoutRes
 
 	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every

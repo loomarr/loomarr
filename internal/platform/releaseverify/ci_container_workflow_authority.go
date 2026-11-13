@@ -645,6 +645,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"vulnerabilities": {steps: map[string]workflowStepAuthority{
 					"make vuln": exactWorkflowStep(2, "Scan the code that ships", workflowStepAuthority{targets: []string{"vuln"}}),
 				}},
+				"library-scale": {steps: map[string]workflowStepAuthority{
+					"make scan-scale": exactWorkflowStep(2, "Scan a 33k-file library", workflowStepAuthority{targets: []string{"scan-scale"}}),
+				}},
 			},
 		},
 		// The one workflow that publishes a release and opens a PR on a schedule. Everything it does is

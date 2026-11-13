@@ -47,6 +47,7 @@ type EnrichStore interface {
 	LibraryCatalogTitle(ctx context.Context, key librarystore.LibraryCatalogKey) (string, int, error)
 	SaveLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
 	FailLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, retryAt time.Time) error
+	LibraryCatalogWaiting(ctx context.Context, now time.Time) (librarystore.LibraryCatalogWaiting, error)
 	RewriteLibraryCatalogFiles(ctx context.Context, key librarystore.LibraryCatalogKey) ([]librarystore.LibraryFilePath, error)
 }
 
@@ -80,6 +81,65 @@ type Enricher struct {
 	// woken holds one ask to look up new titles ahead of the next tick; wakeOnce makes it.
 	woken    chan struct{}
 	wakeOnce sync.Once
+
+	// lookups is how the last lookup went, for Settings → Library and the Library's line.
+	mu      sync.Mutex
+	lookups Lookups
+}
+
+// LookupState is whether details can be looked up now, and when not, why.
+type LookupState string
+
+const (
+	// LookupsOK: the last lookup answered, or none has been tried.
+	LookupsOK LookupState = "ok"
+	// LookupsNoKey: the catalog has no key, so nothing is looked up until one is added.
+	LookupsNoKey LookupState = "no_key"
+	// LookupsKeyRefused: the catalog turned the key down.
+	LookupsKeyRefused LookupState = "key_refused"
+	// LookupsUnreachable: the catalog didn't answer, or answered with an error.
+	LookupsUnreachable LookupState = "unreachable"
+)
+
+// Lookups is how the Enricher's last lookup went.
+type Lookups struct {
+	State LookupState
+	// RetryAt is when the next try is, after a failed one; zero otherwise.
+	RetryAt time.Time
+}
+
+// Lookups reports how the last lookup went. Safe on a nil Enricher, which reads as ok.
+func (e *Enricher) Lookups() Lookups {
+	if e == nil {
+		return Lookups{State: LookupsOK}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.lookups.State == "" {
+		return Lookups{State: LookupsOK}
+	}
+	return e.lookups
+}
+
+// setLookups records how a lookup went, and says so in the log when that changed: a catalog that
+// stopped answering is a warning, never only a debug line.
+func (e *Enricher) setLookups(next Lookups, err error) {
+	e.mu.Lock()
+	was := e.lookups.State
+	e.lookups = next
+	e.mu.Unlock()
+	if was == next.State || (was == "" && next.State == LookupsOK) {
+		return
+	}
+	switch next.State {
+	case LookupsOK:
+		e.log().Info("library enrich: details are being looked up again")
+	case LookupsNoKey:
+		e.log().Info("library enrich: no catalog key; details wait until one is added")
+	default:
+		e.log().Warn("library enrich: the catalog can't be used; titles wait for their details",
+			"why", string(next.State), "retry_at", next.RetryAt, "err", err)
+	}
 }
 
 // Run fetches until ctx ends: everything due at each tick, and the titles new to the cache as soon
@@ -188,6 +248,9 @@ func (e *Enricher) tick(ctx context.Context, refresh bool) error {
 			// The catalog can't be reached: nothing is moving, so nothing is shown running.
 			e.Tracker.End(StepLookingUp)
 			return nil
+		case fetchHeld:
+			// That title waits its retry; the catalog answers, so the next title goes on.
+			continue
 		}
 		if isNew[key] {
 			if err := e.begin(ctx, name); err != nil {
@@ -282,7 +345,7 @@ func (e *Enricher) Update(ctx context.Context, key librarystore.LibraryCatalogKe
 		return err
 	case outcome == fetchUnconfigured:
 		return ErrNoCatalog
-	case outcome == fetchFailed:
+	case outcome == fetchFailed, outcome == fetchHeld:
 		return ErrCatalogUnreachable
 	}
 	return nil
@@ -301,7 +364,23 @@ const (
 	fetchUnconfigured
 	// fetchFailed is a catalog that failed: the next key would fail too.
 	fetchFailed
+	// fetchHeld is a fetch that failed for this title alone: it waits enrichRetry, and the next
+	// key goes on.
+	fetchHeld
 )
+
+// catalogFault reports whether a failed fetch says the catalog can't be used now (no key, a key
+// turned down, out of reach, overloaded) rather than something about the one title asked for. A
+// catalog fault holds no title back: every title is tried again at the next tick, so none waits
+// hours after the catalog is fixed.
+func catalogFault(err error) bool {
+	switch tmdb.FailureClass(err) {
+	case tmdb.FailureNoKey, tmdb.FailureUnauthorized, tmdb.FailureRateLimited, tmdb.FailureServerError,
+		tmdb.FailureTimeout, tmdb.FailureNetwork:
+		return true
+	}
+	return false
+}
 
 // fetch fetches one key.
 func (e *Enricher) fetch(ctx context.Context, key librarystore.LibraryCatalogKey, now time.Time) (fetchOutcome, error) {
@@ -318,19 +397,32 @@ func (e *Enricher) fetch(ctx context.Context, key librarystore.LibraryCatalogKey
 	case errors.Is(fetchErr, mp.ErrNotFound), errors.Is(fetchErr, mp.ErrUnsupported):
 		// The catalog has no such title: remember that, so it is not asked again until the
 		// refresh.
-	case errors.Is(fetchErr, tmdb.ErrAPIKeyRequired):
+	case errors.Is(fetchErr, mp.ErrNotConfigured), errors.Is(fetchErr, tmdb.ErrAPIKeyRequired):
+		// The catalog provider says mp.ErrNotConfigured without a key; the TMDB client itself,
+		// tmdb.ErrAPIKeyRequired.
 		// Not configured: nothing is fetched until it is, and no title is held back for it.
+		e.setLookups(Lookups{State: LookupsNoKey}, nil)
 		return fetchUnconfigured, nil
-	default:
-		if ctx.Err() != nil {
-			return fetchFailed, ctx.Err()
+	case ctx.Err() != nil:
+		return fetchFailed, ctx.Err()
+	case catalogFault(fetchErr):
+		// Every title would fail the same way: stop, and try them all at the next tick.
+		state := LookupsUnreachable
+		if tmdb.FailureClass(fetchErr) == tmdb.FailureUnauthorized {
+			state = LookupsKeyRefused
 		}
+		e.setLookups(Lookups{State: state, RetryAt: now.Add(orDuration(e.Interval, EnrichInterval))}, fetchErr)
+		return fetchFailed, nil
+	default:
+		// Something about this title alone: it waits enrichRetry, and the next one goes on.
 		if err := e.Store.FailLibraryCatalog(ctx, key, now.Add(enrichRetry)); err != nil {
 			return fetchFailed, err
 		}
-		e.log().Debug("library enrich: fetch failed", "catalog", key.String(), "err", fetchErr)
-		return fetchFailed, nil
+		e.log().Info("library enrich: a title's details couldn't be read; trying it again later",
+			"catalog", key.String(), "retry_at", now.Add(enrichRetry), "err", fetchErr)
+		return fetchHeld, nil
 	}
+	e.setLookups(Lookups{State: LookupsOK}, nil)
 	// A record says the language it was read in; "the catalog has no such title" holds in any.
 	language := rec.Language
 	if fetchErr != nil {

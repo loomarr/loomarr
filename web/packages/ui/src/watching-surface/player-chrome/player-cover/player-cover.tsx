@@ -64,8 +64,9 @@ const PlayerCover = ({
     ) : null}
     <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
       {onRetry ? (
-        // A remote's focus has nowhere else to be on a cover, so Retry claims it and OK retries.
-        <Action density={density} hasTVPreferredFocus={density === "tv"} onPress={onRetry}>
+        // A remote's focus has nowhere else to be on a cover, so Retry claims it and OK retries. It is
+        // white, as the play key is: inside the player amber is focus only (§9.6).
+        <Action density={density} hasTVPreferredFocus={density === "tv"} onPress={onRetry} variant="disc">
           {retryLabel}
         </Action>
       ) : null}

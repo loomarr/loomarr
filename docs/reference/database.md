@@ -588,7 +588,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `identity` | A digest of what said what the file is (its arr record, ids in its name, its NFO sidecar) when it was last written to the library. Cleared to make the scanner write the file again. | `TEXT` |
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
-| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), or invalid_facts (the library refused what was read from it). | `TEXT` |
+| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), invalid_facts (the library refused what was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink to a path outside the root, which the scan never follows). | `TEXT` |
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
@@ -793,7 +793,8 @@ A title's present files, one row each, with the copy that plays marked. Replaced
 | `bitrate` | The file's overall bitrate in bits per second; 0 when unknown. | `INTEGER` |
 | `duration_ms` | The file's length in milliseconds from its header; 0 until the header is read. | `INTEGER` |
 | `edition` | Which version of the title this file is, such as a director's cut; empty for the usual one. | `TEXT` |
-| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest). | `BOOLEAN` |
+| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order. | `BOOLEAN` |
+| `part` | Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file. | `INTEGER` |
 
 ### library_streams
 
@@ -1532,6 +1533,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `preparation_progress` | Percent done across the whole preparation attempt; -1 means unknown. | `INTEGER` |
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
+| `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
 
 ### filler_clip_variants
 

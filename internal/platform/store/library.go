@@ -44,11 +44,14 @@ type (
 	LibraryFilmographyDue    = librarystore.LibraryFilmographyDue
 	LibraryFrom              = librarystore.LibraryFrom
 	LibraryHeldCount         = librarystore.LibraryHeldCount
+	LibrarySkipped           = librarystore.LibrarySkipped
 	LibraryID                = librarystore.LibraryID
 	LibraryItem              = librarystore.LibraryItem
 	LibraryItemFacts         = librarystore.LibraryItemFacts
 	LibraryItemChannel       = librarystore.LibraryItemChannel
 	LibraryItemFactsReader   = librarystore.LibraryItemFactsReader
+	LibraryEvidence          = librarystore.LibraryEvidence
+	LibraryEvidenceReader    = librarystore.LibraryEvidenceReader
 	LibraryItemPage          = librarystore.LibraryItemPage
 	LibraryItemQuery         = librarystore.LibraryItemQuery
 	LibraryItemStore         = librarystore.LibraryItemStore

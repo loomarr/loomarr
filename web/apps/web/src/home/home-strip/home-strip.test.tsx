@@ -1,10 +1,12 @@
 import { getChannelGuideMockHandler } from "@loomarr/api/msw";
-import { screen } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { ADMIN, MEMBER, renderAt, stub } from "@/test/requests-harness";
+import { HomeStrip } from "./home-strip";
 
 // The top of Home through the real route (#1822 evidence: "Neutral channel inventory count").
 // Services, requests needing a decision and restart-pending now live elsewhere (the Requests nav
@@ -39,11 +41,16 @@ describe("HomeStrip — a neutral inventory line (#1822)", () => {
     expect(await screen.findByText("1 channel")).toBeInTheDocument();
   });
 
-  it("shows a stable loading line while the guide hasn't answered", async () => {
-    stub({ me: ADMIN });
-    server.use(getChannelGuideMockHandler(() => new Promise(() => {})));
-    renderAt("/dashboard");
-    expect(await screen.findByText("Loading your channels…")).toBeInTheDocument();
+  // Arriving through the route never shows this line: its loader holds the navigation until the
+  // guide answers. It is what the strip says when the page asks for a window the loader did not
+  // warm (the clock crossed a minute between the two), so it is rendered directly.
+  it("shows a stable loading line while the guide hasn't answered", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <HomeStrip isAdmin onRetry={() => {}} state="loading" />
+      </LoomarrProvider>,
+    );
+    expect(screen.getByText("Loading your channels…")).toBeInTheDocument();
   });
 
   it("offers Try again on an initial error, and retries the guide", async () => {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,6 +27,9 @@ type builder struct {
 	seen map[inventory.OriginKey]bool
 	// series is each series folder the pass found, and whether one of its episodes was written.
 	series map[string]*seriesSeen
+	// dirs are the folders, relative to the root, that hold a file the pass identified: a series'
+	// key that is none is a loose show's name (joinShows).
+	dirs map[string]bool
 }
 
 type seriesSeen struct {
@@ -42,6 +46,12 @@ type seriesSeen struct {
 	// last is the highest episode number on disk in each season, from every file the pass
 	// identified before writing any.
 	last map[int]int
+	// years counts the years its episodes' file names give the show ("Show (1963) - S01E01"), from
+	// the same files.
+	years map[int]int
+	// named counts the names its episodes' file names give the show before their marks, by
+	// normName: "Unit S9 S01E01" gives "unit s9".
+	named map[string]int
 
 	once       sync.Once
 	resolution resolution
@@ -126,24 +136,75 @@ type identity struct {
 	embedded mp.Record
 	// seriesDir is an episode's series folder, relative to the root.
 	seriesDir string
-	digest    string
+	// named is the show an episode's file name gives before its mark, "" for none: "Brindle
+	// Point" of "Brindle Point S01E01.mkv".
+	named  string
+	digest string
+}
+
+// airDate is the day the file's name says its episode aired, for one named by it rather than by
+// season and number; "" otherwise.
+func (id identity) airDate() string {
+	if id.embedded.Numbering != nil || id.embedded.Descriptive == nil {
+		return ""
+	}
+	return id.embedded.Descriptive.PremiereDate
 }
 
 func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	return &builder{
 		im: im, root: root, idx: idx, seen: map[inventory.OriginKey]bool{},
-		series: map[string]*seriesSeen{},
+		series: map[string]*seriesSeen{}, dirs: map[string]bool{},
 	}
 }
 
 func (b *builder) identify(file File) identity {
 	m := b.idx.byPath[file.Path]
+	for d := path.Dir(file.Rel); d != "." && !b.dirs[d]; d = path.Dir(d) {
+		b.dirs[d] = true
+	}
 	embedded, seriesDir := embeddedRecord(file)
+	// A file whose name says nothing of an episode is one when its own NFO says so: a scraper
+	// placed it ("Kettle Bay - Tidewater.mkv" beside an <episodedetails>). So is a file only its
+	// folder places as an episode a film when its own NFO is a <movie>: "TV/Odd/abc123.mkv" beside
+	// "abc123.nfo". A file's own mark ("S01E02") or day is never overruled.
+	placedOnly := embedded.Kind == mp.KindEpisode && embedded.Numbering == nil &&
+		(embedded.Descriptive == nil || embedded.Descriptive.PremiereDate == "")
+	if (embedded.Kind == mp.KindMovie || placedOnly) && len(m.records) == 0 && path.Dir(file.Rel) != "." {
+		own := strings.ToLower(strings.TrimSuffix(file.Path, filepath.Ext(file.Path)))
+		for nfo, st := range file.Sidecars {
+			if !isNFO(nfo) || strings.ToLower(strings.TrimSuffix(nfo, filepath.Ext(nfo))) != own {
+				continue
+			}
+			head := b.im.nfoRoots.headOf(nfo, st)
+			switch root := head.root; {
+			case root == "episodedetails" && (embedded.Kind == mp.KindMovie || placedOnly):
+				if embedded.Kind == mp.KindMovie {
+					seriesDir = seriesFolderOf(file)
+					embedded = mp.Record{Source: embedded.Source, Kind: mp.KindEpisode, Parent: idsIn(path.Base(seriesDir))}
+				}
+				// The show its NFO names is the episode's when the folder it sits in is no show's of
+				// that name: "TV/Unsorted/zz9.mkv" with <showtitle>Ollerton</showtitle> is Ollerton's,
+				// kept as a folder of its own there would be.
+				if head.show != "" && !namesShow(path.Base(seriesDir), head.show) {
+					container := path.Dir(file.Rel)
+					if seriesDir != "" {
+						container = path.Dir(seriesDir)
+					}
+					seriesDir = showKey(container, head.show)
+					embedded.Parent = nil
+				}
+			case root == "movie" && placedOnly:
+				seriesDir = ""
+				embedded = mp.Record{Source: embedded.Source, Kind: mp.KindMovie}
+			}
+		}
+	}
 	id := identity{kind: embedded.Kind, managed: m, embedded: embedded, seriesDir: seriesDir}
 	if len(m.records) > 0 {
 		id.kind = m.records[0].Kind
 		if id.kind == mp.KindEpisode && seriesDir == "" {
-			id.seriesDir = seriesFolder(file.Rel)
+			id.seriesDir = seriesFolderOf(file)
 		}
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
@@ -151,7 +212,7 @@ func (b *builder) identify(file File) identity {
 	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
-			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{},
+			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}, years: map[int]int{}, named: map[string]int{},
 				sidecars: seriesFolderSidecars(filepath.Join(b.root, filepath.FromSlash(id.seriesDir)))}
 			b.series[id.seriesDir] = s
 		}
@@ -159,13 +220,29 @@ func (b *builder) identify(file File) identity {
 		if m.series != nil {
 			s.managed = m.series
 		}
-		if n := id.numbering(); n != nil {
+		if n := id.numbering(); n != nil && n.Episode > 0 {
 			s.last[n.Season] = max(s.last[n.Season], n.Episode, n.EpisodeEnd)
+		}
+		if own := looseSeries(path.Base(file.Rel)); own != "" {
+			s.named[normName(own)]++
+			id.named = own
+		}
+		if year := showYearIn(path.Base(file.Rel)); year > 0 {
+			s.years[year]++
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
 	id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
 	return id
+}
+
+// namesShow is whether a folder's name could be show's, spelled its own way: they share a word
+// ("Ollerton (2010)", "The Ollerton Files" for "Ollerton"). "Unsorted" and "Downloads" share none.
+func namesShow(folder, show string) bool {
+	own := strings.Fields(normName(showFolderName(folder)))
+	return slices.ContainsFunc(strings.Fields(normName(show)), func(w string) bool {
+		return w != "and" && slices.Contains(own, w)
+	})
 }
 
 // seriesFolderSidecars stats a series folder's own tvshow.nfo and folder art. It reads the folder
@@ -192,6 +269,16 @@ func seriesFolderSidecars(dir string) map[string]Stat {
 		out[filepath.Join(dir, name)] = Stat{Size: info.Size(), ModifiedNs: info.ModTime().UnixNano()}
 	}
 	return out
+}
+
+// absolute is the episode's number counted across its show, when its name gives only that (an
+// anime release's "Show - 013"); zero otherwise.
+func (id identity) absolute() int {
+	n := id.embedded.Numbering
+	if len(id.managed.records) > 0 || n == nil || n.Episode > 0 {
+		return 0
+	}
+	return n.Absolute
 }
 
 // numbering is where the cheap sources place an episode file, through its last episode; nil for
@@ -285,12 +372,22 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
 	res := b.resolve(ctx, snapshot.Origin, in)
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
-		res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+		if day := id.airDate(); day != "" {
+			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+		} else if abs := id.absolute(); abs > 0 {
+			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, abs)
+		} else {
+			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+		}
 	}
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
-		facts.Name = fallbackName(file.Rel)
+		facts.Name = fallbackName(file.Rel, id.kind, file.Part, file.Sole)
+	}
+	// An episode its file names by the day it aired lists that day until a catalog says more.
+	if day := id.airDate(); facts.PremiereDate == "" && day != "" {
+		facts.PremiereDate = day
 	}
 	coverage["sources"] = inventory.CoveragePresent
 	snapshot.Kind = kindOf(id.kind)
@@ -300,10 +397,15 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		seriesKey = seriesOrigin(b.root, id.seriesDir)
 	}
 	snapshot.Observation.Extension = originExtensionOf(id.kind, res, seriesKey, fileNotes{
-		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Trickplay: file.trickplay(),
+		Managed: len(id.managed.records) > 0, Edition: fileEdition(records), Part: file.Part, Trickplay: file.trickplay(),
 		External: file.externalTracks(), Markers: readEDL(file.edl()),
 	})
 	snapshot.ExternalIDs = withFurtherIDs(externalIDs(resolved.IDs), further)
+	// Every part of a movie in parts names its set, so the parts are one title from the first
+	// pass, before any catalog names it.
+	if id.kind == mp.KindMovie && file.Part > 0 && file.PartSet != "" {
+		snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: partsNamespace, Value: partsID(file.PartSet)})
+	}
 	return snapshot
 }
 
@@ -409,8 +511,42 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 		res := b.resolveSeries(ctx, s)
 		resolved := res.resolved
 		facts, coverage := itemFacts(resolved)
-		if facts.Name == "" {
-			facts.Name = strings.TrimSpace(embeddedID.ReplaceAllString(s.dir, ""))
+		// A show with no name of its own is named by its own folder, not the folders it sits in:
+		// "TV/Kids/Kettle Bay" is "Kettle Bay".
+		if facts.Name == "" && s.dir != "" {
+			base := filepath.Base(filepath.FromSlash(s.dir))
+			facts.Name = showFolderName(base)
+			// A show its own episodes name as its folder does, "Unit S9/Unit S9 S01E01.mkv" or
+			// "Brockle 1x1/Brockle 1x1 S01E01.mkv", is called so: what reads as a season's mark after
+			// the name is the name's.
+			if whole := strings.TrimSpace(embeddedID.ReplaceAllString(base, "")); whole != facts.Name && s.named[normName(whole)] > 0 {
+				facts.Name = whole
+			}
+			// A tagged release's folder holding one episode, "[Grp] Ame Furu - 07 [1080p] [ABCD1234]",
+			// names its show before the number (showIdentity).
+			if bare := strings.TrimSpace(trimReleaseNotes(leadingTags.ReplaceAllString(base, ""))); bare != base {
+				if m := animeDashed.FindStringSubmatch(bare); m != nil && strings.TrimSpace(m[1]) != "" {
+					facts.Name = strings.TrimSpace(m[1])
+				}
+			}
+			// A show's specials kept in a folder of their own with no show's above it, "Holly Day
+			// Specials/Holly Day S00E05.mkv", are the show its episodes name.
+			if m := showSpecials.FindStringSubmatch(facts.Name); m != nil && s.named[normName(m[1])] > 0 {
+				facts.Name = strings.TrimSpace(m[1])
+			}
+			// So is one whose folder reads its first word as its year, "2020.Vision.Street", when its
+			// episodes name it whole with spaces, "2020 Vision Street S01E01": the year is the title's.
+			if title, year, _ := searchQuery(facts.Name, 0); year != 0 && !strings.Contains(facts.Name, " ") && s.named[normName(facts.Name)] > 0 {
+				if spaced := strings.Join(strings.FieldsFunc(facts.Name, func(r rune) bool { return r == '.' || r == '_' }), " "); spaced != title {
+					facts.Name = spaced
+				}
+			}
+		}
+		// A show whose folder and NFO give no year takes the one its episodes' names agree on.
+		if _, named, _ := searchQuery(facts.Name, 0); facts.ProductionYear == 0 && named == 0 && len(s.years) == 1 {
+			for year := range s.years {
+				facts.ProductionYear = year
+			}
 		}
 		coverage["sources"] = inventory.CoverageEmpty
 		snapshot := inventory.Snapshot{

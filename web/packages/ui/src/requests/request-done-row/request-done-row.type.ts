@@ -11,6 +11,8 @@ type RequestDoneRowProps = {
   nowMs?: number;
   /** Tunes the channel and opens Watching. */
   onOpen: () => void;
+  /** The household's timezone, which dates are told in; the device's while undefined. */
+  timeZone?: string;
 };
 
 export type { RequestChannelName, RequestDoneRowProps };

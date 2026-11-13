@@ -8,7 +8,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
@@ -26,6 +25,7 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/platform/store/qualitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 )
@@ -54,8 +54,8 @@ var ErrConditionedClipMismatch = clipstore.ErrConditionedClipMismatch
 var ErrTaxonConflict = clipstore.ErrTaxonConflict
 
 // ErrQualitySnapshotConflict reports reuse of an immutable evaluation-run id
-// with different facts.
-var ErrQualitySnapshotConflict = errors.New("store: quality snapshot conflict")
+// with different facts. It is qualitystore.ErrSnapshotConflict, the same value under a second name.
+var ErrQualitySnapshotConflict = qualitystore.ErrSnapshotConflict
 
 // ErrContactAddressConflict means the normalized mailbox is already attached to another person
 // or pending replacement. Public recovery must never resolve one address ambiguously.
@@ -294,7 +294,7 @@ type UserStore interface {
 	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (DevicePairing, error)
 	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error)
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
-	DeleteDevicePairing(ctx context.Context, codeHash string) error
+	RedeemDevicePairing(ctx context.Context, codeHash, tokenHash string, at time.Time) (DevicePairing, error)
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
 	CreateDeviceToken(ctx context.Context, t DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
@@ -733,6 +733,7 @@ type Store interface {
 	LibraryCollectionStore
 	LibraryPeopleStore
 	LibraryItemFactsReader
+	LibraryEvidenceReader
 	LibraryEpisodeReader
 	LibraryTitleReader
 	LibraryReferenceStore

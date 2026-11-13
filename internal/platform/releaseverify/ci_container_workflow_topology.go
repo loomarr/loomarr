@@ -55,7 +55,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"merge-gate-cache.yml":        {jobs: map[string]int{"run": 7}},
 		"curated-sources.yml":         {jobs: map[string]int{"check": 2}},
 		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
-		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
+		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3, "library-scale": 3}},
 		"ffmpeg-pin-refresh.yml":      {jobs: map[string]int{"refresh": 3}},
 		"image-benchmark.yml":         {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":                   {jobs: map[string]int{"build": 5, "deploy": 1}},

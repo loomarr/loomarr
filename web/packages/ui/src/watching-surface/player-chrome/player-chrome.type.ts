@@ -97,6 +97,27 @@ interface PlayerBandData {
   station?: string;
 }
 
+/** One channel on the row of cards that stands in for the band while flipping (§9.2). */
+interface PlayerSurfChannel {
+  id: string;
+  number: string;
+  name: string;
+  /** The channel's era decade: it colours the card's number block, as it does the band's. */
+  decade?: number;
+  /** What is on now; omitted when nothing is. */
+  nowPlaying?: string;
+  /** The programme's picture; without one the card's picture is a flat stand-in. */
+  artUri?: string;
+}
+
+/** Flipping channels (§9.2): the cards around the channel just tuned, which is lit. */
+interface PlayerSurf {
+  /** Every channel a flip steps through, in number order. */
+  channels: readonly PlayerSurfChannel[];
+  /** The channel the last flip tuned: its card is lit and reads "Watching now". */
+  tunedId: string;
+}
+
 /** The Info sheet's programme (§9, mock "info"): the block at the playhead and what follows it. */
 interface PlayerInfoData {
   /** The band's programme line. */
@@ -149,14 +170,31 @@ interface PlayerChromeProps {
   utilities: PlayerUtilitiesProps;
   /** Playback details as a panel at the upper left (pointer devices); a phone shows it as a sheet. */
   panel?: ReactNode;
+  /** The subtitle lines on screen now, drawn over the picture; empty or omitted for none (§9.5). */
+  captions?: readonly string[];
   /** The first play in a session starts muted: the pill that takes one tap to undo it; omitted otherwise. */
   unmute?: () => void;
   /**
    * Digits being typed to tune direct: the readout, on a solid backing, clear of the watermark, with
    * the channel they reach and, on a remote, the auto-tune countdown.
    */
-  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string };
-  /** The open right-hand sheet, drawn over a dimmed picture; omitted when none is open. */
+  readout?: { countdown?: string; digits: string; missed?: boolean; name?: string; quiet?: boolean };
+  /**
+   * Flipping channels (§9.2, variant J): the row of channel cards takes the band's place and the
+   * utilities step away, with the controls up. Every flip tunes at once (§9.4); the app sets this
+   * from a flip until a beat after the last one, and omits it otherwise.
+   */
+  surf?: PlayerSurf;
+  /**
+   * The open menu (§9.5, variant J): on desktop and television, what a key opens sits in the control
+   * cluster, right over the keys, with the picture whole. Omitted when none is open.
+   */
+  menu?: ReactNode;
+  /**
+   * The open sheet: the right-hand sheet over a dimmed picture on a phone on its side, the bottom
+   * sheet (picture undimmed, so a choice shows as it is made) on one held upright. Omitted when none
+   * is open.
+   */
   sheet?: ReactNode;
   /**
    * The channel's watermark, burned into the picture (§9.6): the chrome keeps out of its box. Omitted
@@ -182,10 +220,10 @@ interface PlayerKeysProps {
   onChannelUp?: () => void;
   onChannelDown?: () => void;
   /**
-   * Volume, on desktop; omitted on a phone and a television, whose own buttons set it (the key is
-   * then not drawn).
+   * Volume, on desktop: it opens the level in the menu's place (§9.5). Omitted on a phone and a
+   * television, whose own buttons set it (the key is then not drawn).
    */
-  volume?: { muted: boolean; onToggleMute: () => void };
+  volume?: { muted: boolean; onPress: () => void; open: boolean };
   /** More: open or close the More sheet. Omitted where the player has nothing for More to open. */
   moreOpen?: boolean;
   onMore?: () => void;
@@ -209,8 +247,11 @@ interface PlayerUtilitiesProps {
   /** Fullscreen; omitted where the platform has none (a phone's app is already full screen). */
   fullscreen?: boolean;
   onFullscreen?: () => void;
-  /** AirPlay (iPhone): the system's route picker. */
-  onAirPlay?: () => void;
+  /**
+   * AirPlay (iPhone): the system's route picker. iOS opens the picker only from its own button, so
+   * the app passes that button and the key lays it, clear, over its face.
+   */
+  airPlayPicker?: ReactNode;
   /** Picture in picture, where the player is a phone app that has a key for it. */
   onPictureInPicture?: () => void;
 }
@@ -228,6 +269,11 @@ interface PlayerSchedule {
    * Watching (playback-clients), and the strip is where focus rests while the controls are up.
    */
   onSelect?: () => void;
+  /**
+   * Info is open (§9.5, variant J): on desktop and television it is the block on air's own card,
+   * pinned open in full. A phone has no strip, so its Info is a sheet.
+   */
+  info?: boolean;
 }
 
 interface ClipTransportProps {
@@ -281,5 +327,7 @@ export type {
   PlayerLiveState,
   PlayerSchedule,
   PlayerSheetProps,
+  PlayerSurf,
+  PlayerSurfChannel,
   PlayerUtilitiesProps,
 };

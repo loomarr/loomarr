@@ -4,12 +4,12 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { AiModelSettings } from "@/settings/ai-model-settings";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // The wizard's AI onboarding (config-design §6: "AI — skippable; includes the §8.1 model
@@ -36,12 +36,13 @@ const WizardAiBlock = () => {
   const status = unwrap(llm.data);
 
   // Local edits for the provider fields, saved as a group like every other checklist block.
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const { edits, setEdit, dropSaved } = useSettingsDraft();
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, { data }) => {
         await invalidateSettings(queryClient);
-        setEdits({});
+        // A refused provider field stays editable, beside the message the results give for it.
+        dropSaved(response, data.edits);
       },
     },
   });
@@ -67,15 +68,10 @@ const WizardAiBlock = () => {
   const dirty = Object.keys(edits).length > 0;
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       {/* Provider choice + (for a hosted provider) its URL/key — the same fields Settings→AI
           shows, so the wizard offers the full Ollama-vs-external choice, not Ollama only. */}
-      <SettingsFields
-        entries={aiEntries}
-        values={edits}
-        onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
-        results={patchResults}
-      />
+      <SettingsFields entries={aiEntries} values={edits} onChange={setEdit} results={patchResults} />
 
       {patch.error != null && <ErrorState error={patch.error} />}
 
@@ -93,28 +89,32 @@ const WizardAiBlock = () => {
       {/* Auto-detect header — only meaningful on the local (Ollama) branch. */}
       {liveProvider !== "openai" &&
         (llm.isLoading ? (
-          <p className="text-muted-foreground flex items-center gap-2 text-sm">
+          <Stack align="center" direction="row" gap="inline" render="p">
             <LoadingStrip decorative width={32} />
-            Looking for a local AI model…
-          </p>
+            <Text as="span" textRole="compact" tone="secondary">
+              Looking for a local AI model…
+            </Text>
+          </Stack>
         ) : status?.reachable ? (
-          <p className="text-lock flex items-center gap-2 text-sm">
-            <Icon decorative glyph={icons.passed} size="compact" tone="inherit" />
-            {status.model
-              ? `Ollama detected: using ${status.model}.`
-              : "Ollama detected. Pick a model below to turn on suggestions."}
-          </p>
+          <Stack align="center" direction="row" gap="inline" render="p">
+            <Icon decorative glyph={icons.passed} size="compact" tone="success" />
+            <Text as="span" textRole="compact" tone="success">
+              {status.model
+                ? `Ollama detected: using ${status.model}.`
+                : "Ollama detected. Pick a model below to turn on suggestions."}
+            </Text>
+          </Stack>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             No local Ollama found. Start Ollama on this machine, or switch the provider above to an
             OpenAI-compatible service. You can skip this and add it later. Suggestions stay off until you do.
-          </p>
+          </Text>
         ))}
 
       {/* The real picker: local installed/download list, OR the hosted model picker — chosen
           by the LIVE provider. onModelChange flips the wizard's green dot when a model is set. */}
       <AiModelSettings provider={liveProvider} baseUrl={liveBaseUrl} onModelChange={refreshSetupStatus} />
-    </div>
+    </Stack>
   );
 };
 

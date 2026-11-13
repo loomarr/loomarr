@@ -81,7 +81,10 @@ type LibrarySource struct {
 	DurationMs int64
 	// Edition labels a version of the title ("" the default; decision 54).
 	Edition string
-	// Plays marks the copy that plays (decision 37).
+	// Part is which part of a movie in parts it is, from 1; 0 for a whole file. Every part of the
+	// edition that plays is marked Plays, and they play in part order.
+	Part int
+	// Plays marks the copy that plays (decision 37), or each of its parts.
 	Plays   bool
 	Streams []LibraryStream
 	// Trickplay are the trickplay files beside it, referenced and never imported (decision 61).
@@ -228,8 +231,10 @@ type LibraryItemSummary struct {
 	Pending int
 	// Unplayable counts its present files whose header could not be read: they can't be played.
 	Unplayable int
-	// ExtraBytes is what a movie's extra copies take: its files that are not a copy that plays.
-	ExtraBytes int64
+	// ExtraCopies counts a movie's extra copies, its files that are not a copy that plays (each
+	// edition's, or each part of a movie in parts), and ExtraBytes is what they take.
+	ExtraCopies int
+	ExtraBytes  int64
 }
 
 // LibraryItemQuery narrows the list. Kind "" is movies and series; Search matches the name, any
@@ -277,6 +282,9 @@ type LibraryItemStore interface {
 	LibraryItemChannels(ctx context.Context, id string) ([]LibraryItemChannel, error)
 	// LibraryItemFiles lists an item's present files (a series' episodes), in path order.
 	LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error)
+	// LibraryItemsFiles is LibraryItemFiles for many items at once, by item id: one read for a
+	// list, not one per title. An item with no present file has no entry.
+	LibraryItemsFiles(ctx context.Context, ids []string) (map[string][]LibraryFile, error)
 	// RecheckLibraryItemFiles puts the header of an item's present, importable files (a series'
 	// episodes) back to pending, so the scanner reads them again, and lists them.
 	RecheckLibraryItemFiles(ctx context.Context, id string) ([]LibraryFilePath, error)
@@ -365,7 +373,7 @@ var (
 	itemColumns = `i.id, i.kind, i.name, i.sort_name, i.year, i.catalog, i.match_basis, i.match_app, i.match_page, i.set_key,
 		` + itemImage("poster") + `, ` + itemImage("backdrop") + `, ` + itemImage("logo") + `,
 		` + countFiles("") + `, ` + countFiles(` AND f.header = 'pending'`) + `, ` + countFiles(` AND f.header = 'failed'`) + `,
-		COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
+		(SELECT COUNT(*) FROM ` + extraCopies + `), COALESCE((SELECT SUM(s.size_bytes) FROM ` + extraCopies + `), 0)`
 	// itemProblems keeps a title that needs a look: a file that cannot play, or a movie's extra copy.
 	itemProblems = `(` + countFiles(` AND f.header = 'failed'`) + ` > 0
 		OR (i.kind = 'movie' AND EXISTS (SELECT 1 FROM ` + extraCopies + `)))`
@@ -475,7 +483,7 @@ func (s *Store) scanLibraryItems(ctx context.Context, query string, args ...any)
 		var it LibraryItemSummary
 		var catalog, set string
 		if err := rows.Scan(&it.ID, &it.Kind, &it.Name, &it.SortName, &it.Year, &catalog, &it.Match.Basis,
-			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraBytes); err != nil {
+			&it.Match.App, &it.Match.Page, &set, &it.Poster, &it.Backdrop, &it.Logo, &it.Files, &it.Pending, &it.Unplayable, &it.ExtraCopies, &it.ExtraBytes); err != nil {
 			_ = rows.Close()
 			return nil, fmt.Errorf("list library items: %w", err)
 		}
@@ -490,29 +498,58 @@ func (s *Store) scanLibraryItems(ctx context.Context, query string, args ...any)
 }
 
 func (s *Store) LibraryItemFiles(ctx context.Context, id string) ([]LibraryFile, error) {
+	files, err := s.LibraryItemsFiles(ctx, []string{id})
+	return files[id], err
+}
+
+// idsPerRead keeps one read's id list well inside either engine's bound on a query's parameters.
+const idsPerRead = 500
+
+func (s *Store) LibraryItemsFiles(ctx context.Context, ids []string) (map[string][]LibraryFile, error) {
+	out := map[string][]LibraryFile{}
+	for len(ids) > 0 {
+		batch := ids[:min(len(ids), idsPerRead)]
+		ids = ids[len(batch):]
+		if err := s.readItemsFiles(ctx, batch, out); err != nil {
+			return nil, fmt.Errorf("list library item files: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// readItemsFiles adds the present files of a batch of items to out. A file counts toward its own
+// item and its series, whichever of them the batch names.
+func (s *Store) readItemsFiles(ctx context.Context, ids []string, out map[string][]LibraryFile) error {
+	in := strings.TrimSuffix(strings.Repeat("?, ", len(ids)), ", ")
+	args := make([]any, 0, 2*len(ids))
+	named := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		args, named[id] = append(args, id), true
+	}
+	args = append(args, args...)
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT path, root, size_bytes, modified_ns, identity, kind, header,
 		problem, held, seen_at_ms, missing_at_ms, COALESCE(inventory_item_id, ''), COALESCE(inventory_series_id, '')
-		FROM library_files WHERE (inventory_item_id = ? OR inventory_series_id = ?) AND missing_at_ms = 0 AND problem = ''
-		ORDER BY path`), id, id)
+		FROM library_files WHERE (inventory_item_id IN (`+in+`) OR inventory_series_id IN (`+in+`))
+		AND missing_at_ms = 0 AND problem = '' ORDER BY path`), args...)
 	if err != nil {
-		return nil, fmt.Errorf("list library item files: %w", err)
+		return err
 	}
-	var out []LibraryFile
 	for rows.Next() {
 		var f LibraryFile
 		var seen, missing int64
 		if err := rows.Scan(&f.Path, &f.Root, &f.Size, &f.ModifiedNs, &f.Identity, &f.Kind, &f.Header, &f.Problem,
 			&f.Held, &seen, &missing, &f.ItemID, &f.SeriesID); err != nil {
 			_ = rows.Close()
-			return nil, fmt.Errorf("list library item files: %w", err)
+			return err
 		}
 		f.SeenAt = time.UnixMilli(seen).UTC()
-		out = append(out, f)
+		for _, id := range []string{f.ItemID, f.SeriesID} {
+			if id != "" && named[id] {
+				out[id] = append(out[id], f)
+			}
+		}
 	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, fmt.Errorf("list library item files: %w", err)
-	}
-	return out, nil
+	return errors.Join(rows.Err(), rows.Close())
 }
 
 // likeEscape escapes LIKE's wildcards so a search matches them literally.

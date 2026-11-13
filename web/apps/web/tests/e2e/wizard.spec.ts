@@ -58,7 +58,8 @@ test.describe("operator first-run wizard", () => {
     // --- step 3: installation location ------------------------------------------
     await expect(page.getByRole("heading", { name: /where are your channels watched/i })).toBeVisible();
     await page.getByRole("combobox", { name: "Location" }).fill("New York");
-    await page.getByRole("option", { name: "New York City, United States" }).click();
+    // The option leads with the city; its region and country are the description.
+    await page.getByRole("option", { name: /^New York City\b/ }).click();
     await page.getByRole("button", { name: "Continue" }).click();
     expect(backend.state.edits["filler.home_country"]).toBe("US");
     expect(backend.state.edits["filler.home_place"]).toBe("5128581");

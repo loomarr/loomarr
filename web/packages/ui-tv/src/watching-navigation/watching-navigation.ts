@@ -2,6 +2,7 @@ import type {
   TvNumberEntryPresentation,
   TvNumberedChannel,
   TvRemoteDigit,
+  TvWatchingFocus,
   TvWatchingRemoteEvent,
   TvWatchingRemoteResult,
   TvWatchingRemoteState,
@@ -58,15 +59,19 @@ const numberEntryIntent = (state: TvWatchingRemoteState, handled: boolean): TvWa
 };
 
 /**
- * `controlsShown`: Watching's controls are up, so Left and Right move remote focus along the film
- * strip and the keys (frontend-design §9.7) rather than opening Surf; they still count as activity.
+ * `focus` is where Watching is (TvWatchingFocus). With the controls up (or Info), Left and Right move
+ * remote focus along the film strip and the keys (frontend-design §9.7) rather than opening Surf; in
+ * the More menu every arrow moves focus through its rows instead of tuning. Either way the key still
+ * counts as activity. Menu closes an open layer before it opens Surf.
  */
 const reduceTvWatchingRemote = (
   state: TvWatchingRemoteState,
   event: TvWatchingRemoteEvent,
   durationMs: number = DEFAULT_NUMBER_ENTRY_MS,
-  controlsShown = false,
+  focus: TvWatchingFocus = "picture",
 ): TvWatchingRemoteResult => {
+  const controlsShown = focus !== "picture";
+  const inMenu = focus === "menu";
   switch (event.key) {
     case "digit": {
       const digits = `${state.numberEntry?.digits ?? ""}${event.digit}`.slice(-MAX_CHANNEL_DIGITS);
@@ -94,11 +99,17 @@ const reduceTvWatchingRemote = (
         ? { handled: true, state }
         : { handled: true, intent: { kind: "open-surf" }, state };
     case "menu":
-      return { handled: true, intent: { kind: "open-surf" }, state };
+      return focus === "menu" || focus === "info"
+        ? { handled: true, intent: { kind: "close-layer" }, state }
+        : { handled: true, intent: { kind: "open-surf" }, state };
     case "up":
-      return { handled: true, intent: { direction: 1, kind: "step" }, state };
+      return inMenu
+        ? { handled: true, state }
+        : { handled: true, intent: { direction: 1, kind: "step" }, state };
     case "down":
-      return { handled: true, intent: { direction: -1, kind: "step" }, state };
+      return inMenu
+        ? { handled: true, state }
+        : { handled: true, intent: { direction: -1, kind: "step" }, state };
     case "channel":
       return {
         handled: true,

@@ -359,7 +359,9 @@ const ChannelBand = ({
                 : { flex: 1, minWidth: 0 }
             }
           >
-            {/* When the row is tight the episode line gives way first, then the title. */}
+            {/* When the row is tight the episode line gives way first, then the title. In a break the
+                title gives way instead: `Back in n min` is the only words saying the picture is a break,
+                and a television's large title alone fills the row. */}
             <Text
               density={text}
               numberOfLines={portrait ? 2 : 1}
@@ -376,7 +378,8 @@ const ChannelBand = ({
                 density={text}
                 numberOfLines={1}
                 strong
-                style={{ flexShrink: 100_000, minWidth: 0 }}
+                style={{ flexShrink: 0 }}
+                testID="band-break"
                 textRole={wide ? "reading" : "cardMeta"}
                 tone="info"
               >
@@ -511,6 +514,7 @@ const ChannelBand = ({
             cardLift={headerHeight}
             density={text}
             formatTime={formatTime}
+            pinNow={schedule.info === true}
             playheadMs={schedule.playheadMs}
             pointer={!tv}
             quietNow

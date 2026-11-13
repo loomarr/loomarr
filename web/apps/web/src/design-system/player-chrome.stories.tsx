@@ -3,15 +3,18 @@ import { formatGuideTime } from "@loomarr/core/guide";
 import { LoomarrProvider, ThemeScope } from "@loomarr/design-system";
 import {
   PlayerAudio,
+  PlayerBottomSheet,
   PlayerChrome,
   type PlayerChromeProps,
   PlayerCover,
   PlayerDetails,
   PlayerDetailsPanel,
   PlayerInfo,
+  PlayerMenu,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
+  PlayerVolume,
   pictureIn,
   playbarFromTimeline,
 } from "@loomarr/ui";
@@ -153,7 +156,7 @@ const keys = {
   onTogglePlay: fn(),
   playing: true,
   pointer: true,
-  volume: { muted: false, onToggleMute: fn() },
+  volume: { muted: false, onPress: fn(), open: false },
 };
 
 const utilities = {
@@ -287,23 +290,121 @@ const Television: Story = {
   ),
 };
 
-const AudioSheet: Story = {
+// A break on a television, paused a little behind, leading back to a long title: the TV's large title
+// shares its row with `Back in n min`, and the title is what truncates.
+const longReturn = airings.map((airing) =>
+  airing.scheduleBlockId === "p2"
+    ? {
+        ...airing,
+        episode: undefined,
+        season: undefined,
+        series: undefined,
+        title: "A Lighthouse Keeper's Long Winter",
+      }
+    : airing,
+);
+const tvBreakState = { lagSeconds: 75, mode: "paused" as const };
+const tvBreakPlayhead = NOW - tvBreakState.lagSeconds * 1000;
+const tvBreak = playbarFromTimeline({
+  airings: longReturn,
+  channel,
+  live: tvBreakState,
+  nowMs: NOW,
+  playheadMs: tvBreakPlayhead,
+});
+const TelevisionCommercials: Story = {
+  ...Television,
   args: {
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Audio">
-        <PlayerAudio
-          density="pointer"
-          onSwitchSound={fn()}
-          options={[
-            { label: "Auto", selected: false, value: "auto" },
-            { label: "English", selected: true, value: "eng" },
-            { label: "Spanish", selected: false, value: "spa" },
-          ]}
-          switchSound
-        />
-      </PlayerSheet>
+    ...Television.args,
+    band: tvBreak.band,
+    keys: { ...Television.args?.keys, playing: false },
+    live: tvBreakState,
+    schedule: {
+      onSeek: fn(),
+      playheadMs: tvBreakPlayhead,
+      segments: tvBreak.segments,
+      window: tvBreak.window,
+    },
+  } as Story["args"],
+};
+
+// A television's subtitle is short (about 32 characters a line, as broadcast captions are).
+const TelevisionSubtitles: Story = {
+  ...Television,
+  args: {
+    ...Television.args,
+    captions: ["I thought you said tonight", "would be quiet."],
+    utilities: { ...Television.args?.utilities, subtitlesOn: true },
+  } as Story["args"],
+};
+
+// What a key opens (§9.5, variant J): on a pointer and a television, a menu in the control cluster,
+// right over the keys, with the picture whole; on a phone held upright, a sheet from the bottom.
+const audioOptions = [
+  { label: "Auto", selected: false, value: "auto" },
+  { label: "English", selected: true, value: "eng" },
+  { label: "Spanish", selected: false, value: "spa" },
+];
+const AudioMenu: Story = {
+  args: {
+    menu: (
+      <PlayerMenu density="pointer" title="Audio">
+        <PlayerAudio density="pointer" options={audioOptions} switchSound={{ on: true, onChange: fn() }} />
+      </PlayerMenu>
     ),
     utilities: { ...utilities, audioOpen: true },
+  },
+};
+
+// Subtitles (§9.5, variant J): Off, then each language, a hearing-impaired track as "English, with
+// sounds"; the line on the picture, centred and lifted clear of the band while the controls are up.
+const subtitleOptions = [
+  { label: "Off", selected: false, value: "off" },
+  { label: "English", selected: true, value: "en" },
+  {
+    detail: "For the deaf and hard of hearing",
+    label: "English, with sounds",
+    selected: false,
+    value: "en-sdh",
+  },
+  { label: "Spanish", selected: false, value: "es" },
+];
+const subtitleLine = ["I thought you said tonight would be quiet."];
+const subtitlesOn = { ...utilities, onSubtitles: fn(), subtitlesOn: true };
+const SubtitlesMenu: Story = {
+  args: {
+    captions: subtitleLine,
+    menu: (
+      <PlayerMenu density="pointer" title="Subtitles">
+        <PlayerOptions density="pointer" label="Subtitles" onSelect={fn()} options={subtitleOptions} />
+      </PlayerMenu>
+    ),
+    utilities: { ...subtitlesOn, subtitlesOpen: true },
+  },
+};
+// The same on a television (#3905): the menu rises over the keys, so the line centres on the picture
+// left of it rather than running under its heading.
+const TelevisionSubtitlesMenu: Story = {
+  ...TelevisionSubtitles,
+  args: {
+    ...TelevisionSubtitles.args,
+    menu: (
+      <PlayerMenu density="tv" title="Subtitles">
+        <PlayerOptions density="tv" label="Subtitles" onSelect={fn()} options={subtitleOptions} />
+      </PlayerMenu>
+    ),
+    utilities: { ...TelevisionSubtitles.args?.utilities, subtitlesOpen: true },
+  } as Story["args"],
+};
+// With the controls down, the line drops to the picture's foot.
+const SubtitlesIdle: Story = { args: { captions: subtitleLine, utilities: subtitlesOn, visible: false } };
+
+// The volume level (§9.5, desktop): the Volume key opens it in the menu's place; M and the slider show
+// it for a moment.
+const VolumeLevel: Story = {
+  args: {
+    keys: { ...keys, volume: { muted: false, onPress: fn(), open: true } },
+    menu: <PlayerVolume muted={false} onVolume={fn()} volume={0.6} />,
   },
 };
 
@@ -311,6 +412,30 @@ const AudioSheet: Story = {
 const TypingChannel: Story = { args: { readout: { digits: "1–" } } };
 
 const NoSuchChannel: Story = { args: { readout: { digits: "99", missed: true } } };
+
+// Flipping channels (§9.2, mock "surfing"): Channel up tuned 12, the cards ride along in the band's
+// place with 12 lit, and the readout names it. No art here, so every card's picture is its stand-in.
+const surf = {
+  channels: [
+    { id: "3", name: "Saturday Mornings", nowPlaying: "Cartoon block", number: "3" },
+    { id: "5", name: "Late Show Reruns", nowPlaying: "A talk show", number: "5" },
+    { decade: 1990, id: "7", name: "Coast 90s", nowPlaying: "The Diner Years", number: "7" },
+    { id: "9", name: "Movie Matinee", nowPlaying: "A heist film", number: "9" },
+    { id: "12", name: "Game Night", nowPlaying: "A quiz show", number: "12" },
+    { decade: 1970, id: "14", name: "Sunday Westerns", nowPlaying: "A cattle drive", number: "14" },
+    { id: "21", name: "Sports Replay", nowPlaying: "A baseball classic", number: "21" },
+  ],
+  tunedId: "12",
+};
+const Surfing: Story = { args: { readout: { digits: "12", name: "Game Night", quiet: true }, surf } };
+const TelevisionSurfing: Story = {
+  ...Television,
+  args: {
+    ...Television.args,
+    readout: { digits: "12", name: "Game Night", quiet: true },
+    surf,
+  } as Story["args"],
+};
 
 // The channel's watermark is burned into the picture and never moves. The chrome steps around it
 // (§9.6, #2772): a 16:9 frame so the picture fills it, and a stand-in bug drawn where playout puts it.
@@ -352,10 +477,12 @@ const WatermarkTopRightTyping: Story = {
   render: (args) => <BugFrame {...args} corner="top-right" />,
 };
 
-const PictureSheet: Story = {
+// Picture is More's second page: its heading is the way back.
+const PictureMenu: Story = {
   args: {
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Picture">
+    keys: { ...keys, moreOpen: true },
+    menu: (
+      <PlayerMenu density="pointer" onBack={fn()} title="Picture">
         <PlayerOptions
           density="pointer"
           label="Picture quality"
@@ -366,7 +493,7 @@ const PictureSheet: Story = {
             { label: "720p", selected: false, value: "720" },
           ]}
         />
-      </PlayerSheet>
+      </PlayerMenu>
     ),
   },
 };
@@ -419,11 +546,12 @@ const PlaybackDetailsSheet: Story = {
   },
 };
 
-const MoreSheet: Story = {
+// More holds only what has no key of its own; the band's strip is the schedule, so More has none.
+const MoreMenu: Story = {
   args: {
     keys: { ...keys, moreOpen: true },
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="More">
+    menu: (
+      <PlayerMenu density="pointer" heading={false} title="More">
         <PlayerMore
           channels={{ onPress: fn() }}
           density="pointer"
@@ -432,9 +560,8 @@ const MoreSheet: Story = {
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
           pictureInPicture={{ onPress: fn() }}
           playbackDetails={{ onPress: fn() }}
-          {...moreData(live)}
         />
-      </PlayerSheet>
+      </PlayerMenu>
     ),
   },
 };
@@ -444,8 +571,8 @@ const MoreBehind: Story = {
   args: {
     ...chromeArgs({ lagSeconds: 134, mode: "paused" }),
     keys: { ...keys, moreOpen: true, playing: false },
-    sheet: (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="More">
+    menu: (
+      <PlayerMenu density="pointer" heading={false} title="More">
         <PlayerMore
           channels={{ onPress: fn() }}
           density="pointer"
@@ -453,11 +580,45 @@ const MoreBehind: Story = {
           goLive={{ detail: formatTime(NOW), onPress: fn() }}
           info={{ onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
-          {...moreData({ lagSeconds: 134, mode: "paused" })}
+          playbackDetails={{ onPress: fn() }}
+          startOver={moreData({ lagSeconds: 134, mode: "paused" }).startOver}
         />
-      </PlayerSheet>
+      </PlayerMenu>
     ),
   },
+};
+
+// A television's More: the remote's ring on its rows; Back closes it.
+const TelevisionMore: Story = {
+  args: {
+    density: "tv",
+    keys: {
+      ...keys,
+      density: "tv",
+      last: { number: "3", onPress: fn() },
+      moreOpen: true,
+      pointer: false,
+      volume: undefined,
+    },
+    layout: "tv",
+    menu: (
+      <PlayerMenu density="tv" heading={false} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="tv"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+        />
+      </PlayerMenu>
+    ),
+    onLeave: undefined,
+    utilities: { ...utilities, density: "tv", onSubtitles: fn(), pointer: false, subtitlesOn: false },
+  },
+  render: (args) => (
+    <div style={{ ...TV, margin: "0 auto", overflow: "hidden", position: "relative" }}>
+      <PlayerChrome {...(args as PlayerChromeProps)} />
+    </div>
+  ),
 };
 
 // The first play of the session starts muted: a pill under the controls takes one tap to undo it.
@@ -493,6 +654,20 @@ const portraitArgs = {
   layout: "portrait" as const,
 };
 const Portrait: Story = { args: portraitArgs, render: (args) => <PhoneFrame {...args} /> };
+// Flipping on an upright phone: three cards where the band was, the readout where the toolbar was.
+const PortraitSurfing: Story = {
+  args: { ...portraitArgs, readout: { digits: "12", name: "Game Night", quiet: true }, surf },
+  render: (args) => <PhoneFrame {...args} />,
+};
+// Nothing covers an upright phone's picture, so its line sits at the picture's own foot, smaller.
+const PortraitSubtitles: Story = {
+  args: {
+    ...portraitArgs,
+    captions: ["I thought you said tonight would be quiet."],
+    utilities: { ...portraitArgs.utilities, onSubtitles: fn(), subtitlesOn: true },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
 const PortraitBehind: Story = {
   args: {
     ...portraitArgs,
@@ -536,21 +711,79 @@ const PortraitUnmute: Story = {
   args: { ...portraitArgs, unmute: fn() },
   render: (args) => <PhoneFrame {...args} />,
 };
+// Held upright, what a key opens rises from the bottom, as tall as what it holds and never over the
+// toolbar, with the picture above it undimmed. A phone has no strip in its band, so More keeps the
+// schedule.
 const PortraitMore: Story = {
   args: {
     ...portraitArgs,
     sheet: (
-      <PlayerSheet channel={sheetChannel} density="touch" onClose={fn()} title="More">
+      <PlayerBottomSheet onClose={fn()} title="More">
         <PlayerMore
           channels={{ onPress: fn() }}
           density="touch"
           formatTime={formatTime}
           info={{ onPress: fn() }}
           picture={{ detail: "Auto · 1080p", onPress: fn() }}
+          playbackDetails={{ onPress: fn() }}
           {...moreData(live)}
         />
-      </PlayerSheet>
+      </PlayerBottomSheet>
     ),
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+// Forty minutes into a film, the last fifteen hold no break, so the past is a sliver of a phone's
+// strip: "Live" sits near the left edge, and "−15m" gives way to it (#3566).
+const midFilm: GuideAiring[] = [
+  programme("m1", -40, 50, { genres: ["Drama"], title: "A detective film", year: 1994 }, 280),
+  breakOf("m2", 50, [spot("commercial", "Toy robot", 30, "A toy maker")]),
+  programme("m3", 51, 140, { genres: ["Comedy"], title: "An ensemble comedy" }, 20),
+];
+const midFilmData = playbarFromTimeline({ airings: midFilm, channel, live, nowMs: NOW, playheadMs: NOW });
+const PortraitMoreMidFilm: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: (
+      <PlayerBottomSheet onClose={fn()} title="More">
+        <PlayerMore
+          channels={{ onPress: fn() }}
+          density="touch"
+          formatTime={formatTime}
+          info={{ onPress: fn() }}
+          schedule={{
+            onSeek: fn(),
+            playheadMs: NOW,
+            segments: midFilmData.segments,
+            window: midFilmData.window,
+          }}
+        />
+      </PlayerBottomSheet>
+    ),
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+const PortraitAudio: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: (
+      <PlayerBottomSheet onClose={fn()} title="Audio">
+        <PlayerAudio density="touch" options={audioOptions} switchSound={{ on: true, onChange: fn() }} />
+      </PlayerBottomSheet>
+    ),
+    utilities: { ...portraitArgs.utilities, audioOpen: true },
+  },
+  render: (args) => <PhoneFrame {...args} />,
+};
+// A phone has no strip to pin a card on, so its Info is a sheet.
+const PortraitInfo: Story = {
+  args: {
+    ...portraitArgs,
+    sheet: liveData.info ? (
+      <PlayerBottomSheet onClose={fn()} title="Info">
+        <PlayerInfo density="touch" formatTime={formatTime} info={liveData.info} />
+      </PlayerBottomSheet>
+    ) : undefined,
   },
   render: (args) => <PhoneFrame {...args} />,
 };
@@ -593,18 +826,15 @@ const StationIdDecade: Story = {
   args: { band: { ...liveData.band, decade: 1990 }, ident: true, visible: false },
 };
 
+// Info on a pointer and a television: the block on air's own card on the strip, pinned open in full.
 const Info: Story = {
-  args: {
-    sheet: liveData.info ? (
-      <PlayerSheet channel={sheetChannel} density="pointer" onClose={fn()} title="Info">
-        <PlayerInfo density="pointer" formatTime={formatTime} info={liveData.info} />
-      </PlayerSheet>
-    ) : undefined,
-  },
+  args: { schedule: { ...chromeArgs(live).schedule, info: true } },
 };
 
-// The full-picture states take the chrome's place.
+// The full-picture states take the chrome's place. A cover has no overlay layout to keep, so it is
+// drawn at the viewport's own width (the portrait frame): at 48rem a phone saw half of it.
 const StreamStopped: Story = {
+  args: { layout: "portrait" },
   render: () => (
     <ThemeScope theme="dark">
       <PlayerCover
@@ -620,6 +850,7 @@ const StreamStopped: Story = {
 };
 
 const OffAir: Story = {
+  args: { layout: "portrait" },
   render: () => (
     <ThemeScope theme="dark">
       <PlayerCover
@@ -636,7 +867,7 @@ const OffAir: Story = {
 
 export default meta;
 export {
-  AudioSheet,
+  AudioMenu,
   Behind,
   Commercials,
   Decade1970,
@@ -647,31 +878,45 @@ export {
   LightPlaying,
   LogoWide,
   MoreBehind,
-  MoreSheet,
+  MoreMenu,
   NoSchedule,
   NoStrip,
   NoSuchChannel,
   OffAir,
-  PictureSheet,
+  PictureMenu,
   PlaybackDetails,
   PlaybackDetailsBare,
   PlaybackDetailsSheet,
   Playing,
   Portrait,
+  PortraitAudio,
   PortraitBehind,
   PortraitCommercials,
+  PortraitInfo,
   PortraitLongChannel,
   PortraitLongTitle,
   PortraitMore,
+  PortraitMoreMidFilm,
+  PortraitSubtitles,
+  PortraitSurfing,
   PortraitUnmute,
   StationId,
   StationIdBackdrop,
   StationIdDecade,
   StreamStopped,
+  SubtitlesIdle,
+  SubtitlesMenu,
+  Surfing,
   Television,
+  TelevisionCommercials,
+  TelevisionMore,
+  TelevisionSubtitles,
+  TelevisionSubtitlesMenu,
+  TelevisionSurfing,
   Touch,
   TypingChannel,
   UnmutePill,
+  VolumeLevel,
   WatermarkBottomLeft,
   WatermarkBottomRight,
   WatermarkTopLeft,

@@ -2,7 +2,13 @@ import type { PlayerSnapshot } from "@loomarr/player";
 import type { ReactNode } from "react";
 
 import type { ProgrammeIdentityData } from "../identity";
-import type { PlaybarSegment, PlaybarWindow, PlayerBandData } from "./player-chrome";
+import type {
+  PlaybarSegment,
+  PlaybarWindow,
+  PlayerBandData,
+  PlayerOption,
+  PlayerSurfChannel,
+} from "./player-chrome";
 
 interface ChannelNumberEntry {
   channelName?: string;
@@ -30,9 +36,30 @@ interface WatchingChromeData {
   band: PlayerBandData;
   segments: readonly PlaybarSegment[];
   window: PlaybarWindow;
+  /** The programme's start, while the window still holds it: More's Start over. */
+  startOverMs?: number | undefined;
+}
+
+/**
+ * What Watching has open over the chrome (§9.5): the Subtitles, Audio or More menu, or Info (the
+ * on-air card pinned).
+ */
+type WatchingLayer = "audio" | "info" | "more" | "subtitles";
+
+/** Subtitles on Watching: the menu's rows and the lines on screen (see usePairedSubtitles). */
+interface WatchingSubtitles {
+  captions: readonly string[];
+  choose: (key: string) => void;
+  on: boolean;
+  options: readonly PlayerOption[];
 }
 
 interface WatchingSurfaceProps {
+  /**
+   * The Audio menu's rows (the channel's language, read-only), while it is open and they have been
+   * read. Omitted, the menu shows only the line that says who sets it.
+   */
+  audioOptions?: readonly PlayerOption[] | undefined;
   /** The tuned channel's band and film strip; omitted until a channel is tuned. */
   chrome?: WatchingChromeData;
   /** False while another transient journey is drawn over the still-mounted player. */
@@ -43,6 +70,17 @@ interface WatchingSurfaceProps {
   controlsActivityKey?: number;
   /** Formats a wall-clock instant for the band's clocks ("8:44 PM"). */
   formatTime: (ms: number) => string;
+  /**
+   * The open layer, owned by the app because the remote acts on it: in the More menu the arrows move
+   * through its rows, and Menu or Back closes it. Omitted when none is open.
+   */
+  layer?: WatchingLayer;
+  /** Opens or closes a layer (More's key and rows); `undefined` closes. */
+  onLayer: (layer: WatchingLayer | undefined) => void;
+  /** More's Channels: Surf, the remote's channel list. */
+  onOpenSurf: () => void;
+  /** More's Start over: seek to a wall-clock instant in the window. */
+  onSeek: (wallClockMs: number) => void;
   /** True only while the authoritative Channel catalog request is unresolved. */
   loading?: boolean;
   loadError?: string;
@@ -61,12 +99,21 @@ interface WatchingSurfaceProps {
   playheadMs: number;
   player: ReactNode;
   snapshot: PlayerSnapshot;
+  /** Subtitles: the Subtitles key, its menu, and the line; omitted, the key is not drawn. */
+  subtitles?: WatchingSubtitles;
+  /**
+   * The channel cards a flip shows in the band's place (§9.2), one per channel in the catalog, from
+   * `surfCardsFromGuide`. Omitted, flipping keeps the band.
+   */
+  surfCards?: readonly PlayerSurfChannel[];
 }
 
 export type {
   ChannelNumberEntry,
   WatchingChromeData,
+  WatchingLayer,
   WatchingProgrammeData,
   WatchingScheduleData,
+  WatchingSubtitles,
   WatchingSurfaceProps,
 };

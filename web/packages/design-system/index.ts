@@ -19,6 +19,8 @@ export type { ChipProps, ChipTone } from "./src/chip";
 export { Chip } from "./src/chip";
 export type { ChoiceCardAccent, ChoiceCardProps } from "./src/choice-card";
 export { ChoiceCard } from "./src/choice-card";
+export type { ComboboxGroup, ComboboxOption, ComboboxProps } from "./src/combobox";
+export { Combobox } from "./src/combobox";
 export type { CompactSelectOption, CompactSelectProps } from "./src/compact-select";
 export { CompactSelect } from "./src/compact-select";
 export type { DateFieldProps } from "./src/date-field";
@@ -40,9 +42,13 @@ export {
   DialogTitle,
   DialogTrigger,
 } from "./src/dialog";
+export type { DockedPanelProps } from "./src/docked-panel";
+export { DockedPanel } from "./src/docked-panel";
 export { useFocusLook } from "./src/focus-look";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";
+export type { InlineActionProps } from "./src/inline-action";
+export { InlineAction } from "./src/inline-action";
 export type {
   ActionProps,
   ActionVariant,
@@ -98,6 +104,10 @@ export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "./src/men
 export type { ModalLayerProps } from "./src/modal-layer";
 export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
+export type { NonModalDialogProps } from "./src/non-modal-dialog";
+export { NonModalDialog } from "./src/non-modal-dialog";
+export type { NoticeAction, NoticeProps, NoticeTone } from "./src/notice";
+export { Notice } from "./src/notice";
 export type { PressableRowProps } from "./src/pressable-row";
 export { PressableRow } from "./src/pressable-row";
 export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
@@ -112,8 +122,6 @@ export type {
   StatusTone,
   StatusWordKind,
   StatusWordProps,
-  TextProps,
-  TextTone,
 } from "./src/primitives";
 export {
   ArtworkFrame,
@@ -127,7 +135,6 @@ export {
   StatusDot,
   StatusWord,
   Surface,
-  Text,
 } from "./src/primitives";
 export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
 export { LoomarrProvider, resolveLoomarrTheme, ThemeScope } from "./src/provider";
@@ -151,16 +158,36 @@ export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
+export type {
+  StackAlign,
+  StackBreakpoint,
+  StackGap,
+  StackJustify,
+  StackProps,
+  StackResponsive,
+} from "./src/stack";
+export { Stack } from "./src/stack";
 export type { StatusLabelProps } from "./src/status-label";
 export { StatusLabel } from "./src/status-label";
 export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
 export { TabBar } from "./src/tab-bar";
+export type {
+  TableCellProps,
+  TableHeaderCellProps,
+  TableProps,
+  TableRowProps,
+  TableSectionProps,
+} from "./src/table";
+export { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "./src/table";
+export type { TextProps, TextTone } from "./src/text";
+export { Text } from "./src/text";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
 export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
 export {
   brandChroma,
   brandContract,
+  breakpoints,
   decadeFill,
   decadeFillColor,
   iconography,
@@ -172,6 +199,7 @@ export {
   semanticSpace,
   semanticTargets,
   semanticThemes,
+  spaceSteps,
   typography,
 } from "./src/tokens";
 export type { TooltipProps } from "./src/tooltip";

@@ -1,15 +1,17 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { SettingResultStatus } from "@loomarr/api/models/settingResultStatus";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Badge, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { cn } from "@/lib/utils";
+import { everyEditSaved } from "@/settings/saved-edits";
+import { type SettingsDraft, useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, PLAYOUT_TUNARR, type PlayoutBackend } from "../steps";
 import type { PlayoutStepProps } from "./playout-step.type";
@@ -81,8 +83,10 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   const checks = unwrap(status.data, (b) => b.checks) ?? [];
   const standing = checks.find((c) => c.name === "tunarr");
 
-  const [publicURLEdits, setPublicURLEdits] = useState<Record<string, string>>({});
-  const [tunarrEdits, setTunarrEdits] = useState<Record<string, string>>({});
+  const publicURL = useSettingsDraft();
+  const tunarrDraft = useSettingsDraft();
+  const publicURLEdits = publicURL.edits;
+  const tunarrEdits = tunarrDraft.edits;
   const [open, setOpen] = useState(true);
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState<{ ok: boolean; hint?: string } | undefined>();
@@ -97,27 +101,27 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   // Keep rejected values editable, but drop drafts once every submitted key is durably
   // saved. Otherwise SettingsFields keeps preferring the stale local copy over the freshly
   // invalidated registry and advertises a Save action for an edit that no longer exists.
-  const saveEdits = async (edits: Record<string, string>, clear: () => void) => {
-    const response = await patch.mutateAsync({ data: { edits } });
-    const results = unwrap(response, (body) => body.results) ?? [];
-    const submitted = Object.keys(edits);
-    if (
-      submitted.length > 0 &&
-      submitted.every((key) =>
-        results.some((result) => result.key === key && result.status === SettingResultStatus.saved),
-      )
-    ) {
-      clear();
+  // Resolves true only when every key was saved. A failed request resolves false too: it shows
+  // as patch.error below, and the edits stay for a retry.
+  const saveEdits = async (draft: SettingsDraft): Promise<boolean> => {
+    const { edits } = draft;
+    try {
+      const response = await patch.mutateAsync({ data: { edits } });
+      draft.dropSaved(response, edits);
+      return everyEditSaved(response, edits);
+    } catch {
+      return false;
     }
   };
-  const savePublicURL = () => saveEdits(publicURLEdits, () => setPublicURLEdits({}));
-  const saveTunarr = () => saveEdits(tunarrEdits, () => setTunarrEdits({}));
+  const savePublicURL = () => saveEdits(publicURL);
+  const saveTunarr = () => saveEdits(tunarrDraft);
   // Test evaluates PERSISTED settings, so unsaved edits must be written first or the operator
   // tests the OLD address right after typing a new one (the flavor-save bug, config-design §6).
   const test = async () => {
     setTesting(true);
     try {
-      if (tunarrDirty) await saveTunarr();
+      // A rejected value stays in the form and the test is skipped: it would judge the old address.
+      if (tunarrDirty && !(await saveTunarr())) return;
       const res = await runTest.mutateAsync({ data: { check: "tunarr" } });
       if (res.status === 200) setTested({ ok: res.data.ok, hint: res.data.hint });
     } catch {
@@ -128,7 +132,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       {/* ⚠ REAL RADIOS, inside a real <fieldset>. These are mutually exclusive answers to one
           question, so assistive tech should announce the question (the legend), the group,
           and which option is chosen — none of which a list of <button>s conveys. An earlier
@@ -151,7 +155,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                   pinnedBy && "cursor-not-allowed opacity-60",
                 )}
               >
-                <span className="flex items-center gap-2">
+                <Stack align="center" direction="row" gap="inline" render="span">
                   {/* ⚠ Visible, not `sr-only`. Hiding it made the control unreachable for
                       anything driving the real input (Playwright's .check() timed out on it),
                       and a hidden radio also gives a sighted keyboard user no focus ring to
@@ -164,14 +168,20 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
                     onChange={() => choose(option.value)}
                     className="accent-tune size-4 shrink-0"
                   />
-                  <span className="font-medium">{option.title}</span>
-                </span>
-                <span className="text-muted-foreground text-sm">{option.tagline}</span>
-                <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
+                  <Text as="span" textRole="cardLabel">
+                    {option.title}
+                  </Text>
+                </Stack>
+                <Text as="span" textRole="compact" tone="secondary">
+                  {option.tagline}
+                </Text>
+                <Stack gap="1" render="ul">
                   {option.points.map((point) => (
-                    <li key={point}>{point}</li>
+                    <Text as="li" key={point} textRole="compact" tone="secondary">
+                      {point}
+                    </Text>
                   ))}
-                </ul>
+                </Stack>
               </label>
             );
           })}
@@ -179,14 +189,14 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
       </fieldset>
 
       {pinnedBy && (
-        <p className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Stack align="center" direction="row" gap="inline" render="p">
           <Badge shape="square" icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}>
             set via environment
           </Badge>
-          <span>
+          <Text as="span" textRole="compact" tone="secondary">
             {pinnedBy} decides this, so it can&rsquo;t be changed here. Unset it to choose in the app.
-          </span>
-        </p>
+          </Text>
+        </Stack>
       )}
 
       {/* Internal playout publishes absolute tuner/guide/stream URLs from this registry key.
@@ -197,14 +207,20 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           <SettingsFields
             entries={publicURLEntries}
             values={publicURLEdits}
-            onChange={(key, v) => setPublicURLEdits((previous) => ({ ...previous, [key]: v }))}
+            onChange={publicURL.setEdit}
             results={patchResults}
             descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
-          <p id="server-public-url-requirement" className="text-muted-foreground mt-3 text-sm">
+          <Text
+            as="p"
+            className="mt-3"
+            id="server-public-url-requirement"
+            textRole="compact"
+            tone="secondary"
+          >
             Required for Loomarr playback. Your media server must be able to reach this address to fetch the
             guide and every channel stream.
-          </p>
+          </Text>
           {publicURLDirty && (
             <div className="mt-3">
               <Action disabled={patch.isPending} onPress={() => void savePublicURL()}>
@@ -239,7 +255,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           <SettingsFields
             entries={tunarrEntries}
             values={tunarrEdits}
-            onChange={(key, v) => setTunarrEdits((p) => ({ ...p, [key]: v }))}
+            onChange={tunarrDraft.setEdit}
             results={patchResults}
           />
           {tunarrDirty && (
@@ -252,11 +268,14 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
         </ConnectionBlock>
       )}
 
-      <p className="text-muted-foreground text-sm">
+      {/* A failed save (the choice, the address or Tunarr's form) says so, as the other steps do. */}
+      {patch.error != null && <ErrorState error={patch.error} />}
+
+      <Text as="p" textRole="compact" tone="secondary">
         The playback engine can be changed later in Settings and overridden per channel.
         {value === PLAYOUT_INTERNAL && " The Loomarr address applies to the whole install."}
-      </p>
-    </div>
+      </Text>
+    </Stack>
   );
 };
 

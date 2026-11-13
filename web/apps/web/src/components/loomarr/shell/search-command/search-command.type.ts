@@ -29,7 +29,6 @@ interface SearchCommandProps {
   // When given, a Close button replaces the ESC hint: a full-screen phone search has no backdrop to
   // tap and usually no Escape key. The palette passes it only at phone width.
   onClose?: () => void;
-  className?: string;
 }
 
 export type { PaletteScope, SearchCommandProps, SearchResult };

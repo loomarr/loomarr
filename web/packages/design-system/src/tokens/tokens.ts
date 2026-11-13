@@ -206,6 +206,18 @@ const semanticSpace = {
   inline: 8,
 } as const;
 
+// The spacing scale (frontend-design §2.3), keyed as Tailwind keys its steps so a `gap-4` moves onto
+// a Stack as `gap="4"` at the same size. The grid is the 4px steps the web theme emits as
+// `--spacing-N`. The half steps are values the app already uses off the grid; they are recorded at
+// their own size rather than rounded onto it, so moving a layout onto them changes no pixel.
+const spaceGrid = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 } as const;
+const spaceSteps = { ...spaceGrid, "0.5": 2, "1.5": 6, "1.75": 7, "2.5": 10 } as const;
+
+// Viewport widths where a layout changes, as the app's own Tailwind breakpoints (`sm:`, `md:`,
+// `lg:`) draw them, so a hand-rolled `sm:flex-row` moves onto a Stack at the same width. Each is a
+// minimum: a layout is the narrow one below `sm` and gains each rule as the window reaches it.
+const breakpoints = { sm: 640, md: 768, lg: 1024 } as const;
+
 const semanticRadius = {
   control: 10,
   card: 16,
@@ -279,6 +291,10 @@ const playerChrome = {
   textSecondary: "#B8BECA",
   textMuted: "#8B93A3",
   tooltip: "rgba(11, 12, 14, 0.95)",
+  // A panel docked inside the frame (`DockedPanel`): the canvas at 95%, so the picture shows faintly.
+  panel: "rgba(11, 12, 14, 0.95)",
+  // Behind a subtitle line: near-black, so the line reads on any picture (§9.5).
+  caption: "rgba(0, 0, 0, 0.78)",
 } as const;
 
 const typography = {
@@ -339,6 +355,11 @@ const typography = {
     // pointer mock, so pointer takes the nearest existing role (title, label).
     screenTitle: { size: 24, lineHeight: 30, weight: "650" },
     guideCell: { size: 11, lineHeight: 14, weight: "400" },
+    // A subtitle line over the picture (§9.5, variant J): 24 on desktop, 15 on a phone on its side,
+    // 18 on a television. An upright phone's picture is a strip, so its line is smaller still (13)
+    // at every density, the one place it is drawn.
+    subtitle: { size: 24, lineHeight: 31, weight: "500" },
+    subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -369,6 +390,8 @@ const typography = {
     // 5d: the "Guide" title at 30/700 (-0.02em), and the grid's programme titles in Geist 13/500.
     screenTitle: { size: 30, lineHeight: 36, weight: "700" },
     guideCell: { size: 13, lineHeight: 18, weight: "500" },
+    subtitle: { size: 15, lineHeight: 20, weight: "500" },
+    subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -398,6 +421,8 @@ const typography = {
     // 5b's TV Guide title is 30/600; the TV grid has no cell-title role of its own.
     screenTitle: { size: 30, lineHeight: 36, weight: "600" },
     guideCell: { size: 16, lineHeight: 22, weight: "400" },
+    subtitle: { size: 18, lineHeight: 23, weight: "500" },
+    subtitleUpright: { size: 13, lineHeight: 17, weight: "500" },
   },
 } as const;
 
@@ -445,6 +470,7 @@ export type { Density, FontFamilyRole, TextRole };
 export {
   brandChroma,
   brandContract,
+  breakpoints,
   iconography,
   nativeFontFace,
   playerChrome,
@@ -454,5 +480,7 @@ export {
   semanticSpace,
   semanticTargets,
   semanticThemes,
+  spaceGrid,
+  spaceSteps,
   typography,
 };

@@ -1,3 +1,4 @@
+import { Stack, Text } from "@loomarr/design-system";
 import {
   AA_SMALL,
   accents,
@@ -30,7 +31,7 @@ const Verdict = ({ value }: { value: number }) => (
 // static-950 on static-950 would be measuring a surface against itself — a number with no
 // meaning, and worse than no number, since it reads as a defect.
 const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; measure?: boolean }) => (
-  <div className="flex items-center gap-3">
+  <Stack align="center" direction="row" gap="control">
     <div className="border-border size-10 shrink-0 rounded-md border" style={{ backgroundColor: hex }} />
     <div className="min-w-0">
       <div className="truncate text-sm font-medium">{name}</div>
@@ -42,7 +43,7 @@ const Swatch = ({ name, hex, measure = true }: { name: string; hex: string; meas
         <Verdict value={contrast(hex, staticScale["static-950"])} />
       </div>
     )}
-  </div>
+  </Stack>
 );
 
 // Which statics are SURFACES (measuring them as text is meaningless) versus text stops. The
@@ -59,9 +60,9 @@ const isTextStep = (step: number) => step <= 15;
 // the -300 rule stops being a sentence someone has to have read and becomes a column you can
 // see failing.
 const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textHex: string }) => (
-  <div className="flex flex-col gap-1">
+  <Stack gap="1">
     <div className="text-2xs text-static-400">{`${accent} tints`}</div>
-    <div className="flex flex-wrap gap-2">
+    <Stack direction="row" gap="inline" wrap>
       {tintSteps.map((step) => {
         const composited = compositeTint(hex, step, tintSurface);
         const r = contrast(textHex, composited);
@@ -75,10 +76,12 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // make this page fail the a11y gate for a violation it was only demonstrating. The
           // measured ratio is still printed for every step, so the scope of the rule stays
           // visible without being enacted.
-          <div key={step} className="flex min-w-24 flex-col gap-1">
+          <Stack className="min-w-24" gap="1" key={step}>
             <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
-            <div
-              className="border-border flex h-8 items-center rounded-md border px-2"
+            <Stack
+              align="center"
+              className="border-border h-8 rounded-md border px-2"
+              direction="row"
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
@@ -88,13 +91,13 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
               ) : (
                 <span className="text-2xs text-static-400/0 font-mono">fill</span>
               )}
-            </div>
+            </Stack>
             <Verdict value={r} />
-          </div>
+          </Stack>
         );
       })}
-    </div>
-  </div>
+    </Stack>
+  </Stack>
 );
 
 const Palette = () => {
@@ -105,64 +108,72 @@ const Palette = () => {
   const accentRows = Object.entries(accents);
 
   return (
-    <div className="flex flex-col gap-8 p-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Palette</h1>
-        <p className="text-muted-foreground max-w-2xl text-sm">
+    <Stack className="p-6" gap="screen">
+      <Stack gap="1" render="header">
+        <Text as="h1" textRole="title">
+          Palette
+        </Text>
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           The broadcast accents, drawn from the SMPTE bars. Every hex and every ratio on this page is read
           from the generated tokens and measured with the same function the CI contrast gate uses — so what
           you see here is what the build enforces.
-        </p>
-      </header>
+        </Text>
+      </Stack>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Accents</h2>
+      <Stack gap="control" render="section">
+        <Text as="h2" textRole="heading">
+          Accents
+        </Text>
         <div className="grid gap-3 sm:grid-cols-2">
           {accentRows.map(([name, a]) => (
             <Swatch key={name} name={name} hex={a.base} />
           ))}
         </div>
-      </section>
+      </Stack>
 
-      <section className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Tints, and the badge rule</h2>
-          <p className="text-muted-foreground max-w-2xl text-sm">
+      <Stack gap="4" render="section">
+        <Stack gap="1">
+          <Text as="h2" textRole="heading">
+            Tints, and the badge rule
+          </Text>
+          <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
             A tint is an alpha wash, not a fixed hex:{" "}
             <code className="font-mono text-xs">color-mix(in srgb, accent N%, transparent)</code> over the
             surface. 11px badge text is <em>small text</em> under WCAG, so the 4.5:1 bar applies. On the
             composited tints some accents fail at their base stop and use a{" "}
             <code className="font-mono text-xs">-300</code> stop instead — the swatches below show which,
             measured rather than asserted.
-          </p>
-        </div>
+          </Text>
+        </Stack>
         {accentRows.map(([name, a]) => (
           <TintRamp key={name} accent={name} hex={a.base} textHex={a.on} />
         ))}
-        <p className="text-muted-foreground max-w-2xl text-sm">
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           ⚠ Note where the ramps go red. The badge rule and its CI check are scoped to the{" "}
           <strong className="text-foreground">15% step</strong> — the one badges actually use — and accent
           text does not clear AA on the 30% and 40% steps. Those darker steps are for <em>fills</em> (a pod
           segment, a progress bar), never for accent text, and today nothing uses them that way. This page is
           where that stops being an unwritten assumption.
-        </p>
-      </section>
+        </Text>
+      </Stack>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Statics</h2>
+      <Stack gap="control" render="section">
+        <Text as="h2" textRole="heading">
+          Statics
+        </Text>
         <div className="grid gap-3 sm:grid-cols-2">
           {Object.entries(staticScale).map(([name, hex]) => (
             <Swatch key={name} name={name} hex={hex as string} measure={!SURFACE_STATICS.has(name)} />
           ))}
         </div>
-        <p className="text-muted-foreground max-w-2xl text-sm">
+        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
           <code className="font-mono text-xs">static-500</code> sits at{" "}
           {ratio(staticScale["static-500"], staticScale["static-900"])}
           :1 on cards — below the AA bar — so it is restricted to disabled states and decorative glyphs. Any
           text carrying information uses <code className="font-mono text-xs">static-400</code> or better.
-        </p>
-      </section>
-    </div>
+        </Text>
+      </Stack>
+    </Stack>
   );
 };
 

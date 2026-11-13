@@ -1,7 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
@@ -31,17 +31,21 @@ const InfoScreen = () => {
     <>
       {/* The page opens on a picture (#2753): the title backdrop, else generated channel art. */}
       <ChannelHero channelId={id} channel={{ name: ch.name, number: ch.number }} />
-      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
-        <div className="flex items-center gap-3">
+      <Stack className="border-border bg-card rounded-lg border p-5" gap="control" render="section">
+        <Stack align="center" direction="row" gap="control">
           <span className="font-mono text-3xl leading-none tabular-nums">{channelNumber(ch.number)}</span>
-          <div className="flex items-center gap-2">
+          <Stack align="center" direction="row" gap="inline">
             <OnAirIndicator state={air.dot} />
             {/* The status is the info panel's heading (also what the reachability check
                 keys on — a real heading proves the screen composed). */}
-            <h2 className="text-lg font-semibold">{air.label}</h2>
-          </div>
-        </div>
-        <p className="text-muted-foreground text-sm">{air.detail}</p>
+            <Text as="h2" strong textRole="headline">
+              {air.label}
+            </Text>
+          </Stack>
+        </Stack>
+        <Text as="p" textRole="compact" tone="secondary">
+          {air.detail}
+        </Text>
         {air.buildSchedule && isAdmin ? (
           <Action
             style={{ alignSelf: "flex-start" }}
@@ -70,15 +74,15 @@ const InfoScreen = () => {
           <ChannelBreaks channelId={id} />
         </div>
 
-        <p className="border-border border-t pt-3 text-sm">
-          <span className="font-medium">{`${ready} of ${pluralize(total, "title")} ready`}</span>
+        <Text as="p" className="border-border border-t pt-3" textRole="compact">
+          <Text as="span" textRole="cardLabel">{`${ready} of ${pluralize(total, "title")} ready`}</Text>
           {ready < total && (
-            <span className="text-muted-foreground">
+            <Text as="span" textRole="compact" tone="secondary">
               {" "}
               , the rest fill in as titles arrive, so the channel never goes dark.
-            </span>
+            </Text>
           )}
-        </p>
+        </Text>
 
         {/* The channel icon is what the family actually sees in the media server's guide,
             so it belongs on the info panel next to the number and status rather than behind
@@ -93,7 +97,7 @@ const InfoScreen = () => {
             isAdmin={isAdmin}
           />
         </div>
-      </section>
+      </Stack>
 
       {/* The On-screen logo (#1659): admin-only like Programming and Filler, autosaving
           policy.watermark like the Programming fields. Members never see it. */}
@@ -105,8 +109,8 @@ const InfoScreen = () => {
         />
       )}
 
-      {/* The default audio language (#2088), admin-only: it moved here from the player when Watch
-          became its own route. */}
+      {/* The default audio language (#2088), admin-only: a channel setting, so it lives here
+          rather than in the player, which has its own route. */}
       {isAdmin && <ChannelDefaultAudio channel={ch} savePolicy={savePolicy} />}
 
       {/* Admin-only diagnostics disclosure (P7): the relaxation ladder the last reconcile
@@ -126,6 +130,19 @@ const InfoScreen = () => {
 
 const Route = createFileRoute("/_authed/channels/$id/info")({
   component: InfoScreen,
+  // The panel's "What's on" strip and its break preview each read their own endpoint and answer
+  // for themselves when empty or failed, so they are warmed together (a prefetch never rejects)
+  // rather than left to pop in under the status line. The layout's loader has the channel.
+  loader: async ({ context: { queryClient }, params: { id } }) => {
+    await Promise.all([
+      queryClient.prefetchQuery(
+        channelsApi.getChannelUpcomingQueryOptions(id, undefined, { query: { retry: false } }),
+      ),
+      queryClient.prefetchQuery(
+        channelsApi.getPreviewChannelPodsQueryOptions(id, { query: { retry: false } }),
+      ),
+    ]);
+  },
 });
 
 export { Route };

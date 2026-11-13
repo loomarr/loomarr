@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -140,9 +140,13 @@ const DiagnosticsSplitPane = ({
                 drag.current = undefined;
               }}
             />
-            <span className="text-muted-foreground group-hover:text-signal pointer-events-none relative flex">
+            <Stack
+              className="text-muted-foreground group-hover:text-signal pointer-events-none relative"
+              direction="row"
+              render="span"
+            >
               <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
-            </span>
+            </Stack>
           </div>
         </div>
       )}

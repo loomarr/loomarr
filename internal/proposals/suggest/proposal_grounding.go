@@ -471,6 +471,12 @@ func groundRules(raw []pickRule, lineup []proposals.ProposalItem, channelCeiling
 			rule.What = scope
 			_ = kidsCeiling // audience-on-a-rule scope is a §4-followup; the channel ceiling already fences the pool.
 		}
+		// A rule the policy check would refuse (one that could never fire) is dropped by itself.
+		// Left in, it would trip the final net in groundPolicy and drop the WHOLE policy to its
+		// defaults, audience ceiling and all, for one bad rule.
+		if (schedule.ChannelPolicy{Rules: []schedule.SchedulingRule{rule}}).Validate() != nil {
+			continue
+		}
 		out = append(out, rule)
 	}
 	if len(out) == 0 {

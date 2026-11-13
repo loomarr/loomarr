@@ -1,3 +1,4 @@
+import { Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { NowNextStripProps } from "./now-next-strip.type";
 
@@ -6,21 +7,33 @@ import type { NowNextStripProps } from "./now-next-strip.type";
 // air; an unprogrammed channel reads "Nothing scheduled".
 const NowNextStrip = ({ now, next, gap, className }: NowNextStripProps) => {
   if (!now && !gap) {
-    return <p className={cn("text-static-400 text-sm", className)}>Nothing scheduled</p>;
+    return (
+      <Text as="p" className={cn(className)} textRole="compact" tone="secondary">
+        Nothing scheduled
+      </Text>
+    );
   }
   return (
-    <p className={cn("truncate text-sm", className)}>
-      <span className="text-static-400">Now </span>
-      <span className="text-foreground font-mono">{gap ? "Filler break" : now?.title}</span>
-      {now?.until && <span className="text-static-400 ml-1 font-mono text-xs">·til {now.until}</span>}
+    <Text as="p" className={cn("truncate", className)} textRole="compact" tone="secondary">
+      Now{" "}
+      <Text as="span" textRole="mono" tone="primary">
+        {gap ? "Filler break" : now?.title}
+      </Text>
+      {now?.until && (
+        <Text as="span" className="ml-1" textRole="mono" tone="secondary">
+          ·til {now.until}
+        </Text>
+      )}
       {next && (
         <>
-          <span className="text-static-400 mx-1.5">·</span>
-          <span className="text-static-400">Next </span>
-          <span className="text-static-100 font-mono">{next.title}</span>
+          <span className="mx-1.5">·</span>
+          Next{" "}
+          <Text as="span" textRole="mono" tone="primary">
+            {next.title}
+          </Text>
         </>
       )}
-    </p>
+    </Text>
   );
 };
 
