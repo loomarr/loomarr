@@ -18,6 +18,21 @@ const device = vi.hoisted(() => {
   return { store: new Map<string, string>() };
 });
 
+// Android's Back: react-native-web has none, so this asks the newest listener first, as Android does,
+// and reports whether the app kept the press (false: the platform takes it and the app leaves).
+const back = vi.hoisted(() => {
+  const listeners: Array<() => boolean | undefined> = [];
+  return {
+    BackHandler: {
+      addEventListener: (_type: "hardwareBackPress", listener: () => boolean | undefined) => {
+        listeners.push(listener);
+        return { remove: () => void listeners.splice(listeners.indexOf(listener), 1) };
+      },
+    },
+    press: () => [...listeners].reverse().some((listener) => listener() === true),
+  };
+});
+
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "11111111-2222-4333-8444-555555555555" }));
 vi.mock("expo-constants", () => ({
@@ -78,6 +93,7 @@ vi.mock("react-native", async (importOriginal) => {
   const original = await importOriginal<typeof import("react-native")>();
   return {
     ...original,
+    BackHandler: back.BackHandler,
     Platform: {
       ...original.Platform,
       OS: "android",
@@ -255,5 +271,25 @@ describe("the phone app", () => {
     await act(async () => label("Watch ")?.click());
 
     await eventually(() => expect(server.requests).toContain("POST /v1/channels/ch-action/play-url"));
+  });
+
+  // Back with a sheet open used to leave the app, and the sheet was still open on return.
+  it("closes an open sheet with Android's Back before Back leaves Watching", async () => {
+    await launch();
+    await eventually(() => expect(label("Watch ")).not.toBeNull());
+    await act(async () => label("Watch ")?.click());
+    const sheet = () => page.body.querySelector('[role="dialog"][aria-label="Subtitles"]');
+    const key = () => page.body.querySelector('[role="button"][aria-label="Subtitles"]');
+    await eventually(() => expect(key()).not.toBeNull());
+    await act(async () => key()?.click());
+    await eventually(() => expect(sheet()).not.toBeNull());
+
+    const kept = await act(async () => back.press());
+
+    expect(kept).toBe(true);
+    expect(sheet()).toBeNull();
+    expect(key()).not.toBeNull();
+    // With nothing open, Back from Watching is the platform's, as before.
+    expect(back.press()).toBe(false);
   });
 });

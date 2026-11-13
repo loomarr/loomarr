@@ -51,7 +51,7 @@ import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { BackHandler, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { nativeApp } from "../src/native-app";
 
 const credentialStore = createPairingCredentialStore({
@@ -155,6 +155,17 @@ const WatchingScreen = ({
   const [sheet, setSheet] = useState<WatchingSheet | undefined>(undefined);
   const closeSheet = () => setSheet(undefined);
   const toggleSheet = (name: WatchingSheet) => () => setSheet((open) => (open === name ? undefined : name));
+  // Android's Back closes an open sheet first. It is subscribed while one is open, after the shell's
+  // own Back, and React Native asks the newest listener first; without it, Back from Watching leaves
+  // the app with the sheet still open.
+  useEffect(() => {
+    if (!sheet) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setSheet(undefined);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [sheet]);
   const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, sheet === "audio");
   const subtitles = usePairedSubtitles(channelSubtitles, deviceStorage, snapshot);
   useTurnWithPhone();
