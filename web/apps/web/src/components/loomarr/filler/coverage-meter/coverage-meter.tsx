@@ -228,7 +228,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
         {isThin && (
           <Link
             to="/filler"
-            className="underline-offset-2 hover:underline"
+            className="inline-flex underline-offset-2 hover:underline"
             data-testid="find-clips"
             // One line of 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
             data-touch-target
