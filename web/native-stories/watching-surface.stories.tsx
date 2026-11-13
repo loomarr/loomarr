@@ -1,62 +1,113 @@
 import { LoomarrProvider } from "@loomarr/design-system";
-import { type WatchingScheduleData, WatchingSurface, type WatchingSurfaceProps } from "@loomarr/ui";
+import { WatchingSurface, type WatchingSurfaceProps } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { View } from "react-native";
 
 const channel = { id: "nature", inAppPlayable: true, name: "Nature Documentaries", number: 21 };
+const games = { id: "games", inAppPlayable: true, name: "Game Shows", number: 12 };
 type WatchingSnapshot = WatchingSurfaceProps["snapshot"];
+
+// The live edge, on a whole minute so the clocks read the same in every run.
+const NOW = Date.UTC(2026, 10, 11, 2, 25);
+const MIN = 60_000;
 
 const snapshot: WatchingSnapshot = {
   attemptId: 3,
-  catalog: [channel],
+  catalog: [games, channel],
   channel,
-  livePlayback: { lagSeconds: 0, mode: "live", noticeRevision: 0, viewerTimeMs: 1_777_777_777_000 },
+  livePlayback: { lagSeconds: 0, mode: "live", noticeRevision: 0, viewerTimeMs: NOW },
   previousChannelId: "games",
   recentChannelIds: ["games"],
   status: "playing",
 };
-const schedule: WatchingScheduleData = {
-  next: { timeLabel: "2:30 AM", title: "Blue Planet — The Deep" },
-  now: {
-    badge: { label: "On now", tone: "live" },
-    episodeLabel: "S2E4",
-    facts: ["1996", "TV-PG", "Drama · Adventure"],
-    progressPercent: 83,
-    timeLabel: "2:00 AM–2:30 AM",
-    title: "Nature Documentaries — “Pilot episode”",
+
+const chrome: NonNullable<WatchingSurfaceProps["chrome"]> = {
+  band: {
+    channelName: "Nature Documentaries",
+    channelNumber: "21",
+    clockMs: NOW,
+    decade: 1990,
+    line: "S2 E4 “The Deep”",
+    next: { name: "A Year on the Reef", startMs: NOW + 8 * MIN },
+    progress: 25 / 30,
+    rating: "TV-PG",
+    startMs: NOW - 25 * MIN,
+    stopMs: NOW + 5 * MIN,
+    title: "Ocean Worlds",
   },
+  segments: [
+    {
+      chips: ["S2 E4", "TV-PG", "Nature"],
+      id: "now",
+      kind: "programme",
+      line: "S2 E4 “The Deep”",
+      name: "Ocean Worlds",
+      startMs: NOW - 25 * MIN,
+      stopMs: NOW + 5 * MIN,
+      synopsis: "Down past the light, where the water is cold and the animals make their own.",
+    },
+    { id: "break", kind: "break", spots: [], startMs: NOW + 5 * MIN, stopMs: NOW + 8 * MIN },
+    {
+      chips: ["1996", "TV-G", "Nature"],
+      id: "next",
+      kind: "programme",
+      name: "A Year on the Reef",
+      startMs: NOW + 8 * MIN,
+      stopMs: NOW + 68 * MIN,
+    },
+  ],
+  window: { endMs: NOW + 90 * MIN, nowMs: NOW, startMs: NOW - 15 * MIN },
 };
 
 /** A data: URI, never a remote URL: the snapshot suite must not depend on the network. */
 const STILL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAIAAAA8r+mnAAAAVUlEQVR4nA3JIRIAIQwDwHsTGh1dHY2OruxUIZFIZCVPPNbu1+AdAUzDIvbAEcpxv0bvDHAaF7kHj1jOF/KugKZpUXvoSOV6kd4zkNNyMffIoyzP+wOonSmh7IzuzQAAAABJRU5ErkJggg==";
 
+// The band's clocks, in UTC so the render does not depend on the machine's zone.
+const formatTime = (ms: number) => {
+  const date = new Date(ms);
+  const hours = date.getUTCHours();
+  return `${hours % 12 || 12}:${String(date.getUTCMinutes()).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+};
+
 const Preview = ({
+  chromeData = chrome,
+  controlsVisible = true,
+  layer,
   loading,
   loadError,
   numberEntry,
-  scheduleData = schedule,
   state = snapshot,
 }: {
+  chromeData?: WatchingSurfaceProps["chrome"];
+  controlsVisible?: boolean;
+  layer?: WatchingSurfaceProps["layer"];
   loading?: boolean;
   loadError?: string;
   numberEntry?: WatchingSurfaceProps["numberEntry"];
-  scheduleData?: WatchingScheduleData;
   state?: WatchingSnapshot;
 }) => (
   <LoomarrProvider>
     <View style={{ height: "100%", width: "100%" }}>
       <WatchingSurface
+        chrome={chromeData}
+        controlsVisible={controlsVisible}
+        formatTime={formatTime}
+        layer={layer}
         loading={loading}
         loadError={loadError}
         numberEntry={numberEntry}
+        onChangeServer={() => undefined}
         onDismissControls={() => undefined}
         onGoLive={() => undefined}
+        onLayer={() => undefined}
         onOpenGuide={() => undefined}
-        onPlay={() => undefined}
+        onOpenSurf={() => undefined}
         onRetry={() => undefined}
+        onSeek={() => undefined}
+        onTuneChannel={() => undefined}
+        playheadMs={state.livePlayback?.viewerTimeMs ?? NOW}
         player={<View style={{ backgroundColor: "#1B1E24", flex: 1 }} />}
-        schedule={scheduleData}
         snapshot={state}
       />
     </View>
@@ -70,8 +121,22 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 const CurrentAndNext: Story = {};
+const ControlsHidden: Story = { args: { controlsVisible: false } };
+const NothingScheduled: Story = {
+  args: {
+    chromeData: {
+      band: { channelName: "Nature Documentaries", channelNumber: "21", clockMs: NOW },
+      segments: [],
+      window: chrome.window,
+    },
+  },
+};
 const Loading: Story = {
-  args: { loading: true, scheduleData: {}, state: { catalog: [], recentChannelIds: [], status: "empty" } },
+  args: {
+    chromeData: undefined,
+    loading: true,
+    state: { catalog: [], recentChannelIds: [], status: "empty" },
+  },
 };
 const Tuning: Story = { args: { state: { ...snapshot, status: "tuning" } } };
 // A viewer-initiated tune (channel up/down) is what raises the switch overlay: the surf card over the
@@ -83,38 +148,62 @@ const TuningSwitchWithStill: Story = {
 const PlaybackError: Story = {
   args: { state: { ...snapshot, error: "The stream could not be decoded.", status: "failed" } },
 };
+const LoadError: Story = {
+  args: {
+    chromeData: undefined,
+    loadError: "Loomarr didn't answer. Check that the server is running.",
+    state: { catalog: [], recentChannelIds: [], status: "empty" },
+  },
+};
 const NumberEntry: Story = {
+  // No expiry: a countdown would tick between renders. The unit tests read it.
   args: { numberEntry: { channelName: "Nature Documentaries", digits: "21" } },
 };
 const Paused: Story = {
   args: {
+    chromeData: { ...chrome, band: { ...chrome.band, behindLabel: "0:23 behind", liveProgress: 25 / 30 } },
     state: {
       ...snapshot,
-      livePlayback: { lagSeconds: 23, mode: "paused", noticeRevision: 0, viewerTimeMs: 1_777_777_754_000 },
+      livePlayback: { lagSeconds: 23, mode: "paused", noticeRevision: 0, viewerTimeMs: NOW - 23_000 },
       status: "paused",
     },
   },
 };
 const BehindLive: Story = {
   args: {
+    chromeData: { ...chrome, band: { ...chrome.band, behindLabel: "1:23 behind", liveProgress: 25 / 30 } },
     state: {
       ...snapshot,
-      livePlayback: { lagSeconds: 83, mode: "behind", noticeRevision: 0, viewerTimeMs: 1_777_777_694_000 },
+      livePlayback: { lagSeconds: 83, mode: "behind", noticeRevision: 0, viewerTimeMs: NOW - 83_000 },
     },
   },
 };
+// More (§9.5): a menu in the cluster over the keys, its first row holding the remote's ring; behind
+// live it adds Start over and Go live.
+const MoreOpen: Story = { args: { layer: "more" } };
+const MoreBehindLive: Story = {
+  args: { ...BehindLive.args, chromeData: { ...chrome, startOverMs: chrome.window.startMs }, layer: "more" },
+};
+// Info: the on-air block's own card on the strip, pinned open in full.
+const InfoOpen: Story = { args: { layer: "info" } };
 const EmptyChannel: Story = {
-  args: { scheduleData: {}, state: { catalog: [], recentChannelIds: [], status: "empty" } },
+  args: { chromeData: undefined, state: { catalog: [], recentChannelIds: [], status: "empty" } },
 };
 const Light: Story = { globals: { theme: "light" } };
 
 export default meta;
 export {
   BehindLive,
+  ControlsHidden,
   CurrentAndNext,
   EmptyChannel,
+  InfoOpen,
   Light,
+  LoadError,
   Loading,
+  MoreBehindLive,
+  MoreOpen,
+  NothingScheduled,
   NumberEntry,
   Paused,
   PlaybackError,

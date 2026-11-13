@@ -3,9 +3,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type ErrorComponentProps, RouterProvider } from "@tanstack/react-router";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { Toaster } from "sonner";
+import { watchSessionExpiry } from "@/auth/session-expiry";
+import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { createQueryClient } from "@/lib/query-client";
+import { startQueryPersistence } from "@/lib/query-persist";
+import { installRouteTiming } from "@/lib/route-timing";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
 import "@fontsource-variable/geist";
@@ -31,6 +34,11 @@ const queryClient = createQueryClient();
 // 15s matches the query defaults above, so a preload is trusted exactly as long as any other
 // cached read.
 //
+// Every route declares its data in a `loader` (ratcheted by scripts/check-route-loaders.mjs), and the
+// router waits for it: a click keeps the page it is on until the next one has its data, and only a
+// load slower than `defaultPendingMs` shows the pending view. Once shown, that view stays for
+// `defaultPendingMinMs`, so a load that lands just past the delay does not flash it.
+//
 // The route error and pending views are design-system views, and everything above the routes is
 // in the first download. Loaded on first use, they keep the design-system runtime (about 380 KiB)
 // out of it: every route is code-split, so a page that renders brings that runtime with it anyway.
@@ -45,9 +53,11 @@ const LazyRoutePending = lazy(() =>
 
 const router = createRouter({
   routeTree,
-  context: { queryClient },
+  context: { queryClient, warmNavAtIdle: true },
   defaultPreload: "intent",
   defaultPreloadStaleTime: 15_000,
+  defaultPendingMs: 1_000,
+  defaultPendingMinMs: 500,
   defaultErrorComponent: (props: ErrorComponentProps) => (
     <Suspense fallback={null}>
       <LazyRouteError {...props} />
@@ -60,11 +70,27 @@ const router = createRouter({
   ),
 });
 
+// Every navigation leaves User Timing entries saying how long its page took to show (#3399).
+installRouteTiming(router);
+
+// A session that ends while the app is open (signed out elsewhere, revoked) drops what this viewer
+// had loaded, as logout does, and goes to sign-in, remembering the page to come back to. /login's own
+// guard sends an unclaimed install to the wizard and signs a dev-login build straight back in.
+watchSessionExpiry(queryClient, () => {
+  queryClient.clear();
+  void router.navigate({ to: "/login", search: { redirect: router.latestLocation.href }, replace: true });
+});
+
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
 }
+
+// The last-known pages come back from IndexedDB before the first render, so a cold open paints
+// them and then revalidates. The entry chunk's hashed URL names this build: a new build starts
+// from an empty cache. A browser that blocks IndexedDB just starts empty.
+await startQueryPersistence({ queryClient, buildId: import.meta.url }).catch(() => undefined);
 
 createRoot(document.getElementById("root")!, {
   onCaughtError: () =>
@@ -76,13 +102,7 @@ createRoot(document.getElementById("root")!, {
     <LoomarrProvider theme="dark">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster
-          theme="dark"
-          position="bottom-center"
-          offset={{ bottom: 84 }}
-          mobileOffset={{ bottom: 84 }}
-          richColors
-        />
+        <AppToaster />
       </QueryClientProvider>
     </LoomarrProvider>
   </StrictMode>,

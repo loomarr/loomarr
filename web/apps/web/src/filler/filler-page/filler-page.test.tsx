@@ -3,6 +3,7 @@ import {
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
+  getHouseholdMockHandler,
   getListFillerMockHandler,
   getListFillerProvidersMockHandler,
   getListFillerSourcesMockHandler,
@@ -150,7 +151,11 @@ const renderPage = (tab: FillerPageProps["tab"], initialPath = "/filler/library"
   });
 
 beforeEach(() => {
-  server.use(getListFillerProvidersMockHandler({ providers: fillerProviders }));
+  // Incoming tells a step's full date on the household's clock.
+  server.use(
+    getListFillerProvidersMockHandler({ providers: fillerProviders }),
+    getHouseholdMockHandler({ timeZone: "" }),
+  );
 });
 
 describe("FillerPage shell", () => {

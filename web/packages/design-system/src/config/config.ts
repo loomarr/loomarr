@@ -8,6 +8,7 @@ import {
   semanticSpace,
   semanticTargets,
   semanticThemes,
+  spaceSteps,
   typography,
 } from "../tokens";
 
@@ -103,6 +104,7 @@ const tokens = createTokens({
   },
   space: {
     ...semanticSpace,
+    ...spaceSteps,
   },
   zIndex: {
     base: 0,

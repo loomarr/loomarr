@@ -94,9 +94,17 @@ const Row = ({ label, value, mono = false }: { label: string; value: string; mon
   </Line>
 );
 
-const FileRows = ({ file }: { file: LibraryTitleFile }) => (
+// A file is named for what it is to the title: an extra copy, one part of a movie split over
+// several files ("Part 1 of 2"), or the file.
+const fileLabel = (file: LibraryTitleFile, parts: number): string => {
+  if (file.extra) return "Extra copy";
+  if (file.part && parts > 1) return `Part ${file.part} of ${parts}`;
+  return "File";
+};
+
+const FileRows = ({ file, parts }: { file: LibraryTitleFile; parts: number }) => (
   <Stack gap="control">
-    <Row label={file.extra ? "Extra copy" : "File"} mono value={file.path} />
+    <Row label={fileLabel(file, parts)} mono value={file.path} />
     <Row label="Size" value={formatBytes(file.size)} />
     {file.picture ? <Row label="Picture" value={picturePhrase(file.picture)} /> : null}
     {file.audioChannels ? <Row label="Sound" value={soundPhrase(file.audioChannels)} /> : null}
@@ -110,13 +118,14 @@ const FileRows = ({ file }: { file: LibraryTitleFile }) => (
 const TechnicalDetails = ({ title }: { title: LibraryTitleDetail }) => {
   const [open, setOpen] = useState(false);
   const origin = originSentence(title.detailsFrom);
+  const parts = title.files.filter((file) => file.part && !file.extra).length;
   return (
     <Disclosure expanded={open} label="Technical details" onExpandedChange={setOpen}>
       <Stack gap="control">
         {origin ? <Row label="Where details come from" value={origin} /> : null}
         <Row label="Title match" value={MATCH_WORDS[title.match.by](title.match.app)} />
         {title.files.map((file) => (
-          <FileRows file={file} key={file.path} />
+          <FileRows file={file} key={file.path} parts={parts} />
         ))}
       </Stack>
     </Disclosure>

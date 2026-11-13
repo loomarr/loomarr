@@ -1,4 +1,4 @@
-import { Action, Card, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -10,12 +10,19 @@ import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 // the caller derived from GET /v1/setup/status, so a refresh loses nothing — and skipped
 // steps render neutral, never red (§6): an optional step you passed on is not a failure.
 const MARKER: Record<WizardStepStatus, string> = {
-  done: "border-lock bg-lock-tint-15 text-lock",
+  done: "border-lock bg-lock-tint-15",
   // Where you are is neutral (#1909 Q1): its row already takes the elevated fill, so the marker is
   // a foreground ring and number. Amber is focus or the primary action.
-  current: "border-foreground font-semibold text-foreground",
-  pending: "border-border text-static-400",
-  skipped: "border-border text-static-400",
+  current: "border-foreground",
+  pending: "border-border",
+  skipped: "border-border",
+};
+
+const MARKER_TONE: Record<WizardStepStatus, "primary" | "secondary" | "success"> = {
+  done: "success",
+  current: "primary",
+  pending: "secondary",
+  skipped: "secondary",
 };
 
 const WizardShell = ({
@@ -47,14 +54,22 @@ const WizardShell = ({
 
     {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
-    <aside className="border-border bg-card relative z-10 flex flex-col gap-6 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0">
-      <div className="flex flex-col gap-1">
+    <Stack
+      className="border-border bg-card relative z-10 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0"
+      gap="section"
+      render="aside"
+    >
+      <Stack gap="1">
         <BrandLockup variant="compact" />
-        <p className="mt-2 text-base font-semibold">Let's get you on the air</p>
-        <p className="text-muted-foreground font-mono text-xs">First-run setup · saved as you go</p>
-      </div>
+        <Text as="p" className="mt-2" textRole="heading">
+          Let's get you on the air
+        </Text>
+        <Text as="p" textRole="mono" tone="secondary">
+          First-run setup · saved as you go
+        </Text>
+      </Stack>
 
-      <ol aria-label="Setup steps" className="flex flex-col gap-1">
+      <Stack aria-label="Setup steps" gap="1" render="ol">
         {steps.map((step, i) => {
           const status = statusById[step.id] ?? "pending";
           const isCurrent = step.id === currentId;
@@ -70,22 +85,30 @@ const WizardShell = ({
             <>
               <span
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full border",
                   MARKER[status],
                 )}
               >
                 {status === "done" ? (
-                  <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                  <Icon decorative glyph={icons.selected} size="compact" tone={MARKER_TONE[status]} />
                 ) : (
-                  i + 1
+                  <Text as="span" strong={status === "current"} textRole="mono" tone={MARKER_TONE[status]}>
+                    {i + 1}
+                  </Text>
                 )}
               </span>
-              <span
-                className={cn("text-sm", isCurrent ? "text-foreground font-medium" : "text-muted-foreground")}
+              <Text
+                as="span"
+                textRole={isCurrent ? "cardLabel" : "compact"}
+                tone={isCurrent ? "primary" : "secondary"}
               >
                 {step.title}
-              </span>
-              {status === "skipped" && <span className="text-static-400 ml-auto text-xs">skipped</span>}
+              </Text>
+              {status === "skipped" && (
+                <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+                  skipped
+                </Text>
+              )}
             </>
           );
           return (
@@ -105,7 +128,7 @@ const WizardShell = ({
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current
                 // step. The vertical guide line ties them to their parent.
-                <ul className="border-border mt-1 ml-[1.6rem] flex flex-col gap-0.5 border-l pl-3">
+                <Stack className="border-border mt-1 ml-[1.6rem] border-l pl-3" gap="0.5" render="ul">
                   {subItems.map((sub) => {
                     const active = sub.id === activeSubItem;
                     return (
@@ -126,33 +149,39 @@ const WizardShell = ({
                       </li>
                     );
                   })}
-                </ul>
+                </Stack>
               )}
             </li>
           );
         })}
-      </ol>
-    </aside>
+      </Stack>
+    </Stack>
 
     {/* Content column: the current step. Stacked above the static like the rail. */}
-    <div className="relative z-10 flex min-w-0 flex-col">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold">{title}</h1>
-          {description && <p className="text-muted-foreground text-sm">{description}</p>}
-        </div>
+    <Stack className="relative z-10 min-w-0">
+      <Stack className="mx-auto w-full max-w-2xl px-6 py-8 md:py-12" flexBasis="0%" flexGrow={1} gap="6">
+        <Stack gap="1">
+          <Text as="h1" strong textRole="display">
+            {title}
+          </Text>
+          {description && (
+            <Text as="p" textRole="compact" tone="secondary">
+              {description}
+            </Text>
+          )}
+        </Stack>
 
         <Card gap={20} padding={24}>
           {children}
         </Card>
 
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           {onBack && (
             <Action disabled={busy} onPress={onBack} variant="ghost">
               Back
             </Action>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <Stack align="center" className="ml-auto" direction="row" gap="inline">
             {onSkip && (
               <Action disabled={busy} onPress={onSkip} variant="outline">
                 Skip for now
@@ -163,10 +192,10 @@ const WizardShell = ({
                 {nextLabel}
               </Action>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
+          </Stack>
+        </Stack>
+      </Stack>
+    </Stack>
   </main>
 );
 

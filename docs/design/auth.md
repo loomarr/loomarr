@@ -29,10 +29,26 @@ stable per install.
 **Sessions.** Every path issues Loomarr's own session: an opaque 256-bit token in an HTTP-only
 `SameSite=Strict` cookie, SHA-256-hashed at rest and resolved on every request. Sessions are listable
 and revocable (`GET /v1/users/{id}/sessions`, `DELETE /v1/sessions/{hash}`); disabling a user ends
-them at once; `SESSION_TTL` slides. `cookie.secure=auto|always|never`. Mutating routes also require
+them at once; `SESSION_TTL` slides. `POST /v1/auth/logout` revokes the session before it clears the
+cookie: if the revoke fails the answer is a 500 that keeps the cookie, so a session that is still live
+is never reported as ended. A failed last-seen write never fails a request, and is logged at most
+once a minute per credential kind. `cookie.secure=auto|always|never`. Mutating routes also require
 `X-Loomarr-Csrf: 1`. Login is rate-limited by client IP. Forwarding headers (`X-Forwarded-For`,
-`X-Forwarded-Proto`) are trusted only when `security.trust_proxy=true`; otherwise the socket peer is
-used, so a direct client cannot forge its way past the throttle or downgrade its cookie.
+`X-Forwarded-Proto`, and the `X-Loomarr-Geo-*` / CDN geography headers) are trusted only from a socket
+peer inside `security.trusted_proxies`, an explicit list of addresses and CIDR ranges (default:
+loopback, `127.0.0.0/8` and `::1/128`). From any other peer the socket address is used, so a direct
+client, on the LAN or the tailnet or the internet alike, cannot forge its way past the throttle or
+downgrade its cookie. Being on a private network confers no trust: a deployment behind a reverse
+proxy on another host or container lists that proxy's address. One peer check
+(`httpcore.Origin.FromTrustedProxy`) serves the client address, the protocol and the geography
+headers. For a listed peer the client is the right-most `X-Forwarded-For` hop: a proxy appends the
+address it saw, and everything to its left was written by whoever sent the request. No hop further
+left is taken, even past a private address, because a private address cannot be told apart from a
+LAN client. Behind a chain of proxies every client therefore shares the inner proxy's throttle key.
+A proxy that is not listed is a client: every visitor then shares the proxy's throttle key. The
+retired `security.trust_proxy` switch grants nothing: an install that had it on and has not written
+the list trusts loopback only and logs a startup warning to list its proxy in
+`security.trusted_proxies`. The list is read once per application generation.
 
 **Machine access.** The generated `API_TOKEN` authenticates scripts through `Authorization: Bearer`
 and is the break-glass admin when no user can sign in.
@@ -135,7 +151,9 @@ secure store. The device acts as the person who paired it, with that person's fa
 audience and role ([ADR 0043](decisions/0043-devices-act-with-their-approvers-role.md)). An
 admin-paired phone or TV is an admin, and a member-paired device stays a member. The role is read
 from the user's row on every request, so a demotion applies on the device's next request.
-Disabling a user deletes their paired devices along with their sessions, so re-enabling the user
+Redeeming consumes the pairing and issues the token in one transaction, so overlapping polls of one
+approved code yield one device; the others get the not-found answer of any spent code, and a store
+failure leaves the pairing redeemable for the next poll. Disabling a user deletes their paired devices along with their sessions, so re-enabling the user
 does not bring a lost device back. It also deletes pairings they approved that no device has redeemed
 yet, and a disabled user can neither approve a pairing nor have one redeemed. A pairing in flight at
 the disable therefore yields no device either. To take admin away from a device in a shared room, use

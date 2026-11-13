@@ -53,12 +53,13 @@ moved) and `requestedBy`, the name of the person whose request produced it, read
 
 1. **Terminal states do not regress** within the acquisition lifecycle. `available` describes a
    moment, not forever: media gets deleted or re-identified, so the scheduler revalidates lineup items
-   against the library at reconcile time instead of mutating terminal state.
+   against the library at reconcile time instead of mutating terminal state. An operator's retry
+   (re-enqueueing an `unavailable` title) starts a new acquisition: `wanted`, due at once.
 2. **Only `available` and `unavailable` emit events**, the only transitions the scheduler acts on.
 3. **Enqueue is idempotent**: deduplicated by external id in the store, with a per-key lock against
    concurrent double requests.
 4. **The library is the source of truth.** A title is `available` only once the library reports it.
-5. **Every in-flight record has a deadline.** A grab resets it to the shorter downloading TTL; past the
+5. **Every in-flight record has a deadline.** A new `wanted` title is due at once. A grab resets it to the shorter downloading TTL; past the
    deadline the title becomes `unavailable` and the requester's `Cancel` runs.
 
 ## Requesters

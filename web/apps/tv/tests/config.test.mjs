@@ -15,7 +15,8 @@ const bundledNativeModules = async () =>
 
 // This file checks the app's configuration and native modules. What the shell does (its hooks, the
 // paired runtime it shares with the phone, crash reporting, the launch identity) is pinned by vitest
-// in packages/ui-tv, packages/paired-client, packages/native-app and packages/ui.
+// in packages/ui-tv, packages/paired-client, packages/native-app and packages/ui; the app's entry,
+// run against a faked server, is pinned by tests/app.test.tsx.
 
 test("keeps the TV proof isolated from the shipping application", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));

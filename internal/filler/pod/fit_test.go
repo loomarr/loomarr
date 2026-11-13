@@ -1,6 +1,9 @@
 package pod
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // Per-clip fit (V35 item 1.7).
 //
@@ -237,6 +240,49 @@ func TestFitFor_GeneralAudienceDoesNotFitAKidsChannel(t *testing.T) {
 	if fit.Reason == "" || fit.Level == MatchExact {
 		t.Errorf("got %s, want a general clip refused on a kids channel", fit)
 	}
+}
+
+// The widened rung is strictly wider than the exact one: it admits every year the exact windows
+// admit. An open-ended window (To 0 is "onwards") must keep its open end when widening merges it
+// into an earlier window, so a channel set to the 1980s and 2000 onwards still reaches 2005.
+func TestWidenEraWindows_KeepsAnOpenEnd(t *testing.T) {
+	exact := []EraRange{{From: 1980, To: 1989}, {From: 2000, To: 0}}
+	widened := widenEraWindows(exact)
+
+	for _, year := range []int{1980, 1985, 1989, 2000, 2005, 2020} {
+		if !anyContains(exact, year) {
+			t.Fatalf("setup: exact windows %v should admit %d", exact, year)
+		}
+		if !anyContains(widened, year) {
+			t.Errorf("widened windows %v drop %d, which the exact windows %v admit", widened, year, exact)
+		}
+	}
+	if !anyContains(widened, 1975) || !anyContains(widened, 1995) {
+		t.Errorf("widened windows %v should reach a decade either side (1975) and the gap (1995)", widened)
+	}
+}
+
+func TestNormalizeEraWindows_OpenEndAbsorbsLaterWindows(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   []EraRange
+		want []EraRange
+	}{
+		{"open end overlaps an earlier window", []EraRange{{1970, 1999}, {1990, 0}}, []EraRange{{1970, 0}}},
+		{"open end absorbs a later window", []EraRange{{2000, 0}, {2010, 2015}}, []EraRange{{2000, 0}}},
+		{"disjoint windows stay apart", []EraRange{{1980, 1989}, {2000, 0}}, []EraRange{{1980, 1989}, {2000, 0}}},
+		{"open start sorts first", []EraRange{{1990, 1999}, {0, 1985}}, []EraRange{{0, 1985}, {1990, 1999}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NormalizeEraWindows(tc.in); !slices.Equal(got, tc.want) {
+				t.Errorf("NormalizeEraWindows(%v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func anyContains(windows []EraRange, year int) bool {
+	return slices.ContainsFunc(windows, func(r EraRange) bool { return r.Contains(year) })
 }
 
 // ⚠ Narrowing the RANGE is how a channel gets strictness, and it moves a clip between rungs in a

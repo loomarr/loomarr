@@ -1,7 +1,7 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
 import { useAppForm } from "@/lib/app-form";
@@ -53,8 +53,8 @@ const hasDetails = (intent?: Intent): boolean =>
 // The hero (§3) plus the constraints §13 calls "intent-writing hints": era, tone,
 // runtime target, and an acquisition cap. They stay behind a disclosure because the
 // blank-page problem is solved by ONE good sentence, not by a form — but they are here,
-// and they now actually reach the server (`runtimeTargetMin` was unreachable until the
-// submit body was typed from the domain).
+// and they reach the server because the submit body is typed from the domain (an untyped
+// body can silently drop a field such as `runtimeTargetMin`).
 const IntentForm = ({
   initialDescription = "",
   initialIntent,
@@ -92,7 +92,7 @@ const IntentForm = ({
   });
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       <form.Field name="description">
         {(field) => (
           <IntentInput
@@ -107,9 +107,11 @@ const IntentForm = ({
       <form.Subscribe selector={(state) => state.errorMap.onSubmit}>
         {(validationError) =>
           validationError ? (
-            <p role="alert" className="text-onair-300 text-sm">
-              {validationError}
-            </p>
+            <div role="alert">
+              <Text as="p" textRole="compact" tone="danger">
+                {validationError}
+              </Text>
+            </div>
           ) : null
         }
       </form.Subscribe>
@@ -153,7 +155,7 @@ const IntentForm = ({
           </form.AppField>
         </div>
       )}
-    </div>
+    </Stack>
   );
 };
 

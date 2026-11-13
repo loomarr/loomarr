@@ -127,7 +127,7 @@ var areas = []area{
 		Packages: []string{
 			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
-			"playout/landiscovery",
+			"playout/landiscovery", "playout/subtitles",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
@@ -156,6 +156,7 @@ var areas = []area{
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
 			"filler/source/youtube", "filler/location", "filler/language", "filler/pod", "filler/split", "filler/asset", "filler/pipelinestate", "filler/cliplibrary", "filler/acquisition", "filler/identity",
 			"filler/storeadapter", "filler/capability", "filler/routine", "filler/operator",
+			"filler/quarantine", "filler/upkeep",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +
@@ -192,7 +193,7 @@ var areas = []area{
 			"shared vocabularies such as holidays, language codes, the audience rating ladder and " +
 			"whole-word text matching.",
 		Packages: []string{
-			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/schemadoc",
+			"platform/store", "platform/store/storedb", "platform/store/clipstore", "platform/store/crashstore", "platform/store/diagnosticsstore", "platform/store/jobstore", "platform/store/activitystore", "platform/store/channeldatastore", "platform/store/channelstore", "platform/store/proposalstore", "platform/store/librarystore", "platform/store/qualitystore", "platform/store/schemadoc",
 			"platform/store/identitystore", "platform/settings", "platform/config", "platform/jobs", "platform/housekeeping",
 			"platform/backup", "platform/databasemigration",
 			"platform/activity", "platform/diagnostics", "platform/currenthealth", "platform/metrics", "platform/httpx",

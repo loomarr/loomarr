@@ -9,7 +9,7 @@ import (
 
 // fillerReferencesMigration makes the filler download records' sources, pulls and runs foreign
 // keys (#2793).
-const fillerReferencesMigration = 222
+const fillerReferencesMigration = 236
 
 func TestFillerReferencesMigration(t *testing.T) {
 	// Foreign keys on, as production opens SQLite.

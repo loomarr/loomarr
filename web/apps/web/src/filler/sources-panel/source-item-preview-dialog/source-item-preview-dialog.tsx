@@ -7,6 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Stack,
+  Text,
 } from "@loomarr/design-system";
 
 interface SourceItemPreviewDialogProps {
@@ -38,9 +40,16 @@ const SourceItemPreviewDialog = ({ item, providerLabel, onClose }: SourceItemPre
             referrerPolicy="strict-origin-when-cross-origin"
           />
         ) : (
-          <div className="bg-muted text-muted-foreground flex aspect-video items-center justify-center rounded-md px-6 text-center text-sm">
-            This provider cannot show the item here. Open the original to preview it.
-          </div>
+          <Stack
+            align="center"
+            className="bg-muted aspect-video rounded-md px-6 text-center"
+            direction="row"
+            justify="center"
+          >
+            <Text as="p" className="text-center" textRole="compact" tone="secondary">
+              This provider cannot show the item here. Open the original to preview it.
+            </Text>
+          </Stack>
         )}
         <DialogFooter>
           {item && (

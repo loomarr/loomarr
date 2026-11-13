@@ -1,6 +1,7 @@
 import { Action, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useId, useState } from "react";
 
+import { useCommittedDraft } from "../use-committed-draft";
 import { YearField } from "../year-field";
 import type { YearRange, YearRangeListFieldProps } from "./year-range-list-field.type";
 
@@ -48,14 +49,14 @@ const YearRangeRow = ({
   onRemove: (index: number) => void;
   range: YearRange;
 }) => {
-  const [draft, setDraft] = useState({ from: String(range.from), to: String(range.to) });
+  const { draft, editDraft } = useCommittedDraft({ from: String(range.from), to: String(range.to) });
 
   // An invalid endpoint stays visible until its partner makes the pair valid. The committed range is
   // the reset boundary, so a draft neither survives an outside replacement nor slides onto another
   // row when the list changes.
   useEffect(() => {
-    setDraft({ from: String(range.from), to: String(range.to) });
-  }, [range.from, range.to]);
+    editDraft({ from: String(range.from), to: String(range.to) });
+  }, [range.from, range.to, editDraft]);
 
   // The visible text stays short and still starts the accessible name, as a Reset button's does.
   const where = `(${label}, range ${index + 1})`;
@@ -77,7 +78,7 @@ const YearRangeRow = ({
           id={`${idBase}-${index}-from`}
           label="From year"
           onBlur={commit}
-          onChangeText={(from) => setDraft((current) => ({ ...current, from }))}
+          onChangeText={(from) => editDraft((current) => ({ ...current, from }))}
           value={draft.from}
         />
         <YearField
@@ -86,7 +87,7 @@ const YearRangeRow = ({
           id={`${idBase}-${index}-to`}
           label="To year"
           onBlur={commit}
-          onChangeText={(to) => setDraft((current) => ({ ...current, to }))}
+          onChangeText={(to) => editDraft((current) => ({ ...current, to }))}
           value={draft.to}
         />
       </Surface>
@@ -116,7 +117,8 @@ const YearRangeListField = ({
   ranges,
 }: YearRangeListFieldProps) => {
   const idBase = useId();
-  const [draft, setDraft] = useState({ from: "", to: "" });
+  // The blank row's From/To: kept here until Add range hands the pair over.
+  const { discard, draft, editDraft } = useCommittedDraft({ from: "", to: "" });
   const [error, setError] = useState<string>();
 
   const commit = (index: number, next: { from: number; to: number }) => {
@@ -137,7 +139,7 @@ const YearRangeListField = ({
       return;
     }
     setError(undefined);
-    setDraft({ from: "", to: "" });
+    discard();
     onChange(normalizeYearRanges([...ranges, next]));
   };
 
@@ -174,14 +176,14 @@ const YearRangeListField = ({
             <YearField
               accessibilityLabel={`${label} new range from`}
               disabled={disabled}
-              onChangeText={(from) => setDraft((current) => ({ ...current, from }))}
+              onChangeText={(from) => editDraft((current) => ({ ...current, from }))}
               placeholder="From"
               value={draft.from}
             />
             <YearField
               accessibilityLabel={`${label} new range to`}
               disabled={disabled}
-              onChangeText={(to) => setDraft((current) => ({ ...current, to }))}
+              onChangeText={(to) => editDraft((current) => ({ ...current, to }))}
               placeholder="To"
               value={draft.to}
             />

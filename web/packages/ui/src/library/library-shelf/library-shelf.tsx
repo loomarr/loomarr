@@ -5,7 +5,7 @@ import { Pressable } from "react-native";
 import { StatePanel } from "../../state-panel";
 import { LibraryGrid } from "../library-grid";
 import { LibraryPoster, Line, PAGE_GUTTER, Stack, Twirl } from "../library-poster";
-import { folderName, heldTitle, scanHeadline } from "../library-words";
+import { detailsWaiting, folderName, heldTitle, scanHeadline } from "../library-words";
 import type { LibraryFilter, LibraryShelfProps, LibraryShelfTitle } from "./library-shelf.type";
 
 // LIBRARY (#2151 decision 22, design/library variant D): one line about the library, the tabs and a
@@ -22,11 +22,17 @@ const StatusLine = ({
   onCheckAgain,
   onRescan,
   onOpenSettings,
-}: Pick<LibraryShelfProps, "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings">) => {
-  const scan = scanHeadline(status.scan, status.needsYou);
+  timeZone,
+}: Pick<
+  LibraryShelfProps,
+  "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings" | "timeZone"
+>) => {
+  const scan = scanHeadline(status.scan, status.needsYou || status.health === "folder_empty");
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
+  const waiting = detailsWaiting(status.details, status.scan, timeZone);
   // What needs the maintainer comes first; the import's own words show only when nothing does.
+  // Titles stuck waiting for details come after the folders: Settings says why.
   const alert: [ComponentProps<typeof StatusDot>["tone"], string] | undefined =
     status.health === "needs_folders"
       ? ["off", "Tell Loomarr where your media is"]
@@ -34,9 +40,17 @@ const StatusLine = ({
         ? ["warn", heldTitle(held)]
         : offline
           ? ["warn", `Can't reach your ${folderName(offline)} folder`]
-          : undefined;
+          : waiting
+            ? ["warn", waiting.line]
+            : undefined;
   const importing = alert === undefined;
   const [tone, text] = alert ?? [scan.tone, scan.text];
+  // An import still running for the other folders stays on the line after a held removal or an
+  // offline folder: "Can't reach your Movies folder · Adding your media · Step 2 of 3 · 34%".
+  const alongside =
+    alert !== undefined && status.health !== "needs_folders" && scan.shortLine
+      ? `${scan.text} · ${scan.shortLine}`
+      : "";
   return (
     <Line columnGap="control" paddingVertical="inline" rowGap="inline">
       <Line>
@@ -44,7 +58,11 @@ const StatusLine = ({
         {importing && scan.moving ? <Twirl /> : <StatusDot label={text} tone={tone} />}
         <Text textRole="label">
           {/* "Adding your media · Step 1 of 3 · 21% · about 9 min left". */}
-          {importing && scan.shortLine ? `${text} · ${scan.shortLine}` : text}
+          {importing && scan.shortLine
+            ? `${text} · ${scan.shortLine}`
+            : alongside
+              ? `${text} · ${alongside}`
+              : text}
         </Text>
       </Line>
       {held ? (
@@ -219,6 +237,7 @@ const LibraryShelf = ({
   needs,
   showTitles: showGrid = true,
   collections,
+  timeZone,
 }: LibraryShelfProps) => {
   const fresh = status.health === "needs_folders";
   const onCollections = filter === "collections";
@@ -243,6 +262,7 @@ const LibraryShelf = ({
           onOpenSettings={onOpenSettings}
           onRescan={onRescan}
           status={status}
+          timeZone={timeZone}
         />
       </Stack>
       {fresh ? (

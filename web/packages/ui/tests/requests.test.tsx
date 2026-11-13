@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ApprovalGroup,
   initialReview,
+  RequestCard,
   RequestChannel,
   type RequestChannelProps,
   RequestDetail,
@@ -525,6 +526,46 @@ describe("review sheet", () => {
   it("draws nothing for a row that is gone", () => {
     expect(sheet({ sheet: { id: "gone", kind: "edit" } })).not.toContain("Approve with changes");
     expect(sheet({ sheet: { group: "filler", id: "gone", kind: "deny" } })).not.toContain("Dismiss");
+  });
+});
+
+// A request's calendar day is the household's, as the Guide's times are, not the device's.
+describe("request dates in the household zone", () => {
+  const entryOf = (key: keyof typeof journeys) => {
+    const found = requestsSnapshot().entries.find((e) => e.journey.jobId === journeys[key].jobId);
+    if (!found) throw new Error(`no ${key} entry`);
+    return found;
+  };
+  const card = (timeZone?: string) =>
+    render(
+      <RequestCard
+        entry={entryOf("awaitingApproval")}
+        nowMs={Date.parse("2026-11-01T00:00:00Z")}
+        timeZone={timeZone}
+      />,
+    );
+
+  it("names the day a week-old request was made where the household is", () => {
+    // 12:00 UTC on 2 Oct is already the 3rd in Auckland and still the 2nd in UTC.
+    expect(card("Pacific/Auckland")).toContain("Requested Oct 3");
+    expect(card("UTC")).toContain("Requested Oct 2");
+  });
+
+  it("names the day an approval was made where the household is", () => {
+    const detail = (timeZone: string) =>
+      render(
+        <RequestDetail
+          entry={entryOf("downloading")}
+          onBack={noop}
+          onFix={noop}
+          onOpenChannel={noop}
+          timeZone={timeZone}
+          titles={requestFixtures.titles}
+        />,
+      );
+    // 08:00 UTC on 1 Oct is still 30 Sep in Honolulu.
+    expect(detail("Pacific/Honolulu")).toContain("Approved by Adela Hale on Sep 30");
+    expect(detail("UTC")).toContain("Approved by Adela Hale on Oct 1");
   });
 });
 

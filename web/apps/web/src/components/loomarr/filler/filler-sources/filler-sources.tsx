@@ -1,5 +1,5 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Icon, icons, type StatusTone, Surface, Toggle } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, type StatusTone, Surface, Text, Toggle } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -81,11 +81,13 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           </ListGroup>
         </div>
       ) : (
-        <p className="text-muted-foreground mt-3 text-sm">No sources match your filter.</p>
+        <Text as="p" className="mt-3" textRole="compact" tone="secondary">
+          No sources match your filter.
+        </Text>
       )}
 
       {remaining > 0 && (
-        <div className="mt-2 flex">
+        <Stack className="mt-2" direction="row">
           <Action
             accessibilityLabel={`Show ${remaining} more under ${sectionLabel}`}
             onPress={() => setExpanded(true)}
@@ -93,10 +95,10 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           >
             {`Show ${remaining} more`}
           </Action>
-        </div>
+        </Stack>
       )}
       {scalable && expanded && !normalizedFilter && (
-        <div className="mt-2 flex">
+        <Stack className="mt-2" direction="row">
           <Action
             accessibilityLabel={`Show fewer under ${sectionLabel}`}
             onPress={() => setExpanded(false)}
@@ -104,7 +106,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
           >
             Show fewer
           </Action>
-        </div>
+        </Stack>
       )}
     </div>
   );
@@ -187,9 +189,12 @@ const FillerSources = ({
       <Icon decorative glyph={icons.folder} size="default" tone="muted" />
     );
     return (
-      <div
+      <Stack
+        align="center"
+        className={cn("pl-2", selectedId === source.id && "bg-muted/25")}
+        direction="row"
+        gap="inline"
         key={source.id}
-        className={cn("flex min-w-0 items-center gap-2 pl-2", selectedId === source.id && "bg-muted/25")}
       >
         {onToggleEnabled && source.switchable && (
           <Toggle
@@ -224,54 +229,72 @@ const FillerSources = ({
             title={name}
           />
         </div>
-      </div>
+      </Stack>
     );
   };
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
-      <div className="flex flex-wrap items-start gap-4">
+    <Stack className={className} flexShrink={0} gap="section">
+      <Stack align="start" direction="row" flexShrink={0} gap="4" wrap>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">Where filler comes from</h2>
-          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
+          <Text as="h2" strong textRole="cardLabel">
+            Where filler comes from
+          </Text>
+          <Text as="p" className="mt-1 max-w-xl" textRole="compact" tone="secondary">
             Add sources once and Loomarr checks them for you. Turning one off does not remove clips already
             added.
-          </p>
+          </Text>
         </div>
-        <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap">
+        <Text as="span" className="shrink-0 whitespace-nowrap" textRole="hint" tone="secondary">
           {`${realSources.filter((source) => source.ready).length} of ${realSources.length} ready`}
-        </span>
-      </div>
+        </Text>
+      </Stack>
 
       {needsLocation && (
-        <div className="border-caution/30 bg-caution/5 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+        <Stack
+          align="center"
+          className="border-caution/30 bg-caution/5 rounded-lg border px-4 py-3"
+          direction="row"
+          flexShrink={0}
+          gap="control"
+          justify="between"
+          wrap
+        >
           <div>
-            <p className="text-sm font-medium">Add your location</p>
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="cardLabel" tone="primary">
+              Add your location
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               Loomarr uses it to choose sources that fit your area.
-            </p>
+            </Text>
           </div>
           <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
             Set location
           </Action>
-        </div>
+        </Stack>
       )}
 
-      {error && <p className="text-onair-300 text-sm">{error}</p>}
+      {error && (
+        <Text as="p" textRole="compact" tone="danger">
+          {error}
+        </Text>
+      )}
 
       {(localSources.length > 0 || renderLocalSetup) && (
         <section aria-labelledby="local-filler-sources" className="border-border/60 border-t pt-5">
-          <div className="flex items-start justify-between gap-4">
+          <Stack align="start" direction="row" gap="4" justify="between">
             <div className="min-w-0">
-              <h3 id="local-filler-sources" className="font-medium">
+              <Text as="h3" id="local-filler-sources" textRole="cardLabel" tone="primary">
                 Your files
-              </h3>
-              <p className="text-muted-foreground mt-1 text-sm">
+              </Text>
+              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                 Folders and media-server libraries you already manage.
-              </p>
+              </Text>
             </div>
-            <span className="text-muted-foreground shrink-0 text-xs">{sourceSummary(localSources)}</span>
-          </div>
+            <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
+              {sourceSummary(localSources)}
+            </Text>
+          </Stack>
 
           {renderLocalSetup && <div className="mt-4">{renderLocalSetup}</div>}
           {localSources.length > 0 && (
@@ -296,17 +319,19 @@ const FillerSources = ({
           >
             <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
               <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
-                <h3 id={`provider-${provider.kind}`} className="font-medium">
+                <Text as="h3" id={`provider-${provider.kind}`} textRole="cardLabel" tone="primary">
                   {provider.target}
-                </h3>
-                <p className="text-muted-foreground mt-1 text-sm">
+                </Text>
+                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
                   {!provider.enabled
                     ? `${provider.target} is paused. Sources and clips stay saved.`
                     : descriptions.find((description) => description.id === provider.kind)?.blurb}
-                </p>
+                </Text>
               </div>
-              <div className="ml-auto flex shrink-0 items-center gap-3">
-                <span className="text-muted-foreground text-xs">{sourceSummary(children)}</span>
+              <Stack align="center" direction="row" flexShrink={0} gap="3" marginLeft="auto">
+                <Text as="span" textRole="hint" tone="secondary">
+                  {sourceSummary(children)}
+                </Text>
                 {onToggleProvider && (
                   <Toggle
                     kind="switch"
@@ -318,7 +343,7 @@ const FillerSources = ({
                     onCheckedChange={(checked) => onToggleProvider(provider.kind, checked)}
                   />
                 )}
-              </div>
+              </Stack>
             </div>
 
             {/* Folded, not unmounted: a paused provider's children keep their saved switches. */}
@@ -333,13 +358,15 @@ const FillerSources = ({
                   renderRow={row}
                 />
               ) : (
-                <p className="text-muted-foreground mt-3 text-xs">Nothing added yet.</p>
+                <Text as="p" className="mt-3" textRole="hint" tone="secondary">
+                  Nothing added yet.
+                </Text>
               )}
             </div>
           </section>
         );
       })}
-    </div>
+    </Stack>
   );
 };
 

@@ -1,0 +1,153 @@
+{
+  "note": "Design-system primitive ledger (#2147 Wave 4), maintained by web/scripts/check-primitive-bypass.mjs. Counts may only fall: `pnpm primitives:update` shrinks them. Never raise one to pass the check.",
+  "files": {
+    "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
+      "rawDialog": 1,
+      "flexStack": 6
+    },
+    "apps/web/src/channels/guide-page/guide-page.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-card/channel-card.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/setup/connection-block/connection-block.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/clip-details-editor/clip-details-editor.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/clip-details/clip-details.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/filler-settings/filler-settings.tsx": {
+      "flexStack": 4
+    },
+    "apps/web/src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/help/help-page/help-page.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/home/new-this-week/new-this-week.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/lib/app-form/app-form.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/channels/$id/route.tsx": {
+      "flexStack": 3
+    },
+    "apps/web/src/routes/_authed/settings/index.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/routes/_authed/settings/system/index.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/settings/tasks-page/tasks-page.tsx": {
+      "flexStack": 1
+    },
+    "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
+      "flexStack": 2
+    },
+    "apps/web/src/wizard/playout-step/playout-step.tsx": {
+      "flexStack": 1
+    }
+  }
+}

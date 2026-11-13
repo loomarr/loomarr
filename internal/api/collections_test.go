@@ -27,12 +27,11 @@ func newCollectionsHarness(t *testing.T, svc libraryapi.CollectionService) *apiH
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:             defaults.Store,
-			Auth:              defaults.Auth,
-			Log:               defaults.Log,
-			Collections:       svc,
-			LiveSettings:      stringSettings(func(key string) string { return "" }),
-			LibraryConfigured: func() bool { return false },
+			Store:        defaults.Store,
+			Auth:         defaults.Auth,
+			Log:          defaults.Log,
+			Library:      api.LibraryOptions{Collections: svc, Configured: func() bool { return false }},
+			LiveSettings: stringSettings(func(key string) string { return "" }),
 		})
 	})
 }

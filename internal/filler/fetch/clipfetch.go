@@ -484,20 +484,12 @@ func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Artifact
 		// sidecar creates a race with intake even though the durable manifest remains authoritative.
 		if outputs[index].SidecarPath != "" {
 			if err := publishSidecar(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath), updated[index]); err != nil {
-				updated[index].State = acquisition.ArtifactRepair
-				updated[index].RepairReason = "publish sidecar: " + err.Error()
-				updated[index].UpdatedAt = i.now().UTC()
-				_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
-				return updated, err
+				return updated, errors.Join(err, i.markRepair(ctx, &updated[index], "publish sidecar: "+err.Error()))
 			}
 		}
 		target := filepath.Join(i.dropDir, updated[index].MediaPath)
 		if err := publishFile(outputs[index].MediaPath, target); err != nil {
-			updated[index].State = acquisition.ArtifactRepair
-			updated[index].RepairReason = "publish media: " + err.Error()
-			updated[index].UpdatedAt = i.now().UTC()
-			_ = i.writer.UpsertAcquisitionArtifacts(ctx, updated[index:index+1])
-			return updated, err
+			return updated, errors.Join(err, i.markRepair(ctx, &updated[index], "publish media: "+err.Error()))
 		}
 		updated[index].State = acquisition.ArtifactPublished
 		updated[index].UpdatedAt = i.now().UTC()
@@ -506,6 +498,20 @@ func (i *Ingestor) publish(ctx context.Context, manifests []acquisition.Artifact
 		return updated, fmt.Errorf("acknowledge published acquisition outputs: %w", err)
 	}
 	return updated, nil
+}
+
+// markRepair records that publishing an artifact failed, so recovery finds it. A marker that cannot
+// be written leaves the artifact reading as staged, so the failure is returned (the caller joins it
+// to the publish error) and logged, never dropped.
+func (i *Ingestor) markRepair(ctx context.Context, artifact *acquisition.Artifact, reason string) error {
+	artifact.State = acquisition.ArtifactRepair
+	artifact.RepairReason = reason
+	artifact.UpdatedAt = i.now().UTC()
+	if err := i.writer.UpsertAcquisitionArtifacts(ctx, []acquisition.Artifact{*artifact}); err != nil {
+		i.logf("repair marker for %s could not be saved; recovery may not find it: %v", artifact.MediaPath, err)
+		return fmt.Errorf("save repair marker: %w", err)
+	}
+	return nil
 }
 
 // publishSidecar publishes the provenance sidecar idempotently: an existing target that is this

@@ -412,10 +412,36 @@ fi
 printf 'apple-client: %s simulator executable contains only %s\n' "${APP_NAME}" "${HOST_ARCH}"
 
 # Launch the explicitly installed app and retain the host PID used by the liveness check.
-xcrun simctl launch --terminate-running-process \
-  --stdout="${ARTIFACTS_DIR}/launch.stdout.log" --stderr="${ARTIFACTS_DIR}/launch.stderr.log" \
-  "${simulator_id}" "${BUNDLE_ID}" >"${ARTIFACTS_DIR}/launch-command.stdout.log" \
-  2>"${ARTIFACTS_DIR}/launch-command.stderr.log"
+#
+# A hosted runner's simulator can be Shut Down again by the time the app launches, seconds after the
+# install succeeded. `simctl launch` then fails with SimError 405 ("Unable to lookup in current
+# state: Shutdown") and exits 149, the low byte of 405 (#3315). The command's stderr goes to an
+# artifact, so a failure prints it here. The device is booted once more and the launch tried once
+# more; a second failure exits with the launch's own status, and a launch that succeeds still has to
+# pass the liveness and screenshot checks below.
+launch_app() {
+  xcrun simctl launch --terminate-running-process \
+    --stdout="${ARTIFACTS_DIR}/launch.stdout.log" --stderr="${ARTIFACTS_DIR}/launch.stderr.log" \
+    "${simulator_id}" "${BUNDLE_ID}" >"${ARTIFACTS_DIR}/launch-command.stdout.log" \
+    2>"${ARTIFACTS_DIR}/launch-command.stderr.log"
+}
+report_launch_failure() {
+  printf 'apple-client: simctl launch exited %s; its error follows\n' "$1" >&2
+  cat "${ARTIFACTS_DIR}/launch-command.stderr.log" >&2 || true
+}
+launch_status=0
+launch_app || launch_status=$?
+if (( launch_status != 0 )); then
+  report_launch_failure "$launch_status"
+  printf 'apple-client: booting the simulator again and launching once more\n' >&2
+  boot_simulator_after_build
+  launch_status=0
+  launch_app || launch_status=$?
+  if (( launch_status != 0 )); then
+    report_launch_failure "$launch_status"
+    exit "$launch_status"
+  fi
+fi
 launch_output="$(cat "${ARTIFACTS_DIR}/launch-command.stdout.log")"
 printf '%s\n' "${launch_output}"
 launch_pid="${launch_output##*: }"

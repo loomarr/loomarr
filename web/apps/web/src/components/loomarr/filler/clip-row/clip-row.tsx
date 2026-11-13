@@ -1,4 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
+import { Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
@@ -49,8 +50,8 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       aria-label={`Preview ${clip.name}`}
       className="bg-static-800 focus-visible:ring-ring h-[30px] w-[54px] overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:outline-none"
     >
-      {/* ⚠ ONE path since V52 phase 8 — the legacy `/v1/filler/thumb/{hash}` fallback retired with
-          its route. A clip whose artwork the adoption job has not reached yet renders the empty
+      {/* ⚠ ONE path (V52 phase 8): the artwork is an image-service image, with no thumbnail-route
+          fallback. A clip whose artwork the adoption job has not reached yet renders the empty
           box above, which is the same honest "no frame" state as a clip that never had one. */}
       {clip.thumbImage && <ServedImage image={clip.thumbImage} alt="" sizes="54px" />}
     </button>
@@ -74,13 +75,17 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
           {clip.name}
         </button>
       ) : (
-        <p className="truncate text-sm" title={clip.name}>
-          {clip.name}
+        <p className="truncate" title={clip.name}>
+          <Text as="span" textRole="compact" tone="primary">
+            {clip.name}
+          </Text>
         </p>
       )}
       {clip.brand ? (
-        <p className="text-muted-foreground truncate text-xs" title={`Brand: ${clip.brand}`}>
-          {clip.brand}
+        <p className="truncate" title={`Brand: ${clip.brand}`}>
+          <Text as="span" textRole="hint" tone="secondary">
+            {clip.brand}
+          </Text>
         </p>
       ) : null}
       {/* Phone only, as the mock draws it: below `md` the tag columns are gone, so the row has no
@@ -92,24 +97,26 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       ) : null}
     </div>
 
-    <span className="text-static-400 hidden font-mono text-xs md:inline">
+    <Text as="span" className="hidden md:inline" textRole="mono">
       {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
-    </span>
-    <span className="text-static-400 hidden font-mono text-xs tabular-nums md:inline">
+    </Text>
+    <Text as="span" className="hidden tabular-nums md:inline" textRole="mono">
       {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
-    </span>
-    <span className="text-static-400 hidden font-mono text-xs lg:inline">
+    </Text>
+    <Text as="span" className="hidden lg:inline" textRole="mono">
       {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}
-    </span>
+    </Text>
 
-    <span className="text-static-400 font-mono text-xs tabular-nums">
+    <Text as="span" className="tabular-nums" textRole="mono">
       {formatClipDuration(clip.durationMs)}
-    </span>
+    </Text>
 
     {/* The same three-branch rule the card renders — shared, because the `playsCounted:false`
         branch is a claim about what this install can OBSERVE, and two copies drift. */}
-    <span className="text-2xs text-static-400 hidden truncate font-mono lg:inline" title={playsLine(clip)}>
-      {playsLine(clip)}
+    <span className="hidden truncate lg:inline" title={playsLine(clip)}>
+      <Text as="span" textRole="mono" tone="secondary">
+        {playsLine(clip)}
+      </Text>
     </span>
   </div>
 );

@@ -16,6 +16,15 @@ ends the current iteration so the next constructs a fresh store, handler, schedu
   diagnostics, workers and scratch roots are **finalized** in reverse construction order, and only
   then does the store close. Quiescers are a separate, idempotent registry that rejects new admission
   before taking its snapshot.
+- **Teardown is bounded, and the container waits for it.** `Shutdown` returns only after its stops
+  finish, and a stop never begins beside a worker or a quiescer that is still running. The worst case
+  from the stop signal to the last stop is 51 s: 15 s of quiesce and HTTP drain, 15 s for workers to
+  unwind, one 10 s late wait for a worker or quiescer that outlived that (one budget for all of them),
+  then the stop phase, whose single hard stop is its 10 s budget plus a 1 s grace however many stops
+  ignore their context. The arithmetic lives in one place, `teardownBudget` in `cmd/loomarr/main.go`.
+  `docker/compose.yaml` and the demo stack set `stop_grace_period: 60s`, and a test holds every Compose
+  file that sets one at or above that budget, because Docker's 10 s default would SIGKILL a slow
+  teardown beside the store it is closing.
 - **Storage topology is per generation.** Saving `filler.dir` or `filler.watch_dir` records the desired
   layout at once, but the running generation keeps one immutable applied pair; the restart-cost
   endpoint names the pending keys until the next generation applies them.
@@ -109,7 +118,11 @@ named jobs, each with a user-editable schedule and a **Run now** trigger.
 - **Every job has a Group, Title and Description.** The Tasks page shows seven outcome groups
   (Acquisitions, Channels, Filler, Artwork, Playout, System, Backup). Progress comes from the `job` SSE
   frame and is indeterminate unless the job knows its denominator; a percentage is never synthesized
-  from elapsed time. A job past its next run is shown as `overdue`. `last_error` expands in full.
+  from elapsed time. A job past its next run by more than twice its own interval is `overdue`; that
+  one flag is what Home, the Settings index, Tasks and Current Health all count, and a run that has
+  only just come due reads "due now". A job that has never run shows its first cron tick as its next
+  run, because River fires jobs only on ticks and nothing runs a job at boot. `last_error` expands
+  in full.
 - **History is lazy:** `GET /v1/jobs/{name}/history` returns 24-hour aggregates and the five latest
   runs from River's finalized rows.
 - `GET /v1/jobs` and `POST /v1/jobs/{name}/run` are admin-only. The job list itself is the registry;

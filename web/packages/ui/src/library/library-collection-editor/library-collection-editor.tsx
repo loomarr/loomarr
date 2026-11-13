@@ -97,8 +97,8 @@ const AddTitle = ({
   onSearch,
   onAdd,
 }: Pick<LibraryCollectionEditorProps, "members" | "onSearch" | "onAdd">) => {
-  const [typed, setTyped] = useState("");
-  const query = useSettled(typed.trim());
+  const [search, setSearch] = useState("");
+  const query = useSettled(search.trim());
   const [found, setFound] = useState<Found>({ query: "" });
   useEffect(() => {
     if (query === "") return;
@@ -116,7 +116,7 @@ const AddTitle = ({
   const list = searched ? (found.results ?? []).filter((r) => !inIt.has(r.id)) : [];
   return (
     <Stack gap="inline">
-      <Field label="Add a title" onChangeText={setTyped} placeholder="Search your library" value={typed} />
+      <Field label="Add a title" onChangeText={setSearch} placeholder="Search your library" value={search} />
       {searched && found.failed ? (
         <Text textRole="body" tone="secondary">
           Couldn't search just now. Try again in a moment.

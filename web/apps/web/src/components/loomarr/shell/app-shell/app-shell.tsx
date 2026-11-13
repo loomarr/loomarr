@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
@@ -6,7 +6,7 @@ import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { BrandLockup } from "../brand-lockup";
-import type { AppShellProps, NavItem, WatchNavItem } from "./app-shell.type";
+import type { AppShellProps, NavItem, NavTo, WatchNavItem } from "./app-shell.type";
 
 // Lazy, not a static import: PhoneBottomBar is @loomarr/design-system's only consumer of
 // TabBar/BottomSheet, which only ever render below `md`. A static import here made AppShell —
@@ -38,19 +38,19 @@ const PHONE_HEADER_HEIGHT = 49;
 // the product soul; nostalgia stays in the margins (§1).
 // TWO AUTHORED NAVS, not one list filtered by role (§12).
 //
-// This used to be `NAV.filter(i => !i.admin || isAdmin)`, which can only ever present a
-// member with the admin's product minus some entries. A member is not a diminished admin —
-// they arrive to watch and to ask for things — and the same two routes need DIFFERENT NAMES
-// for them: `/suggest` was "Request a channel", `/settings/notifications` is "Notifications". A
-// filter cannot rename, so the shape of the old code made the right IA inexpressible.
+// A role filter (`NAV.filter(i => !i.admin || isAdmin)`) can only ever present a member with
+// the admin's product minus some entries. A member is not a diminished admin — they arrive to
+// watch and to ask for things — and the same routes need DIFFERENT NAMES for them
+// (`/settings/notifications` is "Notifications"). A filter cannot rename, so it cannot express
+// the right IA.
 const ADMIN_NAV: NavItem[] = [
   // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
   // `dashboard`, and so is the route, so bookmarks keep working).
   { to: "/dashboard", label: "Home", icon: "home" },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
-  // one grid. The fold completed when the grid grew the origination affordance the mock always
-  // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
-  // redirects here rather than doors of their own. `Suggest` needs no admin entry because that
+  // one grid. The grid carries the origination affordance the mock specifies — `✦ Add a channel`
+  // in its header — so `/channels` and `/suggest` are redirects here rather than doors of their
+  // own. `Suggest` needs no admin entry because that
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: "schedule" },
@@ -134,6 +134,7 @@ const AppShell = ({
       <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
     </>
   );
+  const versionTextStyle = { color: "inherit" } as const;
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -145,14 +146,16 @@ const AppShell = ({
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
       <a
         href={`#${MAIN_ID}`}
-        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2 focus:text-sm focus:font-medium"
+        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2"
       >
-        Skip to content
+        <Text as="span" style={{ color: "inherit" }} textRole="compact" strong>
+          Skip to content
+        </Text>
       </a>
       {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
       <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
-        <nav aria-label="Primary" className="flex w-56 flex-col gap-1">
+        <Stack aria-label="Primary" gap="1" render="nav" width={224}>
           <div className="mb-4 px-2">
             <BrandLockup variant="compact" />
           </div>
@@ -162,13 +165,17 @@ const AppShell = ({
             onClick={onOpenCommand}
             aria-keyshortcuts={commandShortcutAria()}
             className={cn(
-              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors",
               FOCUS_RING,
             )}
           >
             <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
-            <span>Search…</span>
-            <kbd className="text-static-400 ml-auto font-mono text-xs">{commandShortcutLabel()}</kbd>
+            <Text as="span" textRole="compact" tone="secondary">
+              Search…
+            </Text>
+            <Text as="kbd" className="ml-auto" textRole="mono" tone="secondary">
+              {commandShortcutLabel()}
+            </Text>
           </button>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
@@ -187,27 +194,38 @@ const AppShell = ({
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
-              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 transition-colors",
               FOCUS_RING,
               forcedActive === undefined
-                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
+                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
-                    "bg-static-800 text-foreground font-medium shadow-[inset_2px_0_0_var(--color-static-100)]",
+                    "bg-static-800 text-foreground shadow-[inset_2px_0_0_var(--color-static-100)]",
             );
-            const content = (
+            // The label is the compact role, at the role's strong weight while "you are here".
+            const content = (current: boolean) => (
               <>
                 <Icon decorative glyph={icons[icon]} size="compact" tone="inherit" />
-                <span>{label}</span>
+                <Text
+                  as="span"
+                  strong={forcedActive ?? current}
+                  style={{ color: "inherit" }}
+                  textRole="compact"
+                >
+                  {label}
+                </Text>
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
                 {item.to !== "/watch/$id" && (badges?.[item.to] ?? 0) > 0 && (
-                  <span
+                  <Text
+                    as="span"
                     data-testid={`nav-badge-${item.to}`}
-                    className="bg-suggest-tint-15 text-2xs text-suggest-300 ml-auto rounded-full px-[7px] py-px font-mono"
+                    className="bg-suggest-tint-15 ml-auto rounded-full px-[7px] py-px"
+                    textRole="mono"
+                    tone="suggest"
                   >
                     {badges?.[item.to]}
-                  </span>
+                  </Text>
                 )}
               </>
             );
@@ -218,15 +236,15 @@ const AppShell = ({
                 params={{ id: item.channelId }}
                 className={linkClassName}
               >
-                {content}
+                {({ isActive }) => content(isActive)}
               </Link>
             ) : (
               <Link key={item.to} to={item.to} className={linkClassName}>
-                {content}
+                {({ isActive }) => content(isActive)}
               </Link>
             );
           })}
-        </nav>
+        </Stack>
 
         {serverVersion && (
           <Tooltip content={`Loomarr ${serverVersion}`} side="right">
@@ -235,22 +253,43 @@ const AppShell = ({
                 to="/settings/system/about"
                 aria-label={`Loomarr ${serverVersion} — About`}
                 className={cn(
-                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors",
+                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center rounded-md px-3 py-1.5 transition-colors",
                   FOCUS_RING,
                 )}
               >
-                {versionLabel}
+                <Text as="span" style={versionTextStyle} textRole="mono">
+                  <Stack align="center" direction="row" gap="2" minWidth={0} render="span">
+                    {versionLabel}
+                  </Stack>
+                </Text>
               </Link>
             ) : (
-              <span className="text-static-400 mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-xs">
-                {versionLabel}
-              </span>
+              <Stack
+                align="center"
+                direction="row"
+                gap="inline"
+                marginTop="auto"
+                minWidth={0}
+                paddingHorizontal={12}
+                paddingVertical={6}
+                render="span"
+              >
+                <Text as="span" textRole="mono" tone="secondary">
+                  {versionLabel}
+                </Text>
+              </Stack>
             )}
           </Tooltip>
         )}
 
-        <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3 text-sm`}
+        <Stack
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          direction="row"
+          gap="inline"
+          marginTop={serverVersion ? 4 : "auto"}
+          paddingHorizontal={8}
+          paddingTop={12}
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
@@ -264,12 +303,21 @@ const AppShell = ({
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
-            <div className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs">
-              {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
-                  between, so "KB" + "Kira" would otherwise read as one word against the label. */}
-              {accountInitials}{" "}
-            </div>
-            <span className="text-muted-foreground truncate">{userName}</span>
+            <Stack
+              align="center"
+              className="bg-static-800 size-7 rounded-full"
+              flexShrink={0}
+              justify="center"
+            >
+              <Text as="span" textRole="mono" tone="primary">
+                {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                    between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+                {accountInitials}{" "}
+              </Text>
+            </Stack>
+            <Text as="span" className="truncate" textRole="compact" tone="secondary">
+              {userName}
+            </Text>
           </Link>
           {onLogout && (
             <Tooltip content="Sign out">
@@ -278,7 +326,7 @@ const AppShell = ({
               </Action>
             </Tooltip>
           )}
-        </div>
+        </Stack>
       </aside>
 
       {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
@@ -291,7 +339,7 @@ const AppShell = ({
           viewport instead of being added to main's scrollable content (a second scroller at phone
           width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Stack flexBasis="0%" flexGrow={1}>
         {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
             top right on every page (#2751). It opens the same search the rail's button does. */}
         {phoneWidth && (
@@ -302,14 +350,17 @@ const AppShell = ({
           </Suspense>
         )}
         {banner}
-        <main
+        <Stack
+          className="overflow-auto overscroll-contain focus:outline-none"
+          flexBasis="0%"
+          flexGrow={1}
           id={MAIN_ID}
+          render="main"
           tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-contain focus:outline-none"
         >
           {children}
-        </main>
-      </div>
+        </Stack>
+      </Stack>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't
@@ -333,4 +384,8 @@ const AppShell = ({
   );
 };
 
-export { AppShell };
+// The paths of the main nav for a role, for warming their routes. Read from the authored lists
+// above so the warmed set cannot drift from what the rail shows.
+const navPaths = (isAdmin: boolean): NavTo[] => (isAdmin ? ADMIN_NAV : MEMBER_NAV).map((item) => item.to);
+
+export { AppShell, navPaths };

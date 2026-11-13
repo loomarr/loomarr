@@ -9,7 +9,7 @@ interface ChannelRulesEditorProps {
   onChange: (next: ChannelPolicy) => void;
   // The closed authoring vocabulary (§6.6), served by GET /v1/programming/vocabulary and
   // passed down by the parent. The editor renders its WHEN/WHAT/HOW picker + lowers rules
-  // from THIS single BE-authoritative source — the FE no longer hand-mirrors the table.
+  // from THIS single BE-authoritative source — the FE never hand-mirrors the table.
   vocabulary: Vocabulary;
   // The channel's own grounded lineup keys, so the `series:<key>` WHAT option lists real
   // titles rather than free text (programming-design §6.6: "intersected with the

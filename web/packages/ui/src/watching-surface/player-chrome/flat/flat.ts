@@ -14,13 +14,6 @@ const webOnly = (style: Record<string, string | number>): ViewStyle => (web ? (s
 const gradientOr = (gradient: string, solid: string): ViewStyle =>
   web ? ({ backgroundImage: gradient } as ViewStyle) : { backgroundColor: solid };
 
-/** A solid surface with the one hairline: the band's panel, a sheet, a card. */
-const panel = (): ViewStyle => ({
-  backgroundColor: playerChrome.surface,
-  borderColor: playerChrome.hairline,
-  borderWidth: 1,
-});
-
 /** A solid raised surface with the one hairline: a key, or the strip a row of blocks stands on. */
 const raised = (): ViewStyle => ({
   backgroundColor: playerChrome.surfaceRaised,
@@ -28,4 +21,11 @@ const raised = (): ViewStyle => ({
   borderWidth: 1,
 });
 
-export { gradientOr, panel, raised, webOnly };
+/**
+ * A remote's focus on native, which has no outline: the amber edge as a border (§9.6: focus rings are
+ * amber). The web draws its own outline beside this, so it gets nothing here.
+ */
+const nativeFocus = (focused: boolean): ViewStyle =>
+  focused && !web ? { borderColor: playerChrome.signal, borderWidth: 2 } : {};
+
+export { gradientOr, nativeFocus, raised, webOnly };

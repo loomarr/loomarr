@@ -1,17 +1,24 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as jobsApi from "@loomarr/api/endpoints/jobs";
+import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { FillerStorageStatusDTO } from "@loomarr/api/models/fillerStorageStatusDTO";
 import type { JobView } from "@loomarr/api/models/jobView";
 import { unwrap } from "@loomarr/api/unwrap";
 import type { NeedsLineItem } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { usePendingApprovals } from "@/queue/pending-approvals";
+import { overdueTaskCount } from "@/settings/tasks-page/overdue-tasks";
 
 // Where each count leads: today's pages, no new routes.
-type NeedTo = "/requests/needs-you" | "/filler/manage" | "/settings/system/tasks" | "/filler/settings";
+type NeedTo =
+  | "/requests/needs-you"
+  | "/filler/manage"
+  | "/library/needs"
+  | "/settings/system/tasks"
+  | "/filler/settings";
 
 interface NeedsYouItem {
-  id: "approvals" | "filler" | "tasks" | "quota";
+  id: "approvals" | "filler" | "library" | "tasks" | "quota";
   value: string;
   label: string;
   short: string;
@@ -24,6 +31,9 @@ interface NeedsYouInput {
   approvals: number;
   // Incoming clips waiting on a choice: Filler → Manage's "Need a choice".
   fillerChoices: number;
+  // Everything Library → Needs you holds: titles Loomarr can't tell what they are, and titles that
+  // need a look. The same number as Library's nav badge.
+  libraryTitles: number;
   jobs: readonly JobView[];
   fillerStorage?: FillerStorageStatusDTO;
 }
@@ -33,8 +43,14 @@ const count = (id: NeedsYouItem["id"], n: number, one: string, many: string, sho
 
 // The counts above zero, in the mock's order. Filler space is a warning, not a to-do: it shows only
 // once space runs short, as the share of the allowance in use.
-const needsYouItems = ({ approvals, fillerChoices, jobs, fillerStorage }: NeedsYouInput): NeedsYouItem[] => {
-  const overdue = jobs.filter((job) => job.overdue && !job.running).length;
+const needsYouItems = ({
+  approvals,
+  fillerChoices,
+  libraryTitles,
+  jobs,
+  fillerStorage,
+}: NeedsYouInput): NeedsYouItem[] => {
+  const overdue = overdueTaskCount(jobs);
   const short =
     (fillerStorage?.state === "approaching" || fillerStorage?.state === "paused") &&
     fillerStorage.softBudgetBytes > 0;
@@ -54,6 +70,14 @@ const needsYouItems = ({ approvals, fillerChoices, jobs, fillerStorage }: NeedsY
       "filler choices to make",
       "filler choices",
       "/filler/manage",
+    ),
+    ...count(
+      "library",
+      libraryTitles,
+      "library title to look at",
+      "library titles to look at",
+      "in Library",
+      "/library/needs",
     ),
     ...count("tasks", overdue, "task overdue", "tasks overdue", "overdue", "/settings/system/tasks"),
     ...(short && fillerStorage
@@ -79,11 +103,14 @@ const useNeedsYou = (isAdmin: boolean): NeedsLineItem[] => {
   const watch = unwrap(fillerApi.useFillerWatch({ query: admin }).data);
   const jobs = unwrap(jobsApi.useJobsList({ query: admin }).data)?.jobs ?? [];
   const readiness = unwrap(fillerApi.useFillerReadiness({ query: admin }).data);
+  // The shell reads the same status for Library's nav badge, so this is one request, not two.
+  const library = unwrap(libraryApi.useLibraryStatus({ query: admin }).data);
   if (!isAdmin) return [];
 
   return needsYouItems({
     approvals: approvals.count,
     fillerChoices: watch?.needsYou ?? 0,
+    libraryTitles: library?.needsYou ?? 0,
     jobs,
     fillerStorage: readiness?.storage,
   }).map(({ to, ...item }) => ({ ...item, link: <Link to={to} /> }));

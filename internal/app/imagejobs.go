@@ -27,7 +27,7 @@ const (
 //
 // ⚠ **Registration is the whole point of this file, and it is the step with no unit test.** Phase
 // 3a shipped three routes that 404'd in a running instance because `Server.images` was nil —
-// the "a built component nobody imported" defect this repo has now recorded against V1, V17a, V23
+// the "a built component nobody imported" defect this repo has recorded against V1, V17a, V23
 // and V52 phase 2. Four jobs constructed here and never handed to the registry would fail the same
 // way and look identical from inside every test that constructs them directly, which is why the
 // guard for this lives in jobset_test.go, against the real Application.
