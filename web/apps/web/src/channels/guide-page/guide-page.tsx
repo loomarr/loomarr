@@ -383,7 +383,7 @@ const GuidePage = () => {
     // toolbar and grid are separated by RULES, not whitespace, and whose grid owns the only
     // scroll container. Padding here is what produced a page that scrolled horizontally
     // underneath a grid that had room.
-    <div className="flex min-h-0 flex-1 flex-col">
+    <Stack className="min-h-0" flexBasis="0%" flexGrow={1}>
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
         title="Guide"
@@ -579,7 +579,7 @@ const GuidePage = () => {
         // scaled up and brightened, at which point it dominates a surface whose whole job is to
         // stay calm and point at one button. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
-        <div className="flex flex-1 items-center justify-center p-10">
+        <Stack align="center" className="p-10" flexBasis="0%" flexGrow={1} justify="center">
           <EmptyState
             // The state family's own static colour bars lead the panel (#2783): a test card is
             // what a set showed when nothing was broadcasting. Still, like the page around it.
@@ -590,10 +590,10 @@ const GuidePage = () => {
               onClick: () => void navigate({ to: "/requests/new" }),
             }}
           />
-        </div>
+        </Stack>
       ) : (
         // Desktop browsing uses the full available width with contextual previews.
-        <div className="relative flex min-h-0 flex-1">
+        <Stack className="relative min-h-0" direction="row" flexBasis="0%" flexGrow={1}>
           {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
           {guide.isPlaceholderData && (
@@ -649,9 +649,9 @@ const GuidePage = () => {
               )}
             />
           ) : null}
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

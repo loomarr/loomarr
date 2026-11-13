@@ -3,19 +3,16 @@
   "files": {
     "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
       "rawDialog": 1,
-      "flexStack": 9
+      "flexStack": 6
     },
     "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/channels/channel-watch/channel-watch.tsx": {
-      "flexStack": 3
-    },
     "apps/web/src/channels/guide-page/guide-page.tsx": {
-      "flexStack": 5
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
       "flexStack": 1
@@ -39,9 +36,6 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
@@ -83,9 +77,6 @@
     "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/filler/pull-card/pull-card.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
       "flexStack": 1
     },
@@ -93,12 +84,9 @@
       "flexStack": 4
     },
     "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/people/import-dialog/import-dialog.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
@@ -114,9 +102,6 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/people/person-detail/person-detail.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/settings/database-migration/database-migration.tsx": {
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
@@ -137,9 +122,6 @@
     "apps/web/src/components/loomarr/setup/login-form/login-form.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/setup/login-shell/login-shell.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
       "flexStack": 2
     },
@@ -147,13 +129,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "flexStack": 8
-    },
-    "apps/web/src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/shell/color-bars/color-bars.tsx": {
-      "flexStack": 1
+      "flexStack": 4
     },
     "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
       "flexStack": 2
@@ -165,7 +141,7 @@
       "flexStack": 15
     },
     "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "flexStack": 7
+      "flexStack": 5
     },
     "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "flexStack": 1

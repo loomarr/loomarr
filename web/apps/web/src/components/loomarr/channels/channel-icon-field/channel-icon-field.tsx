@@ -121,7 +121,12 @@ const ChannelIconField = ({
       <Stack align="center" direction="row" gap="control">
         {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
-        <div className="border-border bg-background flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border">
+        <Stack
+          align="center"
+          className="border-border bg-background size-12 overflow-hidden rounded-md border"
+          flexShrink={0}
+          justify="center"
+        >
           {/*
             Three states, and the middle one is the interesting one.
 
@@ -147,7 +152,7 @@ const ChannelIconField = ({
           ) : (
             <Icon decorative glyph={icons.noImage} size="control" tone="muted" />
           )}
-        </div>
+        </Stack>
         <div className="min-w-0 flex-1">
           <Text as="p" textRole="cardLabel" tone="primary">
             Channel icon
