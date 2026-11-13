@@ -219,8 +219,7 @@
       "tailwindClasses": 26
     },
     "src/components/loomarr/people/person-detail/person-detail.tsx": {
-      "tailwindClasses": 47,
-      "rawTypeSize": 1
+      "tailwindClasses": 18
     },
     "src/components/loomarr/people/session-list/session-list.tsx": {
       "tailwindClasses": 6

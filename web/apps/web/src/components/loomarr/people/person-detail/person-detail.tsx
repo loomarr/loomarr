@@ -3,6 +3,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { contactAddressSchema, resetUserPasswordSchema } from "@loomarr/core/schemas";
 import {
   Action,
+  Card,
   Field,
   FieldHint,
   Icon,
@@ -106,7 +107,7 @@ const PersonDetail = ({
   };
 
   return (
-    <Stack className="p-6" gap="section">
+    <Stack gap="section" padding={24}>
       <Stack aria-labelledby="person-identity" gap="inline" render="section">
         <Text as="h3" id="person-identity" textRole="heading">
           Identity
@@ -115,11 +116,11 @@ const PersonDetail = ({
           {isSelf && <StatusLabel tone="notice">You</StatusLabel>}
           {user.disabled && <StatusLabel tone="error">Disabled</StatusLabel>}
         </Stack>
-        <Stack align="center" className="text-muted-foreground" direction="row" gap="inline" render="p">
+        <Stack align="center" direction="row" gap="inline" render="p">
           {user.local ? (
-            <Icon decorative glyph={icons.key} size="compact" tone="inherit" />
+            <Icon decorative glyph={icons.key} size="compact" tone="muted" />
           ) : (
-            <Icon decorative glyph={icons.server} size="compact" tone="inherit" />
+            <Icon decorative glyph={icons.server} size="compact" tone="muted" />
           )}
           <Text as="span" textRole="compact" tone="secondary">
             {user.local
@@ -133,7 +134,9 @@ const PersonDetail = ({
 
       <Stack
         aria-labelledby="person-contact"
-        className="border-static-800 border-t pt-6"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
+        paddingTop={24}
         gap="control"
         render="section"
       >
@@ -147,7 +150,7 @@ const PersonDetail = ({
         </div>
 
         {user.contactAddress ? (
-          <Stack className="border-static-800 rounded-md border p-3" gap="inline">
+          <Card gap={8} padding={12}>
             <Stack align="center" direction="row" gap="inline" wrap>
               <Icon decorative glyph={icons.mail} size="compact" tone="muted" />
               <Text as="span" className="break-all" textRole="compact">
@@ -162,7 +165,7 @@ const PersonDetail = ({
                 ? "Verified for local-password recovery."
                 : "Not recovery-capable until the person verifies possession."}
             </Text>
-          </Stack>
+          </Card>
         ) : (
           <Text as="p" textRole="compact" tone="secondary">
             No contact email. QR and direct account access still work.
@@ -170,7 +173,12 @@ const PersonDetail = ({
         )}
 
         {user.contactReplacement && (
-          <Stack className="border-suggest-700/50 bg-suggest-950/20 rounded-md border p-3" gap="inline">
+          <Stack
+            borderRadius={8}
+            className="border-suggest-700/50 bg-suggest-950/20 border"
+            gap="inline"
+            padding={12}
+          >
             <Stack align="center" direction="row" gap="inline" wrap>
               <Text as="span" className="break-all" textRole="compact">
                 {user.contactReplacement.email}
@@ -252,7 +260,9 @@ const PersonDetail = ({
 
       <Stack
         aria-labelledby="person-access"
-        className="border-static-800 border-t pt-6"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
+        paddingTop={24}
         gap="control"
         render="section"
       >
@@ -279,7 +289,9 @@ const PersonDetail = ({
 
       <Stack
         aria-labelledby="person-requests"
-        className="border-static-800 border-t pt-6"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
+        paddingTop={24}
         gap="4"
         render="section"
       >
@@ -296,7 +308,11 @@ const PersonDetail = ({
             <Text as="p" textRole="compact">
               Pending acquisitions
             </Text>
-            <p className="text-muted-foreground font-mono text-sm tabular-nums">{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</p>
+            <Text
+              as="p"
+              textRole="data"
+              tone="secondary"
+            >{`${user.pendingAcquisitions} of ${user.effectiveQuota}`}</Text>
           </div>
           <Field
             key={`${user.id}-${user.quota}`}
@@ -326,7 +342,9 @@ const PersonDetail = ({
 
       <Stack
         aria-labelledby="person-sessions"
-        className="border-static-800 border-t pt-6"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
+        paddingTop={24}
         gap="control"
         render="section"
       >
@@ -349,7 +367,9 @@ const PersonDetail = ({
 
       <Stack
         aria-labelledby="person-password"
-        className="border-static-800 border-t pt-6"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
+        paddingTop={24}
         gap="control"
         render="section"
       >
@@ -409,8 +429,10 @@ const PersonDetail = ({
 
       <Stack
         aria-labelledby="person-danger"
-        className="border-onair-700 bg-onair-950/20 rounded-lg border p-4"
+        borderRadius={12}
+        className="border-onair-700 bg-onair-950/20 border"
         gap="control"
+        padding={16}
         render="section"
       >
         <div>
