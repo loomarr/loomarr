@@ -64,6 +64,16 @@ type StackOwnProps = Omit<
   direction?: "column" | "row";
   /** Space between children, from the spacing tokens. Left out, there is none. */
   gap?: StackGap;
+  /**
+   * Space between the lines of a wrapping row, from the same tokens, overriding `gap` on that
+   * axis (Tailwind's `gap-y-*`). Left out, the line spacing is `gap`.
+   */
+  rowGap?: StackGap;
+  /**
+   * Space between the children along a row, from the same tokens, overriding `gap` on that axis
+   * (Tailwind's `gap-x-*`). Left out, the spacing is `gap`.
+   */
+  columnGap?: StackGap;
   /** Main-axis distribution. Left out, children pack at the start. */
   justify?: StackJustify;
   /** Let a row break onto further lines instead of overflowing. The gap also separates the lines. */
@@ -90,23 +100,34 @@ type StackProps = StackOwnProps &
 const Stack = ({
   align = "stretch",
   direction = "column",
+  columnGap,
   gap = "none",
   justify = "start",
+  rowGap,
   wrap = false,
   ...props
-}: StackProps) => (
-  // Tamagui's View never shrinks as a flex item (flex-shrink 0), unlike the <div> a call site moves
-  // from, so a Stack in a flex row would overflow rather than give way. A caller can still set it.
-  <View
-    flexShrink={1}
-    {...props}
-    alignItems={alignItems[align]}
-    flexDirection={direction}
-    flexWrap={wrap ? "wrap" : "nowrap"}
-    gap={gap === "none" ? 0 : gap}
-    justifyContent={justifyContent[justify]}
-  />
-);
+}: StackProps) => {
+  const space = (value: StackGap) => (value === "none" ? 0 : value);
+  // One `gap` when no axis is named. Once one is, both axes are written out, so a per-axis value
+  // never depends on how the shorthand and the longhand are ordered in the stylesheet.
+  const spacing =
+    rowGap === undefined && columnGap === undefined
+      ? { gap: space(gap) }
+      : { columnGap: space(columnGap ?? gap), rowGap: space(rowGap ?? gap) };
+  return (
+    // Tamagui's View never shrinks as a flex item (flex-shrink 0), unlike the <div> a call site moves
+    // from, so a Stack in a flex row would overflow rather than give way. A caller can still set it.
+    <View
+      flexShrink={1}
+      {...props}
+      alignItems={alignItems[align]}
+      flexDirection={direction}
+      flexWrap={wrap ? "wrap" : "nowrap"}
+      justifyContent={justifyContent[justify]}
+      {...spacing}
+    />
+  );
+};
 
 export type { StackAlign, StackGap, StackJustify, StackProps };
 export { Stack };

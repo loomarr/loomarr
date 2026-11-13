@@ -124,6 +124,29 @@ const FormWorkshop = () => {
   );
 };
 
+// A wrapped row whose lines sit closer than its columns (`columnGap` 16, `rowGap` 6): chips that
+// break onto a second line stay a family, not a column of strangers.
+const AxisGapsWorkshop = () => (
+  <Screen gap="section">
+    <Surface gap="control" padding="section">
+      <Text textRole="title">Column gap 4, row gap 1.5</Text>
+      <Stack columnGap="4" direction="row" rowGap="1.5" wrap>
+        {wrapping.map((name) => (
+          <Tile key={name}>{name}</Tile>
+        ))}
+      </Stack>
+    </Surface>
+    <Surface gap="control" padding="section">
+      <Text textRole="title">One axis named, the other from gap</Text>
+      <Stack direction="row" gap="inline" rowGap="none" wrap>
+        {wrapping.map((name) => (
+          <Tile key={name}>{name}</Tile>
+        ))}
+      </Stack>
+    </Surface>
+  </Screen>
+);
+
 const meta = {
   title: "Loomarr Components/Stack",
   component: Workshop,
@@ -134,6 +157,7 @@ type Story = StoryObj<typeof meta>;
 const Default: Story = {};
 const Light: Story = { globals: { theme: "light" } };
 const AsForm: Story = { render: () => <FormWorkshop /> };
+const AxisGaps: Story = { render: () => <AxisGapsWorkshop /> };
 
 export default meta;
-export { AsForm, Default, Light };
+export { AsForm, AxisGaps, Default, Light };
