@@ -40,10 +40,12 @@ if [[ "$(sed -n 's/^go_full=//p' <<<"$scope")" == true ]]; then
 fi
 
 changed_imports=()
+changed_dirs=()
 for path in "${paths[@]}"; do
   [[ "$path" == *.go ]] || continue
   dir="${path%/*}"
   [[ "$dir" == "$path" ]] && dir=.
+  changed_dirs+=("$dir")
   if ! import_path="$(cd "$ROOT" && go list -e -f '{{if .Error}}{{else}}{{.ImportPath}}{{end}}' "./$dir")" \
     || [[ -z "$import_path" ]]; then
     printf 'go-impact: cannot resolve %q; selecting every Go package\n' "$dir" >&2
@@ -60,26 +62,52 @@ done
 }
 
 changed_list="$(printf '%s\n' "${changed_imports[@]}" | sort -u)"
-(
-  cd "$ROOT"
-  export CHANGED_IMPORTS="$changed_list"
-  go list \
-    -f '{{.ImportPath}}{{"\t"}}{{join .Deps " "}}{{"\t"}}{{join .TestImports " "}}{{"\t"}}{{join .XTestImports " "}}' \
-    ./... \
-    | awk -F '\t' '
-        BEGIN {
-          count = split(ENVIRON["CHANGED_IMPORTS"], changed, "\n")
-          for (i = 1; i <= count; i++) wanted[changed[i]] = 1
-        }
-        {
-          haystack = " " $1 " " $2 " " $3 " " $4 " "
-          for (dependency in wanted) {
-            if (index(haystack, " " dependency " ")) {
-              print $1
-              break
+
+# A guard test can read another package's SOURCE without importing it: the provider-neutral
+# Library gate parses internal/library/scan's files from disk, so an import-only selection never
+# ran it when only the scanner changed. Such a test names the directory it reads by its repo path
+# in a string literal ("internal/library/scan" or "internal/library/scan/hooks.go"); its package
+# is selected with the importers.
+source_readers() {
+  local dir file
+  local -A seen=()
+  for dir in $(printf '%s\n' "${changed_dirs[@]}" | sort -u); do
+    [[ "$dir" == . ]] && continue
+    while IFS= read -r file; do
+      [[ -n "$file" ]] || continue
+      seen["${file%/*}"]=1
+    done < <(cd "$ROOT" && git grep -l -F -e "\"$dir\"" -e "\"$dir/" -- '*_test.go' || true)
+  done
+  ((${#seen[@]})) || return 0
+  local readers=()
+  for dir in "${!seen[@]}"; do
+    readers+=("./$dir")
+  done
+  (cd "$ROOT" && go list -e -f '{{if .Error}}{{else}}{{.ImportPath}}{{end}}' "${readers[@]}")
+}
+
+{
+  source_readers
+  (
+    cd "$ROOT"
+    export CHANGED_IMPORTS="$changed_list"
+    go list \
+      -f '{{.ImportPath}}{{"\t"}}{{join .Deps " "}}{{"\t"}}{{join .TestImports " "}}{{"\t"}}{{join .XTestImports " "}}' \
+      ./... \
+      | awk -F '\t' '
+          BEGIN {
+            count = split(ENVIRON["CHANGED_IMPORTS"], changed, "\n")
+            for (i = 1; i <= count; i++) wanted[changed[i]] = 1
+          }
+          {
+            haystack = " " $1 " " $2 " " $3 " " $4 " "
+            for (dependency in wanted) {
+              if (index(haystack, " " dependency " ")) {
+                print $1
+                break
+              }
             }
           }
-        }
-      ' \
-    | sort -u
-)
+        '
+  )
+} | sed '/^$/d' | sort -u
