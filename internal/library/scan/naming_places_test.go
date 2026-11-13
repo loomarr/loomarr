@@ -54,7 +54,9 @@ func TestNamingSeasons(t *testing.T) {
 			// season 1's whatever its folder says; it stays where it is.
 			name := strings.ToLower(path.Base(rel))
 			ownSeason := !strings.Contains(name, "s01e") && seasonInNumber.MatchString(name)
-			if strings.Contains(rel, "/Season 1/") && strings.Contains(want, " S1E") && !ownSeason {
+			// A season's extras move with it: "S01E02 Trailer" is skipped beside "S01E02" because
+			// they sit together.
+			if strings.Contains(rel, "/Season 1/") && (strings.Contains(want, " S1E") || want == "skip") && !ownSeason {
 				rel = strings.Replace(rel, "/Season 1/", "/Season 3/", 1)
 				rel = strings.ReplaceAll(strings.ReplaceAll(rel, "S01E", "S03E"), "s01e", "s03e")
 				want, changed = strings.Replace(want, " S1E", " S3E", 1), true
