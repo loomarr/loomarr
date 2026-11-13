@@ -65,11 +65,17 @@ const createGuideController = ({
     request?.abort();
     const nextRequest = new AbortController();
     request = nextRequest;
-    // A shown layout stays on screen while it is re-read; only a first load reports `loading`. A
-    // failed refresh's error holds until the re-read answers: clearing it at once would unmount the
-    // notice that offered "Try again" while the viewer's focus is on it.
+    // A shown layout stays on screen while it is re-read; only the very first load reports
+    // `loading`. A failed read's error holds until the re-read answers, for a shown layout and for a
+    // first load alike: clearing it at once would unmount the notice or error panel that offered
+    // "Try again" while the viewer's focus is on it.
     const shown = snapshot.layout !== undefined;
-    publish(shown ? { ...snapshot, refreshing: true } : { ...snapshot, error: undefined, status: "loading" });
+    const retryingFirstLoad = !shown && snapshot.status === "error";
+    publish(
+      shown || retryingFirstLoad
+        ? { ...snapshot, refreshing: true }
+        : { ...snapshot, error: undefined, status: "loading" },
+    );
 
     try {
       const sourceGuide = await source.load(window, nextRequest.signal);
@@ -83,7 +89,7 @@ const createGuideController = ({
       publish(
         shown
           ? { ...snapshot, error: message, refreshing: undefined }
-          : { ...snapshot, error: message, status: "error" },
+          : { ...snapshot, error: message, refreshing: undefined, status: "error" },
       );
     }
   };

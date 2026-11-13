@@ -333,17 +333,71 @@ describe("Guide controller", () => {
         expect(controller.getSnapshot().error).toBeUndefined();
       });
 
-      it("still reads a first load as loading, with no error", async () => {
-        const source = { load: vi.fn().mockRejectedValue(new Error("offline")) };
+      it("reads the very first load as loading, with no error", () => {
+        const source = { load: vi.fn().mockReturnValue(new Promise(() => undefined)) };
         const controller = createGuideController({ now: () => 2_000, source });
-        await controller.refresh();
-        expect(controller.getSnapshot()).toMatchObject({ error: "offline", status: "error" });
 
-        source.load.mockReturnValue(new Promise(() => undefined));
         void controller.refresh();
 
         expect(controller.getSnapshot()).toMatchObject({ status: "loading" });
         expect(controller.getSnapshot().error).toBeUndefined();
+        expect(controller.getSnapshot().refreshing).toBeUndefined();
+      });
+
+      // The error panel's own Try again is what the viewer pressed; reading "loading" at once took
+      // the panel, and the focus on its button, away.
+      describe("a first load that failed", () => {
+        const failedFirst = async () => {
+          const source = { load: vi.fn().mockRejectedValue(new Error("offline")) };
+          const controller = createGuideController({ now: () => 2_000, source });
+          await controller.refresh();
+          let settleRetry: (outcome: "ok" | "fail") => void = () => undefined;
+          source.load.mockImplementation(
+            () =>
+              new Promise((resolve, reject) => {
+                settleRetry = (outcome) =>
+                  outcome === "ok" ? resolve(guide()) : reject(new Error("still offline"));
+              }),
+          );
+          return { controller, settle: (o: "ok" | "fail") => settleRetry(o) };
+        };
+
+        it("stays an error, flagged as retrying, while its retry is in flight", async () => {
+          const { controller, settle } = await failedFirst();
+
+          const pending = controller.refresh();
+
+          expect(controller.getSnapshot()).toMatchObject({
+            error: "offline",
+            refreshing: true,
+            status: "error",
+          });
+          settle("ok");
+          await pending;
+        });
+
+        it("becomes the Guide when the retry works", async () => {
+          const { controller, settle } = await failedFirst();
+          const pending = controller.refresh();
+
+          settle("ok");
+          await pending;
+
+          expect(controller.getSnapshot()).toMatchObject({ status: "ready" });
+          expect(controller.getSnapshot().error).toBeUndefined();
+          expect(controller.getSnapshot().refreshing).toBeUndefined();
+        });
+
+        it("says the new error, with the flag dropped, when the retry fails too", async () => {
+          const { controller, settle } = await failedFirst();
+          const pending = controller.refresh();
+
+          settle("fail");
+          await pending;
+
+          expect(controller.getSnapshot()).toMatchObject({ error: "still offline", status: "error" });
+          expect(controller.getSnapshot().refreshing).toBeUndefined();
+        });
       });
     });
 

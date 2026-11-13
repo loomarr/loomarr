@@ -34,7 +34,7 @@ import {
 } from "@loomarr/ui";
 import { keepPreviousData, type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -305,6 +305,12 @@ const GuidePage = () => {
   // The window on screen is the last good one, not the one that failed.
   const showingEarlierWindow =
     noticeUp && body !== undefined && (answered === undefined || guide.isPlaceholderData);
+  // The same for a Guide that never answered: its error page holds through the retry (the query is
+  // pending again, with no error), so its button keeps the focus the viewer put on it.
+  const [firstError, setFirstError] = useState<unknown>(null);
+  if (guide.error && !body && guide.error !== firstError) setFirstError(guide.error);
+  if (body && firstError !== null) setFirstError(null);
+  const firstFailed = body === undefined && firstError !== null;
   // A cold page with nothing cached reads the device's zone until the first answer names the
   // household's.
   useEffect(() => {
@@ -328,6 +334,22 @@ const GuidePage = () => {
     [body, channels, nowMs],
   );
   const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
+
+  // A retry that works takes the notice (or the error page) away, and the focus on its button with
+  // it, to the page. Focus goes instead to the Guide's home: the grid's Tab stop, or the page's main
+  // region (the skip link's target) when no grid is drawn. A viewer who moved focus on keeps it.
+  const failedUp = noticeUp || firstFailed;
+  const wasFailedUp = useRef(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const gridDrawn = layout !== undefined && !nowNextView && !phoneWidth;
+  useEffect(() => {
+    const was = wasFailedUp.current;
+    wasFailedUp.current = failedUp;
+    if (!was || failedUp) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (gridDrawn) setFocusRequest((n) => n + 1);
+    else document.getElementById("main-content")?.focus();
+  }, [failedUp, gridDrawn]);
 
   // The phone grid's filters read the viewer's favourites and recents (#1778's lists), and the
   // Now/Next list puts the favourites first (#2787).
@@ -376,10 +398,10 @@ const GuidePage = () => {
 
   // A failed refetch of a Guide already on screen (an SSE invalidation, a window revisited) keeps it
   // and says it may be stale; only a Guide that never answered gives the page to the error.
-  if (guide.error && !body) {
+  if (firstFailed) {
     return (
       <div className="p-6">
-        <ErrorState error={guide.error} onRetry={() => guide.refetch()} />
+        <ErrorState error={firstError} onRetry={() => guide.refetch()} retrying={guide.isFetching} />
       </div>
     );
   }
@@ -644,6 +666,7 @@ const GuidePage = () => {
             />
           ) : layout ? (
             <GuideGrid
+              focusRequest={focusRequest}
               layout={layout}
               nowMs={nowMs}
               onMove={onMove}
