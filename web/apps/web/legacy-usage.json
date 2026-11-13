@@ -230,8 +230,7 @@
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
-      "tailwindClasses": 38,
-      "rawTypeSize": 2
+      "tailwindClasses": 5
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
       "tailwindClasses": 47,
