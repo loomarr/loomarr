@@ -252,6 +252,27 @@ func countryCodeList(v any) error {
 	return nil
 }
 
+// ianaZone validates guide.timezone: empty (each viewer's device) or a zone name the server can
+// load. time.LoadLocation also answers for "Local", the server's own zone, which is no name a
+// browser's Intl knows and which would hand every client a zone that differs from the one the
+// window grid is laid on, so it is refused beside everything that does not load.
+func ianaZone(v any) error {
+	name, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want an IANA timezone name such as America/New_York")
+	}
+	if name == "" {
+		return nil
+	}
+	if name == "Local" {
+		return fmt.Errorf("%q is the server's own zone, not a timezone name: use an IANA name such as America/New_York, or leave it empty", name)
+	}
+	if _, err := time.LoadLocation(name); err != nil {
+		return fmt.Errorf("%q is not an IANA timezone name such as America/New_York", name)
+	}
+	return nil
+}
+
 // optionalPlaceID accepts an empty place or a city id from the embedded location index (numeric
 // GeoNames ids). Whether the id exists is the location search's business; an unknown id resolves
 // to no place, so local filler fails closed.
@@ -749,9 +770,9 @@ func declared() []Setting {
 			// It is also the wall clock the rolling-window grid is laid on (#1675), so a daily
 			// window turns at midnight in this zone. Empty there = the container's own zone.
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
-			Kind: KindString, Presentation: PresentationTimezone, Presets: timezonePresets(), Default: "",
+			Kind: KindString, Presentation: PresentationTimezone, Presets: timezonePresets(), Default: "", Validate: ianaZone,
 			Doc:    "The timezone the TV guide shows times in and each channel's day starts in.",
-			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
+			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone. A name that is not an IANA zone, and \"Local\", are refused.",
 		},
 		{
 			// How far back the guide will look (§12, V13b gap 8).
