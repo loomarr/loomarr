@@ -144,15 +144,11 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {/* Manage's children say where they return to, as the Settings index already did: the lit
             Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
         {tab === "incoming" || tab === "sources" || tab === "taxonomy" || tab === "quality" ? (
-          <Action
-            accessibilityRole="link"
-            icon="goBack"
-            render={<Link to="/filler/manage" />}
-            style={{ alignSelf: "flex-start" }}
-            variant="ghost"
-          >
-            Manage
-          </Action>
+          <Stack align="start">
+            <Action accessibilityRole="link" icon="goBack" render={<Link to="/filler/manage" />} variant="ghost">
+              Manage
+            </Action>
+          </Stack>
         ) : null}
 
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
