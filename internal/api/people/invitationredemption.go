@@ -92,24 +92,9 @@ type redeemInvitationInput struct {
 }
 
 func (s *Handlers) redeemInvitation(ctx context.Context, in *redeemInvitationInput) (*meOutput, error) {
-	if !s.invitationRedeemLimiter.Allow(auth.LoginRateKey(s.origin.ClientIP(httpcore.RequestFrom(ctx)), in.Body.Username)) {
-		return nil, tooManyInvitationAttempts()
-	}
-	preview, err := s.invitationRedemption.Preview(ctx, in.Body.Grant)
+	token, expires, user, err := s.redeemThrottled(ctx, s.origin.ClientIP(httpcore.RequestFrom(ctx)), in)
 	if err != nil {
-		return nil, invitationRedemptionError(err)
-	}
-	var token string
-	var expires time.Time
-	var user identitystore.User
-	if preview.Kind == access.KindLibrary {
-		token, expires, user, err = s.invitationRedemption.RedeemLibrary(
-			ctx, in.Body.Grant, in.Body.Username, in.Body.Password)
-	} else {
-		token, expires, user, err = s.invitationRedemption.RedeemLocal(ctx, in.Body.Grant, in.Body.Password)
-	}
-	if err != nil {
-		return nil, invitationRedemptionError(err)
+		return nil, err
 	}
 	return &meOutput{
 		SetCookie: s.sessionCookie(httpcore.RequestFrom(ctx), token, expires),
@@ -117,6 +102,41 @@ func (s *Handlers) redeemInvitation(ctx context.Context, in *redeemInvitationInp
 			Quota: user.Quota, AutoApprove: user.AutoApprove,
 			Local: !user.MediaServerLinked, OfflineLogin: user.MediaServerLinked && user.PasswordHash != ""},
 	}, nil
+}
+
+// redeemThrottled is one redemption attempt from clientIP, held to the redeem limiter. The username is
+// the caller's own choice and the grant is checked after the gate, so the account bucket is charged
+// only for what is a guess at the invited account's credential: a Library password the Library
+// refuses. A grant that is not valid, a weak password or an unreachable Library is not a guess, and a
+// stranger spraying garbage grants at a username cannot spend what the invitee needs.
+func (s *Handlers) redeemThrottled(
+	ctx context.Context, clientIP string, in *redeemInvitationInput,
+) (token string, expires time.Time, user identitystore.User, err error) {
+	adm, ok := s.invitationRedeemLimiter.Admit(auth.LoginRateKey(clientIP, in.Body.Username))
+	if !ok {
+		return "", time.Time{}, identitystore.User{}, tooManyInvitationAttempts()
+	}
+	defer adm.Abandon()
+	preview, err := s.invitationRedemption.Preview(ctx, in.Body.Grant)
+	if err != nil {
+		return "", time.Time{}, identitystore.User{}, invitationRedemptionError(err)
+	}
+	if preview.Kind == access.KindLibrary {
+		token, expires, user, err = s.invitationRedemption.RedeemLibrary(
+			ctx, in.Body.Grant, in.Body.Username, in.Body.Password)
+	} else {
+		token, expires, user, err = s.invitationRedemption.RedeemLocal(ctx, in.Body.Grant, in.Body.Password)
+	}
+	switch {
+	case err == nil:
+		adm.Succeeded()
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		adm.Failed()
+	}
+	if err != nil {
+		return "", time.Time{}, identitystore.User{}, invitationRedemptionError(err)
+	}
+	return token, expires, user, nil
 }
 
 func invitationRedemptionError(err error) error {
