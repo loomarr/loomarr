@@ -52,7 +52,10 @@ describe("Menu (web)", () => {
 
     screen.getByRole("button", { name: "Actions" }).focus();
     await userEvent.keyboard("{Enter}");
-    await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu");
+    // The menu moves focus into itself after it opens; arrows pressed before then reach the
+    // trigger, and the menu never sees them (#3567).
+    await waitFor(() => expect(menu.contains(document.activeElement)).toBe(true));
     await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
 
     expect(onPause).toHaveBeenCalledOnce();
