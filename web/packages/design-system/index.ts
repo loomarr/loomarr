@@ -31,6 +31,7 @@ export type {
   DialogFooterProps,
   DialogProps,
   DialogSectionProps,
+  NonModalDialogProps,
 } from "./src/dialog";
 export {
   Dialog,
@@ -41,6 +42,7 @@ export {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  NonModalDialog,
 } from "./src/dialog";
 export type { DockedPanelProps } from "./src/docked-panel";
 export { DockedPanel } from "./src/docked-panel";
