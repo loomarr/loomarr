@@ -1,4 +1,12 @@
-import { Icon, icons, playerChrome, Text, useFocusLook, useViewportInsets } from "@loomarr/design-system";
+import {
+  Icon,
+  icons,
+  NonModalDialog,
+  playerChrome,
+  Text,
+  useFocusLook,
+  useViewportInsets,
+} from "@loomarr/design-system";
 import { type ReactNode, useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
@@ -71,9 +79,8 @@ const PlayerBottomSheet = ({ children, onClose, title }: PlayerBottomSheetProps)
         zIndex: 40,
       }}
     >
-      <View
-        aria-label={title}
-        role="dialog"
+      <NonModalDialog
+        label={title}
         style={{
           backgroundColor: playerChrome.band,
           borderTopColor: playerChrome.hairline,
@@ -107,7 +114,7 @@ const PlayerBottomSheet = ({ children, onClose, title }: PlayerBottomSheetProps)
         >
           {children}
         </ScrollView>
-      </View>
+      </NonModalDialog>
     </View>
   );
 };

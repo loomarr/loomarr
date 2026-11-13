@@ -1,4 +1,12 @@
-import { type Density, Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-system";
+import {
+  type Density,
+  Icon,
+  icons,
+  NonModalDialog,
+  playerChrome,
+  Text,
+  useFocusLook,
+} from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
@@ -107,9 +115,8 @@ const PlayerDetailsPanel = ({ onClose, ...body }: PlayerDetailsProps & { onClose
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
   return (
-    <View
-      aria-label="Playback details"
-      role="dialog"
+    <NonModalDialog
+      label="Playback details"
       style={{
         backgroundColor: playerChrome.surface,
         borderColor: playerChrome.hairline,
@@ -155,7 +162,7 @@ const PlayerDetailsPanel = ({ onClose, ...body }: PlayerDetailsProps & { onClose
         </Pressable>
       </View>
       <PlayerDetails {...body} />
-    </View>
+    </NonModalDialog>
   );
 };
 
