@@ -97,25 +97,17 @@ func TestShutdownStopsGetALiveBudgetWhateverTheCallersContext(t *testing.T) {
 	}
 }
 
-// One slow stop must not leave the next one nothing: the budget is per stop.
-func TestShutdownEachStopHasItsOwnBudget(t *testing.T) {
+// The first stop to run gets the whole shared budget live, however long the workers' join took.
+func TestShutdownFirstStopGetsTheWholeSharedBudget(t *testing.T) {
 	l := newGenerationLifecycle(t.Context())
-	l.stopBudget = 40 * time.Millisecond
-	later := addStopProbe(l)
-	// Stops run in reverse order, so this one, registered last, runs first and eats its budget.
-	var slowErr error
-	l.addStop(func(ctx context.Context) error {
-		<-ctx.Done()
-		slowErr = ctx.Err()
-		return slowErr
-	})
-	err := l.shutdown(t.Context())
-	waitStop(t, later)
-	if later.err != nil {
-		t.Errorf("the stop after a slow one ran on a dead context: %v", later.err)
+	l.stopBudget = time.Second
+	first := addStopProbe(l)
+	if err := l.shutdown(t.Context()); err != nil {
+		t.Fatal(err)
 	}
-	if !errors.Is(slowErr, context.DeadlineExceeded) || !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("the slow stop = %v, shutdown = %v; want its own budget to run out and be reported", slowErr, err)
+	waitStop(t, first)
+	if first.err != nil || first.remain < 500*time.Millisecond {
+		t.Errorf("first stop: ctx err %v, %v of the budget left, want it live and nearly whole", first.err, first.remain)
 	}
 }
 
@@ -123,15 +115,20 @@ func TestShutdownEachStopHasItsOwnBudget(t *testing.T) {
 // that outlived the deadline is named.
 func TestShutdownStuckWorkerIsReportedAtTheDeadline(t *testing.T) {
 	l := newGenerationLifecycle(t.Context())
-	l.stopBudget = time.Second
+	l.stopBudget = 100 * time.Millisecond
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	l.goRun(func(context.Context) { <-release })
 	probe := addStopProbe(l)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
+	start := time.Now()
 	if err := l.shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("shutdown = %v, want deadline exceeded", err)
+	}
+	// The stuck worker was waited for the whole late budget before the stop went beside it.
+	if took := time.Since(start); took < 100*time.Millisecond {
+		t.Errorf("shutdown returned after %v, before the late-worker budget ran out", took)
 	}
 	waitStop(t, probe)
 	waitDone(t, l)
@@ -215,6 +212,189 @@ func TestShutdownAndQuiesceReturnTheirResultWhenBothTheResultAndTheDeadlineAreRe
 		if err := failing.shutdown(dead); !errors.Is(err, stopErr) {
 			t.Fatalf("shutdown after a failed stop with a dead context = %v, want %v", err, stopErr)
 		}
+	}
+}
+
+// Shutdown is the barrier the successor generation, the store close and the database cutover stand
+// behind: when it returns, every stop has finished, and none began while a worker still ran. The
+// table is every way the caller's context and the stops can relate to the workers.
+func TestShutdownReturnsOnlyAfterItsStopsHaveFinishedAndNoneStartedBesideAWorker(t *testing.T) {
+	cancelled := func(t *testing.T) context.Context {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		return ctx
+	}
+	expired := func(t *testing.T) context.Context {
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
+		t.Cleanup(cancel)
+		return ctx
+	}
+	short := func(t *testing.T) context.Context {
+		ctx, cancel := context.WithTimeout(t.Context(), 40*time.Millisecond)
+		t.Cleanup(cancel)
+		return ctx
+	}
+	for _, tc := range []struct {
+		name   string
+		ctx    func(t *testing.T) context.Context
+		unwind time.Duration // how long the worker takes after cancel; negative = no worker
+		stops  int
+	}{
+		{"deadline passes while a worker unwinds, one stop", short, 150 * time.Millisecond, 1},
+		{"deadline passes while a worker unwinds, three stops", short, 150 * time.Millisecond, 3},
+		{"context already cancelled", cancelled, 100 * time.Millisecond, 2},
+		{"context already past its deadline", expired, 100 * time.Millisecond, 2},
+		{"live context, worker returns in time", func(t *testing.T) context.Context { return t.Context() }, 20 * time.Millisecond, 2},
+		{"live context, no worker", func(t *testing.T) context.Context { return t.Context() }, -1, 2},
+		{"dead context, no worker", expired, -1, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := newGenerationLifecycle(t.Context())
+			l.stopBudget = 2 * time.Second
+			var workerRunning, stopsRunning, stopsFinished atomic.Int64
+			var overlap atomic.Bool
+			if tc.unwind >= 0 {
+				workerRunning.Store(1)
+				l.goRun(func(ctx context.Context) {
+					<-ctx.Done()
+					time.Sleep(tc.unwind)
+					workerRunning.Store(0)
+				})
+			}
+			for range tc.stops {
+				l.addStop(func(context.Context) error {
+					stopsRunning.Add(1)
+					if workerRunning.Load() != 0 {
+						overlap.Store(true)
+					}
+					time.Sleep(60 * time.Millisecond)
+					stopsRunning.Add(-1)
+					stopsFinished.Add(1)
+					return nil
+				})
+			}
+			_ = l.shutdown(tc.ctx(t))
+			if got := stopsFinished.Load(); got != int64(tc.stops) {
+				t.Errorf("%d of %d stops had finished when shutdown returned", got, tc.stops)
+			}
+			if stopsRunning.Load() != 0 {
+				t.Error("a stop was still running when shutdown returned")
+			}
+			if overlap.Load() {
+				t.Error("a stop started while a worker still ran")
+			}
+			// Every later caller is held to the same barrier, not handed the outcome early.
+			_ = l.shutdown(expired(t))
+		})
+	}
+}
+
+// The shared budget bounds the whole stop phase: a slow stop spends it, the rest still run (forced,
+// on the spent context) and shutdown comes back at the budget instead of stacking one per stop.
+func TestShutdownStopsShareOneBudget(t *testing.T) {
+	l := newGenerationLifecycle(t.Context())
+	l.stopBudget = 80 * time.Millisecond
+	l.stopGrace = 40 * time.Millisecond
+	var ran atomic.Int64
+	var secondCtxErr atomic.Value
+	for i := range 3 {
+		l.addStop(func(ctx context.Context) error {
+			ran.Add(1)
+			if i == 2 { // runs first: reverse order
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			secondCtxErr.Store(ctx.Err() != nil)
+			return nil
+		})
+	}
+	start := time.Now()
+	err := l.shutdown(t.Context())
+	if took := time.Since(start); took > 400*time.Millisecond {
+		t.Errorf("shutdown took %v with three stops on an 80ms shared budget", took)
+	}
+	if ran.Load() != 3 {
+		t.Errorf("%d stops ran, want every one run even after the budget was spent", ran.Load())
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("shutdown = %v, want the spent budget reported", err)
+	}
+}
+
+// A caller that sized its deadline as (unwind + tail) gets the workers the unwind and the whole of
+// Shutdown, stops included, ends by that deadline: the tail is carved off the end, not added after.
+func TestShutdownTailIsCarvedFromTheCallersDeadline(t *testing.T) {
+	const unwind = 200 * time.Millisecond
+	newLifecycle := func(t *testing.T) *generationLifecycle {
+		l := newGenerationLifecycle(t.Context())
+		l.stopBudget = 50 * time.Millisecond
+		l.stopGrace = 10 * time.Millisecond
+		return l
+	}
+	deadline := func(t *testing.T, l *generationLifecycle) context.Context {
+		ctx, cancel := context.WithTimeout(t.Context(), unwind+l.tail())
+		t.Cleanup(cancel)
+		return ctx
+	}
+
+	// Workers that finish inside the unwind are not reported, though the caller's deadline is
+	// later than their finish by less than the tail.
+	l := newLifecycle(t)
+	l.goRun(func(ctx context.Context) { <-ctx.Done(); time.Sleep(150 * time.Millisecond) })
+	probe := addStopProbe(l)
+	if err := l.shutdown(deadline(t, l)); err != nil {
+		t.Fatalf("shutdown = %v, want a worker inside the unwind not reported", err)
+	}
+	waitStop(t, probe)
+
+	// A stuck worker is given the unwind, the late wait, then the stops: all by the deadline.
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	stuck := newLifecycle(t)
+	stuck.goRun(func(context.Context) { <-release })
+	stuck.addStop(func(context.Context) error { return nil })
+	ctx := deadline(t, stuck)
+	end, _ := ctx.Deadline()
+	if err := stuck.shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shutdown = %v, want the stuck worker reported", err)
+	}
+	if late := time.Since(end); late > 100*time.Millisecond {
+		t.Errorf("shutdown returned %v after the caller's deadline, want it inside it", late)
+	}
+}
+
+// A stop that ignores its context cannot hold shutdown forever: it is waited for one grace past the
+// budget, then named. A stop that merely honours the deadline is waited for to the end.
+func TestShutdownNamesAStopThatIgnoresItsBudget(t *testing.T) {
+	l := newGenerationLifecycle(t.Context())
+	l.stopBudget = 30 * time.Millisecond
+	l.stopGrace = 30 * time.Millisecond
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	l.addStop(func(context.Context) error { <-release; return nil })
+	start := time.Now()
+	err := l.shutdown(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "stop still running") {
+		t.Fatalf("shutdown = %v, want the unresponsive stop named", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("shutdown took %v, want it bounded by budget plus grace", took)
+	}
+
+	// Honouring the deadline slowly (cleanup after ctx.Done) is still finished before the return.
+	slow := newGenerationLifecycle(t.Context())
+	slow.stopBudget = 30 * time.Millisecond
+	slow.stopGrace = 500 * time.Millisecond
+	var finished atomic.Bool
+	slow.addStop(func(ctx context.Context) error {
+		<-ctx.Done()
+		time.Sleep(60 * time.Millisecond)
+		finished.Store(true)
+		return ctx.Err()
+	})
+	_ = slow.shutdown(t.Context())
+	if !finished.Load() {
+		t.Error("a stop that honoured its deadline was still unwinding when shutdown returned")
 	}
 }
 
