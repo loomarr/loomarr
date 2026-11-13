@@ -48,6 +48,19 @@ func (r *RateLimiter) Allow(key string) bool {
 	return l.AllowN(now, 1)
 }
 
+// tokens is how many attempts key could make now: a key never seen has its whole burst. It spends
+// nothing.
+func (r *RateLimiter) tokens(key string) float64 {
+	now := r.now()
+	r.mu.Lock()
+	l, ok := r.limiters[key]
+	r.mu.Unlock()
+	if !ok {
+		return float64(r.burst)
+	}
+	return l.TokensAt(now)
+}
+
 // sweep drops every key whose bucket has refilled to the full burst. Callers hold r.mu.
 func (r *RateLimiter) sweep(now time.Time) {
 	r.lastSweep = now
@@ -101,7 +114,21 @@ func ThrottleSource(clientIP string) string {
 //
 // The account bucket is asked last, so an attempt the source or the pair has already refused
 // spends nothing from it: one address cannot lock an account out of everyone else's reach.
-type SourceLimiter struct{ source, pair, account *RateLimiter }
+//
+// Allow spends all three buckets on every attempt, for callers with no credential to fail (a
+// request that emails the account holder). A sign-in or a redemption uses Admit instead, which
+// spends the account bucket only on a failed credential: anyone who knows a username can otherwise
+// keep that bucket empty with one attempt per refill and lock its owner out. An address that has
+// signed in as the account is not held by the account bucket (it is still held by the source and
+// pair buckets), so the owner gets in while the account is under guessing; a new address during an
+// attack waits for a refill.
+type SourceLimiter struct {
+	source, pair, account *RateLimiter
+
+	mu       sync.Mutex
+	inflight map[string]int       // account -> admitted attempts not yet resolved
+	signedIn map[string]time.Time // source|account -> when it last signed in
+}
 
 // NewSourceLimiter allows pairBurst attempts per LoginRateKey (refilling at pairPerSec),
 // sourceBurst per client address across all usernames (sourcePerSec), and accountBurst per account
@@ -113,7 +140,140 @@ func NewSourceLimiter(
 		source:  NewRateLimiter(sourcePerSec, sourceBurst),
 		pair:    NewRateLimiter(pairPerSec, pairBurst),
 		account: NewRateLimiter(accountPerSec, accountBurst),
+
+		inflight: map[string]int{}, signedIn: map[string]time.Time{},
 	}
+}
+
+// signedInSourceTTL is how long an address that signed in as an account is exempt from its
+// account bucket. It is memory only: a restart forgets it, and the exemption is then earned again by
+// the next sign-in.
+const signedInSourceTTL = 30 * 24 * time.Hour
+
+// maxSignedInSources bounds that memory. A household has a handful of addresses; at the bound the
+// oldest are dropped, which only withdraws an exemption.
+const maxSignedInSources = 1024
+
+// Admission is one attempt Admit let through, to be resolved exactly once with the outcome of its
+// credential check: Failed (a guess, which spends the account bucket), Succeeded (not a guess, and
+// the address is remembered), or Abandon (it never reached a credential check, or failed for a
+// reason that is not a guess). Resolving it again does nothing. The zero value and the admission of
+// a key with no account are safe to resolve.
+type Admission struct {
+	l       *SourceLimiter
+	source  string
+	account string
+	counted bool // holds a slot in inflight
+	once    sync.Once
+}
+
+// Admit is Allow for an attempt whose outcome is not known yet: it takes the source and pair
+// buckets, and lets the attempt through only if the account bucket has a token to spare, without
+// spending it. The attempt's slot is held until it is resolved, so concurrent attempts cannot all
+// be let through on the one token that is left.
+func (l *SourceLimiter) Admit(key string) (*Admission, bool) {
+	source, account, _ := strings.Cut(key, "|")
+	account = normalizeAccountKey(account)
+	if !l.source.Allow(source) || !l.pair.Allow(source+"|"+account) {
+		return nil, false
+	}
+	adm := &Admission{l: l, source: source, account: account}
+	if account == "" {
+		return adm, true
+	}
+	if l.signedInSource(source, account) {
+		return adm, true // not held by the account bucket; its failure is still charged to it
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.account.tokens(account)-float64(l.inflight[account]) < 1 {
+		return nil, false
+	}
+	l.inflight[account]++
+	adm.counted = true
+	return adm, true
+}
+
+func (a *Admission) resolve(spend, remember bool) {
+	if a == nil || a.l == nil {
+		return
+	}
+	a.once.Do(func() {
+		l := a.l
+		if a.account != "" && spend {
+			l.account.Allow(a.account)
+		}
+		// The slot is released after the token is spent, so no attempt sees both gone.
+		if a.counted {
+			l.mu.Lock()
+			if l.inflight[a.account]--; l.inflight[a.account] <= 0 {
+				delete(l.inflight, a.account)
+			}
+			l.mu.Unlock()
+		}
+		if a.account != "" && remember {
+			l.rememberSignedIn(a.source, a.account)
+		}
+	})
+}
+
+// Failed records that the attempt's credential was wrong: one guess, spent from the account bucket.
+func (a *Admission) Failed() { a.resolve(true, false) }
+
+// Succeeded records that the attempt signed in. It spends nothing, and the address is remembered as
+// one that signs in as this account.
+func (a *Admission) Succeeded() { a.resolve(false, true) }
+
+// Abandon records an attempt that was not a guess at the account's credential.
+func (a *Admission) Abandon() { a.resolve(false, false) }
+
+func (l *SourceLimiter) signedInSource(source, account string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	at, ok := l.signedIn[source+"|"+account]
+	if !ok {
+		return false
+	}
+	if l.account.now().Sub(at) >= signedInSourceTTL {
+		delete(l.signedIn, source+"|"+account)
+		return false
+	}
+	return true
+}
+
+func (l *SourceLimiter) rememberSignedIn(source, account string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.account.now()
+	if _, known := l.signedIn[source+"|"+account]; !known && len(l.signedIn) >= maxSignedInSources {
+		l.pruneSignedIn(now)
+	}
+	l.signedIn[source+"|"+account] = now
+}
+
+// pruneSignedIn drops the lapsed entries, then the oldest, until there is room for one more.
+// Callers hold l.mu.
+func (l *SourceLimiter) pruneSignedIn(now time.Time) {
+	for key, at := range l.signedIn {
+		if now.Sub(at) >= signedInSourceTTL {
+			delete(l.signedIn, key)
+		}
+	}
+	for len(l.signedIn) >= maxSignedInSources {
+		oldest, oldestAt := "", now.Add(time.Hour)
+		for key, at := range l.signedIn {
+			if at.Before(oldestAt) {
+				oldest, oldestAt = key, at
+			}
+		}
+		delete(l.signedIn, oldest)
+	}
+}
+
+func (l *SourceLimiter) signedInCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.signedIn)
 }
 
 // Allow reports whether an attempt for key (a LoginRateKey) may proceed now. A key with no username
