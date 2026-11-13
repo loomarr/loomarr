@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 type notificationAuthorizer struct{}
@@ -182,6 +183,7 @@ func TestNotificationProviderTypesDriveTheAdminFormWithoutSecretValues(t *testin
 func TestNotificationProvidersBindBrowserPushToTheAuthenticatedMember(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/member-web-push.db")
 	t.Cleanup(func() { _ = st.Close() })
+	testkit.SaveMembers(t, st, "member-1") // a personal destination's owner is a foreign key to users
 	protection, err := secretprotection.NewManager(t.Context(), st, secretprotection.ManagerOptions{
 		InstallationKey: secretprotection.InstallationKey{0x52},
 	})

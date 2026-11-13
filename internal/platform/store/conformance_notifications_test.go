@@ -225,6 +225,7 @@ func testNotificationDestinations(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	ctx := context.Background()
 	s := newStore(t)
+	saveMembers(t, s, "person-1", "person-2")
 	now := time.Unix(1_900_000_000, 0)
 	destination := notifications.DestinationRecord{
 		ID: "destination-slack", Means: notifications.MeansSlack, Label: "Operations Slack",

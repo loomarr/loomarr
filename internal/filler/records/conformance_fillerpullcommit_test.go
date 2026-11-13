@@ -13,6 +13,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 	fixture := func(t *testing.T) (Store, acquisition.Pull, acquisition.AcquisitionRun) {
 		t.Helper()
 		s := newStore(t)
+		saveMembers(t, s, "admin-winner", "admin-one", "admin-two", "other-admin")
 		now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 		p := acquisition.Pull{ID: "atomic-pull", Title: "Reviewed clips", Status: acquisition.PullPending, CreatedAt: now,
 			Plan: []acquisition.PullPlanRow{{SourceID: "classic", Name: "Keep"}, {SourceID: "psa", Name: "Drop"}}}
