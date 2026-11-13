@@ -125,21 +125,27 @@ func testLibraryRootCheck(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	for i, step := range []struct {
-		readable, flipped bool
+		readable, empty bool
+		flipped         LibraryRootFlip
 	}{
-		{readable: true, flipped: false},  // the first check sets a baseline
-		{readable: true, flipped: false},  // no change
-		{readable: false, flipped: true},  // went offline
-		{readable: false, flipped: false}, // still offline
-		{readable: true, flipped: true},   // back
+		{readable: true}, // the first check sets a baseline
+		{readable: true}, // no change
+		{readable: false, flipped: LibraryRootFlip{Readable: true}}, // went offline
+		{readable: false}, // still offline
+		{readable: true, flipped: LibraryRootFlip{Readable: true}},               // back
+		{readable: true, empty: true, flipped: LibraryRootFlip{Empty: true}},     // the share came unmounted
+		{readable: true, empty: true},                                            // still empty
+		{readable: true, flipped: LibraryRootFlip{Empty: true}},                  // mounted again
+		{readable: false, empty: true, flipped: LibraryRootFlip{Readable: true}}, // never empty while unreadable
 	} {
 		at := t0.Add(time.Duration(i+1) * time.Hour)
-		flipped, err := s.CheckLibraryRoot(ctx, LibraryRootCheck{Path: "/media/movies", Readable: step.readable}, at)
+		check := LibraryRootCheck{Path: "/media/movies", Readable: step.readable, Empty: step.empty}
+		flipped, err := s.CheckLibraryRoot(ctx, check, at)
 		if err != nil || flipped != step.flipped {
-			t.Fatalf("check %d (readable=%v) = %v, %v; want flipped=%v", i, step.readable, flipped, err, step.flipped)
+			t.Fatalf("check %d (%+v) = %+v, %v; want %+v", i, check, flipped, err, step.flipped)
 		}
 		root, _ := rootByPath(t, mustLibraryRoots(t, s), "/media/movies")
-		if root.Readable != step.readable || !root.CheckedAt.Equal(at) {
+		if root.Readable != step.readable || root.Empty != (step.readable && step.empty) || !root.CheckedAt.Equal(at) {
 			t.Fatalf("check %d left %+v", i, root)
 		}
 	}

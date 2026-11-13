@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/edit"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -272,7 +273,7 @@ type updateChannelInput struct {
 		// validated (provision.ParseKey); a key not `available` in the library is inert (a
 		// pending slot, never played) until it lands, so this can't play unapproved content.
 		// nil = leave the lineup unchanged; an empty (non-nil) array clears it.
-		Lineup *[]LineupEntryDTO `json:"lineup,omitempty" doc:"Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands."`
+		Lineup *[]LineupEntryDTO `json:"lineup,omitempty" maxItems:"1000" doc:"Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands."`
 	}
 }
 
@@ -286,7 +287,7 @@ func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*
 		return nil, err
 	}
 	fresh, err := s.channelEdits().Edit(ctx, editBackend(checkpoint), in.ID, in.Body.Revision, func(ch *channelstore.Channel) error {
-		return applyChannelPatch(ch, in)
+		return applyChannelPatch(ch, in, s.holidayCalendar().Vocab())
 	})
 	if err != nil {
 		return nil, channelEditProblem(err)
@@ -294,9 +295,22 @@ func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*
 	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
 
+// InvalidPolicyProblem is the 422 for a policy the write checks refuse. A failure in one rule says
+// which rule and why, in its own words; any other failure keeps the general wording. The writers that
+// check a draft the same way (the programming previews) use it too, so a draft is refused in the
+// words the save would use.
+func InvalidPolicyProblem(verr error) error {
+	detail := "Some programming policy settings are invalid. Check the audience and filler options, then try again."
+	var rule *schedule.RuleError
+	if errors.As(verr, &rule) {
+		detail = rule.Describe()
+	}
+	return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy", detail, verr)
+}
+
 // applyChannelPatch applies a PATCH body's fields. The edit rules around it (number check,
 // `building` signal, deadline, revision, reconcile) are channeledit's.
-func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
+func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput, holidays holidayvocab.Vocabulary) error {
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
 	}
@@ -326,9 +340,10 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
 			return httpcore.AmbiguousDatesError(err)
 		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
-		if verr := next.Validate(); verr != nil {
-			return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
-				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
+		// A rule saved before today's checks (one that never fires) is not held against an edit that
+		// leaves it alone; one the edit touches is, and the 422 names it.
+		if verr := next.ValidateEditOf(ch.Policy, holidays); verr != nil {
+			return InvalidPolicyProblem(verr)
 		}
 		ch.Policy = next
 	}

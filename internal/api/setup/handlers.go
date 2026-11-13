@@ -22,7 +22,7 @@ type Deps struct {
 	Store httpcore.UserLister
 	// LiveSettings reads live values for gating optional checks.
 	LiveSettings settings.Reader
-	// The names below match the api.Options fields they are copied from.
+	// The names below are copied from api.Options (Settings) and api.SetupOptions.
 	Settings                 SettingsService
 	NotificationDestinations NotificationDestinationService
 	WebPushPublicKey         string

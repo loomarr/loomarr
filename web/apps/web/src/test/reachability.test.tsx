@@ -7,6 +7,7 @@ import {
   getFillerIncomingMockHandler,
   getGetChannelMockHandler,
   getGetCollectionMockHandler,
+  getGetDocMockHandler,
   getGetFillerSplitMockHandler,
   getGetLibraryItemMockHandler,
   getGetPlayoutStatusMockHandler,
@@ -120,6 +121,13 @@ const stubReachable = () => {
     getListUserSessionsMockHandler({ sessions: [] }),
     getListUsersMockHandler({ users: [user()] }),
     getListDocsMockHandler({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }),
+    // The Help route's loader reads the page the list opens on.
+    getGetDocMockHandler({
+      slug: "troubleshooting",
+      section: "",
+      title: "Troubleshooting",
+      markdown: "# Troubleshooting\n\nStart here.",
+    }),
     // /requests/$jobId is reached with the harness's placeholder param, whatever it is.
     getGetProposalJobMockHandler({
       version: 1,
@@ -307,6 +315,7 @@ const stubReachable = () => {
           path: "/media/movies",
           inUse: true,
           readable: true,
+          empty: false,
           addedByHand: false,
           checkedAt: "2026-07-25T19:55:00Z",
           foundIn: [{ authority: "radarr", path: "/media/movies" }],

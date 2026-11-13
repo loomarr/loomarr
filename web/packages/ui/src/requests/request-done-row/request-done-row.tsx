@@ -8,10 +8,10 @@ import type { RequestDoneRowProps } from "./request-done-row.type";
 // channel's number and name over when it was asked for. The API stamps no ready time on a request (only
 // when it was created and last updated), so the line says "Requested", never a "Ready" it can't back.
 // One accessible element, so VoiceOver reads the row once.
-const RequestDoneRow = ({ channel, entry, nowMs, onOpen }: RequestDoneRowProps) => {
+const RequestDoneRow = ({ channel, entry, nowMs, onOpen, timeZone }: RequestDoneRowProps) => {
   const { journey } = entry;
   const name = channel?.name ?? journey.intent.description;
-  const when = requestedOn(journey.createdAt, nowMs);
+  const when = requestedOn(journey.createdAt, nowMs, timeZone);
   return (
     <Pressable
       accessibilityHint="Tunes this channel and opens Watching"

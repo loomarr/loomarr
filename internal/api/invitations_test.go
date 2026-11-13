@@ -44,8 +44,10 @@ func newInvitationHarness(t *testing.T, config invitationHarnessConfig) *invitat
 		)
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log,
-			Invitations: service, InvitationDelivery: config.Delivery,
-			AccessPublicURL: func() string { return config.PublicURL },
+			People: api.PeopleOptions{
+				Invitations: service, InvitationDelivery: config.Delivery,
+				AccessPublicURL: func() string { return config.PublicURL },
+			},
 		})
 	})
 	return &invitationHarness{apiHarness: base, Bearer: bearer}

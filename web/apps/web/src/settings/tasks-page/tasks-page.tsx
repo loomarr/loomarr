@@ -4,7 +4,25 @@ import type { JobView } from "@loomarr/api/models/jobView";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
-import { Action, Icon, icons, StatusDot, type StatusTone, StatusWord } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Card,
+  Icon,
+  icons,
+  PressableRow,
+  Stack,
+  StatusDot,
+  type StatusTone,
+  StatusWord,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  Text,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +31,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { RunButton } from "@/components/loomarr/feedback/run-button";
 import { useRunFeedback } from "@/components/loomarr/feedback/use-run-feedback";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
-import { cn } from "@/lib/utils";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { describeCron } from "./cron-presets";
 import { JobEditModal } from "./job-edit-modal/job-edit-modal";
@@ -57,11 +74,11 @@ const groupSummary = (jobs: JobView[]) => {
 };
 
 const COLUMNS = [
-  { key: "task", label: "Task", width: "auto" },
-  { key: "frequency", label: "Frequency", width: "10rem" },
-  { key: "lastRun", label: "Last run", width: "7rem" },
-  { key: "nextRun", label: "Next run", width: "7rem" },
-  { key: "details", label: "", width: "3rem" },
+  { key: "task", label: "Task", width: undefined },
+  { key: "frequency", label: "Frequency", width: 160 },
+  { key: "lastRun", label: "Last run", width: 112 },
+  { key: "nextRun", label: "Next run", width: 112 },
+  { key: "details", label: "", width: 48 },
 ] as const;
 
 const zero = "0001-01-01T00:00:00Z";
@@ -77,65 +94,106 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   const history = unwrap(query.data) as JobHistoryView | undefined;
 
   if (query.isLoading) {
-    return <p className="text-muted-foreground mt-4 text-xs">Loading execution history…</p>;
+    return (
+      <Stack marginTop={16}>
+        <Text as="p" textRole="hint" tone="secondary">
+          Loading execution history…
+        </Text>
+      </Stack>
+    );
   }
   if (query.error) {
     return (
-      <div className="text-destructive mt-4 flex items-center gap-2 text-xs" role="alert">
-        <span>Couldn’t load execution history.</span>
+      <Stack align="center" direction="row" gap="inline" marginTop={16} role="alert">
+        <Text as="span" textRole="hint" tone="danger">
+          Couldn’t load execution history.
+        </Text>
         <Action onPress={() => query.refetch()} variant="ghost">
           Retry
         </Action>
-      </div>
+      </Stack>
     );
   }
   if (!history) return null;
 
   return (
-    <section className="border-border mt-4 border-t pt-3" aria-label="Execution history">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <h3 className="text-xs font-medium">Past 24 hours</h3>
+    <Stack
+      aria-label="Execution history"
+      borderColor="borderDecorative"
+      borderTopWidth={1}
+      marginTop={16}
+      paddingTop={12}
+      render="section"
+    >
+      <Stack align="baseline" columnGap="4" direction="row" rowGap="1" wrap>
+        <Text as="h3" textRole="label" tone="primary">
+          Past 24 hours
+        </Text>
         {history.runCount === 0 ? (
-          <p className="text-muted-foreground text-xs">No completed runs.</p>
+          <Text as="p" textRole="hint" tone="secondary">
+            No completed runs.
+          </Text>
         ) : (
-          <dl className="flex flex-wrap gap-x-4 text-xs">
-            <div className="flex gap-1">
-              <dt className="text-muted-foreground">Runs</dt>
-              <dd className="font-mono">{history.truncated ? `${history.runCount}+` : history.runCount}</dd>
-            </div>
-            <div className="flex gap-1">
-              <dt className="text-muted-foreground">Failed</dt>
-              <dd className={cn("font-mono", history.failureCount > 0 && "text-destructive")}>
+          <Stack direction="row" gap="4" render="dl" wrap>
+            <Stack direction="row" gap="1">
+              <Text as="dt" textRole="hint" tone="secondary">
+                Runs
+              </Text>
+              <Text as="dd" textRole="mono" tone="primary">
+                {history.truncated ? `${history.runCount}+` : history.runCount}
+              </Text>
+            </Stack>
+            <Stack direction="row" gap="1">
+              <Text as="dt" textRole="hint" tone="secondary">
+                Failed
+              </Text>
+              <Text as="dd" textRole="mono" tone={history.failureCount > 0 ? "danger" : "primary"}>
                 {history.failureCount}
-              </dd>
-            </div>
-            <div className="flex gap-1">
-              <dt className="text-muted-foreground">Average</dt>
-              <dd className="font-mono">{executionDuration(history.averageDurationMs)}</dd>
-            </div>
-          </dl>
+              </Text>
+            </Stack>
+            <Stack direction="row" gap="1">
+              <Text as="dt" textRole="hint" tone="secondary">
+                Average
+              </Text>
+              <Text as="dd" textRole="mono" tone="primary">
+                {executionDuration(history.averageDurationMs)}
+              </Text>
+            </Stack>
+          </Stack>
         )}
-      </div>
+      </Stack>
 
       {history.recent.length > 0 && (
-        <ul className="divide-border border-border bg-background mt-2 divide-y rounded-md border">
+        <Card className="divide-border divide-y" marginTop={8} render="ul">
           {history.recent.map((run) => {
             const failed = run.result === "error";
             return (
-              <li key={`${run.startedAt}-${run.trigger}`} className="px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <Stack
+                flexShrink={0}
+                key={`${run.startedAt}-${run.trigger}`}
+                paddingHorizontal={12}
+                paddingVertical={8}
+                render="li"
+              >
+                <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
                   <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
-                  <span className="font-medium">{run.trigger === "manual" ? "Manual" : "Scheduled"}</span>
-                  <span className="text-muted-foreground">{formatRelative(run.startedAt)}</span>
-                  <span className="text-muted-foreground font-mono">{executionDuration(run.durationMs)}</span>
-                </div>
+                  <Text as="span" textRole="label" tone="primary">
+                    {run.trigger === "manual" ? "Manual" : "Scheduled"}
+                  </Text>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {formatRelative(run.startedAt)}
+                  </Text>
+                  <Text as="span" textRole="mono">
+                    {executionDuration(run.durationMs)}
+                  </Text>
+                </Stack>
                 {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
-              </li>
+              </Stack>
             );
           })}
-        </ul>
+        </Card>
       )}
-    </section>
+    </Stack>
   );
 };
 
@@ -192,32 +250,30 @@ const TasksPage = () => {
 
   if (jobs.error) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={jobs.error} onRetry={() => jobs.refetch()} />
-      </div>
+      </Stack>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack height="100%">
       <PageHeader
         title="Tasks"
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
       />
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto p-6">
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} gap="2" padding={24}>
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;
           const groupOpen = openGroups.has(group.id);
           return (
-            <section key={group.id} className="border-border bg-card overflow-hidden rounded-lg border">
-              <button
-                type="button"
-                className="hover:bg-muted/40 flex w-full items-center gap-3 px-4 py-3 text-left"
-                aria-expanded={groupOpen}
+            <Card key={group.id} overflow="hidden" render="section">
+              <PressableRow
                 aria-controls={`task-group-${group.id}`}
-                onClick={() => toggleGroup(group.id)}
+                aria-expanded={groupOpen}
+                onPress={() => toggleGroup(group.id)}
               >
                 <Icon
                   decorative
@@ -225,35 +281,31 @@ const TasksPage = () => {
                   size="compact"
                   tone="muted"
                 />
-                <span className="font-medium">{group.label}</span>
-                <span
-                  className="text-muted-foreground ml-auto text-xs"
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
+                <Text as="span" textRole="cardLabel">
+                  {group.label}
+                </Text>
+                <Stack align="center" direction="row" flexGrow={1} gap="inline" justify="end">
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
-                  {groupSummary(groupedJobs)}
-                </span>
-              </button>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {groupSummary(groupedJobs)}
+                  </Text>
+                </Stack>
+              </PressableRow>
 
               {groupOpen && (
-                <div id={`task-group-${group.id}`} className="border-border border-t">
-                  <table className="w-full text-sm">
-                    <colgroup>
-                      {COLUMNS.map((column) => (
-                        <col key={column.key} style={{ width: column.width }} />
-                      ))}
-                    </colgroup>
-                    <thead>
-                      <tr className="border-border text-muted-foreground border-b text-left text-xs">
+                <Stack borderColor="borderDecorative" borderTopWidth={1} id={`task-group-${group.id}`}>
+                  <Table caption={`${group.label} tasks`} framed={false}>
+                    <TableHeader>
+                      <TableRow>
                         {COLUMNS.map((column) => (
-                          <th key={column.key} className="px-4 py-2.5 font-medium">
+                          <TableHeaderCell key={column.key} width={column.width}>
                             {column.label}
-                          </th>
+                          </TableHeaderCell>
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {groupedJobs.map((job) => {
                         const dot = statusDot(job);
                         const busy = feedback.isBusy(job.name) || job.running;
@@ -261,8 +313,8 @@ const TasksPage = () => {
                         const jobOpen = openJobs.has(job.name);
                         return (
                           <Fragment key={job.name}>
-                            <tr className={cn("border-border border-b", job.paused && "opacity-60")}>
-                              <td className="px-4 py-3">
+                            <TableRow dimmed={Boolean(job.paused)}>
+                              <TableCell rowHeader>
                                 <button
                                   type="button"
                                   className="flex items-center gap-2 text-left"
@@ -273,45 +325,52 @@ const TasksPage = () => {
                                   <span style={{ display: "flex", flexShrink: 0 }} title={dot.label}>
                                     <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
                                   </span>
-                                  <span className="font-medium">{job.title}</span>
+                                  <Text as="span" textRole="cardLabel">
+                                    {job.title}
+                                  </Text>
                                   {job.paused && (
-                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">
+                                    <Badge shape="square" tone="neutral">
                                       Paused
-                                    </span>
+                                    </Badge>
                                   )}
                                 </button>
-                              </td>
-                              <td
-                                className="text-muted-foreground px-4 py-3"
-                                title={job.disabledReason ? undefined : job.schedule}
-                              >
-                                {job.disabledReason
-                                  ? "Not scheduled"
-                                  : describeCron(job.schedule, presetsFor(job))}
-                              </td>
-                              <td className="text-muted-foreground px-4 py-3">
-                                {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
-                              </td>
-                              <td className="text-muted-foreground px-4 py-3">
-                                {job.disabledReason ? (
-                                  "—"
-                                ) : job.paused ? (
-                                  "Paused"
-                                ) : job.running ? (
-                                  "running…"
-                                ) : isZero(job.nextRun) ? (
-                                  "—"
-                                ) : isOverdueTask(job) ? (
-                                  <span title="Due, but waiting for a free worker">
-                                    <StatusWord kind="overdue" />
-                                  </span>
-                                ) : isPast(job.nextRun) ? (
-                                  "due now"
-                                ) : (
-                                  formatUntil(job.nextRun ?? zero)
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right">
+                              </TableCell>
+                              <TableCell>
+                                <span title={job.disabledReason ? undefined : job.schedule}>
+                                  <Text as="span" textRole="body" tone="secondary">
+                                    {job.disabledReason
+                                      ? "Not scheduled"
+                                      : describeCron(job.schedule, presetsFor(job))}
+                                  </Text>
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <Text as="span" textRole="body" tone="secondary">
+                                  {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
+                                </Text>
+                              </TableCell>
+                              <TableCell>
+                                <Text as="span" textRole="body" tone="secondary">
+                                  {job.disabledReason ? (
+                                    "—"
+                                  ) : job.paused ? (
+                                    "Paused"
+                                  ) : job.running ? (
+                                    "running…"
+                                  ) : isZero(job.nextRun) ? (
+                                    "—"
+                                  ) : isOverdueTask(job) ? (
+                                    <span title="Due, but waiting for a free worker">
+                                      <StatusWord kind="overdue" />
+                                    </span>
+                                  ) : isPast(job.nextRun) ? (
+                                    "due now"
+                                  ) : (
+                                    formatUntil(job.nextRun ?? zero)
+                                  )}
+                                </Text>
+                              </TableCell>
+                              <TableCell align="end">
                                 <Action
                                   icon={jobOpen ? "rowCollapse" : "rowExpand"}
                                   layout="icon"
@@ -320,23 +379,27 @@ const TasksPage = () => {
                                 >
                                   {`${jobOpen ? "Collapse" : "Expand"} ${job.title}`}
                                 </Action>
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                             {jobOpen && (
-                              <tr id={`task-${job.name}`} className="border-border bg-muted/20 border-b">
-                                <td colSpan={5} className="px-4 py-3">
-                                  <p className="text-muted-foreground max-w-prose text-sm">
+                              <TableRow id={`task-${job.name}`} tone="raised">
+                                <TableCell colSpan={5} verticalAlign="top">
+                                  <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
                                     {job.description}
-                                  </p>
+                                  </Text>
                                   {job.lastResult === "error" && (
                                     <ErrorDetails message={job.lastError} className="mt-2" />
                                   )}
                                   {job.disabledReason && (
-                                    <p className="text-muted-foreground mt-2 text-sm">{job.disabledReason}</p>
+                                    <Stack marginTop={8}>
+                                      <Text as="p" textRole="compact" tone="secondary">
+                                        {job.disabledReason}
+                                      </Text>
+                                    </Stack>
                                   )}
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
-                                    <div className="mt-3 flex items-center gap-1">
+                                    <Stack align="center" direction="row" gap="1" marginTop={12}>
                                       <Action
                                         accessibilityLabel={
                                           job.paused ? `Resume ${job.title}` : `Pause ${job.title}`
@@ -354,28 +417,30 @@ const TasksPage = () => {
                                         Modify
                                       </Action>
                                       <RunButton busy={busy} onRun={() => run.mutate({ name: job.name })} />
-                                    </div>
+                                    </Stack>
                                   )}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             )}
                           </Fragment>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableBody>
+                  </Table>
+                </Stack>
               )}
-            </section>
+            </Card>
           );
         })}
 
         {list.length === 0 && !jobs.isLoading && (
-          <div className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-6 text-center">
-            No scheduled tasks.
-          </div>
+          <Card paddingHorizontal={16} paddingVertical={24}>
+            <Text as="p" className="text-center" textRole="body" tone="secondary">
+              No scheduled tasks.
+            </Text>
+          </Card>
         )}
-      </div>
+      </Stack>
 
       {editing && (
         <JobEditModal
@@ -385,7 +450,7 @@ const TasksPage = () => {
           onOpenChange={(open) => !open && setEditing(undefined)}
         />
       )}
-    </div>
+    </Stack>
   );
 };
 

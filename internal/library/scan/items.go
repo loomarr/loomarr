@@ -44,6 +44,8 @@ type ItemFile struct {
 	Subtitles []string
 	// Edition is the labelled version of the title it is, "" for the default (decision 54).
 	Edition string
+	// Part is which part of a movie in parts it is, from 1; 0 for a whole file.
+	Part int
 	// Extra is a copy that never plays, because another of the title's files in its edition does
 	// (decisions 37, 54).
 	Extra bool
@@ -51,31 +53,41 @@ type ItemFile struct {
 	managed bool
 }
 
-// markExtras marks every file but the one that plays in its edition as an extra copy (decisions
-// 37, 54). One file is never an extra, nor is a title's only copy of an edition.
+// markExtras marks every file but the ones that play in its edition, its one copy or each of its
+// parts, as an extra copy (decisions 37, 54). One file is never an extra, nor is a title's only
+// copy of an edition.
 func markExtras(files []ItemFile) {
 	if len(files) < 2 {
 		return
 	}
 	plays := playingCopies(len(files), func(i int) string { return files[i].Edition },
+		func(i int) int { return files[i].Part },
 		func(i int) bool { return files[i].managed }, func(i int) int {
 			if files[i].Picture == nil {
 				return 0
 			}
 			return files[i].Picture.Width * files[i].Picture.Height
-		}, func(i int) int64 { return files[i].Size })
+		}, func(i int) int64 { return files[i].Size }, func(i int) int64 { return files[i].LengthMillis })
 	for i := range files {
 		files[i].Extra = !plays[i]
 	}
 }
 
 // playingCopy is which of a title's n copies plays (decision 37): the file its arr lists, else
-// the sharpest picture, else the biggest file; the first of equals.
-func playingCopy(n int, managed func(int) bool, pixels func(int) int, size func(int) int64) int {
+// the sharpest picture, else the biggest file; the first of equals. A copy under half as long as
+// the title's longest never plays while a whole one is there: it is an extra the walk could not
+// tell by its name, such as a 1080p trailer beside a DVD's film. A copy whose length is not yet
+// read is not held back.
+func playingCopy(n int, managed func(int) bool, pixels func(int) int, size func(int) int64, length func(int) int64) int {
+	var longest int64
+	for i := range n {
+		longest = max(longest, length(i))
+	}
+	short := func(i int) bool { return length(i) > 0 && length(i) < longest/2 }
 	best := 0
 	for i := 1; i < n; i++ {
-		if c := cmp.Or(compareBool(managed(i), managed(best)), cmp.Compare(pixels(i), pixels(best)),
-			cmp.Compare(size(i), size(best))); c > 0 {
+		if c := cmp.Or(compareBool(!short(i), !short(best)), compareBool(managed(i), managed(best)),
+			cmp.Compare(pixels(i), pixels(best)), cmp.Compare(size(i), size(best))); c > 0 {
 			best = i
 		}
 	}
@@ -171,7 +183,7 @@ func (l *Library) Item(ctx context.Context, id string) (ItemDetail, error) {
 		for _, f := range files {
 			source := item.sources[f.Path]
 			file := itemFile(f, source.facts)
-			file.managed, file.Edition = source.managed, source.edition
+			file.managed, file.Edition, file.Part = source.managed, source.edition, source.part
 			detail.Files = append(detail.Files, file)
 		}
 		markExtras(detail.Files)
@@ -344,6 +356,7 @@ type scannedSource struct {
 	facts   inventory.SourceFacts
 	managed bool
 	edition string
+	part    int
 }
 
 // scanned is what the scanner wrote about an item; zero when the inventory has none.
@@ -376,7 +389,7 @@ func (l *Library) scanned(ctx context.Context, id string) (scannedItem, error) {
 		for _, o := range s.Origins {
 			if present(o.Key, o.MissingAt) && o.Locator.Path != "" {
 				out.sources[o.Locator.Path] = scannedSource{facts: o.Observation.Facts, managed: ext[o.Key].Managed,
-					edition: ext[o.Key].Edition}
+					edition: ext[o.Key].Edition, part: ext[o.Key].Part}
 			}
 		}
 	}

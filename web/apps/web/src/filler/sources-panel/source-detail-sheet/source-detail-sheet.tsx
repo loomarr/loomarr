@@ -1,5 +1,12 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Stack,
+} from "@loomarr/design-system";
 import type { RefObject } from "react";
 import { useFillerProviders } from "../../use-filler-providers";
 import { SourceClipSearch } from "../source-clip-search";
@@ -36,7 +43,7 @@ const SourceDetailSheet = ({ source, actions, finalFocus, onClose }: SourceDetai
             <DialogDescription>{providers.find(source.kind)?.sourceNoun}</DialogDescription>
           </DialogHeader>
 
-          <div key={source.id} className="flex flex-col gap-6 p-6">
+          <Stack className="p-6" gap="section" key={source.id}>
             <SourceStatus
               source={source}
               fetching={actions.fetchSource.pending}
@@ -46,7 +53,7 @@ const SourceDetailSheet = ({ source, actions, finalFocus, onClose }: SourceDetai
             <SourcePreviewSection source={source} />
             {source.actions.includes("search") && <SourceClipSearch source={source} />}
             <SourceSettings source={source} actions={actions} />
-          </div>
+          </Stack>
         </DialogContent>
       )}
     </Dialog>

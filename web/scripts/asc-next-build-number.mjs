@@ -39,10 +39,31 @@ const token = ({ issuerId, keyId, keyPath }) => {
   return `${header}.${claims}.${signature.toString("base64url")}`;
 };
 
+// A refusal with Apple's own reason. The bare status can't tell a missing agreement from a revoked key or
+// a lowered role: all three are 403 (2026-11-13, every TestFlight run). Apple's error object names the
+// cause and never echoes the token. Each error's code, title and detail, the detail cut to 200 characters.
+const describeRefusal = (status, path, body) => {
+  let errors = [];
+  try {
+    errors = JSON.parse(body)?.errors ?? [];
+  } catch {
+    // Not JSON (a proxy's page, say): the status alone is all there is.
+  }
+  const reasons = errors
+    .map(({ code, detail, title }) =>
+      [code, title, detail?.slice(0, 200)].filter((part) => typeof part === "string" && part).join(": "),
+    )
+    .filter(Boolean);
+  const reason = reasons.length > 0 ? ` (${reasons.join("; ")})` : "";
+  return `App Store Connect answered ${status} for ${path}${reason}`;
+};
+
 const getJson = async (url, bearer) => {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${bearer}` } });
-  if (!response.ok)
-    throw new Error(`App Store Connect answered ${response.status} for ${new URL(url).pathname}`);
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(describeRefusal(response.status, new URL(url).pathname, body));
+  }
   return response.json();
 };
 
@@ -91,4 +112,4 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   });
 }
 
-export { nextBuildNumber };
+export { describeRefusal, nextBuildNumber };

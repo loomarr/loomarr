@@ -36,6 +36,7 @@ export { confirmDisconnect, DeviceSheet } from "./src/device-sheet";
 export type { ClipSelectProps, DefectReviewProps } from "./src/filler";
 export { ClipSelect, DefectReview, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
+export { useUiForm } from "./src/form-kit";
 export type {
   GuideArtworkRenderer,
   GuideChannelWindow,
@@ -223,6 +224,7 @@ export {
 } from "./src/surf-rail";
 export type { BackHandlerSource } from "./src/use-client-destination";
 export { useClientDestination } from "./src/use-client-destination";
+export { useCommittedDraft } from "./src/use-committed-draft";
 export type { WallTileProps } from "./src/wall-tile";
 export { WallTile } from "./src/wall-tile";
 export type {
@@ -246,13 +248,17 @@ export type {
   PlayerMoreProps,
   PlayerOption,
   PlayerOptionsProps,
+  PlayerSchedule,
   PlayerSheetProps,
-  PlayerTopRowProps,
+  PlayerSurf,
+  PlayerSurfChannel,
+  PlayerUtilitiesProps,
   PlayerWatermark,
+  SurfCatalogChannel,
   WatchFrameProps,
+  WatchingLayer,
   WatchingPanelData,
   WatchingPanelDataArgs,
-  WatchingPanelProps,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,
@@ -262,20 +268,26 @@ export {
   clearOfWatermark,
   logoSize,
   PlayerAudio,
+  PlayerBottomSheet,
   PlayerChrome,
   PlayerCover,
   PlayerDetails,
   PlayerDetailsPanel,
   PlayerInfo,
+  PlayerMenu,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-  PORTRAIT_PICTURE_TOP,
+  PlayerVolume,
   pictureIn,
   playbarFromTimeline,
+  playerChromeFromGuide,
+  playerCoverOf,
   rungFor,
+  SURF_LINGER_MS,
+  surfCardsFromGuide,
+  useSurfCards,
   WatchFrame,
-  WatchingPanel,
   WatchingSurface,
   watchingPanelFromGuide,
   watchingScheduleTimeMs,

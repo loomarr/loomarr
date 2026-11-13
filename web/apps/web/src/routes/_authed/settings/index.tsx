@@ -1,4 +1,9 @@
-import { Icon, icons } from "@loomarr/design-system";
+import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import * as jobsApi from "@loomarr/api/endpoints/jobs";
+import * as notificationsApi from "@loomarr/api/endpoints/notifications";
+import * as systemApi from "@loomarr/api/endpoints/system";
+import { Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -12,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRouteContent } from "@/lib/use-route-content";
@@ -102,9 +108,9 @@ const SettingsHome = () => {
   const advanced = cardDestinations("advanced", isAdmin)[0];
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="Settings" description="Search reaches any setting directly." />
-      <div className="min-h-0 flex-1 overflow-auto">
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} minHeight={0}>
         <SettingsOverview
           advanced={
             advanced
@@ -130,19 +136,36 @@ const SettingsHome = () => {
               />
 
               {hasQuery && (
-                <div id="settings-finder-results" className="mt-3" aria-live="polite">
+                <Stack aria-live="polite" id="settings-finder-results" marginTop={12}>
                   {results.length === 0 ? (
-                    <div className="border-border rounded-lg border border-dashed px-4 py-5">
-                      <p className="text-sm font-medium">No settings found</p>
-                      <p className="text-muted-foreground mt-1 text-sm">
+                    <Stack
+                      borderColor="borderDecorative"
+                      borderRadius={12}
+                      borderStyle="dashed"
+                      borderWidth={1}
+                      gap="1"
+                      paddingHorizontal={16}
+                      paddingVertical={20}
+                    >
+                      <Text as="p" textRole="cardLabel">
+                        No settings found
+                      </Text>
+                      <Text as="p" textRole="compact" tone="secondary">
                         Try a shorter phrase, a service name, or an exact key.
-                      </p>
-                    </div>
+                      </Text>
+                    </Stack>
                   ) : (
-                    <div className="border-border bg-card overflow-hidden rounded-lg border">
-                      <p className="border-border text-muted-foreground border-b px-4 py-2 text-xs">
-                        {results.length} {results.length === 1 ? "match" : "matches"}
-                      </p>
+                    <Card overflow="hidden">
+                      <Stack
+                        borderBottomWidth={1}
+                        borderColor="borderDecorative"
+                        paddingHorizontal={16}
+                        paddingVertical={8}
+                      >
+                        <Text as="p" textRole="hint" tone="secondary">
+                          {results.length} {results.length === 1 ? "match" : "matches"}
+                        </Text>
+                      </Stack>
                       <nav aria-label="Settings search results" className="divide-border divide-y">
                         {results.slice(0, 10).map((result, index) => (
                           <DestinationAnchor
@@ -154,33 +177,48 @@ const SettingsHome = () => {
                             onKeyDown={(event) => moveResultFocus(event, index)}
                             className="group hover:bg-muted/40 focus-visible:ring-ring flex items-center gap-3 px-4 py-3 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                           >
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium">
+                            <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+                              <Text as="span" textRole="cardLabel">
                                 {result.setting?.label || result.destination.label}
-                              </span>
-                              <span className="text-muted-foreground mt-0.5 block truncate text-xs">
+                              </Text>
+                              <Text as="span" className="truncate" textRole="hint" tone="secondary">
                                 {result.groupLabel} · {result.destination.label}
                                 {result.setting ? ` · ${result.setting.key}` : ""}
-                              </span>
-                            </span>
+                              </Text>
+                            </Stack>
                             <Icon decorative glyph={icons.goForward} size="compact" tone="muted" />
                           </DestinationAnchor>
                         ))}
                       </nav>
-                    </div>
+                    </Card>
                   )}
-                </div>
+                </Stack>
               )}
             </section>
           }
         />
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 
 const Route = createFileRoute("/_authed/settings/")({
   component: SettingsHome,
+  // The reads behind each card's status word (see `useSettingsStatus`). A card whose check fails
+  // settles without a problem, so these are warmed rather than awaited into an error view: a
+  // prefetch never rejects. The admin-only reads are skipped for a member, as the page skips them.
+  loader: async ({ context: { queryClient } }) => {
+    const isAdmin = await viewerIsAdmin(queryClient);
+    await Promise.all([
+      queryClient.prefetchQuery(
+        notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } }),
+      ),
+      isAdmin ? queryClient.prefetchQuery(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
+      isAdmin ? queryClient.prefetchQuery(jobsApi.getJobsListQueryOptions()) : undefined,
+      isAdmin ? queryClient.prefetchQuery(systemApi.getSystemBackupsListQueryOptions()) : undefined,
+      isAdmin ? queryClient.prefetchQuery(fillerApi.getFillerReadinessQueryOptions()) : undefined,
+    ]);
+  },
 });
 
 export { Route };

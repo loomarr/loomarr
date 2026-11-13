@@ -1,0 +1,4 @@
+{
+  "note": "Hand-rolled forms (#2147 Wave 4), maintained by web/scripts/check-forms.mjs. Entries may only be removed: convert the form to useAppForm and run `pnpm forms:update`. Never add one to pass the check.",
+  "files": ["apps/web/src/channels/channel-identity-field/channel-identity-field.tsx"]
+}

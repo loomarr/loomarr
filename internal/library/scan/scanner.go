@@ -263,6 +263,37 @@ func (l *Library) Importing() ProgressSnapshot {
 	return l.Scanner.Importer.Tracker.Snapshot(l.now())
 }
 
+// Details is how the titles' details are getting on: how many movies and series still wait for
+// theirs, whether they can be looked up now, and when the next try is.
+type Details struct {
+	Waiting int
+	Lookups
+}
+
+// Details reads how the titles' details are getting on; the zero wait when there is no catalog.
+// RetryAt is the Enricher's next try after a failed lookup while that is still ahead; past it, a
+// tick that found every waiting title held back tried nothing, so it is when the first of those is
+// tried again. Zero when nothing waits, or when there is no key.
+func (l *Library) Details(ctx context.Context) (Details, error) {
+	if l.Enricher == nil {
+		return Details{Lookups: Lookups{State: LookupsOK}}, nil
+	}
+	now := l.now()
+	waiting, err := l.Enricher.Store.LibraryCatalogWaiting(ctx, now)
+	if err != nil {
+		return Details{}, err
+	}
+	d := Details{Waiting: waiting.Titles, Lookups: l.Enricher.Lookups()}
+	switch {
+	case d.Waiting == 0, d.State == LookupsNoKey:
+		// Nothing waits, or nothing is tried again until a key is added.
+		d.RetryAt = time.Time{}
+	case !d.RetryAt.After(now):
+		d.RetryAt = waiting.NextRetry
+	}
+	return d, nil
+}
+
 // Enabled reports whether the kill switch lets the scanner run.
 func (l *Library) Enabled() bool {
 	if l.Scanner == nil {
@@ -278,6 +309,30 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 		return librarystore.LibraryFileCounts{}, nil
 	}
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
+}
+
+// skippedListed is how many of the files skipped for one reason the maintainer is shown by path.
+const skippedListed = 20
+
+// Skipped lists the files the scan skips, by why (ProblemBrokenLink, ProblemLinkOutside,
+// ProblemDiscImage, ...): each reason's count and its first few paths, for the maintainer to fix.
+func (l *Library) Skipped(ctx context.Context) ([]librarystore.LibrarySkipped, error) {
+	if l.Scanner == nil {
+		return []librarystore.LibrarySkipped{}, nil
+	}
+	return l.Scanner.Importer.Store.LibrarySkippedFiles(ctx, skippedListed)
+}
+
+// heldNamed is how many of a held removal's titles the maintainer is shown by name.
+const heldNamed = 3
+
+// HeldTitles names a few of the titles a root's held removal would take, by name, and counts them
+// all: the maintainer sees what "They're gone, remove them" lets go before saying it.
+func (l *Library) HeldTitles(ctx context.Context, root string) ([]string, int, error) {
+	if l.Scanner == nil {
+		return []string{}, 0, nil
+	}
+	return l.Scanner.Importer.Store.LibraryHeldTitles(ctx, root, heldNamed)
 }
 
 // ErrScannerOff is a request the scanner cannot serve because it is not running.

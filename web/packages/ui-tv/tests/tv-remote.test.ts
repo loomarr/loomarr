@@ -41,6 +41,20 @@ const remoteWithLog = (numberEntryMs?: number) => {
 };
 
 describe("createTvRemote", () => {
+  it("opens Surf on Left over the bare picture, and moves focus with it while the controls are up", () => {
+    const { outcomes, remote } = remoteWithLog();
+    remote.nativeKey("left", 1, true);
+    expect(outcomes.at(-1)).toEqual({ handled: true, intent: { kind: "open-surf" }, key: "left" });
+    remote.nativeKey("left", 1, true, "controls");
+    expect(outcomes.at(-1)).toEqual({ handled: true, key: "left" });
+  });
+
+  it("closes the More menu on Menu instead of opening Surf", () => {
+    const { outcomes, remote } = remoteWithLog();
+    remote.nativeKey("menu", 1, true, "menu");
+    expect(outcomes.at(-1)).toEqual({ handled: true, intent: { kind: "close-layer" }, key: "menu" });
+  });
+
   it("tunes a typed number once its wait runs out", () => {
     const { clock, outcomes, remote } = remoteWithLog(2_000);
     remote.nativeKey("1", 1, true);
