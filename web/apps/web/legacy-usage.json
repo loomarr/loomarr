@@ -365,8 +365,7 @@
       "rawTypeSize": 1
     },
     "src/filler/channel-filler/channel-filler.tsx": {
-      "tailwindClasses": 55,
-      "rawTypeSize": 1
+      "tailwindClasses": 21
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
       "tailwindClasses": 13
