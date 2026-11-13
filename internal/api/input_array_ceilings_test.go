@@ -53,8 +53,8 @@ func TestSharedChannelArraysRefusePastTheirCeilings(t *testing.T) {
 	for _, tc := range []struct {
 		name, body, refusal string // refusal is the schema message expected, empty when the list fits
 	}{
-		{"lineup at the ceiling", `{"lineup":` + list(`{"key":"movie:tmdb:603","name":"A"}`, 1000) + `}`, ""},
-		{"lineup past the ceiling", `{"lineup":` + list(`{"key":"movie:tmdb:603","name":"A"}`, 1001) + `}`, "array length <= 1000"},
+		{"lineup at the ceiling", `{"lineup":` + list(`{"key":"movie:tmdb:90000001","name":"A"}`, 1000) + `}`, ""},
+		{"lineup past the ceiling", `{"lineup":` + list(`{"key":"movie:tmdb:90000001","name":"A"}`, 1001) + `}`, "array length <= 1000"},
 		{"rules past the ceiling", `{"policy":{"rules":` + list(`{"id":"r"}`, 33) + `}}`, "array length <= 32"},
 		{"filler pins past the ceiling", `{"policy":{"filler":{"pinned":` + list(`"h"`, 1001) + `}}}`, "array length <= 1000"},
 	} {
