@@ -125,7 +125,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
       paddingTop={12}
       render="section"
     >
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <Stack align="baseline" columnGap="4" direction="row" rowGap="1" wrap>
         <Text as="h3" textRole="label" tone="primary">
           Past 24 hours
         </Text>
@@ -161,7 +161,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
             </Stack>
           </Stack>
         )}
-      </div>
+      </Stack>
 
       {history.recent.length > 0 && (
         <Card className="divide-border divide-y" marginTop={8} render="ul">
@@ -175,7 +175,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
                 paddingVertical={8}
                 render="li"
               >
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
                   <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
                   <Text as="span" textRole="label" tone="primary">
                     {run.trigger === "manual" ? "Manual" : "Scheduled"}
@@ -186,7 +186,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
                   <Text as="span" textRole="mono">
                     {executionDuration(run.durationMs)}
                   </Text>
-                </div>
+                </Stack>
                 {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
               </Stack>
             );

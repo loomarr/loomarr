@@ -29,7 +29,17 @@ const useSecondsSince = (startedAt: string | undefined): number | undefined => {
 // A streamed title reads like a row of the lineup it is about to become: name, year, and the
 // same state wording the review uses.
 const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }) => (
-  <li className="border-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b py-2 last:border-b-0">
+  <Stack
+    align="center"
+    className="border-border border-b last:border-b-0"
+    columnGap="2"
+    direction="row"
+    flexShrink={0}
+    paddingVertical={8}
+    render="li"
+    rowGap="1"
+    wrap
+  >
     <Text as="span" textRole="cardLabel">
       {pick.name}
     </Text>
@@ -41,7 +51,7 @@ const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }
     <Badge shape="square" tone={pick.inLibrary ? "lock" : "tune"}>
       {pick.inLibrary ? "In your library" : "Will be added"}
     </Badge>
-  </li>
+  </Stack>
 );
 
 // A generation is a loop, not a trustworthy checklist. Show the user's current outcome in

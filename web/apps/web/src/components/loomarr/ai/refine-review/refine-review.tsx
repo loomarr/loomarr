@@ -101,7 +101,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
       <Text as="h3" textRole="hint" tone="secondary">{`Programming · ${deltas.length}`}</Text>
       <Stack gap="1.5" render="ul">
         {deltas.map((d) => (
-          <li key={d.label} className="flex flex-wrap items-baseline gap-x-2">
+          <Stack align="baseline" columnGap="2" direction="row" flexShrink={0} key={d.label} render="li" wrap>
             <Text as="span" textRole="compact" tone="secondary">
               {d.label}
             </Text>
@@ -119,7 +119,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
                 <span className="text-foreground">{d.to}</span>
               </Text>
             )}
-          </li>
+          </Stack>
         ))}
       </Stack>
     </Stack>

@@ -202,7 +202,7 @@ const FillerOverview = () => {
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
         <Card className="border-caution/40! bg-caution/5!" padding={20}>
-          <div className="flex flex-col items-start gap-4 sm:flex-row">
+          <Stack align="start" direction={{ base: "column", sm: "row" }} gap="4">
             <div className="min-w-0 flex-1">
               <StatusLabel tone="warn">Action recommended</StatusLabel>
               <Text as="h2" className="mt-3" textRole="title">
@@ -233,7 +233,7 @@ const FillerOverview = () => {
                 {action.label}
               </Action>
             ) : null}
-          </div>
+          </Stack>
         </Card>
       ) : (
         <Card alignItems="center" flexDirection="row" gap={10} padding={16}>

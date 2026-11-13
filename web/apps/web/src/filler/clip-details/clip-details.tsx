@@ -115,7 +115,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <Text as="dd" className="min-w-0 space-y-1 break-words" textRole="compact">
               {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
               {suggestion.sources.length ? (
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                <Stack columnGap="3" direction="row" rowGap="1" wrap>
                   {suggestion.sources.map((source) => (
                     <a
                       key={source.url}
@@ -127,7 +127,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                       {source.title} <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
                     </a>
                   ))}
-                </div>
+                </Stack>
               ) : null}
             </Text>
           </>

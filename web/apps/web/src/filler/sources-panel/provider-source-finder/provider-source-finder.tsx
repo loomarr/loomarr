@@ -158,12 +158,14 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
 
   return (
     <div className="mt-3 max-w-2xl">
-      <form
-        className="flex flex-col gap-2 sm:flex-row"
+      <Stack
+        direction={{ base: "column", sm: "row" }}
+        gap="2"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
+        render="form"
       >
         <div className="min-w-0 flex-1">
           {/* No option is highlighted until the arrow keys move there, so Enter on typed words still
@@ -226,7 +228,7 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
                   ? provider.findAdd
                   : "Search"}
         </Action>
-      </form>
+      </Stack>
 
       {!enabled && (
         <Text as="p" className="mt-2" textRole="hint" tone="secondary">

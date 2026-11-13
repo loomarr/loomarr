@@ -588,9 +588,18 @@ const GuidePage = () => {
           </div>
 
           {viewOptionsOpen && (
-            <div
+            <Stack
+              align="center"
+              className="border-border/60 bg-card/40 border-b"
+              columnGap="6"
+              direction="row"
+              flexShrink={0}
               id="guide-view-options"
-              className="border-border/60 bg-card/40 flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-b px-7 py-2.5 sm:justify-end"
+              justify={{ base: "start", sm: "end" }}
+              paddingHorizontal={28}
+              paddingVertical={10}
+              rowGap="2"
+              wrap
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
@@ -607,7 +616,7 @@ const GuidePage = () => {
                   />
                 </div>
               </Stack>
-            </div>
+            </Stack>
           )}
         </>
       )}

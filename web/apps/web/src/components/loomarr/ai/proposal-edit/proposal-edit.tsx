@@ -95,7 +95,7 @@ const PickRow = ({
         />
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Stack align="center" columnGap="2" direction="row" rowGap="1" wrap>
           <Text as="span" className={cn(!included && "line-through")} textRole="cardLabel">
             {pick.item.name}
           </Text>
@@ -123,7 +123,7 @@ const PickRow = ({
               {selection}
             </Badge>
           )}
-        </div>
+        </Stack>
         <Text as="p" className="mt-1" textRole="hint" tone="secondary">
           {itemDetails(pick.item)}
         </Text>

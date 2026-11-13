@@ -160,7 +160,7 @@ const LocationPicker = ({
           </Text>
         )}
       </Stack>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <Stack direction={{ base: "column", sm: "row" }} gap="2">
         <div className="min-w-0 flex-1">
           <Combobox
             autoHighlight
@@ -201,7 +201,7 @@ const LocationPicker = ({
             {detecting ? "Finding…" : "Use my location"}
           </Action>
         )}
-      </div>
+      </Stack>
       {evidence?.approximate && (
         <Text as="p" className="mt-2" textRole="compact" tone="secondary">
           Approximate location from your network. You can choose a more specific place above.

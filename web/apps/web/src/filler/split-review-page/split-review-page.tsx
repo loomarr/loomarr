@@ -169,7 +169,14 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
         </Text>
       </div>
       {languageChanged ? (
-        <div className="border-caution/40 bg-caution-tint-15 flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+        <Stack
+          align={{ base: "stretch", sm: "center" }}
+          className="border-caution/40 bg-caution-tint-15 rounded-lg border"
+          direction={{ base: "column", sm: "row" }}
+          gap="3"
+          justify={{ base: "start", sm: "between" }}
+          padding={16}
+        >
           <div>
             <Text as="p" textRole="heading">
               {currentLanguageHeadline}
@@ -185,7 +192,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
           >
             {recheck.isPending ? "Starting recheck…" : recheckLabel}
           </Action>
-        </div>
+        </Stack>
       ) : null}
       <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checked} />
       <SplitReviewEditor
