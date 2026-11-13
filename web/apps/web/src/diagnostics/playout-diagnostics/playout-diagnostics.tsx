@@ -4,14 +4,17 @@ import { ListDiagnosticProcessesStatus } from "@loomarr/api/models/listDiagnosti
 import type { ProcessRunView } from "@loomarr/api/models/processRunView";
 import {
   Action,
+  Card,
   CompactSelect,
   Field,
   Icon,
   icons,
   PressableRow,
+  Stack,
   StatusDot,
   type StatusTone,
   Surface,
+  Text,
   Tooltip,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
@@ -123,23 +126,31 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
 
   if (query.error instanceof OutputError && query.error.status === 410)
     return (
-      <p className="border-border text-muted-foreground rounded-md border p-4 text-sm">
-        Output retention expired. Run metadata remains available.
-      </p>
+      <Card padding={16}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Output retention expired. Run metadata remains available.
+        </Text>
+      </Card>
     );
   if (query.error instanceof OutputError && query.error.status === 501)
     return (
-      <p className="border-border text-muted-foreground rounded-md border p-4 text-sm">
-        Process output is unavailable in this runtime.
-      </p>
+      <Card padding={16}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Process output is unavailable in this runtime.
+        </Text>
+      </Card>
     );
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   if (query.isPending)
-    return <p className="text-muted-foreground text-sm">Loading retained Process output…</p>;
+    return (
+      <Text as="p" textRole="compact" tone="secondary">
+        Loading retained Process output…
+      </Text>
+    );
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
+    <Stack gap="2">
+      <Stack align="center" direction="row" gap="inline" wrap>
         <Surface backgroundColor="transparent" borderWidth={0} flexBasis={192} flexGrow={1} minWidth={0}>
           <SearchField
             label="Search Process output"
@@ -168,12 +179,14 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
         <Action icon="download" onPress={() => void download()} variant="outline">
           Download output
         </Action>
-      </div>
+      </Stack>
       {(query.data.truncated || query.data.discarded > 0) && (
-        <p className="text-caution flex items-center gap-1 text-xs">
-          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Output is truncated;{" "}
-          {query.data.discarded} earlier lines were discarded.
-        </p>
+        <Stack align="center" direction="row" gap="1" render="p">
+          <Icon decorative glyph={icons.alert} size="compact" tone="warning" />
+          <Text as="span" textRole="hint" tone="warning">
+            Output is truncated; {query.data.discarded} earlier lines were discarded.
+          </Text>
+        </Stack>
       )}
       <pre
         ref={scrollRef}
@@ -181,11 +194,13 @@ const ProcessOutput = ({ run }: { run: ProcessRunView }) => {
           const output = event.currentTarget;
           if (follow && output.scrollHeight - output.scrollTop - output.clientHeight > 24) setFollow(false);
         }}
-        className={`border-border bg-background max-h-[28rem] overflow-auto rounded-md border p-3 font-mono text-xs ${wrap ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
+        className={`border-border bg-background max-h-[28rem] overflow-auto rounded-md border p-3 ${wrap ? "break-words whitespace-pre-wrap" : "whitespace-pre"}`}
       >
-        {visible || "No retained output matches this search."}
+        <Text as="span" textRole="mono" tone="primary">
+          {visible || "No retained output matches this search."}
+        </Text>
       </pre>
-    </div>
+    </Stack>
   );
 };
 
@@ -202,29 +217,36 @@ const ProcessDetail = ({
   const detail = query.data?.status === 200 ? query.data.data : undefined;
   const latest = detail?.progress.at(-1);
   return (
-    <section
-      className="border-border bg-card space-y-4 rounded-lg border p-4"
-      aria-label="Selected media process"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <Card aria-label="Selected media process" gap={16} padding={16} render="section">
+      <Stack align="start" direction="row" gap="inline" justify="between" wrap>
         <div>
-          <h3 className="font-medium">{run.purpose}</h3>
-          <p className="text-muted-foreground text-xs">Started {formatTime(run.startedAt)}</p>
+          <Text as="h3" textRole="heading">
+            {run.purpose}
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            Started {formatTime(run.startedAt)}
+          </Text>
         </div>
-        <span className="inline-flex items-center gap-2 text-sm">
-          <StatusDot tone={tone(run.status)} label={run.status} />
-          {run.status}
-        </span>
-      </div>
-      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <Text as="span" textRole="compact">
+          <Stack align="center" direction="row" gap="2" render="span">
+            <StatusDot tone={tone(run.status)} label={run.status} />
+            {run.status}
+          </Stack>
+        </Text>
+      </Stack>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <div>
-          <span className="text-muted-foreground text-xs">Run ID</span>
+          <Text as="span" textRole="hint" tone="secondary">
+            Run ID
+          </Text>
           <CopyValue label="Run ID" value={run.id} />
         </div>
         {run.channelId && (
           <div>
-            <span className="text-muted-foreground text-xs">Channel</span>
-            <div className="flex">
+            <Text as="span" textRole="hint" tone="secondary">
+              Channel
+            </Text>
+            <Stack direction="row">
               <CopyValue label="Channel" value={run.channelId} />
               {onOpenChannel && (
                 <Action
@@ -236,57 +258,77 @@ const ProcessDetail = ({
                   Open Channel
                 </Action>
               )}
-            </div>
+            </Stack>
           </div>
         )}
         {run.jobId && (
           <div>
-            <span className="text-muted-foreground text-xs">Job</span>
+            <Text as="span" textRole="hint" tone="secondary">
+              Job
+            </Text>
             <CopyValue label="Job" value={run.jobId} />
           </div>
         )}
         <div>
-          <span className="text-muted-foreground text-xs">Executable</span>
-          <p>
+          <Text as="span" textRole="hint" tone="secondary">
+            Executable
+          </Text>
+          <Text as="p" textRole="compact">
             {run.executable ?? "Unavailable"}
             {run.executableVersion ? ` · ${run.executableVersion}` : ""}
-          </p>
+          </Text>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Target</span>
-          <p className="break-all">{run.target ?? "Unavailable"}</p>
+          <Text as="span" textRole="hint" tone="secondary">
+            Target
+          </Text>
+          <Text as="p" className="break-all" textRole="compact">
+            {run.target ?? "Unavailable"}
+          </Text>
         </div>
         <div>
-          <span className="text-muted-foreground text-xs">Ended</span>
-          <p>{formatTime(run.endedAt)}</p>
+          <Text as="span" textRole="hint" tone="secondary">
+            Ended
+          </Text>
+          <Text as="p" textRole="compact">
+            {formatTime(run.endedAt)}
+          </Text>
         </div>
       </div>
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : latest ? (
-        <div
-          role="status"
-          className="bg-muted/30 flex flex-wrap gap-5 rounded-md p-3 text-sm"
+        <Stack
           aria-label="Latest Process progress"
+          className="bg-muted/30 rounded-md"
+          direction="row"
+          gap="5"
+          padding={12}
+          role="status"
+          wrap
         >
-          <span>
+          <Text as="span" textRole="compact">
             Frame <strong>{latest.frame}</strong>
-          </span>
-          <span>
+          </Text>
+          <Text as="span" textRole="compact">
             Speed <strong>{latest.speed.toFixed(2)}×</strong>
-          </span>
-          <span>
+          </Text>
+          <Text as="span" textRole="compact">
             Output time <strong>{(latest.outTimeMs / 1000).toFixed(1)}s</strong>
-          </span>
+          </Text>
           {detail?.progressTruncated && (
-            <span className="text-caution">Earlier progress samples omitted</span>
+            <Text as="span" textRole="compact" tone="warning">
+              Earlier progress samples omitted
+            </Text>
           )}
-        </div>
+        </Stack>
       ) : (
-        <p className="text-muted-foreground text-sm">No progress samples retained for this run.</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          No progress samples retained for this run.
+        </Text>
       )}
       <ProcessOutput key={run.id} run={run} />
-    </section>
+    </Card>
   );
 };
 
@@ -346,17 +388,17 @@ const PlayoutDiagnostics = ({
     onFiltersChange(next);
   };
   return (
-    <section className="space-y-4" aria-labelledby="media-processes-title">
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <Stack aria-labelledby="media-processes-title" gap="4" render="section">
+      <Stack align="start" direction="row" gap="inline" justify="between" wrap>
         <div>
-          <h2 id="media-processes-title" className="text-lg font-medium">
+          <Text as="h2" id="media-processes-title" textRole="headline">
             Media processes
-          </h2>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             FFmpeg and streaming activity connected to the logs you are investigating.
-          </p>
+          </Text>
         </div>
-      </div>
+      </Stack>
       <div className="border-border bg-card grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
         <CompactSelect<DiagnosticsSearch["processRange"]>
           label="Process time range"
@@ -382,7 +424,9 @@ const PlayoutDiagnostics = ({
           value={filters.processStatus}
         />
         <details className="sm:col-span-2">
-          <summary className="text-muted-foreground cursor-pointer py-1 text-sm">More filters</summary>
+          <Text as="summary" className="cursor-pointer py-1" textRole="compact" tone="secondary">
+            More filters
+          </Text>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             <Field
               accessibilityLabel="Process purpose"
@@ -423,13 +467,17 @@ const PlayoutDiagnostics = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
-        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
-          Loading media processes…
-        </p>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            Loading media processes…
+          </Text>
+        </Card>
       ) : runs.length === 0 ? (
-        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
-          No media processes match this bounded window.
-        </p>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            No media processes match this bounded window.
+          </Text>
+        </Card>
       ) : (
         <DiagnosticsSplitPane
           storageKey="diagnostics-media-process-details"
@@ -468,17 +516,23 @@ const PlayoutDiagnostics = ({
                         selected={selected?.id === run.id}
                       >
                         <div className="grid w-full gap-1 text-left">
-                          <span className="flex items-center justify-between gap-2">
-                            <strong className="truncate text-sm">{run.purpose}</strong>
-                            <span className="inline-flex items-center gap-1 text-xs">
-                              <StatusDot tone={tone(run.status)} label={run.status} />
-                              {run.status}
-                            </span>
-                          </span>
-                          <span className="text-muted-foreground truncate text-xs">
+                          <Stack align="center" direction="row" gap="inline" justify="between" render="span">
+                            <Text as="strong" className="truncate" strong textRole="cardLabel" tone="primary">
+                              {run.purpose}
+                            </Text>
+                            <Text as="span" textRole="hint" tone="primary">
+                              <Stack align="center" direction="row" gap="1" render="span">
+                                <StatusDot tone={tone(run.status)} label={run.status} />
+                                {run.status}
+                              </Stack>
+                            </Text>
+                          </Stack>
+                          <Text as="span" className="truncate" textRole="hint" tone="secondary">
                             {run.target ?? run.id}
-                          </span>
-                          <time className="text-muted-foreground text-xs">{formatTime(run.startedAt)}</time>
+                          </Text>
+                          <Text as="time" textRole="hint" tone="secondary">
+                            {formatTime(run.startedAt)}
+                          </Text>
                         </div>
                       </PressableRow>
                     </li>
@@ -491,14 +545,17 @@ const PlayoutDiagnostics = ({
             selected ? (
               <ProcessDetail run={selected} onOpenChannel={onOpenChannel} />
             ) : (
-              <p className="border-border text-muted-foreground rounded-lg border p-6 text-sm">
-                The selected media process is outside this page. Adjust the filters or return to a newer page.
-              </p>
+              <Card backgroundColor="transparent" padding={24}>
+                <Text as="p" textRole="compact" tone="secondary">
+                  The selected media process is outside this page. Adjust the filters or return to a newer
+                  page.
+                </Text>
+              </Card>
             )
           }
         />
       )}
-    </section>
+    </Stack>
   );
 };
 

@@ -1,18 +1,17 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { cn } from "@/lib/utils";
+import { Stack, Text } from "@loomarr/design-system";
 import { PodTimeline } from "../../filler/pod-timeline";
 import type { ChannelBreaksProps } from "./channel-breaks.type";
 
 // ChannelBreaks — the read-only "what plays in this channel's breaks" (§10, §12).
 //
-// ⚠ **This exists because `GET /v1/channels/{id}/pods` had no caller at all.** The route shipped,
-// three cache invalidations pointed at its query key, and nothing ever filled that cache — an
-// endpoint reachable only by curl. Deleting it was the wrong fix: it is MEMBER-readable, where the
-// draft sandbox (`POST …/pods/preview`) is admin-only, so it is the only way a non-admin can see
-// why a channel sounds the way it does. Leaving it orphaned is exactly what `/surface-audit`
-// exists to find.
+// ⚠ **This is the only caller of `GET /v1/channels/{id}/pods`.** Three cache invalidations point
+// at its query key, and without this component nothing fills that cache — an endpoint reachable
+// only by curl. The endpoint must stay: it is MEMBER-readable, where the draft sandbox
+// (`POST …/pods/preview`) is admin-only, so it is the only way a non-admin can see why a channel
+// sounds the way it does. An orphaned endpoint is exactly what `/surface-audit` exists to find.
 //
 // ⚠ Deliberately NOT folded into the Filler section. That section is the admin authoring sandbox
 // and is gated accordingly; this is the member-visible answer, on the one screen a member sees.
@@ -30,13 +29,15 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
   if (entries.length === 0) return null;
 
   return (
-    <section className={cn("flex flex-col gap-1.5", className)}>
-      <h3 className="text-2xs text-muted-foreground font-normal">Between shows</h3>
+    <Stack className={className} gap="1.5" render="section">
+      <Text as="h3" textRole="hint" tone="secondary">
+        Between shows
+      </Text>
       <PodTimeline entries={entries} matchLevel={pod?.matchLevel} />
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         {`${pluralize(entries.length, "clip")} between shows, assembled exactly as the channel builds them.`}
-      </p>
-    </section>
+      </Text>
+    </Stack>
   );
 };
 

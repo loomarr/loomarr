@@ -173,6 +173,9 @@ type ClipPipeline struct {
 	Stages         []StageRecord
 	EnrolledAt     time.Time
 	UpdatedAt      time.Time
+	// FilesDeletedAt is when Loomarr deleted a rejected clip's files (#3855). The row stays as the
+	// record of why; with the bytes gone there is nothing to retry or restore. Zero while kept.
+	FilesDeletedAt time.Time
 }
 
 // RestoreRefusal returns a refused row — a machine rejection or an operator dismissal — to review:
@@ -182,6 +185,9 @@ type ClipPipeline struct {
 func (p *ClipPipeline) RestoreRefusal(at time.Time) bool {
 	if p.Disposition != DispositionRejected && p.Disposition != DispositionDismissed {
 		return false
+	}
+	if !p.FilesDeletedAt.IsZero() {
+		return false // nothing left to restore; the row is the record of why it went
 	}
 	p.Disposition = DispositionReview
 	p.RejectReason, p.RejectDetail = "", ""

@@ -311,4 +311,39 @@ describe("CoverageMeter", () => {
     await screen.findByText("Widened the era");
     expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
   });
+
+  // #3412: with no clips at all, every setting counts zero. That is an empty catalogue, not eight
+  // settings each to blame, so the meter is one line and the way to Filler.
+  it("says there are no clips yet instead of blaming every setting", async () => {
+    renderMeter(
+      <CoverageMeter
+        coverage={{
+          level: "bumper_card",
+          total: 0,
+          rungs: [
+            { level: "exact", clips: 0 },
+            { level: "widened", clips: 0 },
+            { level: "audience", clips: 0 },
+          ],
+          ...NO_LIMIT,
+          criteria: [
+            { criterion: "geography", clips: 0 },
+            { criterion: "language", clips: 0 },
+            { criterion: "era", clips: 0 },
+            { criterion: "audience", clips: 0 },
+            { criterion: "category", clips: 0 },
+            { criterion: "role", clips: 0 },
+            { criterion: "duration", clips: 0 },
+            { criterion: "quality", clips: 0 },
+          ],
+        }}
+      />,
+    );
+    expect(await screen.findByText("No clips yet")).toBeInTheDocument();
+    expect(screen.getByText("Breaks show the channel card until some arrive.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add filler" })).toBeInTheDocument();
+    expect(screen.queryByText(/ruling out every commercial/)).not.toBeInTheDocument();
+    expect(screen.queryByText("nothing matches")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exact era + audience")).not.toBeInTheDocument();
+  });
 });

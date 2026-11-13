@@ -1,5 +1,5 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Tooltip } from "@loomarr/design-system";
+import { Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -57,15 +57,19 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
         className,
       )}
     >
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+      <Stack align="end" className="mb-3" direction="row" gap="inline" justify="between" wrap>
         <div>
-          <h2 className="text-sm font-medium">Clips Loomarr found</h2>
-          <p className="text-muted-foreground text-xs">Choose a clip to preview it and make changes.</p>
+          <Text as="h2" textRole="cardLabel" tone="primary">
+            Clips Loomarr found
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            Choose a clip to preview it and make changes.
+          </Text>
         </div>
-        <span className="text-muted-foreground font-mono text-xs tabular-nums">
+        <Text as="span" className="tabular-nums" textRole="mono">
           {segments.length} clips · {formatMmSs(reelEnd)}
-        </span>
-      </div>
+        </Text>
+      </Stack>
 
       <section className="overflow-x-auto pb-2" aria-label="Detected clip timeline">
         <ul
@@ -102,11 +106,13 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   width={256}
                   content={
                     <>
-                      <p className="truncate text-sm font-medium">{name}</p>
-                      <p className="text-muted-foreground mt-0.5 font-mono text-xs tabular-nums">
+                      <Text as="p" className="truncate" textRole="cardLabel" tone="primary">
+                        {name}
+                      </Text>
+                      <Text as="p" className="mt-0.5 tabular-nums" textRole="mono" tone="secondary">
                         {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
                         {formatClipDuration(item.durationMs)}
-                      </p>
+                      </Text>
                       {tags.length > 0 || item.language ? (
                         <p className="text-muted-foreground mt-2">
                           {[...tags, item.language ? languageName(item.language) : ""]
@@ -138,9 +144,15 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     {item.artwork ? (
                       <ServedImage image={item.artwork} alt="" sizes="240px" />
                     ) : (
-                      <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
+                      <Stack
+                        align="center"
+                        className="text-muted-foreground size-full px-2 text-center text-[10px]"
+                        direction="row"
+                        justify="center"
+                        render="span"
+                      >
                         Preview unavailable
-                      </span>
+                      </Stack>
                     )}
                     <span className="from-static-950 via-static-950/85 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-5 pb-1.5">
                       <span className="text-static-50 block truncate text-[11px] font-medium">{name}</span>

@@ -1,9 +1,8 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
-import type { ListFillerRole } from "@loomarr/api/models/listFillerRole";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -13,7 +12,7 @@ import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
-import type { FillerSearch } from "../filler-search";
+import { CATALOG_PAGE_SIZE, catalogListParams, type FillerSearch } from "../filler-search";
 import { CatalogBulkBar } from "./catalog-bulk-bar";
 import { CatalogToolbar } from "./catalog-toolbar";
 import type { CatalogView } from "./catalog-view-toggle";
@@ -22,14 +21,6 @@ import { CompositeCatalogGroup } from "./composite-catalog-group";
 import type { FillerCatalogProps } from "./filler-catalog.type";
 import { useCatalogSelection } from "./use-catalog-selection";
 import { useClipSplit } from "./use-clip-split";
-
-// How many clips one page of the catalog holds (§10 V51d).
-//
-// ⚠ **ONE size for both the grid and the list**, deliberately. A per-view size would renumber the
-// pages under the operator the moment they switched rendering — page 3 of the grid and page 3 of
-// the list would be different clips — and `pageSize` is kept out of the URL for the same reason.
-// 60 divides evenly by the grid's 2/3/4 columns, so the last row is never a ragged single card.
-const CATALOG_PAGE_SIZE = 60;
 
 // FillerPage — the §10 clip catalog: browse, search, tag and (on the filler image) download.
 // ⚠ No longer "sync": V38c removed the whole-catalog Sync and AI-tag buttons, because both run
@@ -105,27 +96,25 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     setInspecting(hash);
   };
   // The clip whose split is awaiting confirmation, by hash (§10 V54 A8). Nothing fires until the
-  // operator confirms — see the dialog for why the old first-click behaviour was a hazard.
+  // operator confirms — see the dialog for why splitting on the first click is a hazard.
   const [splitting, setSplitting] = useState<string>();
   const clipSplit = useClipSplit();
   const { job: splitJob } = clipSplit;
 
-  // One page of the catalog (§10 V51d). ⚠ This was an unbounded read of every clip in the
-  // install; the endpoint now caps at 500 and defaults to 100, so an un-paged catalog would
-  // silently show the first hundred clips and call it the catalog.
+  // One page of the catalog (§10 V51d). ⚠ The endpoint caps at 500 and defaults to 100, so an
+  // un-paged catalog would silently show the first hundred clips and call it the catalog.
   const clips = fillerApi.useListFiller(
-    {
-      ...(q ? { q } : {}),
-      ...(role ? { role: role as ListFillerRole } : {}),
-      ...(audience ? { audience: audience as never } : {}),
-      ...(taxon ? { taxon } : {}),
-      ...(unclassified ? { unclassified: true } : {}),
-      ...(withoutAxis ? { withoutAxis } : {}),
-      ...(untagged ? { untagged: true } : {}),
-      ...(parentHash ? { parentHash } : !filtered ? { includeComposites: true, topLevel: true } : {}),
-      limit: CATALOG_PAGE_SIZE,
-      ...(page > 1 ? { offset: (page - 1) * CATALOG_PAGE_SIZE } : {}),
-    },
+    catalogListParams({
+      q,
+      role,
+      audience,
+      taxon,
+      unclassified,
+      withoutAxis,
+      untagged,
+      page,
+      parent: parentHash,
+    }),
     { query: { enabled: true } },
   );
   const parent = fillerApi.useListFiller(
@@ -133,11 +122,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     { query: { enabled: Boolean(parentHash) } },
   );
 
-  // ⚠ The Discover query state that used to live here is GONE with its tab (V35). Searching a
-  // source is moving onto the Sources tab, where it belongs — a search is something you do to a
-  // source, not a destination of its own — and `GET /v1/filler/discover` is still the route
-  // behind it. Deleting the state rather than leaving it wired to nothing: an unused query that
-  // still fires is how a page keeps paying for a feature nobody can reach.
+  // ⚠ No Discover query state here (V35). Searching a source belongs to the Sources tab — a
+  // search is something you do to a source, not a destination of its own — with
+  // `GET /v1/filler/discover` as the route behind it. An unused query that still fires is how a
+  // page keeps paying for a feature nobody can reach.
 
   const selection = useCatalogSelection(resultScope);
   // Paging (§10 V51d).
@@ -204,38 +192,54 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       {clipSplit.error != null && <ErrorState error={clipSplit.error} />}
       {clips.error != null && <ErrorState error={clips.error} onRetry={() => clips.refetch()} />}
 
       {parentHash ? (
-        <div className="border-border bg-card flex flex-wrap items-center gap-3 rounded-lg border p-3">
+        <Stack
+          align="center"
+          className="border-border bg-card rounded-lg border p-3"
+          direction="row"
+          gap="control"
+          wrap
+        >
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{parentName || "Compilation segments"}</p>
-            <p className="text-muted-foreground text-xs">Airable clips filed from this compilation.</p>
+            <Text as="p" textRole="cardLabel">
+              {parentName || "Compilation segments"}
+            </Text>
+            <Text as="p" textRole="hint" tone="secondary">
+              Airable clips filed from this compilation.
+            </Text>
           </div>
           <Action onPress={() => setFilters({ parent: undefined })} variant="outline">
             Back to top-level catalog
           </Action>
-        </div>
+        </Stack>
       ) : null}
 
       {taxon || unclassified || withoutAxis ? (
-        <div className="border-signal/30 bg-signal/5 flex flex-wrap items-center gap-3 rounded-lg border p-3">
-          <p className="min-w-0 flex-1 text-sm">
+        <Stack
+          align="center"
+          className="border-signal/30 bg-signal/5 rounded-lg border p-3"
+          direction="row"
+          gap="control"
+          wrap
+        >
+          <Text as="p" className="min-w-0 flex-1" textRole="compact">
             {unclassified
               ? "Showing clips with no directly assigned taxonomy tags"
               : withoutAxis
                 ? `Showing clips without a directly assigned ${withoutAxis} tag`
                 : `Showing clips matching “${taxon}”, including descendants`}
-          </p>
+          </Text>
           <Action
             onPress={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
             variant="ghost"
           >
             Clear taxonomy filter
           </Action>
-        </div>
+        </Stack>
       ) : null}
 
       {selection.selected.size > 0 && (
@@ -246,14 +250,13 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
           status line the way ingest does. Success NAVIGATES to the review route; only
           running/error render here. */}
       {splitJob && (
-        <p
-          role="status"
-          className={splitJob.status === "error" ? "text-onair-300 text-sm" : "text-muted-foreground text-sm"}
-        >
-          {splitJob.status === "error"
-            ? (splitJob.error ?? "Split detection failed.")
-            : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
-        </p>
+        <div role="status">
+          <Text as="p" textRole="compact" tone={splitJob.status === "error" ? "danger" : "secondary"}>
+            {splitJob.status === "error"
+              ? (splitJob.error ?? "Split detection failed.")
+              : `Detecting cuts in ${splitJob.clipName}… this can take a few minutes for a long compilation.`}
+          </Text>
+        </div>
       )}
 
       {/* ⚠ The "Synced: N added…" and "Tagged N of M…" result banners were here and went with
@@ -274,7 +277,9 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       />
 
       {rows === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading clips…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Loading clips…
+        </Text>
       ) : rows.length === 0 ? (
         <EmptyState
           title={filtered ? "No clips match" : "No clips yet"}
@@ -312,12 +317,12 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
         <>
           {/* The count line sits ABOVE the grid ("did my filter work?"), the pager BELOW
               ("what's next?") — never both in one place. */}
-          <div className="flex items-center gap-3">
-            <p className="text-muted-foreground text-sm">
+          <Stack align="center" direction="row" gap="control">
+            <Text as="p" textRole="compact" tone="secondary">
               {pageCount > 1
                 ? `Showing ${firstOnPage.toLocaleString()}–${lastOnPage.toLocaleString()} of ${total.toLocaleString()}`
                 : pluralize(total, "clip")}
-            </p>
+            </Text>
             {/* Select all (V35b, the mock's `catSelAll`). ⚠ It selects the FILTERED rows —
                 what is on screen — not the whole catalog. Selecting rows the operator
                 cannot see, then offering "Remove from catalog", is how a bulk action
@@ -336,7 +341,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                       : "Select all"}
               </Action>
             )}
-          </div>
+          </Stack>
           {view === "list" ? (
             <div className="border-border overflow-hidden rounded-lg border">
               {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
@@ -363,19 +368,27 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               catalog redesign's call to make; what this must not do is leave the clips past
               row 60 unreachable, which is what a page size with no pager would be. */}
           {pageCount > 1 && (
-            <nav aria-label="Catalog pages" className="flex items-center justify-between gap-3 pt-1">
+            <Stack
+              align="center"
+              aria-label="Catalog pages"
+              className="pt-1"
+              direction="row"
+              gap="control"
+              justify="between"
+              render="nav"
+            >
               <Action disabled={page <= 1} onPress={() => goToPage(page - 1)} variant="outline">
                 Previous
               </Action>
               {/* ⚠ `aria-live="polite"`: paging replaces the grid in place, and without an
                   announcement a screen-reader user gets a silently different list. */}
-              <p aria-live="polite" className="text-muted-foreground text-sm">
+              <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
                 Page {page.toLocaleString()} of {pageCount.toLocaleString()}
-              </p>
+              </Text>
               <Action disabled={page >= pageCount} onPress={() => goToPage(page + 1)} variant="outline">
                 Next
               </Action>
-            </nav>
+            </Stack>
           )}
         </>
       )}
@@ -401,7 +414,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
         finalFocus={detailTrigger}
         onClose={() => setInspecting(undefined)}
       />
-    </div>
+    </Stack>
   );
 };
 

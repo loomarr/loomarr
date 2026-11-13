@@ -289,6 +289,39 @@ describe("TasksPage", () => {
     expect(screen.getByText("1 task · 1 overdue")).toBeInTheDocument();
   });
 
+  it("marks a collapsed group holding an overdue task with the amber dot", async () => {
+    stubJobs([{ ...(jobs[0] as JobView), overdue: true }, jobs[1] as JobView]);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+
+    const acquisitions = (await screen.findByText("Acquisitions")).closest("button") as HTMLElement;
+    expect(acquisitions).toHaveAttribute("aria-expanded", "false");
+    expect(within(acquisitions).getByRole("img", { name: "Overdue" })).toBeInTheDocument();
+    const filler = screen.getByText("Filler").closest("button") as HTMLElement;
+    expect(within(filler).queryByRole("img", { name: "Overdue" })).not.toBeInTheDocument();
+  });
+
+  it("counts a task late past twice its interval, not one seconds late on its tick", async () => {
+    const secondsAgo = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    stubJobs([
+      { ...(jobs[0] as JobView), nextRun: secondsAgo(5), overdue: false },
+      { ...(jobs[1] as JobView), lastResult: "ok", nextRun: secondsAgo(3 * 3_600), overdue: true },
+    ]);
+    render(<TasksPage />, { wrapper: makeWrapper() });
+
+    const acquisitions = (await screen.findByText("Acquisitions")).closest("button") as HTMLElement;
+    expect(acquisitions).toHaveTextContent("1 task");
+    expect(acquisitions).not.toHaveTextContent("overdue");
+    expect(within(acquisitions).queryByRole("img", { name: "Overdue" })).not.toBeInTheDocument();
+    expect(screen.getByText("Filler").closest("button")).toHaveTextContent("1 task · 1 overdue");
+
+    // The row seconds late reads as due, neither overdue nor expired.
+    await expandGroup("Acquisitions");
+    const row = screen.getByText("Reconcile acquisitions").closest("tr") as HTMLElement;
+    expect(within(row).getByText("due now")).toBeInTheDocument();
+    expect(within(row).queryByText("Overdue")).not.toBeInTheDocument();
+    expect(within(row).queryByText("expired")).not.toBeInTheDocument();
+  });
+
   it("shows server and client initiated running states", async () => {
     stubJobs([{ ...(jobs[0] as JobView), running: true }]);
     render(<TasksPage />, { wrapper: makeWrapper() });

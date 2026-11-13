@@ -229,6 +229,9 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, speculative bool, viewer
 // fails or times out lists the baseline alone.
 const premiumLookupTimeout = 5 * time.Second
 
+// firstItemLookupTimeout bounds start's admission-pricing lookup of the item airing now.
+const firstItemLookupTimeout = 5 * time.Second
+
 // premiumTakerMemory is how long a viewer counts as taking the premium after its last premium
 // playlist request. Whether a client plays the premium is its device's capability, so the memory
 // spans the 1080p channels a surf passes between two premium ones; a viewer that stopped taking it
@@ -465,8 +468,13 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	// starts; a card slot or a failed lookup books SDR until a real item reclasses the lease.
 	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
 	// A premium packager is priced by its own class instead (premiumAdmission).
+	// The lookup runs while the Origin holds its lifecycle read lock, so it is bounded: a stuck
+	// store would otherwise wedge StopAll and Quiesce, and every tune queued behind them. A
+	// timeout is just a failed lookup, which already books SDR.
 	resolvedAt := time.Now()
-	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
+	lookupCtx, cancelLookup := context.WithTimeout(ctx, firstItemLookupTimeout)
+	first, ferr := m.source.ItemAt(lookupCtx, key.channel, resolvedAt)
+	cancelLookup()
 	req := AdmitRequest{Class: ClassSDR}
 	if key.format.isPremium() {
 		req = premiumAdmission

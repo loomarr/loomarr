@@ -39,6 +39,7 @@
       "../../scripts/with-loomarr-android-network.cjs",
       "../../scripts/with-loomarr-fonts.cjs",
       "../../scripts/with-tvos-render-scale.cjs",
+      "../../scripts/with-tv-media-keys.cjs",
       [
         "@react-native-tvos/config-tv",
         {

@@ -468,6 +468,90 @@ func TestFetch_ReadsInTheHouseholdLanguage(t *testing.T) {
 	}
 }
 
+// Outside English, a text TMDB has no translation for is filled from English and says so; a text
+// it has keeps the installation's language. English text never costs a second request.
+func TestFetch_FillsUntranslatedTextFromEnglish(t *testing.T) {
+	var mu sync.Mutex
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		language := r.URL.Query().Get("language")
+		mu.Lock()
+		asked = append(asked, r.URL.Path+" "+language)
+		mu.Unlock()
+		english := `{"translations":{"translations":[
+			{"iso_3166_1":"GB","iso_639_1":"en","data":{"overview":"British text.","tagline":"British line."}},
+			{"iso_3166_1":"US","iso_639_1":"en","data":{"overview":"A keeper's last winter.","tagline":"The light stays on."}}]}}`
+		switch r.URL.Path {
+		case "/movie/90000601": // no German text at all
+			_, _ = w.Write([]byte(`{"id":90000601,"title":"Leuchtturm","overview":"","tagline":"",` + english[1:]))
+		case "/movie/90000602": // German text of its own
+			_, _ = w.Write([]byte(`{"id":90000602,"title":"Ebbe","overview":"Ein Winter.","tagline":"Es bleibt.",` + english[1:]))
+		case "/tv/90000701/season/1":
+			second := `""`
+			if language == "en-US" {
+				second = `"The tide goes out."`
+			}
+			_, _ = w.Write([]byte(`{"season_number":1,"episodes":[
+				{"id":90000791,"episode_number":1,"name":"Erstes Licht","overview":"Es wird hell."},
+				{"id":90000792,"episode_number":2,"name":"Niedrigwasser","overview":` + second + `}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	german := provider.New(tmdbclient.NewWithBase(srv.URL, apiKey), func() (string, string) { return "de-DE", "US" })
+	ctx := context.Background()
+
+	rec, err := german.Fetch(ctx, movieRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := rec.Descriptive
+	if d.Overview != "A keeper's last winter." || d.OverviewLanguage != "en-US" ||
+		d.Tagline != "The light stays on." || d.TaglineLanguage != "en-US" || rec.Language != "de-DE" {
+		t.Errorf("untranslated film = %+v in %s, want the US English text, marked en-US", d, rec.Language)
+	}
+
+	rec, err = german.Fetch(ctx, ref(mp.KindMovie, mp.NamespaceTMDB, "90000602"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := rec.Descriptive; d.Overview != "Ein Winter." || d.OverviewLanguage != "" || d.Tagline != "Es bleibt." || d.TaglineLanguage != "" {
+		t.Errorf("translated film = %+v, want its German text, unmarked", d)
+	}
+
+	rec, err = german.Fetch(ctx, ref(mp.KindSeason, mp.NamespaceTMDB, "90000701/1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := rec.Children[0].Descriptive, rec.Children[1].Descriptive
+	if first.Overview != "Es wird hell." || first.OverviewLanguage != "" ||
+		second.Overview != "The tide goes out." || second.OverviewLanguage != "en-US" {
+		t.Errorf("episodes = %+v, %+v: want the German one kept and the empty one filled from English", first, second)
+	}
+
+	mu.Lock()
+	want := []string{"/movie/90000601 de-DE", "/movie/90000602 de-DE", "/tv/90000701/season/1 de-DE", "/tv/90000701/season/1 en-US"}
+	if !reflect.DeepEqual(asked, want) {
+		t.Errorf("requests = %q, want %q: a film's English text rides the detail call", asked, want)
+	}
+	asked = nil
+	mu.Unlock()
+
+	english := provider.New(tmdbclient.NewWithBase(srv.URL, apiKey), func() (string, string) { return "en-US", "US" })
+	if _, err := english.Fetch(ctx, ref(mp.KindSeason, mp.NamespaceTMDB, "90000701/1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := english.Fetch(ctx, movieRef); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 2 {
+		t.Errorf("requests = %q: in English there is nothing to fall back to", asked)
+	}
+}
+
 func TestFetch_RefusesWhatItCannotAnswer(t *testing.T) {
 	f := newFakeTMDB(t)
 	ctx := context.Background()

@@ -2,11 +2,14 @@ import { Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-s
 import { useState } from "react";
 import { Pressable } from "react-native";
 
-import { raised, webOnly } from "../flat";
+import { nativeFocus, raised, webOnly } from "../flat";
 
 // The first play in a session starts muted (§9.3), so a channel never blasts at someone who just
 // opened it. This pill says so and takes one tap to undo it. It is the player's only chrome that
 // stays up while the controls are hidden, and it goes when the sound is on.
+
+/** The pill's height: the chrome uses it to keep the pill clear of a top-left watermark. */
+const UNMUTE_PILL_HEIGHT = 40;
 
 const UnmutePill = ({ onPress }: { onPress: () => void }) => {
   const [hovered, setHovered] = useState(false);
@@ -24,7 +27,7 @@ const UnmutePill = ({ onPress }: { onPress: () => void }) => {
         borderRadius: 6,
         flexDirection: "row",
         gap: 8,
-        height: 40,
+        height: UNMUTE_PILL_HEIGHT,
         paddingHorizontal: 12,
         ...raised(),
         ...(hovered ? { backgroundColor: playerChrome.surfaceHover } : null),
@@ -35,6 +38,7 @@ const UnmutePill = ({ onPress }: { onPress: () => void }) => {
           outlineWidth: 2,
           transition: "background-color 120ms ease",
         }),
+        ...nativeFocus(focused),
       }}
     >
       <Icon color={playerChrome.text} decorative glyph={icons.volumeMuted} size="compact" />

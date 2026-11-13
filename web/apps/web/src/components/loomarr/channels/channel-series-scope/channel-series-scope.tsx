@@ -1,20 +1,18 @@
 import * as searchApi from "@loomarr/api/endpoints/search";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
 import type { ChannelSeriesScopeProps } from "./channel-series-scope.type";
 
 // ChannelSeriesScope — `policy.scope.series`, the "only these shows" narrowing (§2).
 //
-// ORPHANED until now, and the audit was right that a text box would be "a door in name only":
-// the field is `[]provision.Key` — RESOLVED ids, never names (schedule/policy.go:177) — so a
-// typed title could not become a valid entry. It needs a search-backed picker, which is why it
-// was filed as design work. In practice the design already exists: the lineup editor solved
-// the same problem, so this reuses its `keyOf` derivation and the shared SearchCommand.
+// A text box would be "a door in name only": the field is `[]provision.Key` — RESOLVED ids,
+// never names (schedule/policy.go:177) — so a typed title cannot become a valid entry. It needs
+// a search-backed picker, and the lineup editor solves the same problem, so this reuses its
+// `keyOf` derivation and the shared SearchCommand.
 
 // keyOf, narrowed to the SERIES branch of the lineup editor's derivation. scope.series
 // restricts to series, so a movie candidate can never produce a valid entry here.
@@ -57,23 +55,29 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
   };
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex items-center gap-1.5">
+    <Stack className={className} gap="inline">
+      <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these shows</Text>
         <FieldHelp label="Only these shows">
           Restrict the channel to specific series. Leave empty for no restriction. The lineup decides on its
           own.
         </FieldHelp>
-      </div>
+      </Stack>
 
       {series.length > 0 && (
-        <ul className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" render="ul" wrap>
           {series.map((key) => (
-            <li
+            <Stack
               key={key}
-              className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
+              align="center"
+              className="border-border bg-muted/40 rounded-md border px-2 py-1"
+              direction="row"
+              gap="1.5"
+              render="li"
             >
-              <span className="text-muted-foreground font-mono text-xs">{labelOfKey(key)}</span>
+              <Text as="span" textRole="mono">
+                {labelOfKey(key)}
+              </Text>
               <Action
                 compact
                 icon="close"
@@ -83,13 +87,13 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               >
                 {`Remove ${labelOfKey(key)}`}
               </Action>
-            </li>
+            </Stack>
           ))}
-        </ul>
+        </Stack>
       )}
 
       {adding ? (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <SearchCommand
             query={query}
             onQueryChange={setQuery}
@@ -131,7 +135,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
           >
             Cancel
           </Action>
-        </div>
+        </Stack>
       ) : (
         <Action
           icon="plus"
@@ -142,7 +146,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
           Add a show…
         </Action>
       )}
-    </div>
+    </Stack>
   );
 };
 

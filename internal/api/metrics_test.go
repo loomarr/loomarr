@@ -22,7 +22,7 @@ func newMetricsHarness(t *testing.T, token string) (*apiHarness, *strings.Builde
 	logs := &strings.Builder{}
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, MetricsToken: token,
+			Store: defaults.Store, Auth: defaults.Auth, Ops: api.OpsOptions{MetricsToken: token},
 		})
 	})
 	return h, logs
@@ -192,7 +192,7 @@ func TestRouterUsesItsGenerationRecorderForTrafficAndScrapes(t *testing.T) {
 		Version: "v9.8.7", Revision: "generation-a", Database: "postgres",
 	})
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Metrics: recorder, MetricsToken: scrapeToken,
+		Metrics: recorder, Ops: api.OpsOptions{MetricsToken: scrapeToken},
 	}))
 	t.Cleanup(srv.Close)
 

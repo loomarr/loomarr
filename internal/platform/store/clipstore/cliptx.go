@@ -213,6 +213,29 @@ func (c ClipTx) RestoreForRetry(ctx context.Context, hash string, at time.Time) 
 		true, epoch(at), hash)
 }
 
+// Pinned reports whether some channel pins the clip. On Postgres it locks the channel rows until
+// the transaction ends, so no pin can arrive between this answer and the caller's write.
+func (c ClipTx) Pinned(ctx context.Context, hash string) (bool, error) {
+	pinned, err := c.s.pinnedClipsTx(ctx, c.tx)
+	if err != nil {
+		return false, err
+	}
+	_, ok := pinned[hash]
+	return ok, nil
+}
+
+// Reap takes a held clip off the catalog for good before its files are deleted: removed, so
+// nothing airs it, and reaped, so a sync that no longer finds the file keeps the row, and no
+// restore or retry brings it back. Only a clip untouched since untouchedSince is reaped: a restore
+// or retry writes the row, and must win over a reap decided from an older reading. A composite, a
+// published clip, a recently changed one or an already reaped one is left alone and reports false.
+func (c ClipTx) Reap(ctx context.Context, hash string, untouchedSince, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET
+		removed_at = CASE WHEN removed_at = 0 THEN ? ELSE removed_at END, reaped_at = ?, updated_at = ?
+		WHERE hash = ? AND held = ? AND is_composite = ? AND reaped_at IS NULL AND updated_at <= ?`,
+		epoch(at), epoch(at), epoch(at), hash, true, false, epoch(untouchedSince))
+}
+
 // ClipPublication is what terminal readiness checks about a clip before publishing it.
 type ClipPublication struct {
 	Held, Removed, Composite bool

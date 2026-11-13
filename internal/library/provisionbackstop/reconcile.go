@@ -153,7 +153,15 @@ func (r *Reconciler) retryWanted(ctx context.Context, rec provision.Record, now 
 // now is the wall clock (for UpdatedAt); due-ness is proven by the claim.
 func (r *Reconciler) giveUp(ctx context.Context, lib LibraryLookup, rec provision.Record, now time.Time) {
 	// Missed-webhook re-check: maybe it landed and we never got the Import hook.
-	if id, present, err := lookup(ctx, lib, rec.Title); err == nil && present {
+	id, present, err := lookup(ctx, lib, rec.Title)
+	if err != nil {
+		// The library did not answer, so nothing is known about the title. It keeps its state
+		// and its request; the claim leased its deadline forward, so the next claim after the
+		// lease looks again.
+		r.log.Warn("reconcile: library check failed, the title is left for the next claim", "key", rec.Key, "err", err)
+		return
+	}
+	if present {
 		next, emitted := provision.Apply(rec, provision.Event{Kind: provision.LibraryConfirmed, LibraryID: id}, now)
 		r.persist(ctx, next, emitted)
 		return

@@ -187,7 +187,7 @@ describe("app router auth", () => {
   it("renders the protected screen when already authenticated", async () => {
     stubAuth(true);
     renderApp("/guide");
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
     // The shell owns one version query for every route; this proves the generated response reaches
     // the persistent frame, not only the isolated AppShell story.
     expect(await screen.findByRole("link", { name: "Loomarr dev — About" })).toHaveAttribute(
@@ -220,7 +220,7 @@ describe("app router auth", () => {
     await userEvent.type(screen.getByLabelText("Password"), "hunter2!");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
   });
 
   // A demo site (#2268) names its visitor account, so one press signs in with what the SERVER
@@ -239,7 +239,7 @@ describe("app router auth", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Sign in as guest" }));
 
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
     expect(logins).toEqual([{ username: "guest", password: "loomarr-guest" }]);
     expect(await screen.findByRole("region", { name: "Demo tour" })).toBeInTheDocument();
   });
@@ -273,7 +273,7 @@ describe("app router auth", () => {
     renderApp("/guide");
 
     await waitFor(() => expect(devLogins).toBe(1));
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
     expect(devLogins).toBe(1);
     expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
   });
@@ -363,7 +363,7 @@ describe("_authed guard distinguishes a failure from a logout", () => {
     expect(screen.getByText("Server is restarting")).toBeInTheDocument();
     failing = false;
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Guide" })).toBeInTheDocument();
     expect(screen.queryByText("Server is restarting")).not.toBeInTheDocument();
   });
 });

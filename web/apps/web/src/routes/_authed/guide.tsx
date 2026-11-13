@@ -4,23 +4,31 @@ import { GuidePage } from "@/channels/guide-page";
 import { defaultGuideWindow } from "@/channels/guide-window";
 import { legacyGuideOrigination } from "@/suggest/origination-flow";
 
-// The channels surface (§12) — headed "Channels", the cross-channel time grid. Readable by any
+// The channels surface (§12) — headed "Guide", the cross-channel time grid. Readable by any
 // authenticated user: the guide is viewer-facing, and GET /v1/guide is likewise not admin-gated.
 //
-// Channel origination used to live here, in this route's search params (`/guide?new=1`, `?job=`,
-// `?manual=1`, `?intent=`). It has its own route now (`/requests/new`), so an old URL of that kind
-// is sent there with its params, rather than opening a grid it no longer answers to.
+// Channel origination has its own route (`/requests/new`). A legacy origination URL on this route
+// (`/guide?new=1`, `?job=`, `?manual=1`, `?intent=`) is sent there with its params, rather than
+// opening a grid that does not answer to them.
 const GuideScreen = () => <GuidePage />;
 
 const Route = createFileRoute("/_authed/guide")({
   component: GuideScreen,
-  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads only `view`:
+  // The raw search stays raw, as a legacy URL is read in `beforeLoad`. The page reads `view`:
   // `?view=grid` is the full grid, and anything else the Now/Next list it opens on (#2787), so the
-  // grid survives a reload and a link can open it.
-  validateSearch: (search: Record<string, unknown>): Record<string, unknown> & { view?: "grid" } => ({
-    ...search,
-    view: search.view === "grid" ? "grid" : undefined,
-  }),
+  // grid survives a reload and a link can open it. `at` (epoch ms) and `channel` open the grid on
+  // that day and hour with that channel's programme selected: Home's Tonight rows link here (#2763).
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): Record<string, unknown> & { view?: "grid"; at?: number; channel?: string } => {
+    const at = Number(search.at);
+    return {
+      ...search,
+      view: search.view === "grid" ? "grid" : undefined,
+      at: search.at !== undefined && Number.isFinite(at) ? at : undefined,
+      channel: typeof search.channel === "string" && search.channel !== "" ? search.channel : undefined,
+    };
+  },
   beforeLoad: ({ search }) => {
     const origination = legacyGuideOrigination(search);
     if (origination) throw redirect({ to: "/requests/new", search: origination, replace: true });
@@ -33,17 +41,18 @@ const Route = createFileRoute("/_authed/guide")({
   // ['/v1/guide', {from, to}] with exact millisecond values, so an unquantised `from` would
   // differ between this loader and the component moments later — warming a key nobody reads.
   //
-  // ensureQueryData, not fetchQuery: a cached-and-fresh entry must be reused rather than
-  // refetched, or hovering the nav would re-request the guide on every pass of the pointer.
+  // prefetchQuery, not fetchQuery: a cached-and-fresh entry is reused rather than refetched, or
+  // hovering the nav would re-request the guide on every pass of the pointer.
   //
-  // NOT awaited, and deliberately so. Awaiting would make the route transition BLOCK on the
-  // request — trading a spinner inside the page for a stall on the nav click, which feels worse
-  // because nothing on screen acknowledges the press. The page's own `isLoading` still covers
-  // the case where the click beats the prefetch, and `retry: false` there keeps a failing guide
-  // from being retried twice over.
-  loader: ({ context: { queryClient } }) => {
+  // Awaited: the router keeps the page the viewer is on until the guide is here, and shows its
+  // pending view only past `defaultPendingMs` (main.tsx), so a click is never a spinner inside the
+  // page. A prefetch never rejects: the page owns a failed guide (its ErrorState and retry), so a
+  // failure mounts the page to say so rather than swapping in the router's error view. Its own
+  // `isLoading` stays for the case where it pins a window a minute later than this one, and
+  // `retry: false` there keeps a failing guide from being retried twice over.
+  loader: async ({ context: { queryClient } }) => {
     const { from, to } = defaultGuideWindow(Date.now());
-    void queryClient.ensureQueryData(channelsApi.getChannelGuideQueryOptions({ from, to }));
+    await queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions({ from, to }));
   },
 });
 

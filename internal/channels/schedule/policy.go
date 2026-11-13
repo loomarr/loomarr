@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/langcode"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 )
@@ -35,12 +36,14 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	Applied []AppliedRelaxation `json:"applied,omitempty"`
+	// The ladder descends at most maxLadderSteps (8) steps, so a channel never records more.
+	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
 	// revert it (§8.2). Bookkeeping only; rides policy_json, so it needs no migration.
-	OperatorSet []string `json:"operatorSet,omitempty"`
+	// There are five pinnable fields (scope, audience, separation, ordering, seasonal).
+	OperatorSet []string `json:"operatorSet,omitempty" maxItems:"5"`
 }
 
 // ProposalPolicy is the suggester-extracted half of ChannelPolicy (embedded, flattened).
@@ -56,7 +59,8 @@ type ProposalPolicy struct {
 	// seeds llm rules, the editor authors operator rules, and MergeFromProposal replaces
 	// only the llm rules — so refine-authored and hand-authored rules COMPOSE (§8.2).
 	// Every rule VALUE is grounded/clamped, evaluation is deterministic.
-	Rules []SchedulingRule `json:"rules,omitempty"`
+	// A household has a handful of rules (a weekend, a holiday, a daypart); 32 is far past that.
+	Rules []SchedulingRule `json:"rules,omitempty" maxItems:"32"`
 }
 
 // OperatorPolicy is the channel-page-edited half of ChannelPolicy (embedded, flattened).
@@ -248,14 +252,14 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range           `json:"era,omitempty"`        // year window; nil = inherit Scope.Dates at derivation.
-	EraWindows []Range          `json:"eraWindows,omitempty"` // explicit union; mutually exclusive with Era
-	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
-	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
-	Roles      []string         `json:"roles,omitempty"`      // empty = the default roles (all but political and news); else the chosen subset
-	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
-	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
-	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
+	Era        *Range           `json:"era,omitempty"`                                   // year window; nil = inherit Scope.Dates at derivation.
+	EraWindows []Range          `json:"eraWindows,omitempty" maxItems:"8"`               // explicit union; mutually exclusive with Era; validate rejects more than 8
+	Audience   string           `json:"audience,omitempty"`                              // "" = any; else kids|family|general|late_night
+	Categories []string         `json:"categories,omitempty" maxItems:"128"`             // empty = any; taxonomy slugs, seeded with 60 and operator-extensible
+	Roles      []string         `json:"roles,omitempty" maxItems:"8" uniqueItems:"true"` // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
+	Pinned     []string         `json:"pinned,omitempty" maxItems:"1000"`                // clip hashes always included (a top-priority pool); 1000 is the most one channel pins
+	Excluded   []string         `json:"excluded,omitempty" maxItems:"1000"`              // clip hashes never used (wins over Pinned); same ceiling as Pinned
+	Geography  *FillerGeography `json:"geography,omitempty"`                             // nil = inherit Installation geography
 	// Language is the channel's commercial language (#2030 decision 12): "" = the household's
 	// `filler.language`. Any ISO 639 form; it is independent of Playout.AudioLanguage, so an anime
 	// channel with Japanese audio keeps English commercials.
@@ -344,10 +348,15 @@ func (f *FillerSelection) validate() error {
 	if f.Audience != "" && !fillerAudiences[f.Audience] {
 		return fmt.Errorf("filler: unknown audience %q", f.Audience)
 	}
+	seenRole := make(map[string]bool, len(f.Roles))
 	for _, r := range f.Roles {
 		if !fillerRoles[r] {
 			return fmt.Errorf("filler: unknown role %q", r)
 		}
+		if seenRole[r] {
+			return fmt.Errorf("filler: role %q is listed more than once", r)
+		}
+		seenRole[r] = true
 	}
 	if f.Language != "" && !langcode.Valid(f.Language) {
 		return fmt.Errorf("filler: unknown language %q", f.Language)
@@ -406,12 +415,12 @@ func sameRanges(a, b []Range) bool {
 // Dates is the only date scope. The retired `era` field is still read as an alias on
 // decode (see UnmarshalJSON in datescope.go) and is never written.
 type ScopePolicy struct {
-	Series      []provision.Key `json:"series,omitempty"`      // restrict to these series (resolved ids)
-	Collections []string        `json:"collections,omitempty"` // media-server collections
-	Seasons     *Range          `json:"seasons,omitempty"`     // per-series season window
-	Dates       *DateScope      `json:"dates,omitempty"`       // separate movie, premiere, and episode-airing windows
-	Genres      GenreFilter     `json:"genres,omitempty"`      // include/exclude by genre name
-	RuntimeMax  int             `json:"runtimeMax,omitempty"`  // seconds; 0 = unbounded ("nothing over an hour")
+	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
+	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens
+	Seasons     *Range          `json:"seasons,omitempty"`                    // per-series season window
+	Dates       *DateScope      `json:"dates,omitempty"`                      // separate movie, premiere, and episode-airing windows
+	Genres      GenreFilter     `json:"genres,omitempty"`                     // include/exclude by genre name
+	RuntimeMax  int             `json:"runtimeMax,omitempty"`                 // seconds; 0 = unbounded ("nothing over an hour")
 
 	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
 	// policy decodes to their intersection; a request with both is ambiguous and the API
@@ -422,9 +431,10 @@ type ScopePolicy struct {
 // DateScope keeps date meanings separate: title metadata supplies movie release and
 // series premiere; resolved episodes supply series airing. Each list is a union.
 type DateScope struct {
-	MovieRelease   []Range `json:"movieRelease,omitempty"`
-	SeriesPremiere []Range `json:"seriesPremiere,omitempty"`
-	SeriesAiring   []Range `json:"seriesAiring,omitempty"`
+	// Each union holds at most 16 year ranges, twice a filler selection's eraWindows.
+	MovieRelease   []Range `json:"movieRelease,omitempty" maxItems:"16"`
+	SeriesPremiere []Range `json:"seriesPremiere,omitempty" maxItems:"16"`
+	SeriesAiring   []Range `json:"seriesAiring,omitempty" maxItems:"16"`
 }
 
 func (d *DateScope) empty() bool {
@@ -541,8 +551,9 @@ func upperBound(r Range) int {
 // GenreFilter is an include/exclude pair over genre names (§2). Include empty =
 // any genre allowed; Exclude always subtracts.
 type GenreFilter struct {
-	Include []string `json:"include,omitempty"`
-	Exclude []string `json:"exclude,omitempty"`
+	// TMDB names about forty genres across movies and series; 50 is every one of them.
+	Include []string `json:"include,omitempty" maxItems:"50"`
+	Exclude []string `json:"exclude,omitempty" maxItems:"50"`
 }
 
 // Range is an inclusive [From, To] window; 0 means unbounded on that end (§2).
@@ -585,9 +596,9 @@ type SeparationPolicy struct {
 
 // SeasonalPolicy controls holiday-aware programming (§6).
 type SeasonalPolicy struct {
-	Mode      SeasonalMode `json:"mode,omitempty"`      // off | auto | exclusive; "" = auto
-	Holidays  []string     `json:"holidays,omitempty"`  // subset of the built-in calendar ids
-	OffSeason OffSeason    `json:"offSeason,omitempty"` // exclusive-mode fallback; "" = loop
+	Mode      SeasonalMode `json:"mode,omitempty"`                   // off | auto | exclusive; "" = auto
+	Holidays  []string     `json:"holidays,omitempty" maxItems:"32"` // subset of the built-in calendar ids (15 ship; 32 leaves room for a custom calendar)
+	OffSeason OffSeason    `json:"offSeason,omitempty"`              // exclusive-mode fallback; "" = loop
 	// Strength and Placement shape the auto-mode feature of holiday EPISODES inside an
 	// ordinary series (§6 "Holiday episodes"). Both are "" = default enums, never a zero value
 	// that means something different from unset.
@@ -898,19 +909,122 @@ func orInt(v, def int) int {
 	return v
 }
 
+// ValidateWithHolidays is Validate plus the one check that needs the household's holiday
+// vocabulary: a rule's holiday id must be one it defines, exactly as written (the engine compares
+// ids as they are), because an unknown id is a rule that never fires. Writers that can reach the
+// vocabulary use this; Validate alone leaves holiday ids to the vocabulary-free callers.
+func (p ChannelPolicy) ValidateWithHolidays(v holidayvocab.Vocabulary) error {
+	return p.validateWith(&v, nil)
+}
+
+// ValidateEditOf is ValidateWithHolidays for an edit of a policy that is already stored. A rule the
+// edit leaves exactly as stored (same id and content) is not checked: the stored policy may hold
+// a rule an older writer allowed (a one-hour window written as 5 to 5, a pattern no hour of the week
+// satisfies), and refusing an unrelated edit for it would blame a change the operator never made.
+// Such a rule never fires, so leaving it costs nothing; a rule the edit adds or changes is held to
+// the same checks as a fresh write, and its error names it (RuleError). Every other field is
+// checked as usual.
+func (p ChannelPolicy) ValidateEditOf(stored ChannelPolicy, v holidayvocab.Vocabulary) error {
+	return p.validateWith(&v, stored.Rules)
+}
+
+// ValidateKeeping is Validate for a policy a writer built from the one already stored (an approved
+// proposal merged onto its channel): rules left exactly as stored are not re-checked, for the reason
+// ValidateEditOf gives, and a rule the writer added or changed is. It takes no holiday vocabulary,
+// so the holiday id is left to the writers that have one.
+func (p ChannelPolicy) ValidateKeeping(stored ChannelPolicy) error {
+	return p.validateWith(nil, stored.Rules)
+}
+
+// WithoutUnsatisfiableLLMRules drops the suggester's rules that could never fire (WhenPredicate.validate
+// refuses them): a stored proposal from before the lowering refused contradictory composites still
+// carries them. A rule that never fires changes nothing the channel airs, and an LLM rule is the
+// suggester's to replace, so removing one loses nothing; operator rules are never touched.
+func (p ChannelPolicy) WithoutUnsatisfiableLLMRules() ChannelPolicy {
+	kept := make([]SchedulingRule, 0, len(p.Rules))
+	for _, rule := range p.Rules {
+		if rule.Source.isLLM() && rule.When.validate() != nil {
+			continue
+		}
+		kept = append(kept, rule)
+	}
+	if len(kept) == len(p.Rules) {
+		return p
+	}
+	if len(kept) == 0 {
+		kept = nil // the zero value stays nil, as mergeRules keeps it (round-trip stability)
+	}
+	p.Rules = kept
+	return p
+}
+
+// RuleError is a policy validation failure in one rule, carrying which, so a caller can tell the
+// operator the rule rather than a generic policy complaint. Its text keeps the form
+// "channel policy: rule N: <reason>".
+type RuleError struct {
+	Index int // 1-based position in the policy's rules
+	ID    string
+	Label string
+	Err   error
+}
+
+func (e *RuleError) Error() string { return fmt.Sprintf("channel policy: rule %d: %v", e.Index, e.Err) }
+
+func (e *RuleError) Unwrap() error { return e.Err }
+
+// Describe is the failure in the operator's words: which rule, and why it cannot be saved.
+func (e *RuleError) Describe() string {
+	name := fmt.Sprintf("Rule %d", e.Index)
+	if label := strings.TrimSpace(e.Label); label != "" {
+		name += fmt.Sprintf(" (%s)", label)
+	}
+	return fmt.Sprintf("%s can never air: %v. Fix or remove it, then try again.", name, e.Err)
+}
+
+// sameStoredRule reports whether rule is, id and content, one of the stored rules (a rule saved
+// before ids existed has none, and matches a stored one that has none either). The comparison is on
+// the stored (JSON) form, not the Go value, so a time that decoded with a different location pointer
+// or a nil slice against an empty one is still the same rule.
+func sameStoredRule(rule SchedulingRule, stored []SchedulingRule) bool {
+	want, err := json.Marshal(rule)
+	if err != nil {
+		return false
+	}
+	for _, s := range stored {
+		if s.ID != rule.ID {
+			continue
+		}
+		if got, err := json.Marshal(s); err == nil && string(got) == string(want) {
+			return true
+		}
+	}
+	return false
+}
+
 // Validate rejects a policy with an unknown non-empty enum value or an unmappable
 // audience ceiling (grounding: the suggester must never emit a ceiling outside the
-// closed ladder). Empty/omitted fields are always valid (they resolve to defaults).
-func (p ChannelPolicy) Validate() error {
+// closed ladder), and a rule whose weekday or hour values name nothing or can never be
+// satisfied (WhenPredicate.validate).
+// Empty/omitted fields are always valid (they resolve to defaults).
+func (p ChannelPolicy) Validate() error { return p.validateWith(nil, nil) }
+
+// validateWith is Validate, plus the holiday check when v is given, with the rules in stored (an
+// edit's baseline) exempt from the per-rule checks.
+func (p ChannelPolicy) validateWith(v *holidayvocab.Vocabulary, stored []SchedulingRule) error {
 	if err := validateDates("channel policy: scope.dates", p.Scope.Dates); err != nil {
 		return err
 	}
-	for _, rule := range p.Rules {
-		if rule.What == nil {
+	for i, rule := range p.Rules {
+		if sameStoredRule(rule, stored) {
 			continue
 		}
-		if err := validateDates("channel policy: rule.what.dates", rule.What.Dates); err != nil {
-			return err
+		if err := rule.When.validate(); err != nil {
+			return &RuleError{Index: i + 1, ID: rule.ID, Label: rule.Label, Err: err}
+		}
+		if rule.What != nil {
+			if err := validateDates("channel policy: rule.what.dates", rule.What.Dates); err != nil {
+				return err
+			}
 		}
 	}
 	if !p.Ordering.valid() {
@@ -952,6 +1066,14 @@ func (p ChannelPolicy) Validate() error {
 		}
 		if p.AutoCurate.MaxTitles < 0 {
 			return fmt.Errorf("channel policy: autoCurate.maxTitles %d must not be negative", p.AutoCurate.MaxTitles)
+		}
+	}
+	if v != nil {
+		for i, rule := range p.Rules {
+			if id := rule.When.Holiday; id != "" && !sameStoredRule(rule, stored) && !knownHoliday(id, *v) {
+				return &RuleError{Index: i + 1, ID: rule.ID, Label: rule.Label,
+					Err: fmt.Errorf("holiday %q is not a holiday this household's calendar defines", id)}
+			}
 		}
 	}
 	return nil

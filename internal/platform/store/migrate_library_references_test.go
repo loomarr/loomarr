@@ -11,7 +11,7 @@ import (
 
 // libraryReferencesMigration makes the library items a title and an airing name foreign keys
 // (#2793).
-const libraryReferencesMigration = 221
+const libraryReferencesMigration = 235
 
 func TestLibraryReferencesMigration(t *testing.T) {
 	// Foreign keys on, as production opens SQLite.

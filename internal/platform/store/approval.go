@@ -313,9 +313,8 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("invalid channel: %w", err)
 	}
-	if err := ch.Policy.Validate(); err != nil {
-		return fmt.Errorf("invalid channel policy: %w", err)
-	}
+	// The policy is checked inside the transaction (validateApprovalBinding), against the policy the
+	// channel already stores: a rule an older writer allowed is kept, not re-judged.
 	if !ch.FromRequest {
 		return fmt.Errorf("channel %s was not made from a request", ch.ID)
 	}
@@ -334,10 +333,16 @@ func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.D
 			// reloads and replans, exactly as for a lost uniqueness race.
 			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
 		}
+		if err := ch.Policy.ValidateKeeping(bound.Policy); err != nil {
+			return fmt.Errorf("invalid channel policy: %w", err)
+		}
 		return nil
 	case errors.Is(err, ErrNotFound):
 		if ch.IntentRef != p.JobID {
 			return fmt.Errorf("new channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+		}
+		if err := ch.Policy.Validate(); err != nil {
+			return fmt.Errorf("invalid channel policy: %w", err)
 		}
 		return nil
 	default:

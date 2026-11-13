@@ -5,7 +5,14 @@ import type { CreateInvitationInputBody } from "@loomarr/api/models/createInvita
 import type { InvitationBody } from "@loomarr/api/models/invitationBody";
 import type { IssueInvitationGrantInputBodyConveyance } from "@loomarr/api/models/issueInvitationGrantInputBodyConveyance";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@loomarr/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Stack,
+} from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -128,12 +135,12 @@ const UsersPage = () => {
   const selected = rows?.find((user) => user.id === selectedId);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="People"
-        description="Who may sign in, what they may spend, and what they may approve. An account grants no access until you add it here: by importing a media-server account, or creating a local one."
+        description="Who can sign in, and what they can ask for."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <Stack direction="row" gap="inline" wrap>
             <InvitationDialog
               libraryAvailable={importAvailable}
               candidates={
@@ -175,11 +182,11 @@ const UsersPage = () => {
                 await Promise.all([invalidate(), candidates.refetch()]);
               }}
             />
-          </div>
+          </Stack>
         }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+      <Stack className="min-h-0 overflow-auto p-6" flexBasis="0%" flexGrow={1} gap="6">
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
         {invitations.error != null && (
@@ -266,8 +273,8 @@ const UsersPage = () => {
             </DialogContent>
           )}
         </Dialog>
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

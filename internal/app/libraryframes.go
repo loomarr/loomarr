@@ -20,6 +20,7 @@ const (
 type libraryFrames interface {
 	LibraryScanChanged(p scan.ProgressSnapshot)
 	LibraryTitlesChanged()
+	LibraryRootsChanged()
 }
 
 // libraryFramesFor is the Tracker that paces library_scan frames from what it records, and the

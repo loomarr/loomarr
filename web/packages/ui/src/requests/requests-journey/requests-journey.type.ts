@@ -16,6 +16,8 @@ type RequestsJourneyProps = {
   nowMs?: number;
   /** A finished request's channel, or the one an approval just built. The host owns navigation. */
   onOpenChannel: (channelId: string) => void;
+  /** The household's timezone, which dates are told in (the served Guide's); the device's while undefined. */
+  timeZone?: string;
 };
 
 export type { RequestsJourneyProps };

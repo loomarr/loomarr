@@ -3,8 +3,8 @@ import type { ContinueWatchingDTO } from "@loomarr/api/models/continueWatchingDT
 import { firstWatchableChannelId } from "@/channels/first-watchable-channel";
 
 /**
- * Decision X2 (#1817 item 3, #1659 Shell, maintainer-clarified 2026-10-03): Watch's target, now
- * that #1662/#1709's continue-watching exists. The caller's own last-tuned channel
+ * Decision X2 (#1817 item 3, #1659 Shell, maintainer-clarified 2026-10-03): Watch's target, using
+ * #1662/#1709's continue-watching. The caller's own last-tuned channel
  * (`continueWatching`, from `GET /v1/household/viewing`) wins when it still names a channel this
  * viewer can open; otherwise this falls back to `firstWatchableChannelId`'s lowest-numbered
  * playable channel — the state before anyone has tuned at all. `undefined` with no playable

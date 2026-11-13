@@ -14,9 +14,9 @@ import (
 // out of the titles and comes back in its place when it returns.
 func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	h := newHarness(t)
-	h.file("Alpha (1999) {tmdb-90000651}/Alpha.mkv", 10)
-	bravo := h.file("Bravo (2003) {tmdb-90000652}/Bravo.mkv", 10)
-	h.file("Charlie (2005) {tmdb-90000653}/Charlie.mkv", 10)
+	h.file("Alpha {tmdb-90000651}/Alpha.mkv", 10)
+	bravo := h.file("Bravo {tmdb-90000652}/Bravo.mkv", 10)
+	h.file("Charlie {tmdb-90000653}/Charlie.mkv", 10)
 	h.run()
 
 	lib := &Library{ItemStore: h.st, CollectionStore: h.st, Scanner: NewScanner(h.im, 0)}
@@ -73,7 +73,7 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	}
 
 	// It comes back in its place.
-	h.file("Bravo (2003) {tmdb-90000652}/Bravo.mkv", 10)
+	h.file("Bravo {tmdb-90000652}/Bravo.mkv", 10)
 	h.run()
 	if got := titles(); !slices.Equal(got, []string{"Charlie", "Bravo", "Alpha"}) {
 		t.Fatalf("titles after Bravo returned = %v, want Charlie, Bravo, Alpha", got)

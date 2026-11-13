@@ -10,7 +10,7 @@ import { forwardRef, useState } from "react";
 import { Pressable } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { semanticRadius, semanticSpace } from "../tokens";
 
 type ChoiceCardAccent = "info" | "suggest";

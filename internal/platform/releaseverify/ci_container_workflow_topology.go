@@ -37,7 +37,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-playwright.yml":          {jobs: map[string]int{"run": 10}},
 		"ci-postgres.yml":            {jobs: map[string]int{"run": 6}},
 		"ci-rust-contracts.yml":      {jobs: map[string]int{"run": 3}},
-		"ci-tuner.yml":               {jobs: map[string]int{"run": 10}},
+		"ci-tuner.yml":               {jobs: map[string]int{"run": 12}},
 		"ci-playout-bench.yml":       {jobs: map[string]int{"run": 9}},
 		"playout-bench.yml":          {jobs: map[string]int{"macos": 6, "gpu-t4": 9, "arc": 4, "geforce": 4, "coverage": 2}},
 		"codeql.yml": {jobs: map[string]int{
@@ -55,7 +55,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"merge-gate-cache.yml":        {jobs: map[string]int{"run": 7}},
 		"curated-sources.yml":         {jobs: map[string]int{"check": 2}},
 		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
-		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
+		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3, "library-scale": 3}},
 		"ffmpeg-pin-refresh.yml":      {jobs: map[string]int{"refresh": 3}},
 		"image-benchmark.yml":         {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":                   {jobs: map[string]int{"build": 5, "deploy": 1}},

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"slices"
 	"testing"
 
@@ -11,7 +10,8 @@ import (
 )
 
 func TestDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "feedback-orphans.db"))
+	t.Parallel()
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 71, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

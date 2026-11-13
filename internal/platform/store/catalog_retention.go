@@ -59,7 +59,10 @@ func (s *sqlStore) PurgeSpentCatalog(ctx context.Context, now time.Time) (int, e
 		if err != nil {
 			return fmt.Errorf("purge spent %s: %w", what, err)
 		}
-		n, _ := res.RowsAffected()
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("purge spent %s: count: %w", what, err)
+		}
 		total += int(n)
 		return nil
 	}

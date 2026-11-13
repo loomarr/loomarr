@@ -16,8 +16,8 @@ import { useAuth } from "@/auth/use-auth";
 // handful of help pages, and a clip search the store already indexes.
 
 // How many clip hits the palette shows. ⚠ ONE constant for the fetch AND the render (§10 V51d):
-// the slice used to be the only cap, with the request unbounded, and a limit that disagreed with
-// the slice would either drop hits or fetch rows nobody sees.
+// the request is bounded, not only the slice, and a limit that disagreed with the slice would
+// either drop hits or fetch rows nobody sees.
 const CLIP_RESULTS = 6;
 
 const diagnosticPaletteResult = (query: string, isAdmin: boolean): SearchResult | undefined => {
@@ -40,9 +40,9 @@ const usePaletteResults = (query: string) => {
   // Clips live on the filler endpoint, which returns real ClipDTOs — so a palette hit
   // carries a Tunarr program id and can deep-link, which a title-shaped result could not.
   // ⚠ `limit: CLIP_RESULTS` matches EXACTLY what the palette renders — the same constant caps the
-  // slice below, so the two cannot drift. This was an UNBOUNDED catalog read feeding a list of six
-  // rows — the whole clip corpus fetched and discarded on every keystroke. The default page (100)
-  // would have hidden the waste rather than fixed it; asking for what is shown is the fix (§10 V51d).
+  // slice below, so the two cannot drift. An unbounded catalog read feeding a list of six rows
+  // fetches and discards the whole clip corpus on every keystroke, and the default page (100) would
+  // only hide that waste; asking for what is shown avoids it (§10 V51d).
   const clips = fillerApi.useListFiller({ q: query, limit: CLIP_RESULTS }, { query: { enabled } });
   // Channels and help are small, fully-loaded lists: filtered in memory rather than
   // asking the server for a substring match it has no index for.

@@ -18,7 +18,7 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Chip, Icon, icons, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, Chip, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -90,9 +90,15 @@ const SortableLineupRow = ({
   onSeasonChange?: (patch: { seasonMin?: number; seasonMax?: number }) => void;
   feedback?: ReactNode;
 }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: entry.key,
-  });
+  const {
+    // The Action is already a focusable button, so dnd-kit's own role and tabIndex are left behind.
+    attributes: { role: _role, tabIndex: _tabIndex, ...attributes },
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: entry.key });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -124,9 +130,9 @@ const SortableLineupRow = ({
   // what decides it is the column the editor sits in, not the viewport) the row becomes a grid:
   // grip and title on top, the seasons under the title, the feedback controls, then remove on its
   // own line at the right with a 44 px target. Every piece auto-places in DOM order, so what you
-  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899; remove used to
-  // sit top right, beside the title, while still being last in Tab order). From `@md` up the
-  // wrappers below dissolve (`contents`) or turn back into the one flex line this row always was.
+  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899: remove is last
+  // in Tab order, so it is never drawn top right beside the title). From `@md` up the
+  // wrappers below dissolve (`contents`) so the row is one flex line.
   return (
     <li
       ref={setNodeRef}
@@ -136,35 +142,45 @@ const SortableLineupRow = ({
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
-      <button
-        type="button"
+      <Action
         {...attributes}
         {...listeners}
+        compact
         disabled={disabled}
-        aria-label={`Reorder ${entry.name}`}
-        className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+        icon="dragHandle"
+        layout="icon"
+        style={{ flexShrink: 0 }}
+        variant="ghost"
       >
-        <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
-      </button>
+        {`Reorder ${entry.name}`}
+      </Action>
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="truncate text-sm font-medium">{entry.name}</span>
-          {entry.year ? <span className="text-static-400 font-mono text-xs">{entry.year}</span> : null}
+        <Stack align="center" className="min-w-0" direction="row" gap="inline" wrap>
+          <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
+            {entry.name}
+          </Text>
+          {entry.year ? (
+            <Text as="span" textRole="mono" tone="secondary">
+              {entry.year}
+            </Text>
+          ) : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
-        </div>
+        </Stack>
         {isSeries && onSeasonChange && (
-          <div className="col-[2/-1] flex flex-wrap items-center gap-1.5 @md:mt-1.5">
-            <span className="text-muted-foreground text-xs">Seasons</span>
+          <Stack align="center" className="col-[2/-1] @md:mt-1.5" direction="row" gap="1.5" wrap>
+            <Text as="span" textRole="hint" tone="secondary">
+              Seasons
+            </Text>
             {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
-            <span className="flex items-center gap-1.5">
+            <Stack align="center" direction="row" gap="1.5" render="span">
               {seasonInput("seasonMin", entry.seasonMin, "1")}
-              <span className="text-muted-foreground text-xs" aria-hidden>
+              <Text aria-hidden as="span" textRole="hint" tone="secondary">
                 –
-              </span>
+              </Text>
               {seasonInput("seasonMax", entry.seasonMax, "latest")}
-            </span>
-          </div>
+            </Stack>
+          </Stack>
         )}
       </div>
 
@@ -269,12 +285,14 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   };
 
   return (
-    <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
+    <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
       <div>
-        <h2 className="text-lg font-semibold">Lineup</h2>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h2" strong textRole="headline">
+          Lineup
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           Add, remove, and reorder the titles this channel plays. Changes save immediately.
-        </p>
+        </Text>
       </div>
 
       {feedback.error && <ErrorState error={feedback.error} onRetry={feedback.retry} className="p-4" />}
@@ -283,7 +301,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           auto-curate appends, so the default play order shows the oldest picks first and hides
           everything added since. */}
       {entries.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.75">
+        <Stack align="center" direction="row" gap="1.75" wrap>
           {/* The same toolbar label voice as the guide's "Start at". */}
           <Text as="span" textRole="metadata">
             Show
@@ -299,14 +317,23 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
               {label}
             </Chip>
           ))}
-          {!dragEnabled && <span className="text-2xs text-static-400">Switch to Play order to reorder</span>}
-        </div>
+          {!dragEnabled && (
+            <Text as="span" textRole="hint" tone="secondary">
+              Switch to Play order to reorder
+            </Text>
+          )}
+        </Stack>
       )}
 
       {entries.length === 0 ? (
-        <p className="border-border text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm">
+        <Text
+          as="p"
+          className="border-border rounded-md border border-dashed px-3 py-6 text-center"
+          textRole="compact"
+          tone="secondary"
+        >
           Nothing in the lineup yet. Add a title below.
-        </p>
+        </Text>
       ) : (
         <>
           {/* The rows' Keep / Less / Never / Surprise share one note here, not one per row (#2744). */}
@@ -320,7 +347,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-              <ul className="scroll-thin @container flex max-h-128 flex-col gap-2 overflow-y-auto">
+              <Stack className="scroll-thin @container max-h-128 overflow-y-auto" gap="inline" render="ul">
                 {shown.map((entry) => (
                   <SortableLineupRow
                     key={entry.key}
@@ -342,14 +369,14 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
                     }
                   />
                 ))}
-              </ul>
+              </Stack>
             </SortableContext>
           </DndContext>
         </>
       )}
 
       {adding ? (
-        <div className="flex flex-col gap-2">
+        <Stack gap="inline">
           <SearchCommand
             query={query}
             onQueryChange={setQuery}
@@ -397,7 +424,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           <Action onPress={closeAdd} style={{ alignSelf: "flex-start" }} variant="ghost">
             Cancel
           </Action>
-        </div>
+        </Stack>
       ) : (
         <Action
           icon="plus"
@@ -408,7 +435,7 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
           Add a title…
         </Action>
       )}
-    </section>
+    </Stack>
   );
 };
 
