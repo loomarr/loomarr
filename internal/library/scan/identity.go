@@ -1726,9 +1726,9 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		if m == nil {
 			m = animeNumber.FindStringSubmatch(bare)
 		}
-		// A year after a padded dashed number is the release's, "[Grp] Kaze Tori - 03 (2019)": a film
-		// is never numbered so.
-		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && !strings.HasPrefix(m[2], "0")) {
+		// A year after a dashed number of two digits or more is the release's, "[Grp] Kaze Tori - 03
+		// (2019)", "- 12 (2019)", "- 112 (2019)": a film is never numbered so.
+		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && len(m[2]) < 2) {
 			m = nil
 		}
 		if m != nil && (tagged || m[2] != "" || grouped && strings.HasPrefix(m[3], "0")) && !yearToken.MatchString(matched(m[2], m[3])) {
@@ -2381,15 +2381,17 @@ func looseYears(names []string) map[string]int {
 	return years
 }
 
-// seasonsApart says whether a show's seasons kept without its year are no run of those kept with
-// it: one more than a season before or after them. "S01" beside "S02 (2016)" run on as one show's;
-// "S06" beside "S01 (2019)" are an original's and its remake's.
+// seasonsApart says whether a show's seasons kept without its year are an original's and those kept
+// with it a remake's: the dated ones start again at season 1 while the yearless ones run on past
+// them. "S06" beside "S01 (2019)" are two shows'; "S01" beside "S02 (2016)" or "S03 (2016)" are
+// one show's, missing a season or not, and a show's specials (season 0) say nothing either way.
 func seasonsApart(yearless, dated []int) bool {
+	yearless = slices.DeleteFunc(slices.Clone(yearless), func(s int) bool { return s == 0 })
+	dated = slices.DeleteFunc(slices.Clone(dated), func(s int) bool { return s == 0 })
 	if len(yearless) == 0 || len(dated) == 0 {
 		return false
 	}
-	lo, hi := slices.Min(dated), slices.Max(dated)
-	return slices.ContainsFunc(yearless, func(s int) bool { return s < lo-1 || s > hi+1 })
+	return slices.Min(dated) == 1 && slices.Min(yearless) > slices.Max(dated)+1
 }
 
 // leadingEpisodes says whether a folder's videos are a show's numbered by their place alone: two or

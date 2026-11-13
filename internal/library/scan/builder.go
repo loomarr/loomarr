@@ -136,7 +136,10 @@ type identity struct {
 	embedded mp.Record
 	// seriesDir is an episode's series folder, relative to the root.
 	seriesDir string
-	digest    string
+	// named is the show an episode's file name gives before its mark, "" for none: "Brindle
+	// Point" of "Brindle Point S01E01.mkv".
+	named  string
+	digest string
 }
 
 // airDate is the day the file's name says its episode aired, for one named by it rather than by
@@ -222,6 +225,7 @@ func (b *builder) identify(file File) identity {
 		}
 		if own := looseSeries(path.Base(file.Rel)); own != "" {
 			s.named[normName(own)]++
+			id.named = own
 		}
 		if year := showYearIn(path.Base(file.Rel)); year > 0 {
 			s.years[year]++

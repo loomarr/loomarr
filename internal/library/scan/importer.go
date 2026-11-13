@@ -672,6 +672,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			ids[i] = b.identify(file)
 		}
 	}
+	b.splitNamed(ids, others)
 	b.settleFolders(ids, others)
 	b.joinShows(ids, others)
 	// The walk is over; the writes below are the other half of step 1, and can take as long.
