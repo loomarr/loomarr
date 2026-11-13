@@ -4,7 +4,7 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, Chip, CompactSelect, Stack, Text, Toggle } from "@loomarr/design-system";
+import { Action, Chip, CompactSelect, InlineAction, Stack, Text, Toggle } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YEAR_MAX, YEAR_MIN, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
@@ -184,13 +184,9 @@ const FillerCriteria = ({
             {installationGeography?.country
               ? `Following this installation (${installationGeography.country}${installationPlaceLabel ? ` · ${installationPlaceLabel}` : ""}).`
               : "No installation geography is configured; legacy unrestricted matching remains active."}{" "}
-            <button
-              type="button"
-              className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
-              // Inline 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-              data-touch-target
+            <InlineAction
               disabled={disabled}
-              onClick={() =>
+              onPress={() =>
                 onChange({
                   ...selection,
                   // The place stays empty, so the channel keeps following the installation's.
@@ -199,7 +195,7 @@ const FillerCriteria = ({
               }
             >
               Set for this channel
-            </button>
+            </InlineAction>
           </Text>
         ) : (
           <>
@@ -246,17 +242,15 @@ const FillerCriteria = ({
             </Stack>
             <Text as="p" textRole="hint" tone="secondary">
               A blank place follows the installation's city; with no city, only national filler airs.{" "}
-              <button
-                type="button"
-                className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+              <InlineAction
                 disabled={disabled}
-                onClick={() => {
+                onPress={() => {
                   const { geography: _dropped, ...rest } = selection;
                   onChange(rest);
                 }}
               >
                 Follow installation geography
-              </button>
+              </InlineAction>
             </Text>
           </>
         )}
@@ -272,33 +266,29 @@ const FillerCriteria = ({
         {inheriting && scopeLabel && (
           <Text as="p" data-testid="era-inherited" textRole="hint" tone="secondary">
             Following the channel&rsquo;s era ({scopeLabel}).{" "}
-            <button
-              type="button"
-              className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+            <InlineAction
               disabled={disabled}
-              onClick={() => {
+              onPress={() => {
                 const { eraWindows: _windows, ...rest } = selection;
                 onChange({ ...rest, era: {} });
               }}
             >
               Use any era
-            </button>
+            </InlineAction>
           </Text>
         )}
         {explicitlyAny && scopeLabel && (
           <Text as="p" data-testid="era-any" textRole="hint" tone="secondary">
             Any era.{" "}
-            <button
-              type="button"
-              className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+            <InlineAction
               disabled={disabled}
-              onClick={() => {
+              onPress={() => {
                 const { era: _era, eraWindows: _windows, ...rest } = selection;
                 onChange(rest);
               }}
             >
               Follow the channel&rsquo;s era ({scopeLabel})
-            </button>
+            </InlineAction>
           </Text>
         )}
         {eraWindows !== undefined ? (
