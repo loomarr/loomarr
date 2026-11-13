@@ -6,7 +6,7 @@ Where the outside world comes in. The api package is Loomarr's HTTP surface, and
 
 One area of the [package map](../package-map.md#start-here).
 
-**Imports from other areas:** any, by design — platform (93), filler (58), library (32), channels (23), proposals (19), media (18), playout (17), people (13)
+**Imports from other areas:** any, by design — platform (94), filler (58), library (32), channels (23), proposals (19), media (18), playout (17), people (13)
 
 ## Packages
 
@@ -14,7 +14,7 @@ One area of the [package map](../package-map.md#start-here).
   Wires Loomarr's inbound HTTP surface (§7).
 - **`api/catalog`** · 2 importers · → `api/httpcore`, `channels/schedule`, `library/provision`, `platform/settings`, `platform/store`
   Serves the title catalog: the provisioning titles under /v1/titles and the federated catalog search under /v1/search.
-- **`api/channels`** · 3 importers · → `api/httpcore`, `channels/edit`, `channels/ideas`, `channels/schedule`, `channels/viewing`, `filler/location`, `filler/pod`, `library/provision`, `media/images`, `platform/activity`, `platform/settings`, `platform/store`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`
+- **`api/channels`** · 3 importers · → `api/httpcore`, `channels/edit`, `channels/ideas`, `channels/schedule`, `channels/viewing`, `filler/location`, `filler/pod`, `library/provision`, `media/images`, `platform/activity`, `platform/holidayvocab`, `platform/settings`, `platform/store`, `platform/store/channeldatastore`, `platform/store/channelstore`, `platform/store/identitystore`, `platform/store/proposalstore`, `proposals`, `proposals/suggest`
   Serves the channel resource under /v1/channels: list, get, create, edit, refine, reconcile and delete, its icon, logo and watermark art, and the viewer-facing channel routes (Home's channel ideas, favourite and recent channels, and household viewing).
 - **`api/filler`** · 2 importers · → `api/httpcore`, `filler`, `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/defectfloor`, `filler/enrichment`, `filler/language`, `filler/location`, `filler/operator`, `filler/pipelinestate`, `filler/pod`, `filler/records`, `filler/research`, `filler/source`, `filler/split`, `filler/station`, `filler/taxonomy`, `media/defects`, `platform/settings`, `platform/store`, `platform/store/clipstore`
   Serves the filler routes under /v1/filler: the clip catalog and its edits, the Incoming queue, readiness and pool health, the pull approval queue, the header's watch status, clip-detail research status and the defect floor report.

@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/edit"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -286,7 +287,7 @@ func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*
 		return nil, err
 	}
 	fresh, err := s.channelEdits().Edit(ctx, editBackend(checkpoint), in.ID, in.Body.Revision, func(ch *channelstore.Channel) error {
-		return applyChannelPatch(ch, in)
+		return applyChannelPatch(ch, in, s.holidayCalendar().Vocab())
 	})
 	if err != nil {
 		return nil, channelEditProblem(err)
@@ -296,7 +297,7 @@ func (s *Handlers) updateChannel(ctx context.Context, in *updateChannelInput) (*
 
 // applyChannelPatch applies a PATCH body's fields. The edit rules around it (number check,
 // `building` signal, deadline, revision, reconcile) are channeledit's.
-func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
+func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput, holidays holidayvocab.Vocabulary) error {
 	if in.Body.Name != nil {
 		ch.Name = strings.TrimSpace(*in.Body.Name)
 	}
@@ -326,7 +327,7 @@ func applyChannelPatch(ch *channelstore.Channel, in *updateChannelInput) error {
 			return httpcore.AmbiguousDatesError(err)
 		}
 		next := ch.Policy.MergeFromOperator(*in.Body.Policy)
-		if verr := next.Validate(); verr != nil {
+		if verr := next.ValidateWithHolidays(holidays); verr != nil {
 			return httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", verr)
 		}

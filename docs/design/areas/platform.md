@@ -33,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`platform/events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`platform/holidayvocab`** · 11 importers · → `platform/textmatch`
+- **`platform/holidayvocab`** · 12 importers · → `platform/textmatch`
   Owns Loomarr's holiday definitions — what each holiday is called, the words that show a title is about it, and when each country keeps it — and the judgment of whether a title or episode is about one (programming-design §6, #2030).
 - **`platform/housekeeping`** · 1 importer · → `people/access`, `people/notifications`, `platform/diagnostics`, `platform/jobs`, `platform/settings`
   Owns the scheduled purges that keep the accumulating tables bounded (§5, §18.1): finished jobs, denied proposals, and old activity/notification rows.
