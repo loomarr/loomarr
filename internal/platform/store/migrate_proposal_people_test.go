@@ -9,7 +9,7 @@ import (
 
 // proposalPeopleMigration makes the people on a suggestion foreign keys to users and moves the
 // grant's decisions to decided_via (#2793).
-const proposalPeopleMigration = 215
+const proposalPeopleMigration = 232
 
 func TestProposalPeopleMigration(t *testing.T) {
 	// Foreign keys on, as production opens SQLite.
