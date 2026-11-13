@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { ErrorDetails } from "./error-details";
 
 describe("ErrorDetails", () => {
@@ -19,7 +20,7 @@ describe("ErrorDetails", () => {
   // waits for an element and a null-rendering story times out (V13 hit exactly that).
   it("renders nothing without a message", () => {
     const { container } = render(<ErrorDetails />);
-    expect(container).toBeEmptyDOMElement();
+    expect(container.querySelector("details")).toBeNull();
   });
 
   it("takes custom labels", async () => {

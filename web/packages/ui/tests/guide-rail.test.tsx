@@ -119,17 +119,17 @@ describe("the rail's decade bar (#2767)", () => {
 });
 
 describe("the guide's channel rail (#2745)", () => {
-  it("scales with the viewport between 200 and 280 points", () => {
-    expect(railWidths(1024)).toContain(200);
-    expect(railWidths(1468)).toContain(264);
-    expect(railWidths(2560)).toContain(280);
+  it("scales with the viewport between 200 and 300 points", () => {
+    expect(railWidths(900)).toContain(200);
+    expect(railWidths(1280)).toContain(256);
+    expect(railWidths(2560)).toContain(300);
     expect(railWidths(1468)).not.toContain(196);
   });
 
   it("does the same in the web grid, which had a fixed 260", () => {
-    expect(gridRailWidths(1024)).toContain(200);
-    expect(gridRailWidths(1468)).toContain(264);
-    expect(gridRailWidths(1468)).not.toContain(260);
-    expect(gridRailWidths(2560)).toContain(280);
+    expect(gridRailWidths(900)).toContain(200);
+    expect(gridRailWidths(1280)).toContain(256);
+    expect(gridRailWidths(1280)).not.toContain(260);
+    expect(gridRailWidths(2560)).toContain(300);
   });
 });

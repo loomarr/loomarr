@@ -432,10 +432,11 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			permissions: map[string]string{"contents": "read", "issues": "read"},
 			jobs: map[string]workflowJobAuthority{
 				"run": {steps: map[string]workflowStepAuthority{
-					"make fe-install":           exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-					"make tuner-quarantine":     exactWorkflowStep(5, "Resolve the flake quarantine", workflowStepAuthority{targets: []string{"tuner-quarantine"}, environment: map[string]string{"GH_TOKEN": "${{ github.token }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
-					"make tuner-e2e-host":       exactWorkflowStep(6, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
-					"make tuner-e2e-quarantine": exactWorkflowStep(8, "Quarantined tests (non-blocking)", workflowStepAuthority{targets: []string{"tuner-e2e-quarantine"}, condition: "inputs.quarantine == 'exclude'", nonBlocking: true}),
+					"make fe-install":            exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+					"make tuner-quarantine":      exactWorkflowStep(5, "Resolve the flake quarantine", workflowStepAuthority{targets: []string{"tuner-quarantine"}, environment: map[string]string{"GH_TOKEN": "${{ github.token }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
+					"make tuner-e2e-host":        exactWorkflowStep(6, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
+					"make tuner-e2e-quarantine":  exactWorkflowStep(8, "Quarantined tests (non-blocking)", workflowStepAuthority{targets: []string{"tuner-e2e-quarantine"}, condition: "inputs.quarantine == 'exclude'", nonBlocking: true}),
+					"make route-timing-e2e-host": exactWorkflowStep(10, "Route timing budgets (Chromium)", workflowStepAuthority{targets: []string{"route-timing-e2e-host"}}),
 				}},
 			},
 		},
@@ -643,6 +644,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			jobs: map[string]workflowJobAuthority{
 				"vulnerabilities": {steps: map[string]workflowStepAuthority{
 					"make vuln": exactWorkflowStep(2, "Scan the code that ships", workflowStepAuthority{targets: []string{"vuln"}}),
+				}},
+				"library-scale": {steps: map[string]workflowStepAuthority{
+					"make scan-scale": exactWorkflowStep(2, "Scan a 33k-file library", workflowStepAuthority{targets: []string{"scan-scale"}}),
 				}},
 			},
 		},

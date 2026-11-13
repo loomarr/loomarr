@@ -2,7 +2,7 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Rating } from "@loomarr/api/models/rating";
 import type { SeasonNotKept } from "@loomarr/api/models/seasonNotKept";
-import { Action, Badge, Card, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
@@ -65,9 +65,22 @@ const PickRow = ({
 }) => {
   const window = seasonWindowLabel(item.seasonMin, item.seasonMax);
   return (
-    <li className="border-border bg-card flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
-      <span className="font-medium">{item.name}</span>
-      {item.year ? <span className="text-static-400 font-mono text-xs">{item.year}</span> : null}
+    <Stack
+      align="center"
+      className="border-border bg-card rounded-md border px-2.5 py-1.5"
+      direction="row"
+      gap="inline"
+      render="li"
+      wrap
+    >
+      <Text as="span" textRole="cardLabel">
+        {item.name}
+      </Text>
+      {item.year ? (
+        <Text as="span" textRole="mono" tone="secondary">
+          {item.year}
+        </Text>
+      ) : null}
       <Badge shape="square" tone={kind === "lineup" ? "lock" : "tune"}>
         {kind === "lineup" ? "In library" : "Will acquire"}
       </Badge>
@@ -82,7 +95,7 @@ const PickRow = ({
         </Badge>
       )}
       {renderFeedback && <div className="ml-auto">{renderFeedback(item)}</div>}
-    </li>
+    </Stack>
   );
 };
 
@@ -133,10 +146,16 @@ const ApprovalQueueItem = ({
   return (
     <Card gap={12} {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}>
       {/* On a phone the actions go under the pitch; beside it they left it a word per line (#1785). */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+      <Stack
+        align={{ base: "stretch", sm: "start" }}
+        direction={{ base: "column", sm: "row" }}
+        gap={{ base: "3", sm: "4" }}
+      >
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{title}</p>
+          <Stack align="center" direction="row" gap="inline" wrap>
+            <Text as="p" textRole="cardLabel">
+              {title}
+            </Text>
             {typeof acquisitions === "number" && acquisitions > 0 && (
               <Badge shape="square" tone="tune">{`${acquisitions} to acquire`}</Badge>
             )}
@@ -151,16 +170,29 @@ const ApprovalQueueItem = ({
                 Denied
               </Badge>
             )}
-          </div>
-          {summary && <p className="text-muted-foreground mt-1 text-sm">{summary}</p>}
-          {requestedBy && (
-            <p className="text-static-400 mt-1 font-mono text-xs">{`Requested by ${requestedBy}`}</p>
+          </Stack>
+          {summary && (
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              {summary}
+            </Text>
           )}
-          {denied && denyReason && <p className="text-onair-300 mt-1 text-sm">{denyReason}</p>}
+          {requestedBy && (
+            <Text
+              as="p"
+              className="mt-1"
+              textRole="mono"
+              tone="secondary"
+            >{`Requested by ${requestedBy}`}</Text>
+          )}
+          {denied && denyReason && (
+            <Text as="p" className="mt-1" textRole="compact" tone="danger">
+              {denyReason}
+            </Text>
+          )}
         </div>
 
         {!denied && !denying && (
-          <div className="flex shrink-0 gap-2">
+          <Stack direction="row" flexShrink={0} gap="inline">
             <Action disabled={busy} icon="close" onPress={() => setDenying(true)} variant="outline">
               Deny
             </Action>
@@ -173,9 +205,9 @@ const ApprovalQueueItem = ({
             >
               Approve
             </Action>
-          </div>
+          </Stack>
         )}
-      </div>
+      </Stack>
 
       {/* ⚠ On the row, not in a page-level banner (#1430): a failed approve/deny belongs beside
           the card it failed for, not somewhere a reviewer scanning other rows has to go find. */}
@@ -185,13 +217,15 @@ const ApprovalQueueItem = ({
           requiring one would turn every decline into a chore — but offering it is what
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
-        <form
-          className="border-border flex flex-col gap-2 border-t pt-2"
+        <Stack
+          className="border-border border-t pt-2"
+          gap="2"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
+          render="form"
         >
           <form.AppField name="reason">
             {(field) => (
@@ -204,7 +238,7 @@ const ApprovalQueueItem = ({
               />
             )}
           </form.AppField>
-          <div className="flex justify-end gap-2">
+          <Stack direction="row" gap="inline" justify="end">
             <Action
               disabled={busy}
               onPress={() => {
@@ -218,8 +252,8 @@ const ApprovalQueueItem = ({
             <Action disabled={busy} icon="close" onPress={() => void form.handleSubmit()} variant="outline">
               Deny
             </Action>
-          </div>
-        </form>
+          </Stack>
+        </Stack>
       )}
 
       {/* ⚠ OUTSIDE the picks disclosure, and above it. What a reviewer is approving changed:
@@ -229,27 +263,29 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <div className="border-caution-tint-40 bg-caution-tint-8 flex flex-col gap-1.5 rounded-md border px-3 py-2">
-          <p className="flex items-center gap-1.5 text-sm">
+        <Stack className="border-caution-tint-40 bg-caution-tint-8 rounded-md border px-3 py-2" gap="1.5">
+          <Stack align="center" direction="row" gap="1.5" render="p">
             <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
-            <span className="font-medium">
+            <Text as="span" textRole="cardLabel">
               {refused.length} {refused.length === 1 ? "title was" : "titles were"} left out
-            </span>
-          </p>
-          <ul className="flex flex-col gap-0.5">
+            </Text>
+          </Stack>
+          <Stack gap="0.5" render="ul">
             {refused.map((r) => (
-              <li key={`refused-${r.item.name}-${r.item.tmdbId ?? ""}`} className="text-sm">
-                <span>{r.item.name}</span>{" "}
-                <span className="text-muted-foreground">
+              <li key={`refused-${r.item.name}-${r.item.tmdbId ?? ""}`}>
+                <Text as="span" textRole="compact">
+                  {r.item.name}
+                </Text>{" "}
+                <Text as="span" textRole="compact" tone="secondary">
                   {/* The reason is spelled out rather than shown as a code: the reviewer's
                       next action (raise the limit, or accept the shorter lineup) depends on
                       knowing it was the audience rule and not a missing file. */}
                   — rated {r.item.officialRating || "unknown"}
-                </span>
+                </Text>
               </li>
             ))}
-          </ul>
-          <p className="text-muted-foreground text-xs">
+          </Stack>
+          <Text as="p" textRole="hint" tone="secondary">
             {raising
               ? `Approving raises this channel's audience limit to ${edit?.audience}, so titles rated up to ${edit?.audience} are included.`
               : `${
@@ -259,7 +295,7 @@ const ApprovalQueueItem = ({
                 } Approving adds everything else.${
                   canRaise ? "" : " To include these, raise the audience limit after the channel is created."
                 }`}
-          </p>
+          </Text>
           {/* #3012: one button, the lowest limit that lets these in (named by the server). It
               rides the approval like any other edit, so it applies when the channel is created;
               pressing it again takes it back. */}
@@ -276,7 +312,7 @@ const ApprovalQueueItem = ({
               </Action>
             </Surface>
           )}
-        </div>
+        </Stack>
       )}
 
       {/* Beside the refusals for the same reason: approving gets a channel that doesn't follow the
@@ -325,14 +361,14 @@ const ApprovalQueueItem = ({
                 renderFeedback={renderFeedback}
               />
             ) : (
-              <ul className="mt-2 flex flex-col gap-1.5">
+              <Stack className="mt-2" gap="1.5" render="ul">
                 {lineup?.map((it) => (
                   <PickRow key={`lib-${it.name}`} item={it} kind="lineup" renderFeedback={renderFeedback} />
                 ))}
                 {acquisitionItems?.map((it) => (
                   <PickRow key={`acq-${it.name}`} item={it} kind="acquire" renderFeedback={renderFeedback} />
                 ))}
-              </ul>
+              </Stack>
             ))}
         </div>
       )}

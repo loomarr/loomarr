@@ -1,9 +1,13 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
+import { Stack, Text } from "@loomarr/design-system";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
   pending?: boolean;
   showDetails?: boolean;
+  // The household's timezone, so "Checked" reads as the Guide tells times; undefined is the
+  // device's own.
+  timeZone?: string;
 }
 
 const duration = (milliseconds: number, lowerBound = false) => {
@@ -24,8 +28,14 @@ const describedDuration = (milliseconds: number, lowerBound = false) =>
 
 const sentenceCase = (value: string) => `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
 
-const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessment }) => (
-  <div className="text-muted-foreground flex flex-col gap-2">
+const ProposalOutlookDiagnostics = ({
+  assessment: value,
+  timeZone,
+}: {
+  assessment: Assessment;
+  timeZone?: string;
+}) => (
+  <Stack className="text-muted-foreground" gap="inline">
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
       {(
         [
@@ -61,21 +71,26 @@ const ProposalOutlookDiagnostics = ({ assessment: value }: { assessment: Assessm
       {new Date(value.observedAt).toLocaleString(undefined, {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone,
       })}
       . Changes to your library or schedule can update this result.
     </p>
-  </div>
+  </Stack>
 );
 
 const ProposalOutlookDetails = ({
   assessment: value,
   showDiagnostics = true,
+  timeZone,
 }: {
   assessment: Assessment;
   showDiagnostics?: boolean;
+  timeZone?: string;
 }) => (
-  <section aria-label="What can play now" className="text-muted-foreground flex flex-col gap-2">
-    <h3 className="text-foreground font-medium">What can play now</h3>
+  <Stack aria-label="What can play now" className="text-muted-foreground" gap="inline" render="section">
+    <Text as="h3" textRole="cardLabel">
+      What can play now
+    </Text>
     <p>
       {value.programs > 0
         ? `${value.programs} playable ${value.programs === 1 ? "episode or movie" : "episodes or movies"} from ${value.scheduledTitles} ${value.scheduledTitles === 1 ? "title" : "titles"}.`
@@ -108,29 +123,34 @@ const ProposalOutlookDetails = ({
       <details className="mt-1">
         <summary className="w-fit cursor-pointer">How this estimate works</summary>
         <div className="mt-3">
-          <ProposalOutlookDiagnostics assessment={value} />
+          <ProposalOutlookDiagnostics assessment={value} timeZone={timeZone} />
         </div>
       </details>
     )}
-  </section>
+  </Stack>
 );
 
 const ProposalOutlook = ({
   assessment: value,
   pending = false,
   showDetails = true,
+  timeZone,
 }: ProposalOutlookProps) => {
   if (pending)
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        Checking this lineup against your library…
-      </p>
+      <div role="status">
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking this lineup against your library…
+        </Text>
+      </div>
     );
   if (!value)
     return (
-      <p role="status" className="text-muted-foreground text-sm">
-        A schedule preview isn't available yet. You can still review the titles.
-      </p>
+      <div role="status">
+        <Text as="p" textRole="compact" tone="secondary">
+          A schedule preview isn't available yet. You can still review the titles.
+        </Text>
+      </div>
     );
   const lowerBound = value.windowLimited || value.unknownTitles > 0;
   const repeatDuration =
@@ -150,12 +170,14 @@ const ProposalOutlook = ({
           : `${sentenceCase(programmingDuration)} of programming.`;
   return (
     <section aria-label="Channel outlook" className="text-sm">
-      <p className={value.thin ? "text-caution" : "text-muted-foreground"}>{summary}</p>
+      <Text as="p" textRole="compact" tone={value.thin ? "warning" : "secondary"}>
+        {summary}
+      </Text>
       {showDetails && (
         <details className="mt-2">
           <summary className="text-muted-foreground cursor-pointer">Schedule details</summary>
           <div className="mt-2">
-            <ProposalOutlookDetails assessment={value} />
+            <ProposalOutlookDetails assessment={value} timeZone={timeZone} />
           </div>
         </details>
       )}

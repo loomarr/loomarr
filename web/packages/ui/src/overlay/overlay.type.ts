@@ -21,9 +21,9 @@ type OverlayContent = {
 };
 
 type ModalOverlayProps = OverlayContent & {
+  /** `false` makes it one that must be answered: no close, and Back, Escape and the scrim do nothing. */
   dismissible?: boolean;
   onDismiss: () => void;
-  reducedMotion?: boolean;
   visible: boolean;
 };
 

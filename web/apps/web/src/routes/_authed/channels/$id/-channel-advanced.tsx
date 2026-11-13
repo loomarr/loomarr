@@ -1,7 +1,7 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { humanizeRelaxation } from "@loomarr/core/format";
-import { CompactSelect } from "@loomarr/design-system";
+import { CompactSelect, Stack, Text } from "@loomarr/design-system";
 
 // relaxationSentence — a single eased scheduling rule (a relaxation-ladder step) written as
 // a warm, plain sentence rather than a `KIND: from → to` code. Each kind gets its own
@@ -39,8 +39,8 @@ const BACKEND_OPTIONS: { value: string; label: string }[] = [
 // for the things a VIEWER should never see: which programming rules Loomarr had to ease to
 // fill the channel, and who streams it. Keeping them here is what lets the page above speak in
 // plain language. Everything is explained in a sentence, not left as a code. (The
-// commercial-break preview moved up into the channel's Filler section — it's now part of
-// choosing filler, not a scheduler internal.)
+// commercial-break preview is in the channel's Filler section, not here — it's part of choosing
+// filler, not a scheduler internal.)
 //
 // Mostly read-only STATUS, with one exception: the playout backend (§9.1 — "one can be moved
 // from its own page"). It sits beside the Tunarr link because they are the same subject — who
@@ -62,29 +62,43 @@ const ChannelAdvanced = ({
     // Disclosure this renders inside on the channel page. The web mock draws it as a
     // label | value grid. Its "Last updated · took" row has no field on ChannelDTO yet, so it
     // isn't drawn rather than faked.
-    <div className="grid grid-cols-[180px_1fr] gap-x-4 gap-y-2 text-sm">
+    <div className="grid grid-cols-[180px_1fr] gap-x-4 gap-y-2">
       {/* Programming rules that were eased (the relaxation ladder). */}
-      <span className="text-muted-foreground">Rules loosened</span>
+      <Text as="span" textRole="compact" tone="secondary">
+        Rules loosened
+      </Text>
       {applied.length > 0 ? (
-        <ul className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ul">
           {applied.map((step) => (
-            <li key={`${step.kind}:${step.from}->${step.to}`}>{relaxationSentence(step)}</li>
+            <li key={`${step.kind}:${step.from}->${step.to}`}>
+              <Text as="span" textRole="compact">
+                {relaxationSentence(step)}
+              </Text>
+            </li>
           ))}
-        </ul>
+        </Stack>
       ) : (
-        <span>Running exactly as specified. Nothing had to be eased.</span>
+        <Text as="span" textRole="compact">
+          Running exactly as specified. Nothing had to be eased.
+        </Text>
       )}
 
-      {/* Playout backend — orphaned until now: §9.1 promised a channel "can be moved from its
-          own page" and no page offered the move, so the per-channel override existed only for a
-          hand-written policy_json. The mock doesn't draw it; it stays because it's the only
-          place the override can be set. It sits beside the Tunarr row: the same subject. */}
+      {/* Playout backend — §9.1 says a channel "can be moved from its own page", and this is
+          that page: without it the per-channel override exists only for a hand-written
+          policy_json. The mock doesn't draw it; it stays because it's the only place the
+          override can be set. It sits beside the Tunarr row: the same subject. */}
       {onPolicyChange && (
         <>
-          <span className="text-muted-foreground self-start pt-2" id="channel-playout-backend-label">
+          <Text
+            as="span"
+            className="self-start pt-2"
+            id="channel-playout-backend-label"
+            textRole="compact"
+            tone="secondary"
+          >
             Streamed by
-          </span>
-          <div className="flex flex-col gap-1">
+          </Text>
+          <Stack gap="1">
             <CompactSelect
               aria-labelledby="channel-playout-backend-label"
               id="channel-playout-backend"
@@ -103,21 +117,23 @@ const ChannelAdvanced = ({
                 does not interrupt a stream already playing — it applies the next time someone
                 tunes in. Said plainly because the opposite assumption would make an operator
                 avoid a safe change mid-evening. */}
-            <p className="text-muted-foreground text-xs">
+            <Text as="p" textRole="hint" tone="secondary">
               Applies the next time someone tunes in. Anyone watching now keeps their stream.
-            </p>
-          </div>
+            </Text>
+          </Stack>
         </>
       )}
 
-      <span className="text-muted-foreground">Tunarr channel</span>
-      <span className="text-muted-foreground font-mono text-xs">
+      <Text as="span" textRole="compact" tone="secondary">
+        Tunarr channel
+      </Text>
+      <Text as="span" textRole="mono">
         {channel.tunarrId
           ? channel.tunarrId
           : channel.inAppPlayable
             ? "Not used — Loomarr plays this channel itself"
             : "Not on Tunarr yet. It's created there automatically once Tunarr is connected."}
-      </span>
+      </Text>
     </div>
   );
 };

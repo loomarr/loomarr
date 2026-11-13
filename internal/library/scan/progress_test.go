@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 )
 
@@ -236,6 +237,80 @@ func TestImportReportsTheWalkAndTheReads(t *testing.T) {
 	}
 	if !h.im.Settled() {
 		t.Fatal("a completed pass is not settled")
+	}
+}
+
+// A top-level entry is finished in two halves: listed by the walk, then written. The time left is
+// worked out from when the writes begin, so a quick walk promises no quick finish.
+func TestStepOneCountsAnEntryHalfListedAndHalfWritten(t *testing.T) {
+	tr, c := newClockTracker()
+	tr.Begin(StepWalking, 4)
+	r := &walkReport{tracker: tr, name: "TV", entries: 4}
+	done := func() int { return tr.Snapshot(c.now()).Done }
+
+	c.advance(10 * time.Second)
+	r.listed(4)
+	if got := done(); got != 2 {
+		t.Fatalf("every entry listed and none written = %d of 4 done, want 2", got)
+	}
+	r.writing()
+	c.advance(time.Minute)
+	r.wrote(2)
+	if got := done(); got != 3 {
+		t.Fatalf("two entries written = %d of 4 done, want 3", got)
+	}
+	// One entry in the minute since the writes began, one left: a minute, not the 35 s that the
+	// 70 s since the step began would give for three.
+	if s := tr.Snapshot(c.now()); !s.HasETA || s.ETA != time.Minute {
+		t.Fatalf("time left = %v (known %v), want 1m from the writes' rate", s.ETA, s.HasETA)
+	}
+	r.close()
+	if got := done(); got != 4 {
+		t.Fatalf("closed = %d of 4 done, want 4", got)
+	}
+	r.wrote(4) // a closed report tells nothing more
+	if got := done(); got != 4 {
+		t.Fatalf("after close = %d done", got)
+	}
+}
+
+// applySpy hears each write to the inventory just before it is made.
+type applySpy struct {
+	inventory.Service
+	before func()
+}
+
+func (s applySpy) ApplySnapshot(ctx context.Context, snap inventory.Snapshot) (inventory.ItemID, error) {
+	s.before()
+	return s.Service.ApplySnapshot(ctx, snap)
+}
+
+// The writes after the walk are the other half of step 1: at the first write half the entries are
+// done, the count has moved on by the last, and the step names the folder being written.
+func TestImportCountsTheWritesInStepOne(t *testing.T) {
+	h := newHarness(t)
+	h.file("Alpha (2001)/Alpha.mkv", 10)
+	h.file("Bravo (2002)/Bravo.mkv", 10)
+	h.file("Charlie (2003)/Charlie.mkv", 10)
+	h.file("Delta (2004)/Delta.mkv", 10)
+	var writes []ProgressSnapshot
+	h.im.Inventory = applySpy{Service: h.im.Inventory, before: func() {
+		if s := h.im.Tracker.Snapshot(time.Now()); s.Step == StepWalking {
+			writes = append(writes, s)
+		}
+	}}
+	h.run()
+
+	if len(writes) != 4 {
+		t.Fatalf("%d writes seen during step 1, want one per file: %+v", len(writes), writes)
+	}
+	name := filepath.Base(h.root)
+	first, last := writes[0], writes[3]
+	if first.Done != 2 || first.Total != 4 || first.Current != name+" / Alpha (2001)" {
+		t.Errorf("at the first write = %+v, want 2 of 4 on Alpha (2001)", first)
+	}
+	if last.Done != 3 || last.Current != name+" / Delta (2004)" {
+		t.Errorf("at the last write = %+v, want 3 of 4 on Delta (2004)", last)
 	}
 }
 

@@ -1,6 +1,5 @@
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Action, Card, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import type { BackupPanelProps } from "./backup-panel.type";
 import { missingNights } from "./missing-nights";
 
@@ -32,43 +31,54 @@ const BackupPanel = ({
   // so the absence is explained instead of rendered.
   if (!list.supported) {
     return (
-      <section className={cn("border-border rounded-lg border p-4", className)}>
-        <div className="flex items-center gap-2">
+      <Card className={className} gap={8} padding={16} render="section">
+        <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
-          <h2 className="text-sm font-medium">Backups</h2>
-        </div>
-        <p className="text-muted-foreground mt-2 text-sm">
+          <Text as="h2" textRole="cardLabel">
+            Backups
+          </Text>
+        </Stack>
+        <Text as="p" textRole="compact" tone="secondary">
           This install runs on PostgreSQL, which Loomarr does not back up itself. Use{" "}
-          <code className="font-mono text-xs">pg_dump</code> against the database and restore with{" "}
-          <code className="font-mono text-xs">pg_restore</code>, on whatever schedule you already run for your
-          other databases.
-        </p>
-      </section>
+          <Text as="code" textRole="mono">
+            pg_dump
+          </Text>{" "}
+          against the database and restore with{" "}
+          <Text as="code" textRole="mono">
+            pg_restore
+          </Text>
+          , on whatever schedule you already run for your other databases.
+        </Text>
+      </Card>
     );
   }
 
   return (
-    <section className={cn("border-border rounded-lg border p-4", className)}>
-      <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium">Backups</h2>
-          <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+    <Card className={className} padding={16} render="section">
+      <Stack align="start" direction="row" gap="4">
+        <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
+          <Text as="h2" textRole="cardLabel">
+            Backups
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             A backup is the whole instance: settings, channels, people, and the generated secrets. Treat the
             file as a credential.
-          </p>
-        </div>
+          </Text>
+        </Stack>
         <Action disabled={pending} icon="download" onPress={onBackUpNow}>
           {pending ? "Backing up..." : "Back up now"}
         </Action>
-      </div>
+      </Stack>
 
       {error ? (
-        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <span className="mt-0.5 flex">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
-          {error}
-        </p>
+        <Stack align="start" direction="row" gap="inline" marginTop={12} render="p" role="alert">
+          <Stack direction="row" marginTop={2} render="span">
+            <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
+          </Stack>
+          <Text as="span" textRole="compact" tone="danger">
+            {error}
+          </Text>
+        </Stack>
       ) : null}
 
       {missing > 0 ? (
@@ -95,22 +105,44 @@ const BackupPanel = ({
       ) : null}
 
       {backups.length === 0 ? (
-        <p className="border-border text-muted-foreground mt-4 rounded-md border border-dashed p-4 text-center text-sm">
-          No backups yet. One is written on the schedule below, or take the first one now.
-        </p>
+        <Stack
+          borderColor="borderDecorative"
+          borderRadius={8}
+          borderStyle="dashed"
+          borderWidth={1}
+          marginTop={16}
+          padding={16}
+        >
+          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+            No backups yet. One is written on the schedule below, or take the first one now.
+          </Text>
+        </Stack>
       ) : (
-        <ul className="mt-4 flex flex-col gap-1.5">
+        <Stack gap="1.5" marginTop={16} render="ul">
           {backups.map((b) => (
-            <li
+            <Stack
+              align="center"
+              borderColor="borderDecorative"
+              borderRadius={8}
+              borderWidth={1}
+              className="bg-muted/30"
+              direction="row"
+              gap="control"
               key={b.name}
-              className="border-border bg-muted/30 flex items-center gap-3 rounded-md border px-3 py-2"
+              paddingHorizontal={12}
+              paddingVertical={8}
+              render="li"
             >
-              <span className="min-w-0 flex-1 truncate font-mono text-xs">{b.name}</span>
-              <span className="text-muted-foreground shrink-0 font-mono text-xs">{formatBytes(b.bytes)}</span>
-              <span className="text-muted-foreground shrink-0 font-mono text-xs">
+              <Text as="span" className="min-w-0 flex-1 truncate" textRole="mono" tone="primary">
+                {b.name}
+              </Text>
+              <Text flexShrink={0} textRole="mono">
+                {formatBytes(b.bytes)}
+              </Text>
+              <Text flexShrink={0} textRole="mono">
                 {/* writtenAt is Unix SECONDS, per the schema's epoch convention; formatRelative takes ms. */}
                 {formatRelative(b.writtenAt * 1000)}
-              </span>
+              </Text>
               <Action
                 accessibilityLabel={`Download ${b.name}`}
                 icon="download"
@@ -119,19 +151,21 @@ const BackupPanel = ({
               >
                 Download
               </Action>
-            </li>
+            </Stack>
           ))}
-        </ul>
+        </Stack>
       )}
 
-      <p className="text-muted-foreground mt-3 font-mono text-xs">
-        {/* The raw cron rather than a friendly label: the default (03:30) matches no preset,
-            so describeCron would render "Custom" — which tells the operator nothing. */}
-        {list.schedule} into {list.dir} · keeps{" "}
-        {list.retain > 0 ? pluralize(list.retain, "backup") : "every backup"} · restore is a command-line
-        operation
-      </p>
-    </section>
+      <Stack marginTop={12}>
+        <Text as="p" textRole="mono">
+          {/* The raw cron rather than a friendly label: the default (03:30) matches no preset,
+              so describeCron would render "Custom" — which tells the operator nothing. */}
+          {list.schedule} into {list.dir} · keeps{" "}
+          {list.retain > 0 ? pluralize(list.retain, "backup") : "every backup"} · restore is a command-line
+          operation
+        </Text>
+      </Stack>
+    </Card>
   );
 };
 

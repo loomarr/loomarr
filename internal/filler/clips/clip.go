@@ -312,7 +312,7 @@ func (c Clip) IsSegment() bool { return c.ParentHash != "" }
 //
 // ⚠ **This method is why V38c's identity change was one line.** It was written as a method rather
 // than direct field access precisely so identity could move without touching every call site —
-// and it has now paid for itself twice: `Path` when identity was the location, `Hash` since
+// and it paid for itself twice: `Path` when identity was the location, `Hash` under
 // content addressing (§10 V38c). Call sites that only need "the id" never had to know.
 func (c Clip) ID() string { return c.Hash }
 

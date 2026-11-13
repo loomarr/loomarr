@@ -46,6 +46,9 @@ type Binding struct {
 	// Dropped are existing titles an auto-curate bind dropped as clearly off-intent: named by
 	// the intent's MustExclude, or gone from the library pipeline.
 	Dropped []schedule.LineupEntry
+	// Full are the titles an auto-curate bind did not add because the lineup was at the most a
+	// channel holds (schedule.MaxLineupEntries).
+	Full []schedule.LineupEntry
 }
 
 // Bind is the pure core of the binder: it turns one proposal, and the channel it changes, into the
@@ -114,12 +117,23 @@ func Bind(in BindInput) (Binding, error) {
 			}
 			return false
 		}
-		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupAdditive, schedule.ApplyOpts{Drop: drop})
+		// The union stops at the ceiling the editor saves under: a lineup it grew past that could
+		// no longer be saved at all. What did not fit is reported, not silently lost.
+		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupAdditive, schedule.ApplyOpts{
+			Drop: drop, Full: func(e schedule.LineupEntry) { out.Full = append(out.Full, e) },
+		})
 	} else {
+		// A replace is a person's whole decision, so it is refused rather than trimmed.
+		if len(lineup) > schedule.MaxLineupEntries {
+			return Binding{}, fmt.Errorf("proposal %s: %d titles, but a channel's lineup holds at most %d",
+				p.ID, len(lineup), schedule.MaxLineupEntries)
+		}
 		ch.Lineup = schedule.ApplyLineup(existing.Lineup, lineup, schedule.LineupReplace, schedule.ApplyOpts{})
 	}
 
-	ch.Policy = existing.Policy.MergeFromProposal(p.Body.Policy)
+	// A proposal stored before the suggester refused composites that cannot both hold may carry a
+	// rule that never fires; it is dropped here, which changes nothing the channel airs.
+	ch.Policy = existing.Policy.MergeFromProposal(p.Body.Policy.WithoutUnsatisfiableLLMRules())
 	// A generated channel hands grounded era + audience facts to its operator-owned filler
 	// selection once. A present selection—including one whose fields are all unset—is
 	// operator-owned and never re-seeded by refine or auto-curation. Unset era retains its
@@ -144,7 +158,10 @@ func Bind(in BindInput) (Binding, error) {
 	if err := ch.Validate(); err != nil {
 		return Binding{}, fmt.Errorf("invalid channel: %w", err)
 	}
-	if err := ch.Policy.Validate(); err != nil {
+	// The operator's rules the channel already holds are kept as stored: an older writer may have let
+	// one in that today's check refuses, and that must not block every later approval (an unattended
+	// re-curation included) of a channel whose rules this approval does not touch.
+	if err := ch.Policy.ValidateKeeping(existing.Policy); err != nil {
 		return Binding{}, fmt.Errorf("invalid channel policy: %w", err)
 	}
 	out.Channel = ch

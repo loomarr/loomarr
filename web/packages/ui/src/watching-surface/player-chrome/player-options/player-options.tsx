@@ -2,11 +2,12 @@ import { type Density, Icon, icons, playerChrome, Text, useFocusLook } from "@lo
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 
-import { webOnly } from "../flat";
+import { playerRow, rowRole } from "../player-menu";
 
-// The option list the Subtitles, Audio and Picture sheets share (§9.5): plain words, the selected
-// option white with a check, an optional second line in a quieter voice. A choice is a radio; a list
-// the viewer cannot change (the channel's audio language, set by an admin) is read-only.
+// The option list Subtitles, Audio and Picture share (§9.5, variant J), in a menu or a sheet alike:
+// plain words, the one in use strong with a check, an optional second line in a quieter voice. A
+// choice is a radio; a list the viewer cannot change (the channel's audio language, set by an admin)
+// is read-only, its others set quieter.
 
 interface PlayerOption {
   /** A quieter second line ("Best for your connection"). */
@@ -35,36 +36,31 @@ const OptionRow = ({
 }) => {
   const [hovered, setHovered] = useState(false);
   const { focused, ...focusHandlers } = useFocusLook();
-  const row = {
-    alignItems: "center",
-    backgroundColor: option.selected || hovered ? playerChrome.surfaceRaised : "transparent",
-    borderRadius: 6,
-    flexDirection: "row",
-    gap: 16,
-    minHeight: 56,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    ...webOnly({
-      outlineColor: playerChrome.signal,
-      outlineStyle: focused ? "solid" : "none",
-      outlineWidth: 2,
-      transition: "background-color 120ms ease",
-    }),
-  } as const;
+  const row = playerRow(density, { focused, hovered: hovered && onSelect !== undefined });
   const body = (
     <>
-      <View style={{ flex: 1, gap: 4 }}>
-        <Text density={density} strong={option.selected} textRole="body" tone="primary">
+      <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+        <Text
+          density={density}
+          strong={option.selected}
+          textRole={rowRole(density)}
+          tone={onSelect || option.selected ? "primary" : "secondary"}
+        >
           {option.label}
         </Text>
         {option.detail ? (
-          <Text density={density} textRole="compact" tone="muted">
+          <Text density={density} textRole="cardMeta" tone="muted">
             {option.detail}
           </Text>
         ) : null}
       </View>
       {option.selected ? (
-        <Icon color={playerChrome.text} decorative glyph={icons.success} size="default" />
+        <Icon
+          color={playerChrome.text}
+          decorative
+          glyph={icons.success}
+          size={density === "pointer" ? "compact" : "default"}
+        />
       ) : null}
     </>
   );
@@ -73,6 +69,8 @@ const OptionRow = ({
       // aria-* directly: RN-web drops accessibilityState.checked, which would leave the choice unread.
       aria-checked={option.selected}
       aria-label={option.label}
+      // A television's remote starts on the choice in use.
+      hasTVPreferredFocus={density === "tv" && option.selected}
       role="radio"
       {...focusHandlers}
       onHoverIn={() => setHovered(true)}
@@ -90,7 +88,7 @@ const OptionRow = ({
 };
 
 const PlayerOptions = ({ density, label, onSelect, options }: PlayerOptionsProps) => (
-  <View aria-label={label} role={onSelect ? "radiogroup" : "list"} style={{ gap: 8 }}>
+  <View aria-label={label} role={onSelect ? "radiogroup" : "list"} style={{ gap: 2 }}>
     {options.map((option) => (
       <OptionRow density={density} key={option.value} onSelect={onSelect} option={option} />
     ))}

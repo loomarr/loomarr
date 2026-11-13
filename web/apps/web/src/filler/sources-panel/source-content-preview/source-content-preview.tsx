@@ -1,7 +1,7 @@
 import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
@@ -38,23 +38,43 @@ const SourceContentPreview = ({
 
       {showExamples && (
         <div className="border-border mt-3 border-t pt-3">
-          {provider.previewHeading && <p className="text-xs font-medium">{provider.previewHeading}</p>}
+          {provider.previewHeading && (
+            <Text as="p" textRole="label" tone="primary">
+              {provider.previewHeading}
+            </Text>
+          )}
           {loading && (
-            <div
-              className="text-muted-foreground mt-2 flex items-center gap-2 text-xs"
-              role="status"
+            <Stack
+              align="center"
               aria-live="polite"
+              className="mt-2"
+              direction="row"
+              gap="inline"
+              role="status"
             >
               <LoadingStrip decorative width={32} />
-              Loading examples…
-            </div>
+              <Text as="span" textRole="hint" tone="secondary">
+                Loading examples…
+              </Text>
+            </Stack>
           )}
-          {!loading && error && <p className="text-muted-foreground mt-2 text-xs">{error}</p>}
+          {!loading && error && (
+            <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+              {error}
+            </Text>
+          )}
           {!loading && previewItems && previewItems.length > 0 && (
             <>
               <ul className="mt-1 space-y-1">
                 {previewItems.map((item) => (
-                  <li key={item.url} className="flex min-w-0 items-center gap-2">
+                  <Stack
+                    align="center"
+                    className="min-w-0"
+                    direction="row"
+                    gap="inline"
+                    key={item.url}
+                    render="li"
+                  >
                     <a
                       className="min-w-0 flex-1 truncate text-sm hover:underline"
                       href={item.url}
@@ -65,17 +85,19 @@ const SourceContentPreview = ({
                       {item.title}
                     </a>
                     {item.durationMs ? (
-                      <span className="text-muted-foreground shrink-0 text-xs">
+                      <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
                         {formatClipDuration(item.durationMs)}
-                      </span>
+                      </Text>
                     ) : null}
                     <Action icon="play" onPress={() => setPreviewing(item)} variant="ghost">
                       Preview
                     </Action>
-                  </li>
+                  </Stack>
                 ))}
               </ul>
-              <p className="text-muted-foreground mt-2 text-xs">A small sample from this source.</p>
+              <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+                A small sample from this source.
+              </Text>
             </>
           )}
         </div>

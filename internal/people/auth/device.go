@@ -44,7 +44,7 @@ type DeviceStore interface {
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
 	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (identitystore.DevicePairing, error)
 	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (identitystore.DevicePairing, error)
-	DeleteDevicePairing(ctx context.Context, codeHash string) error
+	RedeemDevicePairing(ctx context.Context, codeHash, tokenHash string, at time.Time) (identitystore.DevicePairing, error)
 	CreateDeviceToken(ctx context.Context, token identitystore.DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (identitystore.DeviceToken, error)
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error
@@ -57,6 +57,7 @@ type DeviceStore interface {
 type DeviceManager struct {
 	store DeviceStore
 	now   func() time.Time
+	touch touchWarner
 }
 
 // DevicePrincipal is the authenticated identity carried by one paired-device credential. ID is the
@@ -174,21 +175,14 @@ func (m *DeviceManager) Redeem(ctx context.Context, deviceCode string) (token st
 	if err != nil {
 		return "", "", err
 	}
-	now := m.now()
-	err = m.store.CreateDeviceToken(ctx, identitystore.DeviceToken{
-		TokenHash:  hashToken(token),
-		UserID:     pairing.UserID,
-		DeviceName: pairing.DeviceName,
-		CreatedAt:  now,
-		LastSeenAt: now,
-	})
+	// The store consumes the pairing and issues the token in one transaction, so of several
+	// overlapping redeems exactly one wins; the rest get ErrNotFound, as for any consumed code. A
+	// store failure is returned and leaves the pairing redeemable for the device's next poll.
+	claimed, err := m.store.RedeemDevicePairing(ctx, hash, hashToken(token), m.now())
 	if err != nil {
 		return "", "", err
 	}
-	// Consume the pairing. A failure here would leave a spent code that can no longer mint anything
-	// (the token already exists), so it is not worth failing the device's redemption over.
-	_ = m.store.DeleteDevicePairing(ctx, hash)
-	return token, pairing.DeviceName, nil
+	return token, claimed.DeviceName, nil
 }
 
 // Pending resolves a still-unapproved pairing by the code a human typed, so an approval screen can
@@ -230,7 +224,9 @@ func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (Device
 	// counts as its owner's last-seen (#1667). Throttled like sessions; best-effort, as a failure must never
 	// fail the request that carried the token.
 	if now := m.now(); touchDue(dt.LastSeenAt, now) {
-		_ = m.store.TouchDeviceToken(ctx, id, now)
+		if err := m.store.TouchDeviceToken(ctx, id, now); err != nil {
+			m.touch.warn(ctx, "device", now, err)
+		}
 	}
 	return DevicePrincipal{ID: id, User: user}, nil
 }

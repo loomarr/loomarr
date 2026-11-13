@@ -1,9 +1,11 @@
 package api_test
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -22,14 +24,16 @@ func newConfiguredSearchHandler(
 	}}}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth:   testAuthorizer{},
-		Log:    log,
-		Search: search,
+		Auth: testAuthorizer{},
+		Log:  log,
 		LiveSettings: stringSettings(func(key string) string {
 			return cfg[key]
 		}),
-		LibraryConfigured: func() bool {
-			return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
+		Library: api.LibraryOptions{
+			Search: search,
+			Configured: func() bool {
+				return cfg["library.flavor"] != "" && cfg["library.url"] != "" && cfg["library.token"] != ""
+			},
 		},
 	})
 	return handler, search
@@ -172,6 +176,58 @@ func TestSearchTitleModeAllowsMediaTypeNarrowing(t *testing.T) {
 	request := search.Requests()[0]
 	if request.Query != "Ashgrove" || request.MediaType != "movie" || request.Discovery != nil {
 		t.Fatalf("title search request = %+v", request)
+	}
+}
+
+// The limit is bounded at the API: a member cannot ask for more than 50 results, so one call
+// cannot fan out into hundreds of TMDB pages.
+func TestSearchLimitIsBounded(t *testing.T) {
+	handler, search := newConfiguredSearchHandler(t, map[string]string{"tmdb.api_key": "key"})
+
+	for _, limit := range []string{"51", "5000", "35184372088832"} {
+		resp := searchRequest(handler, "/v1/search?q=Ashgrove&scope=tmdb&limit="+limit)
+		if resp.Code != http.StatusUnprocessableEntity {
+			t.Errorf("limit=%s status = %d, want 422: %s", limit, resp.Code, resp.Body.String())
+		}
+	}
+	if got := len(search.Requests()); got != 0 {
+		t.Errorf("search ran %d times for rejected limits, want 0", got)
+	}
+
+	resp := searchRequest(handler, "/v1/search?q=Ashgrove&scope=tmdb&limit=50")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("limit=50 status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
+	if got := search.Requests()[0].Limit; got != 50 {
+		t.Errorf("limit passed to search = %d, want 50", got)
+	}
+}
+
+// Each keyword costs one TMDB lookup, so the lists are bounded at the API like the limit: a member
+// cannot turn one search into thousands of upstream calls.
+func TestSearchDiscoveryTermsAreBounded(t *testing.T) {
+	handler, search := newConfiguredSearchHandler(t, map[string]string{"tmdb.api_key": "key"})
+	terms := func(name string, n int) string {
+		var b strings.Builder
+		for i := range n {
+			fmt.Fprintf(&b, "&%s=term%d", name, i)
+		}
+		return b.String()
+	}
+
+	for _, name := range []string{"keywords", "genres"} {
+		resp := searchRequest(handler, "/v1/search?media_type=movie"+terms(name, 9))
+		if resp.Code != http.StatusUnprocessableEntity {
+			t.Errorf("9 %s: status = %d, want 422: %s", name, resp.Code, resp.Body.String())
+		}
+	}
+	if got := len(search.Requests()); got != 0 {
+		t.Errorf("search ran %d times for rejected term lists, want 0", got)
+	}
+
+	resp := searchRequest(handler, "/v1/search?media_type=movie"+terms("keywords", 8))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("8 keywords: status = %d, want 200: %s", resp.Code, resp.Body.String())
 	}
 }
 

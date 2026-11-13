@@ -28,6 +28,7 @@ import (
 
 type httpBuild struct {
 	rootCtx     context.Context
+	owner       *generationLifecycle
 	store       records.Store
 	log         *slog.Logger
 	overrides   Overrides
@@ -103,120 +104,147 @@ func buildHTTP(deps httpBuild) http.Handler {
 	guideSvc, settingsSvc := deps.guide, deps.settings
 	liveSettings, libraryConfigured := deps.liveSettings, deps.libraryConfigured
 	jobsSvc, databaseSvc, residentLLM := deps.jobs, deps.database, deps.residentLLM
+	proxies, err := trustedProxies(set, log)
+	if err != nil {
+		// Validated when saved and when pinned, so this is unreachable; if it ever is reached,
+		// trusting no proxy is the safe direction (every visitor shares the proxy's address).
+		log.Error("trusted proxies unreadable: trusting no reverse proxy", "error", err)
+		proxies = nil
+	}
 	return api.Router(log, api.Options{
-		Store:                st,
-		Auth:                 authorizer,
-		Log:                  log,
-		Metrics:              deps.foundation.metrics,
-		BackupSQLite:         backup,
-		Ready:                ready,
-		Login:                loginSvc,
-		Sessions:             sessMgr,
-		Passwords:            passwordSvc,
-		Invitations:          invitationSvc,
-		InvitationRedemption: invitationRedemption,
-		InvitationDelivery:   deps.invitationDelivery,
-		PasswordRecovery:     deps.passwordRecovery,
-		AccessPublicURL:      func() string { return settings.AccessPublicURL.Get(liveSettings) },
-		UserSync:             userSync,
-		Devices:              deviceMgr,
-		DeviceLimiter:        deviceLimiter,
-		CookieSecure:         settings.CookieSecure.Get(set),
-		TrustProxy:           settings.SecurityTrustProxy.Get(set),
-		DevLogin:             ov.DevLogin,
-		Pprof:                ov.Pprof,
-		MetricsToken:         ov.MetricsToken,
-		Demo:                 people.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
-		Channels:             channelSvc,
-		LiveTV:               liveTVSvc,
-		TunerRescanner:       tunerRescanner,
-		TunarrConnect:        tunarrConnectSvc,
-		ArrDiscovery:         arrDiscovery{set: set},
-		Suggest:              suggestSvc,
-		ProposalWorkflow:     proposalWorkflow,
-		ProposalProgress:     deps.suggestions.progress,
-		Search:               searchSvc,
-		MovieCollections:     movieCollectionsSvc,
-		Collections:          collectionsSvc,
-		LibraryRoots:         deps.library.roots,
-		LibraryHooks:         deps.library.hooks,
-		IdeaLibrary:          deps.suggestions.ideaLibrary,
-		Icons:                iconSvc,
-		Images:               imageService(imageSvc),
-		Events:               eventBus,
-		Shutdown:             rootCtx.Done(),
-		Filler:               fillerSvc,
-		SourceProviders:      deps.fillers.providers,
-		FillerResearch:       deps.fillers.research,
-		IntakeLanguages:      deps.fillers.intakeLanguages,
-		FillerDefects:        deps.fillers.defects,
-		Pods:                 podPreview,
-		Taxonomy:             taxonomyEditor,
-		SystemLLM:            systemLLM,
-		Database:             databaseSvc,
-		Encryption:           buildEncryptionService(st, deps.foundation.protection),
-		Backups:              backupsSvc,
-		SSO:                  ssoSvc,
-		Restart:              restartSvc,
-		Activity:             activityRec,
-		DiagnosticEvents:     deps.foundation.diagnosticEvents,
-		DiagnosticProcesses:  deps.foundation.diagnosticProcesses,
-		DiagnosticBundles:    deps.foundation.diagnosticBundles,
-		DiagnosticCapture:    deps.foundation.diagnostics,
-		ClientDiagnostics:    deps.foundation.clientDiagnostics,
-		ClientCrashes:        clientCrashService(deps.foundation.clientCrashes),
-		StartupReports:       deps.foundation.startupReports,
-		// The baseline for "has a restart-scoped setting changed?" is what THIS
-		// generation booted with, captured here rather than per call (config-design §3).
-		RestartDrift:             config.RestartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
-		Jobs:                     jobsSvc,
-		Settings:                 settingsSvc,
-		NotificationDestinations: deps.notificationDestinations,
-		WebPushPublicKey:         deps.webPushPublicKey,
-		ProposalNotifications:    deps.foundation.emitter,
-		DecisionQuality:          deps.approval.decisionQuality,
-		BackendTransition: currentBackendTransition{
-			controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
+		Store:          st,
+		Auth:           authorizer,
+		Log:            log,
+		Metrics:        deps.foundation.metrics,
+		Ready:          ready,
+		Shutdown:       rootCtx.Done(),
+		LiveSettings:   liveSettings,
+		Settings:       settingsSvc,
+		Activity:       activityRec,
+		Images:         imageService(imageSvc),
+		CookieSecure:   settings.CookieSecure.Get(set),
+		TrustedProxies: proxies,
+		People: api.PeopleOptions{
+			Login:                loginSvc,
+			Sessions:             sessMgr,
+			Passwords:            passwordSvc,
+			UserSync:             userSync,
+			Invitations:          invitationSvc,
+			InvitationRedemption: invitationRedemption,
+			InvitationDelivery:   deps.invitationDelivery,
+			PasswordRecovery:     deps.passwordRecovery,
+			AccessPublicURL:      func() string { return settings.AccessPublicURL.Get(liveSettings) },
+			Devices:              deviceMgr,
+			DeviceLimiter:        deviceLimiter,
+			DevLogin:             ov.DevLogin,
+			Demo:                 people.DemoAccount{Username: ov.DemoUsername, Password: ov.DemoPassword},
+			SSO:                  ssoSvc,
+			Provision:            provisionSvc,
 		},
-		Guide:             guideSvc,
-		Provision:         provisionSvc,
-		ProposalOutlook:   proposalOutlook,
-		Approver:          proposalApprover,
-		Binder:            chBinder,
-		FillerLayout:      fillerLayout,
-		LiveSettings:      liveSettings,
-		LibraryConfigured: libraryConfigured,
-		BackendCheckpoint: func(ctx context.Context) (httpcore.BackendCheckpoint, error) {
-			snapshot, err := checkpointSnapshot(ctx)
-			return httpcore.BackendCheckpoint{
-				Applied: snapshot.Applied, Prepared: snapshot.Prepared,
-				PublishedInternal: snapshot.PublishedInternal,
-			}, err
+		Setup: api.SetupOptions{
+			LiveTV:                   liveTVSvc,
+			TunarrConnect:            tunarrConnectSvc,
+			ArrDiscovery:             arrDiscovery{set: set},
+			NotificationDestinations: deps.notificationDestinations,
+			WebPushPublicKey:         deps.webPushPublicKey,
+			BackendTransition: currentBackendTransition{
+				controller: backendController, refresh: refreshBackendSettings, desired: desiredBackend,
+			},
+			BackendCheckpoint: func(ctx context.Context) (httpcore.BackendCheckpoint, error) {
+				snapshot, err := checkpointSnapshot(ctx)
+				return httpcore.BackendCheckpoint{
+					Applied: snapshot.Applied, Prepared: snapshot.Prepared,
+					PublishedInternal: snapshot.PublishedInternal,
+				}, err
+			},
 		},
-		// Internal playout (§9.1). PlayoutSecret is a FUNC so a regenerated token takes
+		System: api.SystemOptions{
+			BackupSQLite: backup,
+			Backups:      backupsSvc,
+			Database:     databaseSvc,
+			Encryption:   buildEncryptionService(st, deps.foundation.protection),
+			LLM:          systemLLM,
+			Restart:      restartSvc,
+			// The baseline for "has a restart-scoped setting changed?" is what THIS
+			// generation booted with, captured here rather than per call (config-design §3).
+			RestartDrift: config.RestartDrift(bootCfg, appliedRestartSettings, canonicalRestartCurrent(desiredSet)),
+			Jobs:         jobsSvc,
+		},
+		// Internal playout (§9.1). Secret is a FUNC so a regenerated token takes
 		// effect without a restart (§11 rotation).
-		PlayoutObserver:   playoutObserver,
-		Viewing:           startWatchHistory(rootCtx, st, guideSvc, log),
-		PlayoutCapability: playoutCapability,
-		WatermarkPreview:  deps.watermarks,
-		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
-		Playout:         playoutSvc,
-		PlayoutResolver: playoutResolverSvc,
-		// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
-		PlayoutGuide:         playoutGuideSvc,
-		TimelineThumbs:       timelineThumbs,
-		PlayoutSecret:        playoutSecret,
-		PlayoutSecretCurrent: playoutSecretCurrent,
-		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
-		// the admission budget's VRAM shading (V49) shares the exact same source.
-		ResidentLLMVRAM: residentLLM.probe,
+		Playout: api.PlayoutOptions{
+			// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
+			Service:       playoutSvc,
+			Observer:      playoutObserver,
+			Viewing:       startWatchHistory(deps.owner, st, guideSvc, log),
+			Capability:    playoutCapability,
+			Secret:        playoutSecret,
+			SecretCurrent: playoutSecretCurrent,
+			Resolver:      playoutResolverSvc,
+			// The XMLTV guide reads the same resolver, so listings cannot drift from playout.
+			Guide: playoutGuideSvc,
+			// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
+			// the admission budget's VRAM shading (V49) shares the exact same source.
+			ResidentLLMVRAM: residentLLM.probe,
+		},
+		Channels: api.ChannelsOptions{
+			Service:          channelSvc,
+			TunerRescanner:   tunerRescanner,
+			Binder:           chBinder,
+			IdeaLibrary:      deps.suggestions.ideaLibrary,
+			Icons:            iconSvc,
+			WatermarkPreview: deps.watermarks,
+		},
+		Guide: api.GuideOptions{
+			Reader:         guideSvc,
+			Pods:           podPreview,
+			TimelineThumbs: timelineThumbs,
+		},
+		Proposals: api.ProposalsOptions{
+			Suggest:         suggestSvc,
+			Progress:        deps.suggestions.progress,
+			Workflow:        proposalWorkflow,
+			Outlook:         proposalOutlook,
+			Approver:        proposalApprover,
+			Notifications:   deps.foundation.emitter,
+			DecisionQuality: deps.approval.decisionQuality,
+		},
+		Filler: api.FillerOptions{
+			Service:         fillerSvc,
+			SourceProviders: deps.fillers.providers,
+			Research:        deps.fillers.research,
+			Defects:         deps.fillers.defects,
+			Taxonomy:        taxonomyEditor,
+			Layout:          fillerLayout,
+			IntakeLanguages: deps.fillers.intakeLanguages,
+		},
+		Library: api.LibraryOptions{
+			Search:           searchSvc,
+			MovieCollections: movieCollectionsSvc,
+			Collections:      collectionsSvc,
+			Roots:            deps.library.roots,
+			Hooks:            deps.library.hooks,
+			Configured:       libraryConfigured,
+		},
+		Ops: api.OpsOptions{
+			Events:              eventBus,
+			Pprof:               ov.Pprof,
+			MetricsToken:        ov.MetricsToken,
+			StartupReports:      deps.foundation.startupReports,
+			DiagnosticEvents:    deps.foundation.diagnosticEvents,
+			DiagnosticProcesses: deps.foundation.diagnosticProcesses,
+			DiagnosticBundles:   deps.foundation.diagnosticBundles,
+			DiagnosticCapture:   deps.foundation.diagnostics,
+			ClientDiagnostics:   deps.foundation.clientDiagnostics,
+			ClientCrashes:       clientCrashService(deps.foundation.clientCrashes),
+		},
 	})
 }
 
 // startWatchHistory makes the household-viewing tracker the API's playlist polls feed and starts
-// the recorder that writes it to the watch history (#3010) until ctx ends. Each row's programme is
+// the recorder that writes it to the watch history (#3010) until the generation ends. Each row's programme is
 // the title the guide says is airing; a gap between programmes has none.
-func startWatchHistory(ctx context.Context, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
+func startWatchHistory(owner *generationLifecycle, st records.Store, guide guideapi.GuideReader, log *slog.Logger) *viewing.Tracker {
 	tracker := viewing.New()
 	var programmes viewing.Programmes
 	if guide != nil {
@@ -234,7 +262,8 @@ func startWatchHistory(ctx context.Context, st records.Store, guide guideapi.Gui
 			return titles, nil
 		}
 	}
-	go viewing.NewRecorder(tracker, st, programmes, log).Run(ctx)
+	// Generation-owned, so Shutdown waits for the recorder's last write before the store closes.
+	owner.goRun(viewing.NewRecorder(tracker, st, programmes, log).Run)
 	return tracker
 }
 

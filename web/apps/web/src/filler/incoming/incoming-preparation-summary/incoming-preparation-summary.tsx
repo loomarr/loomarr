@@ -1,5 +1,5 @@
 import type { IncomingPreparationDTO } from "@loomarr/api/models/incomingPreparationDTO";
-import { ProgressTrack } from "@loomarr/design-system";
+import { ProgressTrack, Stack, Text } from "@loomarr/design-system";
 
 const readyRangeLabel = (lowerSeconds: number, upperSeconds: number): string => {
   if (upperSeconds < 60) return "Less than a minute";
@@ -56,17 +56,21 @@ const IncomingPreparationSummary = ({ preparation }: { preparation: IncomingPrep
       aria-labelledby="incoming-preparation-heading"
       className="bg-muted/30 space-y-2.5 rounded-lg p-4"
     >
-      <div className="flex items-baseline justify-between gap-3">
+      <Stack align="baseline" direction="row" gap="control" justify="between">
         <div className="min-w-0">
-          <h3 id="incoming-preparation-heading" className="text-sm font-medium">
+          <Text as="h3" id="incoming-preparation-heading" textRole="cardLabel">
             {message.title}
-          </h3>
-          <p className="text-muted-foreground mt-0.5 text-xs">{message.detail}</p>
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
+            {message.detail}
+          </Text>
         </div>
         {preparation.percent != null ? (
-          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{preparation.percent}%</span>
+          <Text as="span" className="shrink-0 tabular-nums" textRole="hint" tone="secondary">
+            {preparation.percent}%
+          </Text>
         ) : null}
-      </div>
+      </Stack>
       {showBar ? <ProgressTrack percent={preparation.percent} label="Clip preparation" tone="tune" /> : null}
     </section>
   );

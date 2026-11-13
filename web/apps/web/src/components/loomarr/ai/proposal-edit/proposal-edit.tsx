@@ -4,7 +4,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, Field, Toggle } from "@loomarr/design-system";
+import { Action, Badge, Field, Stack, Text, Toggle } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
@@ -78,11 +78,12 @@ const PickRow = ({
   const season = seasonLabel(pick.item);
 
   return (
-    <li
-      className={cn(
-        "border-border flex items-start gap-3 border-b px-1 py-3 last:border-b-0",
-        !included && "opacity-55",
-      )}
+    <Stack
+      align="start"
+      className={cn("border-border border-b px-1 py-3 last:border-b-0", !included && "opacity-55")}
+      direction="row"
+      gap="control"
+      render="li"
     >
       {editable && onToggle && pick.key !== "" && (
         <Toggle
@@ -94,9 +95,15 @@ const PickRow = ({
         />
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={cn("text-sm font-medium", !included && "line-through")}>{pick.item.name}</span>
-          {pick.item.year ? <span className="text-muted-foreground text-xs">{pick.item.year}</span> : null}
+        <Stack align="center" columnGap="2" direction="row" rowGap="1" wrap>
+          <Text as="span" className={cn(!included && "line-through")} textRole="cardLabel">
+            {pick.item.name}
+          </Text>
+          {pick.item.year ? (
+            <Text as="span" textRole="hint" tone="secondary">
+              {pick.item.year}
+            </Text>
+          ) : null}
           {included ? (
             <Badge shape="square" tone={state.tone}>
               {state.text}
@@ -116,16 +123,18 @@ const PickRow = ({
               {selection}
             </Badge>
           )}
-        </div>
-        <p className="text-muted-foreground mt-1 text-xs">{itemDetails(pick.item)}</p>
+        </Stack>
+        <Text as="p" className="mt-1" textRole="hint" tone="secondary">
+          {itemDetails(pick.item)}
+        </Text>
         {included && pick.item.rationale && (
-          <details className="mt-1.5 text-sm">
+          <details className="mt-1.5">
             <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
               Why this title?
             </summary>
-            <p className="text-muted-foreground mt-1 max-w-prose">
+            <Text as="p" className="mt-1 max-w-prose" textRole="compact" tone="secondary">
               {friendlyTitleRationale(pick.item.rationale)}
-            </p>
+            </Text>
           </details>
         )}
         {included && feedback && <div className="mt-2">{feedback}</div>}
@@ -141,7 +150,7 @@ const PickRow = ({
           Add
         </Action>
       )}
-    </li>
+    </Stack>
   );
 };
 
@@ -317,10 +326,12 @@ const ProposalEdit = (props: ProposalEditProps) => {
   const edited = dropped.length > 0 || added.length > 0 || note.trim() !== "";
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-3", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <Stack className={className} gap="control">
+      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <div>
-          <h3 className="font-medium">Titles</h3>
+          <Text as="h3" textRole="heading">
+            Titles
+          </Text>
         </div>
         {edited && editable && (
           <Action
@@ -334,7 +345,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             Reset changes
           </Action>
         )}
-      </div>
+      </Stack>
 
       <ul aria-label="Titles" className="border-border rounded-md border px-3">
         {picks.map((pick) => (
@@ -379,7 +390,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
 
       {editable &&
         (adding ? (
-          <div className="flex flex-col gap-2">
+          <Stack gap="inline">
             <SearchCommand
               query={query}
               onQueryChange={setQuery}
@@ -416,7 +427,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             >
               Cancel
             </Action>
-          </div>
+          </Stack>
         ) : (
           <Action
             disabled={disabled}
@@ -443,13 +454,17 @@ const ProposalEdit = (props: ProposalEditProps) => {
 
       {suggestions.length > 0 && (
         <details className="border-border rounded-md border px-3 py-2.5">
-          <summary className="cursor-pointer text-sm">
-            <span className="font-medium">More suggestions</span>
-            <span className="text-muted-foreground ml-2">
+          <summary className="cursor-pointer">
+            <Text as="span" textRole="cardLabel">
+              More suggestions
+            </Text>
+            <Text as="span" className="ml-2" textRole="compact" tone="secondary">
               {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
-            </span>
+            </Text>
           </summary>
-          <p className="text-muted-foreground mt-2 text-sm">Add any that belong on your channel.</p>
+          <Text as="p" className="mt-2" textRole="compact" tone="secondary">
+            Add any that belong on your channel.
+          </Text>
           <ul className="border-border mt-2 border-t">
             {suggestions.map((pick) => (
               <PickRow
@@ -465,7 +480,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             ))}
           </ul>
           {onFindMore && (
-            <div className="mt-2 flex">
+            <Stack className="mt-2" direction="row">
               <Action
                 disabled={disabled || findingMore}
                 icon={findingMore ? "loading" : undefined}
@@ -474,7 +489,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
               >
                 {findingMore ? "Finding more suggestions…" : "Find more suggestions"}
               </Action>
-            </div>
+            </Stack>
           )}
         </details>
       )}
@@ -489,7 +504,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
           value={note}
         />
       )}
-    </div>
+    </Stack>
   );
 };
 

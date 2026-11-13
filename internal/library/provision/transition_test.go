@@ -149,6 +149,30 @@ func TestSubmitFailedHoldsWanted(t *testing.T) {
 	}
 }
 
+// A retry starts a given-up title's acquisition over: wanted, due now, the last attempt forgotten.
+func TestRetryStartsAGivenUpTitleOver(t *testing.T) {
+	given := rec(Unavailable, t0.Add(-time.Hour))
+	given.Attempts, given.LastError, given.RequestedAt = 3, "deadline exceeded", t0.Add(-72*time.Hour)
+
+	out, ok := Retry(given, t0)
+	if !ok || out.State != Wanted {
+		t.Fatalf("Retry(unavailable) → %s, %v; want wanted, true", out.State, ok)
+	}
+	if !out.Deadline.Equal(t0) || out.Attempts != 0 || out.LastError != "" || !out.RequestedAt.IsZero() {
+		t.Errorf("a retried title must be due now with no prior attempt, got %+v", out)
+	}
+}
+
+// Only a given-up title retries: an available one is in the library, an in-flight one is underway.
+func TestRetryLeavesOtherStatesAlone(t *testing.T) {
+	for _, s := range []State{Wanted, Requested, Downloading, Available} {
+		in := rec(s, reqTTL)
+		if out, ok := Retry(in, t0); ok || out.State != s || !out.Deadline.Equal(in.Deadline) || !out.UpdatedAt.Equal(in.UpdatedAt) {
+			t.Errorf("Retry(%s) changed the record (ok=%v)", s, ok)
+		}
+	}
+}
+
 // Illegal transitions leave the record unchanged (no crash, no spurious emit).
 func TestIllegalTransitionIsNoop(t *testing.T) {
 	// Grabbed while still wanted is not a legal edge in §4.

@@ -85,6 +85,64 @@ describe("catalog refresher", () => {
     expect(refresher.getState()).toEqual({ loading: false });
   });
 
+  it("runs a refresh queued behind a failing request, and gives its caller its own result", async () => {
+    const { list, refresher } = setup();
+    await refresher.refresh();
+    list.mockClear();
+    const failing = deferred<PlayerChannel[]>();
+    list.mockReturnValueOnce(failing.promise);
+
+    const first = refresher.refresh();
+    const second = refresher.refresh();
+    const settled = Promise.allSettled([first, second]);
+    failing.reject(new Error("502"));
+
+    const [firstResult, secondResult] = await settled;
+    expect(firstResult).toMatchObject({ reason: new Error("502"), status: "rejected" });
+    expect(secondResult).toEqual({ status: "fulfilled", value: undefined });
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives a queued caller the error of its own request when only that one fails", async () => {
+    const { list, refresher } = setup();
+    await refresher.refresh();
+    list.mockClear();
+    const inflight = deferred<PlayerChannel[]>();
+    list.mockReturnValueOnce(inflight.promise);
+    list.mockRejectedValueOnce(new Error("503"));
+
+    const first = refresher.refresh();
+    const second = refresher.refresh();
+    const settled = Promise.allSettled([first, second]);
+    inflight.resolve(channels);
+
+    const [firstResult, secondResult] = await settled;
+    expect(firstResult).toEqual({ status: "fulfilled", value: undefined });
+    expect(secondResult).toMatchObject({ reason: new Error("503"), status: "rejected" });
+  });
+
+  it("settles a queued caller when the refresher is aborted", async () => {
+    const { list, refresher } = setup();
+    await refresher.refresh();
+    list.mockClear();
+    list.mockImplementationOnce(
+      (signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+
+    const first = refresher.refresh();
+    const second = refresher.refresh();
+    const settled = Promise.allSettled([first, second]);
+    refresher.abort();
+
+    const [firstResult, secondResult] = await settled;
+    expect(firstResult.status).toBe("rejected");
+    expect(secondResult.status).toBe("rejected");
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces an initial-load failure", async () => {
     const { list, refresher } = setup();
     list.mockRejectedValueOnce(new Error("offline"));

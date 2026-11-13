@@ -51,9 +51,9 @@ func newEventsServer(t *testing.T) (*httptest.Server, *fakeBus) {
 	t.Helper()
 	bus := newFakeBus()
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth:   testAuthorizer{},
-		Log:    slog.New(slog.DiscardHandler),
-		Events: bus,
+		Auth: testAuthorizer{},
+		Log:  slog.New(slog.DiscardHandler),
+		Ops:  api.OpsOptions{Events: bus},
 	}))
 	t.Cleanup(srv.Close)
 	return srv, bus
@@ -271,7 +271,7 @@ func TestEventStreamClosesWhenGenerationShutsDown(t *testing.T) {
 	bus := newFakeBus()
 	shutdown := make(chan struct{})
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Events: bus, Shutdown: shutdown,
+		Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Ops: api.OpsOptions{Events: bus}, Shutdown: shutdown,
 	}))
 	defer srv.Close()
 

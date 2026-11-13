@@ -202,6 +202,9 @@ type FillerPipelineStore interface {
 	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
 	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
+	// RetireRejectedClip reaps a fetched, unpinned clip rejected no later than rejectedBy and marks
+	// its row's files deleted, in one transaction; false when the row no longer qualifies.
+	RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)

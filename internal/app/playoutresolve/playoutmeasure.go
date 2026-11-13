@@ -112,39 +112,51 @@ type naturalBreaks struct {
 	r   *Resolver
 }
 
-// NaturalBreaks reads the scene fades Loomarr measured for a library item's local file. An
-// unmeasured item airs whole until a later pass finds it measured (itemAnalysis queues it).
+// NaturalBreaks reads the scene fades Loomarr measured for a library item's local file: of a
+// movie in parts, each part's, at where the part airs in the programme. Where one part ends and
+// the next begins is no break of itself: a movie split to fit two discs can be split mid-scene.
+// An item with a file unmeasured airs whole until a later pass finds it measured (fileAnalysis
+// queues it).
 func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandidate {
-	analysis, measured := n.r.itemAnalysis(n.ctx, libraryItemID)
+	var out []schedule.BreakCandidate
+	measured := true
+	for _, file := range n.r.programmeFiles(n.ctx, libraryItemID) {
+		analysis, ok := n.r.fileAnalysis(n.ctx, file.Path)
+		if !ok {
+			measured = false
+			continue // the rest are still queued
+		}
+		for _, c := range fadeCandidates(analysis.Breaks) {
+			c.AtMs += file.Start.Milliseconds()
+			out = append(out, c)
+		}
+	}
 	if !measured {
 		return nil
 	}
-	return fadeCandidates(analysis.Breaks)
+	return out
 }
 
-// Premeasure queues each scheduled library item whose file is not yet measured at its current
-// revision (#1518): the scheduler's measure-ahead for the next PremeasureHorizon. The worker is
-// the same single low-priority one first play uses, and Submit never blocks.
+// Premeasure queues each file of each scheduled library item that is not yet measured at its
+// current revision (#1518): the scheduler's measure-ahead for the next PremeasureHorizon. The
+// worker is the same single low-priority one first play uses, and Submit never blocks.
 func (r *Resolver) Premeasure(ctx context.Context, libraryItemIDs []string) {
 	if !r.canAnalyseItems() || r.measurer == nil {
 		return
 	}
 	for _, id := range libraryItemIDs {
-		if ctx.Err() != nil {
-			return
+		for _, file := range r.programmeFiles(ctx, id) {
+			if ctx.Err() != nil {
+				return
+			}
+			r.fileAnalysis(ctx, file.Path)
 		}
-		r.itemAnalysis(ctx, id)
 	}
 }
 
-// itemAnalysis is the stored analysis of a library item's local file at its current revision.
-// When there is none, the file is queued for measurement (one low-priority worker, G7) and
-// measured is false. An item with no readable file has none.
-func (r *Resolver) itemAnalysis(ctx context.Context, libraryItemID string) (inventory.Analysis, bool) {
-	input := r.itemInput(ctx, libraryItemID)
-	if input == "" {
-		return inventory.Analysis{}, false
-	}
+// fileAnalysis is the stored analysis of a local file at its current revision. When there is
+// none, the file is queued for measurement (one low-priority worker, G7) and measured is false.
+func (r *Resolver) fileAnalysis(ctx context.Context, input string) (inventory.Analysis, bool) {
 	origin, ok := r.ensureLocalInventorySource(ctx, input)
 	if !ok {
 		return inventory.Analysis{}, false

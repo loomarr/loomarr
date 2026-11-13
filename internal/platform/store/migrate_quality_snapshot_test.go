@@ -9,7 +9,7 @@ import (
 
 // qualitySnapshotMigration makes a quality daily total name its evaluation run by foreign key
 // (#2793).
-const qualitySnapshotMigration = 223
+const qualitySnapshotMigration = 237
 
 func TestQualitySnapshotMigration(t *testing.T) {
 	// Foreign keys on, as production opens SQLite.
