@@ -1,6 +1,6 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Action, Badge, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Stack, Text, TextLink } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -184,14 +184,9 @@ const HostedModelPicker = ({
                 {hp.keysUrl && (
                   <>
                     {" "}
-                    <a
-                      href={hp.keysUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-signal underline underline-offset-2"
-                    >
-                      Get a key ↗
-                    </a>
+                    <TextLink external href={hp.keysUrl}>
+                      Get a key
+                    </TextLink>
                   </>
                 )}
               </Text>

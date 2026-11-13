@@ -8,6 +8,7 @@ import {
   TableHeaderCell,
   TableRow,
   Text,
+  TextLink,
 } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
@@ -136,24 +137,18 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
         // through to the browser.
         a: ({ children, href }) =>
           onNavigate && isInternal(href) ? (
-            <button
-              type="button"
-              className="text-suggest-300 cursor-pointer underline underline-offset-2"
-              onClick={() => {
+            <TextLink
+              onPress={() => {
                 const { page, section } = parseDocHref(href);
                 if (page) onNavigate(page, section);
               }}
             >
               {children}
-            </button>
+            </TextLink>
           ) : (
-            <a
-              href={href}
-              className="text-suggest-300 underline underline-offset-2"
-              {...(href?.startsWith("http") ? { target: "_blank", rel: "noreferrer" } : {})}
-            >
+            <TextLink external={href?.startsWith("http")} href={href}>
               {children}
-            </a>
+            </TextLink>
           ),
         // Diagrams and screenshots load only through <img>, where an SVG can't run script (the
         // route also serves diagrams sandboxed). Any other image would be a fetch out of the

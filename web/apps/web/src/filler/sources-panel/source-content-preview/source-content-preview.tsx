@@ -1,7 +1,7 @@
 import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerProviderDescriptionDTO";
 import type { FillerSourcePreviewItemDTO } from "@loomarr/api/models/fillerSourcePreviewItemDTO";
 import { formatClipDuration } from "@loomarr/core/format";
-import { Action, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
+import { Action, LoadingStrip, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 import { SourceItemPreviewDialog } from "../source-item-preview-dialog";
 
@@ -26,15 +26,11 @@ const SourceContentPreview = ({
 
   return (
     <>
-      <a
-        className="text-tune inline-flex items-center gap-1 text-xs hover:underline"
-        href={canonicalUrl}
-        target="_blank"
-        rel="noreferrer"
-      >
-        Open on {provider.label}
-        <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
-      </a>
+      <Text as="span" textRole="hint">
+        <TextLink external href={canonicalUrl}>
+          Open on {provider.label}
+        </TextLink>
+      </Text>
 
       {showExamples && (
         <div className="border-border mt-3 border-t pt-3">

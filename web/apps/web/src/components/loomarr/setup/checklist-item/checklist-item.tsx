@@ -1,5 +1,5 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { ActivityIndicator, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { ActivityIndicator, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -45,13 +45,11 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
       // into { page, section }, not used as a raw href (which resolves relative to the
       // current path and 404s). This is what makes §13's "every red check deep-links to
       // its section" actually navigate.
-      <Link
-        to="/help"
-        search={parseDocHref(docHref)}
-        className="text-tune inline-flex shrink-0 items-center gap-0.5 text-xs hover:underline"
-      >
-        Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
-      </Link>
+      <Text as="span" className="shrink-0" textRole="hint">
+        <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+          Fix
+        </TextLink>
+      </Text>
     )}
   </Stack>
 );

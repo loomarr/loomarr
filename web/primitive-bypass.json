@@ -68,12 +68,6 @@
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/setup/connection-block/connection-block.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
       "flexStack": 1
     },
@@ -99,7 +93,7 @@
       "flexStack": 1
     },
     "apps/web/src/filler/clip-details/clip-details.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "flexStack": 1
@@ -109,9 +103,6 @@
     },
     "apps/web/src/filler/filler-settings/filler-settings.tsx": {
       "flexStack": 4
-    },
-    "apps/web/src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 2

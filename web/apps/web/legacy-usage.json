@@ -34,7 +34,7 @@
       "tailwindClasses": 26
     },
     "src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
-      "tailwindClasses": 19
+      "tailwindClasses": 16
     },
     "src/components/loomarr/ai/intent-input/intent-input.tsx": {
       "tailwindClasses": 21,
@@ -42,7 +42,7 @@
       "rawTypeWeight": 1
     },
     "src/components/loomarr/ai/model-discover/model-discover.tsx": {
-      "tailwindClasses": 25
+      "tailwindClasses": 22
     },
     "src/components/loomarr/ai/model-picker/model-picker.tsx": {
       "tailwindClasses": 11
@@ -261,11 +261,10 @@
       "tailwindClasses": 8
     },
     "src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
-      "tailwindClasses": 20,
-      "rawTypeSize": 1
+      "tailwindClasses": 14
     },
     "src/components/loomarr/setup/connection-block/connection-block.tsx": {
-      "tailwindClasses": 12,
+      "tailwindClasses": 5,
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/login-form/login-form.tsx": {
@@ -373,7 +372,7 @@
       "tailwindClasses": 19
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 40
+      "tailwindClasses": 28
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 6
@@ -432,8 +431,8 @@
       "tailwindClasses": 14
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "tailwindClasses": 22,
-      "rawTypeSize": 2
+      "tailwindClasses": 16,
+      "rawTypeSize": 1
     },
     "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
       "tailwindClasses": 1
@@ -463,8 +462,7 @@
       "tailwindClasses": 49
     },
     "src/help/doc-view/doc-view.tsx": {
-      "tailwindClasses": 35,
-      "rawButton": 1,
+      "tailwindClasses": 28,
       "rawTypeWeight": 1
     },
     "src/help/help-page/help-page.tsx": {
