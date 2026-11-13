@@ -18,7 +18,7 @@ type Story = StoryObj<typeof meta>;
 
 const Empty: Story = { args: { value: "" } };
 const TemplateFilled: Story = { args: { value: sampleIntent } };
-const Submitting: Story = { args: { value: "90s comedies and mysteries, easy-going", submitting: true } };
+const Submitting: Story = { args: { value: "Saturday cartoons and space adventures, all day", submitting: true } };
 
 export default meta;
 export { Empty, Submitting, TemplateFilled };
