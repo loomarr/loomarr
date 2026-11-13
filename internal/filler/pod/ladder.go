@@ -153,7 +153,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
 	// (§10 — the ladder is the duration fallback, variety is a placement rule).
 	//
-	// ⚠ V45a: `c.Category` is now the DERIVED primary product leaf, so "no two back-to-back with the
+	// ⚠ V45a: `c.Category` is the DERIVED primary product leaf, so "no two back-to-back with the
 	// same Category" reads as "don't stack two clips of the same product family" — two beer ads are a
 	// repeat, a beer and a car ad are not. That is the right granularity and the rule is unchanged; a
 	// clip with no product tag ("" Category) is exempt from the repeat check, as an untagged one was.

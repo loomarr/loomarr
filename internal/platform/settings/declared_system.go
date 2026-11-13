@@ -155,7 +155,7 @@ func declaredAdvanced() []Setting {
 			// ⚠ Every two minutes, far tighter than the hourly sweeps, and affordable for the
 			// reason the sweeps were not: a pass is bounded by the per-run budget rather than by
 			// the catalog size, so an idle install costs one indexed query. It has to be tight,
-			// because this is now the ONLY thing that advances a freshly downloaded clip.
+			// because this is the ONLY thing that advances a freshly downloaded clip.
 			//
 			// ⚠ Every job needs its schedule key declared or the settings service PANICS at
 			// startup on `Resolve` of an undeclared key — so a new job and its key always land in

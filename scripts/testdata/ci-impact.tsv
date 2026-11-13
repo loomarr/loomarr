@@ -155,6 +155,7 @@ production-compose	docker/compose.yaml	contracts,go,go_full
 combined-leaf-and-docs	internal/proposals/suggest/score.go;docs/contributing/testing.md	contracts,go,postgres,image,docs
 filler-eval-corpus	research/corpus/seed-v1.json	docs
 generic-go-package-testdata	internal/filler/enrichment/testdata/hp-sauce.info.json	contracts,go
+root-package-ledger	internal/testdata/history-comments.txt	contracts,go
 planner-eval-corpus	internal/eval/testdata/planner-certification-v1.json;internal/eval/testdata/planner-certification-v2.json;internal/eval/testdata/planner-certification-v3.json;internal/eval/testdata/planner-certification-v4.json;internal/eval/testdata/planner-certification-v5.json;internal/eval/testdata/planner-certification-v6.json;internal/eval/testdata/planner-certification-v6-base.json;internal/eval/testdata/planner-catalog-v1.json;internal/eval/testdata/planner-catalog-v2.json	contracts,go
 recommendation-eval-corpus	internal/channels/recommend/testdata/channel-recommendation-v1.json;internal/channels/recommend/testdata/channel-recommendation-snapshots-v1.json	contracts,go
 planner-reference-golden	cmd/eval/internal/plannerreference/testdata/planner-reference-host-v2.golden.json	contracts,go

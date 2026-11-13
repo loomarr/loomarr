@@ -154,7 +154,7 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 		return false, err
 	}
 	startup.Complete(diagnostics.StartupCheckConfiguration, diagnostics.StartupPassed, "valid", "", "")
-	// LLM_PROVIDER (llm.provider) is now a registry setting validated at settings
+	// LLM_PROVIDER (llm.provider) is a registry setting validated at settings
 	// boot (an invalid enum fails there, config-design §3) — no separate check here.
 
 	level.Set(logLevel(cfg.LogLevel))
