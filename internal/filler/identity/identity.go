@@ -401,6 +401,10 @@ func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced *AssetRef
 			}
 			if referenced.Claim(asset) {
 				files = append(files, filepath.Join(clipDir, filepath.FromSlash(asset)))
+				if asset == m.SourceMaster.Path {
+					// The master keeps a copy of the download's provenance beside it.
+					files = append(files, tools.SidecarPathFor(files[len(files)-1]))
+				}
 			}
 		}
 	}

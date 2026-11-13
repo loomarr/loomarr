@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -109,16 +111,8 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from pipelinestate.S
 	} else if found && !current.FilesDeletedAt.IsZero() {
 		return ErrFilesDeleted
 	}
-	// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
-	// "preparing", and the terminal Ready transaction then rejects it forever because publication
-	// requires the current catalog row to be held. Hold first, before invalidating any derived
-	// facts: a failed hold leaves both the playable clip and its terminal conveyor untouched.
-	held, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC())
-	if err != nil {
-		return fmt.Errorf("hold clip for pipeline restart: %w", err)
-	}
-	if held != 1 {
-		return fmt.Errorf("hold clip for pipeline restart: clip %s changed before restart", hash)
+	if err := p.holdForRewind(ctx, clip, from, idx); err != nil {
+		return err
 	}
 	clip.Held = true
 
@@ -166,6 +160,53 @@ func (p *Pipeline) evidenceReleased(clip clipstore.Clip) bool {
 	}
 	tags, ok := asset.ReadSidecarTags(full)
 	return ok && tags.MediaAssets != nil && tags.MediaAssets.SourceMaster.Path != "" && tags.MediaAssets.Evidence == nil
+}
+
+// holdForRewind holds the clip so its conveyor can restart.
+//
+// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
+// "preparing", and the terminal Ready transaction then rejects it forever because publication
+// requires the current catalog row to be held. Hold first, before invalidating any derived facts:
+// a failed hold leaves both the playable clip and its terminal conveyor untouched.
+//
+// Probe through screening read the original or the evidence copy built from it, and a rewind
+// there re-runs the transcode. A clip whose original is gone (#3855) has neither; it airs on its
+// playback copy, which every later rung reads. The check and the hold share the sidecar lock with
+// upkeep, which releases an original only from an unheld clip: either the release finished first
+// and the rewind is refused, or the hold did and the original stays.
+func (p *Pipeline) holdForRewind(ctx context.Context, clip clipstore.Clip, from pipelinestate.StageID, idx int) error {
+	// A clip with no resolvable file has no sidecar to read or guard.
+	if full, err := cliplibrary.ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path)); err == nil {
+		unlock := asset.LockSidecar(full)
+		defer unlock()
+		if idx <= pipelinestate.StageIndex(pipelinestate.StageScreen) && p.masterGone(full) {
+			return fmt.Errorf("re-run %s for clip %s: %w", from, clip.Hash, asset.ErrSourceMasterReleased)
+		}
+	}
+	held, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC())
+	if err != nil {
+		return fmt.Errorf("hold clip for pipeline restart: %w", err)
+	}
+	if held != 1 {
+		return fmt.Errorf("hold clip for pipeline restart: clip %s changed before restart", clip.Hash)
+	}
+	return nil
+}
+
+// masterGone reports whether the clip's sidecar records its original as released (#3855), or
+// names one whose file is missing: a release that moved the file but had not yet rewritten the
+// sidecar, which the next upkeep pass finishes.
+func (p *Pipeline) masterGone(full string) bool {
+	tags, ok := asset.ReadSidecarTags(full)
+	if !ok || tags.MediaAssets == nil || tags.MediaAssets.SourceMaster.Role == "" {
+		return false
+	}
+	master := tags.MediaAssets.SourceMaster
+	if master.Released() {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(p.clipDir, filepath.FromSlash(master.Path)))
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // RetryFailure retries exactly the failed rung the lifecycle projection permits. It is narrower

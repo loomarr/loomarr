@@ -241,6 +241,9 @@ func (s *Handlers) rewindFillerClip(ctx context.Context, in *rewindFillerClipInp
 		return nil, httpcore.Conflict("Re-encoding needs confirmation", err.Error())
 	case errors.Is(err, filler.ErrFilesDeleted):
 		return nil, httpcore.Conflict("This clip's files are gone", err.Error())
+	case errors.Is(err, asset.ErrSourceMasterReleased):
+		return nil, httpcore.Conflict("The original download is gone",
+			"This step needs the original download, which Loomarr deleted once the clip was ready. Later steps can still run again.")
 	case err != nil:
 		return nil, err
 	default:

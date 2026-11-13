@@ -27,6 +27,14 @@ func (a Upkeep) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool,
 	return NewSync(a.st).GetClip(ctx, hash)
 }
 
+func (a Upkeep) ListReadyClips(ctx context.Context) ([]clipstore.Clip, error) {
+	return a.st.ListClips(ctx, clipstore.ClipFilter{})
+}
+
+func (a Upkeep) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
+	return a.st.GetClipPipeline(ctx, hash)
+}
+
 func (a Upkeep) ListClipPaths(ctx context.Context) ([]string, error) {
 	return NewDefects(a.st).ListClipPaths(ctx)
 }

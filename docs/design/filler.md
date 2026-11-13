@@ -537,6 +537,15 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   and the bytes count toward the budget until they are gone.
 - **Leftover download staging is cleaned every hour** by the same rules as the storage cleanup
   route: a terminal run, no artifact depending on it, and 24 hours old.
+- **A Ready clip Loomarr fetched lets go of its original download**
+  ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)). The master goes to
+  quarantine first, then the sidecar keeps the master's digest, length and sparse id with no path.
+  A crash between the two leaves a sidecar naming a missing file, and the next pass finishes the
+  release. A clip added by hand keeps its original, and so does a clip the library re-encode still
+  has to move onto the current profile, until it has; nothing is released until encoder detection
+  has settled, since before then every host reads as software. An original another clip still
+  names stays until the last of them is released. The release, the defect floor's evidence release
+  and a rewind's hold share one lock per sidecar, so none of them undoes another's change.
 - The server projects one capacity snapshot with a state (`healthy`, `approaching`, `paused`,
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
   `change_storage_limit`. `approaching` starts at the smaller of 1 GiB and 20% of the allowance.
@@ -840,11 +849,14 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
 - **The best copy is the cleanest.** Creative identity ranks copies of one ad by their defect
   findings first: fewer checks near or past their bar wins, then resolution and the rest of the
   ladder. A cleaner copy of an ad already on air replaces it the same way, keeping its history.
-- **An admitted clip keeps its source master and its playback copy.** The floor's next pass drops
-  its evidence copy: the sidecar stops naming it first, then the file goes once no sidecar names
-  it. Screening and split read evidence before admission, and every later check reads the
-  playback file. A rewind to split or screening on such a clip starts at the transcode instead,
-  which rebuilds the evidence copy from the master.
+- **An admitted clip keeps its playback copy, and its source master until upkeep releases it.** The
+  floor's next pass drops its evidence copy: the sidecar stops naming it first, then the file goes
+  once no sidecar names it. Screening and split read evidence before admission, and every later
+  check reads the playback file. A rewind to split or screening on such a clip starts at the
+  transcode instead, which rebuilds the evidence copy from the master. Once a fetched clip's master
+  is released ([Filler lets go on its own](#filler-lets-go-on-its-own)), a rewind to screening or
+  earlier is refused: "The original download is gone." Later rungs read the playback copy and
+  still rewind.
 - **Breaks hold up while the pool refills.** A purge shrinks the pool below its target, and the
   fetcher fetches toward the target again. Meanwhile pod assembly fills a break in this order:
   1. a rested ad;
@@ -886,8 +898,11 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
   its own recorded recipe and measurement. Both derivatives are built from the master, staged,
   fully decoded and checked, then atomically named; a failed check holds the clip and keeps the
   master.
-- A master is deleted only with the one clip whose sidecar names it: an inferior copy merged into
-  its survivor (#2033) or a defective copy retired (#2036). Otherwise masters stay. An admitted
+- A master is deleted with the one clip whose sidecar names it: an inferior copy merged into its
+  survivor (#2033), a defective copy retired (#2036), or a fetched reject let go (#3855). A Ready
+  fetched clip's master is released by upkeep
+  ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)); the sidecar keeps its
+  digest and length with no path. A hand-added clip's master stays. An admitted
   clip's evidence copy is dropped and rebuilt from its master on demand (see
   [Enforcement](#enforcement-2036)).
 

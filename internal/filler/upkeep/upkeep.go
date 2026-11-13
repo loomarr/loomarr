@@ -4,9 +4,12 @@
 //  1. empties quarantine batches that have waited a day;
 //  2. lets go of every clip Loomarr fetched and rejected at least a week ago: the clip leaves the
 //     catalog for good, its pipeline row keeps the reason, and its files go to quarantine;
-//  3. removes leftover download staging whose run has ended.
+//  3. releases the original download of every Ready clip Loomarr fetched, once the library
+//     re-encode no longer needs it: the airing copy stays, the sidecar keeps the digest;
+//  4. removes leftover download staging whose run has ended.
 //
-// A clip added by hand (no acquisition) or pinned by a channel is never let go.
+// A clip added by hand (no acquisition) is never let go and keeps its original; a clip pinned by
+// a channel is never let go.
 package upkeep
 
 import (
@@ -40,6 +43,10 @@ type Store interface {
 	// ListClipPaths is every clip's path, removed ones included, so an asset another clip's sidecar
 	// names is never deleted with this one.
 	ListClipPaths(ctx context.Context) ([]string, error)
+	// ListReadyClips is every clip on air: unheld, not removed, not composite.
+	ListReadyClips(ctx context.Context) ([]clipstore.Clip, error)
+	// GetClipPipeline reads a clip's pipeline row; a clip with none was never on the conveyor.
+	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 }
 
 // Bin is the quarantine (quarantine.Bin).
@@ -61,9 +68,23 @@ type Job struct {
 	clipDir string
 	now     func() time.Time
 	log     *slog.Logger
+	// needsReencode reports a Ready clip the library re-encode still has to move onto the current
+	// profile from its original (TranscodeStage.NeedsReencode); its original is kept until then.
+	needsReencode  func(clipstore.Clip) bool
+	encoderSettled func() bool
 	// disposed remembers rows whose files are already in quarantine, so a pass does not read their
 	// sidecars again. It is per process: after a restart each is checked once more.
 	disposed map[string]bool
+	// settled remembers Ready clips whose original is released or is kept for good (added by hand),
+	// so a pass reads only new arrivals' sidecars. Per process, like disposed.
+	settled map[string]bool
+}
+
+// WithReencode keeps a clip's original while the library re-encode still needs it. settled
+// reports whether the encoder the re-encode targets is known; until it is, no original goes.
+func (j *Job) WithReencode(needsReencode func(clipstore.Clip) bool, settled func() bool) *Job {
+	j.needsReencode, j.encoderSettled = needsReencode, settled
+	return j
 }
 
 // Result counts one pass.
@@ -72,13 +93,15 @@ type Result struct {
 	LetGo        int   // rejected clips taken off the catalog this pass
 	HeldBack     int   // fetched rejects past their rest that stayed: pinned, or the clip changed within the week
 	Quarantined  int   // clips whose files went to quarantine this pass
+	Originals    int   // Ready clips whose original download was released this pass
 	Leftovers    int   // leftover staging folders removed
 	LeftoverByte int64 // bytes those folders held
 }
 
 // New builds the upkeep job.
 func New(store Store, bin Bin, cleaner Cleaner, clipDir string, now func() time.Time, log *slog.Logger) *Job {
-	return &Job{store: store, bin: bin, cleaner: cleaner, clipDir: clipDir, now: now, log: log, disposed: map[string]bool{}}
+	return &Job{store: store, bin: bin, cleaner: cleaner, clipDir: clipDir, now: now, log: log,
+		disposed: map[string]bool{}, settled: map[string]bool{}}
 }
 
 // Run is one pass. A step that fails is logged and the next still runs, so one stuck file never
@@ -95,6 +118,9 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 	if err := j.letGoOfRejects(ctx, &res); err != nil {
 		errs = append(errs, err)
 	}
+	if err := j.releaseOriginals(ctx, &res); err != nil {
+		errs = append(errs, err)
+	}
 	if j.cleaner != nil {
 		cleaned, err := j.cleaner.Clean(ctx)
 		res.Leftovers, res.LeftoverByte = cleaned.RemovedItems, cleaned.RemovedBytes
@@ -105,8 +131,9 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 	}
 	// held_back is what to read when rejects pile up and none go: a clip row something keeps
 	// rewriting is never "unchanged for a week".
-	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.HeldBack > 0 || res.Quarantined > 0 || res.Leftovers > 0) {
+	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.HeldBack > 0 || res.Quarantined > 0 || res.Originals > 0 || res.Leftovers > 0) {
 		j.log.Info("upkeep: filler let go of what it no longer needs", "rejects", res.LetGo, "held_back", res.HeldBack,
+			"originals", res.Originals,
 			"quarantined", res.Quarantined, "emptied", res.Emptied, "leftovers", res.Leftovers,
 			"leftover_bytes", res.LeftoverByte)
 	}
@@ -202,16 +229,113 @@ func (j *Job) quarantine(ctx context.Context, hash string, referenced *identity.
 			media = append(media, f)
 		}
 	}
-	if j.report(hash, j.bin.Put(media)) {
+	if j.report(hash, "a rejected clip", j.bin.Put(media)) {
 		return false
 	}
-	return !j.report(hash, j.bin.Put([]string{sidecar}))
+	return !j.report(hash, "a rejected clip", j.bin.Put([]string{sidecar}))
 }
 
-func (j *Job) report(hash string, failed map[string]error) bool {
+// releaseOriginals releases the original download of every Ready clip Loomarr fetched (decision 14
+// of #3838): only the airing copy stays, and the sidecar keeps the original's digest and size. A
+// clip added by hand keeps its original, as does one the library re-encode still has to encode
+// from. The file goes to quarantine before the sidecar stops naming it, so a crash between the
+// two leaves a sidecar naming a missing file, which the next pass finishes, never an unnamed file
+// nothing would find again. An original another clip's sidecar still names stays until the last
+// of them is released.
+func (j *Job) releaseOriginals(ctx context.Context, res *Result) error {
+	if j.encoderSettled != nil && !j.encoderSettled() {
+		// Until encoder detection settles every host reads as software, where the library
+		// re-encode needs nothing; releasing then would lose the originals it is about to need.
+		return nil
+	}
+	ready, err := j.store.ListReadyClips(ctx)
+	if err != nil {
+		return err
+	}
+	var referenced map[string]int
+	for _, c := range ready {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if j.settled[c.Hash] {
+			continue
+		}
+		row, found, err := j.store.GetClipPipeline(ctx, c.Hash)
+		if err != nil {
+			return err
+		}
+		if !found || row.AcquisitionID == "" {
+			j.settled[c.Hash] = true // added by hand, or never on the conveyor: its original stays
+			continue
+		}
+		if j.needsReencode != nil && j.needsReencode(c) {
+			continue
+		}
+		full, err := cliplibrary.ClipPath(j.clipDir, c.Path, filepath.Ext(c.Path))
+		if err != nil {
+			continue
+		}
+		tags, ok := asset.ReadSidecarTags(full)
+		if !ok || tags.MediaAssets == nil || tags.MediaAssets.SourceMaster.Released() {
+			j.settled[c.Hash] = true
+			continue
+		}
+		if referenced == nil {
+			paths, err := j.store.ListClipPaths(ctx)
+			if err != nil {
+				return err
+			}
+			referenced = identity.ReferencedAssets(j.clipDir, paths)
+		}
+		master, released := j.release(ctx, c.Hash, full, referenced)
+		if !released {
+			continue
+		}
+		referenced[master]--
+		j.settled[c.Hash] = true
+		res.Originals++
+	}
+	return nil
+}
+
+// release moves one Ready clip's original (and the provenance sidecar beside it) to quarantine
+// and rewrites the clip's sidecar without its path. It holds the sidecar lock from the read to the
+// write, which the defect floor and a rewind share: neither puts back what this removed, and a
+// rewind either holds the clip first, which the re-read here sees, or finds the original gone.
+func (j *Job) release(ctx context.Context, hash, full string, referenced map[string]int) (string, bool) {
+	unlock := asset.LockSidecar(full)
+	defer unlock()
+	tags, ok := asset.ReadSidecarTags(full)
+	if !ok || tags.MediaAssets == nil || tags.MediaAssets.SourceMaster.Released() {
+		return "", false
+	}
+	if now, found, err := j.store.GetClip(ctx, hash); err != nil || !found || now.Held || !now.RemovedAt.IsZero() {
+		return "", false
+	}
+	master := tags.MediaAssets.SourceMaster.Path
+	if referenced[master] <= 1 {
+		masterFull := filepath.Join(j.clipDir, filepath.FromSlash(master))
+		// The media first: a crash after it leaves the provenance sidecar, which the clip's
+		// sidecar still leads the next pass to.
+		if j.report(hash, "a Ready clip's original", j.bin.Put([]string{masterFull})) ||
+			j.report(hash, "a Ready clip's original", j.bin.Put([]string{tools.SidecarPathFor(masterFull)})) {
+			return "", false
+		}
+	}
+	tags.MediaAssets.SourceMaster.Path = ""
+	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
+		j.warn("upkeep: a Ready clip's original was set aside but its sidecar could not be updated; the next pass tries again",
+			"clip", hash, "err", err)
+		return "", false
+	}
+	return master, true
+}
+
+// report logs each file of what that could not go to quarantine and reports whether any failed.
+func (j *Job) report(hash, what string, failed map[string]error) bool {
 	for f, err := range failed {
-		j.warn("upkeep: a rejected clip's file could not be moved to quarantine; the next pass tries again",
-			"clip", hash, "file", f, "err", err)
+		j.warn("upkeep: a file could not be moved to quarantine; the next pass tries again",
+			"clip", hash, "of", what, "file", f, "err", err)
 	}
 	return len(failed) > 0
 }

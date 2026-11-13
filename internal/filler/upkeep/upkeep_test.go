@@ -64,6 +64,21 @@ func (f *fakeStore) GetClip(_ context.Context, hash string) (clipstore.Clip, boo
 	return c, ok, nil
 }
 
+func (f *fakeStore) ListReadyClips(context.Context) ([]clipstore.Clip, error) {
+	var out []clipstore.Clip
+	for _, c := range f.clips {
+		if !c.Held && c.RemovedAt.IsZero() && !c.IsComposite {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) GetClipPipeline(_ context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
+	r, ok := f.rows[hash]
+	return r, ok, nil
+}
+
 func (f *fakeStore) ListClipPaths(context.Context) ([]string, error) {
 	var out []string
 	for _, c := range f.clips {
@@ -118,6 +133,34 @@ func (f *fixture) reject(t *testing.T, hash, acquisition, master string, rejecte
 		Disposition: pipelinestate.DispositionRejected, RejectReason: pipelinestate.ReasonUnplayable,
 		UpdatedAt: rejectedAt}
 	return full
+}
+
+// ready adds a clip on air with a playback file whose sidecar names master, and returns the
+// playback file's full path.
+func (f *fixture) ready(t *testing.T, hash, acquisition, master string) string {
+	t.Helper()
+	full := f.reject(t, hash, acquisition, master, t0)
+	c := f.store.clips[hash]
+	c.Held = false
+	f.store.clips[hash] = c
+	row := f.store.rows[hash]
+	row.Disposition, row.RejectReason = pipelinestate.DispositionReady, ""
+	f.store.rows[hash] = row
+	return full
+}
+
+func masterRel(name string) string {
+	return filepath.ToSlash(filepath.Join(split.MediaAssetRootName, "masters", "aa", "bb", name+".mkv"))
+}
+
+// sidecarMaster is the source master a playback file's sidecar records.
+func sidecarMaster(t *testing.T, full string) asset.Identity {
+	t.Helper()
+	tags, ok := asset.ReadSidecarTags(full)
+	if !ok || tags.MediaAssets == nil {
+		t.Fatalf("no manifest beside %s", full)
+	}
+	return tags.MediaAssets.SourceMaster
 }
 
 func exists(path string) bool {

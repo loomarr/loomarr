@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -92,5 +93,44 @@ func TestPreserveSourceMasterRefusesDifferentExistingBytes(t *testing.T) {
 	}
 	if _, err := preserveSourceMaster(context.Background(), root, source, hash, SidecarTags{}); err == nil {
 		t.Fatal("different bytes reused under the content-addressed master name")
+	}
+}
+
+// A released master (#3855, decision 14 of #3838) keeps its digest, size and sparse id with no
+// path: the manifest stays valid, its authority does not move, and reprocessing refuses plainly.
+func TestReleasedSourceMasterKeepsItsIdentityWithoutAFile(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "commercial.mov")
+	if err := os.WriteFile(source, []byte("source bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := ClipID(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	master, err := preserveSourceMaster(context.Background(), root, source, hash, SidecarTags{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := Manifest{Version: ManifestVersion, SourceMaster: master}
+	released := kept
+	released.SourceMaster.Path = ""
+	if !released.SourceMaster.Released() || kept.SourceMaster.Released() {
+		t.Fatal("Released() must be true only for a master with no path")
+	}
+	if err := released.Validate(); err != nil {
+		t.Fatalf("a released master's manifest is invalid: %v", err)
+	}
+	if ManifestAuthoritySHA256(released) != ManifestAuthoritySHA256(kept) {
+		t.Fatal("releasing the master changed the manifest's authority")
+	}
+	anonymous := released
+	anonymous.SourceMaster.SHA256 = ""
+	if err := anonymous.Validate(); err == nil {
+		t.Fatal("a released master without its digest validated")
+	}
+	_, err = RetainedSourceMaster(context.Background(), root, source, hash, SidecarTags{MediaAssets: &released}, nil)
+	if !errors.Is(err, ErrSourceMasterReleased) {
+		t.Fatalf("RetainedSourceMaster on a released master = %v, want ErrSourceMasterReleased", err)
 	}
 }
