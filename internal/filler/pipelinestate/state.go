@@ -173,6 +173,9 @@ type ClipPipeline struct {
 	Stages         []StageRecord
 	EnrolledAt     time.Time
 	UpdatedAt      time.Time
+	// FilesDeletedAt is when Loomarr deleted a rejected clip's files (#3855). The row stays as the
+	// record of why; with the bytes gone there is nothing to retry or restore. Zero while kept.
+	FilesDeletedAt time.Time
 }
 
 // RestoreRefusal returns a refused row — a machine rejection or an operator dismissal — to review:

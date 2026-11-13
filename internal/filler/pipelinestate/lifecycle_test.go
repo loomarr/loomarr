@@ -54,6 +54,18 @@ func TestClipPipelineLifecycle(t *testing.T) {
 			want: PipelineLifecycle{State: LifecycleComplete},
 		},
 		{
+			name: "a reject whose files were deleted keeps its failure but offers no retry",
+			row: ClipPipeline{Disposition: DispositionRejected, Stage: StageTranscode,
+				Status: StatusFailed, Attempts: 3, RejectReason: ReasonUnplayable, FilesDeletedAt: now},
+			want: PipelineLifecycle{State: LifecycleRejected, FailureCode: FailureUnplayable},
+		},
+		{
+			name: "a soft reject whose files were deleted offers no restore",
+			row: ClipPipeline{Disposition: DispositionRejected, Stage: StageScreen,
+				Status: StatusDone, RejectReason: ReasonLanguage, FilesDeletedAt: now},
+			want: PipelineLifecycle{State: LifecycleRejected},
+		},
+		{
 			name: "exhausted transcode execution can retry after repair",
 			row: ClipPipeline{Disposition: DispositionRejected, Stage: StageTranscode,
 				Status: StatusFailed, Attempts: 3, RejectReason: ReasonUnplayable},

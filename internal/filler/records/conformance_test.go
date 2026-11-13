@@ -88,6 +88,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipPipelineState", func(t *testing.T) { testClipPipeline(t, newStore) })
 		t.Run("ClipPipelineOverview", func(t *testing.T) { testClipPipelineOverview(t, newStore) })
 		t.Run("ClipPipelineRetry", func(t *testing.T) { testClipPipelineRetry(t, newStore) })
+		t.Run("ClipPipelineRetireRejected", func(t *testing.T) { testClipPipelineRetireRejected(t, newStore) })
 		t.Run("IncomingConveyorCount", func(t *testing.T) { testIncomingConveyorCount(t, newStore) })
 		t.Run("Taxonomy", func(t *testing.T) { testTaxonomy(t, newStore) })
 		t.Run("CoreTransactionSpansFillerTables", func(t *testing.T) { testCoreTransactionSpansFillerTables(t, newStore) })

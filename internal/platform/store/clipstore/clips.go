@@ -1269,6 +1269,41 @@ func (s *Store) MarkClipReaped(ctx context.Context, hash string, at time.Time) e
 	return nil
 }
 
+// pinnedClipsTx is every clip some channel pins. On Postgres it locks the channel rows until tx
+// ends, so a concurrent channel write cannot add a pin between this read and the caller's write.
+func (s *Store) pinnedClipsTx(ctx context.Context, tx storedb.Querier) (map[string]struct{}, error) {
+	rows, err := s.channels.LockChannelPolicies(ctx, tx)
+	if err != nil {
+		return nil, fmt.Errorf("read channel pins: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	pinned := map[string]struct{}{}
+	for rows.Next() {
+		var id, raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			return nil, fmt.Errorf("scan channel policy: %w", err)
+		}
+		var policy schedule.ChannelPolicy
+		if err := json.Unmarshal([]byte(raw), &policy); err != nil {
+			return nil, fmt.Errorf("decode channel policy %s: %w", id, err)
+		}
+		if policy.Filler != nil {
+			for _, hash := range policy.Filler.Pinned {
+				if hash != "" {
+					pinned[hash] = struct{}{}
+				}
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read channel pins: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close channel pins: %w", err)
+	}
+	return pinned, nil
+}
+
 // RetireDefectiveCopy takes a copy that failed the defect floor off the catalog for good (#2036):
 // removed, so nothing airs it, and reaped, so a sync that no longer finds its file keeps the row.
 // The row, its fingerprint, its defect record and its airings stay: together they are the "wanted:
@@ -1660,41 +1695,14 @@ func (s *Store) ReplaceSplitChildren(ctx context.Context, parentHash string, kee
 }
 
 func (s *Store) replaceSplitChildrenTx(ctx context.Context, tx storedb.Querier, parentHash string, keepHashes []string, at time.Time) (int, error) {
-	rows, err := s.channels.LockChannelPolicies(ctx, tx)
+	keep, err := s.pinnedClipsTx(ctx, tx)
 	if err != nil {
-		return 0, fmt.Errorf("replace split children %s read channel pins: %w", parentHash, err)
+		return 0, fmt.Errorf("replace split children %s: %w", parentHash, err)
 	}
-	keep := make(map[string]struct{}, len(keepHashes))
 	for _, hash := range keepHashes {
 		if hash != "" {
 			keep[hash] = struct{}{}
 		}
-	}
-	for rows.Next() {
-		var id, raw string
-		if err := rows.Scan(&id, &raw); err != nil {
-			_ = rows.Close()
-			return 0, fmt.Errorf("replace split children %s scan channel policy: %w", parentHash, err)
-		}
-		var policy schedule.ChannelPolicy
-		if err := json.Unmarshal([]byte(raw), &policy); err != nil {
-			_ = rows.Close()
-			return 0, fmt.Errorf("replace split children %s decode channel policy: %w", parentHash, err)
-		}
-		if policy.Filler != nil {
-			for _, hash := range policy.Filler.Pinned {
-				if hash != "" {
-					keep[hash] = struct{}{}
-				}
-			}
-		}
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return 0, fmt.Errorf("replace split children %s read channel pins: %w", parentHash, err)
-	}
-	if err := rows.Close(); err != nil {
-		return 0, fmt.Errorf("replace split children %s close channel pins: %w", parentHash, err)
 	}
 
 	hashes := make([]string, 0, len(keep))

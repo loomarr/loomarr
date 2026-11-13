@@ -21,9 +21,10 @@ type AcquisitionCleanupStore interface {
 	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.ArtifactCursor, int) ([]acquisition.Artifact, error)
 }
 
-// AcquisitionCleaner owns the only user-triggered storage cleanup in Filler. It removes stale
-// numbered attempt directories only after their durable acquisition run is terminal and no staged
-// or repair artifact still depends on them. Unknown paths and symlinked trees are never candidates.
+// AcquisitionCleaner removes leftover download staging: stale numbered attempt directories, only
+// after their durable acquisition run is terminal and no staged or repair artifact still depends on
+// them. Unknown paths and symlinked trees are never candidates. The storage cleanup route runs it on
+// request, and the upkeep job every hour (#3855).
 type AcquisitionCleaner struct {
 	watchDir string
 	store    AcquisitionCleanupStore
