@@ -40,7 +40,13 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   item has defined the init; the tune-in item gets `FirstItemWait` (10 s). The wait is bounded by
   `StartDeadline` (`FirstItemWait` + `SlateRetry` + `FirstManifest`, 24 s), so a tune-in item that fails
   once still rejoins. Past it, the master fails the start with the item's last failure, such as a source
-  file the server can't read, and the client shows the shared start-failure problem. Web clients set
+  file the server can't read, and the client shows the shared start-failure problem. A tune-in that
+  lands on a **card** (a break with no ads, the generated bumper card) has no item until the card
+  ends, and its slate leads by only `RunAhead`. So the packager opens the first item after the card
+  just until its first fragment, takes that encoder's init, and closes it (`probeInit`, at most
+  `InitLookAhead` past the card, #3960). The card's slate then makes the first manifest, and the item
+  opens again when it airs. Without this, a card with more than `RunAhead` + `StartDeadline` left
+  failed the start. Web clients set
   `liveSyncDuration` to the same 6 s, so the playhead lands on the wall clock.
 - **Slate and rejoin.** An empty slot, a failed schedule lookup or an item that is not producing by its
   deadline is filled with house-format slate. The slate is shared per (host, output) and starts only
