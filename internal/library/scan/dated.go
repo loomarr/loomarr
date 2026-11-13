@@ -86,6 +86,11 @@ func datedEpisode(file File) bool {
 		return true
 	}
 	name, dir := plainStem(path.Base(file.Rel)), path.Dir(file.Rel)
+	// A video site's archive, as yt-dlp names it, its day first and its video's id last, "Woodturner
+	// Pete/20230105 - Bowl From A Log [abcDEF12345]", is its channel's folder's episode of that day.
+	if dir != "." && !shelfAt(dir) && dateFirst(name) && videoID.MatchString(stem(path.Base(file.Rel))) {
+		return true
+	}
 	before, _, _ := searchQuery(datedShow(name), 0)
 	// A name that is its day alone, "Nightly Ledger/2024-03-14.mkv", is the episode of the show
 	// whose folder it is in; a catch-all's, "Home Videos/2019-06-01.mp4", is a day's video.
@@ -126,6 +131,14 @@ func datedEpisode(file File) bool {
 func recordedFilm(name, dir string) bool {
 	return (dir == "." || shelfAt(dir)) && recordedTitle(name) != "" && !titledDaily.MatchString(name)
 }
+
+// channelName matches a name that is a channel's alone: "Channel 9", "Ch 5", "Channel5". A number
+// alone, "24", may be a show's name.
+var channelName = regexp.MustCompile(`(?i)^(?:channel|ch)[ .]?\d{1,3}$`)
+
+// videoID matches a video site's id in brackets, as yt-dlp writes it, last or before a release's
+// bracketed notes: " [abcDEF12345]", " [abcDEF12345] [1080p]".
+var videoID = regexp.MustCompile(`\[[A-Za-z0-9_-]{11}\](?:[ ._]*\[[^\]]*\])*$`)
 
 // titledDaily matches Sonarr's name for a daily show's episode, its year in brackets, its day and
 // its title, each after a dash: "(2019) - 2024-02-01 - The Long Clue".
@@ -203,6 +216,11 @@ func datedShow(name string) string {
 	if show = strings.Trim(strings.Join(strings.Fields(show), " "), " -(["); show != "" {
 		// A recorder names the guest or the episode's title between the show and the day: "The Late
 		// Lark - Guest Name - 2023-11-02" is The Late Lark's.
+		// One that names its channel first, "Channel 9 - Yattendon Show - 2024-01-01", is the show's
+		// after it: every recording on the channel is no one show.
+		if before, rest, ok := strings.Cut(show, " - "); ok && channelName.MatchString(strings.TrimSpace(before)) {
+			show = strings.TrimSpace(rest)
+		}
 		if before, _, ok := strings.Cut(show, " - "); ok && strings.TrimSpace(before) != "" {
 			return strings.TrimSpace(before)
 		}

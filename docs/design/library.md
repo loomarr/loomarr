@@ -992,6 +992,13 @@ header is kept, so no file is opened again. Each version and what it changed:
   is the film, never skipped (`namedAsFolder`); "TV/blackthorn.203.avi" on a shows' shelf is
   season 2's third (`shelvedHundreds`); a fansub's "- 19.5" is its show's season 0's, never
   episode 19's twin (`halfEpisode`).
+- **78:** a films' shelf's "Extras/" is walked, and only its videos that name no year are extras:
+  "Movies/Extras/Pinfold (2011).mkv" is a film, never skipped with its folder
+  (`shelfBonusExtras`); Plex's lower-case "-short" beside a film is its extra (`plexSuffix`); a
+  video site's archive, "Channel/20230105 - Title [abcDEF12345]", is the channel's episode of that
+  day (`videoID`); a recording named by its channel first, "Channel 9 - Show - 2024-01-01", is
+  the show's (`channelName`); a season's folder off a shelf is never a show's, whatever the
+  folders below it say (`seriesFolderOf`).
 
 ## Search
 

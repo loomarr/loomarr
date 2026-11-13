@@ -153,9 +153,9 @@ func skippedDir(parent, name string, titled bool) bool {
 	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !shelfAt(parent)
 	// A films' shelf's "Trailers/" or "Samples/" holds its films' trailers and samples, named as
 	// the films are; a film called so names its folder with its year, "Trailers (2019)/".
-	// So does its "Extras/" or "Bonus Features/": a films' shelf keeps no film in a folder so named.
 	// "Trailers/" at a root's top, or on a shelf of shelves ("Media/Library/"), holds trailers too.
-	shelfTrailers := (shelfExtras[lower] || shelfBonus[normName(name)]) && parent != "." && amongFilms(parent) ||
+	// Its "Extras/" is walked: a film may be kept there (shelfBonusExtras).
+	shelfTrailers := shelfExtras[lower] && parent != "." && amongFilms(parent) ||
 		shelfExtras[lower] && (parent == "." || shelfAt(parent) && !underShows(name) && !showsFolderNames[folderKey(path.Base(parent))])
 	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] || shelfTrailers ||
 		(parent != "." && extrasFolder(name, parent) && titled && !shelfAt(parent)) ||
@@ -164,6 +164,27 @@ func skippedDir(parent, name string, titled bool) bool {
 
 // shelfExtras are the folders a films' shelf keeps its films' trailers and samples in.
 var shelfExtras = map[string]bool{"trailers": true, "teasers": true, "samples": true}
+
+// plexSuffix matches Plex's suffix for a film's extra, in lower case after a dash: "-short",
+// "-behindthescenes".
+var plexSuffix = regexp.MustCompile(`-(?:trailer|short|scene|clip|featurette|behindthescenes|deleted|interview|other|extra)$`)
+
+// shelfBonusExtras is which videos in a films' shelf's bonus folder, "Movies/Extras/", "Movies/Bonus
+// Features/", are its films' extras: those that name no year, "Tamber Sound Featurette". One that
+// does, "Movies/Extras/Pinfold (2011).mkv", is a film kept there, never skipped unread. dir is the
+// folder, relative to the root.
+func shelfBonusExtras(dir string, names []string) map[string]bool {
+	if dir == "." || path.Dir(dir) == "." || !shelfBonus[normName(path.Base(dir))] || !amongFilms(path.Dir(dir)) {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, name := range names {
+		if _, year, _ := searchQuery(plainStem(name), 0); year == 0 {
+			out[name] = true
+		}
+	}
+	return out
+}
 
 // shelfBonus are the folders a films' shelf keeps its films' bonus videos in, by normName.
 var shelfBonus = map[string]bool{
@@ -457,6 +478,9 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	shows := dir != w.root && underShows(path.Join(w.shelf, w.rel(dir)))
 	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
 	for name := range extrasBeside(videoNames) {
+		extras[name] = true
+	}
+	for name := range shelfBonusExtras(w.rel(dir), videoNames) {
 		extras[name] = true
 	}
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
@@ -1214,6 +1238,13 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 		if strings.HasPrefix(name, ".") && slices.ContainsFunc(names, func(other string) bool {
 			return other != name && strings.EqualFold(plainStem(other), plainStem(name[1:]))
 		}) {
+			out[name] = true
+			continue
+		}
+		// Beside that film, Plex's own suffix, joined on in lower case, says its extra whatever the
+		// name before it: "Ashwick Short Film-short", "… Gala-scene". "Cut-Short" is a title, and so
+		// is a name all in lower case, "cut-short", which can't say which it is.
+		if film && plexSuffix.MatchString(stem(name)) && name != strings.ToLower(name) {
 			out[name] = true
 			continue
 		}
