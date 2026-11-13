@@ -330,6 +330,124 @@ describe("Guide", () => {
     expect(button).toHaveFocus();
   });
 
+  // A retry that works takes the notice (or the error page) away, and the focus on its button goes
+  // with it, to the page. Focus goes instead to the Guide's home: the grid's one Tab stop, or the
+  // page's main region when no grid is drawn.
+  describe("after a retry works", () => {
+    const failGuide = () => server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+    const isGuide = (query: { queryKey: readonly unknown[] }) =>
+      String(query.queryKey[0]).includes("/v1/guide");
+    const gridStop = () => {
+      const stop = document.activeElement;
+      expect(stop, "focus is on the page, not a control").not.toBe(document.body);
+      expect(stop).toHaveAttribute("tabindex", "0");
+      return stop;
+    };
+
+    it("puts focus on the grid's Tab stop when a notice's retry works", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const view = renderAt(GRID);
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      failGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+      await user.click(await view.findByRole("button", { name: "Try again" }));
+      await view.findByRole("button", { name: "Try again" });
+
+      server.resetHandlers();
+      stubGuide();
+      await user.click(view.getByRole("button", { name: "Try again" }));
+
+      await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+      await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+      expect(gridStop()).toHaveAccessibleName(/^Space Western, /);
+    });
+
+    it("puts focus on the grid's Tab stop when the error page's retry works", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      failGuide();
+      const view = renderAt(GRID);
+      const button = await view.findByRole("button", { name: "Try again" });
+      button.focus();
+
+      // Held on its way to failing again: the button stays, and says so.
+      let answer = () => {};
+      const held = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      server.use(
+        http.get("*/v1/guide", async () => {
+          await held;
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+      await user.click(button);
+      expect(await view.findByRole("button", { name: "Trying again…" })).toBe(button);
+      expect(button).toHaveFocus();
+      answer();
+      await waitFor(() => expect(button).toHaveAccessibleName("Try again"));
+      expect(button).toHaveFocus();
+
+      server.resetHandlers();
+      stubGuide();
+      await user.click(button);
+
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+      expect(gridStop()).toHaveAccessibleName(/^Space Western, /);
+    });
+
+    it("puts focus on the page's main region when no grid is drawn (Now & next)", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      server.use(http.get("*/v1/guide", () => new HttpResponse(null, { status: 503 })));
+      const view = renderAt("/guide");
+      const button = await view.findByRole("button", { name: "Try again" });
+      button.focus();
+
+      server.resetHandlers();
+      stubGuide();
+      server.use(
+        onNow([{ channelId: "ch-live", name: "Saturday Cartoons", number: 42, title: "Space Western" }]),
+      );
+      await user.click(button);
+
+      expect(await view.findByText("Space Western")).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(document.getElementById("main-content")));
+    });
+
+    it("leaves focus alone when the viewer has already moved it elsewhere", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const view = renderAt(GRID);
+      expect(await view.findByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+      failGuide();
+      await clients.at(-1)?.refetchQueries({ predicate: isGuide });
+      const retry = await view.findByRole("button", { name: "Try again" });
+
+      server.resetHandlers();
+      stubGuide();
+      let answer = () => {};
+      const held = new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+      server.use(
+        http.get("*/v1/guide", async () => {
+          await held;
+          return undefined;
+        }),
+      );
+      await user.click(retry);
+      const now = view.getByRole("button", { name: "NOW" });
+      now.focus();
+      answer();
+
+      await waitFor(() => expect(view.queryByText("Couldn't refresh the Guide")).not.toBeInTheDocument());
+      expect(now).toHaveFocus();
+    });
+  });
+
   // #3411: the tab read a bare "Loomarr" here while every other page named itself.
   it("names its browser tab", async () => {
     stubGuide();

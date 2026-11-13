@@ -218,10 +218,42 @@ describe("the TV app", () => {
     expect(tryAgain()).toBe(button);
     expect(page.activeElement).toBe(button);
 
-    // The server is back: the notice goes, the grid stays.
+    // The server is back: the notice goes, the grid stays, and the remote lands on the programme it
+    // had selected rather than on nothing.
     restore();
     await act(async () => button?.click());
     await eventually(() => expect(tryAgain()).toBeNull());
     expect(label("Sci-Fi Classics, ")).not.toBeNull();
+    await eventually(() => expect(focusedLabel()).toMatch(/^Cartoon Classics, /));
+  });
+
+  // A Guide that never answered shows its error panel; its Try again is the first load's notice.
+  it("keeps the remote on the error panel's Try again while it retries, then lands it on the Guide", async () => {
+    const restore = server.failGuide();
+    await launch();
+    await eventually(() => expect(label("Open programme guide")).not.toBeNull());
+    await act(async () => label("Open programme guide")?.click());
+    await eventually(() => expect(tryAgain()).not.toBeNull());
+    const button = tryAgain();
+    await act(async () => button?.focus());
+    expect(page.activeElement).toBe(button);
+
+    const answer = server.holdGuide();
+    await act(async () => button?.click());
+    expect(tryAgain()).toBe(button);
+    expect(button?.textContent).toContain("Trying again");
+    expect(page.activeElement).toBe(button);
+
+    await act(async () => answer());
+    await eventually(() => expect(button?.textContent).not.toContain("Trying again"));
+    expect(tryAgain()).toBe(button);
+    expect(page.activeElement).toBe(button);
+
+    restore();
+    await act(async () => button?.click());
+    await eventually(() => expect(label("Programme guide")).not.toBeNull());
+    expect(tryAgain()).toBeNull();
+    await eventually(() => expect(focusedLabel()).toMatch(/, /));
+    expect(page.activeElement).not.toBe(button);
   });
 });
