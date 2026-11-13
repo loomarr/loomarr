@@ -925,9 +925,24 @@ func extraFile(name string) bool {
 }
 
 // extraIn is extraFile for a file in its folder, named folder: a video named as its own folder is
-// that folder's title whatever word it is, "Movies/Sample/Sample.mkv".
+// that folder's title whatever word it is, "Movies/Sample/Sample.mkv", "Sample (2021)/Sample.mkv".
 func extraIn(name, folder string) bool {
-	return extraFile(name) && (folder == "" || !strings.EqualFold(stem(name), folder))
+	return extraFile(name) && !namedAsFolder(name, folder)
+}
+
+// namedAsFolder says whether a video is named as its folder is, with or without the folder's year
+// and notes: "Sample/Sample.mkv", "Featurette (1999)/Featurette.mkv". folder is "" for a root's top.
+func namedAsFolder(name, folder string) bool {
+	if folder == "" {
+		return false
+	}
+	if strings.EqualFold(stem(name), folder) {
+		return true
+	}
+	// Only its year and its release's notes may go: "Ashgrove (2015)-sample" is no "Ashgrove".
+	own := strings.TrimSpace(bracketYear.ReplaceAllString(trimReleaseNotes(plainStem(name)), ""))
+	title, _, _ := searchQuery(folder, 0)
+	return title != "" && sameWords(own, title)
 }
 
 // titledSample matches an episode's mark, then its title "Sample", capitalised, after a dash set
@@ -1248,8 +1263,9 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 		if k.at == 0 {
 			// Its kind alone, and what a household adds: "Trailer 2", "Featurette Costumes", in a
 			// title's own folder: one named with its year, or holding that one title. In a catch-all
-			// ("Movies/Outtakes.mkv") it is a title of its own.
-			if titled || len(titles) == 1 && !catchAllFolder(folder) {
+			// ("Movies/Outtakes.mkv") it is a title of its own, and so is one named as its own
+			// folder's title: "Featurette (1999)/Featurette.mkv" is the film.
+			if (titled || len(titles) == 1 && !catchAllFolder(folder)) && !namedAsFolder(k.name, folder) {
 				out[k.name] = true
 			}
 			continue
