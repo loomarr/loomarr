@@ -332,7 +332,7 @@
       "rawTypeSize": 9
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 128
+      "tailwindClasses": 48
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,
