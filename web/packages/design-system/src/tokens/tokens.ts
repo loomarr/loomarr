@@ -213,6 +213,11 @@ const semanticSpace = {
 const spaceGrid = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 } as const;
 const spaceSteps = { ...spaceGrid, "0.5": 2, "1.5": 6, "1.75": 7, "2.5": 10 } as const;
 
+// Viewport widths where a layout changes, as the app's own Tailwind breakpoints (`sm:`, `md:`,
+// `lg:`) draw them, so a hand-rolled `sm:flex-row` moves onto a Stack at the same width. Each is a
+// minimum: a layout is the narrow one below `sm` and gains each rule as the window reaches it.
+const breakpoints = { sm: 640, md: 768, lg: 1024 } as const;
+
 const semanticRadius = {
   control: 10,
   card: 16,
@@ -465,6 +470,7 @@ export type { Density, FontFamilyRole, TextRole };
 export {
   brandChroma,
   brandContract,
+  breakpoints,
   iconography,
   nativeFontFace,
   playerChrome,
