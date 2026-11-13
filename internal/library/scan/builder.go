@@ -522,6 +522,11 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			if whole := strings.TrimSpace(embeddedID.ReplaceAllString(base, "")); whole != facts.Name && s.named[normName(whole)] > 0 {
 				facts.Name = whole
 			}
+			// A show's specials kept in a folder of their own with no show's above it, "Holly Day
+			// Specials/Holly Day S00E05.mkv", are the show its episodes name.
+			if m := showSpecials.FindStringSubmatch(facts.Name); m != nil && s.named[normName(m[1])] > 0 {
+				facts.Name = strings.TrimSpace(m[1])
+			}
 			// So is one whose folder reads its first word as its year, "2020.Vision.Street", when its
 			// episodes name it whole with spaces, "2020 Vision Street S01E01": the year is the title's.
 			if title, year, _ := searchQuery(facts.Name, 0); year != 0 && !strings.Contains(facts.Name, " ") && s.named[normName(facts.Name)] > 0 {

@@ -70,6 +70,12 @@ func extrasFolder(name, parent string) bool {
 	if extrasName(name) {
 		return true
 	}
+	// A release's material in a title's folder, "[Grp] Kasa Hoshi [BD]/CDs/", "…/Scans/", holds
+	// its soundtrack and its booklet's pages, never an episode; at the top or among shelves the
+	// name may be a shelf's.
+	if packMaterial[normName(name)] && parent != "." && !shelfAt(parent) {
+		return true
+	}
 	head := extrasAfter(name)
 	if len(head) == 0 || parent == "." {
 		return false
@@ -86,6 +92,13 @@ func extrasFolder(name, parent string) bool {
 		}
 	}
 	return false
+}
+
+// packMaterial are the folders a release's pack keeps its material in beside its episodes, as
+// normName writes them.
+var packMaterial = map[string]bool{
+	"cds": true, "cd": true, "scans": true, "scan": true, "ost": true, "osts": true, "soundtrack": true,
+	"soundtracks": true, "booklet": true, "booklets": true, "fonts": true, "covers": true, "artwork": true,
 }
 
 // bonusDisc says whether a disc's folder ("Disc 2", "DVD2") beside a film's own video holds the

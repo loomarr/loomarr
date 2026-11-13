@@ -1231,6 +1231,30 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
+	// Re-score #27: "101 Pilot" and "201 Return" in one folder are seasons 1's and 2's; a disc's
+	// folder "Show S02D1" is season 2's; "- 00" is an anime's episode 0; "S01 - 2010" is a season's
+	// folder; a BD pack's "CDs" and "Scans" hold no episodes; "Show Specials" alone is the show's
+	// specials; "- Recap" is no film; a spin-off in a film's folder is its own show.
+	{id: "W143", files: map[string]string{
+		"TV/Glimmer Bay/101 Pilot.mkv":                                     "episode Glimmer Bay S1E1",
+		"TV/Glimmer Bay/102 The Well.mkv":                                  "episode Glimmer Bay S1E2",
+		"TV/Glimmer Bay/201 Return.mkv":                                    "episode Glimmer Bay S2E1",
+		"TV/Glimmer Bay/202 Again.mkv":                                     "episode Glimmer Bay S2E2",
+		"TV/Glimmer Bay/1210 Late Year.mkv":                                "episode Glimmer Bay S12E10",
+		"TV/Hollin Bank/Hollin Bank S02D1/Episode 1.mkv":                   "episode Hollin Bank S2E1",
+		"TV/Hollin Bank/Hollin Bank S02D1/Episode 2.mkv":                   "episode Hollin Bank S2E2",
+		"TV/Hollin Bank/S03 - 2012/Episode 01.mkv":                         "episode Hollin Bank S3E1",
+		"Anime/[Grp] Hane Michi - 00 [1080p].mkv":                          "episode Hane Michi S?E?",
+		"Anime/[Grp] Hane Michi - 01 [1080p].mkv":                          "episode Hane Michi S?E?",
+		"Anime/[Grp] Kasa Hoshi [BD] Vol.2/[Grp] Kasa Hoshi - 05 [BD].mkv": "episode Kasa Hoshi S?E?",
+		"Anime/[Grp] Kasa Hoshi [BD] Vol.2/CDs/[Grp] Kasa Hoshi OST.mkv":   "skip",
+		"Anime/[Grp] Kasa Hoshi [BD] Vol.2/Scans/scan.mkv":                 "skip",
+		"Christmas/Holly Day Specials/Holly Day S00E05.mkv":                "episode Holly Day S0E5",
+		"Anime/[Grp] Hoshino Rail - Recap [1080p].mkv":                     "episode Hoshino Rail S?E?",
+		"Anime/[Grp] Hoshino Rail - 02 [1080p].mkv":                        "episode Hoshino Rail S?E?",
+		"Movies/Yarrow Lake (2001)/Yarrow Lake (2001).mkv":                 "movie Yarrow Lake 2001",
+		"Movies/Yarrow Lake (2001)/Yarrow Lake - The Series S01E01.mkv":    "episode Yarrow Lake - The Series S1E1",
+	}},
 	// Re-score #26: an episode's extra beside it, a season's promo and a pack's bloopers are no
 	// episodes; a fansub's "(Season 3)" is its season, not its show's name; a miniseries' folder
 	// holds episodes on any shelf; a show's misspelt season keeps its show; a leading year runs on

@@ -274,7 +274,11 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    shelf; "Sesaon 3" is a season's folder; "(Season 3)" is an anime's season; "1.01" in a
 //	    show's folder and "Larchmere 1" in "Larchmere Series 2" are episodes; a year first in a
 //	    title, "2020 Vision Street", stays the title's.
-const writeVersion = 69
+//	70: "101 Pilot" beside "201 Return" in a show's folder is S1E1 and S2E1 (compositeNumbers);
+//	    "Show S02D1" and "S03 - 2012" are season folders; a release's "- 00" and "- Recap" are its
+//	    show's; a pack's "CDs" and "Scans" hold no episodes; "Holly Day Specials/" alone is Holly
+//	    Day's; a spin-off's episode in a film's folder is its own show's.
+const writeVersion = 70
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
