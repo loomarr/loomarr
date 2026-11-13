@@ -148,9 +148,6 @@
     },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {
       "flexStack": 1
-    },
-    "packages/ui/src/overlay/overlay.tsx": {
-      "rnModal": 1
     }
   }
 }
