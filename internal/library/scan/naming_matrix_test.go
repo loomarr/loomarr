@@ -1235,6 +1235,27 @@ var namingMatrix = []namingRow{
 	// video is its extra; "- Uncut" is an edition; a batch folder named "… Batch" or "… - 08
 	// [Batch]" is its show's; "- #09" numbers an anime's episode; a fansub's "- Movie 1 - Dawn" in
 	// its show's folder is a film.
+	// A film named by a kind of extra, in its own dated folder, is the film, never skipped; its
+	// release's sample beside it is a sample.
+	{id: "W150", files: map[string]string{
+		"Movies/Featurette (1999)/Featurette.mkv":                     "movie Featurette 1999",
+		"Movies/Deleted Scenes (2016)/Deleted Scenes.mkv":             "movie Deleted Scenes 2016",
+		"Movies/Behind the Scenes (2011)/Behind the Scenes.mkv":       "movie Behind the Scenes 2011",
+		"Movies/Trailers (2010)/Trailers.mkv":                         "movie Trailers 2010",
+		"Movies/Bloopers (2004)/Bloopers.mkv":                         "movie Bloopers 2004",
+		"Movies/Sample (2021)/Sample.mkv":                             "movie Sample 2021",
+		"Movies/Teaser (2003)/Teaser.mkv":                             "movie Teaser 2003",
+		"Movies/Other (2012)/Other.mkv":                               "movie Other 2012",
+		"Movies/Extras (2010)/Extras.mkv":                             "movie Extras 2010",
+		"Movies/Ashgrove Fell (2015)/Ashgrove Fell (2015).mkv":        "movie Ashgrove Fell 2015",
+		"Movies/Ashgrove Fell (2015)/Ashgrove Fell (2015)-sample.mkv": "skip",
+		"Movies/Ashgrove Fell (2015)/Trailer.mkv":                     "skip",
+		"TV/blackthorn.203.avi":                                       "episode Blackthorn S2E3",
+		"TV/Hawkmoor 105.avi":                                         "episode Hawkmoor S1E5",
+		"Anime/[Grp] Tsuki no Kawa - 19 [1080p].mkv":                  "episode Tsuki no Kawa S?E?",
+		"Anime/[Grp] Tsuki no Kawa - 19.5 [1080p].mkv":                "episode Tsuki no Kawa S?E?",
+		"Movies/Flight 714.avi":                                       "movie Flight 714 -",
+	}},
 	// A films' shelf's "Extras/" and "Bonus Features/", and a top "Trailers/", hold extras; a box's
 	// own extras folder too; a show's dashed extras are skipped where a dashed title is an episode;
 	// two episodes in one file hold both; a show's film in its folder is a film; another show named

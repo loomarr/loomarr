@@ -125,6 +125,11 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		}
 		return strings.TrimSpace(m[1]), mp.Numbering{Season: 0}, true
 	}
+	// A half episode alone, "[Grp] Tsuki no Ki - 19.5", is its show's recap or special between two:
+	// season 0's, placed by the catalog, never episode 19's twin.
+	if halfEpisode.MatchString(s) {
+		return show, mp.Numbering{Season: 0}, true
+	}
 	if m := animeSeason.FindStringSubmatch(show); m != nil {
 		season := atoi(matched(m[2], m[3], m[4]))
 		return strings.TrimSpace(m[1]), mp.Numbering{Season: season, Episode: number}, true
@@ -139,14 +144,24 @@ var (
 	// dashedSeason matches a show's name, then its season and episode apart by a dash: "Lower Wick
 	// 1-01".
 	dashedSeason = regexp.MustCompile(`^(.+?)[ ._]+(\d{1,2})-(\d{2,3})(?:[ ._]|$)`)
+	// halfEpisode matches a release's half episode after a dash: " - 19.5", " - 06.5v2 [1080p]".
+	halfEpisode = regexp.MustCompile(`(?i)[ ._]-[ ._]+\d{1,4}\.5(?:v\d+)?(?:[ ._]*[\[(]|[ ._]*$|[ ._]+-)`)
+	// shelvedHundreds matches a show's name, then its season's digit and its episode's two, last:
+	// "blackthorn.203", "Blackthorn 203".
+	shelvedHundreds = regexp.MustCompile(`^(.+?)[ ._]+([1-9])(\d{2})$`)
 )
 
 // shelvedEpisode is the show and numbering a name gives as a show's file in a shows' catch-all,
 // "TV/Lower Wick 1-01.mkv": its season and episode apart by a dash. Anywhere else "1-01" may be a
 // title's. An anime's "Shiro Neko - 01-02", after a dash, a group's tag or on an anime's shelf, is
 // a batch of episodes from its first (animeRelease).
+// "TV/blackthorn.203.avi", three digits last, is season 2's third as a scene release's is.
 func shelvedEpisode(name, dir string) (string, mp.Numbering, bool) {
 	m := dashedSeason.FindStringSubmatch(plainStem(name))
+	if h := shelvedHundreds.FindStringSubmatch(plainStem(name)); m == nil && h != nil && h[2]+h[3] != "480" &&
+		h[2]+h[3] != "576" && h[2]+h[3] != "720" {
+		m = h
+	}
 	if m == nil || dir == "." || !showsFolderNames[folderKey(path.Base(dir))] || atoi(m[3]) == 0 ||
 		strings.HasSuffix(strings.TrimSpace(m[1]), "-") || leadingTags.MatchString(m[1]) || animeFolderNames[folderKey(path.Base(dir))] {
 		return "", mp.Numbering{}, false

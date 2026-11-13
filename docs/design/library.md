@@ -988,6 +988,10 @@ header is kept, so no file is opened again. Each version and what it changed:
   full in a show's folder, "Kettlemere/Season 1/Rookholt Hollow S01E05", is that show's
   (`strangerShow`); "S01E05 [sample]" is a sample; "Show (2019) - 2024-02-01 - Title" is a daily
   episode (`titledDaily`).
+- **77:** a film named by a kind of extra in its own dated folder, "Featurette (1999)/Featurette.mkv",
+  is the film, never skipped (`namedAsFolder`); "TV/blackthorn.203.avi" on a shows' shelf is
+  season 2's third (`shelvedHundreds`); a fansub's "- 19.5" is its show's season 0's, never
+  episode 19's twin (`halfEpisode`).
 
 ## Search
 
