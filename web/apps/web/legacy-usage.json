@@ -471,7 +471,7 @@
       "rawTypeSize": 1
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 97
+      "tailwindClasses": 49
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 35,
