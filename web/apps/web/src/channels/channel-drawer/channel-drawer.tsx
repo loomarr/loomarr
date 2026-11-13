@@ -1,4 +1,4 @@
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelDrawerProps, DrawerChannel } from "./channel-drawer.type";
@@ -74,7 +74,12 @@ const ChannelDrawer = ({
         onClose();
       }}
     >
-      <div className="border-static-800 flex items-center gap-2.5 border-b px-[18px] pt-4 pb-3">
+      <Stack
+        align="center"
+        className="border-static-800 border-b px-[18px] pt-4 pb-3"
+        direction="row"
+        gap="2.5"
+      >
         <Text as="h2" id="channel-drawer-title" strong textRole="cardLabel" tone="primary">
           Channels
         </Text>
@@ -91,7 +96,7 @@ const ChannelDrawer = ({
             ✕
           </span>
         </button>
-      </div>
+      </Stack>
       <div className="px-2.5 pt-2.5">
         <input
           ref={findRef}
@@ -191,7 +196,13 @@ const DrawerRow = ({
             </Text>
           )}
         </span>
-        <span aria-hidden className="relative flex h-6 gap-0.5 overflow-hidden rounded">
+        <Stack
+          aria-hidden
+          className="relative h-6 overflow-hidden rounded"
+          direction="row"
+          gap="0.5"
+          render="span"
+        >
           {channel.blocks.map((block) => (
             <span
               key={block.key}
@@ -211,15 +222,15 @@ const DrawerRow = ({
           {channel.blocks.length > 0 && (
             <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
           )}
-        </span>
-        <span className="flex items-center gap-[7px]">
+        </Stack>
+        <Stack align="center" direction="row" gap="1.75" render="span">
           <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
             {line ? `▸ ${line}` : ""}
           </Text>
           <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
             {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
           </Text>
-        </span>
+        </Stack>
       </button>
       <button
         type="button"

@@ -848,6 +848,10 @@ func seasonIn(name string) (season int, ok bool) {
 	}
 	m := seasonFolder.FindStringSubmatch(name)
 	if m == nil {
+		// A season's word misspelled by a letter, "Sesaon 3", "Seson 2", "Seasn 1", with its number.
+		if words := strings.Fields(name); len(words) == 2 && len(words[1]) <= 2 && digits(words[1]) && seasonTypo(words[0]) {
+			return atoi(words[1]), true
+		}
 		return 0, false
 	}
 	if m[2] != "" {
@@ -860,6 +864,38 @@ func seasonIn(name string) (season int, ok bool) {
 		}
 	}
 	return seasonNumberWord(m[1])
+}
+
+// seasonTypo says whether a word is "season" misspelled by one letter: two swapped ("Sesaon"),
+// one missing ("Seson"), one extra ("Seasoon") or one wrong ("Seasin"). It starts with the "s" a
+// typist rarely misses, so "Reason" and "Mason" are words of their own.
+func seasonTypo(word string) bool {
+	const want = "season"
+	w := strings.ToLower(word)
+	if w == want || w == "" || w[0] != 's' || !isASCIILetters(w) {
+		return false
+	}
+	switch len(w) - len(want) {
+	case 0:
+		var diff []int
+		for i := range len(w) {
+			if w[i] != want[i] {
+				diff = append(diff, i)
+			}
+		}
+		return len(diff) == 1 ||
+			len(diff) == 2 && diff[1] == diff[0]+1 && w[diff[0]] == want[diff[1]] && w[diff[1]] == want[diff[0]]
+	case -1:
+		return slices.ContainsFunc([]int{0, 1, 2, 3, 4, 5}, func(i int) bool { return want[:i]+want[i+1:] == w })
+	case 1:
+		return slices.ContainsFunc([]int{0, 1, 2, 3, 4, 5, 6}, func(i int) bool { return w[:i]+w[i+1:] == want })
+	}
+	return false
+}
+
+// isASCIILetters says whether a word is ASCII letters alone.
+func isASCIILetters(w string) bool {
+	return !strings.ContainsFunc(w, func(r rune) bool { return r < 'a' || r > 'z' })
 }
 
 // specialsKinds are the words a show's specials folder is named by before "Specials".
@@ -1726,9 +1762,9 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		if m == nil {
 			m = animeNumber.FindStringSubmatch(bare)
 		}
-		// A year after a padded dashed number is the release's, "[Grp] Kaze Tori - 03 (2019)": a film
-		// is never numbered so.
-		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && !strings.HasPrefix(m[2], "0")) {
+		// A year after a dashed number of two digits or more is the release's, "[Grp] Kaze Tori - 03
+		// (2019)", "- 12 (2019)", "- 112 (2019)": a film is never numbered so.
+		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && len(m[2]) < 2) {
 			m = nil
 		}
 		if m != nil && (tagged || m[2] != "" || grouped && strings.HasPrefix(m[3], "0")) && !yearToken.MatchString(matched(m[2], m[3])) {
@@ -1813,9 +1849,9 @@ func groupTag(inner string) bool {
 	return !releaseToken(inner) && !releaseNote(inner) && !editionOnly([]string{inner}) && !yearToken.MatchString(inner)
 }
 
-// animeSeason matches a fansub show's name that ends in its season: "Show S2", "Show 2nd Season",
-// "Show Season 2".
-var animeSeason = regexp.MustCompile(`(?i)^(.+?)[ ._]+(?:s(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)[ ._]+season|season[ ._]+(\d{1,2}))$`)
+// animeSeason matches a fansub show's name that ends in its season, bracketed or not: "Show S2",
+// "Show 2nd Season", "Show Season 2", "Show (Season 2)".
+var animeSeason = regexp.MustCompile(`(?i)^(.+?)[ ._]+[(\[]?(?:s(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)[ ._]+season|season[ ._]+(\d{1,2}))[)\]]?$`)
 
 // kodiTitled matches Kodi's episode named by its show, its season and episode in three digits,
 // and its title, apart by dashes: "Cutters Bay - 214 - Late".
@@ -1935,11 +1971,19 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		// A two-digit number in a season folder ("Kettle Bay - 03" or "Kettle Bay 06" in Season 2) is
 		// the season's episode: an anime's number across its show is three digits, as Sonarr writes
 		// it, and a fansub's carries its group's tag.
-		n, ok := numberAfterShow(name, showFolderName(show), file.Notes.Numbered)
+		// A show's season folder named by both, "Larchmere Series 2", names the show before its season.
+		own := showFolderName(show)
+		if m := namedSeason.FindStringSubmatch(show); namedFolder && m != nil {
+			own = strings.TrimSpace(m[1])
+		}
+		n, ok := numberAfterShow(name, own, file.Notes.Numbered)
 		// Three digits whose hundred is the folder's season, "Harbor 24 - 103" in Season 1, are its
 		// episode as Kodi writes it.
 		if ok && n.Absolute >= 100 && n.Absolute < 1000 && n.Absolute/100 == season && n.Absolute%100 > 0 {
 			return episode(n.Absolute % 100)
+		}
+		if e, ok := titledDigitAfter(name, own); ok {
+			return episode(e)
 		}
 		if ok && n.Absolute > 0 && n.Absolute < 100 && seasonTwoDigits.MatchString(name) {
 			return episode(n.Absolute)
@@ -1959,6 +2003,12 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 		return episode(atoi(m[2]))
 	}
 	if m := capMark.FindStringSubmatch(name); m != nil && atoi(m[2]) > 0 && !yearToken.MatchString(m[1]+m[2]) {
+		return mp.Numbering{Season: atoi(m[1]), Episode: atoi(m[2])}, true
+	}
+	// "1.01 Arrival" and "Fallowmere - 1.09" in a show's own folder, with no season folder to say
+	// the season, write it before the episode as "3.05" does in one.
+	if m := seasonDotEpisode.FindStringSubmatch(name); m != nil && !inSeason && !namedFolder && atoi(m[1]) > 0 && atoi(m[2]) > 0 &&
+		airDateIn(name) == "" {
 		return mp.Numbering{Season: atoi(m[1]), Episode: atoi(m[2])}, true
 	}
 	if m := episodeWord.FindStringSubmatch(name); m != nil {
@@ -2014,7 +2064,7 @@ func numberingInFolder(file File) (mp.Numbering, bool) {
 	// A show's folder in a shows' catch-all numbers its episodes by a number alone or after the
 	// show's name, "TV/Ivory Fen/02.mkv" and "Anime/Hoshizora/Hoshizora 12.mkv": its episode by
 	// its place in the whole show. In a film's folder, "Marrow Point 2" is the sequel.
-	if !ok && !inSeason && (underShows(shelved(file, dir)) || file.Notes.Series) {
+	if !ok && !inSeason && (underShows(shelved(file, dir)) || file.Notes.Series || showLabelled(path.Base(dir))) {
 		// A miniseries' "Ridge Point Part 2" and "Ridge Fall - Part Two" are its episodes.
 		// Its "Part 2" straight after the show's name is no film's sequel here (partIn's titlesOwnPart).
 		if _, part, ok := partIn(name + ".mkv"); ok && part > 0 {
@@ -2084,6 +2134,26 @@ func numberAfterShow(name, show string, numbered bool) (mp.Numbering, bool) {
 	return mp.Numbering{}, false
 }
 
+// titledDigitAfter is the episode a name in a season's folder numbers with one digit after its
+// show's name and its title after a dash, as a British series' episodes are named: "Larchmere 1 -
+// The Gate" in "Larchmere Series 2". Outside a season "Marrow Point 2" is as likely a sequel.
+func titledDigitAfter(name, show string) (int, bool) {
+	words := func(s string) []string {
+		return strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(strings.ToLower(s)))
+	}
+	title, _, _ := searchQuery(show, 0)
+	nameWords, showWords := words(name), words(title)
+	at := len(showWords)
+	if at == 0 || len(nameWords) < at+3 || !slices.Equal(nameWords[:at], showWords) {
+		return 0, false
+	}
+	num := nameWords[at]
+	if len(num) != 1 || !digits(num) || num == "0" || nameWords[at+1] != "-" {
+		return 0, false
+	}
+	return atoi(num), true
+}
+
 // catchAllNames are folders that hold a library's files rather than name a show.
 // Those that hold shows only are showsFolderNames, and films only filmsFolderNames; these hold
 // either, or both.
@@ -2127,7 +2197,8 @@ func amongFilms(dir string) bool {
 	run := false
 	for d := dir; d != "."; d = path.Dir(d) {
 		switch key := folderKey(path.Base(d)); {
-		case showsFolderNames[key]:
+		case showsFolderNames[key], showLabelled(path.Base(d)):
+			// A folder labelled a show's, "Movies/The Long Watch Miniseries/", is one on any shelf.
 			return false
 		case filmsFolderNames[key]:
 			return true
@@ -2381,15 +2452,17 @@ func looseYears(names []string) map[string]int {
 	return years
 }
 
-// seasonsApart says whether a show's seasons kept without its year are no run of those kept with
-// it: one more than a season before or after them. "S01" beside "S02 (2016)" run on as one show's;
-// "S06" beside "S01 (2019)" are an original's and its remake's.
+// seasonsApart says whether a show's seasons kept without its year are an original's and those kept
+// with it a remake's: the dated ones start again at season 1 while the yearless ones run on past
+// them. "S06" beside "S01 (2019)" are two shows'; "S01" beside "S02 (2016)" or "S03 (2016)" are
+// one show's, missing a season or not, and a show's specials (season 0) say nothing either way.
 func seasonsApart(yearless, dated []int) bool {
+	yearless = slices.DeleteFunc(slices.Clone(yearless), func(s int) bool { return s == 0 })
+	dated = slices.DeleteFunc(slices.Clone(dated), func(s int) bool { return s == 0 })
 	if len(yearless) == 0 || len(dated) == 0 {
 		return false
 	}
-	lo, hi := slices.Min(dated), slices.Max(dated)
-	return slices.ContainsFunc(yearless, func(s int) bool { return s < lo-1 || s > hi+1 })
+	return slices.Min(dated) == 1 && slices.Min(yearless) > slices.Max(dated)+1
 }
 
 // leadingEpisodes says whether a folder's videos are a show's numbered by their place alone: two or

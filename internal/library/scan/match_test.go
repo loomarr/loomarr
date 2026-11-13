@@ -81,6 +81,19 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		{"Charlotte's Web (2006)", 0, "Charlotte's Web", 2006},
 		{"Charlotte's.Web.2006.1080p.WEB-DL", 0, "Charlotte's Web", 2006},
 		{"The Extended Family 1999 EXTENDED 1080p", 0, "The Extended Family", 1999},
+		// So is one a title writes as its own in a name in mixed case, with no year: a release
+		// writes its words in capitals, or runs them on.
+		{"Bramble Web 1080p", 0, "Bramble Web", 0},
+		{"Bramble.Web", 0, "Bramble Web", 0},
+		{"Spindle Web Internal Affairs", 0, "Spindle Web Internal Affairs", 0},
+		{"The Internal Limited", 0, "The Internal Limited", 0},
+		{"Mister Proper Limited", 0, "Mister Proper Limited", 0},
+		{"The German 1080p", 0, "The German", 0},
+		{"The.Cam", 0, "The Cam", 0},
+		{"Hollin Drive Web-DL 2017", 0, "Hollin Drive", 2017},
+		{"Bramble WEB 1080p", 0, "Bramble", 0},
+		{"Bramble.CAM", 0, "Bramble", 0},
+		{"Lantern.Cove.German.DL.1080p", 0, "Lantern Cove", 0},
 	} {
 		title, year, _ := searchQuery(tc.name, tc.known)
 		if title != tc.title || year != tc.year {

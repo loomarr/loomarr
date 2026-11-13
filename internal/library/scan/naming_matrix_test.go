@@ -1231,6 +1231,72 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
+	// Re-score #26: an episode's extra beside it, a season's promo and a pack's bloopers are no
+	// episodes; a fansub's "(Season 3)" is its season, not its show's name; a miniseries' folder
+	// holds episodes on any shelf; a show's misspelt season keeps its show; a leading year runs on
+	// a title; a film named as an episode's mark is a film; "1.01" and a British series' bare
+	// number number its episodes.
+	{id: "W142", files: map[string]string{
+		"TV/Gullhaven/Season 2/Gullhaven S02E01.mkv":                   "episode Gullhaven S2E1",
+		"TV/Gullhaven/Season 2/Gullhaven S02E02.mkv":                   "episode Gullhaven S2E2",
+		"TV/Gullhaven/Season 2/Gullhaven S02E01 - Commentary.mkv":      "skip",
+		"TV/Gullhaven/Season 2/Gullhaven - Season 2 Promo.mkv":         "skip",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01E01.720p.mkv":         "episode Fernhollow S1E1",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01E02.720p.mkv":         "episode Fernhollow S1E2",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01.Bloopers.mkv":        "skip",
+		"Anime/[Judas] Ginga Neko (Season 3) - 04.mkv":                 "episode Ginga Neko S3E4",
+		"Movies/The Long Watch Miniseries/The Long Watch Part 1.mkv":   "episode The Long Watch S1E1",
+		"Movies/The Long Watch Miniseries/The Long Watch Part 2.mkv":   "episode The Long Watch S1E2",
+		"TV/Sorrel Bay/Season 2/Sorrel Bay S02E01.mkv":                 "episode Sorrel Bay S2E1",
+		"TV/Sorrel Bay/Sesaon 3/Sorrell Bay S03E01.mkv":                "episode Sorrel Bay S3E1",
+		"TV/2020 Vision Street/Season 1/2020 Vision Street S01E01.mkv": "episode 2020 Vision Street S1E1",
+		"Movies/2020 Vision Street (2021).mkv":                         "movie 2020 Vision Street 2021",
+		"Movies/S01E01 (2016)/S01E01 (2016).mkv":                       "movie S01E01 2016",
+		"TV/Gorse Hill/1.01 Arrival.avi":                               "episode Gorse Hill S1E1",
+		"TV/Gorse Hill/2.01 Return.avi":                                "episode Gorse Hill S2E1",
+		"TV/Larchmere Series 1/Larchmere 1 - The Gate.mkv":             "episode Larchmere S1E1",
+		"TV/Larchmere Series 2/Larchmere 1 - Return.mkv":               "episode Larchmere S2E1",
+	}},
+	// Re-score #25: a box set's disc folders hold episodes, or films of their own, as their files
+	// name them; a film's bonus disc holds its extras; another show's episodes in a show's folder
+	// are that show's; "1of2" and "_A"/"_B" are a film's parts; a sample or a making-of in a season
+	// is no episode; a volume's numbers run on its show's (W125); an edition after a dash leaves the
+	// title.
+	{id: "W141", files: map[string]string{
+		"TV/Corrow Fen/Disc 1/Corrow Fen 1x01.mkv":                                                                        "episode Corrow Fen S1E1",
+		"TV/Corrow Fen/Disc 2/Corrow Fen 1x05.mkv":                                                                        "episode Corrow Fen S1E5",
+		"TV/Lathe Row - The Complete Series/DVD 1/Lathe Row - 1x01.mkv":                                                   "episode Lathe Row S1E1",
+		"TV/Lathe Row - The Complete Series/DVD 2/Lathe Row - 1x05.mkv":                                                   "episode Lathe Row S1E5",
+		"Movies/Brisk Trilogy/Disc 1/Brisk.mkv":                                                                           "movie Brisk -",
+		"Movies/Brisk Trilogy/Disc 2/Brisk Returns.mkv":                                                                   "movie Brisk Returns -",
+		"Movies/Haldon Box Set/Disc 1/Haldon (2001).mkv":                                                                  "movie Haldon 2001",
+		"Movies/Haldon Box Set/Disc 2/Haldon 2 (2004).mkv":                                                                "movie Haldon 2 2004",
+		"Movies/Tarn Wick (2011)/Tarn Wick (2011).mkv":                                                                    "movie Tarn Wick 2011",
+		"Movies/Tarn Wick (2011)/Disc 2/Documentary.mkv":                                                                  "skip",
+		"Movies/Tarn Wick (2011)/Disc 2/Tarn Wick Bonus.mkv":                                                              "skip",
+		"Movies/Pell Gate (2003)/Pell Gate (2003).mkv":                                                                    "movie Pell Gate 2003",
+		"Movies/Pell Gate (2003)/Disc 2 - Extras/Doc.mkv":                                                                 "skip",
+		"TV/Corrow Fen/Season 2/Corrow Fen S02E01.mkv":                                                                    "episode Corrow Fen S2E1",
+		"TV/Corrow Fen/Season 2/Corrow Fen S02E02.mkv":                                                                    "episode Corrow Fen S2E2",
+		"TV/Corrow Fen/Season 2/Brindle Point S02E01.mkv":                                                                 "episode Brindle Point S2E1",
+		"TV/Corrow Fen/Season 2/Corrow Fen S02E02 - Sample.mkv":                                                           "skip",
+		"TV/Corrow Fen/Season 2/Making of Season 2.mkv":                                                                   "skip",
+		"Movies/Frith Downs 1of2.avi":                                                                                     "movie Frith Downs -",
+		"Movies/Frith Downs 2of2.avi":                                                                                     "movie Frith Downs -",
+		"Movies/Lorn Vale (1995)/LORN_VALE_A.avi":                                                                         "movie Lorn Vale 1995",
+		"Movies/Lorn Vale (1995)/LORN_VALE_B.avi":                                                                         "movie Lorn Vale 1995",
+		"Kids/Toot Lane Vol 1/01 Bath Time.mkv":                                                                           "episode Toot Lane S1E1",
+		"Kids/Toot Lane Vol 1/02 Bedtime.mkv":                                                                             "episode Toot Lane S1E2",
+		"Movies/Ashwood - The Directors Cut (2003).mkv":                                                                   "movie Ashwood 2003",
+		"TV/Dusk Weir/Season 03/Dusk Weir - S03E02 - Tide [WEB-1080p].mkv":                                                "episode Dusk Weir 2017 S3E2",
+		"TV/Dusk Weir/Season 03/Dusk Weir (2017) - S03E02 - Tide [HDTV-1080p].mkv":                                        "episode Dusk Weir 2017 S3E2",
+		"Movies/Moss Lantern (2010)/Moss Lantern (2010) [imdbid-tt0000001] - [Remux-1080p][DTS-HD MA 5.1][h264]-HiFi.mkv": "movie Moss Lantern 2010",
+		"Movies/Moss Lantern (2010)/Moss Lantern (2010) 1080p DTSHD-MA 6ch-trailer.flv":                                   "skip",
+		"TV/Garnet Hollow/Garnet Hollow S01E01.mkv":                                                                       "episode Garnet Hollow S1E1",
+		"TV/Garnet Hollow/Garnet Hollow S01E02.mkv":                                                                       "episode Garnet Hollow S1E2",
+		"TV/Garnet Hollow/Garnet Hollow Junior S01E01.mkv":                                                                "episode Garnet Hollow Junior S1E1",
+		"TV/Garnet Hollow/Garnet Hollow Junior S01E02.mkv":                                                                "episode Garnet Hollow Junior S1E2",
+	}},
 	{id: "W140", files: map[string]string{
 		"TV/Grand Prix/Grand Prix S2023E01.mkv":             "episode Grand Prix S2023E1",
 		"TV/Grand Prix/Grand Prix S2023E02.mkv":             "episode Grand Prix S2023E2",
@@ -1293,6 +1359,8 @@ var namingMatrix = []namingRow{
 		"Downloads/Hoshi.no.Kaze.E12.1080p.WEB.mkv":                 "episode Hoshi no Kaze S1E12",
 		"Anime/[Grp] Kaze Tori - 03 (1080p) [2019].mkv":             "episode Kaze Tori S?E?",
 		"Anime/[Grp] Kaze Tori - 06 (2019).mkv":                     "episode Kaze Tori S?E?",
+		"Anime/[Grp] Kaze Tori - 12 (2019).mkv":                     "episode Kaze Tori S?E?",
+		"Anime/[Grp] Kaze Tori - 112 (2019).mkv":                    "episode Kaze Tori S?E?",
 		"TV/Late Hour/Late Hour 05-06-2023.mkv":                     "episode Late Hour 2023-05-06",
 		"TV/Late Hour/Late Hour 03-14-2023.mkv":                     "episode Late Hour 2023-03-14",
 	}},

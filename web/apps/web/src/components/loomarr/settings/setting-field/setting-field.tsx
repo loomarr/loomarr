@@ -73,14 +73,17 @@ const byteParts = (raw: string): { amount: number; unit: "MiB" } => {
 const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => (
   <Stack direction="row" gap="inline">
     {children}
-    <Text
-      as="span"
-      className="border-input flex h-10 w-16 shrink-0 items-center justify-center rounded-md border"
-      textRole="compact"
-      tone="secondary"
+    <Stack
+      align="center"
+      className="border-input h-10 w-16 rounded-md border"
+      flexShrink={0}
+      justify="center"
+      render="span"
     >
-      {unit}
-    </Text>
+      <Text as="span" textRole="compact" tone="secondary">
+        {unit}
+      </Text>
+    </Stack>
   </Stack>
 );
 
@@ -505,9 +508,11 @@ const SettingField = ({
       )}
 
       {entry.caution && (
-        <FieldHint tone="error" className={cn("flex items-center gap-1", inlineSwitch && "col-span-2")}>
-          <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          The stored value was invalid and has been reset to the default.
+        <FieldHint tone="error" className={cn(inlineSwitch && "col-span-2")}>
+          <Stack align="center" direction="row" gap="1" render="span">
+            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+            The stored value was invalid and has been reset to the default.
+          </Stack>
         </FieldHint>
       )}
 
@@ -516,12 +521,14 @@ const SettingField = ({
           id={`${id}-unavailable`}
           role="alert"
           tone="error"
-          className={cn("flex items-start gap-1", inlineSwitch && "col-span-2")}
+          className={cn(inlineSwitch && "col-span-2")}
         >
-          <Stack className="mt-0.5" direction="row" render="span">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+          <Stack align="start" direction="row" gap="1" render="span">
+            <Stack className="mt-0.5" direction="row" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+            </Stack>
+            {disabledReason}
           </Stack>
-          {disabledReason}
         </FieldHint>
       )}
 

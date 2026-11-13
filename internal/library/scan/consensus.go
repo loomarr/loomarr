@@ -55,6 +55,88 @@ func (b *builder) settleFolders(ids, others []identity) {
 	b.applyJoins(join, ids, others)
 }
 
+// splitNamed lets a show's folder settle which of its episodes are another show's. A show's
+// folder names its episodes' show whatever their files say, as its files may spell it their own
+// way ("Corrow Fen/CF S01E01.mkv"). But an episode its file names as another show, numbered as
+// one of the folder's own, is that show's: two first episodes of season one are two shows'
+// ("Corrow Fen/Season 1/Brindle Point S01E01.mkv" beside "Corrow Fen S01E01.mkv"), and a
+// spin-off kept in its franchise's folder starts its own first season. The folder's own episodes
+// are the ones named as it is or not named at all.
+func (b *builder) splitNamed(ids, others []identity) {
+	type key struct {
+		dir, name string
+	}
+	own := map[string]map[[2]int]bool{}
+	for _, list := range [][]identity{others, ids} {
+		for _, id := range list {
+			if n := id.numbering(); id.kind == mp.KindEpisode && n != nil && n.Episode > 0 && ownEpisode(id) {
+				if own[id.seriesDir] == nil {
+					own[id.seriesDir] = map[[2]int]bool{}
+				}
+				own[id.seriesDir][[2]int{n.Season, n.Episode}] = true
+			}
+		}
+	}
+	split := map[key]bool{}
+	for _, list := range [][]identity{others, ids} {
+		for _, id := range list {
+			n := id.numbering()
+			s := b.series[id.seriesDir]
+			if id.kind != mp.KindEpisode || n == nil || ownEpisode(id) || s == nil || s.managed != nil ||
+				len(s.ids) > 0 || !b.dirs[id.seriesDir] || !own[id.seriesDir][[2]int{n.Season, n.Episode}] {
+				continue
+			}
+			split[key{id.seriesDir, normName(id.named)}] = true
+		}
+	}
+	if len(split) == 0 {
+		return
+	}
+	for _, list := range [][]identity{others, ids} {
+		for i := range list {
+			id := &list[i]
+			if id.kind != mp.KindEpisode || !split[key{id.seriesDir, normName(id.named)}] {
+				continue
+			}
+			from := b.series[id.seriesDir]
+			to := showKey(path.Dir(id.seriesDir), id.named)
+			s := b.series[to]
+			if s == nil {
+				s = &seriesSeen{dir: to, last: map[int]int{}, years: map[int]int{}, named: map[string]int{}}
+				b.series[to] = s
+			}
+			if n := id.numbering(); n != nil && n.Episode > 0 {
+				s.last[n.Season] = max(s.last[n.Season], n.Episode, n.EpisodeEnd)
+			}
+			name := normName(id.named)
+			s.named[name]++
+			if from.named[name]--; from.named[name] <= 0 {
+				delete(from.named, name)
+			}
+			id.seriesDir = to
+			b.seen[seriesOrigin(b.root, to)] = true
+		}
+	}
+}
+
+// ownEpisode says whether an episode is its show folder's own by its file's name: named as the
+// folder is, its year or not ("Dark Ridge (2017) - S03E02" in "Dark Ridge/"), or not named at all.
+func ownEpisode(id identity) bool {
+	if id.named == "" {
+		return true
+	}
+	bare := func(name string) string {
+		title, _, _ := searchQuery(name, 0)
+		return title
+	}
+	for _, folder := range []string{showFolderName(path.Base(id.seriesDir)), withoutShowLabels(path.Base(id.seriesDir))} {
+		if sameWords(folder, id.named) || sameWords(bare(folder), bare(id.named)) {
+			return true
+		}
+	}
+	return false
+}
+
 // homeAbove is the nearest folder above dir that isHome says is a show's home, "" for none before a
 // catch-all or the root: a shelf ("TV/", "Kids/") is no show's.
 func homeAbove(dir string, isHome func(string) bool) string {

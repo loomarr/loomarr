@@ -136,7 +136,10 @@ type identity struct {
 	embedded mp.Record
 	// seriesDir is an episode's series folder, relative to the root.
 	seriesDir string
-	digest    string
+	// named is the show an episode's file name gives before its mark, "" for none: "Brindle
+	// Point" of "Brindle Point S01E01.mkv".
+	named  string
+	digest string
 }
 
 // airDate is the day the file's name says its episode aired, for one named by it rather than by
@@ -222,6 +225,7 @@ func (b *builder) identify(file File) identity {
 		}
 		if own := looseSeries(path.Base(file.Rel)); own != "" {
 			s.named[normName(own)]++
+			id.named = own
 		}
 		if year := showYearIn(path.Base(file.Rel)); year > 0 {
 			s.years[year]++
@@ -517,6 +521,13 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			// the name is the name's.
 			if whole := strings.TrimSpace(embeddedID.ReplaceAllString(base, "")); whole != facts.Name && s.named[normName(whole)] > 0 {
 				facts.Name = whole
+			}
+			// So is one whose folder reads its first word as its year, "2020.Vision.Street", when its
+			// episodes name it whole with spaces, "2020 Vision Street S01E01": the year is the title's.
+			if title, year, _ := searchQuery(facts.Name, 0); year != 0 && !strings.Contains(facts.Name, " ") && s.named[normName(facts.Name)] > 0 {
+				if spaced := strings.Join(strings.FieldsFunc(facts.Name, func(r rune) bool { return r == '.' || r == '_' }), " "); spaced != title {
+					facts.Name = spaced
+				}
 			}
 		}
 		// A show whose folder and NFO give no year takes the one its episodes' names agree on.

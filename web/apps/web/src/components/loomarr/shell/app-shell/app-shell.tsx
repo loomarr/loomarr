@@ -134,6 +134,7 @@ const AppShell = ({
       <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
     </>
   );
+  const versionTextStyle = { color: "inherit" } as const;
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -145,14 +146,16 @@ const AppShell = ({
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
       <a
         href={`#${MAIN_ID}`}
-        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2 focus:text-sm focus:font-medium"
+        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2"
       >
-        Skip to content
+        <Text as="span" style={{ color: "inherit" }} textRole="compact" strong>
+          Skip to content
+        </Text>
       </a>
       {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
       <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
-        <Stack aria-label="Primary" className="w-56" gap="1" render="nav">
+        <Stack aria-label="Primary" gap="1" render="nav" width={224}>
           <div className="mb-4 px-2">
             <BrandLockup variant="compact" />
           </div>
@@ -191,17 +194,25 @@ const AppShell = ({
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
             const linkClassName = cn(
-              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 transition-colors",
               FOCUS_RING,
               forcedActive === undefined
-                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:font-medium data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
+                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
                 : forcedActive &&
-                    "bg-static-800 text-foreground font-medium shadow-[inset_2px_0_0_var(--color-static-100)]",
+                    "bg-static-800 text-foreground shadow-[inset_2px_0_0_var(--color-static-100)]",
             );
-            const content = (
+            // The label is the compact role, at the role's strong weight while "you are here".
+            const content = (current: boolean) => (
               <>
                 <Icon decorative glyph={icons[icon]} size="compact" tone="inherit" />
-                <span>{label}</span>
+                <Text
+                  as="span"
+                  strong={forcedActive ?? current}
+                  style={{ color: "inherit" }}
+                  textRole="compact"
+                >
+                  {label}
+                </Text>
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
                     waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
                     ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
@@ -225,11 +236,11 @@ const AppShell = ({
                 params={{ id: item.channelId }}
                 className={linkClassName}
               >
-                {content}
+                {({ isActive }) => content(isActive)}
               </Link>
             ) : (
               <Link key={item.to} to={item.to} className={linkClassName}>
-                {content}
+                {({ isActive }) => content(isActive)}
               </Link>
             );
           })}
@@ -242,18 +253,25 @@ const AppShell = ({
                 to="/settings/system/about"
                 aria-label={`Loomarr ${serverVersion} — About`}
                 className={cn(
-                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs transition-colors",
+                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center rounded-md px-3 py-1.5 transition-colors",
                   FOCUS_RING,
                 )}
               >
-                {versionLabel}
+                <Text as="span" style={versionTextStyle} textRole="mono">
+                  <Stack align="center" direction="row" gap="2" minWidth={0} render="span">
+                    {versionLabel}
+                  </Stack>
+                </Text>
               </Link>
             ) : (
               <Stack
                 align="center"
-                className="mt-auto min-w-0 px-3 py-1.5"
                 direction="row"
                 gap="inline"
+                marginTop="auto"
+                minWidth={0}
+                paddingHorizontal={12}
+                paddingVertical={6}
                 render="span"
               >
                 <Text as="span" textRole="mono" tone="secondary">
@@ -264,8 +282,14 @@ const AppShell = ({
           </Tooltip>
         )}
 
-        <div
-          className={`${serverVersion ? "mt-1" : "mt-auto"} border-border flex flex-row gap-2 border-t px-2 pt-3`}
+        <Stack
+          borderColor="borderDecorative"
+          borderTopWidth={1}
+          direction="row"
+          gap="inline"
+          marginTop={serverVersion ? 4 : "auto"}
+          paddingHorizontal={8}
+          paddingTop={12}
         >
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
@@ -279,16 +303,18 @@ const AppShell = ({
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
-            <Text
-              as="div"
-              className="bg-static-800 flex size-7 shrink-0 items-center justify-center rounded-full"
-              textRole="mono"
-              tone="primary"
+            <Stack
+              align="center"
+              className="bg-static-800 size-7 rounded-full"
+              flexShrink={0}
+              justify="center"
             >
-              {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
-                  between, so "KB" + "Kira" would otherwise read as one word against the label. */}
-              {accountInitials}{" "}
-            </Text>
+              <Text as="span" textRole="mono" tone="primary">
+                {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                    between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+                {accountInitials}{" "}
+              </Text>
+            </Stack>
             <Text as="span" className="truncate" textRole="compact" tone="secondary">
               {userName}
             </Text>
@@ -300,7 +326,7 @@ const AppShell = ({
               </Action>
             </Tooltip>
           )}
-        </div>
+        </Stack>
       </aside>
 
       {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
@@ -313,7 +339,7 @@ const AppShell = ({
           viewport instead of being added to main's scrollable content (a second scroller at phone
           width). `overscroll-contain` stops a scroll that reaches main's end from chaining into
           the document and dragging the whole shell off-screen. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Stack flexBasis="0%" flexGrow={1}>
         {/* Below `md` the rail and its Search button are gone, so Search moves to a header row,
             top right on every page (#2751). It opens the same search the rail's button does. */}
         {phoneWidth && (
@@ -324,14 +350,17 @@ const AppShell = ({
           </Suspense>
         )}
         {banner}
-        <main
+        <Stack
+          className="overflow-auto overscroll-contain focus:outline-none"
+          flexBasis="0%"
+          flexGrow={1}
           id={MAIN_ID}
+          render="main"
           tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto overscroll-contain focus:outline-none"
         >
           {children}
-        </main>
-      </div>
+        </Stack>
+      </Stack>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't

@@ -103,11 +103,18 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
   // "Grandad"), not a movie whose lineup name equals its own title ("Shrek" + "Shrek").
   const showPrefix = showTitle && showTitle !== episodeTitle ? showTitle : "";
   return (
-    <li
+    <Stack
+      align="center"
       className={cn(
-        "border-border flex items-center gap-3 rounded-md border px-3 py-2",
+        "border-border rounded-md border px-3 py-2",
         pending ? "border-dashed bg-transparent" : "bg-card",
       )}
+      direction="row"
+      // The list caps its height and scrolls; a shrinkable row (Stack's default) with View's
+      // min-height 0 would squeeze below its own padding instead of scrolling.
+      flexShrink={0}
+      gap="control"
+      render="li"
     >
       <Text as="span" className="w-6 shrink-0 text-right" textRole="mono">
         {index + 1}
@@ -148,7 +155,7 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
           Part {slot.part}
         </Badge>
       ) : null}
-    </li>
+    </Stack>
   );
 };
 

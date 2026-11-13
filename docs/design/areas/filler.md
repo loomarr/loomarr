@@ -8,21 +8,21 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 34 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
-- **media** · 28 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
+- **platform** · 35 imports — the store that records sources, pulls and the catalog, the language models that screen and enrich clips, the storage governor, the diagnostics process manager, and the OpenRouter clients
+- **media** · 29 imports — ffmpeg, Whisper and the encoder for fetching and cutting clips, and the picture, sound and creative-identity checks every clip passes
 - **channels** · 2 imports — the holiday season and filler selection a channel's `channels/schedule` asks for
 
 ## Packages
 
 - **`filler`** · 9 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/split`, `filler/structure`, `filler/structure/window`, `filler/taxonomy`, `media/creative`, `media/defects`, `media/encode`, `media/measure`, `media/tools`, `platform/diagnostics`, `platform/llm`, `platform/logchange`, `platform/storagegovernor`, `platform/store/clipstore`
   Commercials & filler domain (design §10): the clip catalog model; pod assembly lives in filler/pod.
-- **`filler/acquisition`** · 10 importers · → `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split`
+- **`filler/acquisition`** · 11 importers · → `filler/cliplibrary`, `filler/clips`, `filler/language`, `filler/pipelinestate`, `filler/pod`, `filler/source`, `filler/split`
   How filler decides what to fetch and keeps the record of it: the intent a source is searched with, the plan that selects candidates, the durable download manifests and their repair, the per-pass Fetcher, and the gates that keep a compilation or an unlisted source out.
-- **`filler/asset`** · 12 importers · → `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor`
+- **`filler/asset`** · 13 importers · → `filler/clips`, `filler/split`, `media/tools`, `platform/storagegovernor`
   The byte-level identity and ownership primitives of retained media: the sparse content hash a clip is catalogued by, the full-file digest, the exact comparison of two ownership-boundary artifacts, and the bounded snapshot copy.
 - **`filler/capability`** · 1 importer · → `filler`, `filler/asset`, `filler/defectfloor`, `filler/enrichment`, `filler/pod`, `filler/records`, `filler/research`, `filler/station`, `filler/taxonomy`, `media/defects`, `platform/httpx`, `platform/llm`, `platform/metrics`, `platform/openroutermedia`, `platform/settings`, `platform/store/clipstore`
   Resolves what this install can do for the filler detail work right now: which text model, speech-to-text and vision endpoint the settings name, the versions those choices stamp on the observations they produce, and the executors and signal loaders that run them.
-- **`filler/cliplibrary`** · 12 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
+- **`filler/cliplibrary`** · 13 importers · → `filler/asset`, `filler/clips`, `filler/pod`, `filler/split`, `media/bgexec`, `media/tools`, `platform/storagegovernor`
   On-disk clip library: the clip folder's layout, the one intake route every clip takes into it, the folder and library scans that find clips, the names derived for them, and the thumbnail and preview artwork rendered from them.
 - **`filler/clips`** · 16 importers
   Clip catalog's value model (design §10): what a clip is, where it may be placed, who it suits, its broadcast geography, and its airing aggregates.
@@ -32,7 +32,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns progressive descriptive understanding for filler clips.
 - **`filler/fetch`** · 5 importers · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/source`, `media/bgexec`, `platform/storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`filler/identity`** · 3 importers · → `filler/asset`, `filler/cliplibrary`, `filler/clips`, `media/creative`, `media/defects`, `media/tools`, `platform/store/clipstore`
+- **`filler/identity`** · 4 importers · → `filler/asset`, `filler/cliplibrary`, `filler/clips`, `media/creative`, `media/defects`, `media/tools`, `platform/store/clipstore`
   Merges copies of the same advert: it fingerprints the catalog's clips, picks the best copy of each, retires the inferior ones and re-points everything that referenced them.
 - **`filler/language`** · 6 importers · → `media/bgexec`, `media/tools`, `platform/langcode`
   Detects the spoken language of a filler clip for the quality gate (§10 V40).
@@ -40,10 +40,12 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's offline place search and location resolution.
 - **`filler/operator`** · 2 importers · → `channels`, `filler`, `filler/acquisition`, `filler/clips`, `filler/fetch`, `filler/pipelinestate`, `filler/pod`, `filler/records`, `filler/source`, `filler/split`, `filler/storeadapter`, `platform/storagegovernor`, `platform/store`, `platform/store/channelstore`, `platform/store/clipstore`
   Runs what a filler operator asks for: downloading clips into the drop folder, splitting a compilation, rewinding a clip's ladder, syncing the catalog, and reporting the readiness of the whole filler pipeline.
-- **`filler/pipelinestate`** · 9 importers
+- **`filler/pipelinestate`** · 10 importers
   Vocabulary and persisted state machine of the per-clip ingest pipeline: which stage a clip is at, how that stage is going, what the clip's outcome was, why it was refused, and the lifecycle classification clients read.
 - **`filler/pod`** · 14 importers · → `channels/schedule`, `filler/clips`, `filler/language`
   Assembles a commercial break (§10): which clips fill a pod, in what order, under the channel's language, era, geography, season and audience rules, with household-wide rotation and the quality ladder deciding between them.
+- **`filler/quarantine`** · 1 importer · → `filler/split`
+  Where filler files Loomarr deletes on its own wait a day before their bytes go (#3855, "The goal is a 9" in #3838).
 - **`filler/records`** · 8 importers · → `filler`, `filler/acquisition`, `filler/asset`, `filler/clips`, `filler/enrichment`, `filler/pipelinestate`, `filler/pod`, `filler/research`, `filler/screening`, `filler/source`, `filler/split`, `filler/structure`, `filler/structure/window`, `platform/store`, `platform/store/clipstore`, `platform/store/storedb`
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure windows) (§10).
 - **`filler/research`** · 8 importers · → `platform/llm`
@@ -58,7 +60,7 @@ One area of the [package map](../package-map.md#start-here).
   Archive.org source provider: a collection the operator registers, listed through archive.org's search API and searched inside for the call signs of nearby stations.
 - **`filler/source/youtube`** · 1 importer · → `filler/acquisition`, `filler/fetch`, `filler/source`
   YouTube source provider: a channel or playlist the operator registers, listed newest-first through yt-dlp's flat-playlist mode.
-- **`filler/split`** · 12 importers · → `filler/clips`, `filler/structure`, `media/tools`
+- **`filler/split`** · 13 importers · → `filler/clips`, `filler/structure`, `media/tools`
   The filler source-structure planner and the split model it plans over: the exact source asset, the proposed segments, the detector checkpoint, and the deterministic reduction of independent observations into one complete-timeline assessment.
 - **`filler/station`** · 7 importers · → `filler/location`, `filler/research`
   Owns the directory of over-the-air TV stations a filler clip can name (#2059): each station's community of license and the dated call signs it has held.
@@ -76,3 +78,5 @@ One area of the [package map](../package-map.md#start-here).
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`filler/taxonomy`** · 7 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
+- **`filler/upkeep`** · 1 importer · → `filler/acquisition`, `filler/asset`, `filler/cliplibrary`, `filler/identity`, `filler/pipelinestate`, `media/tools`, `platform/store/clipstore`
+  Standing job that lets filler go of what it no longer needs, so storage never fills with work that already failed (#3855, step 1 of #3838).

@@ -34,7 +34,7 @@ import {
 } from "@loomarr/ui";
 import { keepPreviousData, type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -297,8 +297,20 @@ const GuidePage = () => {
   const [lastAnswered, setLastAnswered] = useState(answered);
   if (answered && answered !== lastAnswered) setLastAnswered(answered);
   const body = answered ?? lastAnswered;
+  // The notice, once a window has failed, holds through its retry (the query is pending again, with
+  // no error) until a window answers, so it stays mounted under the focus on its button.
+  const [noticeUp, setNoticeUp] = useState(false);
+  if (guide.error && !noticeUp) setNoticeUp(true);
+  if (noticeUp && guide.isSuccess && !guide.isPlaceholderData) setNoticeUp(false);
   // The window on screen is the last good one, not the one that failed.
-  const showingEarlierWindow = guide.error !== null && answered === undefined && body !== undefined;
+  const showingEarlierWindow =
+    noticeUp && body !== undefined && (answered === undefined || guide.isPlaceholderData);
+  // The same for a Guide that never answered: its error page holds through the retry (the query is
+  // pending again, with no error), so its button keeps the focus the viewer put on it.
+  const [firstError, setFirstError] = useState<unknown>(null);
+  if (guide.error && !body && guide.error !== firstError) setFirstError(guide.error);
+  if (body && firstError !== null) setFirstError(null);
+  const firstFailed = body === undefined && firstError !== null;
   // A cold page with nothing cached reads the device's zone until the first answer names the
   // household's.
   useEffect(() => {
@@ -322,6 +334,22 @@ const GuidePage = () => {
     [body, channels, nowMs],
   );
   const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
+
+  // A retry that works takes the notice (or the error page) away, and the focus on its button with
+  // it, to the page. Focus goes instead to the Guide's home: the grid's Tab stop, or the page's main
+  // region (the skip link's target) when no grid is drawn. A viewer who moved focus on keeps it.
+  const failedUp = noticeUp || firstFailed;
+  const wasFailedUp = useRef(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const gridDrawn = layout !== undefined && !nowNextView && !phoneWidth;
+  useEffect(() => {
+    const was = wasFailedUp.current;
+    wasFailedUp.current = failedUp;
+    if (!was || failedUp) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (gridDrawn) setFocusRequest((n) => n + 1);
+    else document.getElementById("main-content")?.focus();
+  }, [failedUp, gridDrawn]);
 
   // The phone grid's filters read the viewer's favourites and recents (#1778's lists), and the
   // Now/Next list puts the favourites first (#2787).
@@ -370,10 +398,10 @@ const GuidePage = () => {
 
   // A failed refetch of a Guide already on screen (an SSE invalidation, a window revisited) keeps it
   // and says it may be stale; only a Guide that never answered gives the page to the error.
-  if (guide.error && !body) {
+  if (firstFailed) {
     return (
       <div className="p-6">
-        <ErrorState error={guide.error} onRetry={() => guide.refetch()} />
+        <ErrorState error={firstError} onRetry={() => guide.refetch()} retrying={guide.isFetching} />
       </div>
     );
   }
@@ -383,7 +411,7 @@ const GuidePage = () => {
     // toolbar and grid are separated by RULES, not whitespace, and whose grid owns the only
     // scroll container. Padding here is what produced a page that scrolled horizontally
     // underneath a grid that had room.
-    <div className="flex min-h-0 flex-1 flex-col">
+    <Stack className="min-h-0" flexBasis="0%" flexGrow={1}>
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
         title="Guide"
@@ -412,11 +440,18 @@ const GuidePage = () => {
         }
       />
 
-      {guide.error ? (
+      {guide.error || noticeUp ? (
         // The same inset the TV and phone Guide give it (GuideJourney).
         <Surface backgroundColor="transparent" borderWidth={0} padding="control">
           <Notice
-            action={{ label: "Try again", onPress: () => void guide.refetch() }}
+            // Mounted while the retry runs, so the focus on its button stays; a press during it is the
+            // same retry.
+            action={{
+              label: guide.isFetching ? "Trying again…" : "Try again",
+              onPress: () => {
+                if (!guide.isFetching) void guide.refetch();
+              },
+            }}
             body={
               showingEarlierWindow
                 ? "That time didn't load. Showing the last one that did."
@@ -579,7 +614,7 @@ const GuidePage = () => {
         // scaled up and brightened, at which point it dominates a surface whose whole job is to
         // stay calm and point at one button. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
-        <div className="flex flex-1 items-center justify-center p-10">
+        <Stack align="center" className="p-10" flexBasis="0%" flexGrow={1} justify="center">
           <EmptyState
             // The state family's own static colour bars lead the panel (#2783): a test card is
             // what a set showed when nothing was broadcasting. Still, like the page around it.
@@ -590,10 +625,10 @@ const GuidePage = () => {
               onClick: () => void navigate({ to: "/requests/new" }),
             }}
           />
-        </div>
+        </Stack>
       ) : (
         // Desktop browsing uses the full available width with contextual previews.
-        <div className="relative flex min-h-0 flex-1">
+        <Stack className="relative min-h-0" direction="row" flexBasis="0%" flexGrow={1}>
           {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
           {guide.isPlaceholderData && (
@@ -631,6 +666,7 @@ const GuidePage = () => {
             />
           ) : layout ? (
             <GuideGrid
+              focusRequest={focusRequest}
               layout={layout}
               nowMs={nowMs}
               onMove={onMove}
@@ -649,9 +685,9 @@ const GuidePage = () => {
               )}
             />
           ) : null}
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

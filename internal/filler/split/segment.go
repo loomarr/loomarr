@@ -45,7 +45,7 @@ type Segment struct {
 	// Tags is the grounded taxonomy leaf set (§10 V45a); Category is its DERIVED product-leaf shadow,
 	// carried so the review and the confirmed clip both have the cheap read-path value. Both come from
 	// the same Classify the tag job uses.
-	Tags     []string `json:"tags,omitempty"`
+	Tags     []string `json:"tags,omitempty" maxItems:"64"` // at most 64, as on a clip
 	Category string   `json:"category,omitempty"`
 	// BoundaryConfidence is how much Loomarr trusts WHERE this was cut, 0–100 (§10 V34 ladder).
 	// `0` means never scored — every proposal detected before V54 deserialises that way, and the

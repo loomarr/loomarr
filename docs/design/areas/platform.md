@@ -73,7 +73,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists what hangs off channels without being the channel itself: a person's favourite and recent channels (#1666), the channel ideas they hid (#1665), the airing history placement ranks on (§5), and the household's and channels' discovery feedback.
 - **`platform/store/channelstore`** · 22 importers · → `channels/schedule`, `library/provision`, `platform/store/storedb`
   Persists channels (the channels table, §9): the approved lineup, the desired schedule, the optimistic revision, and the reconcile deadline the sweep claims by.
-- **`platform/store/clipstore`** · 13 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
+- **`platform/store/clipstore`** · 14 importers · → `channels/schedule`, `filler/clips`, `filler/station`, `filler/taxonomy`, `media/creative`, `media/defects`, `platform/holidayvocab`, `platform/store/storedb`
   Persists the clip catalog (design §10, §22): clips and their tags, the taxonomy and its closure and rollups, holidays, images and their derivatives and references, broadcast stations, and the clip defect, fingerprint, variant, inferior-copy and airing tables.
 - **`platform/store/crashstore`** · 1 importer · → `platform/diagnostics`, `platform/store/storedb`
   Persists the crash reports paired apps send (#1816).

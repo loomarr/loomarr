@@ -63,7 +63,7 @@ const PullCard = ({
       {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}
     >
       <Stack align="start" direction="row" gap="control" wrap>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <Stack flexBasis="0%" flexGrow={1} gap="1">
           <Stack align="center" direction="row" gap="inline" wrap>
             <StatusLabel tone="ok">Filler pull</StatusLabel>
             <Text as="span" id={titleId} strong textRole="cardLabel" tone="primary">
@@ -79,9 +79,9 @@ const PullCard = ({
               proposed by {pull.proposedByName}
             </Text>
           )}
-        </div>
+        </Stack>
 
-        <div className="flex shrink-0 gap-2">
+        <Stack direction="row" flexShrink={0} gap="inline">
           <Action disabled={deciding} onPress={onDismiss} variant="outline">
             Not now
           </Action>
@@ -93,7 +93,7 @@ const PullCard = ({
           >
             {deciding ? "Starting…" : "Approve pull"}
           </Action>
-        </div>
+        </Stack>
       </Stack>
 
       {/* ⚠ On the row, not in a page-level banner (#1430): a decision failure belongs beside the

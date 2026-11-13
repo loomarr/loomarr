@@ -89,7 +89,8 @@ func detectObservedWithEvidence(
 	}
 
 	capacity := deps.detect(ctx, ffmpegPath, profile, gpu)
-	if fingerprint != "" && !encode.IsSoftware(capacity.Chosen) && capacity.MaxChannels > 0 {
+	// A cancelled run measured under a dying context; storing it would make the next start trust it.
+	if ctx.Err() == nil && fingerprint != "" && !encode.IsSoftware(capacity.Chosen) && capacity.MaxChannels > 0 {
 		_ = storeCapabilityEvidence(root, capabilityEvidence{
 			Version: capabilityEvidenceVersion, Fingerprint: fingerprint,
 			Encoder: capacity.Chosen, MaxChannels: capacity.MaxChannels, ObservedAt: deps.now().UTC(),

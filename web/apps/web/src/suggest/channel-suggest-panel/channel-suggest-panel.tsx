@@ -11,7 +11,6 @@ import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
-import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
 import { ManualChannelBuilder } from "../manual-channel-builder";
@@ -111,7 +110,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
   // onto the builder's Job, which leaves the builder.
   if (flow.manual) {
     return (
-      <section className={cn("flex flex-col gap-4", className)}>
+      <Stack className={className} gap="4" render="section">
         <ManualChannelBuilder
           isAdmin={isAdmin}
           initialIdea={editIdea}
@@ -121,12 +120,12 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
           // The failed or unconfigured request that led here is history now: AI is back.
           onDescribeWithAi={flow.describeWithAi}
         />
-      </section>
+      </Stack>
     );
   }
 
   return (
-    <section className={cn("flex flex-col gap-4", className)}>
+    <Stack className={className} gap="4" render="section">
       {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
           flight OR has failed: a failed run shows the failure below with its own way back,
           so falling through to a blank form here would swallow the error the user needs. */}
@@ -295,7 +294,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
           )}
         </Stack>
       )}
-    </section>
+    </Stack>
   );
 };
 

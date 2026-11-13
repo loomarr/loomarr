@@ -31,6 +31,8 @@ type RequestsListProps = {
   review: ReviewState;
   snapshot: RequestsSnapshot;
   tab: RequestTab;
+  /** The household's timezone, which dates are told in; the device's while undefined. */
+  timeZone?: string;
 };
 
 export type { RequestsListProps };

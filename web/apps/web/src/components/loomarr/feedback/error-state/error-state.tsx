@@ -7,7 +7,7 @@ import type { ErrorStateProps } from "./error-state.type";
 // `title`/`detail` as words, never raw JSON (§6). Retry is offered only when the
 // caller says the operation is idempotent. Field-level 422 errors render inline via
 // TanStack Form instead (this is the block/list-level error).
-const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
+const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
     <Stack
@@ -30,8 +30,8 @@ const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
         )}
       </div>
       {onRetry && (
-        <Action onPress={onRetry} variant="outline">
-          Try again
+        <Action onPress={retrying ? () => undefined : onRetry} variant="outline">
+          {retrying ? "Trying again…" : "Try again"}
         </Action>
       )}
     </Stack>
