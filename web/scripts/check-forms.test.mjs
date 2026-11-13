@@ -212,6 +212,57 @@ describe("isHandRolledForm, a text setter passed as a prop", () => {
   });
 });
 
+describe("isHandRolledForm, a filter's name does not excuse a form", () => {
+  const fields = (wrapper, tail = "") => `
+    import { useState } from "react";
+    export const Server = () => {
+      const [statusName, setStatusName] = useState("");
+      const [filterHost, setFilterHost] = useState("");
+      return (
+        ${wrapper.replace(
+          "$",
+          `<>
+            <Field onChangeText={setStatusName} value={statusName} />
+            <Field onChangeText={setFilterHost} value={filterHost} />
+            ${tail}
+          </>`,
+        )}
+      );
+    };
+  `;
+
+  it("flags two text inputs in a <form>, whatever their setters are called", () => {
+    assert.equal(isHandRolledForm(fields("<form>$</form>")), true);
+    assert.equal(isHandRolledForm(fields("<form onSubmit={save}>$</form>")), true);
+  });
+
+  it("flags text inputs beside a submit", () => {
+    assert.equal(isHandRolledForm(fields("$", '<button type="submit">Save</button>')), true);
+    assert.equal(isHandRolledForm(fields("<Stack onSubmit={save}>$</Stack>")), true);
+  });
+
+  it("still passes the same inputs as a lone search and filter", () => {
+    assert.equal(isHandRolledForm(fields("$")), false);
+    assert.equal(isHandRolledForm(fields("<Stack>$</Stack>")), false);
+  });
+
+  it("flags a filter-named text state handed whole to a change prop inside a form", () => {
+    const source = `
+      import { useState } from "react";
+      export const Page = () => {
+        const [filterHost, setFilterHost] = useState("");
+        return (
+          <form>
+            <Hosts onHostChange={setFilterHost} host={filterHost} />
+          </form>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(source), true);
+    assert.equal(isHandRolledForm(source.replace("<form>", "<div>").replace("</form>", "</div>")), false);
+  });
+});
+
 describe("the committed draft", () => {
   const sanctioned = `
     import { useCommittedDraft } from "../use-committed-draft";
@@ -294,6 +345,61 @@ describe("the committed draft", () => {
       };
     `;
     assert.equal(isHandRolledForm(twoBoxes), false);
+  });
+
+  it("counts a same-file wrapper hook as the hook it calls, so a renamed pair is still a form", () => {
+    const direct = `
+      import { useCommittedDraft } from "@loomarr/ui";
+      export const Server = () => {
+        const name = useCommittedDraft("");
+        const host = useCommittedDraft("");
+        return (
+          <form>
+            <Field onChangeText={name.editDraft} value={name.draft} />
+            <Field onChangeText={host.editDraft} value={host.draft} />
+          </form>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(direct), true);
+    const wrapped = `
+      import { useCommittedDraft } from "@loomarr/ui";
+      const useName = () => useCommittedDraft("");
+      const useHost = () => useCommittedDraft("");
+      export const Server = () => {
+        const name = useName();
+        const host = useHost();
+        return (
+          <form>
+            <Field onChangeText={name.editDraft} value={name.draft} />
+            <Field onChangeText={host.editDraft} value={host.draft} />
+          </form>
+        );
+      };
+    `;
+    assert.equal(isHandRolledForm(wrapped), true);
+    // A wrapper of a wrapper, as a function declaration.
+    assert.equal(
+      isHandRolledForm(
+        wrapped.replace(
+          'const useHost = () => useCommittedDraft("");',
+          "function useHost() { return useName(); }",
+        ),
+      ),
+      true,
+    );
+    // One wrapper used twice.
+    assert.equal(isHandRolledForm(wrapped.replace("useHost();", "useName();")), true);
+    // One wrapped draft in one component is still a single input.
+    const single = `
+      import { useCommittedDraft } from "@loomarr/ui";
+      const useName = () => useCommittedDraft("");
+      export const Box = () => {
+        const name = useName();
+        return <Field onChangeText={name.editDraft} value={name.draft} />;
+      };
+    `;
+    assert.equal(isHandRolledForm(single), false);
   });
 
   it("does not excuse a hand-rolled input in a file that also uses the hook", () => {
