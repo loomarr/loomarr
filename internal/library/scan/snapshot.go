@@ -82,7 +82,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 74
+const writeVersion = 75
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -526,7 +526,12 @@ func runsOn(title, other string) bool {
 // folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
 // (part > 0) is named without its part mark; one whose part has a folder of its own ("CD1/") is
 // named by the movie's folder, the one name all its parts share.
-func fallbackName(rel string, kind mp.Kind, part int) string {
+//
+// sole says the file is its folder's only video. Beside others, a name that is no film's own
+// (bonusBeside), "Gale Spit (2004)/Cast Q and A.mkv" or "…/Return to Gale Spit.mkv", keeps its own:
+// a bonus feature named by the folder would be a second copy of the film, and a film kept there
+// is its own title. Either is listed, never skipped.
+func fallbackName(rel string, kind mp.Kind, part int, sole bool) string {
 	clean := func(name string) string {
 		return strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
 	}
@@ -578,7 +583,8 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		// A sequel kept in the first film's folder, "Brook (2010)/Brook 2.mkv", says more than the
 		// folder's title: it is its own.
 		if fileTitle, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
-			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" && !runsOn(fileTitle, title) {
+			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" && !runsOn(fileTitle, title) &&
+				(sole || !bonusBeside(path.Base(dir), path.Base(rel))) {
 				return folder
 			}
 		} else if title, year, _ := searchQuery(folder, 0); year == fileYear && runsOn(title, fileTitle) {

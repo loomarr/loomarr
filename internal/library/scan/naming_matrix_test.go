@@ -1231,16 +1231,35 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
-	// A film's own dated folder holds the film and its unlabelled bonus videos, never a second copy;
-	// "Name Part 1" and "Part 2" there are its parts; "Movies/Trailers/" and "Movies/Samples/" hold
-	// extras; a fansub's batch folder is its show's; "2019 - Season 6" is a season's folder; a
+	// A site's name before a scene release's is no part of its show; a season pack's "S02.Bonus"
+	// video is its extra; "- Uncut" is an edition; a batch folder named "… Batch" or "… - 08
+	// [Batch]" is its show's; "- #09" numbers an anime's episode; a fansub's "- Movie 1 - Dawn" in
+	// its show's folder is a film.
+	{id: "W148", files: map[string]string{
+		"Downloads/www.Torrentsite.com - Larch.Holm.S02E03.720p.mkv":              "episode Larch Holm S2E3",
+		"TV/Larch Holm/Season 2/Larch Holm S02E04.mkv":                            "episode Larch Holm S2E4",
+		"TV/Saltcove/Season 2/Saltcove S02E01.mkv":                                "episode Saltcove S2E1",
+		"TV/Saltcove/Season 2/Saltcove.S02.Bonus.Cast.Q&A.mkv":                    "skip",
+		"Movies/Gale Spar (2004)/Gale Spar (2004).mkv":                            "movie Gale Spar 2004",
+		"Movies/Gale Spar (2004)/Gale Spar - Uncut.mkv":                           "movie Gale Spar 2004",
+		"Anime/[Group] Aozora Gaku Batch/[Group] Aozora Gaku - 01 [BD 1080p].mkv": "episode Aozora Gaku S?E?",
+		"Anime/Aozora Gaku/[Group] Aozora Gaku - 03 [BD 1080p].mkv":               "episode Aozora Gaku S?E?",
+		"Anime/[Group] Yoru Kawa - #09 [720p].mkv":                                "episode Yoru Kawa S?E?",
+		"Anime/[Group] Yoru Kawa - #10 [720p].mkv":                                "episode Yoru Kawa S?E?",
+		"Anime/Kage Hana/[Grp] Kage Hana - 01 [1080p].mkv":                        "episode Kage Hana S?E?",
+		"Anime/Kage Hana/[Grp] Kage Hana - Movie 1 - Dawn [1080p].mkv":            "movie Kage Hana - Movie 1 - Dawn -",
+	}},
+	// A film's own dated folder holds the film and its unlabelled bonus videos, never a second copy:
+	// each keeps its own name, and a film kept there ("Return to Brackmere") is its own; "Name Part
+	// 1" and "Part 2" there are its parts; "Movies/Trailers/" and "Movies/Samples/" hold extras; a fansub's batch folder is its show's; "2019 - Season 6" is a season's folder; a
 	// pack's "- Menu" is no episode; "- Copy", "(copy 2)", "(Full Screen)" and a leading "720p."
 	// say nothing of a film's title.
 	{id: "W147", files: map[string]string{
 		"Movies/Brackmere (1990)/Brackmere (1990).mkv":                                               "movie Brackmere 1990",
-		"Movies/Brackmere (1990)/Pell Tamsin on Brackmere.mkv":                                       "skip",
-		"Movies/Brackmere (1990)/Cast Q and A.mkv":                                                   "skip",
-		"Movies/Brackmere (1990)/Shooting the Storm.mkv":                                             "skip",
+		"Movies/Brackmere (1990)/Pell Tamsin on Brackmere.mkv":                                       "movie Pell Tamsin on Brackmere -",
+		"Movies/Brackmere (1990)/Cast Q and A.mkv":                                                   "movie Cast Q and A -",
+		"Movies/Brackmere (1990)/Shooting the Storm.mkv":                                             "movie Shooting the Storm -",
+		"Movies/Brackmere (1990)/Return to Brackmere.mkv":                                            "movie Return to Brackmere -",
 		"Movies/Wexcombe (2008)/Wexcombe Part 1.mkv":                                                 "movie Wexcombe 2008",
 		"Movies/Wexcombe (2008)/Wexcombe Part 2.mkv":                                                 "movie Wexcombe 2008",
 		"Movies/Gale Spit (2004)/Gale Spit (2004).mkv":                                               "movie Gale Spit 2004",

@@ -1028,7 +1028,7 @@ func extrasBeside(names []string) map[string]bool {
 	for _, name := range names {
 		mark, marked := numberingIn(name)
 		if !marked {
-			if seasonExtrasFolder(stem(name)) {
+			if seasonExtrasFolder(stem(name)) || seasonKindFirst(name) {
 				add(name)
 			}
 			continue
@@ -1044,6 +1044,30 @@ func extrasBeside(names []string) map[string]bool {
 		}
 	}
 	return out
+}
+
+// seasonKindFirst says whether a video is named by its show, its season with no episode, then a
+// kind of extra and what it shows: "Saltcove.S02.Bonus.Cast.Q&A", "Gullhaven S1 Featurette
+// Costumes". A season's mark and a title, "Saltcove S02 The Long Night", is no extra, nor is one
+// whose title starts with an everyday word a kind is also: "Saltcove S02 Short Stories".
+func seasonKindFirst(name string) bool {
+	words := extraWords(name)
+	for i := 1; i < len(words)-1; i++ {
+		if !seasonToken.MatchString(words[i]) {
+			continue
+		}
+		rest := words[i+1:]
+		return !everydayKinds[rest[0]] && slices.ContainsFunc(extraKinds, func(kind []string) bool {
+			return len(rest) >= len(kind) && slices.Equal(rest[:len(kind)], kind)
+		})
+	}
+	return false
+}
+
+// everydayKinds are kinds of extra that are everyday words too, and so start titles.
+var everydayKinds = map[string]bool{
+	"short": true, "scene": true, "clip": true, "other": true, "theme": true, "extra": true, "intro": true,
+	"credits": true, "end": true, "opening": true, "closing": true, "music": true, "easter": true,
 }
 
 // episodeExtra matches Jellyfin's mark for an episode's own extra, joined to its name with a dash:
@@ -1121,10 +1145,6 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 			out[name] = true
 			continue
 		}
-		if film && !shows && !episodes && bonusBeside(folder, name) {
-			out[name] = true
-			continue
-		}
 		// A hidden copy of a video beside it, ".Fenwick Garth (2003).mkv", is a shadow a copy or a
 		// sync left, never a second copy; ".45 Calibre Kings" alone is a title.
 		if strings.HasPrefix(name, ".") && slices.ContainsFunc(names, func(other string) bool {
@@ -1198,20 +1218,18 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 	return out
 }
 
-// bonusBeside says whether a video in a film's own dated folder, beside the film's own video, is
-// one of the disc's unlabelled bonus features: "Gale Spit (2004)/Cast Q and A.mkv", "…/The Look of
-// Gale Spit.mkv". Each is named as no film is: with no year of its own, not as the film, not
-// running on from its title as a sequel does ("Brook (2010)/Brook 2.mkv"), not the film's name cut
-// short ("asg-1080p", "movie.mkv"), and with no part's, episode's or day's mark.
+// bonusBeside says whether a video in a film's own dated folder, beside other videos, is named as
+// something other than that film: "Gale Spit (2004)/Cast Q and A.mkv", "…/Return to Gale Spit.mkv".
+// Its name has no year of its own, is not the film's, does not run on from its title as a sequel's
+// does ("Brook (2010)/Brook 2.mkv"), is not the film's name cut short ("asg-1080p", "movie.mkv"),
+// and has no episode's or day's mark; a set's part is named before this is asked. It keeps its own name (fallbackName): an unlabelled
+// bonus feature waits in Needs you, and a film kept there is its own, never skipped.
 func bonusBeside(folder, name string) bool {
 	plain := plainStem(name)
 	title, _, _ := searchQuery(folder, 0)
 	own, _, _ := searchQuery(name, 0)
 	if title == "" || own == "" || yearAnywhere.MatchString(plain) || markIn(name) != nil || airDateIn(plain) != "" ||
 		makeMKVTitle.MatchString(plain) || genericStem.MatchString(plain) {
-		return false
-	}
-	if _, _, ok := partIn(name); ok {
 		return false
 	}
 	if sameWords(own, title) || runsOn(own, title) || abbreviates(own, title) || strings.EqualFold(own, initials(title)) {

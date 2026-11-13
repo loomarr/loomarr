@@ -75,8 +75,8 @@ func FuzzNamingFromAPath(f *testing.F) {
 				t.Errorf("%q is searched for with year %d", name, year)
 			}
 		}
-		_ = fallbackName(rel, rec.Kind, 0)
-		_ = fallbackName(rel, rec.Kind, 1)
+		_ = fallbackName(rel, rec.Kind, 0, true)
+		_ = fallbackName(rel, rec.Kind, 1, false)
 	})
 }
 

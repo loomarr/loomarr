@@ -88,7 +88,7 @@ func TestAPartIsNamedWithoutItsMark(t *testing.T) {
 		{"Ashgrove/Ashgrove (2015) [disc 1] 1080p.mkv", 1, "Ashgrove (2015) 1080p"},
 		{"Kettle Part 2 (2011)/Kettle Part 2 (2011).mkv", 0, "Kettle Part 2 (2011)"},
 	} {
-		if got := fallbackName(c.rel, mp.KindMovie, c.part); got != c.want {
+		if got := fallbackName(c.rel, mp.KindMovie, c.part, true); got != c.want {
 			t.Errorf("fallbackName(%q, part %d) = %q, want %q", c.rel, c.part, got, c.want)
 		}
 	}

@@ -974,6 +974,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   (2008)/" are its parts; a films' shelf's "Trailers/" and "Samples/" hold extras; a fansub's
   "[Batch]" folder is its show's; "2019 - Season 6" is season 6's folder; a tagged pack's "-
   Menu" is its extra; a leading "720p." is no part of a title.
+- **75:** a video beside a film in its dated folder keeps its own name and lands in Needs you,
+  never skipped: "Return to Brackmere" there may be a sequel (`fallbackName`); a site's prefix,
+  "www.Site.com - Show.S02E03", is no part of a show's name; "Show.S02.Bonus.Cast.Q&A" is its
+  season's extra (`seasonKindFirst`); "[Grp] Show Batch/" is the show's folder; an anime's "-
+  #09" is its episode; "Uncut", "Uncensored", "Redux" and "Final Cut" are editions; a tagged
+  "[Grp] Show - Movie 1 - Dawn" is a film (`animeFilm`).
 
 ## Search
 
