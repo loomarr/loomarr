@@ -1,5 +1,6 @@
 import {
   Action,
+  Card,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -122,23 +123,30 @@ const ImportDialog = ({
           </DialogHeader>
 
           {!available ? (
-            <Stack align="start" className="overflow-auto px-6 pb-6" gap="4">
-              <div className="border-border bg-static-900 rounded-lg border p-4">
+            <Stack align="start" className="overflow-auto" gap="4" paddingBottom={24} paddingHorizontal={24}>
+              <Card flexShrink={0} gap={4} padding={16}>
                 <Text as="p" textRole="cardLabel">
                   Connect a media server first
                 </Text>
-                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                <Text as="p" textRole="compact" tone="secondary">
                   Add Emby or Jellyfin under Connections. Once Loomarr can reach it, its accounts will be
                   available here for explicit import.
                 </Text>
-              </div>
+              </Card>
               <Action accessibilityRole="link" render={<a href="/settings/connections" />} variant="outline">
                 Open Connections settings
               </Action>
             </Stack>
           ) : (
             <>
-              <Stack className="min-h-0 overflow-auto px-6" flexBasis="0%" flexGrow={1} gap="4">
+              <Stack
+                className="overflow-auto"
+                flexBasis="0%"
+                flexGrow={1}
+                gap="4"
+                minHeight={0}
+                paddingHorizontal={24}
+              >
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
                   <SearchField
                     label="Search accounts"
@@ -160,36 +168,36 @@ const ImportDialog = ({
                 {candidateError != null ? (
                   <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
                 ) : candidates === undefined ? (
-                  <div className="grid gap-2" role="status" aria-label="Loading media-server accounts">
+                  <Stack aria-label="Loading media-server accounts" flexShrink={0} gap="2" role="status">
                     {[0, 1, 2].map((item) => (
-                      <div
-                        key={item}
-                        className="border-border bg-card h-16 animate-pulse rounded-lg border"
-                      />
+                      <Card className="animate-pulse" flexShrink={0} height={64} key={item} />
                     ))}
-                  </div>
+                  </Stack>
                 ) : candidates.length === 0 ? (
                   <EmptyState
                     title="No accounts reported"
                     description="Emby/Jellyfin did not return any accounts to import."
                   />
                 ) : visible.length === 0 ? (
-                  <div className="border-border bg-card rounded-lg border p-6 text-center">
+                  <Card alignItems="center" flexShrink={0} padding={24}>
                     <Text as="p" textRole="cardLabel">
                       No matching accounts
                     </Text>
                     <Text as="p" textRole="compact" tone="secondary">
                       Try another name or account filter.
                     </Text>
-                  </div>
+                  </Card>
                 ) : (
-                  <div className="border-border bg-card overflow-hidden rounded-lg border">
+                  <Card flexShrink={0} overflow="hidden">
                     <Stack
                       align="center"
-                      className="border-static-800 border-b px-4 py-2"
+                      borderBottomWidth={1}
+                      borderColor="borderDecorative"
                       direction="row"
                       gap="inline"
                       justify="between"
+                      paddingHorizontal={16}
+                      paddingVertical={8}
                       wrap
                     >
                       <Text aria-live="polite" as="p" textRole="compact" tone="secondary">
@@ -204,15 +212,18 @@ const ImportDialog = ({
                       </Action>
                     </Stack>
                     <ul>
-                      {visible.map((candidate) => {
+                      {visible.map((candidate, index) => {
                         const id = `${searchId}-${candidate.id}`;
                         return (
                           <Stack
                             align="start"
-                            className="border-static-800 border-b px-4 py-1 last:border-b-0"
+                            borderBottomWidth={index === visible.length - 1 ? 0 : 1}
+                            borderColor="borderDecorative"
                             direction="row"
                             gap="control"
                             key={candidate.id}
+                            paddingHorizontal={16}
+                            paddingVertical={4}
                             render="li"
                           >
                             <Toggle
@@ -234,49 +245,54 @@ const ImportDialog = ({
                                 )}
                                 {candidate.isAdmin && <StatusLabel tone="notice">Server admin</StatusLabel>}
                               </Stack>
-                              <Text as="span" className="mt-1 block" textRole="hint" tone="secondary">
-                                Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
-                              </Text>
+                              <Stack marginTop={4} render="span">
+                                <Text as="span" textRole="hint" tone="secondary">
+                                  Initial Loomarr role: {candidate.isAdmin ? "Admin" : "Member"}
+                                </Text>
+                              </Stack>
                             </label>
                           </Stack>
                         );
                       })}
                     </ul>
-                  </div>
+                  </Card>
                 )}
 
-                <div className="border-border bg-static-900 grid gap-3 rounded-lg border p-4 sm:grid-cols-2">
-                  <div>
-                    <Stack align="center" direction="row" gap="inline" render="p">
-                      <Icon decorative glyph={icons.verified} size="compact" tone="success" />
-                      <Text as="span" textRole="cardLabel">
-                        Passwords stay private
+                <Card flexShrink={0} padding={16}>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Stack gap="1">
+                      <Stack align="center" direction="row" gap="inline" render="p">
+                        <Icon decorative glyph={icons.verified} size="compact" tone="success" />
+                        <Text as="span" textRole="cardLabel">
+                          Passwords stay private
+                        </Text>
+                      </Stack>
+                      <Text as="p" textRole="compact" tone="secondary">
+                        Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only
+                        a non-reversible Argon2id verifier for outage access and refreshes it after later
+                        provider sign-ins.
                       </Text>
                     </Stack>
-                    <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-                      Emby/Jellyfin validates the password. After a successful sign-in, Loomarr stores only a
-                      non-reversible Argon2id verifier for outage access and refreshes it after later provider
-                      sign-ins.
-                    </Text>
-                  </div>
-                  <div>
-                    <Text as="p" textRole="cardLabel">
-                      Sync existing accounts
-                    </Text>
-                    <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-                      Refresh imported names and disabled state. Sync never provisions an unselected account.
-                    </Text>
-                    <Stack className="mt-3" direction="row">
-                      <Action
-                        disabled={syncing || importing}
-                        onPress={() => void syncExisting()}
-                        variant="outline"
-                      >
-                        {syncing ? "Syncing…" : "Sync existing"}
-                      </Action>
+                    <Stack gap="1">
+                      <Text as="p" textRole="cardLabel">
+                        Sync existing accounts
+                      </Text>
+                      <Text as="p" textRole="compact" tone="secondary">
+                        Refresh imported names and disabled state. Sync never provisions an unselected
+                        account.
+                      </Text>
+                      <Stack direction="row" marginTop={8}>
+                        <Action
+                          disabled={syncing || importing}
+                          onPress={() => void syncExisting()}
+                          variant="outline"
+                        >
+                          {syncing ? "Syncing…" : "Sync existing"}
+                        </Action>
+                      </Stack>
                     </Stack>
                   </div>
-                </div>
+                </Card>
               </Stack>
 
               <DialogFooter>
