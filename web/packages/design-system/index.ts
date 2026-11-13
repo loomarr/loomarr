@@ -181,6 +181,8 @@ export type {
 export { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "./src/table";
 export type { TextProps, TextTone } from "./src/text";
 export { Text } from "./src/text";
+export type { TextLinkProps } from "./src/text-link";
+export { TextLink } from "./src/text-link";
 export type { ToggleProps } from "./src/toggle";
 export { Toggle } from "./src/toggle";
 export type { DecadeFill, Density, FontFamilyRole, TextRole } from "./src/tokens";
