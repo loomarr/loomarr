@@ -311,6 +311,18 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
 }
 
+// skippedListed is how many of the files skipped for one reason the maintainer is shown by path.
+const skippedListed = 20
+
+// Skipped lists the files the scan skips, by why (ProblemBrokenLink, ProblemLinkOutside,
+// ProblemDiscImage, ...): each reason's count and its first few paths, for the maintainer to fix.
+func (l *Library) Skipped(ctx context.Context) ([]librarystore.LibrarySkipped, error) {
+	if l.Scanner == nil {
+		return []librarystore.LibrarySkipped{}, nil
+	}
+	return l.Scanner.Importer.Store.LibrarySkippedFiles(ctx, skippedListed)
+}
+
 // heldNamed is how many of a held removal's titles the maintainer is shown by name.
 const heldNamed = 3
 

@@ -44,6 +44,7 @@ type (
 	LibraryFilmographyDue    = librarystore.LibraryFilmographyDue
 	LibraryFrom              = librarystore.LibraryFrom
 	LibraryHeldCount         = librarystore.LibraryHeldCount
+	LibrarySkipped           = librarystore.LibrarySkipped
 	LibraryID                = librarystore.LibraryID
 	LibraryItem              = librarystore.LibraryItem
 	LibraryItemFacts         = librarystore.LibraryItemFacts
