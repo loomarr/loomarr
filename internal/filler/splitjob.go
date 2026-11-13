@@ -847,8 +847,10 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []split.
 // did happens on each spawned segment's own `tag` rung, with a transcript, one clip at a time.
 
 // dedup flags segments whose dHash matches an existing catalog clip. Hashing
-// failures (undecodable span, unreadable catalog file) mean NO flag — a false
-// "already have it" hides a genuinely new advert, which is the worse direction.
+// failures (undecodable span, unreadable catalog file) mean NO DupOf flag — a false
+// "already have it" hides a genuinely new advert, which is the worse direction — and the segment
+// is marked DedupUnchecked instead, so a comparison made against only part of the catalog never
+// reads as complete.
 //
 // ⚠ **The self-exclusion below compares IDENTITIES, and comparing the wrong one broke it.** This
 // parameter was named `clipPath` and tested against `c.Path`, while the one call site passes the
@@ -893,7 +895,7 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 		candidates = append(candidates, candidate{path: c.Path, fp: fp})
 	}
 	if unreadable > 0 && sp.log != nil {
-		sp.log.Warn("split dedup: catalog clips could not be fingerprinted and were not compared against",
+		sp.log.Warn("split dedup: catalog clips could not be fingerprinted, so segments without a copy were left unchecked",
 			"clip", clipHash, "unreadable", unreadable, "catalog", others)
 	}
 	if len(candidates) == 0 {
@@ -930,6 +932,13 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 	if unchecked > 0 && sp.log != nil {
 		sp.log.Warn("split dedup: segments could not be fingerprinted and were left unchecked against the catalog",
 			"clip", clipHash, "unchecked", unchecked, "segments", len(segs), "err", firstErr)
+	}
+	if unreadable > 0 {
+		// A copy found among the readable clips stands. Every other segment was compared with only
+		// part of the catalog, so its empty verdict would read as "checked and new" while the clips
+		// it was not compared with could still hold its copy. It is marked, held back from
+		// unattended confirmation, and re-checked by RecheckDedup once those clips can be read.
+		markDedupUnchecked(segs)
 	}
 }
 
