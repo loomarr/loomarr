@@ -21,6 +21,7 @@ const fakes = vi.hoisted(() => {
   const emptySnapshot = {};
   return {
     batchSenders: [] as unknown[],
+    catalogFails: false,
     catalogHeld: false,
     catalogLists: [] as AbortSignal[],
     emptySnapshot,
@@ -131,6 +132,7 @@ vi.mock("@loomarr/player/server", () => ({
       list: (signal: AbortSignal) => {
         fakes.catalogLists.push(signal);
         // A held load stays pending until it is cancelled, as a request on a dead connection does.
+        if (fakes.catalogFails) return Promise.reject(new Error("catalog down"));
         return fakes.catalogHeld
           ? new Promise<never>((_, reject) =>
               signal.addEventListener("abort", () => reject(new Error("cancelled"))),
@@ -230,6 +232,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   appListeners.clear();
   fakes.batchSenders.length = 0;
+  fakes.catalogFails = false;
   fakes.catalogHeld = false;
   fakes.catalogLists.length = 0;
   fakes.guideOptions.length = 0;
@@ -410,6 +413,34 @@ describe("paired client", () => {
       expect(fakes.transport.resume).toHaveBeenCalledTimes(1);
       // The return asks the server for the catalog again before it retunes anything.
       expect(fakes.catalogLists).toHaveLength(2);
+      await act(async () => root.unmount());
+    });
+
+    it("loads the server's version and my channels even when the catalog fails to load", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 })),
+      );
+      fakes.catalogFails = true;
+      const { client, root } = await mountClient();
+
+      expect(client().catalogState.error).toBe("catalog down");
+      expect(fakes.lifetimes).toContain("myChannels:use");
+      expect(client().serverVersion).toBe("1.2.3");
+      await act(async () => root.unmount());
+    });
+
+    it("loads all three at once, so a slow catalog does not hold the others back", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 })),
+      );
+      fakes.catalogHeld = true;
+      const { client, root } = await mountClient();
+
+      expect(fakes.catalogLists).toHaveLength(1);
+      expect(fakes.lifetimes).toContain("myChannels:use");
+      expect(client().serverVersion).toBe("1.2.3");
       await act(async () => root.unmount());
     });
 
