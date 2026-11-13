@@ -105,6 +105,12 @@ func (b *builder) joinShows(ids, others []identity) {
 			}
 		}
 	}
+	b.applyJoins(join, ids, others)
+}
+
+// applyJoins moves every episode of each show join names (from → to) to the show it joins, and
+// that show's counts with it.
+func (b *builder) applyJoins(join map[string]string, ids, others []identity) {
 	if len(join) == 0 {
 		return
 	}
