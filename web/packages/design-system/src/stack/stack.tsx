@@ -1,5 +1,5 @@
 import { View } from "@tamagui/core";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, FormHTMLAttributes, ReactNode } from "react";
 
 import type { semanticSpace, spaceSteps } from "../tokens";
 
@@ -26,9 +26,36 @@ const justifyContent = {
   start: "flex-start",
 } as const;
 
-type StackProps = Omit<
+/**
+ * The attributes of a `<form>` a Stack can carry. Web only: on native there is no form element, so
+ * they are ignored there. Only a Stack with `render="form"` may set them.
+ */
+type StackFormAttributes = Pick<
+  FormHTMLAttributes<HTMLFormElement>,
+  | "acceptCharset"
+  | "action"
+  | "autoComplete"
+  | "encType"
+  | "method"
+  | "name"
+  | "noValidate"
+  | "onSubmit"
+  | "target"
+>;
+
+type StackRender = ComponentProps<typeof View>["render"];
+
+type StackOwnProps = Omit<
   ComponentProps<typeof View>,
-  "alignItems" | "children" | "columnGap" | "flexDirection" | "flexWrap" | "gap" | "justifyContent" | "rowGap"
+  | "alignItems"
+  | "children"
+  | "columnGap"
+  | "flexDirection"
+  | "flexWrap"
+  | "gap"
+  | "justifyContent"
+  | "render"
+  | "rowGap"
 > & {
   /** Cross-axis alignment. Left out, children stretch (a column fills its width). */
   align?: StackAlign;
@@ -42,6 +69,17 @@ type StackProps = Omit<
   /** Let a row break onto further lines instead of overflowing. The gap also separates the lines. */
   wrap?: boolean;
 };
+
+/**
+ * `render="form"` turns the Stack into a `<form>` and unlocks its attributes (`noValidate`,
+ * `onSubmit` …); any other element takes none of them, so a stray one is a type error rather than a
+ * silently dropped prop.
+ */
+type StackProps = StackOwnProps &
+  (
+    | ({ render: "form" } & StackFormAttributes)
+    | ({ render?: StackRender } & { [Attribute in keyof StackFormAttributes]?: never })
+  );
 
 /**
  * Layout only: children in a row or a column, spaced by the spacing tokens. It draws nothing of its

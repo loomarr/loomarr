@@ -1,5 +1,15 @@
-import { Action, Screen, Stack, type StackAlign, type StackGap, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Field,
+  Screen,
+  Stack,
+  type StackAlign,
+  type StackGap,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 
 // Stack — layout only. It draws nothing: the boxes below are Surfaces so the arrangement can be
 // seen. Gap comes from the spacing tokens (inline 8, control 12, section 24, screen 32).
@@ -84,6 +94,36 @@ const Workshop = () => (
   </Screen>
 );
 
+// `render="form"`: the Stack is the <form>, so its arrangement and its attributes live on one element.
+// `noValidate` leaves validation to the app's own messages; Enter in the field submits.
+const FormWorkshop = () => {
+  const [name, setName] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
+  return (
+    <Screen gap="section">
+      <Surface padding="section">
+        <Stack
+          aria-label="Name a channel"
+          gap="control"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSent(name);
+          }}
+          render="form"
+        >
+          <Text textRole="title">Name a channel</Text>
+          <Field label="Channel name" onChangeText={setName} placeholder="Saturday Cartoons" value={name} />
+          <Stack direction="row" gap="inline" justify="end">
+            <Action submit>Save</Action>
+          </Stack>
+          {sent === null ? null : <Text textRole="body">{`Saved: ${sent}`}</Text>}
+        </Stack>
+      </Surface>
+    </Screen>
+  );
+};
+
 const meta = {
   title: "Loomarr Components/Stack",
   component: Workshop,
@@ -93,6 +133,7 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 const Light: Story = { globals: { theme: "light" } };
+const AsForm: Story = { render: () => <FormWorkshop /> };
 
 export default meta;
-export { Default, Light };
+export { AsForm, Default, Light };
