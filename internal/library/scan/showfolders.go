@@ -106,6 +106,11 @@ func looseKey(show string) string {
 	return show
 }
 
+// noShowIn says whether a show's folder seriesFolderOf gives is no show's: none at all, or a shelf.
+func noShowIn(seriesDir string) bool {
+	return seriesDir == "" || shelfAt(seriesDir)
+}
+
 // looseYear matches a show's name and the year after it, bare or bracketed: "Fernhill 2019",
 // "Fernhill (2019)".
 var looseYear = regexp.MustCompile(`^(.*\S)[ ._]+[(\[]?((?:19|20)\d{2})[)\]]?$`)
@@ -333,6 +338,11 @@ func showFolderIn(file File) string {
 	// named by its show, "Owlpen Season 1/" beside "Owlpen Season 2/".
 	if show := packShow(dir); show != "" && !namedInFull(file, dir) {
 		return show
+	}
+	// A shelf names no show: "Downloads/S01E01.mkv" and "TV/S01E07.mkv" name none, as "S01E01.mkv"
+	// loose at the top does, and two such files are no one show's.
+	if shelfAt(dir) {
+		return ""
 	}
 	return dir
 }

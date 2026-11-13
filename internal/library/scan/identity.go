@@ -200,7 +200,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// Hope Ep01"; a saga's "Kettle Wars Episode 4 (1977)" is a film.
 	if dir := path.Dir(file.Rel); amongFilms(shelved(file, dir)) && !inShowsSeason(dir) && !miniseriesAmongFilms(file) &&
 		!seasonAmongFilms(file) && (!paddedEpisode.MatchString(plainStem(name)) || yearAnywhere.MatchString(plainStem(name))) &&
-		(!sxxeyy.MatchString(file.Rel) && (!crossMark.MatchString(name) || crossTitle(segments)) || shelfAt(seriesFolderOf(file))) {
+		(!sxxeyy.MatchString(file.Rel) && (!crossMark.MatchString(name) || crossTitle(segments)) || noShowIn(seriesFolderOf(file))) {
 		return movieRecord(src, segments), ""
 	}
 	// A camera's or phone's clip, "MVI_1001", "IMG_2041", "GOPR0032", is a video of its own: its

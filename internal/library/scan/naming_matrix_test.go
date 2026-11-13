@@ -1237,6 +1237,17 @@ var namingMatrix = []namingRow{
 	// its show's folder is a film.
 	// A film named by a kind of extra, in its own dated folder, is the film, never skipped; its
 	// release's sample beside it is a sample.
+	// A shelf names no show: an episode there named by its mark alone is no show's, as one loose at
+	// the top is, while one that names its show, or sits in its show's folder, is that show's.
+	{id: "W154", files: map[string]string{
+		"Downloads/S01E01.mkv":              "episode  S1E1",
+		"TV/S01E07.mkv":                     "episode  S1E7",
+		"Media/Unsorted/s02e05.mkv":         "episode  S2E5",
+		"Downloads/Tarnhollow S01E02.mkv":   "episode Tarnhollow S1E2",
+		"Pellbrook/S01E03.mkv":              "episode Pellbrook S1E3",
+		"TV/Corrow Fen/Season 1/S01E04.mkv": "episode Corrow Fen S1E4",
+		"Movies/S02E06 (2019).mkv":          "movie S02E06 2019",
+	}},
 	{id: "W150", files: map[string]string{
 		"Movies/Featurette (1999)/Featurette.mkv":                     "movie Featurette 1999",
 		"Movies/Deleted Scenes (2016)/Deleted Scenes.mkv":             "movie Deleted Scenes 2016",
