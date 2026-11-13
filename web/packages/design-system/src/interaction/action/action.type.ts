@@ -10,9 +10,10 @@ import type { Density } from "../../tokens";
  * (`variant="ghost"` with `layout="icon"`). One filled button per screen, by convention: the screen's
  * one main action. Danger is a `tone` on the outline (`variant="outline" tone="danger"`), never a fill.
  * A `variant` is flat; without one the tile look draws a border and a focus ring sized for
- * remote/touch targets (TV and phone callers depend on that).
+ * remote/touch targets (TV and phone callers depend on that). `disc` is the player's white key (§9.6):
+ * the play disc's white with its ink label, for Retry inside the player, where amber is focus only.
  */
-type ActionVariant = "ghost" | "outline";
+type ActionVariant = "disc" | "ghost" | "outline";
 
 type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
   /** A toggle's state when it is off as well as on; `selected` alone only ever announces pressed. */

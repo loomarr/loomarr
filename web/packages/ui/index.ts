@@ -282,6 +282,7 @@ export {
   pictureIn,
   playbarFromTimeline,
   playerChromeFromGuide,
+  playerCoverOf,
   rungFor,
   SURF_LINGER_MS,
   surfCardsFromGuide,

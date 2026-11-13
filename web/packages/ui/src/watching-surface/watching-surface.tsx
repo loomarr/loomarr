@@ -71,8 +71,8 @@ const SWITCH_REASONS: ReadonlySet<PlayerSnapshot["tuneReason"]> = new Set([
   "step",
 ]);
 
-/** The cover that takes the picture's place, when there is nothing to play. */
-const coverOf = (snapshot: PlayerSnapshot, loadError: string | undefined) => {
+/** The cover that takes the picture's place, when there is nothing to play (§9.5): every client says the same. */
+const playerCoverOf = (snapshot: PlayerSnapshot, loadError: string | undefined) => {
   if (loadError) return { kind: "error", message: loadError, title: "The channels didn't load" } as const;
   if (snapshot.status === "failed")
     return { kind: "error", message: snapshot.error, title: "The stream stopped." } as const;
@@ -118,7 +118,7 @@ const WatchingSurface = ({
   subtitles,
   surfCards = NO_CARDS,
 }: WatchingSurfaceProps) => {
-  const cover = loading ? undefined : coverOf(snapshot, loadError);
+  const cover = loading ? undefined : playerCoverOf(snapshot, loadError);
   const tuning = !loading && snapshot.status === "tuning";
   const switching = tuning && !snapshot.reconnecting && SWITCH_REASONS.has(snapshot.tuneReason);
   // Flipping (§9.2): each Up or Down tunes at once, and the cards ride along in the band's place.
@@ -361,4 +361,4 @@ const WatchingSurface = ({
   );
 };
 
-export { WatchingSurface };
+export { playerCoverOf, WatchingSurface };

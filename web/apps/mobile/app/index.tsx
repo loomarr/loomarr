@@ -39,11 +39,13 @@ import {
   PlayerAudio,
   PlayerBottomSheet,
   PlayerChrome,
+  PlayerCover,
   PlayerInfo,
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
   playerChromeFromGuide,
+  playerCoverOf,
   RequestsJourney,
   ScreenHeader,
   StatePanel,
@@ -200,7 +202,11 @@ const WatchingScreen = ({
   // A tune under way is a picture on its way, so the key offers Pause, as J draws it and the web does.
   const keyPlaying = playing || snapshot.status === "tuning";
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
-  const failure = catalogState.error ?? (snapshot.status === "failed" ? snapshot.error : undefined);
+  // The channels not loading, or the stream stopping: the cover every client draws in the picture's place.
+  const cover =
+    catalogState.error !== undefined || snapshot.status === "failed"
+      ? playerCoverOf(snapshot, catalogState.error)
+      : undefined;
   // An iPhone's utilities add AirPlay and picture in picture (§9.7); an Android phone has neither key.
   const picture = useRef<NativePlayerViewHandle>(null);
   const iPhone = Platform.OS === "ios";
@@ -315,7 +321,7 @@ const WatchingScreen = ({
       />
       {/* On its side: no status bar over the picture, and a tap on the picture shows or hides the chrome. */}
       <StatusBar hidden={onSide} style="light" />
-      {onSide && !failure ? (
+      {onSide && !cover ? (
         <Pressable
           accessibilityLabel={visible ? "Hide controls" : "Show controls"}
           accessibilityRole="button"
@@ -326,19 +332,21 @@ const WatchingScreen = ({
           style={StyleSheet.absoluteFill}
         />
       ) : null}
-      {failure ? (
-        <View style={{ flex: 1, justifyContent: "center" }}>
-          <StatePanel
-            action={{
-              label: "Try again",
-              onPress: () => retryPairedClient({ catalogState, controller, refresh }),
-            }}
-            density="touch"
-            description={failure}
-            kind="error"
-            title="Can't play this channel"
-          />
-        </View>
+      {cover ? (
+        // The cover takes the picture's place, with a white Retry and the way out (§9.5): on its side
+        // the chrome, and Leave with it, is gone.
+        <PlayerCover
+          {...(snapshot.channel
+            ? { channelLabel: `CH ${snapshot.channel.number} · ${snapshot.channel.name}` }
+            : {})}
+          density="touch"
+          kind={cover.kind}
+          {...(cover.message ? { message: cover.message } : {})}
+          onLeave={onLeave}
+          onRetry={() => retryPairedClient({ catalogState, controller, refresh })}
+          retryLabel={catalogState.error ? "Try again" : "Retry channel"}
+          title={cover.title}
+        />
       ) : chrome ? (
         // Any touch in the chrome (a key, a sheet's row) restarts the wait before it leaves.
         <View onTouchStart={touched} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
