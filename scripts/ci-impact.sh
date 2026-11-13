@@ -913,7 +913,7 @@ classify() {
       select_gate contracts
       case "$path" in
         docker/compose.dev*|.node-version) select_gate agent ;;
-        docker/compose.yaml) select_gate go; select_gate go_full ;;
+        docker/compose.yaml|docker/compose.demo.yaml) select_gate go; select_gate go_full ;;
       esac
       ;;
   esac

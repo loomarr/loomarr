@@ -183,6 +183,6 @@ playout-bench-hardware-workflow	.github/workflows/playout-bench.yml	policy
 demo-site-script	scripts/demo-site.sh	contracts
 staging-script	scripts/staging.sh	contracts
 staging-workflow	.github/workflows/staging.yml	policy
-demo-site-compose	docker/compose.demo.yaml	contracts
+demo-site-compose	docker/compose.demo.yaml	contracts,go,go_full
 demo-site-postgres-compose	docker/compose.demo.postgres.yaml	contracts
 demo-site-public-compose	docker/compose.demo.public.yaml	contracts

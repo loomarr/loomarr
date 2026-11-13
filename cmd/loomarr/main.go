@@ -429,6 +429,22 @@ const generationFinalizeBudget = generationUnwindBudget + app.ShutdownTail
 // generationDrainBudget is how long quiescing and the HTTP drain share before finalize starts its own.
 const generationDrainBudget = 15 * time.Second
 
+// teardownBudget is the longest a generation's teardown can take from the stop signal to its last
+// stop returning. It is the one place the arithmetic is written out; the compose stop_grace_period
+// (docker/compose*.yaml, held to it by a test) and docs/design/deployment.md state its result:
+//
+//	quiesce and HTTP drain   generationDrainBudget     15s
+//	workers unwind           generationUnwindBudget    15s
+//	late wait for a stuck
+//	  worker or quiescer     one stop budget           10s
+//	stop phase               one stop budget           10s
+//	  and its one grace      generationStopGrace        1s
+//	                                                   51s
+//
+// Docker SIGKILLs a container whose stop_grace_period runs out, which would cut a teardown short
+// beside the store it is closing, so the period must be at least this.
+const teardownBudget = generationDrainBudget + generationFinalizeBudget
+
 // builtGeneration is the part of app.Application that ends a generation.
 type builtGeneration interface {
 	Quiesce(context.Context) error
