@@ -24,13 +24,19 @@ import type {
 
 type DialogState = {
   descriptionId: string;
+  dismissible: boolean;
   open: boolean;
+  requestClose: () => void;
   setOpen: (open: boolean) => void;
   titleId: string;
 };
 
 const DialogContext = createContext<DialogState | undefined>(undefined);
 const LayoutContext = createContext<NonNullable<DialogContentProps["layout"]>>("padded");
+const DensityContext = createContext<NonNullable<DialogContentProps["density"]>>("touch");
+
+// A television's panel is wider than any web size, and it has no close key: Back closes it.
+const TV_WIDTH = 880;
 
 const maxWidths: Record<NonNullable<DialogContentProps["size"]>, number> = {
   default: 448,
@@ -44,7 +50,7 @@ const useDialog = () => {
   return state;
 };
 
-const Dialog = ({ children, defaultOpen = false, onOpenChange, open }: DialogProps) => {
+const Dialog = ({ children, defaultOpen = false, dismissible = true, onOpenChange, open }: DialogProps) => {
   const id = useId();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const setOpen = (next: boolean) => {
@@ -55,7 +61,13 @@ const Dialog = ({ children, defaultOpen = false, onOpenChange, open }: DialogPro
     <DialogContext.Provider
       value={{
         descriptionId: `${id}-description`,
+        dismissible,
         open: open ?? uncontrolledOpen,
+        // Back, the scrim and the corner close ask to close; a dialog that must be answered refuses
+        // them. Its own DialogClose and `open` still close it.
+        requestClose: () => {
+          if (dismissible) setOpen(false);
+        },
         setOpen,
         titleId: `${id}-title`,
       }}
@@ -80,16 +92,18 @@ const DialogClose = ({ children }: DialogActionProps) => {
 const DialogContent = ({
   accessibilityLabel,
   children,
+  density = "touch",
   layout = "padded",
   size = "default",
 }: DialogContentProps) => {
-  const { descriptionId, open, setOpen, titleId } = useDialog();
+  const { descriptionId, dismissible, open, requestClose, titleId } = useDialog();
   const reducedMotion = useReducedMotionPreference();
+  const tv = density === "tv";
   return (
     <Modal
       animationType={reducedMotion === false ? "fade" : "none"}
       navigationBarTranslucent
-      onRequestClose={() => setOpen(false)}
+      onRequestClose={requestClose}
       presentationStyle="overFullScreen"
       statusBarTranslucent
       transparent
@@ -101,7 +115,7 @@ const DialogContent = ({
           <Pressable
             accessible={false}
             importantForAccessibility="no-hide-descendants"
-            onPress={() => setOpen(false)}
+            onPress={requestClose}
             style={{
               backgroundColor: "rgba(0, 0, 0, 0.6)",
               bottom: 0,
@@ -122,21 +136,27 @@ const DialogContent = ({
               borderRadius={semanticRadius.cardCompact}
               borderWidth={1}
               maxHeight="100%"
-              maxWidth={maxWidths[size]}
+              maxWidth={tv ? TV_WIDTH : maxWidths[size]}
               overflow="hidden"
               width="100%"
             >
-              <ScrollView contentContainerStyle={{ gap: 16, padding: layout === "sectioned" ? 0 : 24 }}>
-                <LayoutContext.Provider value={layout}>{children}</LayoutContext.Provider>
-              </ScrollView>
-              <Pressable
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-                onPress={() => setOpen(false)}
-                style={{ position: "absolute", right: 16, top: 16 }}
+              <ScrollView
+                contentContainerStyle={{ gap: 16, padding: layout === "sectioned" ? 0 : tv ? 32 : 24 }}
               >
-                <Icon decorative glyph={icons.close} size="compact" tone="secondary" />
-              </Pressable>
+                <DensityContext.Provider value={density}>
+                  <LayoutContext.Provider value={layout}>{children}</LayoutContext.Provider>
+                </DensityContext.Provider>
+              </ScrollView>
+              {dismissible && !tv ? (
+                <Pressable
+                  accessibilityLabel="Close"
+                  accessibilityRole="button"
+                  onPress={requestClose}
+                  style={{ position: "absolute", right: 16, top: 16 }}
+                >
+                  <Icon decorative glyph={icons.close} size="compact" tone="secondary" />
+                </Pressable>
+              ) : null}
             </View>
           </ModalLayer>
         </View>
@@ -166,14 +186,18 @@ const DialogHeader = ({ children }: DialogSectionProps) => {
   );
 };
 
-const DialogFooter = ({ children, spread = false }: DialogFooterProps) => {
+const DialogFooter = ({ children, spread = false, stacked = false }: DialogFooterProps) => {
   const sectioned = useContext(LayoutContext) === "sectioned";
   return (
     <View
-      flexDirection="row"
-      flexWrap={spread ? "wrap" : "nowrap"}
+      {...(stacked
+        ? { alignItems: "stretch", flexDirection: "column" }
+        : {
+            flexDirection: "row",
+            flexWrap: spread ? "wrap" : "nowrap",
+            justifyContent: spread ? "space-between" : "flex-end",
+          })}
       gap={8}
-      justifyContent={spread ? "space-between" : "flex-end"}
       {...(sectioned
         ? { borderTopColor: "surfaceElevated", borderTopWidth: 1, paddingHorizontal: 24, paddingVertical: 16 }
         : {})}
@@ -183,12 +207,19 @@ const DialogFooter = ({ children, spread = false }: DialogFooterProps) => {
   );
 };
 
-// A padded title keeps clear of the corner close; a sectioned header already does.
+// A padded title keeps clear of the corner close, when one is drawn; a sectioned header already does.
 const DialogTitle = ({ children }: DialogSectionProps) => {
-  const { titleId } = useDialog();
-  const padded = useContext(LayoutContext) === "padded";
+  const { dismissible, titleId } = useDialog();
+  const density = useContext(DensityContext);
+  const clearOfClose = useContext(LayoutContext) === "padded" && dismissible && density !== "tv";
   return (
-    <Text accessibilityRole="header" id={titleId} paddingRight={padded ? 32 : 0} textRole="title">
+    <Text
+      accessibilityRole="header"
+      density={density}
+      id={titleId}
+      paddingRight={clearOfClose ? 32 : 0}
+      textRole="title"
+    >
       {children}
     </Text>
   );
@@ -197,7 +228,7 @@ const DialogTitle = ({ children }: DialogSectionProps) => {
 const DialogDescription = ({ children }: DialogSectionProps) => {
   const { descriptionId } = useDialog();
   return (
-    <Text id={descriptionId} textRole="body" tone="secondary">
+    <Text density={useContext(DensityContext)} id={descriptionId} textRole="body" tone="secondary">
       {children}
     </Text>
   );
