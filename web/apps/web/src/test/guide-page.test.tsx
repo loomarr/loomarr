@@ -647,6 +647,30 @@ describe("Guide", () => {
         expect(view.getAllByRole("button", { name: "Try again" })).toHaveLength(1);
       });
 
+      // The controls stay on what the viewer chose (Try again reads it), over the earlier grid. The
+      // notice names both, so a Day, a Span or a start the controls show is never read as the grid's.
+      it("names the window that failed and the one still shown, for a span change", async () => {
+        const user = userEvent.setup();
+        const view = await stubFailingServer();
+        await user.click(view.getByRole("button", { name: "Show 12 hours" }));
+
+        const notice = (await view.findByRole("status")).textContent ?? "";
+        const named = /Guide(Today .+) didn't load\. Showing (.+), the last one that did\./.exec(notice);
+        expect(named, notice).not.toBeNull();
+        expect(named?.[1]).not.toBe(named?.[2]);
+      });
+
+      it("names the day that failed, for a day change", async () => {
+        const view = await stubFailingServer();
+        await userEvent.selectOptions(view.getByRole("combobox", { name: "Day" }), "3");
+
+        const notice = (await view.findByRole("status")).textContent ?? "";
+        const named = /Guide(.+) didn't load\. Showing (.+), the last one that did\./.exec(notice);
+        expect(named, notice).not.toBeNull();
+        expect(named?.[1]).not.toMatch(/^Today/);
+        expect(named?.[1]).not.toBe(named?.[2]);
+      });
+
       it("keeps the controls working after a failure, so the viewer can pick another window", async () => {
         const user = userEvent.setup();
         const view = await stubFailingServer();

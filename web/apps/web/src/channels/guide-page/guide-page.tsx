@@ -163,6 +163,10 @@ const cachedGuideZone = (queryClient: QueryClient): string | undefined =>
     .map(([, data]) => unwrap(data)?.timezone)
     .find((zone) => zone !== undefined && zone !== "");
 
+// A window by its day and its hours, as the controls and the axis read them: "Tomorrow 8 PM–8 AM".
+const windowName = (offset: number, fromMs: number, toMs: number, now: number, timeZone?: string): string =>
+  `${dayLabel(offset, now, timeZone)} ${formatGuideTimeRange(fromMs, toMs, timeZone)}`;
+
 const GuidePage = () => {
   // The tab is named for the nav item that opens it, as every other page's is.
   useDocumentTitle("Guide");
@@ -453,8 +457,16 @@ const GuidePage = () => {
               },
             }}
             body={
-              showingEarlierWindow
-                ? "That time didn't load. Showing the last one that did."
+              showingEarlierWindow && body
+                ? // The controls stay on what the viewer chose (Try again reads it); the notice names it
+                  // and the grid still drawn, so neither is read as the other.
+                  `${windowName(dayOffset, from, to, anchorMs, timeZone)} didn't load. Showing ${windowName(
+                    dayOffsetOf(body.fromMs, timeZone),
+                    body.fromMs,
+                    body.toMs,
+                    anchorMs,
+                    timeZone,
+                  )}, the last one that did.`
                 : "Showing what Loomarr had a moment ago."
             }
             title="Couldn't refresh the Guide"
