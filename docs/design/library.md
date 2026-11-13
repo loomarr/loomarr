@@ -953,6 +953,27 @@ header is kept, so no file is opened again. Each version and what it changed:
   stays the title's before a mark; "Ashgrove Part 1 1080p" beside "Part 2 1080p" is a film's
   parts; a symlink whose target is gone, or lies outside the root, is listed as a problem
   (`broken_link`, `link_outside`).
+- **72:** a show folder's "Box Set" is no part of its name; "[01] Pilot", "(03) Found" and "#04
+  Home" in a season folder are its episodes; on a shows' shelf one "Show - Pilot" or "Show - 12 -
+  Title" names its show; "TV/Sundial Run (2017)/Sundial Run.mkv" is a film; a year dashed on,
+  "Quicksilver_Pass-2005", is the year; a name loose at the top ending with its whole day, "News
+  Hour 2024 03 14", is a daily's episode; MakeMKV's other titles beside a renamed film are its
+  extras; a show folder misspelled by one slip joins the show its episodes spell (`retypo`); a
+  fansub's number in the first season's folder, or below its season's, is that season's episode;
+  a folder inside a show's that only groups its episodes ("DVD0/", "DVD 0 /") never stands for the
+  show, whatever its name sounds like (`showFolderAbove` stops at a shelf, not a shelf's word).
+- **73:** a recording's guest or title between its show and its day, "The Late Lark - Guest -
+  2023-11-02", is no part of the show, and "DVR/" is a shows' shelf; a fansub's "[Grp] Show [06]"
+  is its episode; a code a release shortened past knowing, "Corwick Dene/CD.1080p.mkv", takes its
+  folder's name (`abbreviates`); "Hexlet 10x10" among films, or named as its own folder, is a film
+  (`crossTitle`); "TV/Ashwell Movies/" holds films (`franchiseFilms`); a hidden copy beside a video
+  is skipped; "- Ending Theme" and "Extras - Disc 2/" are extras; a daily's "24.03.19" is its
+  day (`shortDay`); a video named as its own folder, "Sample/Sample.mkv", is listed (`extraIn`).
+- **74:** a film's own dated folder holds the film and its unlabelled bonus videos ("Cast Q and
+  A.mkv"), never a second copy (`bonusBeside`); "Wexcombe Part 1" and "Part 2" in "Wexcombe
+  (2008)/" are its parts; a films' shelf's "Trailers/" and "Samples/" hold extras; a fansub's
+  "[Batch]" folder is its show's; "2019 - Season 6" is season 6's folder; a tagged pack's "-
+  Menu" is its extra; a leading "720p." is no part of a title.
 
 ## Search
 

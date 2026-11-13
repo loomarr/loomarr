@@ -1231,6 +1231,91 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
+	// A film's own dated folder holds the film and its unlabelled bonus videos, never a second copy;
+	// "Name Part 1" and "Part 2" there are its parts; "Movies/Trailers/" and "Movies/Samples/" hold
+	// extras; a fansub's batch folder is its show's; "2019 - Season 6" is a season's folder; a
+	// pack's "- Menu" is no episode; "- Copy", "(copy 2)", "(Full Screen)" and a leading "720p."
+	// say nothing of a film's title.
+	{id: "W147", files: map[string]string{
+		"Movies/Brackmere (1990)/Brackmere (1990).mkv":                                               "movie Brackmere 1990",
+		"Movies/Brackmere (1990)/Pell Tamsin on Brackmere.mkv":                                       "skip",
+		"Movies/Brackmere (1990)/Cast Q and A.mkv":                                                   "skip",
+		"Movies/Brackmere (1990)/Shooting the Storm.mkv":                                             "skip",
+		"Movies/Wexcombe (2008)/Wexcombe Part 1.mkv":                                                 "movie Wexcombe 2008",
+		"Movies/Wexcombe (2008)/Wexcombe Part 2.mkv":                                                 "movie Wexcombe 2008",
+		"Movies/Gale Spit (2004)/Gale Spit (2004).mkv":                                               "movie Gale Spit 2004",
+		"Movies/Trailers/Gale Spit (2004).mkv":                                                       "skip",
+		"Movies/Samples/Rook Fell (2009).mkv":                                                        "skip",
+		"Movies/Rook Fell (2009)/Rook Fell (2009).mkv":                                               "movie Rook Fell 2009",
+		"Anime/Hoshi Kettei/[SubGrp] Hoshi Kettei - 01 [1080p].mkv":                                  "episode Hoshi Kettei S?E?",
+		"Anime/[SubGrp] Hoshi Kettei (01-12) [1080p] [Batch]/[SubGrp] Hoshi Kettei - 04 [1080p].mkv": "episode Hoshi Kettei S?E?",
+		"TV/Fen Courier/2019 - Season 6/ep01.mkv":                                                    "episode Fen Courier S6E1",
+		"TV/Fen Courier/2019 - Season 6/ep02.mkv":                                                    "episode Fen Courier S6E2",
+		"Anime/[Grp] Tora Michi [01-24] [BD 1080p]/[Grp] Tora Michi - 01 [BD 1080p].mkv":             "episode Tora Michi S?E?",
+		"Anime/[Grp] Tora Michi [01-24] [BD 1080p]/Tora Michi - Menu.mkv":                            "skip",
+		"Movies/Copse Hollow (2011) - Copy.mkv":                                                      "movie Copse Hollow 2011",
+		"Movies/Copse Wood (2012) (copy 2).mkv":                                                      "movie Copse Wood 2012",
+		"Movies/Copse Lane (2013) (Full Screen).mkv":                                                 "movie Copse Lane 2013",
+		"Movies/720p.Copse.Ridge.2014.mkv":                                                           "movie Copse Ridge 2014",
+	}},
+	// A recording's guest or title between its show and its day is no part of the show; a fansub's
+	// "[06]" is its episode; a film's folder names a scene file shortened past knowing; a kids'
+	// show's "Show Christmas" beside its episodes is one; "Hex 10x10" on a films' shelf is a film;
+	// a franchise's "Ashby Movies/" holds films; a hidden file is no copy; "- Ending Theme" and
+	// "Extras - Disc 2/" are extras; "24.03.19" in a daily's folder is its day; a film named
+	// "Sample" in its own folder is listed.
+	{id: "W146", files: map[string]string{
+		"Recorded TV/The Late Lark - Guest Name - 2023-11-02.ts":  "episode The Late Lark 2023-11-02",
+		"Recorded TV/Night Owlet - The Long Road - 2023-11-02.ts": "episode Night Owlet 2023-11-02",
+		"Recorded TV/Night Owlet - Low Tide - 2023-11-09.ts":      "episode Night Owlet 2023-11-09",
+		"DVR/Ferry Hourglass - 2023-11-02 - Guest One.ts":         "episode Ferry Hourglass 2023-11-02",
+		"DVR/Ferry Hourglass - 2023-11-09 - Guest Two.ts":         "episode Ferry Hourglass 2023-11-09",
+		"Anime/[Grp] Kirin Sora [05] [1080p].mkv":                 "episode Kirin Sora S?E?",
+		"Anime/[Grp] Kirin Sora [06] [1080p].mkv":                 "episode Kirin Sora S?E?",
+		"Anime/[Grp]Tsuru Kaze[13][720p].mp4":                     "episode Tsuru Kaze S?E?",
+		"Movies/Corwick Dene/CD.1080p.mkv":                        "movie Corwick Dene -",
+		"Movies/Ashtree Combe/atc.mkv":                            "movie Ashtree Combe -",
+		"Kids/Bramble Hops/Bramble Hops 01.mp4":                   "episode Bramble Hops S?E?",
+		"Kids/Bramble Hops/Bramble Hops 02.mp4":                   "episode Bramble Hops S?E?",
+		"Kids/Bramble Hops/Bramble Hops Christmas.mp4":            "episode Bramble Hops S?E?",
+		"Movies/Hexlet 10x10.mkv":                                 "movie Hexlet 10x10 -",
+		"Movies/Gridwell 12x12/Gridwell 12x12.mkv":                "movie Gridwell 12x12 -",
+		"TV/Ashwell Movies/Ashwell (2010).mkv":                    "movie Ashwell 2010",
+		"TV/Ashwell Movies/Ashwell 2 (2012).mkv":                  "movie Ashwell 2 2012",
+		"Movies/Fenwick Garth (2003)/Fenwick Garth (2003).mkv":    "movie Fenwick Garth 2003",
+		"Movies/Fenwick Garth (2003)/.Fenwick Garth (2003).mkv":   "skip",
+		"Anime/[Grp] Usagi Tani - Ending Theme [1080p].mkv":       "skip",
+		"Anime/[Grp] Usagi Tani - 01 [1080p].mkv":                 "episode Usagi Tani S?E?",
+		"Movies/Pewter Combe (2007)/Pewter Combe (2007).mkv":      "movie Pewter Combe 2007",
+		"Movies/Pewter Combe (2007)/Extras - Disc 2/Doc.mkv":      "skip",
+		"TV/Breakfast Bellow/Breakfast.Bellow.24.03.19.mkv":       "episode Breakfast Bellow 2024-03-19",
+		"TV/Breakfast Bellow/Breakfast.Bellow.24.03.20.mkv":       "episode Breakfast Bellow 2024-03-20",
+		"Movies/Sample/Sample.mkv":                                "movie Sample -",
+	}},
+	// A box set's folder names its show before "Box Set"; MakeMKV's further titles beside a film
+	// are no second copy of it; a show's dashed name loose in a shows' shelf is an episode; a film
+	// in its own dated folder on a shows' shelf is a film; a show's misspelt folder joins the show
+	// its files spell; a season folder's "[01] Pilot", "(03) Found" and "#04 Home" are numbered,
+	// as is a fansub's "- 01" in "Season 1"; "Pass-2005" gives its year; "News Hour 2024 03 14" is
+	// a day's episode.
+	{id: "W145", files: map[string]string{
+		"TV/Copper Coast Box Set/Disc 1/Copper Coast 1x01.mkv":            "episode Copper Coast S1E1",
+		"TV/Copper Coast Box Set/Disc 2/Copper Coast 1x03.mkv":            "episode Copper Coast S1E3",
+		"TV/Brine Wold - Complete Box Set/Season 1/Brine Wold S01E01.mkv": "episode Brine Wold S1E1",
+		"Movies/Gilded Road/Gilded Road.mkv":                              "movie Gilded Road -",
+		"Movies/Gilded Road/Gilded Road_t03.mkv":                          "skip",
+		"TV/Gorse Hill - 12 - The End.mkv":                                "episode Gorse Hill S?E?",
+		"TV/Tansy Mill - Pilot.mkv":                                       "episode Tansy Mill S?E?",
+		"TV/Sundial Run (2017)/Sundial Run.mkv":                           "movie Sundial Run 2017",
+		"TV/Brackenfield/Season 1/Brackenfield S01E01.mkv":                "episode Brackenfield S1E1",
+		"TV/Brackenfiled/Season 2/Brackenfield S02E01.mkv":                "episode Brackenfield S2E1",
+		"TV/Hollow Pike/Season 1/[01] Pilot.mkv":                          "episode Hollow Pike S1E1",
+		"TV/Hollow Pike/Season 1/(03) Found.mkv":                          "episode Hollow Pike S1E3",
+		"TV/Hollow Pike/Season 1/#04 Home.mkv":                            "episode Hollow Pike S1E4",
+		"TV/Shiroi Kumo/Season 1/[Grp] Shiroi Kumo - 01.mkv":              "episode Shiroi Kumo S1E1",
+		"Quicksilver_Pass-2005.mp4":                                       "movie Quicksilver Pass 2005",
+		"News Hour 2024 03 14.ts":                                         "episode News Hour 2024-03-14",
+	}},
 	// Re-score #27: "101 Pilot" and "201 Return" in one folder are seasons 1's and 2's; a disc's
 	// folder "Show S02D1" is season 2's; "- 00" is an anime's episode 0; "S01 - 2010" is a season's
 	// folder; a BD pack's "CDs" and "Scans" hold no episodes; "Show Specials" alone is the show's

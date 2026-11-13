@@ -59,8 +59,9 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 		}
 	}
 	show, number, zero := "", 0, false
-	if m := animeBrackets.FindStringSubmatch(s); m != nil {
-		show, number = m[1], atoi(m[2])
+	// A bracketed year is the release's, never its number: "[Kumo] Show [2019] [1080p]".
+	if m := animeBrackets.FindStringSubmatch(s); m != nil && !yearToken.MatchString(m[3]) {
+		show, number = strings.TrimSpace(matched(m[1], m[2])), atoi(m[3])
 	} else if tagged || grouped || paddedAbsolute.MatchString(plainStem(name)) ||
 		releaseNotes.MatchString(s) && dashedLast.MatchString(plainStem(name)) {
 		// With no group's tag, a number written as Sonarr writes an anime's ("Show - 08", "Show -

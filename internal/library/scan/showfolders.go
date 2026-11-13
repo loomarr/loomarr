@@ -339,11 +339,12 @@ func showFolderIn(file File) string {
 func showFolderAbove(dir string) string {
 	for dir != "." && path.Dir(dir) != "." {
 		base, above := path.Base(dir), path.Base(path.Dir(dir))
-		if catchAllFolder(above) || isSeasonFolder(path.Dir(dir)) {
+		if shelfAt(path.Dir(dir)) || isSeasonFolder(path.Dir(dir)) {
 			break
 		}
 		release := showFolderName(base) != base && relatedName(showFolderName(base), showFolderName(above))
-		if !release && !copyOfShow(base, showFolderName(above)) && !holdingOnly(strings.Fields(normName(base))) {
+		if !release && !copyOfShow(base, showFolderName(above)) && !holdingOnly(strings.Fields(normName(base))) &&
+			!groupsOnly(path.Dir(dir), base) {
 			break
 		}
 		dir = path.Dir(dir)
@@ -451,7 +452,8 @@ func showFolderName(folder string) string {
 		}
 		// "Kettle Bay Complete", "Kettle Bay (Complete Series)", "Kettle Bay - The Complete Series".
 		complete := strings.Trim(w, "()[]") == "complete" &&
-			(next == "" || next == "series" || next == "season" || next == "seasons" || next == "collection")
+			(next == "" || next == "series" || next == "season" || next == "seasons" || next == "collection" ||
+				next == "box" || next == "boxset")
 		// "Brine Sea (Season 1-3)" holds seasons 1 to 3.
 		run, _, _ := strings.Cut(next, "-")
 		bare := strings.Trim(w, "()[]")
@@ -464,7 +466,17 @@ func showFolderName(folder string) string {
 			}
 		}
 	}
-	// "Peppy Cow DVD", "Peppy Cow DVDs", "Peppy Cow Boxset": the copy's words after the name.
+	// "Peppy Cow DVD", "Peppy Cow DVDs", "Peppy Cow Boxset", "Peppy Cow Box Set": the copy's words
+	// after the name.
+	if n := len(words); n > 2 && strings.EqualFold(words[n-2], "box") && strings.EqualFold(strings.Trim(words[n-1], "()[]-"), "set") {
+		// "( Box Set" names nothing before it: it is the folder's name.
+		if show := strings.Trim(strings.Join(words[:n-2], " "), " -.("); show != "" {
+			words = words[:n-2]
+			if !discWords[strings.ToLower(strings.Trim(words[len(words)-1], "()[]-"))] {
+				return show
+			}
+		}
+	}
 	for n := len(words); n > 1; n-- {
 		if !discWords[strings.ToLower(strings.Trim(words[n-1], "()[]-"))] {
 			if n < len(words) {

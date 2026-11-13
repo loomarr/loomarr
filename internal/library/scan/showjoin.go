@@ -39,15 +39,21 @@ func (b *builder) joinShows(ids, others []identity) {
 			if name == "" {
 				continue
 			}
-			p = &showPlace{dir: id.seriesDir, year: year, real: b.dirs[id.seriesDir], tagged: leadingTags.MatchString(path.Base(id.seriesDir)), marks: map[[2]int]bool{}}
+			p = &showPlace{dir: id.seriesDir, year: year, real: b.dirs[id.seriesDir], tagged: leadingTags.MatchString(path.Base(id.seriesDir)),
+				named: map[string]int{}, marks: map[[2]int]bool{}}
 			places[id.seriesDir] = p
 			byName[name] = append(byName[name], p)
 		}
 		p.episodes++
+		if id.named != "" {
+			title, _, _ := searchQuery(id.named, 0)
+			p.named[normName(title)]++
+		}
 		if n := id.numbering(); n != nil && n.Episode > 0 {
 			p.marks[[2]int{n.Season, n.Episode}] = true
 		}
 	}
+	retypo(byName)
 	join := map[string]string{}
 	for _, group := range byName {
 		if len(group) < 2 {
@@ -108,6 +114,28 @@ func (b *builder) joinShows(ids, others []identity) {
 	b.applyJoins(join, ids, others)
 }
 
+// retypo moves a show folder named with a slip of the keys, "TV/Brackenfiled/", to the show its
+// episodes spell, when another folder is named so: every episode in it names "Brackenfield", one
+// slip from its folder's name, and "TV/Brackenfield/" is a show's. A short name ("Lost", "Last") is
+// too near other words to say it was a slip.
+func retypo(byName map[string][]*showPlace) {
+	for name, group := range byName {
+		if len(group) != 1 || len(name) < 6 {
+			continue
+		}
+		p := group[0]
+		if len(p.named) != 1 {
+			continue
+		}
+		for spelled, n := range p.named {
+			if n == p.episodes && len(byName[spelled]) > 0 && oneSlip(name, spelled) {
+				byName[spelled] = append(byName[spelled], p)
+				delete(byName, name)
+			}
+		}
+	}
+}
+
 // applyJoins moves every episode of each show join names (from → to) to the show it joins, and
 // that show's counts with it.
 func (b *builder) applyJoins(join map[string]string, ids, others []identity) {
@@ -164,6 +192,8 @@ type showPlace struct {
 	real     bool
 	tagged   bool
 	episodes int
+	// named counts the shows its episodes' file names give, by normName.
+	named map[string]int
 	// marks are the season and episode each of its episodes numbers.
 	marks map[[2]int]bool
 }
@@ -220,7 +250,7 @@ func showIdentity(base string) (string, int) {
 	// "Tin Cup" and "Tin Cup (Animated)".
 	s = bracketGroup.ReplaceAllStringFunc(s, func(g string) string {
 		inner := strings.TrimSpace(g[1 : len(g)-1])
-		if bracketYear.MatchString(g) || episodeRange.MatchString(g) || releaseNotes.MatchString(g) ||
+		if bracketYear.MatchString(g) || episodeRange.MatchString(g) || releaseNotes.MatchString(g) || batchNote.MatchString(inner) ||
 			trailingSeason.MatchString(" "+inner) || digits(strings.ReplaceAll(inner, "-", "")) {
 			return " "
 		}
@@ -235,6 +265,8 @@ func showIdentity(base string) (string, int) {
 }
 
 var (
+	// batchNote matches a release's note that it holds a run whole: "[Batch]", "(Complete)", "[Fin]".
+	batchNote = regexp.MustCompile(`(?i)^(?:batch|complete|fin|final|end)$`)
 	// bracketGroup matches a bracketed group anywhere in a folder's name.
 	bracketGroup = regexp.MustCompile(`[(\[][^)\]]*[)\]]`)
 	// trailingSeason matches a season's mark at a folder's name's end: "S2", "Season 2", "- S02".

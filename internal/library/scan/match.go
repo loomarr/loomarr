@@ -409,6 +409,8 @@ var (
 	leadingYearSet = regexp.MustCompile(`^\s*((?:19|20)\d{2})(?:\s*-\s*|[._])`)
 	// yearSpan matches a word that is a span of years, "1939-1945".
 	yearSpan = regexp.MustCompile(`^(?:19|20)\d{2}[-–](?:19|20)\d{2}$`)
+	// dashedYear matches a word ending in a letter with a year dashed onto it, "Pass-2005".
+	dashedYear = regexp.MustCompile(`^(.*\pL)-((?:19|20)\d{2})$`)
 	// yearAnywhere matches a year as a word of its own anywhere in a name.
 	yearAnywhere = regexp.MustCompile(`(?:^|[^0-9])(?:19|20)\d{2}(?:[^0-9]|$)`)
 	// trackerPrefix matches the site a download names itself after, before the title:
@@ -647,7 +649,17 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 	for _, w := range strings.FieldsFunc(name, func(r rune) bool {
 		return unicode.IsSpace(r) || strings.ContainsRune("()[]{}_", r)
 	}) {
+		// A year dashed onto a title's last word, "Quicksilver_Pass-2005", is a word of its own.
+		if m := dashedYear.FindStringSubmatch(w); m != nil && releaseYear(m[2]) {
+			words = append(words, dottedWords(m[1])...)
+			words = append(words, m[2])
+			continue
+		}
 		words = append(words, dottedWords(w)...)
+	}
+	// A release's mark first, "720p.Copse.Ridge.2014", says nothing of the title after it.
+	for len(words) > 1 && releaseMark.MatchString(words[0]) {
+		words = words[1:]
 	}
 	cut := releaseCut(words, dotted)
 	// A year among the release words, "Ashgrove 1080p 2015", is the year when the title gives none.

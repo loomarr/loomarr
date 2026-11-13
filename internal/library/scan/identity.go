@@ -200,7 +200,7 @@ func embeddedRecord(file File) (mp.Record, string) {
 	// Hope Ep01"; a saga's "Kettle Wars Episode 4 (1977)" is a film.
 	if dir := path.Dir(file.Rel); amongFilms(shelved(file, dir)) && !inShowsSeason(dir) && !miniseriesAmongFilms(file) &&
 		!seasonAmongFilms(file) && (!paddedEpisode.MatchString(plainStem(name)) || yearAnywhere.MatchString(plainStem(name))) &&
-		(!sxxeyy.MatchString(file.Rel) && !crossMark.MatchString(name) || shelfAt(seriesFolderOf(file))) {
+		(!sxxeyy.MatchString(file.Rel) && (!crossMark.MatchString(name) || crossTitle(segments)) || shelfAt(seriesFolderOf(file))) {
 		return movieRecord(src, segments), ""
 	}
 	// A camera's or phone's clip, "MVI_1001", "IMG_2041", "GOPR0032", is a video of its own: its
@@ -215,9 +215,15 @@ func embeddedRecord(file File) (mp.Record, string) {
 	}
 	// A file named as its own folder is, with its year, a film: "Series 7 (2001)/Series 7
 	// (2001).mkv", "Episode 50 (2011)/Episode 50 (2011).mkv", as Radarr and Plex keep one.
-	if len(segments) > 1 && bracketYear.MatchString(segments[len(segments)-2]) && !sxxeyy.MatchString(name) &&
-		sameWords(plainStem(name), segments[len(segments)-2]) {
-		return movieRecord(src, segments), ""
+	// So is its folder's only video named by the folder's title alone, "TV/Sundial Run
+	// (2017)/Sundial Run.mkv": the folder gives the film's year.
+	if len(segments) > 1 && bracketYear.MatchString(segments[len(segments)-2]) && !sxxeyy.MatchString(name) {
+		folder := segments[len(segments)-2]
+		title, _, _ := searchQuery(folder, 0)
+		if sameWords(plainStem(name), folder) ||
+			file.Sole && !yearAnywhere.MatchString(plainStem(name)) && title != "" && sameWords(plainStem(name), title) {
+			return movieRecord(src, segments), ""
+		}
 	}
 	// A show's film kept with it says so, with its year and no episode's mark: "Kaito Run Movie 1 -
 	// Red Sky (2010)", "Westerly Movie (2012)".
@@ -326,6 +332,19 @@ var filmsFolderNames = map[string]bool{
 
 // sxxeyy matches an episode's season and episode mark written in full: "S01E01", "s1e2".
 var sxxeyy = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])s\d{1,4}[ ._-]?e\d{1,4}`)
+
+// crossTitle says whether a film's name with a "1x01" in it, among films, is a title's: one named
+// as its own folder, "Movies/Gridwell 12x12/Gridwell 12x12.mkv", or a square's size, "Hexlet
+// 10x10", which numbers a show's episode no more often than it names a film. "Movies/Brook 1x02.mkv"
+// is a show's episode a download left there.
+func crossTitle(segments []string) bool {
+	name := segments[len(segments)-1]
+	if len(segments) > 1 && sameWords(plainStem(name), segments[len(segments)-2]) {
+		return true
+	}
+	n, ok := numberingIn(name)
+	return ok && n.Season > 1 && n.Season == n.Episode && n.EpisodeEnd == 0
+}
 
 // crossMark matches a season and episode written "1x01", with the episode in two digits or more: a
 // film's "4x4" or "5x5" is its title.
@@ -466,8 +485,9 @@ var (
 	partOfWord = regexp.MustCompile(`(?i)[ ._-]+part[ ._-]*(\d{1,3})[ ._-]*of[ ._-]*(\d{1,3})(?:[^0-9a-z]|$)`)
 	// partOf matches a miniseries' "2of6", "2 of 6", "Part 2 of 6".
 	partOf = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(\d{1,3})[ ._-]*of[ ._-]*(\d{1,3})(?:[^0-9a-z]|$)`)
-	// leadingNumber matches a name that starts with its episode's number: "05 - Tidewater".
-	leadingNumber = regexp.MustCompile(`^(\d{1,3})(?:[ ._-]|$)`)
+	// leadingNumber matches a name that starts with its episode's number, bare, bracketed or after
+	// a hash: "05 - Tidewater", "[01] Pilot", "(03) Found", "#04 Home".
+	leadingNumber = regexp.MustCompile(`^[\[(#]?(\d{1,3})[\])]?(?:[ ._-]|$)`)
 	// bracketYear matches a year in brackets.
 	bracketYear = regexp.MustCompile(`[(\[](?:19|20)\d{2}[)\]]`)
 	// seasonDashedEpisode matches a season and episode apart by a dash, "3 - 01", "2-03", read only
@@ -519,8 +539,9 @@ var (
 	// releaseNotes matches a release's bracketed notes at the end of its name: "[1080p]", "(BD
 	// 1080p x265)", "[WEB][AAC]".
 	releaseNotes = regexp.MustCompile(`(?i)[\[(][^\])]*(?:\d{3,4}p|bd|web|hevc|x26[45]|aac|flac|bluray|dvd|hdtv)[^\])]*[\])][ ._]*$`)
-	// animeBrackets matches a release that brackets everything: "[Kumo][Show][13][1080p]".
-	animeBrackets = regexp.MustCompile(`^\[[^\]]*\]\[([^\]]+)\]\[(\d{1,4})(?:v\d+)?\]`)
+	// animeBrackets matches a release that brackets its number after its group's tag and its show,
+	// the show bracketed or not: "[Kumo][Show][13][1080p]", "[Kumo] Show [06] [1080p]".
+	animeBrackets = regexp.MustCompile(`^\[[^\]]*\][ ._]*(?:\[([^\]]+)\]|([^\[\]]*\pL[^\[\]]*?))[ ._]*\[(\d{1,4})(?:v\d+)?\]`)
 )
 
 // capturedEpisode is the episode a TV capture's name numbers by its part ("Pt1", "Part 2"), its

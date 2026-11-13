@@ -41,8 +41,26 @@ func airDateOrdered(name string, monthFirst bool) string {
 			return day
 		}
 	}
+	// A daily's release written with its year short, "Breakfast.Bellow.24.03.19", at the end of its
+	// name after its show's words. Its year is this century's, never after next year.
+	// Read without its container's extension and its release's notes: "… 24.03.19 [1080p].mkv".
+	short := name
+	if ext := path.Ext(short); videoExtensions[strings.ToLower(ext)] {
+		short = strings.TrimSuffix(short, ext)
+	}
+	if m := shortDay.FindStringSubmatch(trimReleaseNotes(short)); m != nil && m[2] == m[4] {
+		day := "20" + m[1] + "-" + m[3] + "-" + m[5]
+		if t, err := time.Parse(time.DateOnly, day); err == nil && t.Year() <= time.Now().Year()+1 {
+			return day
+		}
+	}
 	return ""
 }
+
+// shortDay matches a day written with its year in two digits, its parts apart by one separator, at
+// a name's end after a word, its container's extension or none after it: "Bellow.24.03.19",
+// "Bellow 24-03-19.mkv".
+var shortDay = regexp.MustCompile(`\pL[ ._-]+(\d{2})([ ._-])(\d{2})([ ._-])(\d{2})(?:\.\pL[\pL\d]{1,3})?$`)
 
 // monthFirstDays reads folderNotes.MonthFirst from a folder's videos' names.
 func monthFirstDays(names []string) bool {
@@ -140,13 +158,18 @@ var cameraPrefixes = map[string]bool{
 }
 
 // datedRelease says whether a dated name is a release's, written as a downloader leaves it: with
-// dots for spaces, or with a release's words after its day.
+// dots for spaces, or with a release's words after its day. So is one that ends with its whole day,
+// "News Hour 2024 03 14": no film's title ends with a month and a day.
 func datedRelease(name string) bool {
-	if !strings.Contains(name, " ") {
+	if !strings.Contains(name, " ") || endingDay.MatchString(name) {
 		return true
 	}
 	return slices.ContainsFunc(strings.FieldsFunc(name, func(r rune) bool { return strings.ContainsRune(" ._[]()-", r) }), releaseMark.MatchString)
 }
+
+// endingDay matches a name's whole day at its end, its month and day each two digits apart by
+// one separator: "2024 03 14", "2024-03-14", "2024.03.14".
+var endingDay = regexp.MustCompile(`\D(?:19|20)\d{2}(?: \d{2} |\.\d{2}\.|_\d{2}_|-\d{2}-)\d{2}$`)
 
 // datedShow is the show a dated name names before its day: "Evening.Ledger.2024.03.18.720p" is
 // "Evening Ledger"; "" for none.
@@ -159,6 +182,10 @@ func datedShow(name string) string {
 	}
 	m := airDateMark.FindStringSubmatchIndex(name)
 	if m == nil {
+		// "Breakfast.Bellow.24.03.19", its year short (shortDay).
+		if s := shortDay.FindStringSubmatchIndex(name); s != nil && airDateIn(name) != "" {
+			return strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(name[:s[2]])), " ")
+		}
 		return ""
 	}
 	start := m[2] // the year first, else the day first
@@ -168,6 +195,11 @@ func datedShow(name string) string {
 	show := strings.NewReplacer(".", " ", "_", " ").Replace(leadingTags.ReplaceAllString(name[:start], ""))
 	// A day in brackets, "Kite Hill (2023-01-30)", leaves its bracket behind.
 	if show = strings.Trim(strings.Join(strings.Fields(show), " "), " -(["); show != "" {
+		// A recorder names the guest or the episode's title between the show and the day: "The Late
+		// Lark - Guest Name - 2023-11-02" is The Late Lark's.
+		if before, _, ok := strings.Cut(show, " - "); ok && strings.TrimSpace(before) != "" {
+			return strings.TrimSpace(before)
+		}
 		return show
 	}
 	// A recorder that names its recordings by their day first names the show after it, and the

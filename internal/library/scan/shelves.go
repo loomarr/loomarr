@@ -36,7 +36,7 @@ var showsFolderNames = map[string]bool{
 	"tv": true, "tv shows": true, "tvshows": true, "shows": true, "television": true, "anime": true,
 	"series": true, "tv series": true, "serien": true, "séries": true, "cartoons": true, "kids tv": true,
 	"miniseries": true, "mini series": true, "recorded tv": true, "kids shows": true, "all shows": true,
-	"recordings": true, "tv recordings": true, "kids series": true,
+	"recordings": true, "tv recordings": true, "kids series": true, "dvr": true, "recorded shows": true,
 	// A league's matches are kept as a daily show's episodes are, by their day.
 	"sports": true, "sport": true,
 }
@@ -54,7 +54,8 @@ func amongFilms(dir string) bool {
 		case showsFolderNames[key], showLabelled(path.Base(d)):
 			// A folder labelled a show's, "Movies/The Long Watch Miniseries/", is one on any shelf.
 			return false
-		case filmsFolderNames[key]:
+		case filmsFolderNames[key], franchiseFilms.MatchString(path.Base(d)):
+			// So is a franchise's own, "TV/Ashwell Movies/", wherever it is kept.
 			return true
 		case filmSeries.MatchString(path.Base(d)):
 			run = true
@@ -101,6 +102,10 @@ var animeFolderNames = map[string]bool{"anime": true, "animes": true, "anime ser
 // "Thistledown Saga", "Hazelgrot Trilogy (2001-2005)". A show's run is never called so; "Saga Two"
 // is a title, and "Collection" may be a show's box set.
 var filmSeries = regexp.MustCompile(`(?i)^.+[ ._-](?:saga|duology|trilogy|quadrilogy|tetralogy|pentalogy|hexalogy)(?:[ ._]*[(\[][^)\]]*[)\]])*$`)
+
+// franchiseFilms matches a folder a franchise's films are kept in, its name then "Movies" or
+// "Films": "Ashwell Movies", "Glen Hollow Films (2010-2018)".
+var franchiseFilms = regexp.MustCompile(`(?i)^.+[ ._-](?:movies|films)(?:[ ._]*[(\[][^)\]]*[)\]])*$`)
 
 // underShows says whether a folder, relative to the root, is in a catch-all that holds shows.
 func underShows(dir string) bool {

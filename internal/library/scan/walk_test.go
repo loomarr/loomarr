@@ -174,8 +174,9 @@ func TestSeriesFolder(t *testing.T) {
 }
 
 // A file named by the day it aired, in a folder, is an episode of that folder's show, placed by the
-// day. A season and number in the name stand over a day; a day that is no real date, or a dated file
-// loose at the top with no show folder, leaves the file what it was.
+// day. A season and number in the name stand over a day, and a day that is no real date leaves the
+// file what it was. A file loose at the top whose name ends with its whole day is its own show's
+// episode: no film's title ends with a month and a day.
 func TestAFileNamedByItsAirDateIsAnEpisode(t *testing.T) {
 	for _, tc := range []struct {
 		rel, day, seriesDir string
@@ -187,7 +188,8 @@ func TestAFileNamedByItsAirDateIsAnEpisode(t *testing.T) {
 		{"Papa Hour/Papa Hour S02E05 2013-02-15.mkv", "", "Papa Hour", mp.KindEpisode},
 		{"Papa Hour/Papa Hour - 2013-02-30.mkv", "", "", mp.KindMovie},
 		{"Papa Hour/Papa Hour - 2013-13-01.mkv", "", "", mp.KindMovie},
-		{"Papa Hour - 2013-02-15.mkv", "", "", mp.KindMovie},
+		{"Papa Hour - 2013-02-15.mkv", "2013-02-15", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour - 2013-02-15 - The Long Night.mkv", "", "", mp.KindMovie},
 		{"Quebec (2013)/Quebec (2013).mkv", "", "", mp.KindMovie},
 		{"Quebec (2013)/Quebec.2013.1080p.mkv", "", "", mp.KindMovie},
 	} {

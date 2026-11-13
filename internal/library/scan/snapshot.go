@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -81,7 +82,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 71
+const writeVersion = 74
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -487,6 +488,34 @@ func filmFolder(dir string) string {
 	return dir
 }
 
+// abbreviates says whether code, one word of two to five letters, shortens a name of two words or
+// more: its letters run through the name's in order, the first its first. "atc" shortens "Ashtree
+// Combe", "cwf" "Corwen Fields"; "Up" is no shortening of one word, "Upside".
+func abbreviates(code, name string) bool {
+	code = strings.ToLower(code)
+	if n := utf8.RuneCountInString(code); n < 2 || n > 5 || strings.ContainsFunc(code, func(r rune) bool { return !unicode.IsLetter(r) }) {
+		return false
+	}
+	words := strings.Fields(normName(name))
+	// A word of the name, or the start of its first, is a title of its own: "Brisk" in "Brisk
+	// Trilogy/" is one of its films.
+	if len(words) < 2 || slices.Contains(words, code) || strings.HasPrefix(words[0], code) {
+		return false
+	}
+	letters := []rune(strings.Join(words, ""))
+	want := []rune(code)
+	if letters[0] != want[0] {
+		return false
+	}
+	at := 0
+	for _, r := range letters {
+		if at < len(want) && r == want[at] {
+			at++
+		}
+	}
+	return at == len(want)
+}
+
 func runsOn(title, other string) bool {
 	words, own := strings.Fields(normName(title)), strings.Fields(normName(other))
 	return len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own)
@@ -539,7 +568,11 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
 		// So is one named by what it is rather than what it is called: "Pikestaff/movie.mkv",
 		// "Pikefen/1.mkv", "main.mkv", "feature.mkv".
-		if !catchAllFolder(folder) && (len(plain) > 1 && strings.EqualFold(plain, initials(folder)) || genericStem.MatchString(plain)) {
+		// So is one a release shortened past knowing, "Corwick Dene/CD.1080p.mkv", "Ashtree
+		// Combe/atc.mkv": a code whose letters run through the folder's name from its first.
+		code, _, _ := searchQuery(name, 0)
+		if !catchAllFolder(folder) && (len(plain) > 1 && strings.EqualFold(plain, initials(folder)) || genericStem.MatchString(plain) ||
+			abbreviates(code, folder)) {
 			return folder
 		}
 		// A sequel kept in the first film's folder, "Brook (2010)/Brook 2.mkv", says more than the

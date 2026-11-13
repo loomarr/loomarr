@@ -219,7 +219,7 @@ func titledEpisodes(rel string, names []string) bool {
 	// another film called so, where a film shelf read as a show finds none and waits in Needs you.
 	topShow := unshelved(rel) && len(names) >= 3 && !contentShelves[folderKey(folder)]
 	if !onAudienceShelf(rel) && !topShow || catchAllFolder(folder) || filmSeries.MatchString(folder) ||
-		len(idsIn(folder)) > 0 || len(names) < 2 || len(partsOf(names)) > 0 {
+		len(idsIn(folder)) > 0 || len(names) < 2 || len(partsOf(folder, names)) > 0 {
 		return false
 	}
 	own := showWordsOf(folder)
