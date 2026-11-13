@@ -187,7 +187,7 @@ const InvitationDialog = ({
           </DialogHeader>
 
           {!invitation ? (
-            <Stack gap="4" noValidate onSubmit={submit} render="form">
+            <Stack flexShrink={0} gap="4" noValidate onSubmit={submit} render="form">
               <form.Field name="kind">
                 {(field) => (
                   <ChoiceGroup
