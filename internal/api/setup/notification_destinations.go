@@ -121,7 +121,7 @@ func (s *Handlers) notificationProviderTypesList(
 type notificationDestinationWrite struct {
 	Type     notifications.Means   `json:"type" enum:"email,webhook,discord,ntfy,gotify,apprise,pushover,telegram,mattermost,matrix,web_push,mqtt,slack"`
 	Label    string                `json:"label" minLength:"1" maxLength:"120"`
-	Events   []notifications.Topic `json:"events" minItems:"1"`
+	Events   []notifications.Topic `json:"events" minItems:"1" maxItems:"32"` // a topic once each; 14 exist
 	Enabled  bool                  `json:"enabled"`
 	Settings map[string]string     `json:"settings"`
 }
@@ -163,7 +163,7 @@ type notificationDestinationCreateOutput struct{ Body NotificationProviderDTO }
 
 type notificationDestinationUpdateWrite struct {
 	Label    string                `json:"label" minLength:"1" maxLength:"120"`
-	Events   []notifications.Topic `json:"events" minItems:"1"`
+	Events   []notifications.Topic `json:"events" minItems:"1" maxItems:"32"` // a topic once each; 14 exist
 	Enabled  bool                  `json:"enabled"`
 	Settings *map[string]string    `json:"settings,omitempty" doc:"Changed provider fields. Omit sensitive fields to preserve them; send an empty value to clear one."`
 }
