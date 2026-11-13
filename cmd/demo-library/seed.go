@@ -426,26 +426,44 @@ func (b *backend) runJob(ctx context.Context, name string) error {
 // nameChannel gives an approved channel its stable demo name, number and group. The approval gate
 // numbers channels itself, and the docs cite "channel 101". A channel already named is left alone,
 // so a rerun makes no edit (and no reconcile) it does not need.
+//
+// A channel the seed has just made is still being built by the backend, which moves its revision
+// on, so an edit can be refused as made to an older version (409). As a person is told to, the
+// seed reads it again and retries.
 func (b *backend) nameChannel(ctx context.Context, id string, c demolibrary.Channel) error {
-	var cur struct {
-		Name     string `json:"name"`
-		Number   int    `json:"number"`
-		Group    string `json:"group"`
-		Strategy string `json:"strategy"`
-		Revision int64  `json:"revision"`
+	var err error
+	for range nameChannelTries {
+		var cur struct {
+			Name     string `json:"name"`
+			Number   int    `json:"number"`
+			Group    string `json:"group"`
+			Strategy string `json:"strategy"`
+			Revision int64  `json:"revision"`
+		}
+		if err := b.expectOK(ctx, http.MethodGet, "/v1/channels/"+id, nil, &cur); err != nil {
+			return err
+		}
+		if cur.Name == c.Name && cur.Number == c.Number && cur.Group == c.Group && cur.Strategy == c.Strategy {
+			return nil
+		}
+		edit := map[string]any{"revision": cur.Revision, "name": c.Name, "group": c.Group, "strategy": c.Strategy}
+		if cur.Number != c.Number {
+			edit["number"] = c.Number // renumbering is unique-checked; only send a real change
+		}
+		if err = b.expectOK(ctx, http.MethodPatch, "/v1/channels/"+id, edit, nil); !refusedWith(err, http.StatusConflict) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
-	if err := b.expectOK(ctx, http.MethodGet, "/v1/channels/"+id, nil, &cur); err != nil {
-		return err
-	}
-	if cur.Name == c.Name && cur.Number == c.Number && cur.Group == c.Group && cur.Strategy == c.Strategy {
-		return nil
-	}
-	edit := map[string]any{"revision": cur.Revision, "name": c.Name, "group": c.Group, "strategy": c.Strategy}
-	if cur.Number != c.Number {
-		edit["number"] = c.Number // renumbering is unique-checked; only send a real change
-	}
-	return b.expectOK(ctx, http.MethodPatch, "/v1/channels/"+id, edit, nil)
+	return err
 }
+
+// nameChannelTries is how many times nameChannel reads a channel the backend keeps changing.
+const nameChannelTries = 5
 
 // backend is a signed-in HTTP client for the Loomarr API.
 type backend struct {
@@ -509,6 +527,20 @@ func (b *backend) upload(ctx context.Context, path, file string) error {
 	return b.send(ctx, http.MethodPost, path, &buf, mw.FormDataContentType(), nil)
 }
 
+// statusError is an answer the backend refused, with its status code.
+type statusError struct {
+	code int
+	msg  string
+}
+
+func (e *statusError) Error() string { return e.msg }
+
+// refusedWith reports whether err is the backend's answer with status code.
+func refusedWith(err error, code int) bool {
+	var se *statusError
+	return errors.As(err, &se) && se.code == code
+}
+
 func (b *backend) send(ctx context.Context, method, path string, body io.Reader, contentType string, out any) error {
 	url := path
 	if strings.HasPrefix(path, "/") {
@@ -529,7 +561,8 @@ func (b *backend) send(ctx context.Context, method, path string, body io.Reader,
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(raw)))
+		return &statusError{code: resp.StatusCode,
+			msg: fmt.Sprintf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(raw)))}
 	}
 	if out != nil {
 		return json.Unmarshal(raw, out)
