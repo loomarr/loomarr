@@ -90,6 +90,34 @@ describe("Stack with responsive values", () => {
     expect(flexOf("header").direction).toBe("row");
   });
 
+  it("changes a wrapped row's per-axis gaps with the window too", () => {
+    resizeTo(breakpoints.sm - 1);
+    render(
+      <LoomarrProvider theme="dark">
+        <Stack
+          aria-label="chips"
+          columnGap={{ base: "2", sm: "6" }}
+          direction="row"
+          gap="1"
+          role="group"
+          rowGap={{ base: "none", md: "3" }}
+          wrap
+        />
+      </LoomarrProvider>,
+    );
+    const gaps = () => {
+      const style = getComputedStyle(screen.getByRole("group", { name: "chips" }));
+      return [style.columnGap, style.rowGap];
+    };
+    expect(gaps()).toEqual(["var(--t-space-2)", "0px"]);
+
+    resizeTo(breakpoints.sm);
+    expect(gaps()).toEqual(["var(--t-space-6)", "0px"]);
+
+    resizeTo(breakpoints.md);
+    expect(gaps()).toEqual(["var(--t-space-6)", "var(--t-space-3)"]);
+  });
+
   it("keeps a plain value the same at every width", () => {
     resizeTo(breakpoints.sm - 1);
     render(
