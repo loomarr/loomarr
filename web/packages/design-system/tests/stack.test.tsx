@@ -73,6 +73,47 @@ describe("Stack", () => {
     }
   });
 
+  // `gap-x-4 gap-y-1.5` moves over as `columnGap="4" rowGap="1.5"`: each axis its own token, a half
+  // step kept at its own size, and an axis left out falls back to `gap`.
+  it("spaces a wrapped row's lines and columns separately, each from the spacing tokens", () => {
+    // The size this Stack's own `property` class ("cg" column-gap, "rg" row-gap, "g" gap) resolves
+    // to: the class is named in the markup, its rule reads a space variable, the variable is a token.
+    const spaceByVariable = () =>
+      new Map(Object.values(getTokens().space).map((token) => [String(token.variable), token.val]));
+    const size = (markup: string, shorthand: "cg" | "g" | "rg", property: string) => {
+      const id = markup.match(new RegExp(`data-href="[^"]*\\bt__(${shorthand}-\\d+)`))?.[1];
+      const rule = id && markup.match(new RegExp(`\\._${id}\\s*\\{${property}:([^;}]+)`))?.[1];
+      if (rule === "0px" || rule === "0") return 0;
+      const variable = rule && rule.match(/^var\((--t-space-[^)]+)\)$/)?.[1];
+      return variable ? spaceByVariable().get(`var(${variable})`) : undefined;
+    };
+
+    const both = render(
+      <Stack columnGap="4" direction="row" rowGap="1.5" wrap>
+        <span>a</span>
+      </Stack>,
+    );
+    expect(size(both, "cg", "column-gap")).toBe(16);
+    expect(size(both, "rg", "row-gap")).toBe(6);
+
+    const oneAxis = render(
+      <Stack direction="row" gap="2" rowGap="none" wrap>
+        <span>a</span>
+      </Stack>,
+    );
+    expect(size(oneAxis, "cg", "column-gap")).toBe(8);
+    expect(size(oneAxis, "rg", "row-gap")).toBe(0);
+
+    // No axis named: the single `gap`, as before.
+    const plain = render(
+      <Stack gap="4">
+        <span>a</span>
+      </Stack>,
+    );
+    expect(size(plain, "g", "gap")).toBe(16);
+    expect(plain).not.toMatch(/data-href="[^"]*\bt__(?:cg|rg)-/);
+  });
+
   it("emits the grid once: the web theme's spacing is the scale's grid steps", () => {
     expect(webSpace).toEqual({ 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 });
     for (const [key, px] of Object.entries(webSpace)) {
