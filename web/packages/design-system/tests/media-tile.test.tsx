@@ -88,7 +88,25 @@ describe("MediaTile", () => {
     expect(button.style.outline).toContain("2px solid");
   });
 
-  it("does not press when disabled", async () => {
+  it("draws no fill and square corners for a target laid over a picture of its own", () => {
+    render(inTheme(tile({ bordered: false, fill: false, radius: "none" })));
+    const button = screen.getByRole("button");
+
+    expect(button.style.background).toContain("transparent");
+    expect(button.style.border).toBe("0px");
+    expect(button.style.borderRadius).toBe("0px");
+  });
+
+  it("draws the edge in the warning colour for a still that cannot be split", () => {
+    const plain = render(inTheme(tile()));
+    const plainEdge = (plain.getByRole("button") as HTMLElement).style.border;
+    plain.unmount();
+    render(inTheme(tile({ tone: "warning" })));
+
+    expect((screen.getByRole("button") as HTMLElement).style.border).not.toBe(plainEdge);
+  });
+
+  it("does not press when disabled, and its picture is not dimmed", async () => {
     const onPress = vi.fn();
     const user = userEvent.setup();
     render(inTheme(tile({ disabled: true, onPress })));
@@ -98,6 +116,7 @@ describe("MediaTile", () => {
 
     expect(onPress).not.toHaveBeenCalled();
     expect(button.disabled).toBe(true);
+    expect(button.style.opacity).toBe("");
   });
 
   it("hands its element to a ref and to the press, for a caller that returns focus to it", async () => {

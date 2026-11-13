@@ -38,14 +38,21 @@ type MediaTileProps = {
   height?: number | "100%";
   onPress?: (event: GestureResponderEvent) => void;
   /** `small` is 4 px, `medium` 6 px: the corner of the picture, as a thumbnail or a poster is rounded. */
-  radius?: "medium" | "small";
+  radius?: "medium" | "none" | "small";
+  /**
+   * `false` draws no fill behind the picture, for a tile that is a target laid over a picture of its
+   * own (the play button over a preview frame) or over a fill the parent draws (a segment of a bar).
+   */
+  fill?: boolean;
+  /** `warning` draws the edge in the warning colour: a still the reel cannot split. */
+  tone?: "neutral" | "warning";
   title?: string;
   width?: number | "100%";
 };
 
 type MediaTileRef = HTMLButtonElement;
 
-const radii = { medium: spaceSteps["1.5"], small: spaceSteps["1"] } as const;
+const radii = { medium: spaceSteps["1.5"], none: 0, small: spaceSteps["1"] } as const;
 
 /**
  * A picture that is also a button: a clip's thumbnail that opens its preview, a poster that is picked
@@ -66,11 +73,13 @@ const MediaTile: ForwardRefExoticComponent<MediaTileProps & RefAttributes<MediaT
     children,
     current = false,
     disabled = false,
+    fill = true,
     focusInset = false,
     height,
     label,
     onPress,
     radius = "small",
+    tone = "neutral",
     width,
     ...hostProps
   } = props;
@@ -79,6 +88,8 @@ const MediaTile: ForwardRefExoticComponent<MediaTileProps & RefAttributes<MediaT
     hostProps as { onBlur?: (event: unknown) => void; onFocus?: (event: unknown) => void },
   );
   const borderRadius = radii[radius];
+  const edgeColour = tone === "warning" ? theme.stateWarning.val : theme.borderDecorative.val;
+  const background = fill ? theme.artworkPlaceholder.val : "transparent";
 
   if (!isWeb) {
     return (
@@ -91,13 +102,13 @@ const MediaTile: ForwardRefExoticComponent<MediaTileProps & RefAttributes<MediaT
         style={({ pressed }) => ({
           alignItems: "center",
           aspectRatio,
-          backgroundColor: theme.artworkPlaceholder.val,
-          borderColor: focus.focused ? theme.actionFocus.val : theme.borderDecorative.val,
+          backgroundColor: background,
+          borderColor: focus.focused ? theme.actionFocus.val : edgeColour,
           borderRadius,
           borderWidth: focus.focused ? 2 : bordered ? 1 : 0,
           height,
           justifyContent: "center",
-          opacity: disabled ? 0.55 : pressed ? 0.82 : 1,
+          opacity: pressed && !disabled ? 0.82 : 1,
           overflow: "hidden",
           width,
         })}
@@ -110,8 +121,8 @@ const MediaTile: ForwardRefExoticComponent<MediaTileProps & RefAttributes<MediaT
   const style: CSSProperties = {
     alignItems: "center",
     aspectRatio,
-    background: theme.artworkPlaceholder.val,
-    border: bordered ? `1px solid ${theme.borderDecorative.val}` : 0,
+    background,
+    border: bordered ? `1px solid ${edgeColour}` : 0,
     borderRadius,
     // The current ring sits outside the edge and the focus ring outside that, so both can show at once.
     boxShadow: current ? `0 0 0 2px ${theme.contentPrimary.val}` : undefined,
@@ -124,7 +135,6 @@ const MediaTile: ForwardRefExoticComponent<MediaTileProps & RefAttributes<MediaT
     height,
     justifyContent: "center",
     margin: 0,
-    opacity: disabled ? 0.55 : undefined,
     overflow: "hidden",
     padding: 0,
     position: "relative",
