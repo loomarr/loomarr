@@ -61,35 +61,23 @@ var skippedPrefixes = []string{".", "@", "~", "_unpack_", "_failed_"}
 // discDirs are disc structures, which are not imported but listed as problems.
 var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 
-// extrasDirs are the Kodi/Jellyfin folders that hold a title's extras and theme videos. In a title's
-// own folder they are skipped: only movies and episodes become titles (0047). Elsewhere they are
-// folders of titles: a show named "Shorts" at the top, "Movies/Kids/Shorts" or "TV/Cartoons/Clips".
-var extrasDirs = map[string]bool{
-	"extras": true, "featurettes": true, "behind the scenes": true, "deleted scenes": true,
-	"interviews": true, "scenes": true, "shorts": true, "trailers": true, "other": true, "samples": true,
-	"bonus": true, "bonus disc": true, "bonus material": true, "extras disc": true,
-	"backdrops": true, "sample": true, "special features": true, "bonus features": true, "clips": true,
-	"extra": true, "theme-music": true, "proof": true, "proofs": true, "dvd extras": true, "supplements": true,
-	"supplemental": true, "bonus content": true, "extras and bonus": true,
-	// An anime release's openings and endings without their credits, and its menus.
-	"creditless": true, "nc": true, "ncop": true, "nced": true, "ncop & nced": true, "op & ed": true, "op-ed": true,
-	"openings": true, "endings": true, "menus": true, "menu": true,
-}
-
-// extrasFolder says whether a folder named name in parent is an extras folder: named by its kind,
-// "Extras", or by its title then its kind, "Brine Rock/Brine Rock S01 Extras".
+// extrasFolder says whether a folder named name in parent is an extras folder: named by its kind
+// (extrasKinds), "Extras", "Bloopers", "Making Of", or by its title then its kind, "Brine
+// Rock/Brine Rock S01 Extras". In a title's own folder one is skipped: only movies and episodes
+// become titles (0047). Elsewhere it is a folder of titles: a show named "Shorts" at the top,
+// "Movies/Kids/Shorts" or "TV/Cartoons/Clips".
 func extrasFolder(name, parent string) bool {
-	if extrasDirs[strings.ToLower(name)] {
+	if extrasName(name) {
 		return true
 	}
-	words := strings.Fields(normName(name))
-	if len(words) < 2 || !extrasDirs[words[len(words)-1]] || parent == "." {
+	head := extrasAfter(name)
+	if len(head) == 0 || parent == "." {
 		return false
 	}
 	// The title is its show's, or its film's without its year: "Sallowmere (2008)/Sallowmere Extras".
 	title, _, _ := searchQuery(path.Base(parent), 0)
 	for _, own := range [][]string{showWordsOf(path.Base(parent)), strings.Fields(normName(title))} {
-		if len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own) {
+		if len(own) > 0 && len(head) >= len(own) && slices.Equal(head[:len(own)], own) {
 			return true
 		}
 	}
@@ -97,14 +85,14 @@ func extrasFolder(name, parent string) bool {
 }
 
 // seasonExtrasFolder says whether a folder is a season's extras by its own name, wherever it is:
-// "Corran.Hill.S04.Extras", "Corran Hill Season 4 Extras".
+// "Corran.Hill.S04.Extras", "Corran Hill Season 4 Extras", "Kettle.Moor.S01.Bonus.Features",
+// "Pike.Mere.S02.Extras.720p".
 func seasonExtrasFolder(name string) bool {
-	words := strings.Fields(normName(name))
-	if len(words) < 3 || !extrasDirs[words[len(words)-1]] {
+	head := extrasAfter(name)
+	if len(head) < 2 {
 		return false
 	}
-	head := strings.Join(words[:len(words)-1], " ")
-	return slices.ContainsFunc(words[1:len(words)-1], seasonToken.MatchString) || namedSeasonOf(head) > 0
+	return slices.ContainsFunc(head[1:], seasonToken.MatchString) || namedSeasonOf(strings.Join(head, " ")) > 0
 }
 
 // skippedDir reports whether a walk passes over a folder named name in parent (relative to the
@@ -119,9 +107,9 @@ func skippedDir(parent, name string, titled bool) bool {
 	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
 	// A film's own "Specials" ("Movies/Ashwood (2015)/Specials/") are its extras, where a show's
 	// are its season 0; and a subtitles' folder holds no title, whatever a release put in it.
-	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !catchAllFolder(path.Base(parent))
+	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !shelfAt(parent)
 	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] ||
-		(parent != "." && extrasFolder(name, parent) && titled && !catchAllFolder(path.Base(parent))) ||
+		(parent != "." && extrasFolder(name, parent) && titled && !shelfAt(parent)) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
 

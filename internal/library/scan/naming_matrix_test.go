@@ -1228,6 +1228,55 @@ var namingMatrix = []namingRow{
 		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
 		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
 	}},
+	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
+	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
+	// name only its words read as a shelf is one only among shelves.
+	{id: "W140", files: map[string]string{
+		"TV/Grand Prix/Grand Prix S2023E01.mkv":             "episode Grand Prix S2023E1",
+		"TV/Grand Prix/Grand Prix S2023E02.mkv":             "episode Grand Prix S2023E2",
+		"TV/Grand Prix/Round 05 - Harbour/Race.mkv":         "episode Grand Prix S?E?",
+		"TV/Grand Prix/Round 05 - Harbour/Qualifying.mkv":   "episode Grand Prix S?E?",
+		"TV/Ashcroft/Ashcroft S01E01.mkv":                   "episode Ashcroft S1E1",
+		"TV/Ashcroft/Ashcroft S01E02.mkv":                   "episode Ashcroft S1E2",
+		"TV/Ashcroft/Reel B/Ashcroft S02E01.mkv":            "episode Ashcroft S2E1",
+		"TV/Star Ridge/Star Ridge S01E01.mkv":               "episode Star Ridge S1E1",
+		"TV/Star Ridge/Star Ridge S01E02.mkv":               "episode Star Ridge S1E2",
+		"TV/Star Ridge/Animated Series/Season 1/S01E01.mkv": "episode Animated Series S1E1",
+		"TV/Star Ridge/Animated Series/Season 1/S01E02.mkv": "episode Animated Series S1E2",
+		"TV/Star Ridge/Deep Hollow/Deep Hollow S01E05.mkv":  "episode Deep Hollow S1E5",
+	}},
+	// Re-score #24, read as families: any kind of extra names an extras folder, in the plural or
+	// not, alone or after its title and notes; any label of what a show is, or the years it ran,
+	// leaves its name; a folder in a show's that numbers it alone or holds it whole is the show's.
+	{id: "W139", files: map[string]string{
+		"Movies/Harrowdene (2013)/Harrowdene (2013).mkv":                         "movie Harrowdene 2013",
+		"Movies/Harrowdene (2013)/Others/Poster Shoot.mkv":                       "skip",
+		"Movies/Rowan Tor (2012)/Rowan Tor (2012).mkv":                           "movie Rowan Tor 2012",
+		"Movies/Rowan Tor (2012)/Bloopers/Reel.mkv":                              "skip",
+		"Movies/Rowan Tor (2012)/Outtakes/Take 1.mkv":                            "skip",
+		"Movies/Rowan Tor (2012)/Making Of/Part A.mkv":                           "skip",
+		"Downloads/Kettle.Moor.S01.Bonus.Features/Kettle.Moor.Making.Of.mkv":     "skip",
+		"Complete/Pike.Mere.S02.Extras.720p/Pike.Mere.S02.Gag.Reel.mkv":          "skip",
+		"TV/Cold Mere (Limited Series)/Cold Mere 1of4.mkv":                       "episode Cold Mere S1E1",
+		"TV/Saltmarsh Lives (Docuseries)/Saltmarsh Lives S01E01.mkv":             "episode Saltmarsh Lives S1E1",
+		"TV/Hoshi Kaze (Anime)/Hoshi Kaze S01E01.mkv":                            "episode Hoshi Kaze S1E1",
+		"TV/Ledbury Row (2010-2015)/Season 1/Ledbury Row S01E01.mkv":             "episode Ledbury Row S1E1",
+		"TV/Fallowmead (2010 - 2015)/Season 1/Fallowmead S01E01.mkv":             "episode Fallowmead S1E1",
+		"Anime/[Grp] Kiri no Mori - 01 ~ 12 [Batch]/[Grp] Kiri no Mori - 04.mkv": "episode Kiri no Mori S?E?",
+		"Anime/[Grp] Kiri no Mori - 13.mkv":                                      "episode Kiri no Mori S?E?",
+		"TV/Bircham/01/01.mkv":                                                   "episode Bircham S1E1",
+		"TV/Bircham/02/01.mkv":                                                   "episode Bircham S2E1",
+		"TV/Bircham/00/01.mkv":                                                   "episode Bircham S0E1",
+		"TV/Bircham/03/x265/02.mkv":                                              "episode Bircham S3E2",
+		"TV/Bircham/04/4x01 - Gale/Bircham 4x01.mkv":                             "episode Bircham S4E1",
+		"TV/Bircham/05/Disc 1/Bircham 5x01.mkv":                                  "episode Bircham S5E1",
+		"TV/Hartmoor/Part 2/03.mkv":                                              "episode Hartmoor S?E?",
+		"TV/Hartmoor/Part 2/04.mkv":                                              "episode Hartmoor S?E?",
+		"TV/Hobcombe/Arc 1/01.mkv":                                               "episode Hobcombe S?E?",
+		"TV/Hobcombe/Arc 1/02.mkv":                                               "episode Hobcombe S?E?",
+		"TV/Hobmoor/All/01.mkv":                                                  "episode Hobmoor S?E?",
+		"TV/Hobmoor/All/02.mkv":                                                  "episode Hobmoor S?E?",
+	}},
 	// Re-score #23: a disc's MakeMKV titles number no episode; a show's yearless seasons apart from
 	// its dated ones are another show's; a web release's "Show.E11.1080p" is an episode anywhere; a
 	// year after an anime's padded number is the release's; a folder's American days settle its

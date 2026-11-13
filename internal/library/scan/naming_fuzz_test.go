@@ -124,4 +124,24 @@ func checkEpisode(t *testing.T, rel string, rec mp.Record, seriesDir string) {
 	if isSeasonFolder(seriesDir) && path.Dir(seriesDir) != "." && !namedSo && len(idsIn(path.Base(seriesDir))) == 0 {
 		t.Errorf("%q files under the season folder %q", rel, seriesDir)
 	}
+	// A folder the file is in that only groups a show's episodes ("01/", "Part 2/", "All/"), inside a
+	// folder that could be the show's, is never a show of its own: a phantom show takes the show's
+	// episodes. A season pack's show ("24 S01/" names "24") is no folder the file is in.
+	// A folder that keeps seasons of its own ("1/10/", "Pell/2021/") is a show's, as the pass
+	// settles it (settleFolders).
+	// A file read alone is read in the folder it is in or one deeper (regrouped); a phantom show
+	// further above it is the whole pass's to settle (settleFolders).
+	ownFolder := dir == seriesDir || path.Dir(dir) == seriesDir
+	if ownFolder && dir != seriesDir {
+		below, _, _ := strings.Cut(strings.TrimPrefix(dir, seriesDir+"/"), "/")
+		ownFolder = !seasonOf(path.Join(seriesDir, below))
+	}
+	// A films' shelf's folders are its films' ("Movies/Gorse Vale (2008)/Volume 1/"), and a folder
+	// the file names as its show is the show's whatever its name ("24/24 1x02.mkv").
+	films := amongFilms(shelved(File{Rel: rel}, dir))
+	named := sameWords(looseSeries(path.Base(rel)), path.Base(seriesDir))
+	if parent := path.Dir(seriesDir); ownFolder && !films && !named && parent != "." && !shelfAt(parent) && !isSeasonFolder(parent) &&
+		groupsOnly(parent, path.Base(seriesDir)) && len(idsIn(path.Base(seriesDir))) == 0 {
+		t.Errorf("%q files under %q, a folder that only groups %q's episodes", rel, seriesDir, parent)
+	}
 }

@@ -255,7 +255,14 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	66: a disc's MakeMKV titles number no episode; a show's yearless seasons apart from its dated
 //	    ones stay another show's; "Show.E11.1080p.WEB" is an episode anywhere; a year after an
 //	    anime's padded number is the release's; a folder's American days settle its others.
-const writeVersion = 66
+//	67: folders read by word families: any kind of extra names an extras folder ("Others",
+//	    "Bloopers", "Making Of", "S01.Bonus.Features", "S02.Extras.720p"); any label of what a show
+//	    is ("(Limited Series)", "(Docuseries)", "(Anime)") or the years it ran leaves its name; a
+//	    show's "01/", "00/" (its specials), "Part 2/", "Arc 1/", "All/" hold its episodes, as do
+//	    the folders one deeper ("01/Disc 1/", "All/x265/"); "Christmas_Specials",
+//	    "시즌.1" and "season i" are season folders; a show's home settles the folders in it
+//	    (settleFolders); a name only its words read as a shelf is one only among shelves (shelfAt).
+const writeVersion = 67
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -702,7 +709,7 @@ func fallbackName(rel string, kind mp.Kind, part int) string {
 		// A label that is the film's own folder's title, "Ferrisdale (1996)/Ferrisdale_t00", takes
 		// the folder's name, year and all.
 		title, year, _ := searchQuery(path.Base(dir), 0)
-		if dir != "." && !catchAllFolder(path.Base(dir)) &&
+		if dir != "." && !shelfAt(dir) &&
 			(len(label) <= 3 || strings.EqualFold(label, "title") || year != 0 && sameWords(discLabel.ReplaceAllString(label, ""), title)) {
 			label = strings.ReplaceAll(path.Base(dir), "_", " ")
 		}
