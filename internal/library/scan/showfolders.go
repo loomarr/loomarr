@@ -115,6 +115,14 @@ var looseYear = regexp.MustCompile(`^(.*\S)[ ._]+[(\[]?((?:19|20)\d{2})[)\]]?$`)
 // does a volume of it beside it ("Kids/Puddle Ducks Vol 2/" for "Kids/Puddle Ducks").
 func seriesFolderOf(file File) string {
 	dir := showFolderIn(regrouped(file))
+	// A season's folder off a shelf is never a show's: its show's is the one above its seasons,
+	// whatever the folders below it say ("A/Season One/S0E0/Season One S1E0/"). On a shelf, one its
+	// episodes name, "TV/Season One/Season 1/Season One S01E01", is a show so named, as is one
+	// carrying a show's id.
+	if dir != "" && dir != "." && path.Dir(dir) != "." && isSeasonFolder(dir) && len(idsIn(path.Base(dir))) == 0 &&
+		(!catchAllFolder(path.Base(path.Dir(dir))) || !sameWords(looseSeries(path.Base(file.Rel)), path.Base(dir))) {
+		dir = aboveSeasons(dir)
+	}
 	if dir == "" || dir == "." || path.Dir(dir) == "." {
 		return dir
 	}
