@@ -103,9 +103,12 @@ test("a first-time admin can shape the suggested channel before creating it", as
   await page.getByText("More suggestions", { exact: true }).click();
   await page.getByRole("button", { name: "Find more suggestions" }).click();
   await expect(page.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
+  // The live region is the notice's wrapper; its paragraph is the text inside it.
   await expect(
-    page.getByText("Finding more suggestions… Your selected titles won’t change."),
-  ).toHaveAttribute("role", "status");
+    page
+      .getByRole("status")
+      .filter({ hasText: "Finding more suggestions… Your selected titles won’t change." }),
+  ).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Channel intent" })).toHaveCount(0);
   await expect
     .poll(() => mock.state.proposalRevisionRequests)
