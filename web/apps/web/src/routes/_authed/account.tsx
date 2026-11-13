@@ -92,7 +92,13 @@ const AccountScreen = () => {
         description="Your sign-in, your password, and the devices holding a session."
       />
 
-      <div className="max-w-form mx-auto flex w-full flex-1 flex-col gap-4 overflow-auto p-6">
+      <Stack
+        className="max-w-form mx-auto overflow-auto p-6"
+        flexBasis="0%"
+        flexGrow={1}
+        gap="4"
+        width="100%"
+      >
         <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
           <Stack
             align="center"
@@ -252,7 +258,7 @@ const AccountScreen = () => {
             ))}
           </ul>
         </Card>
-      </div>
+      </Stack>
     </Stack>
   );
 };

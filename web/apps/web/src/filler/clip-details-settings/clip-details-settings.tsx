@@ -356,7 +356,14 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 Choose a provider
               </Text>
               <Stack gap="3" marginTop={12}>
-                <label className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 flex cursor-pointer items-start gap-3 rounded-lg border p-4">
+                <Stack
+                  align="start"
+                  className="border-border has-[:checked]:border-foreground has-[:checked]:bg-static-800 cursor-pointer rounded-lg border"
+                  direction="row"
+                  gap="3"
+                  padding={16}
+                  render="label"
+                >
                   <input
                     type="radio"
                     name="web-search-provider"
@@ -372,12 +379,19 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                       Recommended hosted option.
                     </Text>
                   </Stack>
-                </label>
+                </Stack>
                 <Card padding={16} render="details">
                   <Text as="summary" className="cursor-pointer" textRole="cardLabel">
                     Advanced / self-hosted
                   </Text>
-                  <label className="mt-4 flex cursor-pointer items-start gap-3">
+                  <Stack
+                    align="start"
+                    className="cursor-pointer"
+                    direction="row"
+                    gap="3"
+                    marginTop={16}
+                    render="label"
+                  >
                     <input
                       type="radio"
                       name="web-search-provider"
@@ -393,7 +407,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                         Use a server you operate.
                       </Text>
                     </Stack>
-                  </label>
+                  </Stack>
                 </Card>
               </Stack>
             </Stack>

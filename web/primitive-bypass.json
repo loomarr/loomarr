@@ -57,7 +57,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "flexStack": 1
@@ -123,7 +123,7 @@
       "flexStack": 1
     },
     "apps/web/src/filler/clip-details-settings/clip-details-settings.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/filler/clip-details/clip-details.tsx": {
       "flexStack": 4
@@ -161,16 +161,7 @@
     "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/home/home-page/home-page.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/home/new-this-week/new-this-week.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/lib/app-form/app-form.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/routes/_authed/account.tsx": {
       "flexStack": 1
     },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
@@ -183,9 +174,6 @@
       "flexStack": 1
     },
     "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/settings/settings-page/settings-page.tsx": {
       "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {

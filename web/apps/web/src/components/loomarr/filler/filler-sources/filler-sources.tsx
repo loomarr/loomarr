@@ -327,7 +327,7 @@ const FillerSources = ({
                     : descriptions.find((description) => description.id === provider.kind)?.blurb}
                 </Text>
               </div>
-              <div className="ml-auto flex shrink-0 items-center gap-3">
+              <Stack align="center" direction="row" flexShrink={0} gap="3" marginLeft="auto">
                 <Text as="span" textRole="hint" tone="secondary">
                   {sourceSummary(children)}
                 </Text>
@@ -342,7 +342,7 @@ const FillerSources = ({
                     onCheckedChange={(checked) => onToggleProvider(provider.kind, checked)}
                   />
                 )}
-              </div>
+              </Stack>
             </div>
 
             {/* Folded, not unmounted: a paused provider's children keep their saved switches. */}
