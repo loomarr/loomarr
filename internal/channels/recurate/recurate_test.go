@@ -78,6 +78,9 @@ func inLibItem(n int, name, libID string) proposals.ProposalItem {
 func seedProposal(t *testing.T, st store.Store, id, jobID string, lineup, acquisitions []proposals.ProposalItem) proposalstore.Proposal {
 	t.Helper()
 	body := proposals.Proposal{Lineup: lineup, Acquisitions: acquisitions}
+	for _, pick := range lineup {
+		testkit.SaveLibraryItems(t, st, pick.LibraryItemID) // an in-library pick names a stored item
+	}
 	now := time.Now()
 	p := proposalstore.Proposal{ID: id, JobID: jobID, Status: "submitted", Body: body, CreatedAt: now, UpdatedAt: now}
 	if err := st.CreateProposal(context.Background(), p); err != nil {

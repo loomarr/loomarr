@@ -207,7 +207,7 @@ func (s *sqlStore) commitProposalApproval(
 			   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
 			   last_error=excluded.last_error, updated_at=excluded.updated_at
 			 WHERE titles.state = ?`),
-			string(r.Key), item.json, string(r.State), r.LibraryID,
+			string(r.Key), item.json, string(r.State), storedb.OptionalID(r.LibraryID),
 			epoch(r.RequestedAt), epoch(r.Deadline), r.Attempts, r.LastError, epoch(r.UpdatedAt),
 			storedb.PendingTitle)
 		if err != nil {

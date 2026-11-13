@@ -15,7 +15,7 @@ import (
 
 func TestPostgresPlayoutLifecycleReconcilesDurableEligibility(t *testing.T) {
 	t.Parallel()
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	seedLifecycleChannel(t, st, "inherited", 1, schedule.StatusLive, nil)
 	seedLifecycleChannel(t, st, "pinned", 2, schedule.StatusLive,
 		&schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal})
@@ -65,7 +65,7 @@ func TestPostgresPlayoutLifecyclePreservesCommittedPausePayload(t *testing.T) {
 func TestPostgresPlayoutLifecycleRestartsOnlyWhenOnAirChanges(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	seedLifecycleChannel(t, st, "mudpuddles", 1, schedule.StatusLive, nil)
 	anchor := time.Unix(1_800_000_000, 0).UTC()
 	commit := func(edit func([]schedule.Slot)) store.Invalidation {
@@ -135,7 +135,7 @@ func TestPostgresPlayoutLifecycleRestartsOnlyWhenOnAirChanges(t *testing.T) {
 
 func TestPostgresPlayoutLifecycleBackendCutoverKeepsExplicitInternalPins(t *testing.T) {
 	t.Parallel()
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	seedLifecycleChannel(t, st, "inherited", 1, schedule.StatusLive, nil)
 	seedLifecycleChannel(t, st, "pinned", 2, schedule.StatusLive,
 		&schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal})
@@ -160,7 +160,7 @@ func TestPostgresPlayoutLifecycleBackendCutoverKeepsExplicitInternalPins(t *test
 
 func TestPostgresPlayoutLifecycleListenerLossClosesUntilDurableCatchUp(t *testing.T) {
 	t.Parallel()
-	st := testkit.MigratedSQLiteStore(t)
+	st := testkit.StockedLibrary(t, testkit.MigratedSQLiteStore(t))
 	origin := &testkit.Playout{}
 	gate := &playoutAdmissionGate{}
 	failFirst := make(chan struct{})

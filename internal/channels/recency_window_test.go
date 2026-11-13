@@ -42,7 +42,20 @@ func (a runtimeAvail) ResolveEpisodes(k provision.Key) schedule.EpisodeResolutio
 }
 
 // recencyEngine is an internal-playout engine on a 24 h window with a clock the test moves.
-func recencyEngine(st store.Store, avail schedule.Availability, now *time.Time) *channels.Engine {
+// recencyEngine is an engine over avail, whose library items it stores so the airings it records
+// name real rows.
+func recencyEngine(t *testing.T, st store.Store, avail runtimeAvail, now *time.Time) *channels.Engine {
+	t.Helper()
+	var ids []string
+	for _, p := range avail.movies {
+		ids = append(ids, p.LibraryItemID)
+	}
+	for _, eps := range avail.series {
+		for _, p := range eps {
+			ids = append(ids, p.LibraryItemID)
+		}
+	}
+	testkit.SaveLibraryItems(t, st, ids...)
 	return channels.New(st, tunarrtest.NewTunarr(), avail, nil, channels.Config{
 		ReconcileTTL:  10 * time.Minute,
 		DefaultWindow: 24 * time.Hour,
@@ -118,7 +131,7 @@ func TestReconcile_TuneInDoesNotRearrangeCurrentWindow(t *testing.T) {
 	st := newStore(t)
 	entries, avail := films(20, 2*time.Hour)
 	now := time.Unix(1_800_000_000, 0).UTC() // mid-window: 08:00 UTC
-	e := recencyEngine(st, avail, &now)
+	e := recencyEngine(t, st, avail, &now)
 	seedShuffleChannel(t, st, "rw", entries)
 
 	before := reconcileDesired(t, e, st, "rw")
@@ -154,7 +167,7 @@ func TestReconcile_FittingDeckIgnoresHistoryAndReshufflesPerWindow(t *testing.T)
 		st := newStore(t)
 		entries, avail := films(6, time.Hour)
 		now := time.Unix(1_800_000_000, 0).UTC()
-		e := recencyEngine(st, avail, &now)
+		e := recencyEngine(t, st, avail, &now)
 		seedShuffleChannel(t, st, "nw", entries)
 
 		before := reconcileDesired(t, e, st, "nw")
@@ -212,7 +225,7 @@ func TestReconcile_AiringHistoryIsPerEpisode(t *testing.T) {
 	// deterministic (the channel's creation is pinned), so two runs differ only by that history.
 	window := func(record func(st store.Store)) []string {
 		st := newStore(t)
-		e := recencyEngine(st, avail, &now)
+		e := recencyEngine(t, st, avail, &now)
 		seedShuffleChannel(t, st, "pe", entries)
 		record(st)
 		return programIDs(reconcileDesired(t, e, st, "pe").Desired)

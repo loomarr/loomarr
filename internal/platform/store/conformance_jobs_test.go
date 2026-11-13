@@ -1023,6 +1023,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 		Key: "movie:tmdb:90000002", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000002, Name: "Available"},
 		State: provision.Available, LibraryID: "library-2",
 	}
+	saveLibraryItems(t, s, available.LibraryID)
 	wanted := provision.Record{
 		Key: "movie:tmdb:90000003", Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000003, Name: "Wanted"},
 		State: provision.Wanted, Deadline: now,

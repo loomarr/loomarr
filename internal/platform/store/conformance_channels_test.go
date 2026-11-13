@@ -33,7 +33,9 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 		{Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	ch.Desired = []schedule.Slot{
-		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "lib-1", Title: "A", DurationMs: 3600000},
+		// No library item: a planned item is a foreign key, and most callers keep no library. The
+		// library references test saves slots that name items.
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:90000001", Title: "A", DurationMs: 3600000},
 		{Kind: schedule.SlotFiller, Key: "movie:tmdb:90000002", Title: "B"},
 	}
 	// A non-empty policy exercises the policy_json round-trip: an audience ceiling,
@@ -564,6 +566,11 @@ func testScheduledAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	show := provision.Key("series:tvdb:90071663")
 	record := func(ch string, recordedAt time.Time, airings ...ScheduledAiring) {
 		t.Helper()
+		for _, a := range airings {
+			if a.LibraryItemID != "" {
+				saveLibraryItems(t, st, a.LibraryItemID)
+			}
+		}
 		if err := st.RecordScheduledAirings(ctx, ch, airings, recordedAt); err != nil {
 			t.Fatalf("record %s: %v", ch, err)
 		}
@@ -639,6 +646,9 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 	opened := time.Now().Truncate(time.Second)
 	record := func(ch string, key provision.Key, item string, airedAt, recordedAt time.Time) {
 		t.Helper()
+		if item != "" {
+			saveLibraryItems(t, st, item)
+		}
 		if err := st.RecordAiring(ctx, ch, key, item, airedAt, recordedAt); err != nil {
 			t.Fatalf("record %s/%s: %v", ch, item, err)
 		}

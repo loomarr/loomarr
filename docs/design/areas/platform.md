@@ -83,7 +83,7 @@ One area of the [package map](../package-map.md#start-here).
   Persists who may act in Loomarr and how they are told things: users and their sessions, paired devices, invitations and their grants, contact addresses, password recovery, and the notification intents, delivery attempts, destinations and recipients that reach those people (§11).
 - **`platform/store/jobstore`** · 2 importers · → `platform/store/storedb`
   Persists the background-job scheduler's state (§18.1): the last-run and next-run lease of each named recurring job and its operator-set pause flag (the scheduled_jobs table).
-- **`platform/store/librarystore`** · 10 importers · → `platform/store/storedb`
+- **`platform/store/librarystore`** · 11 importers · → `platform/store/storedb`
   Persists the Library: its scan roots, files, items, titles, catalog keys, collections, people, episodes, episode orders and the needs that ask the household a question.
 - **`platform/store/proposalstore`** · 13 importers · → `platform/store/channelstore`, `platform/store/storedb`, `proposals`
   Persists the suggester's work: generation jobs and their attempts, the proposals they produce, and the transactions that commit a result (the proposal_jobs, proposal_job_attempts and proposals tables).

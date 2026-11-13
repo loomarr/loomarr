@@ -79,7 +79,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 ## Contents
 
 - [People and sign-in](#people-and-sign-in): [`users`](#users), [`sessions`](#sessions), [`device_pairings`](#device_pairings), [`device_tokens`](#device_tokens), [`invitations`](#invitations), [`invitation_grants`](#invitation_grants), [`password_recoveries`](#password_recoveries), [`password_recovery_grants`](#password_recovery_grants), [`contact_addresses`](#contact_addresses), [`user_favourite_channels`](#user_favourite_channels), [`user_recent_channels`](#user_recent_channels), [`user_hidden_ideas`](#user_hidden_ideas), [`viewings`](#viewings)
-- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
+- [Channels and the guide](#channels-and-the-guide): [`channels`](#channels), [`channel_lineup`](#channel_lineup), [`channel_planned_items`](#channel_planned_items), [`channel_scope_collections`](#channel_scope_collections), [`airings`](#airings), [`scheduled_airings`](#scheduled_airings), [`holidays`](#holidays), [`holiday_seed_revisions`](#holiday_seed_revisions)
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
@@ -343,6 +343,28 @@ A channel's approved lineup, one row per title in order: what should play on it.
 | `title_key` | The title (a titles key, such as `movie:tmdb:603`). A title added by hand that nothing has asked for yet has a pending titles row. | `TEXT` · → `titles.key` |
 | `entry` | The rest of the entry: its display name, known runtime, any season range or episode selection, the rating, genres and year the channel rules filter on, and its media-server box sets. | `TEXT` |
 
+### channel_planned_items
+
+The library items a channel's current schedule (channels.desired_json) plans to air, one row per item, so the library keeps them and nothing reads the schedule to find them.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `library_item_id` | A library item one of its programme slots plays (library_items.id). The item can't be deleted while a channel plans to air it. | `TEXT` · key · → `library_items.id` |
+
+### channel_scope_collections
+
+The collections a channel's rules name (channels.policy_json): its scope's and each scheduling rule's. One row per collection, so the library knows which channels use one.
+
+**Kept:** Rewritten whenever the channel is saved; goes with its channel.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `channel_id` | The channel (a channels id). | `TEXT` · key · → `channels.id` |
+| `collection_id` | A collection its scope or a rule limits it to (library_collections.id). The collection can't be deleted while a channel names it; take it off the channel first. | `TEXT` · key · → `library_collections.id` |
+
 ### airings
 
 What a channel actually broadcast: one row each time an episode or film started playing on a channel. Written when the programme is really streamed, not when it is scheduled. The schedule uses it to prefer what hasn't aired recently. Rows older than 8 days are pruned down to the latest airing of each episode or film; rows go when their channel is deleted.
@@ -352,7 +374,7 @@ What a channel actually broadcast: one row each time an episode or film started 
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
-| `library_item_id` | The library item id of the episode or film that aired. | `TEXT` · key |
+| `library_item_id` | The episode or film that aired, pointing at library_items. | `TEXT` · key · → `library_items.id` |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
@@ -366,7 +388,7 @@ What a channel's schedule put on air: one row each time an episode or film start
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `channel_id` | The channel it aired on (channels.id). | `TEXT` · key · → `channels.id` |
-| `library_item_id` | The library item id of the episode or film. | `TEXT` · key |
+| `library_item_id` | The episode or film, pointing at library_items. | `TEXT` · key · → `library_items.id` |
 | `aired_at` | When the programme started, in Unix seconds. | `BIGINT` · key |
 | `recorded_at` | When Loomarr first recorded the airing, in Unix seconds. | `BIGINT` |
 | `key` | The key of the lineup title it belongs to, such as `series:tvdb:81189` for an episode of a show. Kept for diagnosis. | `TEXT` |
@@ -1007,7 +1029,6 @@ One row per movie or show a channel wants that has gone through Seerr or the arr
 | `key` | Identifies the title, as series:tvdb:id for a show with a TVDB id, otherwise movie:tmdb:id or series:tmdb:id. | `TEXT` · key |
 | `title_json` | The title as JSON, with its media type (movie or series), TMDB and TVDB ids, name, year and, for a show, the seasons wanted (none listed means all). | `TEXT` |
 | `state` | Where it is. One of pending (on a lineup, but nothing has asked for it; read as no record), wanted (not yet accepted by Seerr or an arr), requested (accepted, waiting for a release), downloading (a release was grabbed), available (in the library), or unavailable (given up on). | `TEXT` |
-| `library_id` | The media server's id for the title once it is in the library; empty before. | `TEXT` |
 | `requested_at` | When Seerr or an arr first accepted the request, in Unix seconds; 0 means not yet. | `BIGINT` |
 | `deadline` | When a requested or downloading title is given up on, in Unix seconds; it is also pushed forward briefly while a check is working on the title. 0 for none. | `BIGINT` |
 | `attempts` | How many times sending the request has failed. | `INTEGER` |
@@ -1019,6 +1040,7 @@ One row per movie or show a channel wants that has gone through Seerr or the arr
 | `arrived_at` | When the title arrived in the library after being requested, in Unix seconds. 0 when it never arrived or was already in the library when picked. | `BIGINT` |
 | `episodes_have` | For a downloading show, how many wanted episodes are on disk; 0 otherwise. | `INTEGER` |
 | `episodes_wanted` | For a downloading show, how many episodes are wanted; 0 otherwise. | `INTEGER` |
+| `library_id` | The title's library item once it is in the library, pointing at library_items. NULL before it arrives. | `TEXT` · may be empty · → `library_items.id` |
 
 ### images
 

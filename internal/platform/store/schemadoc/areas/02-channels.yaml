@@ -88,6 +88,28 @@ tables:
         selection, the rating, genres and year the channel rules filter on, and its media-server
         box sets.
 
+  - name: channel_planned_items
+    about: >
+      The library items a channel's current schedule (channels.desired_json) plans to air, one row
+      per item, so the library keeps them and nothing reads the schedule to find them.
+    retention: Rewritten whenever the channel is saved; goes with its channel.
+    columns:
+      channel_id: The channel (a channels id).
+      library_item_id: >
+        A library item one of its programme slots plays (library_items.id). The item can't be
+        deleted while a channel plans to air it.
+
+  - name: channel_scope_collections
+    about: >
+      The collections a channel's rules name (channels.policy_json): its scope's and each
+      scheduling rule's. One row per collection, so the library knows which channels use one.
+    retention: Rewritten whenever the channel is saved; goes with its channel.
+    columns:
+      channel_id: The channel (a channels id).
+      collection_id: >
+        A collection its scope or a rule limits it to (library_collections.id). The collection can't
+        be deleted while a channel names it; take it off the channel first.
+
   - name: airings
     about: >
       What a channel actually broadcast: one row each time an episode or film started playing on a
@@ -99,7 +121,7 @@ tables:
       goes with its channel (deleted when that is).
     columns:
       channel_id: The channel it aired on (channels.id).
-      library_item_id: The library item id of the episode or film that aired.
+      library_item_id: The episode or film that aired, pointing at library_items.
       aired_at: When the programme started, in Unix seconds.
       recorded_at: When Loomarr first recorded the airing, in Unix seconds.
       key: >
@@ -118,7 +140,7 @@ tables:
       goes with its channel (deleted when that is).
     columns:
       channel_id: The channel it aired on (channels.id).
-      library_item_id: The library item id of the episode or film.
+      library_item_id: The episode or film, pointing at library_items.
       aired_at: When the programme started, in Unix seconds.
       recorded_at: When Loomarr first recorded the airing, in Unix seconds.
       key: >

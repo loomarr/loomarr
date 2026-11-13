@@ -71,6 +71,7 @@ func marigoldLibrary() *catalogfixture.ScriptedLibrary {
 }
 
 func buildService(t *testing.T, st store.Store, llmMock llm.Provider) *suggest.Service {
+	testkit.SaveLibraryItems(t, st, "1000", "1001", "1002") // marigoldLibrary's items
 	return buildServiceWith(t, st, workflow.New(st, idGen(), time.Now, suggest.IntentHash), llmMock)
 }
 

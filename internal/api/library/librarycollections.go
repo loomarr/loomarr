@@ -10,7 +10,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
-	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -272,30 +271,25 @@ func collectionOf(c scan.Collection, posters map[string]*httpcore.ImageDTO, uses
 }
 
 // collectionUses maps each collection id a channel scope names to those channels, by number: the
-// channel's own scope and each rule's.
+// channel's own scope and each rule's, as channel_scope_collections records them.
 func (s *Handlers) collectionUses(ctx context.Context) (map[string][]libraryChannelDTO, error) {
+	naming, err := s.store.ChannelsNamingCollections(ctx)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)
+	}
+	out := map[string][]libraryChannelDTO{}
+	if len(naming) == 0 {
+		return out, nil
+	}
 	channels, err := s.store.ListChannels(ctx)
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the channels", "Try again in a moment.", err)
 	}
 	slices.SortFunc(channels, func(a, b channelstore.Channel) int { return a.Number - b.Number })
-	out := map[string][]libraryChannelDTO{}
-	for _, ch := range channels {
-		named := map[string]bool{}
-		scopes := []*schedule.ScopePolicy{&ch.Policy.Scope}
-		for _, r := range ch.Policy.Rules {
-			scopes = append(scopes, r.What)
-		}
-		for _, scope := range scopes {
-			if scope == nil {
-				continue
-			}
-			for _, id := range scope.Collections {
-				if named[id] {
-					continue
-				}
-				named[id] = true
-				out[id] = append(out[id], libraryChannelDTO{ID: ch.ID, Name: ch.Name, Number: ch.Number})
+	for collection, ids := range naming {
+		for _, ch := range channels {
+			if slices.Contains(ids, ch.ID) {
+				out[collection] = append(out[collection], libraryChannelDTO{ID: ch.ID, Name: ch.Name, Number: ch.Number})
 			}
 		}
 	}

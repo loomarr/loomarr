@@ -66,7 +66,6 @@ var scannedWhole = map[string]string{
 	"SELECT images":                         "orphan sweep: images no reference or derivative keeps",
 	"UPDATE notification_intents":           "sweep: settles intents whose attempts have all finished",
 	"UPDATE notification_delivery_attempts": "startup recovery: attempts a crashed worker left sending",
-	"SELECT titles":                         "re-key: reads every title's library id when ids are re-mapped",
 	"DELETE viewings":                       "clear all: an admin clearing everyone's watch history removes every row",
 	"UPDATE library_files":                  "refresh everything: an admin asks for every present file to be written again",
 
