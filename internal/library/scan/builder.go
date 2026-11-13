@@ -522,6 +522,13 @@ func (b *builder) writeSeries(ctx context.Context, now time.Time) error {
 			if whole := strings.TrimSpace(embeddedID.ReplaceAllString(base, "")); whole != facts.Name && s.named[normName(whole)] > 0 {
 				facts.Name = whole
 			}
+			// So is one whose folder reads its first word as its year, "2020.Vision.Street", when its
+			// episodes name it whole with spaces, "2020 Vision Street S01E01": the year is the title's.
+			if title, year, _ := searchQuery(facts.Name, 0); year != 0 && !strings.Contains(facts.Name, " ") && s.named[normName(facts.Name)] > 0 {
+				if spaced := strings.Join(strings.FieldsFunc(facts.Name, func(r rune) bool { return r == '.' || r == '_' }), " "); spaced != title {
+					facts.Name = spaced
+				}
+			}
 		}
 		// A show whose folder and NFO give no year takes the one its episodes' names agree on.
 		if _, named, _ := searchQuery(facts.Name, 0); facts.ProductionYear == 0 && named == 0 && len(s.years) == 1 {

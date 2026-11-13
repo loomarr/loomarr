@@ -269,7 +269,12 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    Season 1" are extras; "- The Directors Cut" leaves the title; "- 12 (2019)" is an anime's
 //	    episode; a title's "Web" or "German" in mixed case stays its; specials and a missing season
 //	    keep a show whole (seasonsApart).
-const writeVersion = 68
+//	69: a commentary, promo or blooper beside its episode, or named by its season ("Show.S01.
+//	    Bloopers"), is an extra (extrasBeside); a folder labelled "Miniseries" is a show's on any
+//	    shelf; "Sesaon 3" is a season's folder; "(Season 3)" is an anime's season; "1.01" in a
+//	    show's folder and "Larchmere 1" in "Larchmere Series 2" are episodes; a year first in a
+//	    title, "2020 Vision Street", stays the title's.
+const writeVersion = 69
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

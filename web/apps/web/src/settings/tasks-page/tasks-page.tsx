@@ -6,8 +6,11 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, formatDuration, formatRelative, formatUntil } from "@loomarr/core/format";
 import {
   Action,
+  Badge,
+  Card,
   Icon,
   icons,
+  PressableRow,
   Stack,
   StatusDot,
   type StatusTone,
@@ -92,14 +95,16 @@ const ExecutionHistory = ({ name }: { name: string }) => {
 
   if (query.isLoading) {
     return (
-      <Text as="p" className="mt-4" textRole="hint" tone="secondary">
-        Loading execution history…
-      </Text>
+      <Stack marginTop={16}>
+        <Text as="p" textRole="hint" tone="secondary">
+          Loading execution history…
+        </Text>
+      </Stack>
     );
   }
   if (query.error) {
     return (
-      <Stack align="center" className="mt-4" direction="row" gap="inline" role="alert">
+      <Stack align="center" direction="row" gap="inline" marginTop={16} role="alert">
         <Text as="span" textRole="hint" tone="danger">
           Couldn’t load execution history.
         </Text>
@@ -112,7 +117,14 @@ const ExecutionHistory = ({ name }: { name: string }) => {
   if (!history) return null;
 
   return (
-    <section className="border-border mt-4 border-t pt-3" aria-label="Execution history">
+    <Stack
+      aria-label="Execution history"
+      borderColor="borderDecorative"
+      borderTopWidth={1}
+      marginTop={16}
+      paddingTop={12}
+      render="section"
+    >
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <Text as="h3" textRole="label" tone="primary">
           Past 24 hours
@@ -122,7 +134,7 @@ const ExecutionHistory = ({ name }: { name: string }) => {
             No completed runs.
           </Text>
         ) : (
-          <dl className="flex flex-wrap gap-x-4">
+          <Stack direction="row" gap="4" render="dl" wrap>
             <Stack direction="row" gap="1">
               <Text as="dt" textRole="hint" tone="secondary">
                 Runs
@@ -147,16 +159,22 @@ const ExecutionHistory = ({ name }: { name: string }) => {
                 {executionDuration(history.averageDurationMs)}
               </Text>
             </Stack>
-          </dl>
+          </Stack>
         )}
       </div>
 
       {history.recent.length > 0 && (
-        <ul className="divide-border border-border bg-background mt-2 divide-y rounded-md border">
+        <Card className="divide-border divide-y" marginTop={8} render="ul">
           {history.recent.map((run) => {
             const failed = run.result === "error";
             return (
-              <li key={`${run.startedAt}-${run.trigger}`} className="px-3 py-2">
+              <Stack
+                flexShrink={0}
+                key={`${run.startedAt}-${run.trigger}`}
+                paddingHorizontal={12}
+                paddingVertical={8}
+                render="li"
+              >
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
                   <Text as="span" textRole="label" tone="primary">
@@ -170,12 +188,12 @@ const ExecutionHistory = ({ name }: { name: string }) => {
                   </Text>
                 </div>
                 {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
-              </li>
+              </Stack>
             );
           })}
-        </ul>
+        </Card>
       )}
-    </section>
+    </Stack>
   );
 };
 
@@ -232,32 +250,30 @@ const TasksPage = () => {
 
   if (jobs.error) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={jobs.error} onRetry={() => jobs.refetch()} />
-      </div>
+      </Stack>
     );
   }
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%">
       <PageHeader
         title="Tasks"
         description="Background work grouped by outcome. Expand a group to inspect or control its tasks."
       />
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto p-6">
+      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} gap="2" padding={24}>
         {GROUPS.map((group) => {
           const groupedJobs = list.filter((job) => job.group === group.id);
           if (groupedJobs.length === 0) return null;
           const groupOpen = openGroups.has(group.id);
           return (
-            <section key={group.id} className="border-border bg-card overflow-hidden rounded-lg border">
-              <button
-                type="button"
-                className="hover:bg-muted/40 flex w-full items-center gap-3 px-4 py-3 text-left"
-                aria-expanded={groupOpen}
+            <Card key={group.id} overflow="hidden" render="section">
+              <PressableRow
                 aria-controls={`task-group-${group.id}`}
-                onClick={() => toggleGroup(group.id)}
+                aria-expanded={groupOpen}
+                onPress={() => toggleGroup(group.id)}
               >
                 <Icon
                   decorative
@@ -268,21 +284,17 @@ const TasksPage = () => {
                 <Text as="span" textRole="cardLabel">
                   {group.label}
                 </Text>
-                <Text
-                  as="span"
-                  className="ml-auto"
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  textRole="hint"
-                  tone="secondary"
-                >
+                <Stack align="center" direction="row" flexGrow={1} gap="inline" justify="end">
                   {/* A collapsed group still says it holds an overdue task, with the row's amber dot. */}
                   {overdueTaskCount(groupedJobs) > 0 && <StatusDot tone="warn" label="Overdue" />}
-                  {groupSummary(groupedJobs)}
-                </Text>
-              </button>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {groupSummary(groupedJobs)}
+                  </Text>
+                </Stack>
+              </PressableRow>
 
               {groupOpen && (
-                <div id={`task-group-${group.id}`} className="border-border border-t">
+                <Stack borderColor="borderDecorative" borderTopWidth={1} id={`task-group-${group.id}`}>
                   <Table caption={`${group.label} tasks`} framed={false}>
                     <TableHeader>
                       <TableRow>
@@ -317,29 +329,28 @@ const TasksPage = () => {
                                     {job.title}
                                   </Text>
                                   {job.paused && (
-                                    <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium">
+                                    <Badge shape="square" tone="neutral">
                                       Paused
-                                    </span>
+                                    </Badge>
                                   )}
                                 </button>
                               </TableCell>
                               <TableCell>
-                                <span
-                                  className="text-muted-foreground"
-                                  title={job.disabledReason ? undefined : job.schedule}
-                                >
-                                  {job.disabledReason
-                                    ? "Not scheduled"
-                                    : describeCron(job.schedule, presetsFor(job))}
+                                <span title={job.disabledReason ? undefined : job.schedule}>
+                                  <Text as="span" textRole="body" tone="secondary">
+                                    {job.disabledReason
+                                      ? "Not scheduled"
+                                      : describeCron(job.schedule, presetsFor(job))}
+                                  </Text>
                                 </span>
                               </TableCell>
                               <TableCell>
-                                <span className="text-muted-foreground">
+                                <Text as="span" textRole="body" tone="secondary">
                                   {isZero(job.lastRun) ? "—" : formatRelative(job.lastRun ?? zero)}
-                                </span>
+                                </Text>
                               </TableCell>
                               <TableCell>
-                                <span className="text-muted-foreground">
+                                <Text as="span" textRole="body" tone="secondary">
                                   {job.disabledReason ? (
                                     "—"
                                   ) : job.paused ? (
@@ -357,7 +368,7 @@ const TasksPage = () => {
                                   ) : (
                                     formatUntil(job.nextRun ?? zero)
                                   )}
-                                </span>
+                                </Text>
                               </TableCell>
                               <TableCell align="end">
                                 <Action
@@ -380,13 +391,15 @@ const TasksPage = () => {
                                     <ErrorDetails message={job.lastError} className="mt-2" />
                                   )}
                                   {job.disabledReason && (
-                                    <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-                                      {job.disabledReason}
-                                    </Text>
+                                    <Stack marginTop={8}>
+                                      <Text as="p" textRole="compact" tone="secondary">
+                                        {job.disabledReason}
+                                      </Text>
+                                    </Stack>
                                   )}
                                   <ExecutionHistory name={job.name} />
                                   {!job.disabledReason && (
-                                    <Stack align="center" className="mt-3" direction="row" gap="1">
+                                    <Stack align="center" direction="row" gap="1" marginTop={12}>
                                       <Action
                                         accessibilityLabel={
                                           job.paused ? `Resume ${job.title}` : `Pause ${job.title}`
@@ -414,18 +427,20 @@ const TasksPage = () => {
                       })}
                     </TableBody>
                   </Table>
-                </div>
+                </Stack>
               )}
-            </section>
+            </Card>
           );
         })}
 
         {list.length === 0 && !jobs.isLoading && (
-          <div className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-6 text-center">
-            No scheduled tasks.
-          </div>
+          <Card paddingHorizontal={16} paddingVertical={24}>
+            <Text as="p" className="text-center" textRole="body" tone="secondary">
+              No scheduled tasks.
+            </Text>
+          </Card>
         )}
-      </div>
+      </Stack>
 
       {editing && (
         <JobEditModal

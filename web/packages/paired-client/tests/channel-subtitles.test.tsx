@@ -98,6 +98,19 @@ describe("usePairedSubtitles", () => {
     expect(seen?.captions).toEqual([]);
   });
 
+  // A television's keys come up with Play/Pause, which pauses: the menu must still offer the
+  // programme's tracks then, or subtitles can only ever be turned off there.
+  it("keeps offering the programme's tracks while paused, with no lines drawn", async () => {
+    const render = mount();
+    const src = source();
+    const storage = storageWith(null);
+    await render({ snapshot: playingAt(1_001_000), source: src, storage });
+    await render({ snapshot: { ...playingAt(1_001_000), status: "paused" }, source: src, storage });
+    expect(seen?.options.map((o) => o.label)).toEqual(["Off", "English"]);
+    await act(async () => seen?.choose("en"));
+    expect(seen?.captions).toEqual([]);
+  });
+
   it("reads nothing while no channel plays", async () => {
     const src = source();
     await mount()({

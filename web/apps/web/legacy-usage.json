@@ -50,8 +50,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 86,
-      "rawTypeSize": 1
+      "tailwindClasses": 63
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "tailwindClasses": 16
@@ -288,10 +287,8 @@
       "rawTypeWeight": 1
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 118,
-      "rawButton": 1,
-      "rawTypeSize": 3,
-      "rawTypeWeight": 3
+      "tailwindClasses": 95,
+      "rawButton": 1
     },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
       "tailwindClasses": 5
@@ -332,7 +329,7 @@
       "rawTypeSize": 9
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 128
+      "tailwindClasses": 48
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,
@@ -347,7 +344,7 @@
       "tailwindClasses": 36
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 94
+      "tailwindClasses": 55
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 2
@@ -620,10 +617,8 @@
       "tailwindClasses": 3
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 79,
-      "rawButton": 2,
-      "rawTypeSize": 1,
-      "rawTypeWeight": 1
+      "tailwindClasses": 21,
+      "rawButton": 1
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
       "tailwindClasses": 17

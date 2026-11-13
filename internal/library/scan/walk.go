@@ -409,13 +409,14 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	}
 	shows := dir != w.root && underShows(path.Join(w.shelf, w.rel(dir)))
 	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
-	for name := range samplesBeside(videoNames) {
+	for name := range extrasBeside(videoNames) {
 		extras[name] = true
 	}
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
-	if shows {
-		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder).
+	if shows || showLabelled(folder) {
+		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder), as
+		// are a folder's labelled a show's on any shelf, "Movies/The Long Watch Miniseries/".
 		parts = nil
 	}
 	marked := 0
@@ -961,27 +962,46 @@ func kindEnds(words []string) bool {
 	return false
 }
 
-// samplesBeside is which of a folder's videos titled "Sample" after their episode's mark
-// ("S01E02 - Sample", titledSample) are that episode's sample: another video beside it numbers
-// the same episode. Alone, it is the episode, titled so.
-func samplesBeside(names []string) map[string]bool {
+// extrasBeside is which of a folder's videos are extras of the episodes or the season beside them,
+// read whole by the folder:
+//   - An episode's name titled by a kind of extra alone after its mark, "S01E02 - Sample",
+//     "S01E01 - Commentary", is that episode's extra when another video beside it numbers the same
+//     episode. Alone, it is the episode, titled so.
+//   - A show's season and a kind of extra with no episode's mark, "Fernhollow.S01.Bloopers",
+//     "Gullhaven - Season 1 Promo", is the season's extra, as a folder so named is
+//     (seasonExtrasFolder).
+func extrasBeside(names []string) map[string]bool {
 	var out map[string]bool
+	add := func(name string) {
+		if out == nil {
+			out = map[string]bool{}
+		}
+		out[name] = true
+	}
+	titledExtra := func(name string) bool {
+		_, after, ok := strings.Cut(stem(name), " - ")
+		for ok && episodeMark.MatchString(after) {
+			_, after, ok = strings.Cut(after, " - ")
+		}
+		words := extraWords(after)
+		return ok && len(words) > 0 && extraKindAt(words) == 0 && kindEnds(words)
+	}
 	for _, name := range names {
-		if !titledSample.MatchString(stem(name)) {
+		mark, marked := numberingIn(name)
+		if !marked {
+			if seasonExtrasFolder(stem(name)) {
+				add(name)
+			}
 			continue
 		}
-		mark, ok := numberingIn(name)
-		if !ok {
+		if !titledExtra(name) {
 			continue
 		}
 		if slices.ContainsFunc(names, func(other string) bool {
 			n, ok := numberingIn(other)
-			return other != name && ok && !titledSample.MatchString(stem(other)) && n.Season == mark.Season && n.Episode == mark.Episode
+			return other != name && ok && !titledExtra(other) && n.Season == mark.Season && n.Episode == mark.Episode
 		}) {
-			if out == nil {
-				out = map[string]bool{}
-			}
-			out[name] = true
+			add(name)
 		}
 	}
 	return out

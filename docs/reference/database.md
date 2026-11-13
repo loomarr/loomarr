@@ -1531,6 +1531,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `preparation_progress` | Percent done across the whole preparation attempt; -1 means unknown. | `INTEGER` |
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
+| `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
 
 ### filler_clip_variants
 

@@ -60,3 +60,19 @@ func TestSeasonsApartOnlyOnARestart(t *testing.T) {
 		}
 	}
 }
+
+// A season's word misspelled by a letter still names a season; words of their own do not.
+func TestSeasonInReadsAMisspelledSeason(t *testing.T) {
+	for name, want := range map[string]int{
+		"Sesaon 3": 3, "Seson 2": 2, "Seasn 1": 1, "Seasoon 4": 4, "Seasin 5": 5, "SEASNO 6": 6,
+	} {
+		if got, ok := seasonIn(name); !ok || got != want {
+			t.Errorf("seasonIn(%q) = %d, %v; want %d", name, got, ok, want)
+		}
+	}
+	for _, name := range []string{"Reason 3", "Mason 2", "Seasonal 1", "Sason Bay 2", "Sea 1", "Sesaon"} {
+		if got, ok := seasonIn(name); ok {
+			t.Errorf("seasonIn(%q) = %d, true; want no season", name, got)
+		}
+	}
+}

@@ -1231,6 +1231,32 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
+	// Re-score #26: an episode's extra beside it, a season's promo and a pack's bloopers are no
+	// episodes; a fansub's "(Season 3)" is its season, not its show's name; a miniseries' folder
+	// holds episodes on any shelf; a show's misspelt season keeps its show; a leading year runs on
+	// a title; a film named as an episode's mark is a film; "1.01" and a British series' bare
+	// number number its episodes.
+	{id: "W142", files: map[string]string{
+		"TV/Gullhaven/Season 2/Gullhaven S02E01.mkv":                   "episode Gullhaven S2E1",
+		"TV/Gullhaven/Season 2/Gullhaven S02E02.mkv":                   "episode Gullhaven S2E2",
+		"TV/Gullhaven/Season 2/Gullhaven S02E01 - Commentary.mkv":      "skip",
+		"TV/Gullhaven/Season 2/Gullhaven - Season 2 Promo.mkv":         "skip",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01E01.720p.mkv":         "episode Fernhollow S1E1",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01E02.720p.mkv":         "episode Fernhollow S1E2",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01.Bloopers.mkv":        "skip",
+		"Anime/[Judas] Ginga Neko (Season 3) - 04.mkv":                 "episode Ginga Neko S3E4",
+		"Movies/The Long Watch Miniseries/The Long Watch Part 1.mkv":   "episode The Long Watch S1E1",
+		"Movies/The Long Watch Miniseries/The Long Watch Part 2.mkv":   "episode The Long Watch S1E2",
+		"TV/Sorrel Bay/Season 2/Sorrel Bay S02E01.mkv":                 "episode Sorrel Bay S2E1",
+		"TV/Sorrel Bay/Sesaon 3/Sorrell Bay S03E01.mkv":                "episode Sorrel Bay S3E1",
+		"TV/2020 Vision Street/Season 1/2020 Vision Street S01E01.mkv": "episode 2020 Vision Street S1E1",
+		"Movies/2020 Vision Street (2021).mkv":                         "movie 2020 Vision Street 2021",
+		"Movies/S01E01 (2016)/S01E01 (2016).mkv":                       "movie S01E01 2016",
+		"TV/Gorse Hill/1.01 Arrival.avi":                               "episode Gorse Hill S1E1",
+		"TV/Gorse Hill/2.01 Return.avi":                                "episode Gorse Hill S2E1",
+		"TV/Larchmere Series 1/Larchmere 1 - The Gate.mkv":             "episode Larchmere S1E1",
+		"TV/Larchmere Series 2/Larchmere 1 - Return.mkv":               "episode Larchmere S2E1",
+	}},
 	// Re-score #25: a box set's disc folders hold episodes, or films of their own, as their files
 	// name them; a film's bonus disc holds its extras; another show's episodes in a show's folder
 	// are that show's; "1of2" and "_A"/"_B" are a film's parts; a sample or a making-of in a season

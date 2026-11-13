@@ -464,8 +464,9 @@ func releaseCut(words []string, dotted bool) int {
 			// A language's "German DL", and a release's word in capitals after it, are a release's.
 			continue
 		// Radarr's "{Movie.CleanTitle}.{Release.Year}.{Edition.Tags}": an edition's word right
-		// after the year ends the title however it is written, "Gloam.Moss.2011.Theatrical".
-		case releaseYear(first(words[i-1])) && versionWords[strings.ToLower(w)] && w != "and":
+		// after the year ends the title however it is written, "Gloam.Moss.2011.Theatrical". A year
+		// that starts the name is its title's: "2020 Vision Street".
+		case i >= 2 && releaseYear(first(words[i-1])) && versionWords[strings.ToLower(w)] && w != "and":
 			return i
 		case !releaseWord.MatchString(w):
 			continue

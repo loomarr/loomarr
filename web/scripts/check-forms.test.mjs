@@ -418,7 +418,7 @@ describe("the committed draft", () => {
       "packages/ui/src/commit-field/commit-field.tsx",
       "packages/ui/src/number-field/number-field.tsx",
       "packages/ui/src/year-range-list-field/year-range-list-field.tsx",
-      "packages/ui/src/library/library-settings/library-settings.tsx",
+      "packages/ui/src/library/library-settings/path-map-row/path-map-row.tsx",
     ]) {
       assert.ok(users.includes(file), `${file} uses the committed draft`);
     }
