@@ -3,10 +3,11 @@
 // exact source range of a tag name or a className attribute, so comments, formatting and everything
 // else in the file are untouched. Run `biome check --write` over the changed files afterwards.
 //
-//   node scripts/codemods/tailwind-to-ds.mjs [--write] <file or glob>...
+//   node scripts/codemods/tailwind-to-ds.mjs [--write] [--blocks] <file or glob>...
 //
 // Without --write it prints the report and changes nothing. It is idempotent: a second run finds
-// nothing left to move.
+// nothing left to move. `--blocks` also converts a plain block div whose children are all block
+// elements (a judgement call, so it is opt-in: review the pictures).
 //
 // What it moves (only from a className that is one plain string, never cn(...) or a template with
 // expressions):
@@ -376,7 +377,7 @@ const STACK_AGREES = new Set(["min-w-0", "min-h-0", "shrink-0"]);
 // layoutPlan decides what a className becomes on a Stack. `isNew` is a div being turned into one: it
 // must be a plain `flex` container and every hard family must convert. An existing Stack converts only
 // the families its base rule leaves to Tailwind.
-const layoutPlan = (tokens, { existing, isNew }) => {
+const layoutPlan = (tokens, { existing, isNew, block = false }) => {
   const byFamily = {};
   for (const token of tokens) {
     const family = familyOf(token);
@@ -385,7 +386,10 @@ const layoutPlan = (tokens, { existing, isNew }) => {
   const consumed = new Set();
   const props = new Map();
   const reasons = [];
-  if (isNew) {
+  if (isNew && block) {
+    // A block container has no display class to move and stays a column.
+    if (byFamily.display) return { reason: "display class on a block container" };
+  } else if (isNew) {
     const display = byFamily.display ?? [];
     const plain =
       display.length === 1 &&
@@ -408,7 +412,7 @@ const layoutPlan = (tokens, { existing, isNew }) => {
     if (flexOnly.length !== byFamily.display.length)
       reasons.push(`display ${byFamily.display.map((token) => token.raw).join(" ")}`);
   }
-  const baseDirection = isNew ? "row" : "column";
+  const baseDirection = isNew && !block ? "row" : "column";
   for (const [family, allTokens] of Object.entries(byFamily)) {
     if (family === "display") continue;
     let familyTokens = allTokens;
@@ -440,7 +444,8 @@ const layoutPlan = (tokens, { existing, isNew }) => {
   }
   if (isNew) {
     // A direction is explicit when the container was a row, even with no other layout class.
-    if (!props.has("direction") && !byFamily.direction) props.set("direction", 'direction="row"');
+    if (!block && !props.has("direction") && !byFamily.direction) props.set("direction", 'direction="row"');
+    if (block && consumed.size === 0) return { reason: "nothing a Stack would take" };
     const shrinks = tokens.some(
       (token) => token.variants.length === 0 && /^(?:min-w-0|min-h-0|overflow-.+|truncate)$/.test(token.util),
     );
@@ -641,8 +646,94 @@ const designSystemImport = (program, name) => {
   return { has: false, declaration: declaration ?? null };
 };
 
-// transform returns the rewritten source with a report of what moved and what stayed.
-const transform = (source, file = "file.tsx") => {
+// ---- Block containers (opt-in) --------------------------------------------------------------------
+// A plain block div whose children are all block elements lays out the same as a column Stack, so its
+// padding, margin and flex-item classes can move too. Anything that depends on inline flow (text
+// classes, `space-y-*`, a child selector) or any child that might be inline keeps the div.
+
+const BLOCK_CHILD_TAGS = new Set([
+  "article",
+  "aside",
+  "blockquote",
+  "details",
+  "div",
+  "dl",
+  "fieldset",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hr",
+  "main",
+  "nav",
+  "ol",
+  "p",
+  "pre",
+  "section",
+  "Stack",
+  "table",
+  "ul",
+]);
+const BLOCK_CONTAINER_TAGS = new Set(["aside", "article", "div", "footer", "header", "nav", "section"]);
+const INLINE_FLOW_CLASS =
+  /^(?:text-|font-|leading-|tracking-|truncate$|whitespace-|break-|line-clamp-|list-|uppercase$|lowercase$|capitalize$|italic$|underline$|no-underline$|line-through$|columns-|float-|clear-|space-[xy]-|divide-|prose|align-|indent-|\*:|\[&)/;
+
+const isBlockChild = (node) => {
+  if (!node) return false;
+  switch (node.type) {
+    case "JSXText":
+      return node.value.trim() === "";
+    case "JSXElement": {
+      const name = elementName(node.openingElement);
+      if (name === "Text") {
+        const as = node.openingElement.attributes.find(
+          (attribute) => attribute.type === "JSXAttribute" && attributeName(attribute) === "as",
+        );
+        return as?.value?.type === "StringLiteral" && BLOCK_CHILD_TAGS.has(as.value.value);
+      }
+      return name !== null && BLOCK_CHILD_TAGS.has(name);
+    }
+    case "JSXFragment":
+      return node.children.every(isBlockChild);
+    case "JSXExpressionContainer": {
+      const { expression } = node;
+      if (expression.type === "JSXEmptyExpression") return true;
+      if (expression.type === "LogicalExpression" && expression.operator === "&&")
+        return isBlockChild(expression.right);
+      if (expression.type === "ConditionalExpression") {
+        const branch = (side) => side.type === "NullLiteral" || isBlockChild(side);
+        return branch(expression.consequent) && branch(expression.alternate);
+      }
+      if (
+        expression.type === "CallExpression" &&
+        expression.callee.type === "MemberExpression" &&
+        expression.callee.property.name === "map" &&
+        expression.arguments[0]?.type === "ArrowFunctionExpression"
+      ) {
+        return isBlockChild(expression.arguments[0].body);
+      }
+      return isBlockChild(expression);
+    }
+    default:
+      return false;
+  }
+};
+
+const isBlockContainer = (element, tokens) =>
+  BLOCK_CONTAINER_TAGS.has(elementName(element.openingElement) ?? "") &&
+  element.children.some((child) => child.type !== "JSXText" || child.value.trim() !== "") &&
+  element.children.every(isBlockChild) &&
+  !tokens.some((token) => INLINE_FLOW_CLASS.test(token.util));
+
+// transform returns the rewritten source with a report of what moved and what stayed. With
+// `blocks`, a block div of block children is converted as well.
+const transform = (source, file = "file.tsx", options = {}) => {
   const ast = parse(source, { attachComment: true, plugins: ["typescript", "jsx"], sourceType: "module" });
   const { program } = ast;
   const bindings = topLevelBindings(program);
@@ -761,7 +852,14 @@ const transform = (source, file = "file.tsx") => {
       return;
     }
 
-    if (isNewStack && tokens.some((token) => token.util === "flex" && token.variants.length === 0)) {
+    const flexes = tokens.some((token) => token.util === "flex" && token.variants.length === 0);
+    const block =
+      Boolean(options.blocks) &&
+      isNewStack &&
+      !flexes &&
+      tokens.some((token) => familyOf(token) !== null) &&
+      isBlockContainer(element, tokens);
+    if (isNewStack && (flexes || block)) {
       if (hasSpread) {
         left.push(`${where} spread attributes`);
         return;
@@ -779,9 +877,10 @@ const transform = (source, file = "file.tsx") => {
         left.push(`${where} Stack is bound to something else in this file`);
         return;
       }
-      const plan = layoutPlan(tokens, { existing, isNew: true });
+      const plan = layoutPlan(tokens, { block, existing, isNew: true });
       if (plan.reason) {
-        left.push(`${where} ${plan.reason}`);
+        // A block container that has nothing to move is just a div; it is not worth a line.
+        if (!block) left.push(`${where} ${plan.reason}`);
         return;
       }
       const render = STACK_TAGS[name];
@@ -871,7 +970,7 @@ const run = (argv) => {
   const write = argv.includes("--write");
   const patterns = argv.filter((argument) => !argument.startsWith("--"));
   if (patterns.length === 0) {
-    console.error("usage: tailwind-to-ds.mjs [--write] <file or glob>...");
+    console.error("usage: tailwind-to-ds.mjs [--write] [--blocks] <file or glob>...");
     return 2;
   }
   const files = [...new Set(patterns.flatMap((pattern) => globSync(pattern)))]
@@ -883,7 +982,7 @@ const run = (argv) => {
     const source = readFileSync(file, "utf8");
     let result;
     try {
-      result = transform(source, file);
+      result = transform(source, file, { blocks: argv.includes("--blocks") });
     } catch (error) {
       console.error(`${file}: skipped, ${error.message}`);
       continue;

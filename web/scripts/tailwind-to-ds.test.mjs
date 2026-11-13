@@ -221,6 +221,31 @@ describe("typography", () => {
   });
 });
 
+describe("block containers, which are opt-in", () => {
+  const blocks = (source) => transform(source, "case.tsx", { blocks: true }).output;
+
+  it("changes nothing without the option", () => {
+    expectUntouched(`const A = () => <div className="mt-2 p-4"><div>a</div></div>;\n`);
+  });
+
+  it("moves a block div of block children onto a column Stack", () => {
+    assert.equal(
+      blocks(
+        `import { Stack } from "@loomarr/design-system";\nconst A = () => <div className="mt-2 min-w-0 flex-1"><div>a</div><p>b</p></div>;\n`,
+      ),
+      `import { Stack } from "@loomarr/design-system";\nconst A = () => <Stack flexBasis="0%" flexGrow={1} flexShrink={1} marginTop={8} minWidth={0}><div>a</div><p>b</p></Stack>;\n`,
+    );
+  });
+
+  it("keeps a div with text, an inline child or a text class", () => {
+    const keep = (source) => assert.equal(blocks(source), source);
+    keep(`const A = () => <div className="mt-2">hello<div>a</div></div>;\n`);
+    keep(`const A = () => <div className="mt-2"><span>a</span></div>;\n`);
+    keep(`const A = () => <div className="mt-2 text-center"><div>a</div></div>;\n`);
+    keep(`const A = () => <div className="mt-2 space-y-2"><div>a</div></div>;\n`);
+  });
+});
+
 describe("the whole run", () => {
   it("is idempotent", () => {
     const source = `import { Text } from "@loomarr/design-system";
