@@ -1,4 +1,4 @@
-import { Icon, icons } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics } from "../application-diagnostics";
@@ -38,7 +38,7 @@ const DiagnosticsPage = ({
     { id: "process" as const, label: "Media processes", icon: icons.process },
   ];
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader
         title="Diagnostics"
         description="Find what happened and check whether this Loomarr server is healthy."
@@ -56,9 +56,12 @@ const DiagnosticsPage = ({
           />
         }
       />
-      <nav
-        className="border-border flex gap-1 overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
+      <Stack
         aria-label="Diagnostics views"
+        className="border-border overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
+        direction="row"
+        gap="1"
+        render="nav"
       >
         {tabs.map(({ id, label, icon }) => (
           <button
@@ -81,7 +84,7 @@ const DiagnosticsPage = ({
             {label}
           </button>
         ))}
-      </nav>
+      </Stack>
       {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
           positioned, and without a positioned scroller it stretches the document instead of
           scrolling in here (#3404, #2724). */}
@@ -106,7 +109,7 @@ const DiagnosticsPage = ({
         )}
         {search.view === "process" && playout}
       </div>
-    </div>
+    </Stack>
   );
 };
 

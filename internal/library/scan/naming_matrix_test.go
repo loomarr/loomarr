@@ -1,0 +1,2092 @@
+package scan
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
+)
+
+// Naming rows: how messy libraries are laid out, and what each file must become. Most
+// households' libraries are far less tidy than an arr-managed one, so the rows come from how
+// downloads, rips and hand-sorted folders look in general (scene names, everything loose, mixed
+// movies and TV, no sidecars), each written with invented titles.
+//
+// Each file's outcome reads:
+//
+//	"movie <title> <year>"         the title and year the catalog is searched for ("-" for no year)
+//	"episode <show> S<n>E<n>[-<n>]" the show it files under, as searched for, and where it sits
+//	"episode <show> S?E?"          an episode of the show the scanner could not place
+//	"skip"                         not a title: an extra, a sample, junk
+//	"problem"                      listed for the maintainer: a disc structure, an image
+//
+// A file the scanner gets wrong today is in namingToday with what it does instead. It still runs,
+// and fails when the scanner changes either way, so a fix flips it to right and a regression is
+// caught. The scoreboard says how many files are right.
+type namingRow struct {
+	id    string            // the pattern, as the catalogue numbers it (A1, E5, ...)
+	files map[string]string // a file, relative to the root, and what it must become
+	nfo   map[string]string // sidecars: a path relative to the root and its content
+	root  string            // the root's own name, "" for one named as nothing ("TV" for /media/TV)
+}
+
+// namingToday is what the scanner makes today of each file it gets wrong, keyed "<row id> <file>".
+// Every row reads right; a new row the scanner cannot read yet goes here until it can.
+var namingToday = map[string]string{}
+
+var namingMatrix = []namingRow{
+	// A. Release and scene words around the title.
+	{id: "A1", files: map[string]string{"Movies/Ferrow.Lane.2019.1080p.mkv": "movie Ferrow Lane 2019"}},
+	{id: "A2", files: map[string]string{"Movies/Kettle.Bay.2021.AMZN.WEB-DL.2160p.mkv": "movie Kettle Bay 2021"}},
+	{id: "A3", files: map[string]string{"Movies/Ashgrove.2015.720p.BluRay.x265.10bit.mkv": "movie Ashgrove 2015"}},
+	{id: "A5", files: map[string]string{"Movies/Low.Orchard.2017.BluRay.DTS-HD.MA.7.1.mkv": "movie Low Orchard 2017"}},
+	{id: "A6", files: map[string]string{"Movies/Tinder.Hollow.2012.1080p.BluRay.x264-WRDS.mkv": "movie Tinder Hollow 2012"}},
+	{id: "A7", files: map[string]string{"Movies/[TrackerNet] Ferrow Lane (2019).mkv": "movie Ferrow Lane 2019"}},
+	{id: "A9", files: map[string]string{"Movies/Der.Stille.Hafen.2011.German.DL.1080p.mkv": "movie Der Stille Hafen 2011"}},
+	{id: "A10", files: map[string]string{"Movies/Ferrow Lane (2019) [1080p] [BluRay] [5.1].mp4": "movie Ferrow Lane 2019"}},
+	{id: "A12", files: map[string]string{"Movies/Marrow Point (1920x1080).mkv": "movie Marrow Point -"}},
+	{id: "A14", files: map[string]string{"Movies/Tinder.Hollow.2012.1080p.BluRay-WRDS/a8f3c91e0b.mkv": "movie Tinder Hollow 2012"}},
+	{id: "A15", files: map[string]string{"Downloads/Kettle.Bay.S02.1080p.WEB/kb.s02e04.mkv": "episode Kettle Bay S2E4"}},
+
+	// B. Separators and casing.
+	{id: "B1", files: map[string]string{"Movies/The.Quiet.Signal.2008.mkv": "movie The Quiet Signal 2008"}},
+	{id: "B2", files: map[string]string{
+		"Movies/the_quiet_signal_2008.avi":                "movie the quiet signal 2008",
+		"TV/Kettle Bay/Kettle_Bay_-_1x05_-_Tidewater.avi": "episode Kettle Bay S1E5",
+	}},
+	{id: "B3", files: map[string]string{"TV/Kettle Bay/Kettle Bay.S01E05_Tidewater-720p.mkv": "episode Kettle Bay S1E5"}},
+	{id: "B4", files: map[string]string{"Movies/FERROW LANE 2019.MKV": "movie FERROW LANE 2019"}},
+	{id: "B8", files: map[string]string{"Movies/Ferrow.Lane.2019.mkv.mkv": "movie Ferrow Lane 2019"}},
+
+	// C. Years.
+	{id: "C1", files: map[string]string{"Movies/Ashgrove (2015).mkv": "movie Ashgrove 2015"}},
+	{id: "C2", files: map[string]string{"Movies/Ashgrove [2015].mkv": "movie Ashgrove 2015"}},
+	{id: "C3", files: map[string]string{"Movies/Ashgrove 2015.mkv": "movie Ashgrove 2015"}},
+	{id: "C4", files: map[string]string{"Movies/Ashgrove (2015)/Ashgrove.mkv": "movie Ashgrove 2015"}},
+	{id: "C6", files: map[string]string{"Movies/Ashgrove.mkv": "movie Ashgrove -"}},
+	{id: "C9", files: map[string]string{"Movies/(2015) Ashgrove.mkv": "movie Ashgrove 2015"}},
+	{id: "C10", files: map[string]string{"Movies/Kettle.Bay.1985.2003.mkv": "movie Kettle Bay 1985 2003"}},
+	{id: "C12", files: map[string]string{
+		"TV/Kettle Bay (2019)/Season 1/Kettle Bay (2019) S01E01.mkv": "episode Kettle Bay 2019 S1E1",
+		"TV/Kettle Bay/Season 1/Kettle Bay S01E01.mkv":               "episode Kettle Bay S1E1",
+	}},
+
+	// D. Hard titles.
+	{id: "D1", files: map[string]string{"Movies/1987 (2014).mkv": "movie 1987 2014"}},
+	{id: "D3", files: map[string]string{
+		"Movies/81.Days.2010.mkv": "movie 81 Days 2010",
+		"Movies/9 (2019).mkv":     "movie 9 2019",
+	}},
+	{id: "D5", files: map[string]string{
+		"Movies/Marrow.Point.2.2013.mkv": "movie Marrow Point 2 2013",
+		"Movies/Marrow Point (2010).mkv": "movie Marrow Point 2010",
+	}},
+	{id: "D8", files: map[string]string{
+		"Movies/The Sample Room (2004).mkv":        "movie The Sample Room 2004",
+		"Movies/Trailer Park Kings (2011).mkv":     "movie Trailer Park Kings 2011",
+		"Movies/Sample (2016).mkv":                 "movie Sample 2016",
+		"Movies/Trailer (2019)/Trailer (2019).mkv": "movie Trailer 2019",
+		"Movies/Sampler.2018.mkv":                  "movie Sampler 2018",
+	}},
+	{id: "D9", files: map[string]string{"Movies/Ward 101 (2012).mkv": "movie Ward 101 2012"}},
+
+	// E. One episode.
+	{id: "E1", files: map[string]string{"TV/Kettle Bay/Season 1/Kettle.Bay.S01E02.Tidewater.720p.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E2", files: map[string]string{"TV/Kettle Bay/kettle bay s1e2.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E3", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01.E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E4", files: map[string]string{"TV/Kettle Bay/Kettle Bay S03E1105.mkv": "episode Kettle Bay S3E1105"}},
+	{id: "E5", files: map[string]string{"TV/Kettle Bay/Kettle Bay - 01x02 - Tidewater.avi": "episode Kettle Bay S1E2"}},
+	{id: "E6", files: map[string]string{"TV/Kettle Bay/Kettle.Bay.102.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E8", files: map[string]string{"TV/Kettle Bay/Kettle Bay Season 1 Episode 2.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E9", files: map[string]string{"TV/Kettle Bay/Season 1/Kettle Bay Ep02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E10", files: map[string]string{"TV/Kettle Bay/Season 2/05 - Tidewater.mkv": "episode Kettle Bay S2E5"}},
+	{id: "E13", files: map[string]string{"TV/Ferrow Lane/Ferrow.Lane.2of6.mkv": "episode Ferrow Lane S1E2"}},
+	{id: "E14", files: map[string]string{"TV/Kettle Bay/Season 2014/Kettle Bay S2014E07.mkv": "episode Kettle Bay S2014E7"}},
+	{id: "E15", files: map[string]string{"TV/Kettle Bay/Season 1/S01E02 - Tidewater.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E16", files: map[string]string{"TV/Kettle Bay/Season 1/KB.S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "E17", files: map[string]string{"TV/Kettle Bay/Kettle.Bay.S01E07.5.1.mkv": "episode Kettle Bay S1E7"}},
+
+	// F. Several episodes in one file.
+	{id: "F1", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01-E03.mkv": "episode Kettle Bay S1E1-3"}},
+	{id: "F1b", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01-03.mkv": "episode Kettle Bay S1E1-3"}},
+	{id: "F2", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01E02.mkv": "episode Kettle Bay S1E1-2"}},
+	{id: "F3", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01-S01E02.mkv": "episode Kettle Bay S1E1-2"}},
+	{id: "F4", files: map[string]string{"TV/Kettle Bay/Kettle Bay 1x01-1x02.mkv": "episode Kettle Bay S1E1-2"}},
+	{id: "F8", files: map[string]string{"TV/Kettle Bay/Kettle Bay S01E01+E02.mkv": "episode Kettle Bay S1E1-2"}},
+	// What follows one episode's mark is not a last episode: a resolution, a year in its title.
+	{id: "F9", files: map[string]string{
+		"TV/Kettle Bay/Kettle.Bay.S01E02-1080p.mkv":   "episode Kettle Bay S1E2",
+		"TV/Kettle Bay/Kettle Bay S01E03 - 1984.mkv":  "episode Kettle Bay S1E3",
+		"TV/Kettle Bay/Kettle Bay 1x04-720p.mkv":      "episode Kettle Bay S1E4",
+		"TV/Kettle Bay/Kettle Bay S01E05-E04.mkv":     "episode Kettle Bay S1E5",
+		"TV/Kettle Bay/Kettle.Bay.S01E06.Endgame.mkv": "episode Kettle Bay S1E6",
+	}},
+
+	// G. Absolute (anime) numbering: the show is placed, its episode by the catalog later.
+	{id: "G1", files: map[string]string{"TV/[Kumo] Sora no Kettle - 07 [1080p][A1B2C3D4].mkv": "episode Sora no Kettle S?E?"}},
+	{id: "G11", files: map[string]string{"TV/Sora no Kettle/[Kumo] Sora no Kettle - NCOP1 [1080p].mkv": "skip"}},
+
+	// H. Specials.
+	{id: "H1", files: map[string]string{"TV/Kettle Bay/Season 0/Kettle Bay S00E01.mkv": "episode Kettle Bay S0E1"}},
+	{id: "H2", files: map[string]string{"TV/Kettle Bay/Specials/Kettle Bay S00E03.mkv": "episode Kettle Bay S0E3"}},
+	{id: "H3", files: map[string]string{"TV/Kettle Bay/Specials/Kettle Bay - Holiday Special.mkv": "episode Kettle Bay S?E?"}},
+	{id: "H3-nfo",
+		files: map[string]string{"TV/Kettle Bay/Specials/Kettle Bay - The Movie.mkv": "episode Kettle Bay S?E?"},
+		nfo:   map[string]string{"TV/Kettle Bay/Specials/Kettle Bay - The Movie.nfo": "<episodedetails><title>Kettle Bay - The Movie</title><season>0</season></episodedetails>"}},
+
+	// I. Shows named by the day they aired.
+	{id: "I1", files: map[string]string{"TV/Evening Ledger/Evening.Ledger.2024-03-14.Guest.Name.mkv": "episode Evening Ledger 2024-03-14"}},
+	{id: "I2", files: map[string]string{"TV/Evening Ledger/Evening Ledger 20240314.mkv": "episode Evening Ledger 2024-03-14"}},
+	{id: "I4", files: map[string]string{"TV/Evening Ledger/Evening Ledger 14.03.2024.mkv": "episode Evening Ledger 2024-03-14"}},
+	{id: "I10", files: map[string]string{"TV/Evening Ledger/Season 2024/Evening Ledger - 2024-03-14 - Guest.mkv": "episode Evening Ledger 2024-03-14"}},
+
+	// J. Show folders.
+	{id: "J2", files: map[string]string{"TV/Kettle Bay (2019)/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay 2019 S1E1"}},
+	{id: "J3", files: map[string]string{"TV/Kettle Bay (2019) {tvdb-90123456}/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay 2019 S1E1"}},
+	{id: "J5", files: map[string]string{"TV/Kids/Cartoons/Kettle Bay/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "J6", files: map[string]string{"TV/Kettle.Bay.S02.1080p.WEB-DL-GRP/Kettle.Bay.S02E01.mkv": "episode Kettle Bay S2E1"}},
+	{id: "J7", files: map[string]string{"TV/Kettle Bay Complete Series (2010-2015) [1080p]/Season 3/Kettle Bay S03E01.mkv": "episode Kettle Bay S3E1"}},
+	{id: "J9", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle Bay S02E01.mkv": "episode Kettle Bay S2E1",
+	}},
+
+	// K. Season folders.
+	{id: "K1", files: map[string]string{"TV/Kettle Bay/season1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "K2", files: map[string]string{"TV/Kettle Bay/S01/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "K3", files: map[string]string{"TV/Kettle Bay/1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "K6", files: map[string]string{"TV/Kettle Bay/Series 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "K7", files: map[string]string{"TV/Kettle Bay/Staffel 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "K8", files: map[string]string{"TV/Kettle Bay/Kettle Bay Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "K9", files: map[string]string{"TV/Kettle Bay/Season 2 [1080p]/Kettle Bay S02E01.mkv": "episode Kettle Bay S2E1"}},
+	// A folder named for a show's season with no show folder above it is the show's own folder, named
+	// by its words before the season.
+	{id: "K10", files: map[string]string{"Ferrow Lane Season 2/Ferrow Lane S02E01.mkv": "episode Ferrow Lane S2E1"}},
+	// An archive unpacked into a folder of its own name leaves a season folder in a season folder.
+	{id: "K12", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Season 1/Kettle Bay S01E01.mkv":  "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Specials/Specials/Kettle Bay - Recap.mkv": "episode Kettle Bay S?E?",
+	}},
+	// A show whose own name has a season-like word keeps it.
+	{id: "K11", files: map[string]string{
+		"TV/Season of Ash/Season 1/Season of Ash S01E01.mkv": "episode Season of Ash S1E1",
+		"TV/The Series Club/The Series Club S01E01.mkv":      "episode The Series Club S1E1",
+	}},
+
+	// L. Movie layouts.
+	{id: "L1", files: map[string]string{"Movies/Ashgrove (2015)/Ashgrove (2015).mkv": "movie Ashgrove 2015"}},
+	{id: "L3", files: map[string]string{"Movies/Ashgrove (2015)/asg-1080p.mkv": "movie Ashgrove 2015"}},
+	{id: "L5", files: map[string]string{"Movies/New Folder/Ferrow Lane (2019).mkv": "movie Ferrow Lane 2019"}},
+	{id: "L6", files: map[string]string{
+		"Movies/Marrow Point Collection/Marrow Point (2010).mkv":   "movie Marrow Point 2010",
+		"Movies/Marrow Point Collection/Marrow Point 2 (2013).mkv": "movie Marrow Point 2 2013",
+	}},
+	{id: "L7", files: map[string]string{"Movies/Marrow Point Trilogy/Marrow Point 1 (2010)/Marrow Point 1 (2010).mkv": "movie Marrow Point 1 2010"}},
+	{id: "L8", files: map[string]string{"Movies/Ashgrove (2015) {tmdb-90012345}/Ashgrove (2015).mkv": "movie Ashgrove 2015"}},
+
+	// N. Editions.
+	{id: "N1", files: map[string]string{"Movies/Ashgrove.2015.Directors.Cut.1080p.mkv": "movie Ashgrove 2015"}},
+	{id: "N3", files: map[string]string{"Movies/Ashgrove (2015) {edition-Director's Cut}.mkv": "movie Ashgrove 2015"}},
+	{id: "N6", files: map[string]string{"Movies/Ashgrove.2015.3D.HSBS.1080p.mkv": "movie Ashgrove 2015"}},
+
+	// O. Extras.
+	{id: "O1", files: map[string]string{
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv":         "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/Ashgrove (2015)-trailer.mkv": "skip",
+	}},
+	{id: "O2", files: map[string]string{
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv": "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/trailer.mkv":         "skip",
+	}},
+	{id: "O4", files: map[string]string{
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv":             "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/Featurettes/Making Ashgrove.mkv": "skip",
+		"Movies/Ashgrove (2015)/Special Features/Gag Reel.mkv":   "skip",
+	}},
+	{id: "O5", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Season 1/Extras/Gag Reel.mkv":   "skip",
+	}},
+	{id: "O6", files: map[string]string{
+		"Movies/Ashgrove (2015).mkv":         "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)-trailer.mkv": "skip",
+	}},
+	{id: "O10", files: map[string]string{"Movies/Ashgrove (2015)/trailerthings.mkv": "movie Ashgrove 2015"}},
+
+	// P. Samples and junk.
+	{id: "P1", files: map[string]string{
+		"Movies/Ashgrove.2015.1080p-GRP/Ashgrove.2015.1080p-GRP.mkv": "movie Ashgrove 2015",
+		"Movies/Ashgrove.2015.1080p-GRP/sample.mkv":                  "skip",
+	}},
+	{id: "P2", files: map[string]string{"Movies/ashgrove.2015-sample.mkv": "skip"}},
+	{id: "P3", files: map[string]string{
+		"Movies/Ashgrove.2015-GRP/grp-asg.mkv":        "movie Ashgrove 2015",
+		"Movies/Ashgrove.2015-GRP/Sample/grp-asg.mkv": "skip",
+	}},
+	{id: "P5", files: map[string]string{"Movies/Ashgrove.2015.mkv.part": "skip"}},
+	{id: "P9", files: map[string]string{
+		"Downloads/Complete/Kettle.Bay.S01E02.mkv":   "episode Kettle Bay S1E2",
+		"Downloads/Incomplete/Kettle.Bay.S01E03.mkv": "skip",
+	}},
+	{id: "P10", files: map[string]string{
+		"Movies/Ashgrove (2015).mkv":   "movie Ashgrove 2015",
+		"Movies/._Ashgrove (2015).mkv": "skip",
+		"Movies/@eaDir/Ferrow.mkv":     "skip",
+		"Movies/#recycle/Ferrow.mkv":   "skip",
+	}},
+	{id: "P11", files: map[string]string{"Movies/.hidden/Ashgrove (2015).mkv": "skip"}},
+
+	// Q. Discs.
+	{id: "Q1", files: map[string]string{"Movies/Ashgrove (2015)/VIDEO_TS/VTS_01_1.VOB": "problem"}},
+	{id: "Q2", files: map[string]string{"Movies/Ashgrove (2015)/BDMV/STREAM/00001.m2ts": "problem"}},
+	{id: "Q4", files: map[string]string{"Movies/Ashgrove (2015).iso": "problem"}},
+
+	// R. Mixed roots and missing structure.
+	{id: "R1", files: map[string]string{
+		"Media/Ashgrove (2015).mkv":    "movie Ashgrove 2015",
+		"Media/Kettle.Bay.S01E02.mkv":  "episode Kettle Bay S1E2",
+		"Media/Ferrow Lane/S02E03.mkv": "episode Ferrow Lane S2E3",
+	}},
+	{id: "R2", files: map[string]string{"Kettle.Bay.S01E02.720p.mkv": "episode Kettle Bay S1E2"}},
+	{id: "R4", files: map[string]string{
+		"TV/Kettle Bay/kb 101.avi": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/kb 201.avi": "episode Kettle Bay S2E1",
+	}},
+	{id: "R5", files: map[string]string{
+		"TV/All Shows/Kettle.Bay.S01E01.mkv":  "episode Kettle Bay S1E1",
+		"TV/All Shows/Ferrow.Lane.S02E03.mkv": "episode Ferrow Lane S2E3",
+	}},
+
+	// S. Other scripts and wide characters.
+	{id: "S1", files: map[string]string{"Movies/La Maison Grisée (1998).mkv": "movie La Maison Grisée 1998"}},
+	{id: "S2", files: map[string]string{"Movies/Тихий сигнал (2008).mkv": "movie Тихий сигнал 2008"}},
+	{id: "S4", files: map[string]string{"Movies/ＦＥＲＲＯＷ　ＬＡＮＥ（２０１９）.mkv": "movie FERROW LANE 2019"}},
+
+	// T. Copies.
+	{id: "T4", files: map[string]string{"Movies/Ashgrove (2015) (1).mkv": "movie Ashgrove 2015"}},
+
+	// U. Sidecars that change the answer.
+	{id: "U3",
+		files: map[string]string{"TV/Kettle Bay/Kettle Bay - Tidewater.mkv": "episode Kettle Bay S1E2"},
+		nfo: map[string]string{"TV/Kettle Bay/Kettle Bay - Tidewater.nfo": "<episodedetails><title>Tidewater</title>" +
+			"<season>1</season><episode>2</episode></episodedetails>"}},
+
+	// V. Found by the 2026-11-11 re-score's probes.
+	{id: "V1", files: map[string]string{"Movies/10x10 (2018)/10x10 (2018).mkv": "movie 10x10 2018"}},
+	{id: "V2", files: map[string]string{"TV/Kettle Bay/Season 1/101 - Tidewater.mkv": "episode Kettle Bay S1E1"}},
+	{id: "V3", files: map[string]string{
+		"TV/Kettle Bay/Season 1/101 - Tidewater.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Season 1/102 - Low Water.mkv": "episode Kettle Bay S1E2",
+	}},
+	{id: "V4", files: map[string]string{"TV/Kettle Bay/Season 2/Kettle Bay - 03 - Tidewater.mkv": "episode Kettle Bay S2E3"}},
+	{id: "V5", files: map[string]string{"TV/Kettle Bay/Season 3/Kettle Bay - 3.05 - Tidewater.mkv": "episode Kettle Bay S3E5"}},
+	{id: "V6", files: map[string]string{"TV/Kettle Bay/Season 2/Kettle Bay E03.mkv": "episode Kettle Bay S2E3"}},
+	{id: "V7", files: map[string]string{
+		"Movies/Ferrow Lane (2019).divx":   "movie Ferrow Lane 2019",
+		"Movies/Kettle Run (2003).flv":     "movie Kettle Run 2003",
+		"Movies/Low Orchard (2017).ogm":    "movie Low Orchard 2017",
+		"Movies/Tinder Hollow (2012).rmvb": "movie Tinder Hollow 2012",
+		"Movies/Marrow Point (2001).VOB":   "movie Marrow Point 2001",
+	}},
+	{id: "V8", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Kettle Bay - S01E04 - Each-Other.mkv":       "episode Kettle Bay S1E4",
+		"TV/Kettle Bay/Season 1/Kettle Bay - S01E05 - Behind-the-Scene.mkv": "episode Kettle Bay S1E5",
+		"TV/Kettle Bay/Season 1/Kettle Bay - S01E01-sample.mkv":             "skip",
+	}},
+	{id: "V9", files: map[string]string{
+		"Movies/Shorts/Lantern Keeper (2010)/Lantern Keeper (2010).mkv": "movie Lantern Keeper 2010",
+		"Movies/Ashgrove (2015)/Shorts/Ashgrove Reel.mkv":               "skip",
+	}},
+	// W: what a messy library does to a name. Season folders spelled out, in other languages, with
+	// notes or the show's initials, or a disc or codec folder inside them.
+	{id: "W1", files: map[string]string{"TV/Kettle Bay/Season One/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W2", files: map[string]string{"TV/Kettle Bay/Sezon 2/Kettle Bay S02E02.mkv": "episode Kettle Bay S2E2"}},
+	{id: "W3", files: map[string]string{"TV/Kettle Bay/Säsong 1/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W4", files: map[string]string{"TV/Kettle Bay/Season 1 - 2019/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W5", files: map[string]string{"TV/Kettle Bay/Season 1 1080p WEB-DL/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W6", files: map[string]string{"TV/Kettle Bay/Season 01 Complete/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W7", files: map[string]string{"TV/Kettle Bay/KB Season 1/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W8", files: map[string]string{"TV/Kettle Bay/(Season 1)/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W9", files: map[string]string{"TV/Kettle Bay/Season 1/Disc 2/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	{id: "W10", files: map[string]string{"TV/Kettle Bay/Season 1/x265/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2"}},
+	// A day alone makes no show: a home video and a concert are films of a day.
+	{id: "W11", files: map[string]string{
+		"Home Videos/2019-06-01 Beach Day.mp4":                        "movie 2019-06-01 Beach Day -",
+		"Concerts/Ferrow Band - Live at Ashgrove Hall 2019.10.05.mkv": "movie Ferrow Band - Live at Ashgrove Hall 2019.10.05 -",
+	}},
+	{id: "W12", files: map[string]string{
+		"TV/Daily Kettle/Daily Kettle 2024_03_14.mkv": "episode Daily Kettle 2024-03-14",
+		"TV/Daily Kettle/Daily Kettle 2024-3-15.mkv":  "episode Daily Kettle 2024-03-15",
+	}},
+	// A year after a dot or a dash, and one after the release words.
+	{id: "W13", files: map[string]string{
+		"Movies/Ferrow Lane.2019.mkv":                     "movie Ferrow Lane 2019",
+		"Movies/The Quiet Signal.2008.720p.mkv":           "movie The Quiet Signal 2008",
+		"Movies/Lantern.Keeper (2010).mkv":                "movie Lantern Keeper 2010",
+		"Movies/marrow-point-2011.mkv":                    "movie marrow point 2011",
+		"Movies/Ashgrove 1080p 2015.mkv":                  "movie Ashgrove 2015",
+		"Movies/S.W.A.L.E. (2012).mkv":                    "movie S.W.A.L.E 2012",
+		"Movies/Harbor Lights (2016) (2020 Remaster).mkv": "movie Harbor Lights 2016",
+	}},
+	// Release notes, a collection's place and a tracker's name are not the title.
+	{id: "W14", files: map[string]string{
+		"Movies/Ashgrove.CAM.avi":                                        "movie Ashgrove -",
+		"Movies/Ferrow.HDRip.avi":                                        "movie Ferrow -",
+		"Movies/Lantern.MULTi.VOSTFR.mkv":                                "movie Lantern -",
+		"Movies/Marrow [HD].mkv":                                         "movie Marrow -",
+		"Movies/Tidewater (Dual Audio).mkv":                              "movie Tidewater -",
+		"Movies/Low Water (Directors Cut).mkv":                           "movie Low Water -",
+		"Movies/Kettle Bay (US) (2004).mkv":                              "movie Kettle Bay US 2004",
+		"Movies/www.TrackerNet.org - Harbor Lights (2016).mkv":           "movie Harbor Lights 2016",
+		"Movies/Marrow Point Collection/01 - Marrow Point (2010).mkv":    "movie Marrow Point 2010",
+		"Movies/Marrow Point Collection/2. Marrow Point II (2012).mkv":   "movie Marrow Point II 2012",
+		"Movies/Marrow Point Collection/(3) Marrow Point III (2014).mkv": "movie Marrow Point III 2014",
+		"Movies/10 Kettles (2009).mkv":                                   "movie 10 Kettles 2009",
+	}},
+	// A NAS's snapshots and recycle bins, a downloader's unfinished work, an editor's lock file and
+	// a film's extras are none of the library's titles; an Xvid file is a video.
+	{id: "W16", files: map[string]string{
+		"Movies/#snapshot/Ashgrove (2015).mkv":                         "skip",
+		"Movies/@Recently-Snapshot/Ashgrove (2015).mkv":                "skip",
+		"Movies/@Recycle/Ashgrove (2015).mkv":                          "skip",
+		"Movies/System Volume Information/Ashgrove (2015).mkv":         "skip",
+		"Downloads/_UNPACK_Kettle.Bay.S01E02/Kettle.Bay.S01E02.mkv":    "skip",
+		"Downloads/_FAILED_Kettle.Bay.S01E03/Kettle.Bay.S01E03.mkv":    "skip",
+		"Movies/~Ferrow (2019).mkv":                                    "skip",
+		"Movies/Lantern (2010)/Lantern (2010).mkv":                     "movie Lantern 2010",
+		"Movies/Lantern (2010)/Lantern (2010) - Behind the Scenes.mkv": "skip",
+		"Movies/Lantern (2010)/Lantern (2010) - Interview.mkv":         "skip",
+		"Movies/Lantern (2010)/Lantern (2010) Trailer.mkv":             "skip",
+		"Movies/Lantern (2010)/theme.mp4":                              "skip",
+		"Movies/Marrow (2011).xvid":                                    "movie Marrow 2011",
+	}},
+	// An extras folder is a title's only in the title's own folder: under a genre or age folder it
+	// is a folder of titles.
+	{id: "W17", files: map[string]string{
+		"Movies/Kids/Shorts/Lantern Keeper (2010)/Lantern Keeper (2010).mkv": "movie Lantern Keeper 2010",
+		"Movies/Kids/Other/Ferrow Lane (2019).mkv":                           "movie Ferrow Lane 2019",
+		"Movies/Comedy/Clips/Kettle Comic (2018).mkv":                        "movie Kettle Comic 2018",
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv":                         "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/Extras/Ashgrove Reel.mkv":                    "skip",
+	}},
+	{id: "W18", files: map[string]string{
+		"TV/Cartoons/Shorts/Kettle Bay/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Marrow Point/Season 1/Marrow Point S01E01.mkv":             "episode Marrow Point S1E1",
+		"TV/Marrow Point/Extras/Marrow Point Reel.mkv":                 "skip",
+	}},
+	// A folder whose episodes name several shows, none its own, is a dump of them.
+	{id: "W19", files: map[string]string{
+		"Torrents/Kettle Bay S01E01.mkv":  "episode Kettle Bay S1E1",
+		"Torrents/Ferrow Lane S02E03.mkv": "episode Ferrow Lane S2E3",
+		"Pile/Kettle Bay S01E02.mkv":      "episode Kettle Bay S1E2",
+		"Pile/Ferrow Lane S02E04.mkv":     "episode Ferrow Lane S2E4",
+	}},
+	{id: "W20", files: map[string]string{
+		"TV/Kettle Bay (US)/Kettle.Bay.US.S01E01.mkv": "episode Kettle Bay US S1E1",
+		"TV/Kettle Bay (US)/KB S01E02.mkv":            "episode Kettle Bay US S1E2",
+	}},
+	// Extras a household named in words, beside the film.
+	{id: "W21", files: map[string]string{
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019).mkv":             "movie Ferrow Lane 2019",
+		"Movies/Ferrow Lane (2019)/Gag Reel.mkv":                       "skip",
+		"Movies/Ferrow Lane (2019)/Making Of.mkv":                      "skip",
+		"Movies/Ferrow Lane (2019)/Trailer 2.mkv":                      "skip",
+		"Movies/Ferrow Lane (2019)/Featurette - Costumes.mkv":          "skip",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) - Teaser.mkv":    "skip",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019)-Trailer 2.mkv":   "skip",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) - Making Of.mkv": "skip",
+		"Movies/Ferrow.Lane.2019.Uncut.mkv":                            "movie Ferrow Lane 2019",
+		"Movies/Ashgrove-(2015).mkv":                                   "movie Ashgrove 2015",
+		"Movies/Plex Versions/Optimized for TV/Ashgrove (2015).mp4":    "skip",
+	}},
+	{id: "W22", files: map[string]string{
+		"TV/Kettle Bay/Season 2/Kettle Bay - S02E05 - Behind the Scenes.mkv": "episode Kettle Bay S2E5",
+	}},
+	// Episodes with no season folder or full mark, and seasons as other folders name them.
+	{id: "W23", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle Bay E02.mkv": "episode Kettle Bay S1E2",
+	}},
+	{id: "W24", files: map[string]string{"TV/Evening Ledger/Evening Ledger E1523.mkv": "episode Evening Ledger S1E1523"}},
+	{id: "W25", files: map[string]string{"TV/Kettle Bay/Season Specials/Kettle Bay S00E02.mkv": "episode Kettle Bay S0E2"}},
+	{id: "W26", files: map[string]string{"TV/Kettle Bay/Special/Kettle Bay S00E01.mkv": "episode Kettle Bay S0E1"}},
+	{id: "W27", files: map[string]string{"TV/Kettle Bay/Seasons 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "W28", files: map[string]string{"TV/Kettle Bay/1st Season/Kettle Bay 06.mkv": "episode Kettle Bay S1E6"}},
+	{id: "W29", files: map[string]string{"TV/Kettle Bay/2019/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1"}},
+	{id: "W30", files: map[string]string{"TV/Das Kettle Haus/Staffel 1/Folge 1.mkv": "episode Das Kettle Haus S1E1"}},
+	{id: "W31", files: map[string]string{"TV/Kettle Huset/Säsong 1/Avsnitt 2.mkv": "episode Kettle Huset S1E2"}},
+	// A daily show's year folders, and its days written America's way.
+	{id: "W32", files: map[string]string{
+		"TV/Evening Ledger/2024/Evening Ledger 2024-03-14.mkv": "episode Evening Ledger 2024-03-14",
+		"TV/Evening Ledger/2023/Evening Ledger 2023-11-02.mkv": "episode Evening Ledger 2023-11-02",
+		"TV/Evening Ledger/Evening Ledger 03-15-2024.mkv":      "episode Evening Ledger 2024-03-15",
+	}},
+	// A fansub show's name that ends in its season.
+	{id: "W33", files: map[string]string{
+		"[Kumo] Sora no Kettle S2 - 03 [1080p].mkv":        "episode Sora no Kettle S2E3",
+		"[Kumo] Ferrow Gakuen 2nd Season - 05 [1080p].mkv": "episode Ferrow Gakuen S2E5",
+		"[Kumo] Ferrow Gakuen - PV1 [1080p].mkv":           "skip",
+	}},
+	// A catch-all's "Part 2 of 3" is a film's, not an episode of a show named "Movies".
+	{id: "W34", files: map[string]string{"Movies/Ferrow Lane Part 2 of 3 (2010).mkv": "movie Ferrow Lane Part 2 of 3 2010"}},
+	// A title may carry a word a release name does: it ends the title only after the year, before
+	// another release word, or last in a dotted name.
+	{id: "W35", files: map[string]string{
+		"Movies/Tangled Web (2016).mkv":                "movie Tangled Web 2016",
+		"Movies/The Cam (2017).mkv":                    "movie The Cam 2017",
+		"Movies/Mister Proper (2010).mkv":              "movie Mister Proper 2010",
+		"Movies/Kettle Extended Family (2013).mkv":     "movie Kettle Extended Family 2013",
+		"Movies/Ferrow DVD Night (2012).mkv":           "movie Ferrow DVD Night 2012",
+		"Movies/Marrow.2014.PROPER.1080p.mkv":          "movie Marrow 2014",
+		"Movies/Lantern.Cove.German.DL.1080p.mkv":      "movie Lantern Cove -",
+		"Movies/Ashgrove+Cove+2014+720p.mkv":           "movie Ashgrove Cove 2014",
+		"Movies/www.TrackerNet.org_Low.Water.2014.mkv": "movie Low Water 2014",
+		"Movies/Trailer (2014).mkv":                    "movie Trailer 2014",
+		"Movies/The 4x4 Club (2016).mkv":               "movie The 4x4 Club 2016",
+	}},
+	{id: "W36", files: map[string]string{"TV/The Web Crew/Season 1/The Web Crew S01E01.mkv": "episode The Web Crew S1E1"}},
+	{id: "W37", files: map[string]string{
+		"TV/Kids/Kettle Bay S01E04.mkv":      "episode Kettle Bay S1E4",
+		"Dad's Stuff/Ferrow.Lane.S01E01.mkv": "episode Ferrow Lane S1E1",
+		"Dad's Stuff/Ashgrove (2015).mkv":    "movie Ashgrove 2015",
+	}},
+	{id: "W38", files: map[string]string{
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014).mkv":                       "movie Brindle Cove 2014",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Official Trailer.mkv":    "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) Teaser Trailer.mkv":        "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Director Commentary.mkv": "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Interview with Cast.mkv": "skip",
+		"Movies/Brindle Cove (2014)/Brindle Cove (2014) - Alternate Ending.mkv":    "skip",
+	}},
+	{id: "W39", files: map[string]string{
+		"Downloads/Evening.Ledger.2024.03.18.720p.WEB.mkv": "episode Evening Ledger 2024-03-18",
+		"Evening.Ledger.2024.03.19.Guest.Name.720p.mkv":    "episode Evening Ledger 2024-03-19",
+	}},
+	{id: "W40", files: map[string]string{"TV/Evening Ledger/The Evening Ledger 2024-03-25.mkv": "episode Evening Ledger 2024-03-25"}},
+	{id: "W41", files: map[string]string{
+		"TV/La Bahia/Temporada 1/Capitulo 5.mkv":   "episode La Bahia S1E5",
+		"TV/La Bahia/Temporada 1/Capítulo 06.mkv":  "episode La Bahia S1E6",
+		"TV/La Bahia/La Bahia [HDTV][Cap.117].avi": "episode La Bahia S1E17",
+	}},
+	{id: "W42", files: map[string]string{"TV/Gavan/Сезон 1/Серия 9.mkv": "episode Gavan S1E9"}},
+	{id: "W43", files: map[string]string{"TV/Liman/Sezon 1/Bölüm 15.mkv": "episode Liman S1E15"}},
+	{id: "W44", files: map[string]string{"TV/Kettle Kou/Season 1/第11話.mkv": "episode Kettle Kou S1E11"}},
+	{id: "W45", files: map[string]string{
+		"Movies/Ashgrove (2015).wtv":                                               "movie Ashgrove 2015",
+		"Movies/Ferrow (2016).dvr-ms":                                              "movie Ferrow 2016",
+		"Movies/Lantern (2017).mk3d":                                               "movie Lantern 2017",
+		"Movies/Network Trash Folder/Marrow (2018).mkv":                            "skip",
+		"Movies/Temporary Items/Marrow (2018).mkv":                                 "skip",
+		"Movies/RECYCLER/Marrow (2018).mkv":                                        "skip",
+		"Movies/~snapshot/Marrow (2018).mkv":                                       "skip",
+		"Downloads/intermediate/Kettle.Bay.S01E05.720p/Kettle.Bay.S01E05.720p.mkv": "skip",
+	}},
+	{id: "W46", files: map[string]string{
+		"Anime/[Kumo] Sora no Kettle (01-12) [BD 1080p]/[Kumo] Sora no Kettle - 01 [BD 1080p].mkv": "episode Sora no Kettle S?E?",
+		"[Kumo] Ferrow Gakuen - 10 END [1080p].mkv":                                                "episode Ferrow Gakuen S?E?",
+	}},
+	{id: "W47", files: map[string]string{
+		"TV/Kettle Bay/Season 1/Kettle Bay S01E01.mkv":                    "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle.Bay.S02.1080p.WEB-DL/Kettle.Bay.S02E01.mkv": "episode Kettle Bay S2E1",
+	}},
+	{id: "W48", files: map[string]string{
+		"TV/Kettle Bay (Complete)/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+	}},
+	{id: "W49", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle Bay S01E02.mkv": "episode Kettle Bay S1E2",
+		"TV/Kettle Bay/Pilot Extended.mkv":    "episode Kettle Bay S?E?",
+	}},
+	{id: "W50", files: map[string]string{"Movies/Brindle Cove/bc.mkv": "movie Brindle Cove -"}},
+	// An extra is one beside its title, however it is named; with no title beside it, a name with an
+	// extra's word in it is a title of its own.
+	{id: "W51", files: map[string]string{
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018).mkv":                   "movie Copper Hollow 2018",
+		"Movies/Copper Hollow (2018)/Copper.Hollow.2018.Trailer.1080p.mkv":       "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) [Trailer].mkv":         "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) (Trailer).mkv":         "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018)-trailer.1080p.mkv":     "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Trailer #2.mkv":      "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow Official Trailer.mkv":         "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow Teaser.mkv":                   "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Deleted Scene 1.mkv": "skip",
+		"Movies/Copper Hollow (2018)/Copper Hollow (2018) - Music Video.mkv":     "skip",
+		"Movies/Copper Hollow (2018)/Bonus/Making Of Part 1.mkv":                 "skip",
+	}},
+	// A title's apostrophe is in its extra's name too; Kodi's trailer carries the release's notes.
+	{id: "W51b", files: map[string]string{
+		"Movies/Barley's Ferry (2010)/Barley's Ferry (2010) 1080p DTS 6ch.mkv":              "movie Barley's Ferry 2010",
+		"Movies/Barley's Ferry (2010)/Barley's Ferry (2010) 1080p DTSHD-MA 6ch-trailer.flv": "skip",
+		"Movies/Barley's Ferry (2010)/Barley's Ferry (2010) - Director's Commentary.mkv":    "skip",
+	}},
+	{id: "W52", files: map[string]string{
+		"Movies/Night.Trailer.mkv":                         "movie Night Trailer -",
+		"Movies/The.Last.Sample.mkv":                       "movie The Last Sample -",
+		"Movies/Cut-Short.mkv":                             "movie Cut-Short -",
+		"Movies/the-other.avi":                             "movie the-other -",
+		"Movies/Outtakes.mkv":                              "movie Outtakes -",
+		"Movies/Ashgrove Short (2017).mkv":                 "movie Ashgrove Short 2017",
+		"Movies/.45 Kettles (2014).mkv":                    "movie 45 Kettles 2014",
+		"Movies/@Home Again (2019)/@Home Again (2019).mkv": "movie @Home Again 2019",
+	}},
+	{id: "W53", files: map[string]string{
+		"TV/Pelican Drift/Season 2/Pelican Drift - S02E08 - Trailer.mkv": "episode Pelican Drift S2E8",
+		"TV/Pelican Drift/Season 1/Pelican Drift - S01E01.mkv":           "episode Pelican Drift S1E1",
+		"TV/Pelican Drift/Pelican Drift - Christmas Special.mkv":         "episode Pelican Drift S?E?",
+	}},
+	{id: "W54", files: map[string]string{
+		"Docs/Ocean Halls/01 - The Deep.mkv":  "episode Ocean Halls S1E1",
+		"Docs/Ocean Halls/02 - The Shelf.mkv": "episode Ocean Halls S1E2",
+	}},
+	{id: "W55", files: map[string]string{"TV/Pelican Drift (Complete Series)/Season 1/Pelican Drift S01E01.mkv": "episode Pelican Drift S1E1"}},
+	{id: "W56", files: map[string]string{"TV/Pelican Drift Complete/Season 1/Pelican Drift S01E01.mkv": "episode Pelican Drift S1E1"}},
+	{id: "W57", files: map[string]string{"TV/Pelican Drift - The Complete Series/Season 1/Pelican Drift S01E01.mkv": "episode Pelican Drift S1E1"}},
+	{id: "W58", files: map[string]string{
+		"Movies/Copper.Hollow.2018.[1080p].mkv":  "movie Copper Hollow 2018",
+		"Movies/【Lantern Cove】(2016).mkv":        "movie Lantern Cove 2016",
+		"Movies/Copy of Marrow Point (2010).mkv": "movie Marrow Point 2010",
+		"Movies/Brindle Cove -2014-.mkv":         "movie Brindle Cove 2014",
+	}},
+	{id: "W59", files: map[string]string{"TV/Dōkoku/第1期/第3話.mkv": "episode Dōkoku S1E3"}},
+	{id: "W60", files: map[string]string{"TV/Guri/시즌 1/3화.mkv": "episode Guri S1E3"}},
+	{id: "W61", files: map[string]string{"TV/Med/Сезон 1/Med - 3 серия.mkv": "episode Med S1E3"}},
+	{id: "W62", files: map[string]string{"TV/Series 7 Club/Season 1/Series 7 Club S01E01.mkv": "episode Series 7 Club S1E1"}},
+	// A show's folder holding its episodes in folders it does not name a season by: one show.
+	{id: "W63", files: map[string]string{
+		"TV/Brass Horn/Season 1/Brass Horn S01E01.mkv":                       "episode Brass Horn S1E1",
+		"TV/Brass Horn/Seaosn 2/Brass Horn S02E01.mkv":                       "episode Brass Horn S2E1",
+		"TV/Brass Horn/new/Brass Horn S02E02.mkv":                            "episode Brass Horn S2E2",
+		"TV/Brass Horn/Vol 1/Brass Horn S02E03.mkv":                          "episode Brass Horn S2E3",
+		"TV/Brass Horn/BH S02/Brass Horn S02E04.mkv":                         "episode Brass Horn S2E4",
+		"TV/Brass Horn/Brass.Horn.S03.WEB-DL/Season 3/Brass.Horn.S03E01.mkv": "episode Brass Horn S3E1",
+		"TV/Brass Horn/Brass Horn Complete/Season 4/Brass Horn S04E01.mkv":   "episode Brass Horn S4E1",
+		"TV/Brass Horn/Brass Horn (Season 5)/Brass Horn S05E01.mkv":          "episode Brass Horn S5E1",
+		"TV/Brass Horn/Brass Horn DVD 1/Brass Horn S06E01.mkv":               "episode Brass Horn S6E1",
+	}},
+	{id: "W64", files: map[string]string{
+		"Downloads/Brass.Reed.S01E01.720p.mkv": "episode Brass Reed S1E1",
+		"Downloads/brass.reed.s01e02.720p.mkv": "episode Brass Reed S1E2",
+	}},
+	// Fansub releases, however their number is written; a film with a number in its title stays one.
+	{id: "W66", files: map[string]string{
+		"[Kumo] Hoshi Tanken 19 [1080p].mkv":             "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - Episode 17 [1080p].mkv":   "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - E20 [1080p].mkv":          "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - 05.5 [1080p].mkv":         "episode Hoshi Tanken S?E?",
+		"[Kumo] Hoshi Tanken - 01-03 [1080p].mkv":        "episode Hoshi Tanken S?E?",
+		"Hoshi Tanken - 10 [1080p].mkv":                  "episode Hoshi Tanken S?E?",
+		"[Kumo]_hoshi_tanken_-_04_[720p].mkv":            "episode Hoshi Tanken S?E?",
+		"Movies/[TrackerNet] Eleven Hands 11 (2001).mkv": "movie Eleven Hands 11 2001",
+		"Movies/Eleven Hands 11 [1080p].mkv":             "movie Eleven Hands 11 -",
+	}},
+	// A show's folder in a shows' catch-all numbers its episodes alone; a film's folder holds sequels.
+	{id: "W67", files: map[string]string{
+		"TV/Ivory Fen/Ivory Fen 1.mkv":           "episode Ivory Fen S?E?",
+		"TV/Ivory Fen/Ivory Fen 2.mkv":           "episode Ivory Fen S?E?",
+		"Anime/Hoshi Kettle/Hoshi Kettle 12.mkv": "episode Hoshi Kettle S?E?",
+		"TV/Ivory Bay/01.mkv":                    "episode Ivory Bay S?E?",
+		"TV/Ivory Bay/02.mkv":                    "episode Ivory Bay S?E?",
+		"Movies/Marrow Point/Marrow Point 2.mkv": "movie Marrow Point 2 -",
+		"Kids/Spotty Dog - Episode 3.mkv":        "episode Spotty Dog S1E3",
+		"TV/Spotty Cat/Spotty Cat - Ep 04.mkv":   "episode Spotty Cat S1E4",
+	}},
+	// A film in its own folder in a films' catch-all is a film, whatever its title says.
+	{id: "W68", files: map[string]string{
+		"Movies/Season One (2012)/Season One (2012).mkv":   "movie Season One 2012",
+		"Movies/Episode 50 (2011)/Episode 50 (2011).mkv":   "movie Episode 50 2011",
+		"Movies/Hour 2 of 3 (2018)/Hour 2 of 3 (2018).mkv": "movie Hour 2 of 3 2018",
+		"Movies/Grid 4x4/Grid 4x4.mkv":                     "movie Grid 4x4 -",
+		"Movies/Gravel Shore/Gravel Shore - 2.mkv":         "movie Gravel Shore - 2 -",
+	}},
+	// A title ending in a word an extra or a sample is named by is a title.
+	{id: "W69", files: map[string]string{
+		"TV/Cold Coast/Season 1/Cold Coast S01E02 - The Sample.mkv":       "episode Cold Coast S1E2",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E03 - Free Sample.mkv":    "episode Cold Coast S1E3",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E05 - Paper-Clip.mkv":     "episode Cold Coast S1E5",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E06 - Re-Interview.mkv":   "episode Cold Coast S1E6",
+		"TV/Cold Coast/Season 1/Cold Coast - S01E07 - Tidewater-clip.mkv": "skip",
+		"TV/Cold Coast/Season 1/Cold Coast S01E08 sample.mkv":             "skip",
+		"Movies/The Last Sample/The Last Sample.mkv":                      "movie The Last Sample -",
+		"Movies/Free Sample (2014).mkv":                                   "movie Free Sample 2014",
+		"Movies/Ferrow Lane (2019)/Ferrow Lane (2019) sample.mkv":         "skip",
+	}},
+	// A show named as a season folder is, in a shows' catch-all.
+	{id: "W70", files: map[string]string{
+		"TV/Series Seven/Series Seven S01E01.mkv":      "episode Series Seven S1E1",
+		"TV/Series Seven/Series Seven S01E02.mkv":      "episode Series Seven S1E2",
+		"TV/Season One/Season 1/Season One S01E01.mkv": "episode Season One S1E1",
+	}},
+	// An extra of a film whose title holds an extra's word, or is written in letters apart.
+	{id: "W72", files: map[string]string{
+		"Movies/Q.T. the Extra-Lunar (1982)/Q.T. the Extra-Lunar (1982) [imdbid-tt0000002] - [Remux-2160p][HEVC].mkv": "movie Q.T. the Extra-Lunar 1982",
+		"Movies/Q.T. the Extra-Lunar (1982)/Q.T. the Extra-Lunar (1982) 1080p DTSHD-MA 8ch-trailer.mp4":               "skip",
+		"Movies/Ferry Extra (2004)/Ferry Extra (2004).mkv":                                                            "movie Ferry Extra 2004",
+		"Movies/Ferry Extra (2004)/Ferry Extra (2004) Official Trailer.mkv":                                           "skip",
+	}},
+	// A miniseries' parts in a shows' catch-all are its episodes; a film's parts in a films' are one film.
+	{id: "W73", files: map[string]string{
+		"TV/Ridge Point/Ridge Point Part 1.mkv":       "episode Ridge Point S1E1",
+		"TV/Ridge Point/Ridge Point Part 2.mkv":       "episode Ridge Point S1E2",
+		"TV/Ridge Fall/Ridge Fall - Part One.mkv":     "episode Ridge Fall S1E1",
+		"TV/Ridge Fall/Ridge Fall - Part Two.mkv":     "episode Ridge Fall S1E2",
+		"Movies/Ridge Gate (2001)/Ridge Gate CD1.mkv": "movie Ridge Gate 2001",
+		"Movies/Ridge Gate (2001)/Ridge Gate CD2.mkv": "movie Ridge Gate 2001",
+	}},
+	// An extra named by its title's year and its kind, alone; or by its show beside an episode.
+	{id: "W74", files: map[string]string{
+		"Movies/Gravel Peak (2003) Trailer.mp4":                          "skip",
+		"Movies/Gravel Pass Trailer (2003).mkv":                          "movie Gravel Pass Trailer 2003",
+		"Movies/Gravel Moor (2003) Short.mkv":                            "movie Gravel Moor 2003",
+		"TV/Cold Bay/Cold Bay S01E01.mkv":                                "episode Cold Bay S1E1",
+		"TV/Cold Bay/Cold Bay - Making Of.mkv":                           "skip",
+		"TV/Cold Bay/Cold Bay - The Interview.mkv":                       "episode Cold Bay S?E?",
+		"Movies/Pale Mount (2009)/Pale Mount (2009).mkv":                 "movie Pale Mount 2009",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Photo Gallery.mkv": "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - TV Spot 2.mkv":     "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Blooper Reel.mkv":  "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Promo.mkv":         "skip",
+		"Movies/Pale Mount (2009)/Pale Mount (2009) - Storyboards.mkv":   "skip",
+	}},
+	// A show's folder in a shows' catch-all holds its episodes, however they are named or kept.
+	{id: "W75", files: map[string]string{
+		"TV/Puddle Pals/Puddle Pals - Big Splash.mp4":                          "episode Puddle Pals S?E?",
+		"Kids TV/Puddle Pups/Big Splash.mp4":                                   "episode Puddle Pups S?E?",
+		"TV/Tiddlywinks Farm/Tiddlywinks Farm - Series 2 - 05 - Muddy Day.mp4": "episode Tiddlywinks Farm S2E5",
+		"TV/Tiddlywinks Farm/Volume 1/01 Muddy Day.mp4":                        "episode Tiddlywinks Farm S1E1",
+		"TV/Tiddlywinks Farm/Volume 1/02 Windy Day.mp4":                        "episode Tiddlywinks Farm S1E2",
+		"TV/Hollowmere/Season 2/Disc 1/title_t00.mkv":                          "episode Hollowmere S?E?",
+		"TV/Grimsby Lanes/Grimsby Lanes S3/Grimsby Lanes - Episode 3.mkv":      "episode Grimsby Lanes S3E3",
+		"Recorded TV/Larchmont Road_ITV_2022_11_02_20_00_00.wtv":               "episode Larchmont Road 2022-11-02",
+		"Recorded TV/Larchmont Road_ITV_2022_11_09_20_00_00.wtv":               "episode Larchmont Road 2022-11-09",
+		"Miniseries/Dunmore Road/Dunmore Road Part One.mkv":                    "episode Dunmore Road S1E1",
+		"Miniseries/Dunmore Road/Dunmore Road Part Two.mkv":                    "episode Dunmore Road S1E2",
+	}},
+	// Among films, a file is a film: a collection's numbered films, a title with "4x4", MakeMKV's.
+	{id: "W76", files: map[string]string{
+		"Movies/Hazelgrot Trilogy/1. Hazelgrot.mkv":       "movie Hazelgrot -",
+		"Movies/Hazelgrot Trilogy/2. Hazelgrot Rises.mkv": "movie Hazelgrot Rises -",
+		"Movies/5x5 Fighters.mkv":                         "movie 5x5 Fighters -",
+		"Movies/Kids/Mudcar 4x4.mp4":                      "movie Mudcar 4x4 -",
+		"Movies/NETTLECOMBE_RISE/title_t00.mkv":           "movie NETTLECOMBE RISE -",
+		"Movies/Corvallo Nights/Corvallo Nights_t00.mkv":  "movie Corvallo Nights -",
+		"Movies/OSTREVIN_D1/OSTREVIN_D1_t00.mkv":          "movie OSTREVIN -",
+		"Movies/Unsorted/VID_20190601_123456.mp4":         "movie VID 20190601 123456 -",
+	}},
+	// Anime as Sonarr writes it, a remake's and a sequel's folders, old scene names, a tracker's site.
+	{id: "W77", files: map[string]string{
+		"Anime/Kumori Sora - 01.mkv":                                        "episode Kumori Sora S?E?",
+		"Anime/Kumori Sora - 02.mkv":                                        "episode Kumori Sora S?E?",
+		"Anime/Tsukishiro Kan Episode 09.mp4":                               "episode Tsukishiro Kan S1E9",
+		"TV/Starhaven/Starhaven (2005)/Season 1/Starhaven S01E01.mkv":       "episode Starhaven 2005 S1E1",
+		"TV/Starhaven/Starhaven (1978)/Season 1/Starhaven S01E01.mkv":       "episode Starhaven 1978 S1E1",
+		"TV/Kettlebridge/Kettlebridge 2/Season 1/Kettlebridge 2 S01E01.mkv": "episode Kettlebridge 2 S1E1",
+		"Downloads/larchmont.road.312.hdtv-lol.avi":                         "episode Larchmont Road S3E12",
+		"Downloads/larchmont.road.313.hdtv-lol.avi":                         "episode Larchmont Road S3E13",
+		"Movies/Fahrenheit.Lane.451.1080p.mkv":                              "movie Fahrenheit Lane 451 -",
+		"Downloads/www.Tracker.Example - Quillmere Two (2016) 720p.mkv":     "movie Quillmere Two 2016",
+		"Movies/Tracker.io - Brindlewood Four (2017).mkv":                   "movie Brindlewood Four 2017",
+	}},
+	// Re-score #6's misreads: a number in an anime's name, a dated anime, a batch, a recorder's
+	// names, a site's promo, a typo'd episode in a shows' catch-all, a TV capture's parts.
+	{id: "W78", files: map[string]string{
+		"Anime/[Kumo] Hoshizora 86 - 04 [1080p].mkv":                       "episode Hoshizora 86 S?E?",
+		"Anime/[Kumo] Ridgeback (2019) - 07 [1080p].mkv":                   "episode Ridgeback 2019 S?E?",
+		"Anime/[Kumo] Saltmarsh - 01-12 [Batch]/[Kumo] Saltmarsh - 03.mkv": "episode Saltmarsh S?E?",
+		"Movies/S01E01 (2019).mkv":                                         "movie S01E01 2019",
+		"Recordings/Wexcombe_20231105_2000.ts":                             "episode Wexcombe 2023-11-05",
+		"Movies/Trust.Me.mkv":                                              "movie Trust Me -",
+		"Downloads/Brackenridge (2014)/www.Torrent.to.mp4":                 "skip",
+		"Downloads/Brackenridge (2014)/RARBG.com.mp4":                      "skip",
+		"Downloads/Brackenridge (2014)/Brackenridge (2014).mkv":            "movie Brackenridge 2014",
+		"TV Shows/Pebble Pals Season 1/Pebble Pals - Rainy Day.mp4":        "episode Pebble Pals S?E?",
+		"TV Shows/Pebble Pals Season 1/Pebble Pals - Sunny Day.mp4":        "episode Pebble Pals S?E?",
+		"TV Shows/Pebble Pals Season 1/Pebbel Pals - Windy Day.mp4":        "episode Pebble Pals S?E?",
+	}},
+	// Re-score #7: a season folder's dashed number is that season's; "1.05" is season 1's fifth; a
+	// "Show Season 2" folder's numbers are season 2's; "Season I"; an episode titled "Sample".
+	{id: "W79", files: map[string]string{
+		"TV/Bramble House/Season 2/Bramble House - 03.mkv":         "episode Bramble House S2E3",
+		"TV/Bramble House/Season 2/Bramble House - 04 [1080p].mkv": "episode Bramble House S2E4",
+		"TV/Hedgerow/Season 1/1.05 Hedge.mkv":                      "episode Hedgerow S1E5",
+		"TV/Hedgerow/Season 2/2.01 - Gate.mkv":                     "episode Hedgerow S2E1",
+		"Puddle Pals Season 2/01 Big Splash.mp4":                   "episode Puddle Pals S2E1",
+		"Puddle Pals Season 2/02 Small Splash.mp4":                 "episode Puddle Pals S2E2",
+		"Kids/Puddle Pups Series 1/01 Big Splash.mp4":              "episode Puddle Pups S1E1",
+		"Kids/Puddle Pups Series 1/02 Small Splash.mp4":            "episode Puddle Pups S1E2",
+		"Bramble Hill Season 2/Episode 3.mkv":                      "episode Bramble Hill S2E3",
+		"TV/Thornbury/Season I/Thornbury - Hedge.mkv":              "episode Thornbury S?E?",
+		"TV/Thornbury/Season I/Thornbury S01E07 - Sample.mkv":      "episode Thornbury S1E7",
+	}},
+	// Re-score #7: films with no "Movies" folder above them — sequels, a saga, parts, a film named
+	// as its folder is — and a miniseries' "Part 1 of 3" loose at the top.
+	{id: "W80", files: map[string]string{
+		"Ironvale/Ironvale.mkv":                          "movie Ironvale -",
+		"Ironvale/Ironvale 2.mkv":                        "movie Ironvale 2 -",
+		"Ironvale/Ironvale 3.mkv":                        "movie Ironvale 3 -",
+		"Kids/Pippin Paws/Pippin Paws.mp4":               "movie Pippin Paws -",
+		"Kids/Pippin Paws/Pippin Paws 2.mp4":             "movie Pippin Paws 2 -",
+		"Kids/Pippin Paws/Pippin Paws 3 - Snowed In.mp4": "movie Pippin Paws 3 - Snowed In -",
+		"Gravelton Collection/Gravelton 1.mkv":           "movie Gravelton 1 -",
+		"Gravelton Collection/Gravelton 2.mkv":           "movie Gravelton 2 -",
+		"Thistledown Saga/1 - Thistledown.mkv":           "movie Thistledown -",
+		"Thistledown Saga/2 - Thistledown Rises.mkv":     "movie Thistledown Rises -",
+		"Old Stuff/Grimwold/Grimwold CD1.avi":            "movie Grimwold -",
+		"Old Stuff/Grimwold/Grimwold CD2.avi":            "movie Grimwold -",
+		"Larkspur/Larkspur - Disc 1.mkv":                 "movie Larkspur -",
+		"Larkspur/Larkspur - Disc 2.mkv":                 "movie Larkspur -",
+		"Kids/Series 7 (2001)/Series 7 (2001).mkv":       "movie Series 7 2001",
+		"Episode 50 (2011)/Episode 50 (2011).mkv":        "movie Episode 50 2011",
+		"Ashen Coast - Part 1 of 3.mkv":                  "episode Ashen Coast S1E1",
+		"Ashen Coast - Part 2 of 3.mkv":                  "episode Ashen Coast S1E2",
+	}},
+	// Re-score #7: plural extras, extras named by their film or another, a release group's promo;
+	// a dated daily show's file, a recording's day, a CJK episode.
+	{id: "W81", files: map[string]string{
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011).mkv":               "movie Glimmerfold 2011",
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011) - Interviews.mkv":  "skip",
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011) - Trailers.mkv":    "skip",
+		"Movies/Glimmerfold (2011)/Glimmerfold (2011) - Featurettes.mkv": "skip",
+		"Movies/Glimmerfold (2011)/Glimmerfold Sequel Teaser.mkv":        "skip",
+		"Movies/Glimmerfold (2011)/Ironvale Trailer.mkv":                 "skip",
+		"TV/Nightly Ledger/2024-03-14.mkv":                               "episode Nightly Ledger 2024-03-14",
+		"TV/Nightly Ledger/2024-03-15.mkv":                               "episode Nightly Ledger 2024-03-15",
+		"Recorded TV/Wexcombe - Hedge (2023-01-02 21-00).ts":             "episode Wexcombe 2023-01-02",
+		"Anime/[Kumo] Hoshi Kettle 第03話 [1080p].mkv":                     "episode Hoshi Kettle S?E?",
+	}},
+	// An episode whose title holds an extra's word is the episode: the kind must end the name, and
+	// a dated name is an episode as a marked one is.
+	{id: "W84", files: map[string]string{
+		"TV/Hilltop/Season 1/Hilltop S01E01.mkv":                             "episode Hilltop S1E1",
+		"TV/Hilltop/Season 1/Hilltop - Scene of the Crime.mkv":               "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Short Circuit.mkv":                    "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Other Worlds.mkv":                     "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Extra Time.mkv":                       "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Theme Park.mkv":                       "episode Hilltop S?E?",
+		"TV/Hilltop/Season 1/Hilltop - Clip Show.mkv":                        "episode Hilltop S?E?",
+		"TV/Night Talk/Night Talk S01E01.mkv":                                "episode Night Talk S1E1",
+		"TV/Night Talk/Night Talk - 2023-05-13 - Interview with Jo Fern.mkv": "episode Night Talk 2023-05-13",
+		"TV/Night Talk/Night.Talk.2023.05.15.Preview.Special.720p.mkv":       "episode Night Talk 2023-05-15",
+		"TV/Quillon Hall/Quillon Hall S01E01.mkv":                            "episode Quillon Hall S1E1",
+		"TV/Quillon Hall/Quillon Hall - 2018-04-02 - Recap.mkv":              "episode Quillon Hall 2018-04-02",
+		"Movies/Glimmerdale (2012)/Glimmerdale (2012).mkv":                   "movie Glimmerdale 2012",
+		"Movies/Glimmerdale (2012)/Glimmerdale (2012) - Trailer 2.mkv":       "skip",
+		"Movies/Glimmerdale (2012)/Glimmerdale (2012) - Deleted Scenes.mkv":  "skip",
+	}},
+	// Anime under "Anime/" with its group's tag last or none; DVR recordings named by show and day.
+	{id: "W85", files: map[string]string{
+		"Anime/Kumo Tetsu - 07 (BD 1080p) [Grp].mkv":   "episode Kumo Tetsu S?E?",
+		"Anime/Usagi Den - 06 [Grp][1080p].mkv":        "episode Usagi Den S?E?",
+		"Anime/Usagi Den 07 [1080p].mkv":               "episode Usagi Den S?E?",
+		"Anime/Usagi.Den.08.1080p.mkv":                 "episode Usagi Den S?E?",
+		"Recordings/Harbour Watch 2022-01-05 21-00.ts": "episode Harbour Watch 2022-01-05",
+		"Recordings/Harbour Watch 2022-01-12 21-00.ts": "episode Harbour Watch 2022-01-12",
+		"Recorded TV/Ferry Talk 2022-01-05.ts":         "episode Ferry Talk 2022-01-05",
+		"TV Recordings/Harbour Light - 20220105.ts":    "episode Harbour Light 2022-01-05",
+		"Hana.Ame.Ep01.1080p.mkv":                      "episode Hana Ame S1E1",
+	}},
+	// A generic file name takes its folder's title; a show's seasons in folders of their own are
+	// one show; a franchise's films named after it are films.
+	{id: "W86", files: map[string]string{
+		"Movies/Pikestaff/movie.mkv":             "movie Pikestaff -",
+		"Movies/Pikemoor (2004)/1.mkv":           "movie Pikemoor 2004",
+		"Pikefen/film.mkv":                       "movie Pikefen -",
+		"Owlpen Season 1/Owlpen 1x01.avi":        "episode Owlpen S1E1",
+		"Owlpen Season 2/Owlpen 2x01.avi":        "episode Owlpen S2E1",
+		"TV/Owlbeck Season 1/Owlbeck 01.mkv":     "episode Owlbeck S1E1",
+		"TV/Owlbeck Season 2/Owlbeck 01.mkv":     "episode Owlbeck S2E1",
+		"Wren Lake/Wren Lake and the Stone.avi":  "movie Wren Lake and the Stone -",
+		"Wren Lake/Wren Lake and the Cup.avi":    "movie Wren Lake and the Cup -",
+		"Wren Lake/Wren Lake and the Prince.avi": "movie Wren Lake and the Prince -",
+		"Movies/Thorn Hill 1x01.avi":             "episode Thorn Hill S1E1",
+	}},
+	// A season folder's "3 - 01" and "2-03"; a season run in brackets; Finnish seasons; a season's
+	// extras folder named by the show.
+	{id: "W87", files: map[string]string{
+		"TV/Bramley Court/Season 3/Bramley Court - 3 - 01.mkv": "episode Bramley Court S3E1",
+		"TV/Cobble Way/Season 2/2-03.mkv":                      "episode Cobble Way S2E3",
+		"TV/Brine Sea (Season 1-3)/Brine Sea S02E01.mkv":       "episode Brine Sea S2E1",
+		"TV/Satama/Kausi 1/Jakso 7.mkv":                        "episode Satama S1E7",
+		"TV/Brine Rock/Brine Rock S01 Extras/Interview.mkv":    "skip",
+		"TV/Brine Rock/Season 1/Brine Rock S01E01.mkv":         "episode Brine Rock S1E1",
+	}},
+	// Re-score #9: a loose episode beside its show's folder is that show's; a show's absolute numbers
+	// in three digits; "Season N Episode M" with no season folder; a show folder's kind in brackets.
+	{id: "W89", files: map[string]string{
+		"TV/Holm Lane/Season 1/Holm Lane S01E01.mkv":        "episode Holm Lane S1E1",
+		"TV/Holm Lane S01E02.mkv":                           "episode Holm Lane S1E2",
+		"Media/Gorse Hill/Gorse Hill S01E01.mkv":            "episode Gorse Hill S1E1",
+		"Media/Gorse.Hill.S01E02.mkv":                       "episode Gorse Hill S1E2",
+		"Anime/Kaze no Tetsu/[Grp] Kaze no Tetsu - 02.mkv":  "episode Kaze no Tetsu S?E?",
+		"Anime/[Grp] Kaze no Tetsu - 01.mkv":                "episode Kaze no Tetsu S?E?",
+		"TV/Saga Two/Saga Two - 145.mkv":                    "episode Saga Two S?E?",
+		"TV/Saga Two/Saga Two - 146.mkv":                    "episode Saga Two S?E?",
+		"TV/Bellcote/Bellcote - Season 5 Episode 2.mkv":     "episode Bellcote S5E2",
+		"TV/Bellcote/Bellcote (Season 4, Episode 6).mkv":    "episode Bellcote S4E6",
+		"TV/Dunbar/Dunbar - Season 2 - Episode 4.mkv":       "episode Dunbar S2E4",
+		"TV/Dunbar/Dunbar.Season.3.Episode.1.mkv":           "episode Dunbar S3E1",
+		"TV/Copper Vale (TV Series)/Copper Vale S01E01.mkv": "episode Copper Vale S1E1",
+		"TV/Grey Coast (Miniseries)/Grey Coast S01E01.mkv":  "episode Grey Coast S1E1",
+		"TV/Brinkley (Mini-Series)/Brinkley S01E01.mkv":     "episode Brinkley S1E1",
+		"TV/Tolley [TV]/Tolley S01E01.mkv":                  "episode Tolley S1E1",
+	}},
+	// Re-score #9: extras a film's folder holds by other words; editions before the year; a
+	// season's extras pack; a scene's proof; "Ep.03"; a two-parter's part; "Harbor 24 - 103"; a
+	// show's specials folder by another name.
+	{id: "W90", files: map[string]string{
+		"Movies/Ashgrove (2015)/Ashgrove (2015).mkv":                             "movie Ashgrove 2015",
+		"Movies/Ashgrove (2015)/Ashgrove - Extended Scene.mkv":                   "skip",
+		"Movies/Ashgrove (2015)/Ashgrove - Easter Eggs.mkv":                      "skip",
+		"Movies/Ashgrove (2015)/Ashgrove - Credits.mkv":                          "skip",
+		"Movies/Ashgrove (2015)/Ashgrove - Intro.mkv":                            "skip",
+		"Movies/Mirefield.Extended.Edition.1985.mkv":                             "movie Mirefield 1985",
+		"Movies/Kilner Special Edition (2006).mkv":                               "movie Kilner 2006",
+		"Downloads/Corran.Hill.S04.Extras/Corran.Hill.S04.Bloopers.mkv":          "skip",
+		"Downloads/Hexworth.2011.1080p-GRP/hexworth.2011.1080p-grp.mkv":          "movie hexworth 2011",
+		"Downloads/Hexworth.2011.1080p-GRP/Proof/hexworth-proof.mkv":             "skip",
+		"Downloads/Nightjar.Ep.03.mkv":                                           "episode Nightjar S1E3",
+		"Kids/Puffin Patrol/Puffin Patrol 1x02.mp4":                              "episode Puffin Patrol S1E2",
+		"Kids/Puffin Patrol/Puffin Patrol - Big Rescue Part 2.mp4":               "episode Puffin Patrol S?E?",
+		"TV/Harbor 24 (2011)/Season 1/Harbor 24 - 103.mkv":                       "episode Harbor 24 2011 S1E3",
+		"TV/Thimble Street/Thimble Street S01E01.mkv":                            "episode Thimble Street S1E1",
+		"TV/Thimble Street/Christmas Specials/Thimble Street - 2005 Special.avi": "episode Thimble Street S?E?",
+	}},
+	// Re-score #9: a folder's two shows, each its own.
+	{id: "W91", files: map[string]string{
+		"TV/Kettle/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+		"TV/Kettle/Kettle Run S01E01.mkv": "episode Kettle Run S1E1",
+		"TV/Kettle/Kettle Run S01E02.mkv": "episode Kettle Run S1E2",
+	}},
+	// Re-score #10: a loose episode's show is the one its name gives, unless its folder's name is
+	// that show's: an alphabet's or a to-watch folder names none.
+	{id: "W93", files: map[string]string{
+		"TV/C/Cinder Bay S01E01.mkv":             "episode Cinder Bay S1E1",
+		"TV/C/Cinder Bay S01E02.mkv":             "episode Cinder Bay S1E2",
+		"TV/B/Birch Hill S01E02.mkv":             "episode Birch Hill S1E2",
+		"TV/D-F/Dune Fen S02E01.mkv":             "episode Dune Fen S2E1",
+		"TV/New Episodes/Copper Wick S01E04.mkv": "episode Copper Wick S1E4",
+		"TV/To Watch/Copper Fen S01E01.mkv":      "episode Copper Fen S1E1",
+		"TV/Kettle Bay/kb.s01e01.mkv":            "episode Kettle Bay S1E1",
+		"TV/Kettle Bay/Kettle.Bay.US.S01E02.mkv": "episode Kettle Bay S1E2",
+	}},
+	// Re-score #10: a folder's files numbered after a name they share are that show's episodes;
+	// fansub tags last or in round brackets.
+	{id: "W94", files: map[string]string{
+		"Kids/Cartoons/Bunny Hop 01.mp4":        "episode Bunny Hop S?E?",
+		"Kids/Cartoons/Bunny Hop 02.mp4":        "episode Bunny Hop S?E?",
+		"Cartoons/Fizzy Fox 01.mp4":             "episode Fizzy Fox S?E?",
+		"Cartoons/Fizzy Fox 02.mp4":             "episode Fizzy Fox S?E?",
+		"Kids/Fizzy Cat - 01 - Paws.mp4":        "episode Fizzy Cat S?E?",
+		"Kids/Fizzy Cat - 02 - Claws.mp4":       "episode Fizzy Cat S?E?",
+		"Kids/Fizzy Hen/01.mp4":                 "episode Fizzy Hen S?E?",
+		"Kids/Fizzy Hen/02.mp4":                 "episode Fizzy Hen S?E?",
+		"Hana Kettle - 06 [SubGrp].mkv":         "episode Hana Kettle S?E?",
+		"Hana Pond 08 (1080p) [SubGrp].mkv":     "episode Hana Pond S?E?",
+		"(SubGrp) Yume Kettle - 09 (1080p).mkv": "episode Yume Kettle S?E?",
+		"{SubGrp} Yume Pond - 11.mkv":           "episode Yume Pond S?E?",
+	}},
+	// Re-score #10: a year inside a title; MakeMKV's older names and a season's disc label; a film
+	// recorded off air; Japanese seasons; numbered anime specials.
+	{id: "W95", files: map[string]string{
+		"Movies/Year 2000 Kettle.mkv":                                      "movie Year 2000 Kettle -",
+		"Movies/Back to 1985 Again.mkv":                                    "movie Back to 1985 Again -",
+		"TV/Class of 1999 Kettle/Season 1/Class of 1999 Kettle S01E01.mkv": "episode Class of 1999 Kettle S1E1",
+		"Movies/Ashgrove.2015.Directors.Cut.1080p.mkv":                     "movie Ashgrove 2015",
+		"Movies/IRON_TIDE/title00.mkv":                                     "movie IRON TIDE -",
+		"Rips/KETTLE_BAY_S1_D1/title_t00.mkv":                              "episode Kettle Bay S?E?",
+		"Rips/KETTLE_BAY_S1_D1/title_t01.mkv":                              "episode Kettle Bay S?E?",
+		"Recorded TV/Iron Spire (2011)_Film4_2022_05_01_21_00_00.wtv":      "movie Iron Spire 2011",
+		"TV/灰色の海岸/シーズン1/第5話.mkv":                                           "episode 灰色の海岸 S1E5",
+		"Anime/[Grp] Tsuki Kettle - SP01 [1080p].mkv":                      "episode Tsuki Kettle S0E1",
+	}},
+	// Re-score #12: a show with no folder of its own is one show however its releases hold it: its
+	// season packs, its episodes' own release folders, its loose episodes spelt with or without an
+	// apostrophe or their year, a named season's folder and a complete series' copy.
+	{id: "W103", files: map[string]string{
+		"Downloads/Complete/Ostlers.Way.S03.1080p.WEB-DL.DD5.1.H264-GRP/Ostlers.Way.S03E01.1080p.WEB-DL.DD5.1.H264-GRP.mkv": "episode Ostlers Way S3E1",
+		"Downloads/Complete/Ostlers.Way.S03.1080p.WEB-DL.DD5.1.H264-GRP/Ostlers.Way.S03E02.1080p.WEB-DL.DD5.1.H264-GRP.mkv": "episode Ostlers Way S3E2",
+		"Downloads/Complete/Ostlers.Way.S03E03.1080p.WEB.h264-OTHER[eztv]/ostlers.way.s03e03.1080p.web.h264-other.mkv":      "episode Ostlers Way S3E3",
+		"Hollyhock.Lane.S01.1080p.BluRay.x264-GRP/Hollyhock.Lane.S01E01.1080p.BluRay.x264-GRP.mkv":                          "episode Hollyhock Lane S1E1",
+		"Hollyhock Lane Season 2/Hollyhock Lane - 2x01.mkv":                                                                 "episode Hollyhock Lane S2E1",
+		"Hollyhock Lane S03/hl.s03e01.mkv":                               "episode Hollyhock Lane S3E1",
+		"Hollyhock Lane (Complete Series)/S04/Hollyhock Lane S04E01.mkv": "episode Hollyhock Lane S4E1",
+		"Pembertons.Orchard.S01E01.mkv":                                  "episode Pembertons Orchard S1E1",
+		"Pemberton's Orchard S01E02.mkv":                                 "episode Pembertons Orchard S1E2",
+		"Pembroke.Gate.2019.S01E01.mkv":                                  "episode Pembroke Gate 2019 S1E1",
+		"Pembroke.Gate.S01E02.mkv":                                       "episode Pembroke Gate 2019 S1E2",
+	}},
+	// Re-score #12: beside a film named as its folder, "<film> - <anything else>" is an extra unless
+	// what follows says a version (its quality, an edition, a part); a film's supplements folder is
+	// its extras'.
+	{id: "W104", files: map[string]string{
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013).mkv":                     "movie Corbel Ridge 2013",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Alternate Opening.mkv": "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Animatic.mkv":          "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Cast Interviews.mkv":   "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Concept Art.mkv":       "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - EPK.mkv":               "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Isolated Score.mkv":    "skip",
+		"Movies/Corbel Ridge (2013)/Corbel Ridge (2013) - Press Conference.mkv":  "skip",
+		"Movies/Corbel Ridge (2013)/DVD Extras/Menu.mkv":                         "skip",
+		"Movies/Corbel Ridge (2013)/Supplements/Doc 3.mkv":                       "skip",
+		"Movies/Vesper Hill (2009)/Vesper Hill (2009).mkv":                       "movie Vesper Hill 2009",
+		"Movies/Vesper Hill (2009)/Vesper Hill - Alternate Opening.mkv":          "skip",
+		"Movies/Brigg (2008)/Brigg (2008).mkv":                                   "movie Brigg 2008",
+		"Movies/Brigg (2008)/Brigg (2008)-proof.mkv":                             "skip",
+		"Movies/Lathe (2016)/Lathe (2016) - 1080p.mkv":                           "movie Lathe 2016",
+		"Movies/Lathe (2016)/Lathe (2016) - 2160p.mkv":                           "movie Lathe 2016",
+		"Movies/Lathe (2016)/Lathe (2016) - Directors Cut.mkv":                   "movie Lathe 2016",
+	}},
+	// Re-score #12: a show's trailers and featurettes are no episodes; an episode titled with the
+	// word is.
+	{id: "W105", files: map[string]string{
+		"TV/Gannet Rock/Season 1/Gannet Rock S01E01.mkv":               "episode Gannet Rock S1E1",
+		"TV/Gannet Rock/Season 1/Gannet Rock S01E05 - The Trailer.mkv": "episode Gannet Rock S1E5",
+		"TV/Gannet Rock/Season 1/Gannet Rock S01 Featurette.mkv":       "skip",
+		"TV/Gannet Rock/trailer.mkv":                                   "skip",
+		"TV/Gannet Rock/Gannet Rock - Official Trailer.mkv":            "skip",
+		"TV/Gannet Rock/Gannet Rock - Teaser.mkv":                      "skip",
+		"TV/Gannet Rock/Gannet Rock S02 Trailer.mkv":                   "skip",
+		"TV/Hallam Cross/Hallam Cross S01E01.mkv":                      "episode Hallam Cross S1E1",
+		"TV/Hallam Cross/Hallam Cross - Season 2 Trailer.mkv":          "skip",
+		"TV/Trailer Park Tales/Trailer Park Tales S01E01.mkv":          "episode Trailer Park Tales S1E1",
+	}},
+	// Re-score #12: a sequel kept in the first film's folder is the sequel; a show's "1-01" loose; a
+	// show's dated special beside its numbered episodes; a documentary's parts with their titles; a
+	// daily show by year and month; a film recorded with its year; disc labels with the season
+	// joined to its word or the disc; "Criterion" is a release's word.
+	{id: "W106", files: map[string]string{
+		"Movies/Brook (2010)/Brook (2010).mkv":                 "movie Brook 2010",
+		"Movies/Brook (2010)/Brook 2.mkv":                      "movie Brook 2 -",
+		"Movies/Heath (2011)/Heath (2011).mkv":                 "movie Heath 2011",
+		"Movies/Heath (2011)/Heath Part 2.mkv":                 "movie Heath Part 2 -",
+		"TV/Lower Wick 1-01.mkv":                               "episode Lower Wick S1E1",
+		"TV/Lower Wick 1-02.mkv":                               "episode Lower Wick S1E2",
+		"Kids/Busy Bees/Busy Bees 101.mp4":                     "episode Busy Bees S1E1",
+		"Kids/Busy Bees/Busy Bees 102.mp4":                     "episode Busy Bees S1E2",
+		"Kids/Busy Bees/Busy Bees - Christmas Buzz (2015).mp4": "episode Busy Bees S?E?",
+		"Docs/Wild Shore (2020) - Part 1 - Tides.mkv":          "episode Wild Shore 2020 S1E1",
+		"Docs/Wild Shore (2020) - Part 2 - Rocks.mkv":          "episode Wild Shore 2020 S1E2",
+		"TV/Morning Desk/2022/12/Morning Desk 2022-12-07.mkv":  "episode Morning Desk 2022-12-07",
+		"TV/Morning Desk/2022/11/Morning Desk 2022-11-30.mkv":  "episode Morning Desk 2022-11-30",
+		"Recorded TV/Grey Harbour (1958) 2022-01-01.ts":        "movie Grey Harbour 1958",
+		"Rips/DAPPLE_ROAD_SEASON1_DISC2/title_t00.mkv":         "episode Dapple Road S?E?",
+		"Rips/Saltwick Bay S1D2/title_t00.mkv":                 "episode Saltwick Bay S?E?",
+		"Movies/Ebbing.Shore.1962.Criterion.1080p.mkv":         "movie Ebbing Shore 1962",
+	}},
+	// Re-score #12's over-corrections: a remake's loose episodes beside the original's, and one with
+	// no year between two; a film's versions beside it; a film titled "1-22" loose among films; a
+	// film's untitled parts in a catch-all; a film's own trailer in its folder.
+	{id: "W107", files: map[string]string{
+		"Downloads/Hartfell.1990.S01E01.mkv":                                    "episode Hartfell 1990 S1E1",
+		"Downloads/Hartfell.2019.S01E01.mkv":                                    "episode Hartfell 2019 S1E1",
+		"Downloads/Hartfell.S01E02.mkv":                                         "episode Hartfell S1E2",
+		"Movies/Marrow Point (2010)/Marrow Point (2010).mkv":                    "movie Marrow Point 2010",
+		"Movies/Marrow Point (2010)/Marrow Point (2010) - 4K HDR.mkv":           "movie Marrow Point 2010",
+		"Movies/Marrow Point (2010)/Marrow Point (2010) - Extended Edition.mkv": "movie Marrow Point 2010",
+		"Movies/Marrow Point (2010)/Marrow Point (2010) - Trailer.mkv":          "skip",
+		"Movies/Catch 1-22.mkv":                                                 "movie Catch 1-22 -",
+		"Docs/Ferrow Lane (2010) - Part 1.mkv":                                  "movie Ferrow Lane 2010",
+		"Docs/Ferrow Lane (2010) - Part 2.mkv":                                  "movie Ferrow Lane 2010",
+	}},
+	// Re-score #13: a show's folder of episodes named by their titles alone, in an audience's
+	// catch-all, is a show's; a film's folder, a franchise's, a collection whose films give their
+	// years, and a shelf of home videos or concerts are not.
+	{id: "W108", files: map[string]string{
+		"Kids/Hop Pond/Big Carrot.mp4":                  "episode Hop Pond S?E?",
+		"Kids/Hop Pond/Frost Morning.mp4":               "episode Hop Pond S?E?",
+		"Children/Hop Mead/Frost Morning.mp4":           "episode Hop Mead S?E?",
+		"Children/Hop Mead/Lost Hat.mp4":                "episode Hop Mead S?E?",
+		"Home Videos/Beach Trip.mp4":                    "movie Beach Trip -",
+		"Home Videos/Garden Party.mp4":                  "movie Garden Party -",
+		"Concerts/Ferrow Band - Live.mkv":               "movie Ferrow Band - Live -",
+		"Concerts/Ashgrove Choir - Live.mkv":            "movie Ashgrove Choir - Live -",
+		"Kids/Tansy Fell/Tansy Fell.mp4":                "movie Tansy Fell -",
+		"Kids/Tansy Fell/Making Of.mp4":                 "skip",
+		"Kids/Glow Studio/Brindle Cove (2004).mp4":      "movie Brindle Cove 2004",
+		"Kids/Glow Studio/Copper Kite (2009).mp4":       "movie Copper Kite 2009",
+		"Family/Wren Lake/Wren Lake.mp4":                "movie Wren Lake -",
+		"Family/Wren Lake/Wren Lake 2.mp4":              "movie Wren Lake 2 -",
+		"Kids/Gorse Trilogy/Gorse Rising.mp4":           "movie Gorse Rising -",
+		"Kids/Gorse Trilogy/Gorse Falling.mp4":          "movie Gorse Falling -",
+		"Ashby Moor (2011)/Ashby Moor (2011).mkv":       "movie Ashby Moor 2011",
+		"Ashby Moor (2011)/Deleted Scene.mkv":           "skip",
+		"Movies/Cinder Shelf/Pale Orchard.mkv":          "movie Pale Orchard -",
+		"Movies/Cinder Shelf/Quiet Ferry.mkv":           "movie Quiet Ferry -",
+		"Movies/Ashlee Vane (2015)/4K/Ashlee Vane.mkv":  "movie Ashlee Vane 2015",
+		"Documentaries/Salt Roads/Salt Roads - Sea.mkv": "episode Salt Roads S?E?",
+		"Documentaries/Salt Roads/Salt Roads - Sky.mkv": "episode Salt Roads S?E?",
+	}},
+	// Re-score #13: one show is one show in a doubled folder, with an anime's "(TV)" tag, and with
+	// a recording's day bracketed or run together.
+	{id: "W109", files: map[string]string{
+		"TV/Moss Hollow/Season 1/Moss Hollow S01E01.mkv":             "episode Moss Hollow S1E1",
+		"TV/Moss Hollow/Moss Hollow/Season 2/Moss Hollow S02E01.mkv": "episode Moss Hollow S2E1",
+		"Anime/[Grp] Hana Kettle - 04 [1080p].mkv":                   "episode Hana Kettle S?E?",
+		"Anime/[Grp] Hana Kettle - 05 [1080p].mkv":                   "episode Hana Kettle S?E?",
+		"Anime/[Grp] Hana Kettle (TV) - 06 [1080p].mkv":              "episode Hana Kettle S?E?",
+		"Recordings/Kite Hill_20230102_20002100.ts":                  "episode Kite Hill 2023-01-02",
+		"Recordings/Kite Hill (2023-01-30).ts":                       "episode Kite Hill 2023-01-30",
+	}},
+	// Re-score #13: a miniseries' episodes among films say so, by "Episode 1", "E01" or "Night 1";
+	// a film called so is a film.
+	{id: "W110", files: map[string]string{
+		"Movies/Reed Wood/Reed Wood - Episode 1.mkv":                       "episode Reed Wood S1E1",
+		"Movies/Reed Wood/Reed Wood - Episode 2.mkv":                       "episode Reed Wood S1E2",
+		"Docs/Ocean Rooms - Episode 1.mkv":                                 "episode Ocean Rooms S1E1",
+		"Docs/Ocean Rooms - Episode 2.mkv":                                 "episode Ocean Rooms S1E2",
+		"Movies/Rook Hall Mini/Rook Hall Mini E01.mkv":                     "episode Rook Hall Mini S1E1",
+		"Movies/Rook Hall Mini/Rook Hall Mini E02.mkv":                     "episode Rook Hall Mini S1E2",
+		"Miniseries/Ash Vale (2008) - Night 1.mkv":                         "episode Ash Vale 2008 S1E1",
+		"Miniseries/Ash Vale (2008) - Night 2.mkv":                         "episode Ash Vale 2008 S1E2",
+		"Movies/Episode Nine (2014)/Episode Nine.mkv":                      "movie Episode Nine 2014",
+		"Movies/Night 2 (2019).mkv":                                        "movie Night 2 2019",
+		"Movies/Ninth Lantern Night (1996).mkv":                            "movie Ninth Lantern Night 1996",
+		"Movies/Kettle Wars/Kettle Wars Episode 4 (1977).mkv":              "movie Kettle Wars Episode 4 1977",
+		"Movies/Kettle Wars/Kettle Wars Episode 5 (1980).mkv":              "movie Kettle Wars Episode 5 1980",
+		"Movies/Slate Spindle Vol 2 (2004)/Slate Spindle Vol 2 (2004).mkv": "movie Slate Spindle Vol 2 2004",
+		"Movies/Ironvale/Ironvale 2.mkv":                                   "movie Ironvale 2 -",
+		"Movies/Ironvale/Ironvale 3.mkv":                                   "movie Ironvale 3 -",
+	}},
+	// Re-score #13: a film's disc folder alone is no title; its film's folder names it.
+	{id: "W111", files: map[string]string{
+		"Rips/Holm Dyke/Disc 1/title_t00.mkv":           "movie Holm Dyke -",
+		"DVD Rips/Holm Fen (2004)/Disc 1/title_t00.mkv": "movie Holm Fen 2004",
+	}},
+	// Re-score #13: a drama's release named "Show.E05.YYMMDD" is its fifth episode wherever it is.
+	{id: "W112", files: map[string]string{
+		"Downloads/Kettle.Love.E05.240301.1080p-NEXT.mp4": "episode Kettle Love S1E5",
+		"Korean/Kettle.Love.E06.240302.1080p-NEXT.mp4":    "episode Kettle Love S1E6",
+		"Moon.Lane.E01.240105.720p-NEXT.mp4":              "episode Moon Lane S1E1",
+	}},
+	// Re-score #13: a root named as a shelf ("/media/TV", "/media/Movies") is one, as a folder of
+	// that name in a root is: a household that adds its shows and films as two roots keeps them
+	// apart by them.
+	{id: "W114", root: "TV", files: map[string]string{
+		"Hop Glen/Frost Morning.mp4":                "episode Hop Glen S?E?",
+		"Hop Glen/Lost Hat.mp4":                     "episode Hop Glen S?E?",
+		"Kettle Bay/Season 1/Kettle Bay S01E01.mkv": "episode Kettle Bay S1E1",
+	}},
+	{id: "W115", root: "Movies", files: map[string]string{
+		"Pale Orchard/Pale Orchard.mkv":           "movie Pale Orchard -",
+		"Season One (2012)/Season One (2012).mkv": "movie Season One 2012",
+		"Grid 4x4 (2015).mkv":                     "movie Grid 4x4 2015",
+		"Cinder Shelf/Quiet Ferry.mkv":            "movie Quiet Ferry -",
+		"Cinder Shelf/Copper Lark.mkv":            "movie Copper Lark -",
+	}},
+	{id: "W116", root: "Kids", files: map[string]string{
+		"Hop Pond/Frost Morning.mp4": "episode Hop Pond S?E?",
+		"Hop Pond/Big Carrot.mp4":    "episode Hop Pond S?E?",
+		"Tansy Fell/Tansy Fell.mp4":  "movie Tansy Fell -",
+	}},
+	{id: "W117", root: "Anime", files: map[string]string{
+		"[Grp] Hana Kettle - 05 [1080p].mkv": "episode Hana Kettle S?E?",
+		"[Grp] Hana Kettle - 06 [1080p].mkv": "episode Hana Kettle S?E?",
+	}},
+	// Re-score #13: a show's volume folder is its show's; Chinese "第05集" is its fifth episode.
+	{id: "W113", files: map[string]string{
+		"Kids/Puddle Ducks/01 - Rain.mp4":         "episode Puddle Ducks S1E1",
+		"Kids/Puddle Ducks/02 - Wind.mp4":         "episode Puddle Ducks S1E2",
+		"Kids/Puddle Ducks Vol 2/03 - Mud.mp4":    "episode Puddle Ducks S1E3",
+		"Kids/Puddle Ducks Vol 2/04 - Frost.mp4":  "episode Puddle Ducks S1E4",
+		"Anime/【Grp】Kettle Hana 第05集 [1080p].mp4": "episode Kettle Hana S1E5",
+		"Anime/【Grp】Kettle Hana 第06集 [1080p].mp4": "episode Kettle Hana S1E6",
+	}},
+	// Re-score #16: a show's own folder grouped by volume, book, chapter, year, DVD or collection
+	// holds its episodes, as by season; "Book Two" and "Year 1" give the season. A volume's "03" is
+	// no number of the show's own, so the catalog places it.
+	{id: "W125", files: map[string]string{
+		"TV/Lisk Saga/Volume 2/Lisk Saga - 03.mkv":                   "episode Lisk Saga S?E?",
+		"TV/Lisk Saga/Book One/02 - Water.mkv":                       "episode Lisk Saga S1E2",
+		"TV/Lisk Saga/Book Two/Lisk Saga - Fire.mkv":                 "episode Lisk Saga S?E?",
+		"TV/Lisk Saga/DVD1/Episode 7.mkv":                            "episode Lisk Saga S1E7",
+		"TV/Lisk Saga/Chapter 2/04.mkv":                              "episode Lisk Saga S2E4",
+		"TV/Lisk Saga/Year 1/Lisk Saga - 11.mkv":                     "episode Lisk Saga S1E11",
+		"Kids/Tamsin Train/Volume 3/Tamsin Train - Brave Engine.mp4": "episode Tamsin Train S?E?",
+		"Kids/Tamsin Train/Volume 3/Tamsin Train - Slow Engine.mp4":  "episode Tamsin Train S?E?",
+		"Kids/Abbot Bear/Abbot Bear Vol 1/01 - Picnic.mp4":           "episode Abbot Bear S1E1",
+		"Kids/Abbot Bear/Abbot Bear Vol 1/02 - Kite.mp4":             "episode Abbot Bear S1E2",
+		"Rips/Holm Mere/Disc 1/title_t00.mkv":                        "movie Holm Mere -",
+		"Movies/Gorse Vale (2008)/Part 1/Gorse Vale.mkv":             "movie Gorse Vale 2008",
+		"Movies/Gorse Vale (2008)/Part 2/Gorse Vale.mkv":             "movie Gorse Vale 2008",
+	}},
+	// Re-score #16: a season's folder or pack on a films' shelf is a show's season; a film named as
+	// its folder with its year stays a film.
+	{id: "W126", files: map[string]string{
+		"Movies/Lumen Bay Season 1/01.mkv":                   "episode Lumen Bay S1E1",
+		"Movies/Lumen Bay Season 1/02.mkv":                   "episode Lumen Bay S1E2",
+		"Movies/Fennick Cove S02/01.mkv":                     "episode Fennick Cove S2E1",
+		"Movies/Fennick Cove S02/02.mkv":                     "episode Fennick Cove S2E2",
+		"Movies/Fennick Bank/Episode 1.mkv":                  "episode Fennick Bank S1E1",
+		"Movies/Fennick Bank/Episode 2.mkv":                  "episode Fennick Bank S1E2",
+		"Downloads/Pike.Moss.S02.1080p/01.mkv":               "episode Pike Moss S2E1",
+		"Downloads/Pike.Moss.S02.1080p/02.mkv":               "episode Pike Moss S2E2",
+		"Movies/Season One (2012)/Season One (2012).mkv":     "movie Season One 2012",
+		"Movies/Episode Nine (2014)/Episode Nine (2014).mkv": "movie Episode Nine 2014",
+	}},
+	// Re-score #16: a film's own "Specials" and "Subs" folders hold no titles; an anime release's
+	// notes in brackets are no part of its show's name.
+	{id: "W127", files: map[string]string{
+		"Movies/Ashwood (2015)/Ashwood (2015).mkv":                                    "movie Ashwood 2015",
+		"Movies/Ashwood (2015)/Specials/Making Ashwood.mkv":                           "skip",
+		"Downloads/Hollin.Ward.2017.1080p.BluRay.x264-GRP/Hollin.Ward.2017.1080p.mkv": "movie Hollin Ward 2017",
+		"Downloads/Hollin.Ward.2017.1080p.BluRay.x264-GRP/Subs/English.mkv":           "skip",
+		"Anime/[SubGrp] Kaze no Brindle - 04.mkv":                                     "episode Kaze no Brindle S?E?",
+		"Anime/[SubGrp] Kaze no Brindle (BD 1080p) - 05.mkv":                          "episode Kaze no Brindle S?E?",
+	}},
+	// Re-score #16: a show's episode named by its volume and number is the show's; a league's match
+	// named by its day is that day's.
+	{id: "W128", files: map[string]string{
+		"Kids/Abbot Bear/Abbot Bear - Volume 2 - 03 - Picnic.mp4": "episode Abbot Bear S?E?",
+		"Kids/Abbot Bear/Abbot Bear - Volume 2 - 04 - Kite.mp4":   "episode Abbot Bear S?E?",
+		"Sports/Lisk League 2023-10-05 Abbots vs Wexleys.mkv":     "episode Lisk League 2023-10-05",
+		"Sports/Lisk League 2023-10-12 Wexleys vs Abbots.mkv":     "episode Lisk League 2023-10-12",
+		"Sports/Lisk League/Season 2023/Lisk League S2023E04.mkv": "episode Lisk League S2023E4",
+	}},
+	// Re-score #17: a show's bare "E01" in its folder in a catch-all, a single season's folder on a
+	// films' shelf, a saga's film numbered without a dot, a misspelt episode in its show's folder,
+	// and a camera's clips.
+	{id: "W129", files: map[string]string{
+		"Downloads/Hollow Sea/E01.mkv":                "episode Hollow Sea S1E1",
+		"Downloads/Hollow Sea/E02.mkv":                "episode Hollow Sea S1E2",
+		"Movies/Pike Gate - Season 1/01.mkv":          "episode Pike Gate S1E1",
+		"Movies/Lantern Saga/01 Lantern Rising.mkv":   "movie Lantern Rising -",
+		"Movies/Lantern Saga/03 Lantern Reborn.mkv":   "movie Lantern Reborn -",
+		"TV/Kettle Bank/Kettle Bank S01E01.mkv":       "episode Kettle Bank S1E1",
+		"TV/Kettle Bank/Kettel Bank S01E03.mkv":       "episode Kettle Bank S1E3",
+		"TV/Kettle Bank/Kettle Bnak S01E04.mkv":       "episode Kettle Bank S1E4",
+		"Videos/Holiday 2018/MVI_1001.MOV":            "movie MVI 1001 -",
+		"Videos/Holiday 2018/MVI_1002.MOV":            "movie MVI 1002 -",
+		"Kids/Moss Mouse/Rainy Day.mp4":               "episode Moss Mouse S?E?",
+		"Kids/Moss Mouse/Kite Flying.mp4":             "episode Moss Mouse S?E?",
+		"Kids/Moss Mouse/Moss Mouse Movie (2019).mp4": "movie Moss Mouse Movie 2019",
+	}},
+	// Re-score #18: a show kept in several places is one show: its loose downloads, a second
+	// shelf's copy and a release's batch folders join its own folder; a remake of another year
+	// stays its own.
+	{id: "W130", files: map[string]string{
+		"TV/Gull Rock/Season 1/Gull Rock S01E01.mkv":                          "episode Gull Rock S1E1",
+		"Downloads/Gull.Rock.S02E02.720p.mkv":                                 "episode Gull Rock S2E2",
+		"TV/New/Gull.Rock.S03E02.mkv":                                         "episode Gull Rock S3E2",
+		"Incoming/Gull Rock S03E03.mkv":                                       "episode Gull Rock S3E3",
+		"TV/Unsorted/Corry Fen S02E02.mkv":                                    "episode Corry Fen S2E2",
+		"TV/Corry Fen/Season 1/Corry Fen S01E01.mkv":                          "episode Corry Fen S1E1",
+		"TV/Haven Hill/Season 1/Haven Hill S01E01.mkv":                        "episode Haven Hill S1E1",
+		"TV 2/Haven Hill/Season 2/Haven Hill S02E01.mkv":                      "episode Haven Hill S2E1",
+		"Anime/[Grp] Usagi Hana (01-12) [1080p]/[Grp] Usagi Hana - 01.mkv":    "episode Usagi Hana S?E?",
+		"Anime/[Grp] Usagi Hana S2 (13-24) [1080p]/[Grp] Usagi Hana - 13.mkv": "episode Usagi Hana S?E?",
+		"TV/Kettle Bay (2001)/Season 1/Kettle Bay (2001) S01E01.mkv":          "episode Kettle Bay 2001 S1E1",
+		"TV/Kettle Bay (2019)/Season 1/Kettle Bay (2019) S01E01.mkv":          "episode Kettle Bay 2019 S1E1",
+	}},
+	// Re-score #18: a film's copies named by their cut, framing, colour or voice are its versions,
+	// never skipped; one named by anything else is its extra.
+	{id: "W131", files: map[string]string{
+		"Movies/Hob Fen (2008)/Hob Fen (2008).mkv":                      "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Final Cut.mkv":          "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Open Matte.mkv":         "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Black and White.mkv":    "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - English Dub.mkv":        "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Theatrical.mkv":         "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Workprint.mkv":          "movie Hob Fen 2008",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Animatic.mkv":           "skip",
+		"Movies/Hob Fen (2008)/Hob Fen (2008) - Theatrical Trailer.mkv": "skip",
+		"Movies/Gloaming Wold (2019).m2t":                               "movie Gloaming Wold 2019",
+	}},
+	// Re-score #18: a shelf never names a show; a show's film beside its titled episodes leaves them
+	// its; a release's language, a disc's word and a specials' word leave the title.
+	{id: "W132", files: map[string]string{
+		"Anime/Kame Ep 5.mkv":                          "episode Kame S1E5",
+		"Anime/Kame Ep 6.mkv":                          "episode Kame S1E6",
+		"Anime/Hoshi Ep 5.mkv":                         "episode Hoshi S1E5",
+		"Kids/Pip Wood Ep 5.mp4":                       "episode Pip Wood S1E5",
+		"Kids/Pip Wood Ep 6.mp4":                       "episode Pip Wood S1E6",
+		"Kids/Peppy Hog/Peppy Hog - Muddy Puddles.mp4": "episode Peppy Hog S?E?",
+		"Kids/Peppy Hog/Peppy Hog - Rainy Day.mp4":     "episode Peppy Hog S?E?",
+		"Kids/Peppy Hog/Peppy Hog Movie (2019).mp4":    "movie Peppy Hog Movie 2019",
+		"Movies/Larkfield 2010 Hindi 720p WEBRip.mkv":  "movie Larkfield 2010",
+		"Kids/Peppy Cow DVD/Title 1.mp4":               "episode Peppy Cow S?E?",
+		"Kids/Peppy Cow DVD/Title 2.mp4":               "episode Peppy Cow S?E?",
+		"Anime/[Grp] Kame Specials - 01 [1080p].mkv":   "episode Kame S0E1",
+	}},
+	// Re-score #19: a release folder's fuller title over its file's short one; loose "Show E01"
+	// numbered alike; a release's creditless folder; an episode named by its number alone in
+	// Japanese; a film named as its folder whatever its name says; a video site's id.
+	{id: "W133", files: map[string]string{
+		"Wren.Harbor.2003.1080p.BluRay.x264-GRP/wren.2003.1080p.mkv": "movie Wren Harbor 2003",
+		"Bramblecourt E01.mkv":                                        "episode Bramblecourt S1E1",
+		"Bramblecourt E02.mkv":                                        "episode Bramblecourt S1E2",
+		"Anime/Yuki Monogatari/Yuki Monogatari - 01.mkv":              "episode Yuki Monogatari S?E?",
+		"Anime/Yuki Monogatari/Creditless/Yuki Monogatari - ED1.mkv":  "skip",
+		"Filme/青い森/第1話.mkv":                                           "episode 青い森 S1E1",
+		"Filme/青い森/第2話.mkv":                                           "episode 青い森 S1E2",
+		"Movies/Episode 7/Episode 7.mkv":                              "movie Episode 7 -",
+		"YouTube/Clay Workshop/How to throw a bowl [abcDEF12345].mp4": "movie How to throw a bowl -",
+	}},
+	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
+	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
+	// name only its words read as a shelf is one only among shelves.
+	// A site's name before a scene release's is no part of its show; a season pack's "S02.Bonus"
+	// video is its extra; "- Uncut" is an edition; a batch folder named "… Batch" or "… - 08
+	// [Batch]" is its show's; "- #09" numbers an anime's episode; a fansub's "- Movie 1 - Dawn" in
+	// its show's folder is a film.
+	// A film named by a kind of extra, in its own dated folder, is the film, never skipped; its
+	// release's sample beside it is a sample.
+	// A shelf names no show: an episode there named by its mark alone is no show's, as one loose at
+	// the top is, while one that names its show, or sits in its show's folder, is that show's.
+	{id: "W154", files: map[string]string{
+		"Downloads/S01E01.mkv":              "episode  S1E1",
+		"TV/S01E07.mkv":                     "episode  S1E7",
+		"Media/Unsorted/s02e05.mkv":         "episode  S2E5",
+		"Downloads/Tarnhollow S01E02.mkv":   "episode Tarnhollow S1E2",
+		"Pellbrook/S01E03.mkv":              "episode Pellbrook S1E3",
+		"TV/Corrow Fen/Season 1/S01E04.mkv": "episode Corrow Fen S1E4",
+		"Movies/S02E06 (2019).mkv":          "movie S02E06 2019",
+	}},
+	{id: "W150", files: map[string]string{
+		"Movies/Featurette (1999)/Featurette.mkv":                     "movie Featurette 1999",
+		"Movies/Deleted Scenes (2016)/Deleted Scenes.mkv":             "movie Deleted Scenes 2016",
+		"Movies/Behind the Scenes (2011)/Behind the Scenes.mkv":       "movie Behind the Scenes 2011",
+		"Movies/Trailers (2010)/Trailers.mkv":                         "movie Trailers 2010",
+		"Movies/Bloopers (2004)/Bloopers.mkv":                         "movie Bloopers 2004",
+		"Movies/Sample (2021)/Sample.mkv":                             "movie Sample 2021",
+		"Movies/Teaser (2003)/Teaser.mkv":                             "movie Teaser 2003",
+		"Movies/Other (2012)/Other.mkv":                               "movie Other 2012",
+		"Movies/Extras (2010)/Extras.mkv":                             "movie Extras 2010",
+		"Movies/Ashgrove Fell (2015)/Ashgrove Fell (2015).mkv":        "movie Ashgrove Fell 2015",
+		"Movies/Ashgrove Fell (2015)/Ashgrove Fell (2015)-sample.mkv": "skip",
+		"Movies/Ashgrove Fell (2015)/Trailer.mkv":                     "skip",
+		"TV/blackthorn.203.avi":                                       "episode Blackthorn S2E3",
+		"TV/Hawkmoor 105.avi":                                         "episode Hawkmoor S1E5",
+		"Anime/[Grp] Tsuki no Kawa - 19 [1080p].mkv":                  "episode Tsuki no Kawa S?E?",
+		"Anime/[Grp] Tsuki no Kawa - 19.5 [1080p].mkv":                "episode Tsuki no Kawa S?E?",
+		"Movies/Flight 714.avi":                                       "movie Flight 714 -",
+	}},
+	// A films' shelf's "Extras/" and "Bonus Features/", and a top "Trailers/", hold extras; a box's
+	// own extras folder too; a show's dashed extras are skipped where a dashed title is an episode;
+	// two episodes in one file hold both; a show's film in its folder is a film; another show named
+	// in full in a show's folder is that show's, its initials and its nickname the folder's; a
+	// bracketed sample is a sample; Sonarr's titled daily name is an episode.
+	{id: "W149", files: map[string]string{
+		"Movies/Wren Saga Box/Extras/Wren Saga Making Of.mkv":                                     "skip",
+		"Movies/Wren Saga Box/Bonus Disc/Wren Saga Documentary.mkv":                               "skip",
+		"Movies/Wren Saga Box/Wren Saga (2001).mkv":                                               "movie Wren Saga 2001",
+		"Movies/Extras/Tamber Sound Featurette.mkv":                                               "skip",
+		"Movies/Extras/Pinfold (2011).mkv":                                                        "movie Pinfold 2011",
+		"Downloads/Orrin.Gate.2018.1080p.WEB-DL.DD5.1-www.site.com.mkv":                           "movie Orrin Gate 2018",
+		"TV/Sorrelby/Season 1/Sorrelby S01E01.mkv":                                                "episode Sorrelby S1E1",
+		"TV/Sorrelby/Season 1/Sorrelby S01E02 RARBG.com.mp4":                                      "episode Sorrelby S1E2",
+		"Movies/Lovebirds.com.mkv":                                                                "movie Lovebirds com -",
+		"Anime/[Grp] Ame Furu - 07 [1080p] [ABCD1234]/[Grp] Ame Furu - 07 [1080p] [ABCD1234].mkv": "episode Ame Furu S?E?",
+		"Anime/[Grp] Ame Furu - 08 [1080p] [EF567890]/[Grp] Ame Furu - 08 [1080p] [EF567890].mkv": "episode Ame Furu S?E?",
+		"Movies/Velvet Moth 3D (2013).mkv":                                                        "movie Velvet Moth 2013",
+		"Downloads/RARBG.com.mp4":                                                                 "skip",
+		"Downloads/www.Torrent.to.mkv":                                                            "skip",
+		"Movies/Bog Wizard (2010)/Bog Wizard (2010).mkv":                                          "movie Bog Wizard 2010",
+		"Movies/Bog Wizard (2010)/._Bog Wizard (2010).mkv":                                        "skip",
+		"TV/Pennock Row/Season 1/Pennock Row S01E02.mkv":                                          "episode Pennock Row S1E2",
+		"TV/Pennock Row/Season 1/Pennock Row S01E02 Trailer.mkv":                                  "skip",
+		"TV/Pennock Row/Season 1/Pennock Row S01E02 Promo.mkv":                                    "skip",
+		"TV/Pennock Row/Season 1/Pennock.Row.S01E02.Preview.mkv":                                  "skip",
+		"TV/Pennock Row/Season 1/Pennock Row S01E03 Recap.mkv":                                    "episode Pennock Row S1E3",
+		"Movies/HDR.Kidsmoor.2018.mkv":                                                            "movie HDR Kidsmoor 2018",
+		"Movies/HDTV Heroes of Lark (2012).mkv":                                                   "movie HDTV Heroes of Lark 2012",
+		"Movies/720p.Copse.Ridge.2014.mkv":                                                        "movie Copse Ridge 2014",
+		"YouTube/Lathe Pete/20230105 - Bowl From A Log [abcDEF12345].mkv":                         "episode Lathe Pete 2023-01-05",
+		"YouTube/Lathe Pete/20230112 - Spoon Carving [ghiJKL67890].mkv":                           "episode Lathe Pete 2023-01-12",
+		"Recordings/Channel 9 - Yarlow Show - 2024-01-01.ts":                                      "episode Yarlow Show 2024-01-01",
+		"Recordings/Channel 9 - Fenmarsh News - 2024-01-02.ts":                                    "episode Fenmarsh News 2024-01-02",
+		"Recordings/2023-03-08 Ironfield.ts":                                                      "episode Ironfield 2023-03-08",
+		"Movies/Ashwick (2010)/Ashwick (2010).mkv":                                                "movie Ashwick 2010",
+		"Movies/Ashwick (2010)/Ashwick Short Film-short.mkv":                                      "skip",
+		"Movies/Ashwick (2010)/Cut-Short.mkv":                                                     "movie Cut-Short -",
+		"Movies/Bonus Features/Wren Saga Interviews.mkv":                                          "skip",
+		"Movies/Tamber Sound (2010)/Tamber Sound (2010).mkv":                                      "movie Tamber Sound 2010",
+		"Trailers/Gorse Edge (2012).mkv":                                                          "skip",
+		"Films/Gorse Edge (2012)/Gorse Edge (2012).mkv":                                           "movie Gorse Edge 2012",
+		"TV/Ashlow Run/Ashlow Run S01E01.mkv":                                                     "episode Ashlow Run S1E1",
+		"TV/Ashlow Run/Ashlow Run - Featurette - Sets.mkv":                                        "skip",
+		"TV/Ashlow Run/Ashlow Run - Cast Interview.mkv":                                           "skip",
+		"Anime/Kame Tsuki/Kame Tsuki - 01.mkv":                                                    "episode Kame Tsuki S?E?",
+		"Anime/Kame Tsuki/Kame Tsuki - Creditless ED.mkv":                                         "skip",
+		"Anime/Kame Tsuki/[Grp] Kame Tsuki - Next Episode Preview.mkv":                            "skip",
+		"TV/Tealby Moor/Tealby Moor 1x16.mkv":                                                     "episode Tealby Moor S1E16",
+		"TV/Tealby Moor/Tealby Moor 1x17 1x18.mkv":                                                "episode Tealby Moor S1E17-18",
+		"TV/Brackwold/Season 1/Brackwold - 01.mkv":                                                "episode Brackwold S1E1",
+		"TV/Brackwold/Season 1/Brackwold - 05-06.mkv":                                             "episode Brackwold S1E5-6",
+		"TV/Brackwold/Season 1/Brackwold 07 & 08.mkv":                                             "episode Brackwold S1E7-8",
+		"TV/Ivelmoor/Ivelmoor S01E01.mkv":                                                         "episode Ivelmoor S1E1",
+		"TV/Ivelmoor/Ivelmoor - The Movie.mkv":                                                    "movie Ivelmoor - The Movie -",
+		"Anime/Kame Shiro/Kame Shiro - 01.mkv":                                                    "episode Kame Shiro S?E?",
+		"Anime/Kame Shiro/Kame Shiro Movie.mkv":                                                   "movie Kame Shiro Movie -",
+		"TV/Kettlemere/Season 1/Kettlemere S01E01.mkv":                                            "episode Kettlemere S1E1",
+		"TV/Kettlemere/Season 1/Rookholt Hollow S01E05.mkv":                                       "episode Rookholt Hollow S1E5",
+		"TV/Kettlemere/Season 1/Rookholt.Hollow.S01E06.720p.mkv":                                  "episode Rookholt Hollow S1E6",
+		"TV/Kettlemere/Season 1/The Mere S01E07.mkv":                                              "episode Kettlemere S1E7",
+		"TV/Kettlemere/Season 1/KM S01E08.mkv":                                                    "episode Kettlemere S1E8",
+		"TV/Ashlow Run/Ashlow Run - The Interview.mkv":                                            "episode Ashlow Run S?E?",
+		"TV/Ashlow Run/Ashlow Run - Trailer Park.mkv":                                             "episode Ashlow Run S?E?",
+		"TV/Gullfen/Gullfen S01E04.mkv":                                                           "episode Gullfen S1E4",
+		"TV/Gullfen/Gullfen S01E05 [sample].mkv":                                                  "skip",
+		"DVR/Puzzle Lark (2019) - 2024-02-01 - The Long Clue.ts":                                  "episode Puzzle Lark 2019 2024-02-01",
+	}},
+	{id: "W148", files: map[string]string{
+		"Downloads/www.Torrentsite.com - Larch.Holm.S02E03.720p.mkv":              "episode Larch Holm S2E3",
+		"TV/Larch Holm/Season 2/Larch Holm S02E04.mkv":                            "episode Larch Holm S2E4",
+		"TV/Saltcove/Season 2/Saltcove S02E01.mkv":                                "episode Saltcove S2E1",
+		"TV/Saltcove/Season 2/Saltcove.S02.Bonus.Cast.Q&A.mkv":                    "skip",
+		"Movies/Gale Spar (2004)/Gale Spar (2004).mkv":                            "movie Gale Spar 2004",
+		"Movies/Gale Spar (2004)/Gale Spar - Uncut.mkv":                           "movie Gale Spar 2004",
+		"Anime/[Group] Aozora Gaku Batch/[Group] Aozora Gaku - 01 [BD 1080p].mkv": "episode Aozora Gaku S?E?",
+		"Anime/Aozora Gaku/[Group] Aozora Gaku - 03 [BD 1080p].mkv":               "episode Aozora Gaku S?E?",
+		"Anime/[Group] Yoru Kawa - #09 [720p].mkv":                                "episode Yoru Kawa S?E?",
+		"Anime/[Group] Yoru Kawa - #10 [720p].mkv":                                "episode Yoru Kawa S?E?",
+		"Anime/Kage Hana/[Grp] Kage Hana - 01 [1080p].mkv":                        "episode Kage Hana S?E?",
+		"Anime/Kage Hana/[Grp] Kage Hana - Movie 1 - Dawn [1080p].mkv":            "movie Kage Hana - Movie 1 - Dawn -",
+	}},
+	// A film's own dated folder holds the film and its unlabelled bonus videos, never a second copy:
+	// each keeps its own name, and a film kept there ("Return to Brackmere") is its own; "Name Part
+	// 1" and "Part 2" there are its parts; "Movies/Trailers/" and "Movies/Samples/" hold extras; a fansub's batch folder is its show's; "2019 - Season 6" is a season's folder; a
+	// pack's "- Menu" is no episode; "- Copy", "(copy 2)", "(Full Screen)" and a leading "720p."
+	// say nothing of a film's title.
+	{id: "W147", files: map[string]string{
+		"Movies/Brackmere (1990)/Brackmere (1990).mkv":                                               "movie Brackmere 1990",
+		"Movies/Brackmere (1990)/Pell Tamsin on Brackmere.mkv":                                       "movie Pell Tamsin on Brackmere -",
+		"Movies/Brackmere (1990)/Cast Q and A.mkv":                                                   "movie Cast Q and A -",
+		"Movies/Brackmere (1990)/Shooting the Storm.mkv":                                             "movie Shooting the Storm -",
+		"Movies/Brackmere (1990)/Return to Brackmere.mkv":                                            "movie Return to Brackmere -",
+		"Movies/Wexcombe (2008)/Wexcombe Part 1.mkv":                                                 "movie Wexcombe 2008",
+		"Movies/Wexcombe (2008)/Wexcombe Part 2.mkv":                                                 "movie Wexcombe 2008",
+		"Movies/Gale Spit (2004)/Gale Spit (2004).mkv":                                               "movie Gale Spit 2004",
+		"Movies/Trailers/Gale Spit (2004).mkv":                                                       "skip",
+		"Movies/Samples/Rook Fell (2009).mkv":                                                        "skip",
+		"Movies/Rook Fell (2009)/Rook Fell (2009).mkv":                                               "movie Rook Fell 2009",
+		"Anime/Hoshi Kettei/[SubGrp] Hoshi Kettei - 01 [1080p].mkv":                                  "episode Hoshi Kettei S?E?",
+		"Anime/[SubGrp] Hoshi Kettei (01-12) [1080p] [Batch]/[SubGrp] Hoshi Kettei - 04 [1080p].mkv": "episode Hoshi Kettei S?E?",
+		"TV/Fen Courier/2019 - Season 6/ep01.mkv":                                                    "episode Fen Courier S6E1",
+		"TV/Fen Courier/2019 - Season 6/ep02.mkv":                                                    "episode Fen Courier S6E2",
+		"Anime/[Grp] Tora Michi [01-24] [BD 1080p]/[Grp] Tora Michi - 01 [BD 1080p].mkv":             "episode Tora Michi S?E?",
+		"Anime/[Grp] Tora Michi [01-24] [BD 1080p]/Tora Michi - Menu.mkv":                            "skip",
+		"Movies/Copse Hollow (2011) - Copy.mkv":                                                      "movie Copse Hollow 2011",
+		"Movies/Copse Wood (2012) (copy 2).mkv":                                                      "movie Copse Wood 2012",
+		"Movies/Copse Lane (2013) (Full Screen).mkv":                                                 "movie Copse Lane 2013",
+		"Movies/720p.Copse.Ridge.2014.mkv":                                                           "movie Copse Ridge 2014",
+	}},
+	// A recording's guest or title between its show and its day is no part of the show; a fansub's
+	// "[06]" is its episode; a film's folder names a scene file shortened past knowing; a kids'
+	// show's "Show Christmas" beside its episodes is one; "Hex 10x10" on a films' shelf is a film;
+	// a franchise's "Ashby Movies/" holds films; a hidden file is no copy; "- Ending Theme" and
+	// "Extras - Disc 2/" are extras; "24.03.19" in a daily's folder is its day; a film named
+	// "Sample" in its own folder is listed.
+	{id: "W146", files: map[string]string{
+		"Recorded TV/The Late Lark - Guest Name - 2023-11-02.ts":  "episode The Late Lark 2023-11-02",
+		"Recorded TV/Night Owlet - The Long Road - 2023-11-02.ts": "episode Night Owlet 2023-11-02",
+		"Recorded TV/Night Owlet - Low Tide - 2023-11-09.ts":      "episode Night Owlet 2023-11-09",
+		"DVR/Ferry Hourglass - 2023-11-02 - Guest One.ts":         "episode Ferry Hourglass 2023-11-02",
+		"DVR/Ferry Hourglass - 2023-11-09 - Guest Two.ts":         "episode Ferry Hourglass 2023-11-09",
+		"Anime/[Grp] Kirin Sora [05] [1080p].mkv":                 "episode Kirin Sora S?E?",
+		"Anime/[Grp] Kirin Sora [06] [1080p].mkv":                 "episode Kirin Sora S?E?",
+		"Anime/[Grp]Tsuru Kaze[13][720p].mp4":                     "episode Tsuru Kaze S?E?",
+		"Movies/Corwick Dene/CD.1080p.mkv":                        "movie Corwick Dene -",
+		"Movies/Ashtree Combe/atc.mkv":                            "movie Ashtree Combe -",
+		"Kids/Bramble Hops/Bramble Hops 01.mp4":                   "episode Bramble Hops S?E?",
+		"Kids/Bramble Hops/Bramble Hops 02.mp4":                   "episode Bramble Hops S?E?",
+		"Kids/Bramble Hops/Bramble Hops Christmas.mp4":            "episode Bramble Hops S?E?",
+		"Movies/Hexlet 10x10.mkv":                                 "movie Hexlet 10x10 -",
+		"Movies/Gridwell 12x12/Gridwell 12x12.mkv":                "movie Gridwell 12x12 -",
+		"TV/Ashwell Movies/Ashwell (2010).mkv":                    "movie Ashwell 2010",
+		"TV/Ashwell Movies/Ashwell 2 (2012).mkv":                  "movie Ashwell 2 2012",
+		"Movies/Fenwick Garth (2003)/Fenwick Garth (2003).mkv":    "movie Fenwick Garth 2003",
+		"Movies/Fenwick Garth (2003)/.Fenwick Garth (2003).mkv":   "skip",
+		"Anime/[Grp] Usagi Tani - Ending Theme [1080p].mkv":       "skip",
+		"Anime/[Grp] Usagi Tani - 01 [1080p].mkv":                 "episode Usagi Tani S?E?",
+		"Movies/Pewter Combe (2007)/Pewter Combe (2007).mkv":      "movie Pewter Combe 2007",
+		"Movies/Pewter Combe (2007)/Extras - Disc 2/Doc.mkv":      "skip",
+		"TV/Breakfast Bellow/Breakfast.Bellow.24.03.19.mkv":       "episode Breakfast Bellow 2024-03-19",
+		"TV/Breakfast Bellow/Breakfast.Bellow.24.03.20.mkv":       "episode Breakfast Bellow 2024-03-20",
+		"Movies/Sample/Sample.mkv":                                "movie Sample -",
+	}},
+	// A box set's folder names its show before "Box Set"; MakeMKV's further titles beside a film
+	// are no second copy of it; a show's dashed name loose in a shows' shelf is an episode; a film
+	// in its own dated folder on a shows' shelf is a film; a show's misspelt folder joins the show
+	// its files spell; a season folder's "[01] Pilot", "(03) Found" and "#04 Home" are numbered,
+	// as is a fansub's "- 01" in "Season 1"; "Pass-2005" gives its year; "News Hour 2024 03 14" is
+	// a day's episode.
+	{id: "W145", files: map[string]string{
+		"TV/Copper Coast Box Set/Disc 1/Copper Coast 1x01.mkv":            "episode Copper Coast S1E1",
+		"TV/Copper Coast Box Set/Disc 2/Copper Coast 1x03.mkv":            "episode Copper Coast S1E3",
+		"TV/Brine Wold - Complete Box Set/Season 1/Brine Wold S01E01.mkv": "episode Brine Wold S1E1",
+		"Movies/Gilded Road/Gilded Road.mkv":                              "movie Gilded Road -",
+		"Movies/Gilded Road/Gilded Road_t03.mkv":                          "skip",
+		"TV/Gorse Hill - 12 - The End.mkv":                                "episode Gorse Hill S?E?",
+		"TV/Tansy Mill - Pilot.mkv":                                       "episode Tansy Mill S?E?",
+		"TV/Sundial Run (2017)/Sundial Run.mkv":                           "movie Sundial Run 2017",
+		"TV/Brackenfield/Season 1/Brackenfield S01E01.mkv":                "episode Brackenfield S1E1",
+		"TV/Brackenfiled/Season 2/Brackenfield S02E01.mkv":                "episode Brackenfield S2E1",
+		"TV/Hollow Pike/Season 1/[01] Pilot.mkv":                          "episode Hollow Pike S1E1",
+		"TV/Hollow Pike/Season 1/(03) Found.mkv":                          "episode Hollow Pike S1E3",
+		"TV/Hollow Pike/Season 1/#04 Home.mkv":                            "episode Hollow Pike S1E4",
+		"TV/Shiroi Kumo/Season 1/[Grp] Shiroi Kumo - 01.mkv":              "episode Shiroi Kumo S1E1",
+		"Quicksilver_Pass-2005.mp4":                                       "movie Quicksilver Pass 2005",
+		"News Hour 2024 03 14.ts":                                         "episode News Hour 2024-03-14",
+	}},
+	// Re-score #27: "101 Pilot" and "201 Return" in one folder are seasons 1's and 2's; a disc's
+	// folder "Show S02D1" is season 2's; "- 00" is an anime's episode 0; "S01 - 2010" is a season's
+	// folder; a BD pack's "CDs" and "Scans" hold no episodes; "Show Specials" alone is the show's
+	// specials; "- Recap" is no film; a spin-off in a film's folder is its own show.
+	{id: "W143", files: map[string]string{
+		"TV/Glimmer Bay/101 Pilot.mkv":                                     "episode Glimmer Bay S1E1",
+		"TV/Glimmer Bay/102 The Well.mkv":                                  "episode Glimmer Bay S1E2",
+		"TV/Glimmer Bay/201 Return.mkv":                                    "episode Glimmer Bay S2E1",
+		"TV/Glimmer Bay/202 Again.mkv":                                     "episode Glimmer Bay S2E2",
+		"TV/Glimmer Bay/1210 Late Year.mkv":                                "episode Glimmer Bay S12E10",
+		"TV/Hollin Bank/Hollin Bank S02D1/Episode 1.mkv":                   "episode Hollin Bank S2E1",
+		"TV/Hollin Bank/Hollin Bank S02D1/Episode 2.mkv":                   "episode Hollin Bank S2E2",
+		"TV/Hollin Bank/S03 - 2012/Episode 01.mkv":                         "episode Hollin Bank S3E1",
+		"Anime/[Grp] Hane Michi - 00 [1080p].mkv":                          "episode Hane Michi S?E?",
+		"Anime/[Grp] Hane Michi - 01 [1080p].mkv":                          "episode Hane Michi S?E?",
+		"Anime/[Grp] Kasa Hoshi [BD] Vol.2/[Grp] Kasa Hoshi - 05 [BD].mkv": "episode Kasa Hoshi S?E?",
+		"Anime/[Grp] Kasa Hoshi [BD] Vol.2/CDs/[Grp] Kasa Hoshi OST.mkv":   "skip",
+		"Anime/[Grp] Kasa Hoshi [BD] Vol.2/Scans/scan.mkv":                 "skip",
+		"Christmas/Holly Day Specials/Holly Day S00E05.mkv":                "episode Holly Day S0E5",
+		"Anime/[Grp] Hoshino Rail - Recap [1080p].mkv":                     "episode Hoshino Rail S?E?",
+		"Anime/[Grp] Hoshino Rail - 02 [1080p].mkv":                        "episode Hoshino Rail S?E?",
+		"Movies/Yarrow Lake (2001)/Yarrow Lake (2001).mkv":                 "movie Yarrow Lake 2001",
+		"Movies/Yarrow Lake (2001)/Yarrow Lake - The Series S01E01.mkv":    "episode Yarrow Lake - The Series S1E1",
+	}},
+	// Re-score #26: an episode's extra beside it, a season's promo and a pack's bloopers are no
+	// episodes; a fansub's "(Season 3)" is its season, not its show's name; a miniseries' folder
+	// holds episodes on any shelf; a show's misspelt season keeps its show; a leading year runs on
+	// a title; a film named as an episode's mark is a film; "1.01" and a British series' bare
+	// number number its episodes.
+	{id: "W142", files: map[string]string{
+		"TV/Gullhaven/Season 2/Gullhaven S02E01.mkv":                   "episode Gullhaven S2E1",
+		"TV/Gullhaven/Season 2/Gullhaven S02E02.mkv":                   "episode Gullhaven S2E2",
+		"TV/Gullhaven/Season 2/Gullhaven S02E01 - Commentary.mkv":      "skip",
+		"TV/Gullhaven/Season 2/Gullhaven - Season 2 Promo.mkv":         "skip",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01E01.720p.mkv":         "episode Fernhollow S1E1",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01E02.720p.mkv":         "episode Fernhollow S1E2",
+		"Media/Fernhollow.S01.720p/Fernhollow.S01.Bloopers.mkv":        "skip",
+		"Anime/[Judas] Ginga Neko (Season 3) - 04.mkv":                 "episode Ginga Neko S3E4",
+		"Movies/The Long Watch Miniseries/The Long Watch Part 1.mkv":   "episode The Long Watch S1E1",
+		"Movies/The Long Watch Miniseries/The Long Watch Part 2.mkv":   "episode The Long Watch S1E2",
+		"TV/Sorrel Bay/Season 2/Sorrel Bay S02E01.mkv":                 "episode Sorrel Bay S2E1",
+		"TV/Sorrel Bay/Sesaon 3/Sorrell Bay S03E01.mkv":                "episode Sorrel Bay S3E1",
+		"TV/2020 Vision Street/Season 1/2020 Vision Street S01E01.mkv": "episode 2020 Vision Street S1E1",
+		"Movies/2020 Vision Street (2021).mkv":                         "movie 2020 Vision Street 2021",
+		"Movies/S01E01 (2016)/S01E01 (2016).mkv":                       "movie S01E01 2016",
+		"TV/Gorse Hill/1.01 Arrival.avi":                               "episode Gorse Hill S1E1",
+		"TV/Gorse Hill/2.01 Return.avi":                                "episode Gorse Hill S2E1",
+		"TV/Larchmere Series 1/Larchmere 1 - The Gate.mkv":             "episode Larchmere S1E1",
+		"TV/Larchmere Series 2/Larchmere 1 - Return.mkv":               "episode Larchmere S2E1",
+	}},
+	// Re-score #25: a box set's disc folders hold episodes, or films of their own, as their files
+	// name them; a film's bonus disc holds its extras; another show's episodes in a show's folder
+	// are that show's; "1of2" and "_A"/"_B" are a film's parts; a sample or a making-of in a season
+	// is no episode; a volume's numbers run on its show's (W125); an edition after a dash leaves the
+	// title.
+	{id: "W141", files: map[string]string{
+		"TV/Corrow Fen/Disc 1/Corrow Fen 1x01.mkv":                                                                        "episode Corrow Fen S1E1",
+		"TV/Corrow Fen/Disc 2/Corrow Fen 1x05.mkv":                                                                        "episode Corrow Fen S1E5",
+		"TV/Lathe Row - The Complete Series/DVD 1/Lathe Row - 1x01.mkv":                                                   "episode Lathe Row S1E1",
+		"TV/Lathe Row - The Complete Series/DVD 2/Lathe Row - 1x05.mkv":                                                   "episode Lathe Row S1E5",
+		"Movies/Brisk Trilogy/Disc 1/Brisk.mkv":                                                                           "movie Brisk -",
+		"Movies/Brisk Trilogy/Disc 2/Brisk Returns.mkv":                                                                   "movie Brisk Returns -",
+		"Movies/Haldon Box Set/Disc 1/Haldon (2001).mkv":                                                                  "movie Haldon 2001",
+		"Movies/Haldon Box Set/Disc 2/Haldon 2 (2004).mkv":                                                                "movie Haldon 2 2004",
+		"Movies/Tarn Wick (2011)/Tarn Wick (2011).mkv":                                                                    "movie Tarn Wick 2011",
+		"Movies/Tarn Wick (2011)/Disc 2/Documentary.mkv":                                                                  "skip",
+		"Movies/Tarn Wick (2011)/Disc 2/Tarn Wick Bonus.mkv":                                                              "skip",
+		"Movies/Pell Gate (2003)/Pell Gate (2003).mkv":                                                                    "movie Pell Gate 2003",
+		"Movies/Pell Gate (2003)/Disc 2 - Extras/Doc.mkv":                                                                 "skip",
+		"TV/Corrow Fen/Season 2/Corrow Fen S02E01.mkv":                                                                    "episode Corrow Fen S2E1",
+		"TV/Corrow Fen/Season 2/Corrow Fen S02E02.mkv":                                                                    "episode Corrow Fen S2E2",
+		"TV/Corrow Fen/Season 2/Brindle Point S02E01.mkv":                                                                 "episode Brindle Point S2E1",
+		"TV/Corrow Fen/Season 2/Corrow Fen S02E02 - Sample.mkv":                                                           "skip",
+		"TV/Corrow Fen/Season 2/Making of Season 2.mkv":                                                                   "skip",
+		"Movies/Frith Downs 1of2.avi":                                                                                     "movie Frith Downs -",
+		"Movies/Frith Downs 2of2.avi":                                                                                     "movie Frith Downs -",
+		"Movies/Lorn Vale (1995)/LORN_VALE_A.avi":                                                                         "movie Lorn Vale 1995",
+		"Movies/Lorn Vale (1995)/LORN_VALE_B.avi":                                                                         "movie Lorn Vale 1995",
+		"Kids/Toot Lane Vol 1/01 Bath Time.mkv":                                                                           "episode Toot Lane S1E1",
+		"Kids/Toot Lane Vol 1/02 Bedtime.mkv":                                                                             "episode Toot Lane S1E2",
+		"Movies/Ashwood - The Directors Cut (2003).mkv":                                                                   "movie Ashwood 2003",
+		"TV/Dusk Weir/Season 03/Dusk Weir - S03E02 - Tide [WEB-1080p].mkv":                                                "episode Dusk Weir 2017 S3E2",
+		"TV/Dusk Weir/Season 03/Dusk Weir (2017) - S03E02 - Tide [HDTV-1080p].mkv":                                        "episode Dusk Weir 2017 S3E2",
+		"Movies/Moss Lantern (2010)/Moss Lantern (2010) [imdbid-tt0000001] - [Remux-1080p][DTS-HD MA 5.1][h264]-HiFi.mkv": "movie Moss Lantern 2010",
+		"Movies/Moss Lantern (2010)/Moss Lantern (2010) 1080p DTSHD-MA 6ch-trailer.flv":                                   "skip",
+		"TV/Garnet Hollow/Garnet Hollow S01E01.mkv":                                                                       "episode Garnet Hollow S1E1",
+		"TV/Garnet Hollow/Garnet Hollow S01E02.mkv":                                                                       "episode Garnet Hollow S1E2",
+		"TV/Garnet Hollow/Garnet Hollow Junior S01E01.mkv":                                                                "episode Garnet Hollow Junior S1E1",
+		"TV/Garnet Hollow/Garnet Hollow Junior S01E02.mkv":                                                                "episode Garnet Hollow Junior S1E2",
+	}},
+	{id: "W140", files: map[string]string{
+		"TV/Grand Prix/Grand Prix S2023E01.mkv":             "episode Grand Prix S2023E1",
+		"TV/Grand Prix/Grand Prix S2023E02.mkv":             "episode Grand Prix S2023E2",
+		"TV/Grand Prix/Round 05 - Harbour/Race.mkv":         "episode Grand Prix S?E?",
+		"TV/Grand Prix/Round 05 - Harbour/Qualifying.mkv":   "episode Grand Prix S?E?",
+		"TV/Ashcroft/Ashcroft S01E01.mkv":                   "episode Ashcroft S1E1",
+		"TV/Ashcroft/Ashcroft S01E02.mkv":                   "episode Ashcroft S1E2",
+		"TV/Ashcroft/Reel B/Ashcroft S02E01.mkv":            "episode Ashcroft S2E1",
+		"TV/Star Ridge/Star Ridge S01E01.mkv":               "episode Star Ridge S1E1",
+		"TV/Star Ridge/Star Ridge S01E02.mkv":               "episode Star Ridge S1E2",
+		"TV/Star Ridge/Animated Series/Season 1/S01E01.mkv": "episode Animated Series S1E1",
+		"TV/Star Ridge/Animated Series/Season 1/S01E02.mkv": "episode Animated Series S1E2",
+		"TV/Star Ridge/Deep Hollow/Deep Hollow S01E05.mkv":  "episode Deep Hollow S1E5",
+	}},
+	// Re-score #24, read as families: any kind of extra names an extras folder, in the plural or
+	// not, alone or after its title and notes; any label of what a show is, or the years it ran,
+	// leaves its name; a folder in a show's that numbers it alone or holds it whole is the show's.
+	{id: "W139", files: map[string]string{
+		"Movies/Harrowdene (2013)/Harrowdene (2013).mkv":                         "movie Harrowdene 2013",
+		"Movies/Harrowdene (2013)/Others/Poster Shoot.mkv":                       "skip",
+		"Movies/Rowan Tor (2012)/Rowan Tor (2012).mkv":                           "movie Rowan Tor 2012",
+		"Movies/Rowan Tor (2012)/Bloopers/Reel.mkv":                              "skip",
+		"Movies/Rowan Tor (2012)/Outtakes/Take 1.mkv":                            "skip",
+		"Movies/Rowan Tor (2012)/Making Of/Part A.mkv":                           "skip",
+		"Downloads/Kettle.Moor.S01.Bonus.Features/Kettle.Moor.Making.Of.mkv":     "skip",
+		"Complete/Pike.Mere.S02.Extras.720p/Pike.Mere.S02.Gag.Reel.mkv":          "skip",
+		"TV/Cold Mere (Limited Series)/Cold Mere 1of4.mkv":                       "episode Cold Mere S1E1",
+		"TV/Saltmarsh Lives (Docuseries)/Saltmarsh Lives S01E01.mkv":             "episode Saltmarsh Lives S1E1",
+		"TV/Hoshi Kaze (Anime)/Hoshi Kaze S01E01.mkv":                            "episode Hoshi Kaze S1E1",
+		"TV/Ledbury Row (2010-2015)/Season 1/Ledbury Row S01E01.mkv":             "episode Ledbury Row S1E1",
+		"TV/Fallowmead (2010 - 2015)/Season 1/Fallowmead S01E01.mkv":             "episode Fallowmead S1E1",
+		"Anime/[Grp] Kiri no Mori - 01 ~ 12 [Batch]/[Grp] Kiri no Mori - 04.mkv": "episode Kiri no Mori S?E?",
+		"Anime/[Grp] Kiri no Mori - 13.mkv":                                      "episode Kiri no Mori S?E?",
+		"TV/Bircham/01/01.mkv":                                                   "episode Bircham S1E1",
+		"TV/Bircham/02/01.mkv":                                                   "episode Bircham S2E1",
+		"TV/Bircham/00/01.mkv":                                                   "episode Bircham S0E1",
+		"TV/Bircham/03/x265/02.mkv":                                              "episode Bircham S3E2",
+		"TV/Bircham/04/4x01 - Gale/Bircham 4x01.mkv":                             "episode Bircham S4E1",
+		"TV/Bircham/05/Disc 1/Bircham 5x01.mkv":                                  "episode Bircham S5E1",
+		"TV/Hartmoor/Part 2/03.mkv":                                              "episode Hartmoor S?E?",
+		"TV/Hartmoor/Part 2/04.mkv":                                              "episode Hartmoor S?E?",
+		"TV/Hobcombe/Arc 1/01.mkv":                                               "episode Hobcombe S?E?",
+		"TV/Hobcombe/Arc 1/02.mkv":                                               "episode Hobcombe S?E?",
+		"TV/Hobmoor/All/01.mkv":                                                  "episode Hobmoor S?E?",
+		"TV/Hobmoor/All/02.mkv":                                                  "episode Hobmoor S?E?",
+	}},
+	// Re-score #23: a disc's MakeMKV titles number no episode; a show's yearless seasons apart from
+	// its dated ones are another show's; a web release's "Show.E11.1080p" is an episode anywhere; a
+	// year after an anime's padded number is the release's; a folder's American days settle its
+	// others.
+	{id: "W138", files: map[string]string{
+		"TV/Kite Shore/Kite Shore Disc 1/Kite Shore Disc 1_t01.mkv": "episode Kite Shore S?E?",
+		"TV/Kite Shore/Kite Shore Disc 1/Kite Shore Disc 1_t02.mkv": "episode Kite Shore S?E?",
+		"TV/Kite Shore/KITE_SHORE_DISC_3/KITE_SHORE_DISC_3_t00.mkv": "episode Kite Shore S?E?",
+		"TV/Moss Ridge/Season 6/Moss Ridge S06E01.mkv":              "episode Moss Ridge S6E1",
+		"TV/Moss Ridge (2019)/Season 1/Moss Ridge S01E01.mkv":       "episode Moss Ridge 2019 S1E1",
+		"Downloads/Moss.Ridge.S05E01.mkv":                           "episode Moss Ridge S5E1",
+		"Downloads/Moss.Ridge.2019.S01E02.mkv":                      "episode Moss Ridge 2019 S1E2",
+		"TV/Hoshi.no.Kaze.E11.1080p.WEB.mkv":                        "episode Hoshi no Kaze S1E11",
+		"Downloads/Hoshi.no.Kaze.E12.1080p.WEB.mkv":                 "episode Hoshi no Kaze S1E12",
+		"Anime/[Grp] Kaze Tori - 03 (1080p) [2019].mkv":             "episode Kaze Tori S?E?",
+		"Anime/[Grp] Kaze Tori - 06 (2019).mkv":                     "episode Kaze Tori S?E?",
+		"Anime/[Grp] Kaze Tori - 12 (2019).mkv":                     "episode Kaze Tori S?E?",
+		"Anime/[Grp] Kaze Tori - 112 (2019).mkv":                    "episode Kaze Tori S?E?",
+		"TV/Late Hour/Late Hour 05-06-2023.mkv":                     "episode Late Hour 2023-05-06",
+		"TV/Late Hour/Late Hour 03-14-2023.mkv":                     "episode Late Hour 2023-03-14",
+	}},
+	// Re-score #22: a kids' show numbered after its name with none named so alone is a show; an
+	// anime's film in its release's folder is a film; a count after a year runs on a title; an
+	// episode's trailer joined with a dot is its extra.
+	{id: "W137", files: map[string]string{
+		"Kids/Gumdrop Garage/Gumdrop Garage 1.mp4":                         "episode Gumdrop Garage S?E?",
+		"Kids/Gumdrop Garage/Gumdrop Garage 2.mp4":                         "episode Gumdrop Garage S?E?",
+		"Kids/Gumdrop Garage/Gumdrop Garage 10.mp4":                        "episode Gumdrop Garage S?E?",
+		"Kids/Ironvale/Ironvale.mp4":                                       "movie Ironvale -",
+		"Kids/Ironvale/Ironvale 2.mp4":                                     "movie Ironvale 2 -",
+		"Kids/Ironvale/Ironvale 3.mp4":                                     "movie Ironvale 3 -",
+		"Anime/[Grp] Kitsune Hana Movie [BD]/[Grp] Kitsune Hana Movie.mkv": "movie Kitsune Hana Movie -",
+		"Videos/Holiday 2019 Part 2.mp4":                                   "movie Holiday 2019 Part 2 -",
+		"Sports/Hollowball League 2023 Week 1 Harbor vs Ridge.mkv":         "movie Hollowball League 2023 Week 1 Harbor vs Ridge -",
+		"TV/Coldharbour/Season 1/Coldharbour S01E02.mkv":                   "episode Coldharbour S1E2",
+		"TV/Coldharbour/Season 1/Coldharbour S01E02.Trailer.mkv":           "skip",
+	}},
+	// Re-score #21: a film's file named with dashes and a release's mark is its folder's film; an
+	// episode's NFO names its show; Kodi's "Show - 101 - Title" numbers its episode; an anime's loose
+	// special and recap are its show's; a loose file's bracketed name with no group is its show; a
+	// show's yearless and dated folders are one show unless both number an episode; "Fennick 1-05"
+	// in its own folder and "(S07)" in a show's folder number their episodes.
+	{id: "W136", files: map[string]string{
+		"Movies/Pratt Wood (2004)/pratt-wood-1080p.mkv":             "movie Pratt Wood 2004",
+		"Movies/Lyle.Cove.2011.720p.BluRay/lyle-cove-720p.mkv":      "movie Lyle Cove 2011",
+		"Downloads/Moss.Bank.2013.1080p.BluRay/moss-bank-1080p.mkv": "movie Moss Bank 2013",
+		"TV/Unsorted/zz9.mkv":                                 "episode Ollerton S2E3",
+		"Downloads/vid1.mkv":                                  "episode Pollard Moor S1E4",
+		"TV/Kelso Rise - 101 - Pilot.mkv":                     "episode Kelso Rise S1E1",
+		"TV/Kelso Rise - 102 - Second.mkv":                    "episode Kelso Rise S1E2",
+		"TV/Cutters Bay/Cutters Bay - 101 - Pilot.mkv":        "episode Cutters Bay S1E1",
+		"TV/Cutters Bay/Cutters Bay - 214 - Late.mkv":         "episode Cutters Bay S2E14",
+		"Anime/[Grp] Kuroi Tori - 05.mkv":                     "episode Kuroi Tori S?E?",
+		"Anime/[Grp] Kuroi Tori - Special - 01.mkv":           "episode Kuroi Tori S0E1",
+		"Anime/[Grp] Kuroi Tori - Recap - 06.5.mkv":           "episode Kuroi Tori S?E?",
+		"TV/Dunmore/Season 1/Dunmore S01E01.mkv":              "episode Dunmore 2016 S1E1",
+		"TV/Dunmore (2016)/Season 2/Dunmore S02E01.mkv":       "episode Dunmore 2016 S2E1",
+		"TV/Harrowgate/Season 1/Harrowgate S01E01.mkv":        "episode Harrowgate S1E1",
+		"TV/Harrowgate (2019)/Season 1/Harrowgate S01E01.mkv": "episode Harrowgate 2019 S1E1",
+		"TV/Fennick/Fennick 1-05.mkv":                         "episode Fennick S1E5",
+		"TV/Fennick/Fennick 1-06.mkv":                         "episode Fennick S1E6",
+		"TV/Bracken Hall (S07)/Bracken Hall - 01.mkv":         "episode Bracken Hall S7E1",
+		"TV/Bracken Hall (S07)/Bracken Hall - 02.mkv":         "episode Bracken Hall S7E2",
+		"TV/[Tolland Mews] S01E09.mkv":                        "episode Tolland Mews S1E9",
+	}, nfo: map[string]string{
+		"TV/Unsorted/zz9.nfo": "<episodedetails><title>Nine</title><showtitle>Ollerton</showtitle><season>2</season><episode>3</episode></episodedetails>",
+		"Downloads/vid1.nfo":  "<episodedetails><title>Four</title><showtitle>Pollard Moor</showtitle><season>1</season><episode>4</episode></episodedetails>",
+	}},
+	// Re-score #20: loose "Show - Title" files sharing a show are its episodes; a show named with an
+	// S-number keeps it; one titled file in a show's season pack is its; a disc label's "WS", a
+	// war's span of years, a "1x1" in a show's name and a film's language codes leave its title.
+	{id: "W135", files: map[string]string{
+		"Kids/Hob Duck - Big Pond.mp4":                  "episode Hob Duck S?E?",
+		"Kids/Hob Duck - Wet Feet.mp4":                  "episode Hob Duck S?E?",
+		"Kids/Hob Duck - Bread Day.mp4":                 "episode Hob Duck S?E?",
+		"TV/Hob Goose - Big Pond.mp4":                   "episode Hob Goose S?E?",
+		"TV/Hob Goose - Wet Feet.mp4":                   "episode Hob Goose S?E?",
+		"TV/Unit S9/Unit S9 S01E01.mkv":                 "episode Unit S9 S1E1",
+		"TV/Unit S9/Unit S9 S01E02.mkv":                 "episode Unit S9 S1E2",
+		"TV/Squad S7/Season 1/Squad S7 S01E01.mkv":      "episode Squad S7 S1E1",
+		"Movies/Hob Saga Season 1/Hob Saga - Pilot.mkv": "episode Hob Saga S?E?",
+		"Rips/GLOAM_RISE_WS/title_t00.mkv":              "movie GLOAM RISE -",
+		"Movies/Gannet Hope Ep01.mkv":                   "episode Gannet Hope S1E1",
+		"Movies/Gannet Wars 1939-1945.mkv":              "movie Gannet Wars 1939-1945 -",
+	}},
+	// Re-score #19: a file's own <movie> NFO makes the film of a file only its shows' shelf placed.
+	{id: "W134", files: map[string]string{
+		"TV/Odd/abc123.mkv": "movie Velvet Ash 2004",
+	}, nfo: map[string]string{
+		"TV/Odd/abc123.nfo": "<movie><title>Velvet Ash</title><year>2004</year></movie>",
+	}},
+	// Re-score #15: a show and its remake loose together are two shows when both number an episode
+	// alike; a yearless copy beside a dated one with episodes of its own joins it.
+	{id: "W122", files: map[string]string{
+		"Downloads/Blue.Fen.S01E01.mkv":      "episode Blue Fen S1E1",
+		"Downloads/Blue.Fen.S01E02.mkv":      "episode Blue Fen S1E2",
+		"Downloads/Blue.Fen.2020.S01E01.mkv": "episode Blue Fen 2020 S1E1",
+		"Torrents/Grey.Moss.S01E02.mkv":      "episode Grey Moss 2021 S1E2",
+		"Torrents/Grey.Moss.2021.S01E01.mkv": "episode Grey Moss 2021 S1E1",
+	}},
+	// Re-score #15: a show's film kept with it is a film; an anime's OVA folder is its specials.
+	{id: "W123", files: map[string]string{
+		"Anime/Kaito Run/Kaito Run - 01.mkv":                                 "episode Kaito Run S?E?",
+		"Anime/Kaito Run/Kaito Run Movie 1 - Red Sky (2010).mkv":             "movie Kaito Run Movie 1 - Red Sky 2010",
+		"Anime/Kaito Run/OVA/Kaito Run OVA 1.mkv":                            "episode Kaito Run S0E1",
+		"TV/Westerly/Season 1/Westerly S01E01.mkv":                           "episode Westerly S1E1",
+		"TV/Westerly/Westerly Movie/Westerly Movie (2012).mkv":               "movie Westerly Movie 2012",
+		"TV/Movie Mossway/Season 1/Movie Mossway S01E01.mkv":                 "episode Movie Mossway S1E1",
+		"TV/Flicker Film/Season 1/Flicker Film - S01E02 - Finale (2019).mkv": "episode Flicker Film S1E2",
+	}},
+	// Re-score #15: a show's folder of episodes named by their titles at an unlabelled root's top
+	// is a show's, three or more of them; a shelf of home videos is not, nor a pair of films.
+	{id: "W124", files: map[string]string{
+		"Bumbleton/Hats.mp4":          "episode Bumbleton S?E?",
+		"Bumbleton/Coats.mp4":         "episode Bumbleton S?E?",
+		"Bumbleton/Boots.mp4":         "episode Bumbleton S?E?",
+		"Home Videos/Beach Trip.mp4":  "movie Beach Trip -",
+		"Home Videos/Birthday.mp4":    "movie Birthday -",
+		"Home Videos/First Steps.mp4": "movie First Steps -",
+		"Pellmore/Pellmore.mkv":       "movie Pellmore -",
+		"Pellmore/Pellmore 2.mkv":     "movie Pellmore 2 -",
+		"Pellmore/Pellmore 3.mkv":     "movie Pellmore 3 -",
+	}},
+	// Re-score #14: a show's volume folders inside its own folder hold its episodes, named by the
+	// show and a title, wherever the show's folder is.
+	{id: "W118", files: map[string]string{
+		"Kids/Wobble Wagon/Wobble Wagon Vol 1/Wobble Wagon - Wheels.mp4": "episode Wobble Wagon S?E?",
+		"Kids/Wobble Wagon/Wobble Wagon Vol 1/Wobble Wagon - Hills.mp4":  "episode Wobble Wagon S?E?",
+		"Kids/Wobble Wagon/Wobble Wagon Vol 2/Wobble Wagon - Mud.mp4":    "episode Wobble Wagon S?E?",
+		"Kids/Wobble Wagon/Wobble Wagon Vol 2/Wobble Wagon - Rain.mp4":   "episode Wobble Wagon S?E?",
+		"TV/Tinker Lane/Volume 1/Tinker Lane - Bolts.mp4":                "episode Tinker Lane S?E?",
+		"TV/Tinker Lane/Volume 1/Tinker Lane - Nuts.mp4":                 "episode Tinker Lane S?E?",
+	}},
+	// Re-score #14: a MakeMKV title named by its film, in the film's folder, keeps the folder's
+	// year; a bracketed title alone is the title, not a group's tag.
+	{id: "W119", files: map[string]string{
+		"Movies/Ferrisdale (1996)/Ferrisdale_t00.mkv":   "movie Ferrisdale 1996",
+		"Movies/Pellow Moor (2003)/PELLOW_MOOR_t00.mkv": "movie Pellow Moor 2003",
+		"Movies/[Carrow Fell] (2017).mkv":               "movie Carrow Fell 2017",
+		"Movies/[Carrow Mere].mkv":                      "movie Carrow Mere -",
+		"Movies/[Grp] Carrow Wold (2018).mkv":           "movie Carrow Wold 2018",
+	}},
+	// Re-score #14: a recorded film with its channel and day is the film; a file whose name
+	// carries another file's kind ("RARBG.txt.mp4") is a site's junk, not a copy of the film.
+	{id: "W120", files: map[string]string{
+		"Recordings/Hallow Point (2009) - Channel 9 - 2023-12-24.ts":                   "movie Hallow Point 2009",
+		"Recordings/Hallow Mere (2011) - 2023-12-25.ts":                                "movie Hallow Mere 2011",
+		"Recordings/Hallow Lane - 2023-12-26.ts":                                       "episode Hallow Lane 2023-12-26",
+		"Recordings/Hallow Lane - 2023-12-27.ts":                                       "episode Hallow Lane 2023-12-27",
+		"Downloads/Orrin.Field.2015.720p.BRRip.XviD.AC3-GRP/Orrin.Field.2015.720p.mp4": "movie Orrin Field 2015",
+		"Downloads/Orrin.Field.2015.720p.BRRip.XviD.AC3-GRP/SITE.txt.mp4":              "skip",
+		"Downloads/Orrin.Field.2015.720p.BRRip.XviD.AC3-GRP/Read Me.url.mkv":           "skip",
+		"Movies/Dotted.Line.Story (2010).mkv":                                          "movie Dotted Line Story 2010",
+	}},
+	// Re-score #14: a season's disc folder inside its show's folder is that show's; a loose
+	// anime's "Ep 05" is no part of its show's name, and "01-02" in a batch is two episodes.
+	{id: "W121", files: map[string]string{
+		"TV/Ashcombe/Ashcombe S1D1/Ashcombe_S1D1_t01.mkv": "episode Ashcombe S?E?",
+		"TV/Ashcombe/Season 2/Ashcombe S02E01.mkv":        "episode Ashcombe S2E1",
+		"Anime/Mizu no Oto - 04.mkv":                      "episode Mizu no Oto S?E?",
+		"Anime/Mizu no Oto Ep 05.mkv":                     "episode Mizu no Oto S1E5",
+		"Anime/[Kami] Shiro Neko - 01-02 [1080p].mkv":     "episode Shiro Neko S?E?",
+		"Anime/[Kami] Shiro Neko - 03 [1080p].mkv":        "episode Shiro Neko S?E?",
+	}},
+	// Re-score #11: a tracker's promo, a film's credits and Q&A, and a download still being written
+	// are no title.
+	{id: "W97", files: map[string]string{
+		"Movies/Pinecrest (2003)/Pinecrest (2003).mkv":                   "movie Pinecrest 2003",
+		"Movies/Pinecrest (2003)/ETRG.mp4":                               "skip",
+		"Movies/Pinecrest (2003)/YTS.mp4":                                "skip",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010).mkv":                   "movie Tarn Gate 2010",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010) - Opening Credits.mkv": "skip",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010) - End Credits.mkv":     "skip",
+		"Movies/Tarn Gate (2010)/Tarn Gate (2010) - Q&A.mkv":             "skip",
+		"Movies/Grimsdale (2010).partial.mkv":                            "skip",
+		"Movies/Grimsdale (2010).mkv":                                    "movie Grimsdale 2010",
+	}},
+	// Re-score #11: one show's loose episodes, written with and without brackets round its year, and
+	// beside its season packs' and named season's folders, are one show.
+	{id: "W98", files: map[string]string{
+		"TV/Fernhill (2019) - S01E03.mkv":                    "episode Fernhill 2019 S1E3",
+		"TV/Fernhill.2019.S01E01.mkv":                        "episode Fernhill 2019 S1E1",
+		"TV/Fernhill.2019.S01E02.mkv":                        "episode Fernhill 2019 S1E2",
+		"TV/Ravenmoor.S01.1080p.WEB-DL/Ravenmoor.S01E01.mkv": "episode Ravenmoor S1E1",
+		"TV/Ravenmoor.S02.1080p.WEB-DL/Ravenmoor.S02E01.mkv": "episode Ravenmoor S2E1",
+		"TV/Ravenmoor Season 3/Ravenmoor S03E01.mkv":         "episode Ravenmoor S3E1",
+		"TV/Ravenmoor.S04E01.mkv":                            "episode Ravenmoor S4E1",
+	}},
+	// Re-score #11: a franchise's or box set's films, numbered in order and each named by the
+	// franchise, are films wherever their folder is.
+	{id: "W99", files: map[string]string{
+		"Franchises/Ironclad Sky/01 - Ironclad Sky.mkv":        "movie Ironclad Sky -",
+		"Franchises/Ironclad Sky/02 - Ironclad Sky Rising.mkv": "movie Ironclad Sky Rising -",
+		"Box Sets/Fenmark Collection/01. Fenmark.mkv":          "movie Fenmark -",
+		"Box Sets/Fenmark Collection/02. Fenmark Two.mkv":      "movie Fenmark Two -",
+		"Stuff/Lantern Hill/1 - Lantern Hill.mkv":              "movie Lantern Hill -",
+		"Stuff/Lantern Hill/2 - Lantern Hill Returns.mkv":      "movie Lantern Hill Returns -",
+	}},
+	// Re-score #11: a show's or episode's title that holds "2x4" is no mark beside a real one: the
+	// full mark, or a season folder's own, says which episode it is. "108 Rain" in Season 1 is its
+	// eighth, as "108 - Rain" is, among episodes under a hundred too.
+	{id: "W100", files: map[string]string{
+		"TV/Block 2x4/Block 2x4 S01E01.mkv":           "episode Block 2x4 S1E1",
+		"TV/Block 2x4/Block 2x4 S01E02.mkv":           "episode Block 2x4 S1E2",
+		"TV/Lindenfield/Season 1/12 - 2x4.mkv":        "episode Lindenfield S1E12",
+		"TV/Lindenfield/Season 1/11 - Planks.mkv":     "episode Lindenfield S1E11",
+		"TV/Harrowgate/Season 1/108 Rain.mkv":         "episode Harrowgate S1E8",
+		"TV/Harrowgate/Season 1/109 Hail.mkv":         "episode Harrowgate S1E9",
+		"TV/Harrowgate/Season 1/07 Sleet.mkv":         "episode Harrowgate S1E7",
+		"TV/Kestrel Row/Season 2/Kestrel Row 2x4.mkv": "episode Kestrel Row S2E4",
+	}},
+	// Re-score #11's flagged: a documentary's "1of3", a season's disc label spelt out, a fansub's OVA
+	// with no number, and release words in a title with no year.
+	{id: "W101", files: map[string]string{
+		"Docs/Wild Moor 1of3.mkv":                       "episode Wild Moor S1E1",
+		"Docs/Wild Moor 2of3.mkv":                       "episode Wild Moor S1E2",
+		"Rips/HOLLOW_FEN_SEASON_2_DISC_1/title_t00.mkv": "episode Hollow Fen S?E?",
+		"Anime/[Grp] Kumo no Hana - OVA [1080p].mkv":    "episode Kumo no Hana S?E?",
+		"Movies/Pinecrest Widescreen.mkv":               "movie Pinecrest -",
+		"Movies/Brackenfold Special Edition.mkv":        "movie Brackenfold -",
+		"Movies/Sallowmere (2004)/VTS_01_1.VOB":         "movie Sallowmere 2004",
+	}},
+	// Re-score #11's over-corrections: a film's title that holds a mark's shape, a sequel's number in
+	// a franchise's folder, a show's "Part" in a documentary's, and a film's credits named alone.
+	{id: "W102", files: map[string]string{
+		"Movies/Grid 4x4 (2014).mkv":                        "movie Grid 4x4 2014",
+		"Movies/Credits (2019).mkv":                         "movie Credits 2019",
+		"Franchises/Marrow Point/Marrow Point (2010).mkv":   "movie Marrow Point 2010",
+		"Franchises/Marrow Point/Marrow Point 2 (2012).mkv": "movie Marrow Point 2 2012",
+		"TV/Ocean Halls/01 - Ocean Halls - The Deep.mkv":    "episode Ocean Halls S1E1",
+		"TV/Ocean Halls/02 - Ocean Halls - Shallows.mkv":    "episode Ocean Halls S1E2",
+		"Movies/Grimsdale Partial (2015).mkv":               "movie Grimsdale Partial 2015",
+	}},
+	// Re-score #10's over-corrections: a sequel's number, a film's tag last, a title's leading
+	// number, a film's year with its edition, a show named by a letter, a film's ripped titles.
+	{id: "W96", files: map[string]string{
+		"Movies/Apollo Ridge 13 [Criterion].mkv":      "movie Apollo Ridge 13 -",
+		"Kids/Ironvale 2.mkv":                         "movie Ironvale 2 -",
+		"Kids/Ironvale 3.mkv":                         "movie Ironvale 3 -",
+		"Movies/Ashgrove 2015 Directors Cut.mkv":      "movie Ashgrove 2015",
+		"Movies/Class of 1999 (1990).mkv":             "movie Class of 1999 1990",
+		"Movies/Kettle Bay 2019 Remastered.mkv":       "movie Kettle Bay 2019",
+		"Rips/Ashgrove (2015)/01.mkv":                 "movie Ashgrove 2015",
+		"Rips/Ashgrove (2015)/02.mkv":                 "movie Ashgrove 2015",
+		"TV/V/V S01E01.mkv":                           "episode V S1E1",
+		"TV/V/V S01E02.mkv":                           "episode V S1E2",
+		"Kids/Hollow Pond (2010).mkv":                 "movie Hollow Pond 2010",
+		"Downloads/Ferrow Lane - 07 [Remastered].mkv": "movie Ferrow Lane - 07 -",
+	}},
+	// Re-score #9's over-corrections: a show's folder whose files add a country; a film named by an
+	// edition's word; an episode titled "Credits" beside marked ones; a film with "Ep" in its name.
+	{id: "W92", files: map[string]string{
+		"TV/Brackley/Brackley US S01E01.mkv":                "episode Brackley S1E1",
+		"TV/Brackley/Brackley US S01E02.mkv":                "episode Brackley S1E2",
+		"Movies/The Final Cut (2004).mkv":                   "movie The Final Cut 2004",
+		"Movies/The Extended (2010).mkv":                    "movie The Extended 2010",
+		"Movies/Remastered (2011).mkv":                      "movie Remastered 2011",
+		"TV/Lowmoor/Lowmoor S01E01.mkv":                     "episode Lowmoor S1E1",
+		"TV/Lowmoor/Lowmoor - Credits.mkv":                  "episode Lowmoor S?E?",
+		"TV/Star Gate Row/Star Gate Row Origins S01E01.mkv": "episode Star Gate Row Origins S1E1",
+		"TV/Star Gate Row/Star Gate Row Beyond S01E01.mkv":  "episode Star Gate Row Beyond S1E1",
+		"Movies/Deep Ep (2018).mkv":                         "movie Deep Ep 2018",
+	}},
+	// Re-score #8's over-corrections: films kept with anime, a film recorded with no day, an episode
+	// titled by a kind's word and more, a film's folder with an extras folder of its own name.
+	{id: "W88", files: map[string]string{
+		"Anime/Kumo Tetsu (2016)/Kumo Tetsu (2016).mkv":            "movie Kumo Tetsu 2016",
+		"Anime/Hoshizora The Movie (2015).mkv":                     "movie Hoshizora The Movie 2015",
+		"Recordings/Gravel Moor (2019).ts":                         "movie Gravel Moor 2019",
+		"TV/Hilltop/Season 2/Hilltop S02E01.mkv":                   "episode Hilltop S2E1",
+		"TV/Hilltop/Season 2/Hilltop - Trailer Park.mkv":           "episode Hilltop S?E?",
+		"TV/Hilltop/Season 2/Hilltop - Interview with a Ghost.mkv": "episode Hilltop S?E?",
+		"Movies/Sallowmere (2008)/Sallowmere (2008).mkv":           "movie Sallowmere 2008",
+		"Movies/Sallowmere (2008)/Sallowmere Extras/Cast.mkv":      "skip",
+		"Movies/Kettlewick (2013)/The Movie.mkv":                   "movie Kettlewick 2013",
+	}},
+	// Re-score #7's over-corrections: a film named by a kind in its own folder, a day's home video,
+	// a show's folder holding one video named as the show, a DVR-less dated film, a pack with ids.
+	{id: "W83", files: map[string]string{
+		"Movies/Night Trailer (2010)/Night Trailer.mkv":    "movie Night Trailer 2010",
+		"Home Videos/2019-06-01.mp4":                       "movie 2019-06-01 -",
+		"Kids/Pebble Pals/Pebble Pals.mp4":                 "episode Pebble Pals S?E?",
+		"Kids/Pebble Pals/Pebble Pals - Rainy Day.mp4":     "episode Pebble Pals S?E?",
+		"Kids/Pebble Pals/Pebble Pals - Sunny Day.mp4":     "episode Pebble Pals S?E?",
+		"Concerts/Ferrow Band - Live (2019).mkv":           "movie Ferrow Band - Live 2019",
+		"Ashen Point Part 2 (2009)/Ashen Point Part 2.mkv": "movie Ashen Point Part 2 2009",
+	}},
+	// Re-score #7: one show in two release folders, or in a show's folder and a release's.
+	{id: "W82", files: map[string]string{
+		"Downloads/Bramble.House.S01.720p.WEB-DL/Bramble.House.S01E01.720p.WEB-DL.mkv": "episode Bramble House S1E1",
+		"Downloads/Bramble.House.S02.720p.WEB-DL/Bramble.House.S02E01.720p.WEB-DL.mkv": "episode Bramble House S2E1",
+		"TV/Kettle Lane/Season 1/Kettle Lane S01E01.mkv":                               "episode Kettle Lane S1E1",
+		"TV/Kettle.Lane.S02.720p.WEB-DL/Kettle.Lane.S02E01.720p.WEB-DL.mkv":            "episode Kettle Lane S2E1",
+		"Downloads/Hob.Lane.S01E03.720p.mkv":                                           "episode Hob Lane S1E3",
+		"Downloads/HOB.LANE.S01E04.mkv":                                                "episode Hob Lane S1E4",
+	}},
+	// A franchise's folder holds its shows, each its own.
+	{id: "W65", files: map[string]string{
+		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E01.mkv": "episode Star Ridge Origins S1E1",
+		"TV/Star Ridge/Star Ridge Origins/Season 1/Star Ridge Origins S01E02.mkv": "episode Star Ridge Origins S1E2",
+		"TV/Star Ridge/Star Ridge Beyond/Season 1/Star Ridge Beyond S01E01.mkv":   "episode Star Ridge Beyond S1E1",
+	}},
+	// Episode marks as other apps and languages write them, and one file of several.
+	{id: "W15", files: map[string]string{
+		"TV/Kettle Bay/Kettle Bay 1x2.avi":               "episode Kettle Bay S1E2",
+		"TV/Kettle Bay/Kettle Bay S01Ep03.avi":           "episode Kettle Bay S1E3",
+		"TV/Kettle Bay/Kettle Bay S01 - E04.avi":         "episode Kettle Bay S1E4",
+		"TV/Kettle Bay/Kettle Bay T01E05.avi":            "episode Kettle Bay S1E5",
+		"TV/Kettle Bay/Kettle Bay Staffel 1 Folge 6.avi": "episode Kettle Bay S1E6",
+		"TV/Kettle Bay/Kettle Bay S02E01-720.mkv":        "episode Kettle Bay S2E1",
+		"TV/Kettle Bay/Kettle Bay S02E02 and E03.mkv":    "episode Kettle Bay S2E2-3",
+	}},
+}
+
+func TestNamingMatrix(t *testing.T) {
+	known := map[string]bool{}
+	for _, row := range namingMatrix {
+		for rel := range row.files {
+			known[row.id+" "+rel] = true
+		}
+	}
+	for key := range namingToday {
+		if !known[key] {
+			t.Errorf("namingToday names %q, which no row has", key)
+		}
+	}
+	var right, files atomic.Int32
+	t.Run("rows", func(t *testing.T) {
+		for _, row := range namingMatrix {
+			t.Run(row.id, func(t *testing.T) {
+				t.Parallel()
+				got := namingOutcomes(t, row)
+				for rel, want := range row.files {
+					files.Add(1)
+					today, wrong := namingToday[row.id+" "+rel]
+					switch {
+					case wrong && got[rel] == want:
+						t.Errorf("%s is right now; drop it from namingToday", rel)
+					case wrong && got[rel] != today:
+						t.Errorf("%s = %q, was %q (want %q)", rel, got[rel], today, want)
+					case !wrong && got[rel] == want:
+						right.Add(1)
+					case !wrong:
+						t.Errorf("%s = %q, want %q", rel, got[rel], want)
+					}
+				}
+			})
+		}
+	})
+	t.Logf("naming matrix: %d of %d files right", right.Load(), files.Load())
+}
+
+// namingOutcomes lays a row's files out under a fresh root, runs a full pass, and says what each
+// file became.
+func namingOutcomes(t *testing.T, row namingRow) map[string]string {
+	t.Helper()
+	return namingOutcomesWith(t, row, false)
+}
+
+// namingOutcomesWith is namingOutcomes, and with grounded, each title's ids (an episode's show's)
+// and a movie's edition too.
+func namingOutcomesWith(t *testing.T, row namingRow, grounded bool) map[string]string {
+	t.Helper()
+	h := newHarnessIn(t, filepath.Join(t.TempDir(), row.root))
+	for rel := range row.files {
+		h.file(rel, 10)
+	}
+	for rel, doc := range row.nfo {
+		p := filepath.Join(h.root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	return outcomesIn(t, h, row.files, grounded)
+}
+
+// outcomesIn is what each of files became in h's last pass.
+func outcomesIn(t *testing.T, h *harness, files map[string]string, grounded bool) map[string]string {
+	t.Helper()
+	ctx := context.Background()
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A title is read as the Library lists it: projected from its inventory item.
+	listed := func(origin inventory.OriginKey) (librarystore.LibraryItem, bool) {
+		item, ok, err := h.inv.Item(ctx, inventory.ItemRef{Origin: &origin})
+		if err != nil || !ok {
+			return librarystore.LibraryItem{}, false
+		}
+		return ProjectLibraryItem(item)
+	}
+	showOf := func(o librarystore.LibraryOrigin) librarystore.LibraryItem {
+		it, _ := listed(inventory.OriginKey{Authority: inventory.AuthorityID(o.Authority), ExternalItemID: o.Key})
+		return it
+	}
+	byPath := map[string]librarystore.LibraryFile{}
+	for _, r := range rows {
+		byPath[r.Path] = r
+	}
+	out := map[string]string{}
+	// A show's episodes are one show's: the name it is listed by names one show, and an episode in
+	// a second show of that name reads " (split)".
+	showKeys, showOfRel := map[string]map[string]bool{}, map[string]string{}
+	defer func() {
+		for rel, show := range showOfRel {
+			if len(showKeys[show]) > 1 {
+				out[rel] += " (split)"
+			}
+		}
+	}()
+	for rel := range files {
+		p := filepath.Join(h.root, filepath.FromSlash(rel))
+		r, ok := byPath[p]
+		// A disc structure is listed as one problem, at its folder.
+		for d := filepath.Dir(p); !ok && d != h.root; d = filepath.Dir(d) {
+			if up, listed := byPath[d]; listed && up.Problem != "" {
+				r, ok = up, true
+			}
+		}
+		switch {
+		case !ok:
+			out[rel] = "skip"
+		case r.Problem != "" && r.ItemID == "":
+			out[rel] = "problem"
+		default:
+			it, ok := listed(fileOrigin(h.root, rel))
+			if !ok {
+				out[rel] = "no title"
+				continue
+			}
+			out[rel] = describeItem(showOf, it)
+			if show := showNameOf(out[rel]); show != "" {
+				showOfRel[rel] = show
+				if showKeys[show] == nil {
+					showKeys[show] = map[string]bool{}
+				}
+				showKeys[show][it.Series.Authority+" "+it.Series.Key] = true
+			}
+			if grounded {
+				out[rel] += groundedSuffix(showOf, it)
+			}
+		}
+	}
+	return out
+}
+
+// showNameOf is the show an episode's outcome names, "" for any other outcome: "episode Kettle Bay
+// S1E2" names "Kettle Bay".
+func showNameOf(outcome string) string {
+	rest, ok := strings.CutPrefix(outcome, "episode ")
+	if !ok {
+		return ""
+	}
+	if i := strings.LastIndex(rest, " "); i > 0 {
+		return rest[:i]
+	}
+	return rest
+}
+
+// describeItem is a title's outcome, as a naming row reads it.
+func describeItem(showOf func(librarystore.LibraryOrigin) librarystore.LibraryItem, it librarystore.LibraryItem) string {
+	searched := func(it librarystore.LibraryItem) string {
+		title, year, _ := searchQuery(it.Name, it.Year)
+		if year == 0 {
+			return title + " -"
+		}
+		return fmt.Sprintf("%s %d", title, year)
+	}
+	switch it.Kind {
+	case "movie":
+		return "movie " + searched(it)
+	case "episode":
+		show := strings.TrimSuffix(searched(showOf(it.Series)), " -")
+		if it.Season == 0 && it.Episode == 0 {
+			if it.PremiereDate != "" {
+				return "episode " + show + " " + it.PremiereDate
+			}
+			return "episode " + show + " S?E?"
+		}
+		at := fmt.Sprintf("S%dE%d", it.Season, it.Episode)
+		if it.EpisodeEnd > it.Episode {
+			at += fmt.Sprintf("-%d", it.EpisodeEnd)
+		}
+		return "episode " + show + " " + at
+	case "":
+		return "no title"
+	default:
+		return it.Kind + " " + it.Name
+	}
+}
+
+// groundedSuffix is the ids a title carries (an episode, its show's), sorted, and a movie's
+// edition: " [imdb:tt9000001] {Final Cut}".
+func groundedSuffix(showOf func(librarystore.LibraryOrigin) librarystore.LibraryItem, it librarystore.LibraryItem) string {
+	holder := it
+	if it.Kind == "episode" {
+		holder = showOf(it.Series)
+	}
+	var ids []string
+	for _, id := range holder.IDs {
+		ids = append(ids, id.Namespace+":"+id.Value)
+	}
+	slices.Sort(ids)
+	out := ""
+	for _, id := range ids {
+		out += " [" + id + "]"
+	}
+	for _, s := range it.Sources {
+		if s.Edition != "" {
+			out += " {" + s.Edition + "}"
+		}
+	}
+	return out
+}

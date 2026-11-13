@@ -1,5 +1,6 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
+import { Stack, Text } from "@loomarr/design-system";
 import { useRef, useState } from "react";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -48,12 +49,17 @@ const SegmentPreview = ({
   const spanId = `seg-preview-span-${position}`;
 
   const player = failed ? (
-    <div
+    <Stack
+      align="center"
+      className="bg-static-900 aspect-video rounded-md p-6"
+      direction="row"
+      justify="center"
       role="alert"
-      className="bg-static-900 text-muted-foreground flex aspect-video items-center justify-center rounded-md p-6 text-center text-sm"
     >
-      This preview couldn’t be played. The original recording may be unavailable.
-    </div>
+      <Text as="span" className="text-center" textRole="compact" tone="secondary">
+        This preview couldn’t be played. The original recording may be unavailable.
+      </Text>
+    </Stack>
   ) : (
     <VideoPlayer
       src={clipMediaURL(clipHash)}
@@ -133,12 +139,16 @@ const SegmentPreview = ({
             Preview unavailable
           </span>
         )}
-        <span
+        <Stack
+          align="center"
           aria-hidden
-          className="bg-static-950/25 absolute inset-0 flex items-center justify-center text-sm text-white"
+          className="bg-static-950/25 absolute inset-0 text-sm text-white"
+          direction="row"
+          justify="center"
+          render="span"
         >
           ▶
-        </span>
+        </Stack>
         {/* ⚠ `formatMmSs` ("00:30"), NOT `formatClipDuration` ("30s"). The row already renders the
             span as "30s", and a second "30s" inside the same region makes the editor's existing
             `getByText("30s")` match two elements and throw. It also reads better: the row's is a

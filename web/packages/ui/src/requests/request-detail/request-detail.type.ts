@@ -6,6 +6,8 @@ type RequestDetailProps = {
   onBack: () => void;
   onFix: (entry: RequestEntry) => void;
   onOpenChannel: (channelId: string) => void;
+  /** The household's timezone, which dates are told in; the device's while undefined. */
+  timeZone?: string;
   titles: readonly TitleDTO[];
 };
 

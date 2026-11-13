@@ -8,8 +8,6 @@ export type {
   StatusTone,
   StatusWordKind,
   StatusWordProps,
-  TextProps,
-  TextTone,
 } from "./primitives";
 export {
   ArtworkFrame,
@@ -18,11 +16,9 @@ export {
   channelIdentColors,
   channelIdentHues,
   FocusSurface,
-  lineHeightPx,
   ProgressTrack,
   Screen,
   StatusDot,
   StatusWord,
   Surface,
-  Text,
 } from "./primitives";

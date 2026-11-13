@@ -130,7 +130,9 @@ const stub = ({ me, journeys = [], proposals = [], pulls = [], titles = {} }: Fi
 };
 
 const renderAt = (path: string) => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // staleTime as the app sets it (lib/query-client): a page opened by a route's loader reads what
+  // the loader fetched instead of asking again on mount.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } });
   const router = settleOnTeardown(
     createRouter({
       routeTree,

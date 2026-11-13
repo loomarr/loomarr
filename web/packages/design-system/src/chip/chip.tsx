@@ -4,7 +4,7 @@ import { forwardRef } from "react";
 import { Pressable } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { Text, type TextTone } from "../primitives";
+import { Text, type TextTone } from "../text";
 import { semanticRadius, semanticSpace } from "../tokens";
 
 type ChipTone = Extract<TextTone, "danger" | "info" | "muted" | "success" | "warning">;

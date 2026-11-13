@@ -421,7 +421,7 @@ func TestPlayoutResolver_WarmProfileTakesTheEvidenceOffTheFirstTune(t *testing.T
 	var loadCalls atomic.Int32
 	r := &Resolver{
 		tier: func() string { return "balanced" }, encoder: func() string { return "" },
-		detectContext: t.Context(),
+		goDetect: func(run func(context.Context)) bool { go run(t.Context()); return true },
 		loadCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
 			loadCalls.Add(1)
 			time.Sleep(200 * time.Millisecond)

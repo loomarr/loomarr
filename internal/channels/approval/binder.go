@@ -195,6 +195,11 @@ func (b *Binder) planChannel(ctx context.Context, p proposalstore.Proposal) (cha
 		for _, e := range bound.Dropped {
 			b.log.Info("auto-curate dropped a clearly-off-intent title", "title", e.Title, "key", e.Key)
 		}
+		if len(bound.Full) > 0 {
+			b.log.Warn("auto-curate could not add titles: the channel's lineup is full",
+				"channel", bound.Channel.ID, "turnedAway", len(bound.Full), "lineupMax", schedule.MaxLineupEntries,
+				"first", bound.Full[0].Title)
+		}
 	}
 	return bound.Channel, nil
 }

@@ -1,7 +1,7 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { type ComponentRef, useRef, useState } from "react";
@@ -138,14 +138,18 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       <div>
-        <p className="text-sm font-medium">Automatic downloads</p>
-        <p className="text-muted-foreground mt-1 text-sm">{automaticDownloads.summary}</p>
+        <Text as="p" textRole="cardLabel">
+          Automatic downloads
+        </Text>
+        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+          {automaticDownloads.summary}
+        </Text>
         {automaticDownloads.nextCheckAt && (
-          <p className="text-muted-foreground mt-1 text-xs">
+          <Text as="p" className="mt-1" textRole="hint" tone="secondary">
             Next automatic check {formatRelative(automaticDownloads.nextCheckAt)}
-          </p>
+          </Text>
         )}
       </div>
       <div ref={modeField}>
@@ -165,8 +169,10 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
       </div>
       {mode === SourceAutomaticDownloadsInputMode.custom && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm">Look for new clips</span>
+          <Stack gap="1.5">
+            <Text as="span" textRole="compact">
+              Look for new clips
+            </Text>
             <BrowserSelectControl
               appearance="field"
               label="Source check schedule"
@@ -180,19 +186,23 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
               options={SCHEDULE_OPTIONS}
               value={editingCustomSchedule ? "custom" : downloadSchedulePreset(everySeconds)}
             />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm">Add up to</span>
+          </Stack>
+          <Stack gap="1.5">
+            <Text as="span" textRole="compact">
+              Add up to
+            </Text>
             <NumberField
               accessibilityLabel="Clips per source check"
               amount={maxPerCheck}
               onAmount={(amount) => setMaxPerCheck(Math.min(1000, Math.max(amount, 1)))}
             />
-          </div>
+          </Stack>
           {editingCustomSchedule && (
-            <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <span className="text-sm">Custom schedule</span>
-              <div className="flex gap-2">
+            <Stack className="sm:col-span-2" gap="1.5">
+              <Text as="span" textRole="compact">
+                Custom schedule
+              </Text>
+              <Stack direction="row" gap="inline">
                 <NumberField
                   accessibilityLabel="Source check interval"
                   amount={interval.amount}
@@ -218,8 +228,8 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                     value={interval.unit}
                   />
                 </div>
-              </div>
-            </div>
+              </Stack>
+            </Stack>
           )}
         </div>
       )}
@@ -233,11 +243,13 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         {actions.updatingSourceID === source.id ? "Saving…" : "Save automatic downloads"}
       </Action>
       {saveError && (
-        <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
-          {saveError}
-        </p>
+        <div role="alert" className="bg-destructive/10 rounded-md px-3 py-2">
+          <Text as="p" textRole="compact" tone="danger">
+            {saveError}
+          </Text>
+        </div>
       )}
-    </div>
+    </Stack>
   );
 };
 

@@ -30,10 +30,10 @@ import type { CommandPaletteProps } from "./command-palette.type";
 // phone header's Search icon, it covers the page, the results take the height, and a Close button
 // stands in for the backdrop and the Escape key a phone doesn't have.
 //
-// ⚠ ESCAPE IS NOW THE DIALOG'S. `useCommandShortcut` used to bind it at the window, because
-// `SearchCommand` deliberately does not bind it by default — see that file's comment. The primitive
-// owns Escape now, so the hook's Escape branch is gone; leaving both would have been harmless only
-// by luck, and leaving neither would have made the key dead.
+// ⚠ ESCAPE IS THE DIALOG'S. `SearchCommand` deliberately does not bind it by default — see that
+// file's comment — and `useCommandShortcut` does not bind it at the window either: the primitive
+// owns Escape. Binding it in both places would be harmless only by luck, and binding it in neither
+// would make the key dead.
 const CommandPalette = ({ open, onOpenChange }: CommandPaletteProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");

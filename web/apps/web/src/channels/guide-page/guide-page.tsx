@@ -14,7 +14,16 @@ import {
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import { Action, Chip, CompactSelect, SegmentedControl, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Chip,
+  CompactSelect,
+  Notice,
+  SegmentedControl,
+  Stack,
+  Surface,
+  Text,
+} from "@loomarr/design-system";
 import {
   GuideCompact,
   type GuideFilter,
@@ -23,9 +32,9 @@ import {
   GuidePhoneHeader,
   GuideProgrammeDetail,
 } from "@loomarr/ui";
-import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -35,11 +44,18 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelRowMenu } from "../channel-row-menu";
-import { DEFAULT_WINDOW_MINUTES, guideWindow } from "../guide-window";
+import {
+  DEFAULT_WINDOW_MINUTES,
+  guideDayOffset,
+  guideDayStart,
+  guideHourOf,
+  guideWindow,
+} from "../guide-window";
+import { useGuideDay } from "../use-guide-day";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
-// shared axis. It answers both halves of the question the old card list and this grid used to
-// split between them: "what do I have" and "what is on".
+// shared axis. It answers both halves of the question in one place: "what do I have" and
+// "what is on".
 //
 // It is also the door to **origination**: `✦ Add a channel` in the header and the "Dead air" empty
 // state both go to the request page (/requests/new), where describe→approve lives under Requests.
@@ -111,8 +127,8 @@ const reconcileSelection = (
   return kept ?? (first ? guideSelectionForChannel(layout, first, atMs) : undefined);
 };
 
-// The programme card's art: the same ServedImage (ThumbHash placeholder, sized sources) the old
-// detail card used, contained rather than cropped so it still identifies what will air.
+// The programme card's art: the shared ServedImage (ThumbHash placeholder, sized sources),
+// contained rather than cropped so it still identifies what will air.
 const renderArtwork = (airing: GuideAiringLayout) =>
   airing.source.thumbImage ? (
     <ServedImage image={airing.source.thumbImage} alt="" sizes="360px" fit="contain" />
@@ -120,16 +136,36 @@ const renderArtwork = (airing: GuideAiringLayout) =>
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;
 
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+// The day picker's offset of a moment from today on the household's calendar, within the days the
+// picker offers.
+const dayOffsetOf = (atMs: number, timeZone?: string): number =>
+  Math.min(FORWARD_DAYS, Math.max(-RETENTION_DAYS, guideDayOffset(atMs, Date.now(), timeZone)));
 
-// The day picker's label: relative for the days people actually mean, absolute beyond that.
-const dayLabel = (offset: number, now: number): string => {
+// The day picker's label: relative for the days people actually mean, absolute beyond that, and
+// the household's date, as the axis is.
+const dayLabel = (offset: number, now: number, timeZone?: string): string => {
   if (offset === 0) return "Today";
   if (offset === 1) return "Tomorrow";
   if (offset === -1) return "Yesterday";
-  const d = new Date(startOfDay(new Date(now)) + offset * 86_400_000);
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return new Date(guideDayStart(now, offset, timeZone)).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone,
+  });
 };
+
+// The household's zone, which the axis is labelled in and its days and hours are read on. Every
+// guide answer carries it, and the route's loader has fetched one before the page renders.
+const cachedGuideZone = (queryClient: QueryClient): string | undefined =>
+  queryClient
+    .getQueriesData<channelsApi.channelGuideResponse>({ queryKey: channelsApi.getChannelGuideQueryKey() })
+    .map(([, data]) => unwrap(data)?.timezone)
+    .find((zone) => zone !== undefined && zone !== "");
+
+// A window by its day and its hours, as the controls and the axis read them: "Tomorrow 8 PM–8 AM".
+const windowName = (offset: number, fromMs: number, toMs: number, now: number, timeZone?: string): string =>
+  `${dayLabel(offset, now, timeZone)} ${formatGuideTimeRange(fromMs, toMs, timeZone)}`;
 
 const GuidePage = () => {
   // The tab is named for the nav item that opens it, as every other page's is.
@@ -138,8 +174,13 @@ const GuidePage = () => {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   // Selection owns the grid's roving Tab stop; actual hover/focus owns its preview.
-  const [selection, setSelection] = useState<GuideSelection>();
-  const [dayOffset, setDayOffset] = useState<number>(0);
+  // `?at=&channel=` (Home's Tonight rows, #2763) opens the grid on that day and hour with that
+  // channel's programme selected. Read once, on mount: afterwards the controls own the window.
+  const { view: viewParam, at: atParam, channel: channelParam } = useSearch({ from: "/_authed/guide" });
+  const [selection, setSelection] = useState<GuideSelection | undefined>(() =>
+    atParam !== undefined && channelParam ? { channelId: channelParam, anchorMs: atParam } : undefined,
+  );
+  const [timeZone, setTimeZone] = useState(() => cachedGuideZone(queryClient));
   // A phone opens on the shortest span: the compact grid (mocks 5d/5f) shows about an hour and a
   // half across, and four hours leave a half-hour programme a few pixels wide.
   const phoneWidth = usePhoneWidth();
@@ -152,7 +193,6 @@ const GuidePage = () => {
   // The guide opens on the Now/Next list, phone and desktop alike (#2787); `?view=grid` is the full
   // grid. The list always asks about now, and about a few hours so that "next" is usually listed;
   // the day, hour and span controls belong to the grid.
-  const { view: viewParam } = useSearch({ from: "/_authed/guide" });
   const view: GuideView = viewParam === "grid" ? "grid" : "list";
   const setView = useCallback(
     (next: GuideView) =>
@@ -166,12 +206,20 @@ const GuidePage = () => {
   const nowNextView = view === "list";
   const queryMinutes = nowNextView ? DEFAULT_WINDOW_MINUTES : windowMinutes;
   const { nowMs, anchorMs } = useGuideWindow(queryMinutes);
+  const [dayOffset, setDayOffset] = useGuideDay({
+    anchorMs,
+    initialOffset: atParam === undefined ? 0 : dayOffsetOf(atParam, timeZone),
+    minOffset: -RETENTION_DAYS,
+    timeZone,
+  });
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
   // from `startHour` so stepping away from a chosen start hour is still relative to it.
   const [hourShift, setHourShift] = useState<number>(0);
   // null = "follow now" (the default). A number pins the window to that hour of the shown day,
   // which is how you ask "what airs at 7am?" without stepping there an hour at a time.
-  const [startHour, setStartHour] = useState<number | null>(null);
+  const [startHour, setStartHour] = useState<number | null>(() =>
+    atParam === undefined ? null : guideHourOf(atParam, timeZone),
+  );
   // A precise start is a useful planning tool, but not a question most people ask on every
   // visit. It lives in a secondary row, and the trigger announces when a hidden non-default
   // remains active, so progressive disclosure never turns into invisible state.
@@ -203,8 +251,8 @@ const GuidePage = () => {
             hourShift: 0,
             startHour: null,
           })
-        : guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour }),
-    [nowNextView, dayOffset, queryMinutes, windowMinutes, anchorMs, hourShift, startHour],
+        : guideWindow({ at: anchorMs, dayOffset, windowMinutes, hourShift, startHour, timeZone }),
+    [nowNextView, dayOffset, queryMinutes, windowMinutes, anchorMs, hourShift, startHour, timeZone],
   );
 
   // "Are we looking at the present?" — drives the NOW button's tone. Any of the three
@@ -234,10 +282,10 @@ const GuidePage = () => {
       ...(dayOffset < FORWARD_DAYS ? [{ hourShift, dayOffset: dayOffset + 1 }] : []),
     ];
     for (const n of neighbours) {
-      const w = guideWindow({ at: anchorMs, windowMinutes, startHour, ...n });
+      const w = guideWindow({ at: anchorMs, windowMinutes, startHour, timeZone, ...n });
       void queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions(w));
     }
-  }, [settled, nowNextView, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour]);
+  }, [settled, nowNextView, queryClient, anchorMs, dayOffset, hourShift, windowMinutes, startHour, timeZone]);
 
   // Live update needs no listener here: a `channel` frame means a lineup actually changed (a
   // reconcile completed), and the SSE bus invalidates every cached `/v1/guide` window —
@@ -245,7 +293,33 @@ const GuidePage = () => {
   // becoming available fires BEFORE the backfill that places it, so refetching there would race
   // and often return the pre-backfill lineup.
 
-  const body = unwrap(guide.data);
+  // The newest window that answered. TanStack v5 drops `placeholderData` once the query errors, so
+  // a NEW window that fails (a span, a day, two hours on) has no data at all; the Guide the viewer
+  // was just looking at stays on screen instead, under the notice, and only a page that has never
+  // answered is given to the error.
+  const answered = unwrap(guide.data);
+  const [lastAnswered, setLastAnswered] = useState(answered);
+  if (answered && answered !== lastAnswered) setLastAnswered(answered);
+  const body = answered ?? lastAnswered;
+  // The notice, once a window has failed, holds through its retry (the query is pending again, with
+  // no error) until a window answers, so it stays mounted under the focus on its button.
+  const [noticeUp, setNoticeUp] = useState(false);
+  if (guide.error && !noticeUp) setNoticeUp(true);
+  if (noticeUp && guide.isSuccess && !guide.isPlaceholderData) setNoticeUp(false);
+  // The window on screen is the last good one, not the one that failed.
+  const showingEarlierWindow =
+    noticeUp && body !== undefined && (answered === undefined || guide.isPlaceholderData);
+  // The same for a Guide that never answered: its error page holds through the retry (the query is
+  // pending again, with no error), so its button keeps the focus the viewer put on it.
+  const [firstError, setFirstError] = useState<unknown>(null);
+  if (guide.error && !body && guide.error !== firstError) setFirstError(guide.error);
+  if (body && firstError !== null) setFirstError(null);
+  const firstFailed = body === undefined && firstError !== null;
+  // A cold page with nothing cached reads the device's zone until the first answer names the
+  // household's.
+  useEffect(() => {
+    if (body?.timezone) setTimeZone(body.timezone);
+  }, [body?.timezone]);
   // Rows count as content from any window, the previous one included: that is what stays on
   // screen while the next window loads.
   useRouteContent(body !== undefined);
@@ -264,6 +338,22 @@ const GuidePage = () => {
     [body, channels, nowMs],
   );
   const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
+
+  // A retry that works takes the notice (or the error page) away, and the focus on its button with
+  // it, to the page. Focus goes instead to the Guide's home: the grid's Tab stop, or the page's main
+  // region (the skip link's target) when no grid is drawn. A viewer who moved focus on keeps it.
+  const failedUp = noticeUp || firstFailed;
+  const wasFailedUp = useRef(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const gridDrawn = layout !== undefined && !nowNextView && !phoneWidth;
+  useEffect(() => {
+    const was = wasFailedUp.current;
+    wasFailedUp.current = failedUp;
+    if (!was || failedUp) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (gridDrawn) setFocusRequest((n) => n + 1);
+    else document.getElementById("main-content")?.focus();
+  }, [failedUp, gridDrawn]);
 
   // The phone grid's filters read the viewer's favourites and recents (#1778's lists), and the
   // Now/Next list puts the favourites first (#2787).
@@ -287,7 +377,7 @@ const GuidePage = () => {
     },
     [layout, selected],
   );
-  // A guide row or block tunes its channel (#2088): the channel page now opens on Info, not Watch.
+  // A guide row or block tunes its channel (#2088): the channel page itself opens on Info, not Watch.
   const onOpenChannel = useCallback(
     (id: string) => void navigate({ to: "/watch/$id", params: { id } }),
     [navigate],
@@ -310,10 +400,12 @@ const GuidePage = () => {
     return out;
   }, []);
 
-  if (guide.error) {
+  // A failed refetch of a Guide already on screen (an SSE invalidation, a window revisited) keeps it
+  // and says it may be stale; only a Guide that never answered gives the page to the error.
+  if (firstFailed) {
     return (
       <div className="p-6">
-        <ErrorState error={guide.error} onRetry={() => guide.refetch()} />
+        <ErrorState error={firstError} onRetry={() => guide.refetch()} retrying={guide.isFetching} />
       </div>
     );
   }
@@ -323,10 +415,10 @@ const GuidePage = () => {
     // toolbar and grid are separated by RULES, not whitespace, and whose grid owns the only
     // scroll container. Padding here is what produced a page that scrolled horizontally
     // underneath a grid that had room.
-    <div className="flex min-h-0 flex-1 flex-col">
+    <Stack className="min-h-0" flexBasis="0%" flexGrow={1}>
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
-        title="Channels"
+        title="Guide"
         description="Every channel Loomarr manages, and what's on right now."
         actions={
           /* THE origination door (§12) — for both roles. It goes to the request page
@@ -352,15 +444,49 @@ const GuidePage = () => {
         }
       />
 
+      {guide.error || noticeUp ? (
+        // The same inset the TV and phone Guide give it (GuideJourney).
+        <Surface backgroundColor="transparent" borderWidth={0} padding="control">
+          <Notice
+            // Mounted while the retry runs, so the focus on its button stays; a press during it is the
+            // same retry.
+            action={{
+              label: guide.isFetching ? "Trying again…" : "Try again",
+              onPress: () => {
+                if (!guide.isFetching) void guide.refetch();
+              },
+            }}
+            body={
+              showingEarlierWindow && body
+                ? // The controls stay on what the viewer chose (Try again reads it); the notice names it
+                  // and the grid still drawn, so neither is read as the other.
+                  `${windowName(dayOffset, from, to, anchorMs, timeZone)} didn't load. Showing ${windowName(
+                    dayOffsetOf(body.fromMs, timeZone),
+                    body.fromMs,
+                    body.toMs,
+                    anchorMs,
+                    timeZone,
+                  )}, the last one that did.`
+                : "Showing what Loomarr had a moment ago."
+            }
+            title="Couldn't refresh the Guide"
+            tone="warn"
+          />
+        </Surface>
+      ) : null}
+
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
           much time is on screen. Precise planning controls live in the secondary View row. */}
       {channels.length > 0 && (
         <GuidePhoneHeader
-          title={nowNextView ? "What's on" : "Guide"}
+          // The page is headed "Guide" already; the grid's row says only which hours it shows.
+          title={nowNextView ? "What's on" : undefined}
           subtitle={
             nowNextView
               ? `${formatGuideTime(nowMs, body?.timezone)} · ${pluralize(channels.length, "channel")}`
-              : formatGuideTimeRange(from, to, body?.timezone)
+              : showingEarlierWindow && body
+                ? formatGuideTimeRange(body.fromMs, body.toMs, body.timezone)
+                : formatGuideTimeRange(from, to, body?.timezone)
           }
           wide={!phoneWidth}
         >
@@ -376,12 +502,15 @@ const GuidePage = () => {
       {channels.length > 0 && !nowNextView && (
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
-            <div className="flex items-center gap-1.75">
+            <Stack align="center" direction="row" gap="1.75">
               <div>
                 <CompactSelect
                   label="Day"
                   onValueChange={(v) => setDayOffset(Number(v))}
-                  options={dayChoices.map((d) => ({ label: dayLabel(d, anchorMs), value: String(d) }))}
+                  options={dayChoices.map((d) => ({
+                    label: dayLabel(d, anchorMs, timeZone),
+                    value: String(d),
+                  }))}
                   value={String(dayOffset)}
                 />
               </div>
@@ -393,11 +522,11 @@ const GuidePage = () => {
                   {`${dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today`}
                 </Chip>
               )}
-            </div>
+            </Stack>
 
             {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
                 window without changing the day. */}
-            <div className="flex items-center gap-1">
+            <Stack align="center" direction="row" gap="1">
               <Action
                 icon="earlier"
                 layout="icon"
@@ -420,15 +549,15 @@ const GuidePage = () => {
               <Action icon="later" layout="icon" onPress={() => setHourShift((h) => h + 1)} variant="outline">
                 Forward an hour
               </Action>
-            </div>
+            </Stack>
 
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
-            <div className="flex items-center gap-1.75 sm:ml-auto">
+            <Stack align="center" className="sm:ml-auto" direction="row" gap="1.75">
               <Text as="span" textRole="metadata">
                 Span
               </Text>
-              <div className="flex gap-1">
+              <Stack direction="row" gap="1">
                 {WINDOW_CHOICES.map((w) => {
                   const active = windowMinutes === Number(w.value);
                   return (
@@ -443,8 +572,8 @@ const GuidePage = () => {
                     </Chip>
                   );
                 })}
-              </div>
-            </div>
+              </Stack>
+            </Stack>
 
             <Action
               accessibilityLabel={hasCustomView ? "View options, custom" : "View options"}
@@ -459,13 +588,22 @@ const GuidePage = () => {
           </div>
 
           {viewOptionsOpen && (
-            <div
+            <Stack
+              align="center"
+              className="border-border/60 bg-card/40 border-b"
+              columnGap="6"
+              direction="row"
+              flexShrink={0}
               id="guide-view-options"
-              className="border-border/60 bg-card/40 flex flex-wrap items-center justify-start gap-x-6 gap-y-2 border-b px-7 py-2.5 sm:justify-end"
+              justify={{ base: "start", sm: "end" }}
+              paddingHorizontal={28}
+              paddingVertical={10}
+              rowGap="2"
+              wrap
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
-              <div className="flex items-center gap-1.75">
+              <Stack align="center" direction="row" gap="1.75">
                 <Text as="span" textRole="metadata">
                   Start at
                 </Text>
@@ -477,8 +615,8 @@ const GuidePage = () => {
                     value={startHour === null ? "auto" : String(startHour)}
                   />
                 </div>
-              </div>
-            </div>
+              </Stack>
+            </Stack>
           )}
         </>
       )}
@@ -488,18 +626,16 @@ const GuidePage = () => {
         // one next action (§6) goes to the same request page the header links to, worded for
         // who is asking.
         //
-        // ⚠ The LABEL matches the header's exactly. It used to read "Describe your first
-        // channel" while the header said "Add a channel" and the panel that opened was
-        // titled "Add a channel" — three names for one handler. One action, one name.
+        // ⚠ The LABEL matches the header's exactly, and the panel it opens is titled the same:
+        // one action, one name, never a second wording such as "Describe your first channel".
         // ⚠ No static behind it (#2789): TvStatic is for entry moments only (login, the wizard
         // and the player's tune-in), so a resting page stays still.
         //
-        // A scanline sweeping over the bars was tried first and removed: to register on a
-        // small element it had to be scaled up and brightened, at which point it dominated a
-        // surface whose whole job is to stay calm and point at one button. Tuning it was the
-        // wrong move; the premise was. A sweep is an attention-grabber, and "Dead air" is a
+        // No scanline sweeps over the bars either: to register on a small element it has to be
+        // scaled up and brightened, at which point it dominates a surface whose whole job is to
+        // stay calm and point at one button. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
-        <div className="flex flex-1 items-center justify-center p-10">
+        <Stack align="center" className="p-10" flexBasis="0%" flexGrow={1} justify="center">
           <EmptyState
             // The state family's own static colour bars lead the panel (#2783): a test card is
             // what a set showed when nothing was broadcasting. Still, like the page around it.
@@ -510,10 +646,10 @@ const GuidePage = () => {
               onClick: () => void navigate({ to: "/requests/new" }),
             }}
           />
-        </div>
+        </Stack>
       ) : (
         // Desktop browsing uses the full available width with contextual previews.
-        <div className="relative flex min-h-0 flex-1">
+        <Stack className="relative min-h-0" direction="row" flexBasis="0%" flexGrow={1}>
           {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
           {guide.isPlaceholderData && (
@@ -551,6 +687,7 @@ const GuidePage = () => {
             />
           ) : layout ? (
             <GuideGrid
+              focusRequest={focusRequest}
               layout={layout}
               nowMs={nowMs}
               onMove={onMove}
@@ -569,9 +706,9 @@ const GuidePage = () => {
               )}
             />
           ) : null}
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

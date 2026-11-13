@@ -215,6 +215,7 @@ func (s *Handlers) Register(api huma.API) {
 	s.registerWatermarkOptions(api)
 	s.registerChannelIdeas(api)
 	s.registerMyChannels(api)
+	s.registerHousehold(api)
 	s.registerHouseholdViewing(api)
 	s.registerWatchHistory(api)
 }

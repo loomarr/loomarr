@@ -124,6 +124,45 @@ describe("LibraryShelf", () => {
     cleanup();
   });
 
+  it("says how many titles wait for details and when it tries again, not that all is caught up", () => {
+    const { host, cleanup } = render({
+      status: {
+        health: "ok",
+        scan: IDLE,
+        held: [],
+        offline: [],
+        details: { waiting: 12, unreachable: true, retryAt: new Date(2026, 10, 2, 15, 40).toISOString() },
+      },
+    });
+    expect(host.textContent).toContain("12 titles are waiting on details — trying again at 3:40 PM");
+    expect(host.textContent).not.toContain("All caught up");
+    cleanup();
+  });
+
+  it("tells the retry time on the household's clock, whatever the device's", () => {
+    const { host, cleanup } = render({
+      status: {
+        health: "ok",
+        scan: IDLE,
+        held: [],
+        offline: [],
+        details: { waiting: 12, unreachable: true, retryAt: "2026-11-02T02:40:00Z" },
+      },
+      timeZone: "Pacific/Auckland",
+    });
+    expect(host.textContent).toContain("12 titles are waiting on details — trying again at 3:40 PM");
+    cleanup();
+  });
+
+  it("doesn't claim every title is ready while a folder in use is empty", () => {
+    const { host, cleanup } = render({
+      status: { health: "folder_empty", scan: IDLE, held: [], offline: [] },
+    });
+    expect(host.textContent).not.toContain("All caught up");
+    expect(host.textContent).toContain("Up to date");
+    cleanup();
+  });
+
   // WCAG 2.5.3: a tile's name is what it shows. A label of its own ("Harbour Lights") left out the
   // year and kind beside it, which axe flags and a voice-control user cannot say.
   it("names a tile by what it shows, with no label of its own", () => {
@@ -279,7 +318,7 @@ describe("LibraryShelf", () => {
       status: {
         health: "ok",
         scan: IDLE,
-        held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+        held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0, titles: [], titleCount: 0 }],
         offline: [],
       },
     });

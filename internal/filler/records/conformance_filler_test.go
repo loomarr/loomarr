@@ -1705,6 +1705,100 @@ func testClipPipelineRetry(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testClipPipelineRetireRejected pins decision 12 of #3838 (#3855): a clip Loomarr fetched and
+// rejected a week ago is reaped and its row marked files-deleted in one transaction, and nothing
+// else is: a recent reject, a hand-added clip and a pinned clip all stay.
+func testClipPipelineRetireRejected(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_900_000_000, 0).UTC()
+	week := now.Add(-7 * 24 * time.Hour)
+	reject := func(name, acquisition string, rejectedAt time.Time) Clip {
+		t.Helper()
+		c := clipAt("reject/"+name+".mp4", name, clips.Commercial, 30_000)
+		c.Held = true
+		if err := s.UpsertClip(ctx, Clip{Clip: c, UpdatedAt: rejectedAt}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpsertClipPipeline(ctx, pipelinestate.ClipPipeline{
+			ClipHash: c.Hash, AcquisitionID: acquisition, Stage: pipelinestate.StageTranscode,
+			Status: pipelinestate.StatusFailed, Disposition: pipelinestate.DispositionRejected,
+			RejectReason: pipelinestate.ReasonUnplayable, Attempts: filler.MaxAttempts,
+			EnrolledAt: rejectedAt, UpdatedAt: rejectedAt,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return Clip{Clip: c}
+	}
+	old := reject("old", "run-1", week.Add(-time.Hour))
+	recent := reject("recent", "run-1", week.Add(time.Hour))
+	byHand := reject("by-hand", "", week.Add(-time.Hour))
+	pinned := reject("pinned", "run-1", week.Add(-time.Hour))
+	// Rejected long ago, but its clip row changed since (a restore writes it): that write wins.
+	touched := reject("touched", "run-1", week.Add(-time.Hour))
+	touched.Name = "touched, renamed"
+	if err := s.UpsertClip(ctx, Clip{Clip: touched.Clip, UpdatedAt: now.Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	channel := sampleChannel("pins-a-reject", 712, now)
+	channel.Policy.Filler = &schedule.FillerSelection{Pinned: []string{pinned.Hash}}
+	if _, err := s.SaveChannel(ctx, channel); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		clip Clip
+		want bool
+	}{{old, true}, {recent, false}, {byHand, false}, {pinned, false}, {touched, false}, {old, false}} {
+		got, err := s.RetireRejectedClip(ctx, tc.clip.Hash, week, now)
+		if err != nil || got != tc.want {
+			t.Fatalf("RetireRejectedClip(%s) = %v, %v; want %v", tc.clip.Name, got, err, tc.want)
+		}
+	}
+
+	got, err := s.GetClip(ctx, old.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := s.LiveClipPaths(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, stillLive := live[old.Hash]; got.RemovedAt.IsZero() || stillLive {
+		t.Fatalf("retired clip removed=%v live=%v, want removed and reaped", got.RemovedAt, stillLive)
+	}
+	if _, kept := live[recent.Hash]; !kept {
+		t.Fatal("a recent reject was reaped")
+	}
+	row, _, err := s.GetClipPipeline(ctx, old.Hash)
+	if err != nil || !row.FilesDeletedAt.Equal(now) || row.RejectReason != pipelinestate.ReasonUnplayable {
+		t.Fatalf("retired row = %+v, %v; want files deleted at %v with its reason kept", row, err, now)
+	}
+	// A runner write carrying the row as it was read before the retire cannot clear the mark.
+	stale := row
+	stale.FilesDeletedAt, stale.UpdatedAt = time.Time{}, now.Add(time.Minute)
+	if err := s.UpsertClipPipeline(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	if row, _, _ = s.GetClipPipeline(ctx, old.Hash); !row.FilesDeletedAt.Equal(now) {
+		t.Fatalf("files_deleted_at after a stale runner write = %v, want %v", row.FilesDeletedAt, now)
+	}
+	retry := row
+	retry.Status, retry.Disposition, retry.RejectReason = pipelinestate.StatusQueued, pipelinestate.DispositionRunning, ""
+	if err := s.RetryClipPipeline(ctx, row, retry, true); err == nil {
+		t.Fatal("a retry restored a clip whose files were deleted")
+	}
+	overview, err := s.PipelineOverview(ctx, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Five rejects remain in the audit count; the retired one is no longer recoverable.
+	if overview.Rejected != 5 || overview.Recoverable != 4 {
+		t.Fatalf("overview = %+v, want 5 rejected and 4 recoverable", overview)
+	}
+}
+
 // testClipFingerprintCache pins the cache's two correctness properties on both backends: only an
 // exact content+algorithm key hits, and catalog pruning removes sibling-table orphans.
 func testClipFingerprintCache(t *testing.T, newStore NewStoreFunc) {

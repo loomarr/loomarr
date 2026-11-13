@@ -1,6 +1,6 @@
 import { UserBodyRole } from "@loomarr/api/models/userBodyRole";
 import { formatRelative } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { useMemo, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -43,15 +43,22 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
   }, [query, role, status, users]);
 
   return (
-    <section aria-labelledby="people-roster-title" className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+    <Stack aria-labelledby="people-roster-title" gap="control" render="section">
+      {/* flexShrink 0: a Stack's View base lets it shrink below its content, which squashes this
+          header into the filters and list under it when the page's column is height-capped. */}
+      <Stack
+        align={{ base: "stretch", lg: "end" }}
+        direction={{ base: "column", lg: "row" }}
+        flexShrink={0}
+        gap="3"
+      >
         <div className="min-w-0 flex-1">
-          <h2 id="people-roster-title" className="text-lg font-semibold">
+          <Text as="h2" id="people-roster-title" strong textRole="headline">
             People
-          </h2>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Select a person to manage access, requests, and sessions.
-          </p>
+          </Text>
         </div>
         <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_9rem_9rem] lg:w-auto">
           <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
@@ -70,7 +77,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
             value={status}
           />
         </div>
-      </div>
+      </Stack>
 
       {users === undefined ? (
         <div className="grid gap-2" role="status" aria-label="Loading people">
@@ -85,8 +92,12 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
         />
       ) : filtered.length === 0 ? (
         <div className="border-border bg-card rounded-lg border p-6 text-center">
-          <p className="font-medium">No matching people</p>
-          <p className="text-muted-foreground text-sm">Try another name, role, or status.</p>
+          <Text as="p" textRole="cardLabel">
+            No matching people
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            Try another name, role, or status.
+          </Text>
         </div>
       ) : (
         <ListGroup aria-labelledby="people-roster-title">
@@ -128,7 +139,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
           ))}
         </ListGroup>
       )}
-    </section>
+    </Stack>
   );
 };
 

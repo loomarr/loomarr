@@ -240,6 +240,8 @@ func (s *Handlers) rewindFillerClip(ctx context.Context, in *rewindFillerClipInp
 		return nil, httpcore.Unprocessable("Unknown pipeline stage", "Choose a stage from the clip's pipeline ladder.")
 	case errors.Is(err, filler.ErrTranscodeNeedsForce):
 		return nil, httpcore.Conflict("Re-encoding needs confirmation", err.Error())
+	case errors.Is(err, filler.ErrFilesDeleted):
+		return nil, httpcore.Conflict("This clip's files are gone", err.Error())
 	case err != nil:
 		return nil, err
 	default:
@@ -611,7 +613,7 @@ type listFillerInput struct {
 	// clip after the first fails to resolve and the channel page reports real clips as "no longer
 	// in your catalog". Neither side's tests can see it if the Go tests hand-write `?hashes=a,b`
 	// against a client generated from a spec that agrees with them.
-	Hashes []string `query:"hashes,explode" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash. Unknown hashes are simply absent."`
+	Hashes []string `query:"hashes,explode" maxItems:"500" doc:"Resolve exactly these clip hashes (§10 V51d) — the batch read behind 'name these N pinned clips'. Repeat the parameter per hash, at most 500: the page size, so every hash asked for can come back. Unknown hashes are simply absent."`
 }
 type listFillerOutput struct {
 	Body struct {
@@ -740,7 +742,7 @@ type patchClipInput struct {
 		// `category` string. Each is grounded against the live taxonomy on write (an unknown slug is
 		// rejected), and `category` is DERIVED from the accepted set (the primary product leaf). A nil
 		// Tags means "leave the tags alone"; an explicit empty array clears them.
-		Tags *[]string `json:"tags,omitempty" doc:"The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a)."`
+		Tags *[]string `json:"tags,omitempty" maxItems:"64" doc:"The operator's taxonomy tags (leaf slugs, at most 64). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a)."`
 		// Brand is a grounded advertiser name, deliberately separate from the taxonomy. Pointer
 		// semantics distinguish omission (leave it alone) from an explicit empty string (clear a
 		// bad model guess). The operator is a valid grounding source.
@@ -950,7 +952,7 @@ type ingestFillerInput struct {
 		// URLs are supplied per request by an admin rather than configured globally:
 		// there is no unattended crawler (§10), so ingestion is always a deliberate act
 		// with a person attached to it.
-		URLs []string `json:"urls" minItems:"1" doc:"YouTube playlist/video or Archive.org collection/item URLs"`
+		URLs []string `json:"urls" minItems:"1" maxItems:"50" doc:"YouTube playlist/video or Archive.org collection/item URLs, at most 50 per request (each is a playlist or collection, not a video)"`
 	}
 }
 type ingestFillerOutput struct {
@@ -1356,7 +1358,8 @@ type confirmFillerSplitInput struct {
 		// Segments is the operator's REVIEWED cut list: the proposal as returned,
 		// possibly edited. It is re-validated server-side (§10 — the review gate's
 		// teeth live on the write path, not in the UI).
-		Segments []SplitSegment `json:"segments" minItems:"1"`
+		// At most 500: the longest compilation reel proposes about fifty.
+		Segments []SplitSegment `json:"segments" minItems:"1" maxItems:"500"`
 	}
 }
 

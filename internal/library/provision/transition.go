@@ -117,3 +117,22 @@ func Apply(rec Record, ev Event, now time.Time) (Record, []DomainEvent) {
 	}
 	return next, emitted
 }
+
+// Retry starts a new acquisition for a title that was given up: unavailable → wanted, due at once,
+// with the last attempt's error, count and request time cleared. It is an operator's decision, not
+// a provisioning event, so it lives outside Apply and does not break invariant 1, which holds within
+// one acquisition. Any other state is returned unchanged with false: an available title is already
+// in the library, and an in-flight one is already being acquired.
+func Retry(rec Record, now time.Time) (Record, bool) {
+	if rec.State != Unavailable {
+		return rec, false
+	}
+	next := rec
+	next.State = Wanted
+	next.Deadline = now
+	next.RequestedAt = time.Time{}
+	next.Attempts = 0
+	next.LastError = ""
+	next.UpdatedAt = now
+	return next, true
+}

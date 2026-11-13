@@ -24,36 +24,10 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - brace-expansion@1.1.18
-  # Expo SDK 58.0.23 (published 2026-11-03T17:06Z by Expo): expo-doctor requires the newest SDK
-  # patch, so the release-age wait is waived for exactly these versions (maintainer-approved).
-  # Drop these entries once they are a day old.
-  - "@expo/cli@58.1.19"
-  - "@expo/config-plugins@58.0.12"
-  - "@expo/config@58.0.11"
-  - "@expo/env@2.5.4"
-  - "@expo/fingerprint@0.21.9"
-  - "@expo/inline-modules@0.2.9"
-  - "@expo/local-build-cache-provider@58.0.11"
-  - "@expo/log-box@58.0.15"
-  - "@expo/metro-config@58.0.21"
-  - "@expo/metro-runtime@58.0.17"
-  - "@expo/prebuild-config@58.0.19"
-  - "@expo/router-server@58.0.21"
-  - babel-preset-expo@58.0.24
-  - expo-asset@58.0.20
-  - expo-modules-autolinking@58.0.17
-  - expo-modules-core@58.0.30
-  - expo-modules-jsi@58.0.22
-  - expo@58.0.23
-  - expo-constants@58.0.15
-  - expo-linking@58.0.16
-  - expo-router@58.0.30
-  - expo-splash-screen@58.0.13
-  # expo-modules-core 58.0.30 (above) calls RCTStatusBarAppearance, which React Native TV first
-  # ships in 0.88.1-0 (published 2026-11-03T21:18Z); same maintainer-approved waiver, drop once a
-  # day old.
-  - "@react-native-tvos/virtualized-lists@0.88.1-0"
-  - react-native-tvos@0.88.1-0
+  # Waived 2026-11-12 (maintainer): expo-doctor fails Shared clients on 58.0.24 the moment Expo
+  # publishes 58.0.25 (16:40Z), blocking every client PR. Same dependency set as 58.0.24.
+  # Drop this line once 58.0.25 is a day old.
+  - expo@58.0.25
 
 # dependency-cruiser intentionally leaves transpilers optional. Declare the
 # analyzer-only compatible compiler beside it so pnpm's isolated linker makes
@@ -108,7 +82,7 @@ overrides:
   "@react-native/metro-config": "0.88.1"
   # Expo packages request expo-constants by tilde range. Resolve every transitive request to the
   # SDK's one version so native clients cannot contain two Expo module graphs.
-  expo-constants: "58.0.15"
+  expo-constants: "58.0.16"
   react: "19.3.0"
   react-dom: "19.3.0"
   react-native-reanimated: "4.7.1"
@@ -167,6 +141,6 @@ overrides:
   "brace-expansion@>=1.0.0 <1.1.18": "1.1.18"
 
 patchedDependencies:
-  expo-modules-jsi@58.0.22: patches/expo-modules-jsi@58.0.22.patch
-  expo-video@58.0.13: patches/expo-video@58.0.13.patch
+  expo-modules-jsi@58.0.23: patches/expo-modules-jsi@58.0.23.patch
+  expo-video@58.0.14: patches/expo-video@58.0.14.patch
   react-native-tvos@0.88.1-0: patches/react-native-tvos@0.88.1-0.patch

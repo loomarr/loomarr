@@ -1,8 +1,17 @@
 import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
+import {
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  Text,
+} from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { cn } from "@/lib/utils";
 import type { DocViewProps } from "./doc-view.type";
 
 // An internal doc link is a relative one: not an absolute URL, and not a bare same-page
@@ -57,42 +66,68 @@ const remarkDropHtmlComments = () => dropComments;
 // prose plugin: the design system already defines type scale and color, and a generic
 // typography reset would fight it.
 const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
-  <article className={cn("flex flex-col gap-4", className)}>
+  <Stack className={className} gap="4" render="article">
     <Markdown
       remarkPlugins={[remarkGfm, remarkDropHtmlComments]}
       components={{
         h1: ({ children }) => (
-          <h2 id={headingId(children)} className="text-xl font-semibold">
+          <Text as="h2" id={headingId(children)} textRole="title">
             {children}
-          </h2>
+          </Text>
         ),
         h2: ({ children }) => (
-          <h3 id={headingId(children)} className="mt-4 scroll-mt-20 text-lg font-semibold">
+          <Text as="h3" className="mt-4 scroll-mt-20" id={headingId(children)} strong textRole="headline">
             {children}
-          </h3>
+          </Text>
         ),
         h3: ({ children }) => (
-          <h4 id={headingId(children)} className="mt-3 scroll-mt-20 font-semibold">
+          <Text as="h4" className="mt-3 scroll-mt-20" id={headingId(children)} textRole="heading">
             {children}
-          </h4>
+          </Text>
         ),
-        p: ({ children }) => <p className="text-sm leading-relaxed">{children}</p>,
-        ul: ({ children }) => <ul className="ml-5 flex list-disc flex-col gap-1.5 text-sm">{children}</ul>,
-        ol: ({ children }) => <ol className="ml-5 flex list-decimal flex-col gap-1.5 text-sm">{children}</ol>,
-        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        p: ({ children }) => (
+          <Text as="p" textRole="compact">
+            {children}
+          </Text>
+        ),
+        ul: ({ children }) => (
+          <Stack className="ml-5 list-disc" gap="1.5" render="ul">
+            {children}
+          </Stack>
+        ),
+        ol: ({ children }) => (
+          <Stack className="ml-5 list-decimal" gap="1.5" render="ol">
+            {children}
+          </Stack>
+        ),
+        li: ({ children }) => (
+          <Text as="li" textRole="compact">
+            {children}
+          </Text>
+        ),
         code: ({ children }) => (
           <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
         pre: ({ children }) => (
-          <pre className="border-border bg-static-900 overflow-x-auto rounded-md border p-3 font-mono text-xs">
+          <Text
+            as="pre"
+            className="border-border bg-static-900 overflow-x-auto rounded-md border p-3"
+            textRole="mono"
+            tone="primary"
+          >
             {children}
-          </pre>
+          </Text>
         ),
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
         blockquote: ({ children }) => (
-          <blockquote className="border-static-700 text-muted-foreground border-l-2 pl-3 text-sm">
+          <Text
+            as="blockquote"
+            className="border-static-700 border-l-2 pl-3"
+            textRole="compact"
+            tone="secondary"
+          >
             {children}
-          </blockquote>
+          </Text>
         ),
         // Three link kinds: an INTERNAL cross-page link ("concepts",
         // "member-guide#section") is routed into the Help center (§13 — a raw href would
@@ -131,20 +166,19 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
             <span className="text-muted-foreground">{alt}</span>
           );
         },
-        table: ({ children }) => (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">{children}</table>
-          </div>
-        ),
-        th: ({ children }) => (
-          <th className="border-border border-b p-2 text-left font-medium">{children}</th>
-        ),
-        td: ({ children }) => <td className="border-border/50 border-b p-2 align-top">{children}</td>,
+        // A page's table is the design system's, as the mock draws it. A Markdown table has no
+        // caption of its own, so it is named for what it is.
+        table: ({ children }) => <Table caption="Table">{children}</Table>,
+        thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+        tbody: ({ children }) => <TableBody>{children}</TableBody>,
+        tr: ({ children }) => <TableRow>{children}</TableRow>,
+        th: ({ children }) => <TableHeaderCell>{children}</TableHeaderCell>,
+        td: ({ children }) => <TableCell verticalAlign="top">{children}</TableCell>,
       }}
     >
       {markdown}
     </Markdown>
-  </article>
+  </Stack>
 );
 
 export { DocView };

@@ -10,8 +10,14 @@ test("modal overlay traps focus, dismisses with Escape, and returns focus", asyn
   const dialog = page.getByRole("dialog", { name: "Return to the device home screen?" });
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("button", { name: "Keep watching" })).toBeFocused();
+  // Shift+Tab wraps to the last stop in the dialog, which is now the Dialog's corner close.
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("button", { name: "Leave playback" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Keep watching" })).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

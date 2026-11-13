@@ -3,14 +3,14 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ProposalReview } from "@/components/loomarr/ai/proposal-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
-import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
 import { ManualChannelBuilder } from "../manual-channel-builder";
@@ -26,9 +26,8 @@ import type { ChannelSuggestPanelProps } from "./channel-suggest-panel.type";
 // fork the flow or the approval gate: approve is the same admin-only useApproveProposal, and a
 // member sees the review without the controls (§7/§11).
 //
-// This is now the app's ONLY origination surface — the standalone `/suggest` page folded away
-// once this panel moved onto the channels surface. Nothing was stranded with it: the
-// cross-user approval queue had already moved into `/queue`'s tabs (V27).
+// This is the app's ONLY origination surface — there is no standalone `/suggest` page. The
+// cross-user approval queue lives in `/queue`'s tabs (V27), not here.
 //
 // One expanding surface over the run's three states: idle → describe form; running → live
 // phases; a landed proposal → review with Approve/Deny. A successful approve or "Create
@@ -84,6 +83,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
     proposal: proposal?.proposal,
     edit,
   });
+  const timeZone = useHouseholdTimeZone();
   const startFresh = () => {
     setEdit(undefined);
     flow.startFresh();
@@ -110,7 +110,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
   // onto the builder's Job, which leaves the builder.
   if (flow.manual) {
     return (
-      <section className={cn("flex flex-col gap-4", className)}>
+      <Stack className={className} gap="4" render="section">
         <ManualChannelBuilder
           isAdmin={isAdmin}
           initialIdea={editIdea}
@@ -120,12 +120,12 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
           // The failed or unconfigured request that led here is history now: AI is back.
           onDescribeWithAi={flow.describeWithAi}
         />
-      </section>
+      </Stack>
     );
   }
 
   return (
-    <section className={cn("flex flex-col gap-4", className)}>
+    <Stack className={className} gap="4" render="section">
       {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
           flight OR has failed: a failed run shows the failure below with its own way back,
           so falling through to a blank form here would swallow the error the user needs. */}
@@ -142,10 +142,10 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
         !proposal &&
         (aiUnconfigured || groundingUnconfigured ? (
           <div role="alert" className="border-border bg-muted/40 rounded-lg border p-4">
-            <p className="font-medium">
+            <Text as="p" textRole="cardLabel">
               {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
-            </p>
-            <p className="text-muted-foreground mt-1 text-sm">
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               {groundingUnconfigured
                 ? isAdmin
                   ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
@@ -153,8 +153,8 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                 : isAdmin
                   ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            </Text>
+            <Stack align="center" className="mt-2" direction="row" gap="inline" wrap>
               {isAdmin &&
                 (groundingUnconfigured ? (
                   <Action
@@ -177,7 +177,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                   Build it manually instead
                 </Action>
               )}
-            </div>
+            </Stack>
           </div>
         ) : (
           <ErrorState error={run.error} />
@@ -185,8 +185,8 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
 
       {/* Running — the live generation phases. */}
       {/* Before the first frame lands the model is already loading and thinking, so
-          "reasoning" is the honest default. It used to fall back to "searching", which
-          announced a library search that had not started and could not be the slow part. */}
+          "reasoning" is the honest default. "searching" would announce a library search that
+          has not started and cannot be the slow part. */}
       {run.isRunning && !proposal && (
         <GenerationProgress
           phase={run.phase ?? "reasoning"}
@@ -198,20 +198,25 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
           independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && !proposal && (
-        <div
+        <Stack
           role="alert"
-          className="max-w-form border-border bg-muted/35 mx-auto flex w-full flex-col gap-3 rounded-lg border p-4"
+          className="max-w-form border-border bg-muted/35 mx-auto w-full rounded-lg border p-4"
+          gap="control"
         >
           <div>
-            <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>
-            <p className="text-muted-foreground mt-1 text-sm">
+            <Text as="h3" textRole="cardLabel">
+              {failureCopy?.title ?? "Something went wrong"}
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               {failureCopy?.message ?? "Loomarr couldn't finish this request."}
-            </p>
+            </Text>
             {failureCopy?.guidance && (
-              <p className="text-muted-foreground mt-1 text-sm">{failureCopy.guidance}</p>
+              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                {failureCopy.guidance}
+              </Text>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <Stack direction="row" gap="inline" wrap>
             {run.actions.includes("edit") && (
               <Action onPress={editFailedDescription} variant={failureNeedsEdit ? undefined : "outline"}>
                 {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
@@ -232,13 +237,13 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
             <Action onPress={flow.buildManually} tone="suggest">
               Build it manually instead
             </Action>
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       )}
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
       {proposal && (
-        <div className="flex flex-col gap-4">
+        <Stack gap="4">
           <ProposalReview
             proposal={proposal.proposal}
             optionalSuggestions={optionalSuggestions}
@@ -251,6 +256,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                 : undefined
             }
             assessmentPending={proposal.status === "submitted" && outlook.isFetching}
+            assessmentTimeZone={timeZone}
             status={edit && proposal.status === "submitted" ? "partially-edited" : proposal.status}
             selfService={isAdmin}
             busy={approve.isPending || deny.isPending}
@@ -268,25 +274,27 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
             onDeny={isAdmin ? (reason) => deny.mutate({ id: proposal.id, data: { reason } }) : undefined}
           />
           {(approve.error ?? deny.error) != null && (
-            <p className="text-onair-300 text-sm">
+            <Text as="p" textRole="compact" tone="danger">
               {toProblem(approve.error ?? deny.error).title ?? "That didn't go through. Try again."}
-            </p>
+            </Text>
           )}
           {proposal.status === "approved" && (
-            <div className="flex flex-col items-start gap-2">
-              <p role="status" className="text-lock text-sm">
-                {user?.autoApprove
-                  ? "Created automatically using your account setting."
-                  : "This channel has already been created."}
-              </p>
+            <Stack align="start" gap="inline">
+              <div role="status">
+                <Text as="p" textRole="compact" tone="success">
+                  {user?.autoApprove
+                    ? "Created automatically using your account setting."
+                    : "This channel has already been created."}
+                </Text>
+              </div>
               <Action onPress={startFresh} variant="outline">
                 Create another
               </Action>
-            </div>
+            </Stack>
           )}
-        </div>
+        </Stack>
       )}
-    </section>
+    </Stack>
   );
 };
 

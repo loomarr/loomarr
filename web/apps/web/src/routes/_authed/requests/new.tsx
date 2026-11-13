@@ -1,3 +1,4 @@
+import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { parseOriginationSearch } from "@/suggest/origination-flow";
 import { RequestNewPage } from "@/suggest/request-new-page";
@@ -20,6 +21,14 @@ const Route = createFileRoute("/_authed/requests/new")({
     const { rememberedOrigination } = await import("@/suggest/remembered-origination");
     const remembered = rememberedOrigination();
     if (remembered) throw redirect({ to: "/requests/new", search: remembered, replace: true });
+  },
+  // Following a request (`?job=`) opens on its progress rather than an empty step. The flow
+  // answers for a failed read itself, so it is warmed, not awaited. A fresh describe step reads
+  // nothing.
+  loaderDeps: ({ search: { job } }) => ({ job }),
+  loader: async ({ context: { queryClient }, deps: { job } }) => {
+    if (job === undefined) return;
+    await queryClient.prefetchQuery(proposalJobsApi.getGetProposalJobQueryOptions(job));
   },
 });
 

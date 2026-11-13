@@ -2,13 +2,12 @@ package store
 
 import (
 	"database/sql"
-	"path/filepath"
 	"testing"
 )
 
 func TestFillerPullCommitMigrationPreservesHistoricalRuns(t *testing.T) {
 	t.Parallel()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "pull-upgrade.db"))
+	db, err := sql.Open("sqlite", sqliteDSNAt(t, 101, plainConnections))
 	if err != nil {
 		t.Fatal(err)
 	}

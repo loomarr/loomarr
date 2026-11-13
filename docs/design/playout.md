@@ -40,7 +40,13 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   item has defined the init; the tune-in item gets `FirstItemWait` (10 s). The wait is bounded by
   `StartDeadline` (`FirstItemWait` + `SlateRetry` + `FirstManifest`, 24 s), so a tune-in item that fails
   once still rejoins. Past it, the master fails the start with the item's last failure, such as a source
-  file the server can't read, and the client shows the shared start-failure problem. Web clients set
+  file the server can't read, and the client shows the shared start-failure problem. A tune-in that
+  lands on a **card** (a break with no ads, the generated bumper card) has no item until the card
+  ends, and its slate leads by only `RunAhead`. So the packager opens the first item after the card
+  just until its first fragment, takes that encoder's init, and closes it (`probeInit`, at most
+  `InitLookAhead` past the card, #3960). The card's slate then makes the first manifest, and the item
+  opens again when it airs. Without this, a card with more than `RunAhead` + `StartDeadline` left
+  failed the start. Web clients set
   `liveSyncDuration` to the same 6 s, so the playhead lands on the wall clock.
 - **Slate and rejoin.** An empty slot, a failed schedule lookup or an item that is not producing by its
   deadline is filled with house-format slate. The slate is shared per (host, output) and starts only
@@ -526,14 +532,27 @@ it plays. So:
 - The per-**title** decision (a subtitled original vs a dub, one programme at a time) remains a
   separate, unscoped feature.
 
-**Subtitles are soft renditions, with GPU burn-in only for image formats (#2088; not yet built).** The
-track probe reports what the current item carries; today the encoder maps video plus one audio
-stream and drops subtitles (the inert V55-era burn-in controls were retired). The decided shape:
+**Subtitles are soft, served beside the stream, with GPU burn-in only for image formats (#2088
+decision 5).** The encoder maps video plus one audio stream and never carries subtitles; a player
+draws them over the picture:
 
-- **Text subtitles** (SRT, ASS, mov_text, WebVTT) are extracted to one **WebVTT rendition per
-  language** per channel, in the master playlist's subtitle group. Each viewer turns them on or off
-  and picks the language in the player, and the choice is remembered per viewer. The cost is a cheap
-  text extraction per channel, never a video re-encode.
+- **Text subtitles** (SRT, ASS/SSA, mov_text, WebVTT, inside the file or in a file beside it) are
+  served by `GET /v1/channels/{id}/subtitles?from=&to=&track=`, not as an HLS rendition: a player
+  reads the master playlist once per tune, while a channel's languages change programme by
+  programme. The answer is the text tracks of the programme on air at `from` (from the Library's
+  `library_streams`, so no probe at request time) and the chosen track's cues on the channel's wall
+  clock from `from` to `to` (at most ten minutes). The cues are placed by walking the accepted cycle
+  the encoder airs (`internal/app/playoutresolve/subtitles.go`): a programme part airs its media from
+  its source offset, a break has none, and a cue cut by a break never airs.
+- A track is chosen by **key** (the language, then `-sdh` and `-forced`), so a viewer's remembered
+  choice picks each programme's matching track; a programme without that key plays the language's
+  first unforced track. Each viewer turns subtitles on or off in the player.
+- Each track is read **once**: `internal/playout/subtitles` runs one low-priority ffmpeg
+  (`-map 0:<stream> -f webvtt`) per track on a single worker, keeps the cues in memory for the tracks
+  in use and as WebVTT under `<playout.state_dir>/subtitles/` across restarts (unread for 60 days, a
+  file is removed). Until a track has been read, the answer says `pending` and the player asks again.
+  Reading a track demuxes the whole file, so a large film over a network share takes minutes the
+  first time; nothing about the video encode changes.
 - **Image subtitles** (PGS, VOBSUB) cannot become text cheaply, so they are **not offered** by default.
   An admin can set a channel to **always burn in** an image track. That is a GPU overlay in the
   video graph, and it applies to everyone on the channel. Where the GPU path cannot do it, the track

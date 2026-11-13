@@ -1,7 +1,8 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
-import { StatusDot, type StatusTone, Text } from "@loomarr/design-system";
-import { Link } from "@tanstack/react-router";
+import { Card, Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
+import { StatePanel } from "@loomarr/ui";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
@@ -74,6 +75,7 @@ const CRITERION_LABEL: Record<CoverageCriterionDTOCriterion, string> = {
 };
 
 const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
+  const navigate = useNavigate();
   // ⚠ Falls back rather than indexing blind. `LEVEL_COPY[level]` returning undefined crashed
   // the whole Filler section on `.tone` — found when this landed and five unrelated
   // ChannelFiller tests went red. The trigger there was a stub payload, but the real one is a
@@ -106,26 +108,48 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
   // gets both cases backwards.
   const isThin = coverage.level !== "exact";
 
+  // An empty catalogue is not eight settings each ruling everything out (#3412). Every criterion
+  // is counted over the same base, the break commercials, so when none of them keeps a clip and no
+  // rung holds one there is nothing to rule out: the design system's empty state says so and
+  // points at Filler.
+  const noClips = widest === 0 && criteria.length > 0 && emptyCriteria.length === criteria.length;
+  if (noClips) {
+    return (
+      <StatePanel
+        kind="empty"
+        title="No clips yet"
+        description="Breaks show the channel card until some arrive."
+        action={{ label: "Add filler", onPress: () => void navigate({ to: "/filler" }) }}
+      />
+    );
+  }
+
   return (
-    <section className={cn("border-border flex flex-col gap-3 rounded-lg border p-4", className)}>
-      <div className="flex items-start gap-2">
+    <Card className={className} gap={12} padding={16} render="section">
+      <Stack align="start" direction="row" gap="inline">
         <span style={{ display: "flex", flexShrink: 0, marginTop: 6 }}>
           <StatusDot tone={level.tone} label="" />
         </span>
-        <div className="min-w-0">
-          <p className="text-sm font-medium">{level.label}</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">{level.hint}</p>
-        </div>
-      </div>
+        <Stack gap="0.5" minWidth={0}>
+          <Text as="p" textRole="cardLabel" tone="primary">
+            {level.label}
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            {level.hint}
+          </Text>
+        </Stack>
+      </Stack>
 
       {rungs.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ul">
           {rungs.map((rung) => {
             // Percentage of the widest rung, NOT of some invented total — see the header.
             const share = widest > 0 ? Math.round((rung.clips / widest) * 100) : 0;
             return (
-              <li key={rung.level} className="flex items-center gap-2">
-                <span className="w-44 shrink-0 truncate text-xs">{RUNG_LABEL[rung.level] ?? rung.level}</span>
+              <Stack align="center" direction="row" gap="inline" key={rung.level} render="li">
+                <Text as="span" className="w-44 shrink-0 truncate" textRole="hint" tone="primary">
+                  {RUNG_LABEL[rung.level] ?? rung.level}
+                </Text>
                 <span className="bg-static-800 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
                   <span
                     className={cn(
@@ -139,10 +163,10 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="mono">
                   {rung.clips}
                 </Text>
-              </li>
+              </Stack>
             );
           })}
-        </ul>
+        </Stack>
       )}
 
       {/* Per-setting breakdown (§10 V51f) — WHICH setting is costing the clips.
@@ -153,16 +177,18 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           rather than reporting whichever predicate happened to run first. A cumulative funnel
           could not answer the question this list exists to answer. */}
       {isThin && emptyCriteria.length > 0 && (
-        <div className="border-border/60 flex flex-col gap-1.5 border-t pt-3">
+        <Stack borderColor="borderDecorative" borderTopWidth={1} gap="1.5" paddingTop={12}>
           <Text as="span" textRole="mono">
             {emptyCriteria.length === 1
               ? "One setting is ruling out every commercial:"
               : "These settings are ruling out every commercial:"}
           </Text>
-          <ul className="flex flex-col gap-1">
+          <Stack gap="1" render="ul">
             {criteria.map((c) => (
-              <li key={c.criterion} className="flex items-center gap-2 text-xs">
-                <span className="w-44 min-w-0 truncate">{CRITERION_LABEL[c.criterion] ?? c.criterion}</span>
+              <Stack align="center" direction="row" gap="inline" key={c.criterion} render="li">
+                <Text as="span" className="w-44 min-w-0 truncate" textRole="hint" tone="primary">
+                  {CRITERION_LABEL[c.criterion] ?? c.criterion}
+                </Text>
                 <Text
                   as="span"
                   className="shrink-0 tabular-nums"
@@ -177,13 +203,13 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 >
                   {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
                 </Text>
-              </li>
+              </Stack>
             ))}
-          </ul>
-        </div>
+          </Stack>
+        </Stack>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
         <Text as="span" textRole="mono">
           {widest === 0
             ? "No eligible commercials for this channel."
@@ -202,16 +228,20 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
         {isThin && (
           <Link
             to="/filler"
-            className="text-signal text-xs underline-offset-2 hover:underline"
+            className="underline-offset-2 hover:underline"
             data-testid="find-clips"
             // One line of 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
             data-touch-target
           >
-            Propose a pull →
+            <Stack direction="row" render="span">
+              <Text as="span" textRole="hint" tone="signal">
+                Propose a pull →
+              </Text>
+            </Stack>
           </Link>
         )}
-      </div>
-    </section>
+      </Stack>
+    </Card>
   );
 };
 

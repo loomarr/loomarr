@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
 import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -39,15 +39,15 @@ const eraLabel = (era: number | undefined): string => {
   if (!era) return "";
   return era % 10 === 0 ? `${era}s` : String(era);
 };
-// ⚠ The hardcoded CATEGORIES cycle list was DELETED (§10 V45a). `category` is now a DERIVED shadow
-// of the taxonomy tags, not a directly-editable free string — there is nothing to cycle. Tags are
-// shown as read-only badges and edited in the tag dialog, which serves the real vocabulary. (The list
-// was also a rule violation: operator-editable data hardcoded on the FE — see the no-hardcode rule.)
+// ⚠ No hardcoded CATEGORIES list here (§10 V45a). `category` is a DERIVED shadow of the taxonomy
+// tags, not a directly-editable free string — there is nothing to cycle. Tags are shown as read-only
+// badges and edited in the tag dialog, which serves the real vocabulary. (A list here would also break
+// the no-hardcode rule: operator-editable data hardcoded on the FE.)
 
 // How much this clip has actually AIRED — the mock's `usedLine`.
 //
-// ⚠ The verb is "aired", not "played", deliberately (fixed after a live review: "played" read as
-// "have I watched this", and the Play button on the card visibly did not move the number). The count
+// ⚠ The verb is "aired", not "played", deliberately: "played" reads as "have I watched this", and
+// the Play button on the card visibly does not move the number. The count
 // is an AIRINGS counter — incremented only when internal playout actually broadcasts the clip
 // (store.RecordClipPlay, "written from playout only"), NEVER by watching the preview. "Aired" is what
 // the number measures, and it disambiguates from the Play button (which is watching, not airing).
@@ -69,7 +69,7 @@ const playsLine = (clip: ClipDTO): string => {
 // a `useState` would make every card in a 200-card grid re-render on any one card's hover.
 //
 // ⚠ **The animation is a generated ASSET, not the clip streamed on hover.** Playing the source on
-// hover was the cheaper build and the wrong one at catalog scale: a grid would open a range
+// hover is the cheaper build and the wrong one at catalog scale: a grid would open a range
 // request per hovered card against files tens of megabytes each, to show six seconds. The webp is
 // ~150KB and already the right length. See internal/filler/preview.go.
 const ClipFrame = ({
@@ -87,7 +87,7 @@ const ClipFrame = ({
   // ⚠ **Unmounted on leave, and that is what makes the animation RESTART.** An animated WebP
   // begins at frame 0 when it decodes and then runs on its own — the browser keeps it going while
   // the element lives, whether or not anyone is looking. Keeping it mounted and merely hiding it
-  // meant the second hover picked the loop up wherever it happened to be, usually mid-advert.
+  // would make the second hover pick the loop up wherever it happens to be, usually mid-advert.
   // Remounting forces a fresh decode, so every hover starts from the beginning. (Maintainer,
   // 2026-08-03.)
   //
@@ -98,8 +98,8 @@ const ClipFrame = ({
   // every preview up front would pull the whole grid's worth of animation immediately — precisely
   // what the still exists to avoid.
   const [hovered, setHovered] = useState(false);
-  // ⚠ Keys on `hoverImage`, not the retired `preview` path (V52 phase 8). Same question — "is
-  // there an animation to show?" — asked of the record that now answers it.
+  // ⚠ Keys on `hoverImage` (V52 phase 8): "is there an animation to show?" is answered by the
+  // image record, not by a `preview` path.
   const showPreview = hovered && Boolean(clip.hoverImage);
 
   // ⚠ These handlers are DECORATIVE: they reveal a preview and do nothing else. The real control
@@ -121,8 +121,7 @@ const ClipFrame = ({
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      {/* ⚠ ONE path since V52 phase 8. The legacy `/v1/filler/thumb/{hash}` fallback that stood retired-ok
-          here through the migration window is retired with its route — a clip's artwork is an
+      {/* ⚠ ONE path (V52 phase 8), with no thumbnail-route fallback: a clip's artwork is an
           image-service image (§22).
 
           Empty alt, deliberately: the clip's name is the very next element, so a description here
@@ -200,7 +199,12 @@ const ClipFrame = ({
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
           never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
       {onPlay && thumbImage && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <Stack
+          align="center"
+          className="pointer-events-none absolute inset-0"
+          direction="row"
+          justify="center"
+        >
           {/* A plain <button>, not a DS Action: the target is the whole preview frame with no
               control box of its own, which no Action layout draws. So the pointer cursor (which
               Tailwind v4's Preflight stopped giving <button>) and the focus ring are set here.
@@ -220,13 +224,19 @@ const ClipFrame = ({
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
-            <span className="bg-signal/90 flex size-11 items-center justify-center rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-              <span className="ml-0.5 flex">
+            <Stack
+              align="center"
+              className="bg-signal/90 size-11 rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+              direction="row"
+              justify="center"
+              render="span"
+            >
+              <Stack className="ml-0.5" direction="row" render="span">
                 <Icon decorative glyph={icons.play} size="default" tone="inherit" />
-              </span>
-            </span>
+              </Stack>
+            </Stack>
           </button>
-        </div>
+        </Stack>
       )}
     </div>
   );

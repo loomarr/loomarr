@@ -12,7 +12,7 @@ import (
 // It shapes only the already-safe episode pool; empty means the complete run.
 type EpisodeSelection struct {
 	Mode     EpisodeSelectionMode `json:"mode,omitempty"`
-	Holidays []string             `json:"holidays,omitempty"`
+	Holidays []string             `json:"holidays,omitempty" maxItems:"32"` // calendar holiday ids, as on a channel's seasonal policy
 }
 
 type EpisodeSelectionMode string

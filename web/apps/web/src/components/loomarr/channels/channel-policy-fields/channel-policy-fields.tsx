@@ -1,5 +1,5 @@
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, CompactSelect, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -25,12 +25,12 @@ const DateAxisEditor = ({
   ranges: { from: number; to: number }[];
   onChange: (next: { from: number; to: number }[]) => void;
 }) => (
-  <div className="border-border flex flex-col gap-2 rounded-md border p-3">
-    <div className="flex items-center justify-between gap-3">
+  <Stack className="border-border rounded-md border p-3" gap="inline">
+    <Stack align="center" direction="row" gap="control" justify="between">
       <Text textRole="label">{label}</Text>
-    </div>
+    </Stack>
     <YearRangeListField emptyText="No date requirement." label={label} onChange={onChange} ranges={ranges} />
-  </div>
+  </Stack>
 );
 
 // PolicyField — one defaultable field (#1817 item 4): its label and (i) help on the left, where
@@ -59,18 +59,18 @@ const PolicyField = ({
 }) => {
   const labelId = `${id}-label`;
   return (
-    <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+    <Stack className={wide ? "sm:col-span-2" : undefined} gap="1.5">
+      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
+        <Stack align="center" direction="row" gap="1.5">
           <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
             {label}
           </Text>
           <FieldHelp label={label}>{help}</FieldHelp>
-        </div>
+        </Stack>
         <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
-      </div>
+      </Stack>
       {children}
-    </div>
+    </Stack>
   );
 };
 
@@ -266,9 +266,9 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Unrated titles — the safety PAIR to the ceiling, and orphaned until now: the gate has
-          always been enforced (and reported in the exclusion report) while nothing could choose
-          it, so an operator could see "3 skipped: unrated" and had no way to say "allow them".
+      {/* Unrated titles — the safety PAIR to the ceiling: the gate is always enforced (and
+          reported in the exclusion report), so an operator who sees "3 skipped: unrated" needs
+          this to say "allow them".
           Sits beside the ceiling because its default is DERIVED from it. */}
       {showScope && (
         <PolicyField
@@ -314,8 +314,14 @@ const ChannelPolicyFields = ({
           wide
           {...source("dates")}
         >
-          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would duplicate the visible label row */}
-          <div role="group" aria-labelledby="policy-dates-label" className="flex flex-wrap items-end gap-3">
+          <Stack
+            align="end"
+            aria-labelledby="policy-dates-label"
+            direction="row"
+            gap="control"
+            role="group"
+            wrap
+          >
             {/* Keyed on the stored value: a reset or any outside change re-seeds the box instead
                 of leaving the old year on screen. */}
             <CommitField
@@ -367,7 +373,7 @@ const ChannelPolicyFields = ({
             >
               Use separate date windows
             </Action>
-          </div>
+          </Stack>
         </PolicyField>
       )}
 
@@ -383,9 +389,9 @@ const ChannelPolicyFields = ({
             onChange(resetField(policy, "dates"));
           }}
         >
-          <p className="text-muted-foreground text-xs">
+          <Text as="p" textRole="hint" tone="secondary">
             Movie release and series premiere filter titles; episode airing filters individual episodes.
-          </p>
+          </Text>
           {(
             [
               ["Movie release", "movieRelease"],
@@ -427,8 +433,8 @@ const ChannelPolicyFields = ({
         </PolicyField>
       )}
 
-      {/* Longest programme — orphaned until now: the backend has filtered on runtimeMax
-          since the scope policy existed, and nothing could set it. Useful for a channel
+      {/* Longest programme — the backend filters on runtimeMax, and this is the field that
+          sets it. Useful for a channel
           that should stay to half-hour episodes and never pull in a three-hour film. */}
       {showScope && (
         <PolicyField
@@ -463,8 +469,8 @@ const ChannelPolicyFields = ({
 
       {/* Repeat spacing — commit-on-blur duration strings, one field per window so each shows
           its own source and Reset. Series gap + block cap are the OTHER half of separation
-          (§3). They were orphaned: the relaxation ladder narrates them in Diagnostics ("series
-          gap was 2h") while nothing could set them. */}
+          (§3). The relaxation ladder narrates them in Diagnostics ("series gap was 2h"), and
+          these fields are what set them. */}
       {showOrdering &&
         DURATION_FIELDS.map(({ field, id, label, help }) => (
           <PolicyField key={field} id={id} htmlFor={id} label={label} help={help} {...source(field)}>

@@ -1,18 +1,23 @@
 import {
   getChannelGuideMockHandler,
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelsNowNextMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
+  getChannelUpcomingMockHandler,
   getDeviceListMockHandler,
   getFillerDefectReportMockHandler,
+  getFillerIncomingMockHandler,
   getFillerPoolMockHandler,
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
   getGetChannelMockHandler,
   getGetChannelWatermarkOptionsMockHandler,
   getGetCurrentHealthMockHandler,
+  getGetDiagnosticVerboseCaptureMockHandler,
   getGuideHighlightsMockHandler,
+  getHouseholdMockHandler,
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
   getLibraryStatusMockHandler,
@@ -25,14 +30,18 @@ import {
   getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListInvitationsMockHandler,
+  getListLibraryItemsMockHandler,
+  getListLibraryNeedsMockHandler,
   getListProposalJobsMockHandler,
   getListProposalsMockHandler,
   getListStartupReportsMockHandler,
+  getListTaxonomyMockHandler,
   getListTitlesMockHandler,
   getListUsersMockHandler,
   getMyChannelsMockHandler,
   getNotificationProvidersListMockHandler,
   getNotificationProviderTypesListMockHandler,
+  getPreviewChannelPodsMockHandler,
   getRecordChannelTuneMockHandler,
   getSettingsListMockHandler,
   getSetupStateMockHandler,
@@ -140,7 +149,7 @@ const appHandlers = (): RequestHandler[] => [
   getChannelsNowNextMockHandler({ channels: [] }),
   // A single channel read &mdash; the channel-detail routes fetch this by id.
   getGetChannelMockHandler(channel()),
-  // ⚠ The WATCH surface's three reads, and they belong in the SHARED set because opening a channel
+  // ⚠ The WATCH surface's reads, and they belong in the SHARED set because opening a channel
   // now lands on Watch and tunes in on mount (§9.1 V54). Every route-level test that renders a
   // channel therefore mounts the player, so leaving these per-test would make the shared set
   // incomplete for the app's default landing screen — an unhandled request is a loud MSW error,
@@ -149,7 +158,14 @@ const appHandlers = (): RequestHandler[] => [
   // Deliberately empty/inert payloads: these exist so the player MOUNTS without an unhandled
   // request, not to make it play. A test that cares about tracks or the timeline stubs its own.
   getChannelTracksMockHandler({ audio: [], subtitles: [] }),
+  // The subtitles beside the stream: a programme with none, so the menu is Off alone.
+  getChannelSubtitlesMockHandler({ cues: [], pending: false, tracks: [] }),
   getChannelTimelineMockHandler({ serverNowMs: Date.UTC(2026, 0, 1), airings: [] }),
+  // What the channel and Library routes' loaders read, so opening one is not an unhandled request.
+  getChannelUpcomingMockHandler({ upcoming: [] }),
+  getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+  getListLibraryNeedsMockHandler({ needs: [], orders: [], problems: [] }),
+  getListLibraryItemsMockHandler({ items: [], total: 0 }),
   getChannelPlayUrlMockHandler({
     url: "",
     relativeUrl: "",
@@ -182,6 +198,7 @@ const appHandlers = (): RequestHandler[] => [
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
   // Home's Watching now and Tonight, read once the guide has a channel: nobody watching, nothing
   // highlighted.
+  getHouseholdMockHandler({ timeZone: "" }),
   getHouseholdViewingMockHandler({ channels: [], scope: "household", viewers: [], watching: 0 }),
   getGuideHighlightsMockHandler({ fromMs: 0, highlights: [], toMs: 0 }),
   // A member's Home reads their channel ideas even before anything is on the air: none yet.
@@ -221,8 +238,27 @@ const appHandlers = (): RequestHandler[] => [
     hosted: [],
   }),
   getSystemLlmDiscoverMockHandler({ models: [], sourceOk: true }),
+  // What the Diagnostics route's loader reads.
+  getGetDiagnosticVerboseCaptureMockHandler({ active: false }),
   getListDocsMockHandler({ docs: [] }),
   getFillerPoolMockHandler({ channels: [], clips: 0, breakBody: 0, eligible: 0, untagged: 0 }),
+  // What the Filler routes' loaders read. Nothing incoming and no taxonomy is an empty install; the
+  // coverage meter answers as a filler-less install does (501), which it renders as nothing.
+  getFillerIncomingMockHandler({
+    preparing: { rows: [], total: 0 },
+    needsHelp: { rows: [], total: 0 },
+    recentlyReady: { rows: [], total: 0 },
+  } as never),
+  getListTaxonomyMockHandler({
+    taxa: [],
+    totalClips: 0,
+    taggedClips: 0,
+    unclassifiedClips: 0,
+    axisCoverage: [],
+  }),
+  http.get("*/v1/channels/:id/filler/coverage", () =>
+    HttpResponse.json({ title: "Not Implemented", status: 501 }, { status: 501 }),
+  ),
   getFillerWatchMockHandler({
     clips: 0,
     health: "healthy",

@@ -540,13 +540,11 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 		// the same reel concurrently. A failed detection (above) returns before reaching here, so
 		// the row keeps its original state.
 		//
-		// ⚠ The error is DROPPED, per this adapter's convention: it
-		// has no logger and reports through the event bus, whose `filler_split` frames describe
-		// DETECTION — publishing "error" here would report a detection that in fact succeeded and
-		// whose proposal is saved. `Requeue` logs its own outcome, and the failure mode is the
-		// state the reel was already in: parked, reviewable by hand, nothing lost.
+		// ⚠ A failed requeue is logged, not published: the event bus's `filler_split` frames
+		// describe DETECTION, and "error" here would report a detection that in fact succeeded and
+		// whose proposal is saved. The reel stays parked and reviewable by hand, nothing lost.
 		if a.c.Pipeline != nil {
-			_, _ = a.c.Pipeline.Requeue(operationCtx, clipID)
+			a.requeueAfterDetect(operationCtx, a.c.Pipeline, clipID)
 		}
 		return nil
 	}, func(completionCtx context.Context, runErr error) {
@@ -630,13 +628,29 @@ func (a *Operator) rememberSources(ctx context.Context, urls []string) {
 		now := a.clock()
 		// Upsert by id: re-adding a source an operator already has is not an error, and
 		// UpsertFillerSource deliberately leaves last_fetched_at alone (see the store).
-		// ⚠ The error is deliberately DROPPED, not logged: this adapter has no logger (it
-		// reports through the event bus, which is for the download itself), and inventing a
-		// second channel for bookkeeping noise would be worse than the silence. The download
-		// proceeds either way, which is the property that matters.
+		// A failure is logged and the download proceeds, which is the property that matters. The
+		// event bus is for the download itself, so it does not carry this bookkeeping.
 		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
 		// it registers the source SWITCHED OFF (see the store).
-		_ = a.c.Sources.UpsertFillerSource(ctx, records.NewFillerSource(id, string(fetch.Archive), u, id, now()))
+		if err := a.c.Sources.UpsertFillerSource(ctx, records.NewFillerSource(id, string(fetch.Archive), u, id, now())); err != nil && a.c.Log != nil {
+			a.c.Log.Warn("filler source could not be registered; the download proceeds but the Sources tab will not list it",
+				"source", id, "err", err)
+		}
+	}
+}
+
+// requeuer is the pipeline's un-park of a reel returned to the belt.
+type requeuer interface {
+	Requeue(ctx context.Context, hash string) (bool, error)
+}
+
+// requeueAfterDetect returns a re-detected reel to the belt. The proposal is already saved, so a
+// failure does not fail the detection: it is logged, because the reel then waits at review until
+// someone moves it by hand.
+func (a *Operator) requeueAfterDetect(ctx context.Context, pipeline requeuer, clipID string) {
+	if _, err := pipeline.Requeue(ctx, clipID); err != nil && a.c.Log != nil {
+		a.c.Log.Warn("split: the re-detected reel could not be returned to the belt; it waits at review until moved by hand",
+			"clip", clipID, "err", err)
 	}
 }
 
