@@ -19972,14 +19972,13 @@ paths:
             examples:
               - ch_abc123
             type: string
-        - description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired, always answers 204 without starting playout, and is removed in v0.2.0-beta.10"
+        - description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel. Any other value is refused with 422 before playout is touched."
           explode: false
           in: query
           name: mode
           schema:
-            description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired, always answers 204 without starting playout, and is removed in v0.2.0-beta.10"
+            description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel. Any other value is refused with 422 before playout is touched."
             enum:
-              - prepared
               - warm
             type: string
       responses:
@@ -19991,8 +19990,12 @@ paths:
                 format: binary
                 type: string
           description: The HLS master playlist for the in-app and native players.
-        "204":
-          description: "mode=prepared (retired, removed in v0.2.0-beta.10): there is no prepared presentation, and live playout was not started."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
       summary: Channel HLS master playlist (signed-URL authed)
       tags:
         - playout

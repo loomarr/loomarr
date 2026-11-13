@@ -81,26 +81,6 @@ func liveManifest() playout.Presentation {
 	return playout.Presentation{Manifest: []byte("#EXTM3U\n#EXTINF:4,\nseg-0.ts\n"), Release: func() {}}
 }
 
-// Prepared media is retired (#1512 phase 4), but a client built before that still probes adjacent
-// channels with mode=prepared. The answer stays "no prepared presentation" and the channel is never
-// tuned: a live start there would run an encoder for a channel nobody watches (G1).
-func TestHLSRetiredPreparedModeNeverStartsPlayout(t *testing.T) {
-	probe := &modeProbePlayout{presentation: liveManifest()}
-	s := modeHandlerServer(t, probe)
-	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/master.m3u8?mode=prepared", nil)
-	req.SetPathValue("id", "ch-one")
-	w := httptest.NewRecorder()
-
-	s.hlsPlaylistHandler(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want 204", w.Code)
-	}
-	if probe.tuned {
-		t.Fatalf("mode=prepared tuned the channel: %#v", probe.request)
-	}
-}
-
 func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
 	probe := &modeProbePlayout{presentation: liveManifest()}
 	s := modeHandlerServer(t, probe)
