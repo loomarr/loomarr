@@ -7,6 +7,7 @@ import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests"
 import {
   Action,
   Badge,
+  Card,
   SectionHeader,
   Stack,
   StatusDot,
@@ -41,10 +42,17 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           what the idea is. */}
       <div aria-hidden className="grid grid-cols-4 gap-1.5 px-3 pt-3">
         {idea.keys.slice(0, POSTERS).map((key) => (
-          <div key={key} className="border-static-700 bg-static-800 aspect-[2/3] rounded-[6px] border" />
+          <Stack
+            aspectRatio={2 / 3}
+            backgroundColor="surfaceElevated"
+            borderColor="borderDecorative"
+            borderRadius={6}
+            borderWidth={1}
+            key={key}
+          />
         ))}
       </div>
-      <Stack className="px-4 pt-3.5" gap="1">
+      <Stack gap="1" paddingHorizontal={16} paddingTop={14}>
         <Text as="span" textRole="hint" tone="secondary">
           {ideaReason(idea, empty, nowMs)}
         </Text>
@@ -55,7 +63,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           {idea.pitch}
         </Text>
       </Stack>
-      <Stack align="center" className="px-4 pt-2.5" direction="row" gap="inline">
+      <Stack align="center" direction="row" gap="inline" paddingHorizontal={16} paddingTop={10}>
         {/* The availability text beside it says what the dot does. */}
         <StatusDot tone={idea.toDownload > 0 ? "progress" : "ok"} label="" size="compact" />
         <Text as="span" textRole="hint">
@@ -66,9 +74,9 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           </Text>
         </Text>
       </Stack>
-      <div className="mt-auto p-4">
+      <Stack marginTop="auto" padding={16}>
         {idea.requested ? (
-          <Stack align="center" className="min-h-8" direction="row">
+          <Stack align="center" direction="row" minHeight={32}>
             <Badge shape="square" tone="suggest">
               Waiting for an admin
             </Badge>
@@ -87,16 +95,16 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
             >
               Edit first
             </Action>
-            <div className="ml-auto">
+            <Stack marginLeft="auto">
               <Tooltip content="Not for me">
                 <Action disabled={busy} icon="close" layout="icon" onPress={onHide} variant="ghost">
                   {`Not for me: ${idea.name}`}
                 </Action>
               </Tooltip>
-            </div>
+            </Stack>
           </Stack>
         )}
-      </div>
+      </Stack>
     </article>
   );
 };
@@ -181,14 +189,11 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
         )}
       </SectionHeader>
       {ideas.length === 0 ? (
-        <Text
-          as="p"
-          className="border-static-700 bg-static-900 rounded-lg border px-4 py-5"
-          textRole="compact"
-          tone="secondary"
-        >
-          That’s every idea for now. New ones appear as your library grows.
-        </Text>
+        <Card paddingHorizontal={16} paddingVertical={20}>
+          <Text as="p" textRole="compact" tone="secondary">
+            That’s every idea for now. New ones appear as your library grows.
+          </Text>
+        </Card>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(272px,1fr))] gap-3">
           {shown.map((idea) => (
@@ -223,9 +228,14 @@ const ChannelIdeas = ({ empty, inset = false, nowMs }: ChannelIdeasProps) => {
           approved one. */}
       <Stack
         align="center"
-        className="border-static-700 mt-3 rounded-lg border border-dashed p-3.5"
+        borderColor="borderDecorative"
+        borderRadius={12}
+        borderStyle="dashed"
+        borderWidth={1}
         direction="row"
         justify="center"
+        marginTop={12}
+        padding={14}
       >
         <Action
           accessibilityRole="link"
