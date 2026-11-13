@@ -17,6 +17,7 @@ import { TamaguiText } from "../../text-base";
 import {
   brandChroma,
   iconography,
+  playerChrome,
   semanticRadius,
   semanticSpace,
   semanticTargets,
@@ -32,10 +33,15 @@ const variantLook = (theme: ReturnType<typeof useTheme>, danger: boolean) =>
       iconTone: (danger ? "danger" : "content") as IconTone,
     },
     ghost: { background: "transparent", border: "transparent", iconTone: "content" as IconTone },
+    disc: { background: playerChrome.disc, border: playerChrome.disc, iconTone: "inverse" as IconTone },
   }) as const;
 
 const variantTextColor = (theme: ReturnType<typeof useTheme>, variant: ActionVariant, danger: boolean) =>
-  variant === "outline" && danger ? theme.stateDanger.val : theme.contentPrimary.val;
+  variant === "disc"
+    ? playerChrome.discInk
+    : variant === "outline" && danger
+      ? theme.stateDanger.val
+      : theme.contentPrimary.val;
 
 // Chains both sides' event handlers and concatenates (never tailwind-merges — this mirrors Base
 // UI's own `mergeProps`, which is Tailwind-unaware) `style`/`className` rather than letting

@@ -5,7 +5,7 @@ export type { WatchFrameProps } from "./watch-frame";
 export { WatchFrame } from "./watch-frame";
 export type { WatchingPanelData, WatchingPanelDataArgs } from "./watching-panel";
 export { watchingPanelFromGuide } from "./watching-panel";
-export { WatchingSurface } from "./watching-surface";
+export { playerCoverOf, WatchingSurface } from "./watching-surface";
 export type {
   ChannelNumberEntry,
   WatchingLayer,

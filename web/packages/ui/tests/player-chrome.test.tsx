@@ -564,6 +564,25 @@ describe("PlayerCover", () => {
     expect(onLeave).toHaveBeenCalledOnce();
   });
 
+  it("draws Retry as the white disc, never amber, since amber means live (§9.6)", () => {
+    const g = globalThis as unknown as { getComputedStyle(n: Node): { backgroundColor: string } };
+    const rgb = (hex: string) =>
+      `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+    const host = mount(
+      <PlayerCover
+        channelLabel="CH 7 · Coast 90s"
+        density="touch"
+        kind="error"
+        onLeave={vi.fn()}
+        onRetry={vi.fn()}
+        title="The stream stopped."
+      />,
+    );
+
+    const retry = button(host, "Retry channel") as Node;
+    expect(g.getComputedStyle(retry).backgroundColor).toBe(rgb(playerChrome.disc));
+  });
+
   it("is a status for an off-air channel, with only the way out", () => {
     const host = mount(
       <PlayerCover
