@@ -34,9 +34,9 @@ func (s *Store) CommitSuggestionSuccess(
 
 	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE proposal_jobs SET status='done', last_error='', failure_code='', failure_trace_json=NULL, updated_at=?
-		  WHERE id=? AND status='running' AND attempts=? AND created_by=?`),
+		  WHERE id=? AND status='running' AND attempts=? AND created_by IS NOT DISTINCT FROM ?`),
 
-		storedb.Epoch(updatedAt), jobID, expectedAttempt, p.CreatedBy)
+		storedb.Epoch(updatedAt), jobID, expectedAttempt, storedb.OptionalID(p.CreatedBy))
 	if err != nil {
 		return fmt.Errorf("complete suggestion job %s: transition: %w", jobID, err)
 	}
@@ -47,7 +47,7 @@ func (s *Store) CommitSuggestionSuccess(
 	if affected != 1 {
 		var status, createdBy string
 		err := tx.QueryRowContext(ctx, s.h.Rebind(`SELECT status, created_by FROM proposal_jobs WHERE id = ?`), jobID).
-			Scan(&status, &createdBy)
+			Scan(&status, (*storedb.OptionalID)(&createdBy))
 		if errors.Is(err, sql.ErrNoRows) {
 			return storedb.ErrNotFound
 		}
@@ -149,13 +149,13 @@ func (s *Store) ReviseSubmittedProposal(
 		  WHERE id=? AND status IN ('done', 'failed') AND attempts=?
 		    AND ? = (
 		        SELECT p.id FROM proposals p
-		         WHERE p.job_id=proposal_jobs.id AND p.created_by=proposal_jobs.created_by
+		         WHERE p.job_id=proposal_jobs.id AND p.created_by IS NOT DISTINCT FROM proposal_jobs.created_by
 		         ORDER BY p.created_at DESC, p.id DESC
 		         LIMIT 1
 		    )
 		    AND EXISTS (
 		        SELECT 1 FROM proposals p
-		         WHERE p.id=? AND p.job_id=proposal_jobs.id AND p.created_by=proposal_jobs.created_by
+		         WHERE p.id=? AND p.job_id=proposal_jobs.id AND p.created_by IS NOT DISTINCT FROM proposal_jobs.created_by
 		           AND p.status='submitted'
 		    )`),
 
@@ -258,7 +258,7 @@ func (s *Store) CreateSuggestionResult(ctx context.Context, job Job, p Proposal)
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
-		 VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 1, ?, ?, NULL)`),
+		 VALUES (?, ?, ?, ?, ?, `+MemberValue+`, '', '', ?, ?, ?, 1, ?, ?, NULL)`),
 
 		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy,
 		ProposalWorkflowVersion, job.ReachedLive, storedb.Epoch(job.Deadline),
@@ -306,7 +306,7 @@ func (s *Store) CloneSuggestionSuccess(
 	if _, err := tx.ExecContext(ctx, s.h.Rebind(
 		`INSERT INTO proposal_jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
 		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		 VALUES (?, ?, ?, ?, ?, `+MemberValue+`, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
 		job.ID, job.Kind, job.Status, jobIntent(job.IntentJSON), job.IntentHash, job.CreatedBy, "", "",
 		workflowVersionForCreate(job.WorkflowVersion), job.ReachedLive, storedb.Epoch(job.Deadline), job.Attempts,
@@ -320,7 +320,7 @@ func (s *Store) CloneSuggestionSuccess(
 		   FROM proposal_jobs j
 		   JOIN proposals p ON p.id = (
 		       SELECT p2.id FROM proposals p2
-		        WHERE p2.job_id = j.id AND p2.created_by = j.created_by
+		        WHERE p2.job_id = j.id AND p2.created_by IS NOT DISTINCT FROM j.created_by
 		        ORDER BY p2.created_at DESC, p2.id DESC
 		        LIMIT 1
 		   )
@@ -370,11 +370,13 @@ func insertProposalTx(ctx context.Context, tx storedb.Querier, s *Store, p Propo
 	if err != nil {
 		return err
 	}
+	decidedBy, decidedVia := DecisionArgs(p)
 	_, err = tx.ExecContext(ctx, s.h.Rebind(
-		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		`INSERT INTO proposals (id, job_id, status, created_by, decided_by, decided_via, deny_reason, mod_summary, note,
+		                        proposal_json, approved_at, created_at, updated_at)
+		 VALUES (?, ?, ?, `+MemberValue+`, `+MemberValue+`, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
-		p.ID, p.JobID, p.Status, p.CreatedBy, p.ApprovedBy, p.DenyReason, p.ModSummary, p.Note,
+		p.ID, storedb.OptionalID(p.JobID), p.Status, p.CreatedBy, decidedBy, decidedVia, p.DenyReason, p.ModSummary, p.Note,
 		body, storedb.Epoch(p.ApprovedAt), storedb.Epoch(p.CreatedAt), storedb.Epoch(p.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create proposal %s: %w", p.ID, err)

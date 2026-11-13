@@ -23,7 +23,8 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 		Lineup:      []proposals.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000001, Name: "Round Trip Movie", InLibrary: true}},
 		Retired:     []provision.Key{"movie:tmdb:90000002"},
 	}
-	if err := s.CreateProposal(ctx, Proposal{ID: "p-typed", JobID: "j", Status: "submitted", CreatedBy: "u", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {
+	mustOriginJobs(t, s, "j")
+	if err := s.CreateProposal(ctx, Proposal{ID: "p-typed", JobID: "j", Status: "submitted", Body: want, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -35,7 +36,7 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 		len(got.Body.Lineup) != 1 || got.Body.Lineup[0].TMDBID != 90000001 || len(got.Body.Retired) != 1 {
 		t.Fatalf("body did not round-trip as a typed value: %+v", got.Body)
 	}
-	listed, err := s.ListProposalsByCreator(ctx, "u")
+	listed, err := s.ListProposalsByCreator(ctx, "")
 	if err != nil || len(listed) != 1 || listed[0].Body.ChannelName != "Action Hour" {
 		t.Fatalf("list decoded %+v, err %v", listed, err)
 	}
@@ -47,9 +48,10 @@ func TestProposalBodyIsDecodedOnceAtTheStore(t *testing.T) {
 func TestProposalBodyThatIsNotAProposalIsAnError(t *testing.T) {
 	s := newSQLiteStore(t).(*sqlStore)
 	ctx := context.Background()
+	mustOriginJobs(t, s, "j")
 	insert := func(id, body string) error {
 		_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO proposals (id, job_id, status, created_by, decided_by, deny_reason, mod_summary, note, proposal_json, approved_at, created_at, updated_at)
-			VALUES (?, 'j', 'approved', 'u', '', '', '', '', ?, 0, 0, 0)`), id, body)
+			VALUES (?, 'j', 'approved', NULL, NULL, '', '', '', ?, 0, 0, 0)`), id, body)
 		return err
 	}
 	for _, notJSON := range []string{"", "{"} {
@@ -63,7 +65,7 @@ func TestProposalBodyThatIsNotAProposalIsAnError(t *testing.T) {
 	if _, err := s.GetProposal(ctx, "p-bad"); err == nil || errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetProposal(malformed) = %v, want a decode error", err)
 	}
-	if _, err := s.ListProposalsByCreator(ctx, "u"); err == nil {
+	if _, err := s.ListProposalsByCreator(ctx, ""); err == nil {
 		t.Fatal("ListProposalsByCreator decoded a malformed row")
 	}
 }

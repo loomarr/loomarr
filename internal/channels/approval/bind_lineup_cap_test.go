@@ -7,8 +7,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/proposals/accept"
 )
 
 func movies(from, n int) []proposals.ProposalItem {
@@ -43,12 +43,12 @@ func TestBindKeepsTheLineupWithinWhatTheEditorCanSave(t *testing.T) {
 		wantFull  int // picks reported as turned away
 		wantError string
 	}{
-		"re-curation with room":                          {accept.AutoCuratedBy, storedLineup(0, 10), movies(10, 5), nil, 15, 0, ""},
-		"re-curation fills the ceiling exactly":          {accept.AutoCuratedBy, storedLineup(0, ceiling-3), movies(ceiling-3, 3), nil, ceiling, 0, ""},
-		"re-curation past the ceiling adds what fits":    {accept.AutoCuratedBy, storedLineup(0, ceiling-3), movies(ceiling-3, 8), nil, ceiling, 5, ""},
-		"re-curation on a full lineup adds nothing":      {accept.AutoCuratedBy, storedLineup(0, ceiling), movies(ceiling, 4), nil, ceiling, 4, ""},
-		"re-curation counts acquisitions as picks too":   {accept.AutoCuratedBy, storedLineup(0, ceiling-1), movies(ceiling-1, 1), movies(ceiling, 2), ceiling, 2, ""},
-		"re-curation of a lineup already over keeps it":  {accept.AutoCuratedBy, storedLineup(0, ceiling+20), movies(ceiling+20, 3), nil, ceiling + 20, 3, ""},
+		"re-curation with room":                          {proposalstore.AutoCuratedBy, storedLineup(0, 10), movies(10, 5), nil, 15, 0, ""},
+		"re-curation fills the ceiling exactly":          {proposalstore.AutoCuratedBy, storedLineup(0, ceiling-3), movies(ceiling-3, 3), nil, ceiling, 0, ""},
+		"re-curation past the ceiling adds what fits":    {proposalstore.AutoCuratedBy, storedLineup(0, ceiling-3), movies(ceiling-3, 8), nil, ceiling, 5, ""},
+		"re-curation on a full lineup adds nothing":      {proposalstore.AutoCuratedBy, storedLineup(0, ceiling), movies(ceiling, 4), nil, ceiling, 4, ""},
+		"re-curation counts acquisitions as picks too":   {proposalstore.AutoCuratedBy, storedLineup(0, ceiling-1), movies(ceiling-1, 1), movies(ceiling, 2), ceiling, 2, ""},
+		"re-curation of a lineup already over keeps it":  {proposalstore.AutoCuratedBy, storedLineup(0, ceiling+20), movies(ceiling+20, 3), nil, ceiling + 20, 3, ""},
 		"a person's approval of exactly the ceiling":     {"admin", storedLineup(0, 5), movies(0, ceiling), nil, ceiling, 0, ""},
 		"a person's approval past the ceiling":           {"admin", storedLineup(0, 5), movies(0, ceiling+1), nil, 0, 0, "1000"},
 		"a person's approval past it through both lists": {"admin", nil, movies(0, ceiling-1), movies(ceiling, 5), 0, 0, "1000"},

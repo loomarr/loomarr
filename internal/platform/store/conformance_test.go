@@ -94,6 +94,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	})
 
 	t.Run("Jobs", func(t *testing.T) {
+		newStore := withJobMembers(newStore)
 		t.Run("DiscoveryFeedback", func(t *testing.T) { testDiscoveryFeedback(t, newStore) })
 		t.Run("DiscoveryFeedbackMissingChannel", func(t *testing.T) { testDiscoveryFeedbackMissingChannel(t, newStore) })
 		t.Run("DiscoveryFeedbackHardDelete", func(t *testing.T) { testDiscoveryFeedbackHardDelete(t, newStore) })
@@ -116,6 +117,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ScheduledJobRoundTrip", func(t *testing.T) { testScheduledJobRoundTrip(t, newStore) })
 		t.Run("ScheduledJobPaused", func(t *testing.T) { testScheduledJobPaused(t, newStore) })
 		t.Run("ProposalRoundTripAndQueues", func(t *testing.T) { testProposalQueues(t, newStore) })
+		t.Run("ProposalPeople", func(t *testing.T) { testProposalPeople(t, newStore) })
 		t.Run("ProposalApprovalAtomic", func(t *testing.T) { testProposalApprovalAtomic(t, newStore) })
 		t.Run("ProposalApprovalStaleChannel", func(t *testing.T) { testProposalApprovalStaleChannel(t, newStore) })
 		t.Run("ProposalApprovalSuperseded", func(t *testing.T) { testProposalApprovalSuperseded(t, newStore) })

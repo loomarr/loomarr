@@ -417,7 +417,6 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `status` | `queued` (waiting for a worker), `running`, `done` (produced a proposal), or `failed`. | `TEXT` |
 | `intent_json` | The request: its description and options such as era, tone, titles to include or leave out, and for a refine the change asked for and the channel's current lineup. | `TEXT` |
 | `intent_hash` | A fingerprint of the normalised request. A new identical request can reuse a recent `done` job's result instead of running again. | `TEXT` |
-| `created_by` | The person who submitted the request (users.id). Empty when no person did. | `TEXT` |
 | `last_error` | The detailed error from the last failure, for the logs. Not shown to the requester. | `TEXT` |
 | `deadline` | When a queued job is due to run, or when a running job's hold expires and another worker may take it over, in Unix seconds. | `BIGINT` |
 | `attempts` | How many times a worker has started the job. | `INTEGER` |
@@ -428,6 +427,7 @@ One row per run of the channel suggester: a person's channel request, a refine o
 | `reached_live` | 1 once a channel made from this job has gone live. It stays 1 even if the channel is later paused. | `BOOLEAN` |
 | `failure_trace_json` | The bounded record of the candidate titles a failed run considered and why each was kept or dropped, used to explain the failure. Empty when there is none. | `TEXT` · may be empty |
 | `channel_id` | The existing channel a refine or re-curation job changes (channels.id); the job goes with that channel. Null for a job that creates a new channel. | `TEXT` · may be empty · → `channels.id` |
+| `created_by` | The person who submitted the request (users.id). Null when no person did (the API token or a re-curation), or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### proposal_job_attempts
 
@@ -454,10 +454,7 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the proposal. | `TEXT` · key |
-| `job_id` | The job that produced it (proposal_jobs.id). | `TEXT` |
 | `status` | `submitted` (waiting for a decision), `approved`, `denied`, or `superseded` (replaced by a newer proposal from the same job before anyone decided). | `TEXT` |
-| `created_by` | The person who asked for it (users.id). | `TEXT` |
-| `decided_by` | The admin who approved or denied it (users.id). Empty until decided. | `TEXT` |
 | `deny_reason` | The reason given for a denial. Empty otherwise. | `TEXT` |
 | `proposal_json` | The suggestion itself. The request, the proposed channel name, the lineup of titles already in the library, titles to acquire, ranked backups, scores, the rationale and the channel rules. | `TEXT` |
 | `created_at` | When the proposal was made, in Unix seconds. | `BIGINT` |
@@ -465,6 +462,10 @@ A suggested channel lineup produced by a channel suggester job, waiting for an a
 | `mod_summary` | What the admin changed before approving, written by Loomarr, such as "dropped 2, added 1". Empty when approved unchanged. | `TEXT` |
 | `note` | The admin's message to the requester about the decision. Empty for none. | `TEXT` |
 | `approved_at` | When the proposal was approved, in Unix seconds. 0 if it never was. | `BIGINT` |
+| `decided_via` | How it was approved or denied. `person` (an admin, or the API token), `auto` (the requester's automatic approval), or `auto-curate` (a channel's scheduled re-curation). Null until decided. | `TEXT` · may be empty |
+| `created_by` | The person who asked for it (users.id). Null for the API token, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
+| `decided_by` | The admin who approved or denied it (users.id). Null until decided, when an automatic rule decided (see decided_via), for the API token, or once that admin is deleted. | `TEXT` · may be empty · → `users.id` |
+| `job_id` | The job that produced it (proposal_jobs.id). The job is kept while the proposal is submitted; null once the finished job is purged. | `TEXT` · may be empty · → `proposal_jobs.id` |
 
 ### discovery_feedback
 
@@ -475,13 +476,13 @@ The Keep, Less like this, Never and Surprise me choices people make about titles
 | Column | What it holds | Type |
 | --- | --- | --- |
 | `id` | Identifies the choice. | `TEXT` · key |
-| `actor_id` | The person who made it (users.id), or `api-token` for a choice sent with the API token. | `TEXT` |
 | `scope` | Where it applies. `household` for every channel, or `channel` for one channel. | `TEXT` |
 | `scope_id` | The channel it applies to (channels.id) when the scope is `channel`, and goes with that channel; null for `household`. | `TEXT` · may be empty · → `channels.id` |
 | `target_key` | The title it is about, by its key, such as `movie:tmdb:603`. | `TEXT` |
 | `action` | `keep` (favour this title), `less` (less like this, which also lowers titles of its genres), `never` (leave it out), `surprise` (Surprise me, favouring picks unlike it), or `clear` (remove an earlier choice). | `TEXT` |
 | `reason` | An optional reason the person gave. | `TEXT` |
 | `created_at_ns` | When the choice was made, in Unix nanoseconds. | `BIGINT` |
+| `actor_id` | The person who made it (users.id). Null for a choice sent with the API token, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 
 ### quality_receipts
 
