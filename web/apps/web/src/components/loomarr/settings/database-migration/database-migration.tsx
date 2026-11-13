@@ -1,5 +1,15 @@
 import { formatBytes } from "@loomarr/core/format";
-import { Action, Field, FieldHint, Icon, icons, Stack, StatusLabel, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Field,
+  FieldHint,
+  Icon,
+  icons,
+  Stack,
+  StatusLabel,
+  Text,
+} from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
 
@@ -45,24 +55,31 @@ const DatabaseMigration = ({
   // a missing feature; this reads as an answered question.
   if (!status.canMigrate) {
     return (
-      <section className={cn("border-border rounded-lg border p-4", className)}>
+      <Card className={className} gap={8} padding={16} render="section">
         <Stack align="center" direction="row" gap="inline">
           <Icon decorative glyph={icons.database} size="compact" tone="muted" />
           <Text as="h3" textRole="cardLabel">
             Running on PostgreSQL
           </Text>
         </Stack>
-        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           Nothing to migrate. Back PostgreSQL up with your usual tooling. Loomarr does not try to own that,
           because an operator already running Postgres has a strategy better than anything it would invent.
         </Text>
-      </section>
+      </Card>
     );
   }
 
   return (
-    <section className={cn("border-border rounded-lg border", className)}>
-      <header className="border-border border-b p-4">
+    <Card className={className} render="section">
+      <Stack
+        borderBottomWidth={1}
+        borderColor="borderDecorative"
+        flexShrink={0}
+        gap="1.5"
+        padding={16}
+        render="header"
+      >
         <Stack align="center" direction="row" gap="inline" wrap>
           <Icon decorative glyph={icons.database} size="compact" tone="info" />
           <Text as="h3" textRole="cardLabel">
@@ -70,43 +87,50 @@ const DatabaseMigration = ({
           </Text>
           <StatusLabel tone="ok">{status.backend}</StatusLabel>
         </Stack>
-        <Text as="p" className="mt-1.5" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           {step === null
             ? "Four steps. Your SQLite file is never deleted."
             : `Step ${at + 1} of 4 · the switch happens only after an independent parity check.`}
         </Text>
         {/* Why anyone would do this — and why they might not need to. Stating the SQLite
             constraint is the honest framing: Postgres is not "better", it buys replicas. */}
-        <Text as="p" className="mt-2" textRole="hint" tone="secondary">
-          SQLite: run exactly one instance: a second process writing the same file will corrupt it. PostgreSQL
-          enables replicas, and is worth it if you already run Postgres and would rather back up one thing.
-        </Text>
-      </header>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="hint" tone="secondary">
+            SQLite: run exactly one instance: a second process writing the same file will corrupt it.
+            PostgreSQL enables replicas, and is worth it if you already run Postgres and would rather back up
+            one thing.
+          </Text>
+        </Stack>
+      </Stack>
 
       {envPinned ? (
         // An env pin wins at boot, so an atomic copy-and-switch cannot commit.
-        <Stack className="p-4" direction="row" gap="control">
-          <Stack className="mt-0.5" direction="row" render="span">
+        <Stack direction="row" gap="control" padding={16}>
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.locked} size="compact" tone="success" />
           </Stack>
-          <div>
+          <Stack gap="1">
             <Text as="p" textRole="compact">
               DATABASE_URL is pinned by the environment.
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+            <Text as="p" textRole="compact" tone="secondary">
               In-app migration is unavailable because an environment variable always wins at boot. Change
               DATABASE_URL where Loomarr is launched and restart; Loomarr will not make a copy that can
               silently diverge from the database it keeps using.
             </Text>
-          </div>
+          </Stack>
         </Stack>
       ) : (
         <>
           <Stack
             align="center"
-            className="border-border border-b px-4 py-3"
+            borderBottomWidth={1}
+            borderColor="borderDecorative"
             direction="row"
+            flexShrink={0}
             gap="inline"
+            paddingHorizontal={16}
+            paddingVertical={12}
             render="ol"
             wrap
           >
@@ -145,7 +169,7 @@ const DatabaseMigration = ({
             })}
           </Stack>
 
-          <div className="p-4">
+          <Stack padding={16}>
             {step === null && (
               <Stack direction="row">
                 <Action onPress={() => onStepChange("connect")}>Move to PostgreSQL</Action>
@@ -153,7 +177,7 @@ const DatabaseMigration = ({
             )}
 
             {step === "connect" && (
-              <Stack className="max-w-xl" gap="control">
+              <Stack gap="control" maxWidth={576}>
                 <Stack gap="1.5">
                   <Field
                     aria-describedby="migration-dsn-doc"
@@ -190,13 +214,17 @@ const DatabaseMigration = ({
                       <Stack
                         align="center"
                         aria-hidden
+                        borderRadius={999}
                         className={cn(
-                          "text-2xs mt-0.5 size-4 rounded-full font-mono",
+                          "text-2xs font-mono",
                           c.ok ? "bg-signal-tint-15 text-signal" : "bg-onair-tint-15 text-onair-300",
                         )}
                         flexShrink={0}
+                        height={16}
                         justify="center"
+                        marginTop={2}
                         render="span"
+                        width={16}
                       >
                         {c.ok ? "✓" : "✕"}
                       </Stack>
@@ -276,8 +304,8 @@ const DatabaseMigration = ({
                 operator's first question after a failed migration is whether their data
                 survived, and a generic "migration failed" leaves them to guess. */}
             {error && (
-              <Stack align="start" className="mt-3" direction="row" gap="inline" render="p">
-                <Stack className="mt-0.5" direction="row" render="span">
+              <Stack align="start" direction="row" gap="inline" marginTop={12} render="p">
+                <Stack direction="row" marginTop={2} render="span">
                   <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
                 </Stack>
                 <Text as="span" textRole="compact" tone="danger">
@@ -285,10 +313,10 @@ const DatabaseMigration = ({
                 </Text>
               </Stack>
             )}
-          </div>
+          </Stack>
         </>
       )}
-    </section>
+    </Card>
   );
 };
 
