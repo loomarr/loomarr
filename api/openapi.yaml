@@ -1480,6 +1480,7 @@ components:
         applied:
           items:
             $ref: "#/components/schemas/AppliedRelaxation"
+          maxItems: 8
           type: array
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
@@ -1507,6 +1508,7 @@ components:
         operatorSet:
           items:
             type: string
+          maxItems: 5
           type: array
         ordering:
           type: string
@@ -1515,6 +1517,7 @@ components:
         rules:
           items:
             $ref: "#/components/schemas/SchedulingRule"
+          maxItems: 32
           type: array
         scope:
           $ref: "#/components/schemas/ScopePolicy"
@@ -3093,14 +3096,17 @@ components:
         movieRelease:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
         seriesAiring:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
         seriesPremiere:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
       type: object
     DayRule:
@@ -4675,16 +4681,19 @@ components:
         categories:
           items:
             type: string
+          maxItems: 128
           type: array
         era:
           $ref: "#/components/schemas/Range"
         eraWindows:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 8
           type: array
         excluded:
           items:
             type: string
+          maxItems: 1000
           type: array
         geography:
           $ref: "#/components/schemas/FillerGeography"
@@ -4693,6 +4702,7 @@ components:
         pinned:
           items:
             type: string
+          maxItems: 1000
           type: array
         roles:
           items:
@@ -5136,10 +5146,12 @@ components:
         exclude:
           items:
             type: string
+          maxItems: 50
           type: array
         include:
           items:
             type: string
+          maxItems: 50
           type: array
       type: object
     Geography:
@@ -7637,6 +7649,7 @@ components:
         genres:
           items:
             type: string
+          maxItems: 16
           type: array
         key:
           description: Provisioning key, e.g. movie:tmdb:603
@@ -9272,6 +9285,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
@@ -9331,6 +9345,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
@@ -10876,6 +10891,7 @@ components:
         collections:
           items:
             type: string
+          maxItems: 100
           type: array
         dates:
           $ref: "#/components/schemas/DateScope"
@@ -10894,6 +10910,7 @@ components:
         series:
           items:
             type: string
+          maxItems: 1000
           type: array
       type: object
     Scores:
@@ -11050,6 +11067,7 @@ components:
         holidays:
           items:
             type: string
+          maxItems: 32
           type: array
         mode:
           type: string
@@ -13451,6 +13469,7 @@ components:
           description: Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands.
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         logo:
           description: Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it.

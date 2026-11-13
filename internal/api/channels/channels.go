@@ -272,7 +272,7 @@ type updateChannelInput struct {
 		// validated (provision.ParseKey); a key not `available` in the library is inert (a
 		// pending slot, never played) until it lands, so this can't play unapproved content.
 		// nil = leave the lineup unchanged; an empty (non-nil) array clears it.
-		Lineup *[]LineupEntryDTO `json:"lineup,omitempty" doc:"Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands."`
+		Lineup *[]LineupEntryDTO `json:"lineup,omitempty" maxItems:"1000" doc:"Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands."`
 	}
 }
 
