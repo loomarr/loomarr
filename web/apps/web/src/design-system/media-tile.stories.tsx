@@ -14,7 +14,8 @@ const Picture = ({ label }: { label: string }) => (
     justifyContent="center"
     width="100%"
   >
-    <Text textRole="hint" tone="secondary">
+    {/* The caption stands in for the picture's own content; it is not a visible name. */}
+    <Text aria-hidden textRole="hint" tone="secondary">
       {label}
     </Text>
   </Surface>
