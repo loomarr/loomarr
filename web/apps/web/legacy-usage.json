@@ -618,10 +618,8 @@
       "tailwindClasses": 3
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 79,
-      "rawButton": 2,
-      "rawTypeSize": 1,
-      "rawTypeWeight": 1
+      "tailwindClasses": 21,
+      "rawButton": 1
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
       "tailwindClasses": 17

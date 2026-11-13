@@ -240,7 +240,7 @@
       "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "flexStack": 5
+      "flexStack": 3
     },
     "apps/web/src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
       "flexStack": 1
