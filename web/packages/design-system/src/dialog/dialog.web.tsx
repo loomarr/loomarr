@@ -32,9 +32,24 @@ const rule = `1px solid ${semanticColors.surface.elevated}`;
 
 const LayoutContext = createContext<NonNullable<DialogContentProps["layout"]>>("padded");
 
-const Dialog = ({ children, defaultOpen, onOpenChange, open }: DialogProps) => (
-  <DialogPrimitive.Root defaultOpen={defaultOpen} onOpenChange={(next) => onOpenChange?.(next)} open={open}>
-    {children}
+// Whether the corner close is drawn: a dialog that must be answered has none.
+const DismissibleContext = createContext(true);
+
+const Dialog = ({ children, defaultOpen, dismissible = true, onOpenChange, open }: DialogProps) => (
+  <DialogPrimitive.Root
+    defaultOpen={defaultOpen}
+    onOpenChange={(next, details) => {
+      // Escape and a press outside are asks to close; a dialog that must be answered refuses them. Its
+      // own DialogClose, which is a close press, still closes it.
+      if (!(next || dismissible) && (details.reason === "escape-key" || details.reason === "outside-press")) {
+        details.cancel();
+        return;
+      }
+      onOpenChange?.(next);
+    }}
+    open={open}
+  >
+    <DismissibleContext.Provider value={dismissible}>{children}</DismissibleContext.Provider>
   </DialogPrimitive.Root>
 );
 
@@ -135,6 +150,7 @@ const DialogContent = ({
   const top = placement === "top";
   const fill = placement === "fill";
   const bottom = placement === "bottom";
+  const dismissible = useContext(DismissibleContext);
   const resolvedLayout = layout ?? (side ? "sectioned" : "padded");
   const popup: CSSProperties = side
     ? sidePanel
@@ -177,7 +193,7 @@ const DialogContent = ({
         style={popup}
       >
         <LayoutContext.Provider value={resolvedLayout}>{children}</LayoutContext.Provider>
-        {top || fill || bottom ? null : <CornerClose />}
+        {top || fill || bottom || !dismissible ? null : <CornerClose />}
       </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   );
@@ -199,15 +215,19 @@ const DialogHeader = ({ children }: DialogSectionProps) => {
   );
 };
 
-const DialogFooter = ({ children, spread = false }: DialogFooterProps) => {
+const DialogFooter = ({ children, spread = false, stacked = false }: DialogFooterProps) => {
   const sectioned = useContext(LayoutContext) === "sectioned";
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: spread ? "space-between" : "flex-end",
         gap: 8,
-        ...(spread ? { flexWrap: "wrap" } : {}),
+        ...(stacked
+          ? { flexDirection: "column", alignItems: "stretch" }
+          : {
+              justifyContent: spread ? "space-between" : "flex-end",
+              ...(spread ? { flexWrap: "wrap" } : {}),
+            }),
         ...(sectioned ? { padding: "16px 24px", borderTop: rule } : {}),
       }}
     >
@@ -218,7 +238,8 @@ const DialogFooter = ({ children, spread = false }: DialogFooterProps) => {
 
 // A padded title keeps clear of the corner close; a sectioned header already does.
 const DialogTitle = ({ children }: DialogSectionProps) => {
-  const padded = useContext(LayoutContext) === "padded";
+  const dismissible = useContext(DismissibleContext);
+  const padded = useContext(LayoutContext) === "padded" && dismissible;
   return (
     <DialogPrimitive.Title
       style={{
