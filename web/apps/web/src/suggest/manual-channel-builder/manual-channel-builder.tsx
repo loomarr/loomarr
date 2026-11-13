@@ -12,7 +12,6 @@ import { AiReconnectBanner } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { useState } from "react";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { SearchCommand } from "../../components/loomarr/shell";
 import { useAiReconnect } from "../use-ai-reconnect";
 import type { ManualChannelBuilderProps } from "./manual-channel-builder.type";
@@ -139,7 +138,7 @@ const ManualChannelBuilder = ({
         : `${lineup.length} ${lineup.length === 1 ? "title" : "titles"} · Loomarr will add ${missing} missing ${missing === 1 ? "title" : "titles"}`;
 
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
+    <Stack className={className} gap="5">
       {/* The page's one heading names this ("Add a channel", or "Edit before you request" from an
           idea); this sentence is its description, so the builder nests no heading of its own. */}
       <Text as="p" textRole="compact" tone="secondary">
@@ -172,16 +171,16 @@ const ManualChannelBuilder = ({
       </form.Field>
 
       {!fromIdea && (
-        <div>
+        <Stack gap="1">
           <Text as="p" textRole="cardLabel">
             Build from your library
           </Text>
-          <Text as="p" className="mt-1" textRole="hint" tone="secondary">
+          <Text as="p" textRole="hint" tone="secondary">
             Grounded in your library's genres, decades and the seasonal calendar — no AI involved.
           </Text>
-          <Stack className="mt-2" direction="row" gap="inline" wrap>
+          <Stack direction="row" gap="inline" marginTop={4} wrap>
             {facets.map((idea: ChannelIdeaDTO) => (
-              <div key={idea.id} className="min-w-[150px]">
+              <Stack flexShrink={0} key={idea.id} minWidth={150}>
                 <ChoiceCard
                   accent="info"
                   description={ideaReason(idea, false, Date.now())}
@@ -189,11 +188,11 @@ const ManualChannelBuilder = ({
                   selected={activeFacetId === idea.id}
                   title={idea.name}
                 />
-              </div>
+              </Stack>
             ))}
           </Stack>
           {activeFacet && (
-            <ul className="border-border mt-2 rounded-md border">
+            <Stack borderColor="borderDecorative" borderRadius={8} borderWidth={1} marginTop={4} render="ul">
               {activeFacet.titles
                 .filter((item) => {
                   const key = provisionKey(item);
@@ -230,17 +229,17 @@ const ManualChannelBuilder = ({
                   Every title here is already in your lineup.
                 </Text>
               )}
-            </ul>
+            </Stack>
           )}
-        </div>
+        </Stack>
       )}
 
-      <div>
+      <Stack gap="2">
         <Text as="p" textRole="cardLabel">
           Search your library or request new titles
         </Text>
         {adding ? (
-          <Stack className="mt-2" gap="inline">
+          <Stack gap="inline">
             <SearchCommand
               query={query}
               onQueryChange={setQuery}
@@ -275,15 +274,15 @@ const ManualChannelBuilder = ({
             />
           </Stack>
         ) : (
-          <div className="mt-2">
+          <Stack>
             <Action onPress={() => setAdding(true)} variant="outline">
               Search titles
             </Action>
-          </div>
+          </Stack>
         )}
-      </div>
+      </Stack>
 
-      <div>
+      <Stack gap="2">
         <Stack align="center" direction="row" justify="between">
           <Text as="p" textRole="cardLabel">
             Your lineup
@@ -294,7 +293,7 @@ const ManualChannelBuilder = ({
             </Action>
           )}
         </Stack>
-        <ul className="border-border mt-2 rounded-md border">
+        <Stack borderColor="borderDecorative" borderRadius={8} borderWidth={1} render="ul">
           {lineup.length === 0 ? (
             <Text as="li" className="px-3 py-5 text-center" textRole="compact" tone="secondary">
               No titles yet. Pick a facet above or search for one.
@@ -330,8 +329,8 @@ const ManualChannelBuilder = ({
               );
             })
           )}
-        </ul>
-      </div>
+        </Stack>
+      </Stack>
 
       {submit.error != null && (
         <Text as="p" textRole="compact" tone="danger">
@@ -341,10 +340,12 @@ const ManualChannelBuilder = ({
 
       <Stack
         align="center"
-        className="border-border border-t pt-4"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
         direction="row"
         gap="inline"
         justify="between"
+        paddingTop={16}
         wrap
       >
         <Text as="span" textRole="compact" tone="secondary">
@@ -359,7 +360,7 @@ const ManualChannelBuilder = ({
           </Action>
         </Stack>
       </Stack>
-    </div>
+    </Stack>
   );
 };
 
