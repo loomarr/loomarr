@@ -141,11 +141,23 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
+  Reflect.deleteProperty(globalThis.document, "visibilityState");
   vi.unstubAllGlobals();
   device.store.clear();
 });
 
 const { default: App } = await import("../src/app");
+
+// The app going to the background and coming back, as react-native-web reports it: the page's
+// visibility.
+const setVisibility = async (state: "hidden" | "visible") => {
+  const target = globalThis as unknown as {
+    document: object & { dispatchEvent(event: unknown): boolean };
+    Event: new (type: string) => unknown;
+  };
+  Object.defineProperty(target.document, "visibilityState", { configurable: true, value: state });
+  await act(async () => void target.document.dispatchEvent(new target.Event("visibilitychange")));
+};
 
 const launch = async () => {
   const host = page.createElement("div");
@@ -161,6 +173,19 @@ describe("the TV app", () => {
     await eventually(() => expect(label("Open programme guide")).not.toBeNull());
     expect(server.requests).toContain("GET /v1/channels");
     expect(server.requests).toContain("POST /v1/channels/ch-cartoons/play-url");
+  });
+
+  // A TV left on overnight shows yesterday's window until the Guide is read again.
+  it("reads the Guide again when the app returns to the foreground", async () => {
+    await launch();
+    await eventually(() => expect(label("Open programme guide")).not.toBeNull());
+    await eventually(() => expect(server.guideLoads()).toBeGreaterThan(0));
+    await setVisibility("hidden");
+    const before = server.guideLoads();
+
+    await setVisibility("visible");
+
+    await eventually(() => expect(server.guideLoads()).toBeGreaterThan(before));
   });
 
   it("keeps the Guide's grid on screen, and the remote on the same channel, when the server announces a channel change", async () => {
