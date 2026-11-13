@@ -421,6 +421,85 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	}
 }
 
+// #3565: the Enricher runs beside the scanner, so it can fetch a season while the pass that asked
+// for it is still writing: after the episodes are written without it, before their file rows are
+// saved. The rewrite it asks for must still name them. The pass saved each row's identity as final,
+// over the Enricher's reset, and every later pass, a full scan included, left them as their files
+// name them: `make demo-seed` waited out its ten minutes on the first show.
+func TestEnricherNamesEpisodesWhoseSeasonArrivesWhileTheirPassWrites(t *testing.T) {
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000701": {
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+			Descriptive: &mp.Descriptive{Title: "Golf Show", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}},
+		},
+		"90000701/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Tee Off"), entry(2, "The Back Nine"), entry(3, "Sudden Death"),
+		}},
+	}}
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for n := 1; n <= 3; n++ {
+		h.file(fmt.Sprintf("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E0%d.mkv", n), 10)
+	}
+	h.run()
+	// The rewrites are queued, as the scanner queues them, and passed over in turn.
+	var queued [][]string
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		queued = append(queued, append([]string{root}, dirs...))
+	}}
+	passQueued := func() {
+		for len(queued) > 0 {
+			q := queued[0]
+			queued = queued[1:]
+			if err := h.im.RunFolders(ctx, q[0], q[1:]); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The series' record arrives, and the pass over its folders asks for season 1. The Enricher,
+	// woken meanwhile, fetches it before that pass saves its file rows.
+	if err := e.Tick(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.im.Store = &savingFiles{ImportStore: h.im.Store, before: func() {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	passQueued()
+	if !slices.Contains(catalog.fetched, "season:90000701/1") {
+		t.Fatalf("fetched %v, want season 1 fetched during the pass", catalog.fetched)
+	}
+	passQueued()
+	origin := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv")
+	if facts := h.origin(h.item(origin), origin).Observation.Facts; facts.Name != "The Back Nine" {
+		t.Fatalf("episode = %q, want TMDB's \"The Back Nine\"", facts.Name)
+	}
+}
+
+// savingFiles runs before once, just before the first file rows are saved: the moment a pass has
+// written its titles and not yet recorded what it wrote them from.
+type savingFiles struct {
+	ImportStore
+	before func()
+}
+
+func (s *savingFiles) SaveLibraryFiles(ctx context.Context, files []librarystore.LibraryFile) error {
+	if f := s.before; f != nil {
+		s.before = nil
+		f()
+	}
+	return s.ImportStore.SaveLibraryFiles(ctx, files)
+}
+
 // A show TMDB numbers in more than one order is numbered as the household said its files follow
 // (decision 53): TMDB's own seasons, one of its other orders, or the files. With no answer, its
 // episodes keep their files' names, are marked unnumbered, which puts the show in Needs you with

@@ -234,15 +234,19 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 	if seen.IsZero() {
 		seen = now
 	}
-	snapshot := job.b.snapshot(ctx, job.file, job.id, seen)
+	snapshot, waiting := job.b.snapshot(ctx, job.file, job.id, seen)
 	snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(job.file, &facts, im.reader(), now)}
 	itemID, problem, err := im.applyFile(ctx, snapshot)
 	if err != nil {
 		return row, err
 	}
-	if problem != "" {
+	switch {
+	case problem != "":
 		row.Problem, row.Identity = problem, ""
-	} else {
+	case waiting:
+		// As the walk saves it: a record still to come is written on a later pass (#3565).
+		row.ItemID, row.Identity = itemID, ""
+	default:
 		row.ItemID = itemID
 	}
 	row.Header = librarystore.LibraryHeaderRead

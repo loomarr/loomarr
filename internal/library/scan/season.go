@@ -109,10 +109,12 @@ func absoluteAt(seasons []mp.SeasonSize, abs int) (int, int, bool) {
 
 // byEntry describes the episode by the entry of res.catalog's record (a season, or an episode
 // order) that numbers it as the file does: by episode in a season, which holds one season, and by
-// season and episode in an order. An entry not found leaves it as it was.
+// season and episode in an order. An entry not found leaves it as it was; a record still to come
+// leaves it waiting.
 func (b *builder) byEntry(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution) resolution {
-	rec, ok := b.season(ctx, s, res.catalog)
+	rec, ok, waiting := b.season(ctx, s, res.catalog)
 	if !ok {
+		res.waiting = res.waiting || waiting
 		return res
 	}
 	n := res.resolved.Numbering.Value
@@ -147,16 +149,18 @@ func (b *builder) byAirDate(ctx context.Context, s *seriesSeen, in precedence.In
 		return res
 	}
 	var waiting librarystore.LibraryCatalogKey
+	asked := false
 	for _, size := range series.record.Descriptive.Seasons {
 		key := librarystore.LibraryCatalogKey{
 			Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
 			ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(size.Number),
 		}
-		rec, ok := b.season(ctx, s, key)
+		rec, ok, toCome := b.season(ctx, s, key)
 		if !ok {
 			if waiting.String() == "" {
 				waiting = key
 			}
+			asked = asked || toCome
 			continue
 		}
 		for _, entry := range rec.Children {
@@ -182,6 +186,7 @@ func (b *builder) byAirDate(ctx context.Context, s *seriesSeen, in precedence.In
 		}
 	}
 	res.catalog = waiting
+	res.waiting = res.waiting || asked
 	return res
 }
 
@@ -220,23 +225,24 @@ func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series librarys
 }
 
 // season is a series' cached season record, read once a pass however many of its episodes ask.
-func (b *builder) season(ctx context.Context, s *seriesSeen, key librarystore.LibraryCatalogKey) (mp.Record, bool) {
+// waiting reports one asked for and not fetched yet.
+func (b *builder) season(ctx context.Context, s *seriesSeen, key librarystore.LibraryCatalogKey) (rec mp.Record, ok, waiting bool) {
 	s.seasonsMu.Lock()
 	defer s.seasonsMu.Unlock()
 	if got, ok := s.seasons[key.ExternalID]; ok {
-		return got.record, got.ok
+		return got.record, got.ok, got.waiting
 	}
-	rec, ok := b.im.catalogRecord(ctx, key)
+	rec, ok, waiting = b.im.catalogRecord(ctx, key)
 	if s.seasons == nil {
 		s.seasons = map[string]cachedSeason{}
 	}
-	s.seasons[key.ExternalID] = cachedSeason{record: rec, ok: ok}
-	return rec, ok
+	s.seasons[key.ExternalID] = cachedSeason{record: rec, ok: ok, waiting: waiting}
+	return rec, ok, waiting
 }
 
 type cachedSeason struct {
-	record mp.Record
-	ok     bool
+	record      mp.Record
+	ok, waiting bool
 }
 
 // numberedLikeDisk reports whether a series' catalog numbers its episodes as last, the highest

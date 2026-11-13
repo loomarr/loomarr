@@ -82,30 +82,30 @@ func (c CatalogKeys) For(kind mp.Kind, ids []mp.ExternalID) librarystore.Library
 }
 
 // catalogRecord is the cached record for key. A key not fetched yet is noted as wanted, so the
-// Enricher fetches it and the title is written again with it. A catalog that does not know the
-// title, or a cache that cannot be read, says nothing.
-func (im *Importer) catalogRecord(ctx context.Context, key librarystore.LibraryCatalogKey) (mp.Record, bool) {
+// Enricher fetches it, and reported as waiting: a title written without it is written again on a
+// later pass (#3565). A catalog that does not know the title, or a cache that cannot be read, says
+// nothing and waits for nothing.
+func (im *Importer) catalogRecord(ctx context.Context, key librarystore.LibraryCatalogKey) (rec mp.Record, ok, waiting bool) {
 	if im.Catalog == nil || key.String() == "" {
-		return mp.Record{}, false
+		return mp.Record{}, false, false
 	}
 	raw, fetched, err := im.Catalog.LibraryCatalogRecord(ctx, key)
 	if err != nil {
 		im.log().Warn("library scan: catalog record not read", "catalog", key.String(), "err", err)
-		return mp.Record{}, false
+		return mp.Record{}, false, false
 	}
 	if !fetched {
 		if err := im.Catalog.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{key}); err != nil {
 			im.log().Warn("library scan: catalog record not asked for", "catalog", key.String(), "err", err)
 		}
-		return mp.Record{}, false
+		return mp.Record{}, false, true
 	}
 	if raw == "" {
-		return mp.Record{}, false
+		return mp.Record{}, false, false
 	}
-	var rec mp.Record
 	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
 		im.log().Warn("library scan: catalog record unreadable", "catalog", key.String(), "err", err)
-		return mp.Record{}, false
+		return mp.Record{}, false, false
 	}
-	return rec, true
+	return rec, true, false
 }

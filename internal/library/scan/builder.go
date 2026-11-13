@@ -325,8 +325,14 @@ func (id identity) cheapIDs() []inventory.ExternalID {
 // snapshot is the file's inventory item without its header facts. It reads the file's NFO
 // sidecar, so it runs only for a file that is written or whose header is read. It does not change
 // the builder.
-func (b *builder) snapshot(ctx context.Context, file File, id identity, now time.Time) inventory.Snapshot {
-	snapshot := inventory.Snapshot{
+//
+// waiting reports an item written without a catalog record it asked for: its own, its season's,
+// or, for an episode, its series'. The file is then saved with no identity, so the next pass over
+// its folder writes it again. The Enricher asks for that pass once it has the record, but it can
+// fetch the record while this pass is still writing, before the file's row is saved; the row's
+// identity must not then say the file is written as it will stay (#3565).
+func (b *builder) snapshot(ctx context.Context, file File, id identity, now time.Time) (snapshot inventory.Snapshot, waiting bool) {
+	snapshot = inventory.Snapshot{
 		Origin: fileOrigin(b.root, file.Rel),
 		Observation: inventory.Observation[inventory.ItemFacts]{
 			SchemaVersion: 1, ObservedAt: now,
@@ -380,6 +386,10 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
 		}
 	}
+	waiting = res.waiting
+	if s := b.series[id.seriesDir]; id.kind == mp.KindEpisode && s != nil && b.resolveSeries(ctx, s).waiting {
+		waiting = true
+	}
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
@@ -406,7 +416,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindMovie && file.Part > 0 && file.PartSet != "" {
 		snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: partsNamespace, Value: partsID(file.PartSet)})
 	}
-	return snapshot
+	return snapshot, waiting
 }
 
 // withFurtherIDs adds the further episodes' own ids to a multi-episode file's, once each.
@@ -433,6 +443,9 @@ type resolution struct {
 	record *mp.Record
 	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
 	unnumbered bool
+	// waiting is a title written without a catalog record it asked for and the Enricher has not
+	// fetched yet: its own, or for an episode its season's.
+	waiting bool
 }
 
 // resolve applies precedence. A movie or series the maintainer linked to a title (Needs you) has
@@ -449,7 +462,9 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 		out.match = match(out.resolved, in.Records)
 	}
 	out.catalog = b.im.Keys.For(in.Kind, pickedIDs(out.resolved.IDs))
-	if rec, ok := b.im.catalogRecord(ctx, out.catalog); ok {
+	rec, ok, waiting := b.im.catalogRecord(ctx, out.catalog)
+	out.waiting = waiting
+	if ok {
 		out.record = &rec
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 		out.resolved = b.im.Resolver.Resolve(in)

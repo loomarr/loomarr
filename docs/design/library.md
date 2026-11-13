@@ -1024,6 +1024,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   and "HDTV Heroes" keep their first word (`searchQuery`).
 - **81:** a shelf names no show: an episode named by its mark alone, "Downloads/S01E01.mkv",
   "TV/S01E07.mkv", is no show's, as one loose at the top is (`showFolderIn`, `noShowIn`).
+- **82:** a file written without a catalog record it asked for (its own, its season's, or its
+  series') is saved with no identity, so the next pass over its folder writes it again (#3565).
+  The Enricher could fetch the record while that pass was still writing, before the file's row
+  was saved; the pass then saved an identity that said the file was final, and every later pass,
+  a full scan included, left its episodes named by their files. The new version writes every
+  file once more, so a library caught that way takes its catalog names.
 
 ## Search
 

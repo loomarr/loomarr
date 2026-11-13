@@ -725,7 +725,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			continue
 		}
 		b.markWritten(id)
-		snapshot := b.snapshot(ctx, file, id, now)
+		snapshot, waiting := b.snapshot(ctx, file, id, now)
 		var read *inventory.SourceFacts
 		var readBy int
 		if sameBytes && old.Header == librarystore.LibraryHeaderRead {
@@ -766,6 +766,11 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		saved := row
 		if reread {
 			saved.Identity = old.Identity
+		}
+		// Written without a record still to come: the next pass over the folder writes it again,
+		// whenever the Enricher's fetch lands (#3565).
+		if waiting {
+			row.Identity, saved.Identity = "", ""
 		}
 		save = append(save, saved)
 		if row.Header == librarystore.LibraryHeaderPending || reread {
