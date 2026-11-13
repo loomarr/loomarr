@@ -180,7 +180,7 @@ func atoi(s string) int {
 //  6. otherwise a movie.
 //
 // Which show an episode is, is seriesFolderOf's; what is no title at all (extras, samples, a
-// NAS's folders) the walk decides before this (walk.go's skippedDir and extraName); a movie's or
+// NAS's folders) the walk decides before this (walk.go's skippedDir, extras.go's extraName); a movie's or
 // show's search words and year are searchQuery's (match.go).
 func embeddedRecord(file File) (mp.Record, string) {
 	file = regrouped(file)
