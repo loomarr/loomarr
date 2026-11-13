@@ -131,9 +131,6 @@
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/design/spacing/spacing.tsx": {
-      "flexStack": 15
-    },
     "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "flexStack": 1
     },

@@ -1,4 +1,4 @@
-import { spaceSteps, Text } from "@loomarr/design-system";
+import { Stack, Surface, spaceSteps, Text } from "@loomarr/design-system";
 import { webMotion, webRadius, webRowHeight, webSpace } from "@loomarr/design-system/web-theme";
 
 // Spacing, radius and motion — the geometry half of the system (§2.3, §2.4, §5.1a).
@@ -12,94 +12,119 @@ const steps = Object.entries(spaceSteps).sort(([, a], [, b]) => a - b);
 const halfSteps = Object.keys(spaceSteps).filter((step) => !(step in webSpace));
 
 const Spacing = () => (
-  <div className="flex flex-col gap-8 p-6">
-    <header className="flex flex-col gap-1">
+  <Stack gap="8" padding={24}>
+    <Stack gap="1" render="header">
       <Text as="h1" textRole="title">
         Spacing, radius & motion
       </Text>
-      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
+      <Text as="p" maxWidth={672} textRole="compact" tone="secondary">
         A 4px grid. Every step is a multiple of four, which is what makes the interface feel aligned without
         anyone measuring — and what makes an off-grid value stand out. The half steps ({halfSteps.join(", ")})
         are the exception: tight spacing inside a control or a chip, kept at its own size so a layout that
         uses one does not move when it adopts the scale.
       </Text>
-    </header>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="3" render="section">
       <Text as="h2" textRole="heading">
         Space
       </Text>
-      <div className="flex flex-col gap-2">
+      <Stack gap="2">
         {steps.map(([step, px]) => (
-          <div key={step} className="flex items-center gap-4">
-            <span className="text-2xs text-static-400 w-8 shrink-0 font-mono">{step}</span>
-            <span className="text-2xs text-static-400 w-12 shrink-0 font-mono tabular-nums">{`${px}px`}</span>
-            <div className="bg-signal-tint-30 h-4 rounded-sm" style={{ width: px }} />
-          </div>
+          <Stack align="center" direction="row" flexShrink={0} gap="4" key={step}>
+            <Text as="span" flexShrink={0} textRole="mono" width={32}>
+              {step}
+            </Text>
+            <Text as="span" flexShrink={0} textRole="mono" width={48}>{`${px}px`}</Text>
+            <Stack
+              borderRadius={webRadius.sm}
+              className="bg-signal-tint-30"
+              flexShrink={0}
+              height={16}
+              width={px}
+            />
+          </Stack>
         ))}
-      </div>
-    </section>
+      </Stack>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="3" render="section">
       <Text as="h2" textRole="heading">
         Radius
       </Text>
-      <div className="flex flex-wrap gap-4">
+      <Stack direction="row" gap="4" wrap>
         {Object.entries(webRadius).map(([name, px]) => (
-          <div key={name} className="flex flex-col items-center gap-2">
-            <div className="border-border bg-static-800 size-16 border" style={{ borderRadius: px }} />
-            <span className="text-2xs text-static-400 font-mono">{`${name} · ${px}px`}</span>
-          </div>
+          <Stack align="center" flexShrink={0} gap="2" key={name}>
+            <Surface borderRadius={px} height={64} level="raised" width={64} />
+            <Text as="span" textRole="mono">{`${name} · ${px}px`}</Text>
+          </Stack>
         ))}
-      </div>
-    </section>
+      </Stack>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="3" render="section">
       <Text as="h2" textRole="heading">
         Density
       </Text>
-      <div className="flex flex-col gap-2">
-        <div
-          className="border-border flex items-center rounded-md border px-3"
-          style={{ height: webRowHeight.compact }}
+      <Stack gap="2">
+        <Surface
+          alignItems="center"
+          borderRadius={webRadius.md}
+          flexDirection="row"
+          flexShrink={0}
+          height={webRowHeight.compact}
+          paddingHorizontal={12}
         >
-          <span className="text-sm">A table row at compact density</span>
-          <span className="text-2xs text-static-400 ml-auto font-mono">{`${webRowHeight.compact}px`}</span>
-        </div>
-        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
+          <Text as="span" textRole="body">
+            A table row at compact density
+          </Text>
+          <Stack flexBasis="0%" flexGrow={1} />
+          <Text as="span" textRole="mono">{`${webRowHeight.compact}px`}</Text>
+        </Surface>
+        <Text as="p" maxWidth={672} textRole="compact" tone="secondary">
           Tables use the compact row height. A household's library runs to thousands of titles, so rows are
           sized to fit a screenful rather than to feel spacious.
         </Text>
-      </div>
-    </section>
+      </Stack>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
+    <Stack gap="3" render="section">
       <Text as="h2" textRole="heading">
         Motion
       </Text>
-      <div className="flex flex-col gap-2">
+      <Stack gap="2">
         {Object.entries(webMotion.duration).map(([name, value]) => (
-          <div key={name} className="flex items-center gap-4">
-            <span className="text-2xs text-static-400 w-14 shrink-0 font-mono">{name}</span>
-            <span className="text-2xs text-static-400 w-16 shrink-0 font-mono">{value}</span>
+          <Stack align="center" direction="row" flexShrink={0} gap="4" key={name}>
+            <Text as="span" flexShrink={0} textRole="mono" width={56}>
+              {name}
+            </Text>
+            <Text as="span" flexShrink={0} textRole="mono" width={64}>
+              {value}
+            </Text>
             <Text as="span" textRole="compact" tone="secondary">
               {name === "fast" ? "Hover, focus, small state flips" : "Panels, disclosure, page transitions"}
             </Text>
-          </div>
+          </Stack>
         ))}
-        <div className="flex items-center gap-4">
-          <span className="text-2xs text-static-400 w-14 shrink-0 font-mono">ease</span>
-          <span className="text-2xs text-static-400 shrink-0 font-mono">{webMotion.ease}</span>
-        </div>
-        <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
+        <Stack align="center" direction="row" flexShrink={0} gap="4">
+          <Text as="span" flexShrink={0} textRole="mono" width={56}>
+            ease
+          </Text>
+          <Text as="span" flexShrink={0} textRole="mono">
+            {webMotion.ease}
+          </Text>
+        </Stack>
+        <Text as="p" maxWidth={672} textRole="compact" tone="secondary">
           One ease-out curve everywhere. Motion is short and decelerating — it should confirm that something
           happened, never make anyone wait for it. Under{" "}
-          <code className="font-mono text-xs">prefers-reduced-motion</code> these collapse to near zero
-          (§2.4), which the visual suite relies on to snapshot deterministically.
+          <Text as="code" textRole="mono">
+            prefers-reduced-motion
+          </Text>{" "}
+          these collapse to near zero (§2.4), which the visual suite relies on to snapshot deterministically.
         </Text>
-      </div>
-    </section>
-  </div>
+      </Stack>
+    </Stack>
+  </Stack>
 );
 
 export { Spacing };
