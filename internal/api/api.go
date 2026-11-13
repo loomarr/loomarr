@@ -66,7 +66,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
 		auth: opts.Auth, log: log,
-		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
+		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustedProxies: opts.TrustedProxies},
 		channels: opts.Channels.Service,
 		viewing:  opts.Playout.Viewing,
 	}

@@ -11676,7 +11676,7 @@ components:
         - filler.language_model
         - session.ttl
         - cookie.secure
-        - security.trust_proxy
+        - security.trusted_proxies
         - auth.sso.enabled
         - auth.sso.issuer
         - auth.sso.client_id
@@ -11837,7 +11837,7 @@ components:
         - FillerLanguageModel
         - SessionTTL
         - CookieSecure
-        - SecurityTrustProxy
+        - SecurityTrustedProxies
         - AuthSSOEnabled
         - AuthSSOIssuer
         - AuthSSOClientID

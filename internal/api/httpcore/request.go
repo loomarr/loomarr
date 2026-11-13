@@ -76,8 +76,27 @@ func RequestFrom(ctx context.Context) *http.Request {
 type Origin struct {
 	// CookieSecure is COOKIE_SECURE: "auto", "true" or "false" (anything else reads as auto).
 	CookieSecure string
-	// TrustProxy is TRUST_PROXY: X-Forwarded-For and X-Forwarded-Proto are honored only when true.
-	TrustProxy bool
+	// TrustedProxies is `security.trusted_proxies`: the address ranges a reverse proxy in front of
+	// Loomarr connects from. A request whose socket peer is inside one has its X-Forwarded-For,
+	// X-Forwarded-Proto and geography headers honored; from any other peer they are the client's own
+	// claim and are ignored. Empty trusts no peer, loopback included.
+	TrustedProxies []netip.Prefix
+}
+
+// FromTrustedProxy reports whether the request's socket peer is one of the configured trusted
+// proxies. It is the single question behind every forwarded-header decision (client address,
+// protocol, geography), so none of them can trust a peer the others refuse.
+func (o Origin) FromTrustedProxy(r *http.Request) bool {
+	peer, ok := peerAddr(r.RemoteAddr)
+	if !ok {
+		return false
+	}
+	for _, prefix := range o.TrustedProxies {
+		if prefix.Contains(peer) {
+			return true
+		}
+	}
+	return false
 }
 
 // SecureCookie decides a cookie's Secure flag from COOKIE_SECURE (§11): auto honors direct TLS or
@@ -89,11 +108,11 @@ func (o Origin) SecureCookie(r *http.Request) bool {
 	case "false":
 		return false
 	default: // auto
-		// X-Forwarded-Proto is honored only behind a trusted proxy (§11). A direct client
+		// X-Forwarded-Proto is honored only from a trusted proxy (§11). A direct client
 		// could otherwise send `X-Forwarded-Proto: http` to keep its OWN cookie non-Secure;
 		// that only weakens the sender's session, but the header is not trustworthy input
 		// unless a proxy sets it, so it rides the same gate as the rate-limit IP.
-		if o.TrustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		if o.FromTrustedProxy(r) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 			return true
 		}
 		return r.TLS != nil
@@ -115,9 +134,9 @@ func (o Origin) Cookie(r *http.Request, name, value, path string, sameSite http.
 }
 
 // ClientIP returns the address the login rate-limiter keys on, in a normalized form so one address
-// has one key. X-Forwarded-For is read only when `security.trust_proxy` is set (§11) and the socket
-// peer is itself a proxy (isTrustedProxy): otherwise the header is the client's own claim, and
-// honoring it would let a client rotate it per request and defeat the per-IP throttle.
+// has one key. X-Forwarded-For is read only when the socket peer is inside `security.trusted_proxies`
+// (§11, FromTrustedProxy): otherwise the header is the client's own claim, and honoring it would
+// let a client rotate it per request and defeat the per-IP throttle.
 //
 // A proxy appends the address it saw to the header, so only the right-most hop is the trusted
 // proxy's own observation; everything to its left was written by whoever sent the request. That one
@@ -131,7 +150,7 @@ func (o Origin) ClientIP(r *http.Request) string {
 	if !ok {
 		return r.RemoteAddr
 	}
-	if !o.TrustProxy || !isTrustedProxy(peer) {
+	if !o.FromTrustedProxy(r) {
 		return peer.String()
 	}
 	values := r.Header.Values("X-Forwarded-For")
@@ -158,18 +177,4 @@ func peerAddr(remote string) (netip.Addr, bool) {
 		return addr.WithZone("").Unmap(), true
 	}
 	return netip.Addr{}, false
-}
-
-// sharedAddressSpace is RFC 6598's 100.64.0.0/10, where Tailscale (and carrier-grade NAT) number
-// their peers. It is never routed on the public internet, so a proxy there is one the household
-// runs on its own tailnet.
-var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
-
-// isTrustedProxy reports whether addr may be a reverse proxy in front of Loomarr: loopback, a
-// private or link-local address (a proxy on the same host, a Docker network or a LAN), or the shared
-// address space a proxy reaching Loomarr over Tailscale comes from. Tailscale's IPv6 range is a
-// unique-local one, already private. `security.trust_proxy` is a switch, not a list, so this is the
-// whole trust boundary and a proxy on a public address is not honored.
-func isTrustedProxy(addr netip.Addr) bool {
-	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || sharedAddressSpace.Contains(addr)
 }

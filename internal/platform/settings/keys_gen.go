@@ -127,7 +127,7 @@ var (
 	FillerLanguageModel                 = StringKey{"filler.language_model"}
 	SessionTTL                          = DurationKey{"session.ttl"}
 	CookieSecure                        = StringKey{"cookie.secure"}
-	SecurityTrustProxy                  = BoolKey{"security.trust_proxy"}
+	SecurityTrustedProxies              = StringListKey{"security.trusted_proxies"}
 	AuthSSOEnabled                      = BoolKey{"auth.sso.enabled"}
 	AuthSSOIssuer                       = StringKey{"auth.sso.issuer"}
 	AuthSSOClientID                     = StringKey{"auth.sso.client_id"}
