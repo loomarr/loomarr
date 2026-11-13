@@ -106,13 +106,13 @@ const TaxonTree = ({
       const resolverTermCount = synonyms.length + aliases.length;
       return (
         <li key={taxon.slug}>
-          <Stack align="start" className="px-4 py-3" direction="row" gap="inline">
+          <Stack align="start" direction="row" gap="inline" paddingHorizontal={16} paddingVertical={12}>
             {nested ? (
-              <Stack className="mt-1" direction="row" render="span">
+              <Stack direction="row" marginTop={4} render="span">
                 <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
               </Stack>
             ) : null}
-            <div className="min-w-0 flex-1">
+            <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
               <Action
                 disabled={!isAdmin}
                 layout="text"
@@ -122,7 +122,7 @@ const TaxonTree = ({
               >
                 {taxon.label}
               </Action>
-              <Stack align="center" className="mt-0.5" direction="row" gap="inline" wrap>
+              <Stack align="center" direction="row" gap="inline" marginTop={2} wrap>
                 <Text as="span" className="break-all" textRole="mono">
                   {taxon.slug}
                 </Text>
@@ -131,19 +131,22 @@ const TaxonTree = ({
                     <Text as="summary" className="cursor-pointer" textRole="hint" tone="secondary">
                       {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
                     </Text>
-                    <Text
-                      as="div"
-                      className="mt-1 max-w-sm space-y-1 break-words"
-                      textRole="hint"
-                      tone="secondary"
-                    >
-                      {synonyms.length > 0 ? <p>Synonyms: {synonyms.join(", ")}</p> : null}
-                      {aliases.length > 0 ? <p>Retired slugs: {aliases.join(", ")}</p> : null}
-                    </Text>
+                    <Stack className="break-words" gap="1" marginTop={4} maxWidth={384}>
+                      {synonyms.length > 0 ? (
+                        <Text as="p" textRole="hint" tone="secondary">
+                          Synonyms: {synonyms.join(", ")}
+                        </Text>
+                      ) : null}
+                      {aliases.length > 0 ? (
+                        <Text as="p" textRole="hint" tone="secondary">
+                          Retired slugs: {aliases.join(", ")}
+                        </Text>
+                      ) : null}
+                    </Stack>
                   </details>
                 ) : null}
               </Stack>
-            </div>
+            </Stack>
             <Stack align="center" direction="row" flexShrink={0} gap="1.5" justify="end" wrap>
               {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
                 <Badge shape="square" title="Clips directly assigned this tag" tone="neutral">
@@ -281,14 +284,14 @@ const TaxonEditor = ({
 
   return (
     <Card aria-label={current ? `Edit ${current.label}` : "Add tag"} gap={16} padding={16} role="region">
-      <div>
+      <Stack gap="1">
         <Text as="h3" textRole="heading">
           {current ? `Edit ${current.label}` : "Add a tag"}
         </Text>
-        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+        <Text as="p" textRole="compact" tone="secondary">
           Slugs are what classifiers and saved clips use. Labels are what people see.
         </Text>
-      </div>
+      </Stack>
       <div className="grid gap-3 sm:grid-cols-2">
         <form.Field name="label">
           {(field) => (
@@ -316,7 +319,7 @@ const TaxonEditor = ({
             />
           )}
         </form.Field>
-        <div>
+        <Stack gap="1">
           <BrowserSelectControl
             appearance="field"
             disabled={Boolean(current && nodeHasDescendants)}
@@ -331,11 +334,11 @@ const TaxonEditor = ({
             value={axis}
           />
           {current && nodeHasDescendants ? (
-            <Text as="p" className="mt-1" textRole="hint" tone="secondary">
+            <Text as="p" textRole="hint" tone="secondary">
               Move this tag&rsquo;s children before changing its axis.
             </Text>
           ) : null}
-        </div>
+        </Stack>
         <BrowserSelectControl
           appearance="field"
           label="Parent"
@@ -384,60 +387,60 @@ const TaxonEditor = ({
           gap={12}
           padding={16}
         >
-          <div>
+          <Stack gap="1">
             <Text as="h4" textRole="heading">
               Review the impact
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+            <Text as="p" textRole="compact" tone="secondary">
               {review.impact.affectedStoredClips > 0
                 ? `${review.impact.affectedStoredClips.toLocaleString()} stored clips may have different inherited classification (${review.impact.directStoredClips.toLocaleString()} direct, ${review.impact.descendantStoredClips.toLocaleString()} through descendants).`
                 : "No stored clip classifications will change."}
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+            <Text as="p" textRole="compact" tone="secondary">
               {review.impact.affectedPlayableClips > 0
                 ? `${review.impact.affectedPlayableClips.toLocaleString()} playable clips will be checked against channel filler rules after this change.`
                 : "No playable clips need channel eligibility checks."}
             </Text>
-          </div>
+          </Stack>
           {review.impact.descendants.length > 0 ? (
             <Text as="p" textRole="compact">
               Descendants kept: {review.impact.descendants.map((node) => node.label).join(", ")}
             </Text>
           ) : null}
           {review.impact.savedChannelSelections.length > 0 ? (
-            <div>
+            <Stack gap="1">
               <Text as="p" textRole="cardLabel">
                 Saved channel selections that reference this branch
               </Text>
-              <Text as="ul" className="mt-1 list-disc pl-5" textRole="compact">
+              <Text as="ul" className="list-disc pl-5" textRole="compact">
                 {review.impact.savedChannelSelections.map((channel) => (
                   <li key={channel.id}>
                     Channel {channel.number}: {channel.name}
                   </li>
                 ))}
               </Text>
-            </div>
+            </Stack>
           ) : (
             <Text as="p" textRole="compact" tone="secondary">
               No saved channel selections reference this branch.
             </Text>
           )}
           {review.impact.resolverTermsAdded.length > 0 || review.impact.resolverTermsRemoved.length > 0 ? (
-            <div>
+            <Stack gap="1">
               <Text as="p" textRole="cardLabel">
                 Classifier wording
               </Text>
               {review.impact.resolverTermsAdded.length > 0 ? (
-                <Text as="p" className="mt-1" textRole="compact">
+                <Text as="p" textRole="compact">
                   Starts resolving: {review.impact.resolverTermsAdded.join(", ")}
                 </Text>
               ) : null}
               {review.impact.resolverTermsRemoved.length > 0 ? (
-                <Text as="p" className="mt-1" textRole="compact">
+                <Text as="p" textRole="compact">
                   Stops resolving: {review.impact.resolverTermsRemoved.join(", ")}
                 </Text>
               ) : null}
-            </div>
+            </Stack>
           ) : (
             <Text as="p" textRole="compact" tone="secondary">
               Classifier wording is unchanged.
@@ -461,7 +464,7 @@ const TaxonEditor = ({
             Review removal
           </Action>
         ) : (
-          <span className="mr-auto" />
+          <Stack marginRight="auto" render="span" />
         )}
         {review ? (
           <>
@@ -526,59 +529,61 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
   return (
     <Stack gap="section">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card padding={16}>
+        <Card gap={4} padding={16}>
           <Text as="p" textRole="hint" tone="secondary">
             Library coverage
           </Text>
           {data.totalClips === 0 ? (
             <>
-              <Text as="p" className="mt-1" textRole="title">
+              <Text as="p" textRole="title">
                 No playable clips yet
               </Text>
-              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              <Text as="p" textRole="compact" tone="secondary">
                 Coverage begins after clips are ready.
               </Text>
             </>
           ) : (
             <>
-              <Text as="p" className="mt-1" textRole="display">
+              <Text as="p" textRole="display">
                 {data.taggedClips.toLocaleString()} / {data.totalClips.toLocaleString()}
               </Text>
-              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+              <Text as="p" textRole="compact" tone="secondary">
                 playable clips have at least one classification signal
               </Text>
             </>
           )}
         </Card>
-        <Card className="sm:col-span-2" padding={16}>
+        <Card className="sm:col-span-2" gap={4} padding={16}>
           <Text as="p" textRole="heading">
             What belongs here
           </Text>
-          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+          <Text as="p" textRole="compact" tone="secondary">
             Classification describes what a clip contains. Kind is the closed playout role; format and
             presentation are optional browsing details. Era, audience, and grounded brand remain separate
             facts too.
           </Text>
-          {data.totalClips === 0 ? (
-            <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-              Nothing to classify yet.
-            </Text>
-          ) : data.unclassifiedClips > 0 ? (
-            <Link
-              to="/filler/library"
-              search={{ unclassified: true }}
-              className="mt-2 inline-flex self-start underline-offset-2 hover:underline"
-            >
-              <Text as="span" textRole="compact" tone="signal">
-                Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
-                {data.unclassifiedClips === 1 ? "clip" : "clips"}
+          <Stack align="start" marginTop={4}>
+            {data.totalClips === 0 ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                Nothing to classify yet.
               </Text>
-            </Link>
-          ) : (
-            <Text as="p" className="mt-2" textRole="compact" tone="success">
-              Every playable clip has at least one taxonomy tag.
-            </Text>
-          )}
+            ) : data.unclassifiedClips > 0 ? (
+              <Link
+                to="/filler/library"
+                search={{ unclassified: true }}
+                className="inline-flex underline-offset-2 hover:underline"
+              >
+                <Text as="span" textRole="compact" tone="signal">
+                  Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
+                  {data.unclassifiedClips === 1 ? "clip" : "clips"}
+                </Text>
+              </Link>
+            ) : (
+              <Text as="p" textRole="compact" tone="success">
+                Every playable clip has at least one taxonomy tag.
+              </Text>
+            )}
+          </Stack>
         </Card>
       </div>
 
@@ -592,15 +597,15 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
       ) : null}
 
       <section aria-labelledby="classification-coverage-heading">
-        <div>
+        <Stack gap="1">
           <Text as="h2" id="classification-coverage-heading" textRole="headline" strong>
             Classification coverage
           </Text>
-          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+          <Text as="p" textRole="compact" tone="secondary">
             These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly
             normal.
           </Text>
-        </div>
+        </Stack>
         {data.totalClips === 0 ? (
           <Card marginTop={12} padding={16}>
             <Text as="p" textRole="compact" tone="secondary">
@@ -612,18 +617,27 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             {AXES.map((axis) => {
               const coverage = data.axisCoverage?.find((item) => item.axis === axis);
               return (
-                <Card key={axis} padding={16}>
+                <Card gap={4} key={axis} padding={16}>
                   <Text as="h3" textRole="heading">
                     {AXIS_COPY[axis].label}
                   </Text>
-                  <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+                  <Text as="p" textRole="compact" tone="secondary">
                     {AXIS_COPY[axis].help}
                   </Text>
-                  <Text as="p" className="mt-2" textRole="hint" tone="secondary">
-                    {AXIS_COPY[axis].example}
-                  </Text>
+                  <Stack marginTop={4}>
+                    <Text as="p" textRole="hint" tone="secondary">
+                      {AXIS_COPY[axis].example}
+                    </Text>
+                  </Stack>
                   {coverage ? (
-                    <div className="border-border mt-3 border-t pt-3">
+                    <Stack
+                      align="start"
+                      borderColor="borderDecorative"
+                      borderTopWidth={1}
+                      gap="1"
+                      marginTop={8}
+                      paddingTop={12}
+                    >
                       <Text as="p" textRole="compact">
                         <Text as="span" textRole="cardLabel">
                           {coverage.taggedClips.toLocaleString()}
@@ -634,18 +648,18 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                         <Link
                           to="/filler/library"
                           search={{ withoutAxis: axis }}
-                          className="mt-1 inline-flex underline-offset-2 hover:underline"
+                          className="inline-flex underline-offset-2 hover:underline"
                         >
                           <Text as="span" textRole="hint" tone="signal">
                             Browse {coverage.untaggedClips.toLocaleString()} without this signal
                           </Text>
                         </Link>
                       ) : (
-                        <Text as="p" className="mt-1" textRole="hint" tone="success">
+                        <Text as="p" textRole="hint" tone="success">
                           All playable clips have this signal.
                         </Text>
                       )}
-                    </div>
+                    </Stack>
                   ) : null}
                 </Card>
               );
@@ -662,8 +676,8 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
         >
           {isAdmin ? "Manage vocabulary" : "Browse vocabulary"}
         </Text>
-        <div className="border-border border-t p-4">
-          <Text as="p" className="mb-4" textRole="compact" tone="secondary">
+        <Stack borderColor="borderDecorative" borderTopWidth={1} gap="4" padding={16}>
+          <Text as="p" textRole="compact" tone="secondary">
             {isAdmin
               ? "Advanced: change the hierarchy and the words classifiers resolve. Review the impact before any edit is applied."
               : "This hierarchy is read-only. Administrators can change classifier vocabulary and relationships."}
@@ -672,18 +686,29 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             {AXES.map((axis) => {
               return (
                 <Card key={axis} overflow="hidden">
-                  <Stack align="start" className="border-border border-b p-4" direction="row" gap="control">
-                    <div className="min-w-0 flex-1">
+                  <Stack
+                    align="start"
+                    borderBottomWidth={1}
+                    borderColor="borderDecorative"
+                    direction="row"
+                    gap="control"
+                    padding={16}
+                  >
+                    <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
                       <Text as="h3" textRole="heading">
                         {AXIS_COPY[axis].label}
                       </Text>
-                      <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-                        {AXIS_COPY[axis].help}
-                      </Text>
-                      <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-                        {AXIS_COPY[axis].example}
-                      </Text>
-                    </div>
+                      <Stack marginTop={2}>
+                        <Text as="p" textRole="compact" tone="secondary">
+                          {AXIS_COPY[axis].help}
+                        </Text>
+                      </Stack>
+                      <Stack marginTop={4}>
+                        <Text as="p" textRole="hint" tone="secondary">
+                          {AXIS_COPY[axis].example}
+                        </Text>
+                      </Stack>
+                    </Stack>
                     {isAdmin ? (
                       <Action
                         icon="plus"
@@ -695,9 +720,11 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                     ) : null}
                   </Stack>
                   {byAxis[axis].length === 0 ? (
-                    <Text as="p" className="px-4 py-3" textRole="compact" tone="secondary">
-                      No terms yet.
-                    </Text>
+                    <Stack paddingHorizontal={16} paddingVertical={12}>
+                      <Text as="p" textRole="compact" tone="secondary">
+                        No terms yet.
+                      </Text>
+                    </Stack>
                   ) : (
                     <TaxonTree
                       nodes={byAxis[axis]}
@@ -710,7 +737,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
               );
             })}
           </div>
-        </div>
+        </Stack>
       </details>
     </Stack>
   );
