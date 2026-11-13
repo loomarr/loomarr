@@ -144,7 +144,7 @@ const TaxonTree = ({
                 ) : null}
               </Stack>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <Stack align="center" direction="row" flexShrink={0} gap="1.5" justify="end" wrap>
               {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
                 <Badge shape="square" title="Clips directly assigned this tag" tone="neutral">
                   {taxon.assertedClips.toLocaleString()} direct
@@ -160,7 +160,7 @@ const TaxonTree = ({
                   {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
                 </Text>
               </Link>
-            </div>
+            </Stack>
           </Stack>
           {children.length > 0 ? (
             <TaxonTree nodes={children} axis={axis} isAdmin={isAdmin} onEdit={onEdit} nested />

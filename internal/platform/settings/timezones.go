@@ -1,6 +1,9 @@
 package settings
 
-import "strings"
+import (
+	"strings"
+	_ "time/tzdata" // a zone validates the same on a host without a tz database as on one with
+)
 
 //go:generate go run ../../../cmd/settings-timezones
 

@@ -69,8 +69,10 @@ var partFolder = regexp.MustCompile(`(?i)^(?:cd|dvd|part|pt|disc|disk)[ ._-]*([0
 // partFolderOf is which part of a movie in parts the folder dir holds, from 1, when its folder
 // holds the movie one part to a folder ("Ashgrove (2015)/CD1/", "…/CD2/"); 0 otherwise. The set
 // is its folder's subfolders named by part marks alone: whole, numbered from 1 with none missing,
-// and each holding one video. It is read from dir's own folder, so a pass over one part's folder
-// alone finds it too.
+// and each holding one video. The videos must be one title's: a box set's discs hold episodes
+// ("Disc 1/Garnet Fold 1x01.mkv") or films of their own ("Disc 2/Hollin Rising.mkv"), and a
+// file's own name outweighs its folder's. It is read from dir's own folder, so a pass over one
+// part's folder alone finds it too.
 func partFolderOf(dir string) int {
 	if !partFolder.MatchString(filepath.Base(dir)) {
 		return 0
@@ -80,11 +82,13 @@ func partFolderOf(dir string) int {
 		return 0
 	}
 	var names []string
+	title := ""
 	for _, e := range entries {
 		if !e.IsDir() || !partFolder.MatchString(e.Name()) {
 			continue
 		}
-		if videosIn(filepath.Join(filepath.Dir(dir), e.Name())) != 1 {
+		videos := videosIn(filepath.Join(filepath.Dir(dir), e.Name()))
+		if len(videos) != 1 || !oneTitlesPart(videos[0], &title, len(names) == 0) {
 			return 0
 		}
 		names = append(names, e.Name())
@@ -92,19 +96,62 @@ func partFolderOf(dir string) int {
 	return partsOf(names)[filepath.Base(dir)]
 }
 
-// videosIn counts the videos directly in dir, as a walk would list them.
-func videosIn(dir string) int {
+// oneTitlesPart says whether a part folder's video can be one part of the title the set's first
+// video names, setting title from the first: a video with an episode's mark is an episode, and a
+// video named for another title than the first's is that title.
+func oneTitlesPart(video string, title *string, first bool) bool {
+	if _, marked := numberingIn(video); marked {
+		return false
+	}
+	own := partLetter.ReplaceAllString(withoutPart(strings.TrimSuffix(video, filepath.Ext(video))), "")
+	own = normName(own)
+	if first {
+		*title = own
+	}
+	return own == *title
+}
+
+// halfMark matches a film's half counted at its name's end with no part's word: "Frith Downs
+// 1of2", "Frith.Downs.2.of.2". A count past two is a miniseries' episodes ("Cold Mere 1of4").
+var halfMark = regexp.MustCompile(`(?i)^(.*?)[ ._-]+([12])[ ._-]*of[ ._-]*2$`)
+
+// joinedLetter matches a part's letter joined to its film's name by a separator other than a
+// space: "LORN_VALE_A", "asg-b". "Plan A", spaced, is a title.
+var joinedLetter = regexp.MustCompile(`(?i)^(.*[^ ._-])[._-]([a-d])$`)
+
+// trailingNotes matches a release's notes in square brackets at a name's end: " [1080p]".
+var trailingNotes = regexp.MustCompile(`(?:[ ._-]*\[[^\]]*\])+$`)
+
+// bareMarkPart is the set and part a stem's mark with no part's word puts it in (partIn): a half
+// counted "1of2", or a letter joined on, before any notes in brackets. ok is false for none.
+func bareMarkPart(stem, ext string) (set string, number int, ok bool) {
+	stem = trailingNotes.ReplaceAllString(stem, "")
+	if m := halfMark.FindStringSubmatch(stem); m != nil && strings.TrimSpace(m[1]) != "" {
+		return strings.ToLower(m[1] + "\x00half\x00" + ext), atoi(m[2]), true
+	}
+	if m := joinedLetter.FindStringSubmatch(stem); m != nil {
+		return strings.ToLower(m[1] + "\x00a\x00" + ext), int(unicode.ToLower(rune(m[2][0]))-'a') + 1, true
+	}
+	return "", 0, false
+}
+
+// partLetter matches a part's bare letter after its title's name: the "-a" of "asg-a". A bare
+// number is a sequel's ("Hollin 2"), not a part's.
+var partLetter = regexp.MustCompile(`(?i)[ ._-]+[a-d]$`)
+
+// videosIn is the videos directly in dir, as a walk would list them.
+func videosIn(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0
+		return nil
 	}
-	n := 0
+	var videos []string
 	for _, e := range entries {
 		if lower := strings.ToLower(e.Name()); !e.IsDir() && videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) {
-			n++
+			videos = append(videos, e.Name())
 		}
 	}
-	return n
+	return videos
 }
 
 // partsNamespace is the scanner's own id for a movie in parts: every part of one set carries the
@@ -122,6 +169,13 @@ func partsID(set string) string {
 func withoutPart(stem string) string {
 	m := partToken.FindStringSubmatchIndex(stem)
 	if m == nil {
+		// "Frith Downs 1of2" and "LORN_VALE_A [1080p]" are "Frith Downs" and "LORN_VALE"
+		// (bareMarkPart).
+		for _, bare := range []*regexp.Regexp{halfMark, joinedLetter} {
+			if m := bare.FindStringSubmatch(trailingNotes.ReplaceAllString(stem, "")); m != nil && strings.TrimSpace(m[1]) != "" {
+				return strings.TrimSpace(m[1])
+			}
+		}
 		return stem
 	}
 	before := strings.TrimRight(stem[m[2]:m[3]], " ._-([")
@@ -133,13 +187,21 @@ func withoutPart(stem string) string {
 // after a plain space ("Harbor Saga Part 2", a sequel). A rip sets its mark off with a separator, a
 // bracket or the year ("Ashgrove - pt1", "Ashgrove.part1", "Ashgrove (2015) Part 1"); a "cd",
 // "disc" or "dvd" mark is never a title's.
+//
+// A title writes "Part", never "pt" ("Ashgrove pt1"), and its year follows its part: a year or a
+// release's mark before the mark ends the title, "Ashgrove 2015 Part 1", "Ashgrove 1080p Part 1".
 func titlesOwnPart(before, mark string) bool {
-	if word := strings.ToLower(mark); !strings.HasPrefix(word, "part") && !strings.HasPrefix(word, "pt") {
+	if !strings.HasPrefix(strings.ToLower(mark), "part") {
 		return false
 	}
 	words := strings.TrimRight(before, " ")
 	if len(words) == len(before) {
 		return false
+	}
+	if fields := strings.Fields(words); len(fields) > 0 {
+		if last := fields[len(fields)-1]; releaseYear(last) || releaseMark.MatchString(last) {
+			return false
+		}
 	}
 	r, _ := utf8.DecodeLastRuneInString(words)
 	return unicode.IsLetter(r) || unicode.IsDigit(r)
@@ -153,7 +215,7 @@ func partIn(name string) (set string, number int, ok bool) {
 	ext := filepath.Ext(name)
 	m := partToken.FindStringSubmatchIndex(strings.TrimSuffix(name, ext))
 	if m == nil {
-		return "", 0, false
+		return bareMarkPart(strings.TrimSuffix(name, ext), ext)
 	}
 	stem := strings.TrimSuffix(name, ext)
 	before, value, after := stem[m[2]:m[3]], stem[m[4]:m[5]], stem[m[6]:m[7]]

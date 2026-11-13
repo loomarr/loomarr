@@ -118,7 +118,7 @@ const ChannelIdentityField = ({
         {/* Save / Cancel appear ONLY when the field diverges from what's committed — the
             explicit per-field confirmation. */}
         {dirty && (
-          <div className="flex shrink-0 items-center gap-1">
+          <Stack align="center" direction="row" flexShrink={0} gap="1">
             <Action
               disabled={!canSave}
               icon="success"
@@ -131,7 +131,7 @@ const ChannelIdentityField = ({
             <Action disabled={saving} icon="close" layout="icon" onPress={reset} variant="ghost">
               {`Cancel ${label} edit`}
             </Action>
-          </div>
+          </Stack>
         )}
       </Stack>
       {error && (

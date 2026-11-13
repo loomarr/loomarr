@@ -21,10 +21,16 @@ type PasswordRecovery struct {
 	log            *slog.Logger
 }
 
-// newRecoveryRequestLimiter throttles recovery requests per account and per client address: each
-// accepted request can email an account holder, so one address must not reach every account by
-// rotating usernames.
-func newRecoveryRequestLimiter() *auth.SourceLimiter { return auth.NewSourceLimiter(0.05, 3, 0.05, 6) }
+// recoveryAccountBurst is how many recovery requests one account takes from all sources together.
+const recoveryAccountBurst = 6
+
+// newRecoveryRequestLimiter throttles recovery requests per account from one address, per client
+// address, and per account from every address: each accepted request can email an account holder,
+// so one address must not reach every account by rotating usernames, nor many addresses one
+// account.
+func newRecoveryRequestLimiter() *auth.SourceLimiter {
+	return auth.NewSourceLimiter(0.05, 3, 0.05, 6, 1.0/300, recoveryAccountBurst)
+}
 
 type passwordRecoveryNotifier interface {
 	Publish(context.Context, notifications.PublishCommand) (notifications.Intent, bool, error)

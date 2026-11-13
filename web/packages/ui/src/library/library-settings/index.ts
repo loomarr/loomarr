@@ -1,4 +1,4 @@
-export { LibrarySettings, LibraryWizardStep } from "./library-settings";
+export { LibrarySettings } from "./library-settings";
 export type {
   LibraryAuthority,
   LibraryDetails,
@@ -12,3 +12,4 @@ export type {
   LibrarySettingsProps,
   LibraryWizardStepProps,
 } from "./library-settings.type";
+export { LibraryWizardStep } from "./library-wizard-step";

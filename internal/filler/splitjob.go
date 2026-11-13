@@ -886,9 +886,16 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 	}
 	// Only a copy is a duplicate. A segment that is a variant of a catalog clip, such as a
 	// cut-down, is a separate ad and is kept (#2033).
+	unchecked := 0
+	var firstErr error
 	for i := range segs {
 		fp, err := sp.tools.Fingerprint(ctx, file, segs[i].StartMs, segs[i].EndMs)
 		if err != nil {
+			// The segment keeps no DupOf verdict, so the review sees it as new; say so once.
+			unchecked++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		for _, c := range candidates {
@@ -897,6 +904,10 @@ func (sp *Splitter) dedup(ctx context.Context, file, clipHash string, segs []spl
 				break
 			}
 		}
+	}
+	if unchecked > 0 && sp.log != nil {
+		sp.log.Warn("split dedup: segments could not be fingerprinted and were left unchecked against the catalog",
+			"clip", clipHash, "unchecked", unchecked, "segments", len(segs), "err", firstErr)
 	}
 }
 

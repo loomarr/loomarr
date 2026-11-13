@@ -328,6 +328,7 @@ components:
           description: Titles to add; current Library presence determines Lineup or acquisition placement
           items:
             $ref: "#/components/schemas/ProposalItem"
+          maxItems: 1000
           type: array
         audience:
           $ref: "#/components/schemas/Rating"
@@ -336,6 +337,7 @@ components:
           description: Provisioning keys to remove from the proposal before approving
           items:
             type: string
+          maxItems: 1000
           type: array
         note:
           description: A message to the requester, stored with the approval
@@ -354,10 +356,12 @@ components:
         dropCandidateIds:
           items:
             type: string
+          maxItems: 1000
           type: array
         dropSourceIds:
           items:
             type: string
+          maxItems: 1000
           type: array
         note:
           description: Optional annotation for the approval record; does not change what is downloaded
@@ -773,9 +777,10 @@ components:
           readOnly: true
           type: string
         ids:
-          description: Proposal ids to approve, each through the single approval gate
+          description: Proposal ids to approve, each through the single approval gate (at most 100, the same ceiling as bulk pull approval)
           items:
             type: string
+          maxItems: 100
           minItems: 1
           type: array
       required:
@@ -841,9 +846,10 @@ components:
           readOnly: true
           type: string
         hashes:
-          description: Clip identities (content hashes, §10 V45a)
+          description: "Clip identities (content hashes, §10 V45a), at most 500: the catalog page size"
           items:
             type: string
+          maxItems: 500
           minItems: 1
           type: array
         restore:
@@ -896,15 +902,17 @@ components:
           format: int64
           type: integer
         hashes:
-          description: Clip identities (content hashes, §10 V45a)
+          description: "Clip identities (content hashes, §10 V45a), at most 500: the catalog page size, since a selection is the rows on screen"
           items:
             type: string
+          maxItems: 500
           minItems: 1
           type: array
         tags:
-          description: Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a).
+          description: Taxonomy tags to set on every selected clip, at most 64. Grounded on write; category derived. Omit to leave alone (§10 V45a).
           items:
             type: string
+          maxItems: 64
           type: array
       required:
         - hashes
@@ -1480,6 +1488,7 @@ components:
         applied:
           items:
             $ref: "#/components/schemas/AppliedRelaxation"
+          maxItems: 8
           type: array
         audience:
           $ref: "#/components/schemas/AudiencePolicy"
@@ -1507,6 +1516,7 @@ components:
         operatorSet:
           items:
             type: string
+          maxItems: 5
           type: array
         ordering:
           type: string
@@ -1515,6 +1525,7 @@ components:
         rules:
           items:
             $ref: "#/components/schemas/SchedulingRule"
+          maxItems: 32
           type: array
         scope:
           $ref: "#/components/schemas/ScopePolicy"
@@ -2505,6 +2516,7 @@ components:
         segments:
           items:
             $ref: "#/components/schemas/SplitSegment"
+          maxItems: 500
           minItems: 1
           type: array
       required:
@@ -2852,6 +2864,7 @@ components:
         retiredAliases:
           items:
             type: string
+          maxItems: 50
           type: array
         slug:
           description: Stable machine id — immutable after creation
@@ -2859,6 +2872,7 @@ components:
         synonyms:
           items:
             type: string
+          maxItems: 100
           type: array
       required:
         - slug
@@ -3093,14 +3107,17 @@ components:
         movieRelease:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
         seriesAiring:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
         seriesPremiere:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 16
           type: array
       type: object
     DayRule:
@@ -3622,6 +3639,7 @@ components:
           items:
             format: int64
             type: integer
+          maxItems: 200
           type: array
         tmdbId:
           format: int64
@@ -3641,6 +3659,7 @@ components:
         holidays:
           items:
             type: string
+          maxItems: 32
           type: array
         mode:
           type: string
@@ -4675,16 +4694,19 @@ components:
         categories:
           items:
             type: string
+          maxItems: 128
           type: array
         era:
           $ref: "#/components/schemas/Range"
         eraWindows:
           items:
             $ref: "#/components/schemas/Range"
+          maxItems: 8
           type: array
         excluded:
           items:
             type: string
+          maxItems: 1000
           type: array
         geography:
           $ref: "#/components/schemas/FillerGeography"
@@ -4693,6 +4715,7 @@ components:
         pinned:
           items:
             type: string
+          maxItems: 1000
           type: array
         roles:
           items:
@@ -5137,10 +5160,12 @@ components:
         exclude:
           items:
             type: string
+          maxItems: 50
           type: array
         include:
           items:
             type: string
+          maxItems: 50
           type: array
       type: object
     Geography:
@@ -5895,9 +5920,10 @@ components:
           readOnly: true
           type: string
         ids:
-          description: Media-server user ids to allowlist. New users copy their media-server admin/member role.
+          description: Media-server user ids to allowlist, at most 500 (a household media server has a few dozen accounts). New users copy their media-server admin/member role.
           items:
             type: string
+          maxItems: 500
           type: array
       required:
         - ids
@@ -6131,9 +6157,10 @@ components:
           readOnly: true
           type: string
         urls:
-          description: YouTube playlist/video or Archive.org collection/item URLs
+          description: YouTube playlist/video or Archive.org collection/item URLs, at most 50 per request (each is a playlist or collection, not a video)
           items:
             type: string
+          maxItems: 50
           minItems: 1
           type: array
       required:
@@ -6168,12 +6195,14 @@ components:
         adjacent:
           items:
             $ref: "#/components/schemas/AdjacentContext"
+          maxItems: 50
           type: array
         channelName:
           type: string
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
+          maxItems: 1000
           type: array
         description:
           minLength: 3
@@ -6188,10 +6217,12 @@ components:
         mustExclude:
           items:
             type: string
+          maxItems: 100
           type: array
         mustInclude:
           items:
             type: string
+          maxItems: 100
           type: array
         refineText:
           type: string
@@ -7638,6 +7669,7 @@ components:
         genres:
           items:
             type: string
+          maxItems: 16
           type: array
         key:
           description: Provisioning key, e.g. movie:tmdb:603
@@ -8393,6 +8425,7 @@ components:
         events:
           items:
             type: string
+          maxItems: 32
           minItems: 1
           type: array
         label:
@@ -8424,6 +8457,7 @@ components:
         events:
           items:
             type: string
+          maxItems: 32
           minItems: 1
           type: array
         label:
@@ -8724,9 +8758,10 @@ components:
             - ""
           type: string
         tags:
-          description: The operator's taxonomy tags (leaf slugs). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
+          description: The operator's taxonomy tags (leaf slugs, at most 64). Grounded on write; category is derived. Omit to leave unchanged, send [] to clear (§10 V45a).
           items:
             type: string
+          maxItems: 64
           type: array
       required:
         - hash
@@ -9273,6 +9308,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
@@ -9332,6 +9368,7 @@ components:
         lineup:
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
@@ -9683,6 +9720,7 @@ components:
         cast:
           items:
             type: string
+          maxItems: 50
           type: array
         confidence:
           format: double
@@ -9690,6 +9728,7 @@ components:
         creators:
           items:
             type: string
+          maxItems: 50
           type: array
         editorialRole:
           enum:
@@ -9702,12 +9741,14 @@ components:
         genres:
           items:
             type: string
+          maxItems: 16
           type: array
         inLibrary:
           type: boolean
         keywords:
           items:
             type: string
+          maxItems: 100
           type: array
         libraryItemId:
           type: string
@@ -9718,12 +9759,14 @@ components:
         networks:
           items:
             type: string
+          maxItems: 16
           type: array
         officialRating:
           type: string
         originCountries:
           items:
             type: string
+          maxItems: 16
           type: array
         originalLanguage:
           type: string
@@ -9744,6 +9787,7 @@ components:
           items:
             format: int64
             type: integer
+          maxItems: 200
           type: array
         sizeBytes:
           description: Owned title's library file size in bytes; absent when unavailable, never 0
@@ -10877,6 +10921,7 @@ components:
         collections:
           items:
             type: string
+          maxItems: 100
           type: array
         dates:
           $ref: "#/components/schemas/DateScope"
@@ -10895,6 +10940,7 @@ components:
         series:
           items:
             type: string
+          maxItems: 1000
           type: array
       type: object
     Scores:
@@ -11051,6 +11097,7 @@ components:
         holidays:
           items:
             type: string
+          maxItems: 32
           type: array
         mode:
           type: string
@@ -12351,6 +12398,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 64
           type: array
         transcript:
           type: string
@@ -12414,6 +12462,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 64
           type: array
         transcript:
           type: string
@@ -12551,6 +12600,7 @@ components:
           description: Every title the person picked, from the library or a direct search; re-checked against the library server-side
           items:
             $ref: "#/components/schemas/ProposalItem"
+          maxItems: 1000
           type: array
         name:
           description: The channel's name, as the person typed it or the chosen starter template filled it
@@ -13119,6 +13169,7 @@ components:
         retiredAliases:
           items:
             type: string
+          maxItems: 50
           type: array
         slug:
           description: The new slug for create, or existing slug for update/delete
@@ -13126,6 +13177,7 @@ components:
         synonyms:
           items:
             type: string
+          maxItems: 100
           type: array
       required:
         - operation
@@ -13452,6 +13504,7 @@ components:
           description: Whole-list replace of the channel's lineup (ordered). Omit to leave unchanged. Each entry's key is validated; a not-yet-available key renders as a pending slot until the title lands.
           items:
             $ref: "#/components/schemas/LineupEntryDTO"
+          maxItems: 1000
           type: array
         logo:
           description: Channel icon URL (from TMDB, an upload path, or set directly). Empty string clears it.
@@ -13510,10 +13563,12 @@ components:
         retiredAliases:
           items:
             type: string
+          maxItems: 50
           type: array
         synonyms:
           items:
             type: string
+          maxItems: 100
           type: array
       required:
         - label

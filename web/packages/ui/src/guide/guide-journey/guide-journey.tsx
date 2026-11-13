@@ -1,7 +1,7 @@
 import { guideSelectionForChannel } from "@loomarr/core/guide";
 import { Notice, Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { GuideExperience } from "../guide";
 import type { GuideFilter } from "../guide.type";
@@ -85,7 +85,16 @@ const GuideJourney = ({
     content = (
       <GuideExperience
         density={density}
-        onRetry={snapshot.status === "error" ? () => void controller.refresh(preferredChannelId) : undefined}
+        onRetry={
+          snapshot.status === "error"
+            ? () => {
+                if (snapshot.refreshing) return;
+                retryPressed.current = true;
+                void controller.refresh(preferredChannelId);
+              }
+            : undefined
+        }
+        retrying={snapshot.status === "error" && snapshot.refreshing === true}
         state={snapshot.status === "ready" ? "error" : snapshot.status}
       />
     );
@@ -126,8 +135,31 @@ const GuideJourney = ({
     );
   }
 
-  // A failed background refresh keeps the layout on screen; say so, so a stale grid doesn't read as current.
-  const stale = snapshot.error !== undefined && snapshot.status === "ready" && snapshot.layout !== undefined;
+  // A failed background refresh keeps the layout on screen, an empty one included; say so, so a stale
+  // grid (or a stale "No channels on air") doesn't read as current.
+  const stale =
+    snapshot.error !== undefined &&
+    (snapshot.status === "ready" || snapshot.status === "empty") &&
+    snapshot.layout !== undefined;
+
+  // A retry that works takes the notice (or the error panel) away, and the focus on its button with
+  // it. The Guide's home, the selected programme, is where a remote goes instead of nowhere.
+  const retryPressed = useRef(false);
+  const recovered = snapshot.error === undefined && snapshot.status === "ready";
+  useEffect(() => {
+    if (!retryPressed.current || !recovered) return;
+    retryPressed.current = false;
+    if (selectedAnchorMs === undefined || selectedChannelId === undefined) return;
+    if (selectedScheduleBlockId === undefined) return;
+    focusRegistry?.request({
+      kind: "airing",
+      selection: {
+        anchorMs: selectedAnchorMs,
+        channelId: selectedChannelId,
+        scheduleBlockId: selectedScheduleBlockId,
+      },
+    });
+  }, [focusRegistry, recovered, selectedAnchorMs, selectedChannelId, selectedScheduleBlockId]);
 
   return (
     <Surface borderRadius={0} borderWidth={0} flex={1} level="canvas">
@@ -139,7 +171,9 @@ const GuideJourney = ({
             action={{
               label: snapshot.refreshing ? "Trying again…" : "Try again",
               onPress: () => {
-                if (!snapshot.refreshing) void controller.refresh(preferredChannelId);
+                if (snapshot.refreshing) return;
+                retryPressed.current = true;
+                void controller.refresh(preferredChannelId);
               },
             }}
             body="Showing what Loomarr had a moment ago."

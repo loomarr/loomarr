@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
@@ -154,15 +153,9 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		err        error
 	}
 	results := make([]result, len(titles))
-	var wg sync.WaitGroup
-	for index, title := range titles {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results[index].candidates, results[index].err = s.catalog.Search(ctx, title, titlesearch.ScopeAll, catalogSearchLimit)
-		}()
-	}
-	wg.Wait()
+	forEachBounded(len(titles), func(index int) {
+		results[index].candidates, results[index].err = s.catalog.Search(ctx, titles[index], titlesearch.ScopeAll, catalogSearchLimit)
+	})
 	anchored := make([]titlesearch.Candidate, 0, len(titles))
 	var directExamples, franchiseExamples []titlesearch.Candidate
 	for index, title := range titles {

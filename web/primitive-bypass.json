@@ -5,9 +5,6 @@
       "rawDialog": 1,
       "flexStack": 6
     },
-    "apps/web/src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/channels/guide-page/guide-page.tsx": {
       "flexStack": 2
     },
@@ -21,7 +18,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "flexStack": 1
@@ -81,7 +78,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
-      "flexStack": 4
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
       "flexStack": 2
@@ -111,7 +108,7 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "flexStack": 5
+      "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
       "flexStack": 1
@@ -140,17 +137,11 @@
     "apps/web/src/design/spacing/spacing.tsx": {
       "flexStack": 15
     },
-    "apps/web/src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "flexStack": 5
-    },
     "apps/web/src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "flexStack": 1
     },
     "apps/web/src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
       "flexStack": 1
-    },
-    "apps/web/src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "flexStack": 2
     },
     "apps/web/src/diagnostics/startup-report-page/startup-report-page.tsx": {
       "flexStack": 1
@@ -207,7 +198,7 @@
       "flexStack": 2
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/help/help-page/help-page.tsx": {
       "flexStack": 1
@@ -249,10 +240,7 @@
       "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "flexStack": 5
-    },
-    "apps/web/src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "flexStack": 2
+      "flexStack": 3
     },
     "apps/web/src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
       "flexStack": 1

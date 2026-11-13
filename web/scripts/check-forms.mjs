@@ -10,11 +10,13 @@
 // (`onDsnChange={setDsn}`). Each input is judged on its own: a file that
 // also holds a TanStack form is not excused, since a field's `handleChange` is never a `useState`
 // setter and so never counts. A search box or filter
-// (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, and neither is a flag a
-// handler raises (`setOpen(true)`). Tests and stories are not production code and are not counted.
+// (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, unless it sits inside a
+// `<form>` or in a component that holds a submit: there the name excuses nothing. Neither is a flag
+// a handler raises (`setOpen(true)`). Tests and stories are not production code and are not counted.
 // Two buffers are sanctioned that are not a TanStack form: a settings draft (`useSettingsDraft`) and
 // a single input's draft-until-commit (`useCommittedDraft`, once per component: a second in the same
-// component makes it a form); see SANCTIONED_DRAFT_HOOKS below.
+// component makes it a form, also when it is called through a hook of the same file that wraps it);
+// see SANCTIONED_DRAFT_HOOKS below.
 //
 // The committed ledger (hand-rolled-forms.json) is a ratchet:
 //   - the check fails when a file not in the ledger is a hand-rolled form;
@@ -69,12 +71,15 @@ const walk = (node, visit) => {
 };
 
 // A search box or a list filter narrows what is shown; nothing submits it, so it is not a form.
+// The name only says what a lone input is for: it excuses nothing that structure shows is a form.
+// An input inside a `<form>`, or in a component that holds a submit, is a form whatever its setter
+// is called (see `submittedElements`).
 const FILTER_SETTER = /^set(?:Query|Search|Filter|Q|Needle|Role|Status)\w*$/;
 
-// stateSetters names every setter a `const [value, setValue] = useState(…)` declares, except a
-// filter's.
+// stateSetters names every setter a `const [value, setValue] = useState(…)` declares: the draft
+// setters, and apart from them the ones named like a filter's.
 const stateSetters = (program) => {
-  const setters = new Set();
+  const setters = { draft: new Set(), filter: new Set() };
   walk(program, (node) => {
     if (
       node.type === "VariableDeclarator" &&
@@ -85,10 +90,51 @@ const stateSetters = (program) => {
       node.init.callee.name === "useState"
     ) {
       const setter = node.id.elements[1].name;
-      if (!FILTER_SETTER.test(setter)) setters.add(setter);
+      (FILTER_SETTER.test(setter) ? setters.filter : setters.draft).add(setter);
     }
   });
   return setters;
+};
+
+// submittedElements: the elements that sit inside a `<form>`, or in a function that holds a submit
+// (an `onSubmit` or a `type="submit"`, which is how a submit button is spelled), so that what they
+// write is submitted together, whatever it is called.
+const isSubmitAttribute = (attribute) =>
+  attribute.type === "JSXAttribute" &&
+  attribute.name.type === "JSXIdentifier" &&
+  (attribute.name.name === "onSubmit" ||
+    (attribute.name.name === "type" && attribute.value?.value === "submit"));
+
+const submittedElements = (program) => {
+  const found = [];
+  const submitting = new Set();
+  const visit = (node, inForm, owners) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, inForm, owners);
+      return;
+    }
+    const nextOwners = FUNCTION_NODES.has(node.type) ? [...owners, node] : owners;
+    const nextInForm =
+      inForm ||
+      (node.type === "JSXElement" &&
+        node.openingElement.name.type === "JSXIdentifier" &&
+        node.openingElement.name.name === "form");
+    if (node.type === "JSXOpeningElement") {
+      found.push({ element: node, inForm, owners });
+      if (node.attributes.some(isSubmitAttribute)) for (const owner of owners) submitting.add(owner);
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object")
+        visit(child, nextInForm, nextOwners);
+    }
+  };
+  visit(program, false, []);
+  return new Set(
+    found
+      .filter(({ inForm, owners }) => inForm || owners.some((owner) => submitting.has(owner)))
+      .map(({ element }) => element),
+  );
 };
 
 // Two buffers are sanctioned that are not a TanStack form. Each is a named rule, not a side effect:
@@ -172,8 +218,7 @@ const draftHookCalls = (program) => {
     } else if (
       node.id.type === "ArrayPattern" &&
       node.id.elements[1]?.type === "Identifier" &&
-      PAIR_SETTER.test(node.id.elements[1].name) &&
-      !FILTER_SETTER.test(node.id.elements[1].name)
+      PAIR_SETTER.test(node.id.elements[1].name)
     ) {
       setters = [node.id.elements[1].name];
     }
@@ -214,9 +259,34 @@ const FUNCTION_NODES = new Set(["ArrowFunctionExpression", "FunctionExpression",
 // doubledCommittedDraft: one function calls the committed-draft hook twice or more. That hook is
 // one input's draft, so two in one component are several inputs edited together, a form kept in
 // renamed state; two components with one each are two single inputs.
+//
+// A hook of the file that returns the committed draft (`const useName = () => useCommittedDraft("")`)
+// is the committed draft under another name, and so is one that calls such a hook, so a component
+// cannot hide its second draft behind a wrapper.
 const doubledCommittedDraft = (program) => {
   const sanctioned = sanctionedHookNames(program, ["committed"]);
   if (sanctioned.size === 0) return false;
+  const functions = localFunctions(program);
+  for (let grown = true; grown; ) {
+    grown = false;
+    for (const [name, fn] of functions) {
+      if (sanctioned.has(name) || !name.startsWith("use")) continue;
+      let wraps = false;
+      walk(fn.body, (inner) => {
+        if (
+          inner.type === "CallExpression" &&
+          inner.callee.type === "Identifier" &&
+          sanctioned.has(inner.callee.name)
+        ) {
+          wraps = true;
+        }
+      });
+      if (wraps) {
+        sanctioned.add(name);
+        grown = true;
+      }
+    }
+  }
   let doubled = false;
   const visit = (node, owner, counts) => {
     if (doubled || !node || typeof node !== "object") return;
@@ -242,12 +312,17 @@ const doubledCommittedDraft = (program) => {
   return doubled;
 };
 
-// unsanctionedDraftSetters: draft setters bound from a hook that is not a sanctioned one.
+// unsanctionedDraftSetters: draft setters bound from a hook that is not a sanctioned one, split like
+// stateSetters into the draft setters and the ones named like a filter's.
 const unsanctionedDraftSetters = (program) => {
   const sanctioned = sanctionedHookNames(program);
-  return draftHookCalls(program)
-    .filter((call) => !sanctioned.has(call.hook))
-    .flatMap((call) => call.setters);
+  const setters = { draft: new Set(), filter: new Set() };
+  for (const call of draftHookCalls(program)) {
+    if (sanctioned.has(call.hook)) continue;
+    for (const setter of call.setters)
+      (FILTER_SETTER.test(setter) ? setters.filter : setters.draft).add(setter);
+  }
+  return setters;
 };
 
 // localFunctions maps the name of every function the file binds (`const f = () => …`,
@@ -331,21 +406,26 @@ const textSetters = (program) => {
 const isHandRolledForm = (source) => {
   const program = parse(source, { sourceType: "module", plugins: ["typescript", "jsx"] }).program;
   if (doubledCommittedDraft(program)) return true;
-  const setters = stateSetters(program);
-  for (const setter of unsanctionedDraftSetters(program)) setters.add(setter);
-  if (setters.size === 0) return false;
+  const state = stateSetters(program);
+  const unsanctioned = unsanctionedDraftSetters(program);
+  // What a lone input writes is a draft unless its setter is named like a filter's; what an input in
+  // a submitted form writes is a draft whatever the setter is called.
+  const draftSetters = new Set([...state.draft, ...unsanctioned.draft]);
+  const submittedSetters = new Set([...draftSetters, ...state.filter, ...unsanctioned.filter]);
+  if (submittedSetters.size === 0) return false;
   const functions = localFunctions(program);
   const text = textSetters(program);
+  const submitted = submittedElements(program);
 
   // storesThrough: a function an input's handler names stores what it is handed, directly or
   // through another function in the file.
-  const storesThrough = (fn, seen) => {
+  const storesThrough = (fn, seen, setters) => {
     if (storesArgument(fn, setters)) return true;
     let stores = false;
     walk(fn.body, (inner) => {
       if (stores || inner.type !== "Identifier" || !functions.has(inner.name) || seen.has(inner.name)) return;
       seen.add(inner.name);
-      stores = storesThrough(functions.get(inner.name), seen);
+      stores = storesThrough(functions.get(inner.name), seen, setters);
     });
     return stores;
   };
@@ -354,7 +434,7 @@ const isHandRolledForm = (source) => {
   // raises a flag and `setError(undefined)` clears what the last submit said; neither carries
   // anything the viewer typed. An `onChange` prop on a component that is not an input (an editor
   // that reports a changed list) often does the first.
-  const writesSetter = (root, follow, seen = new Set()) => {
+  const writesSetter = (root, follow, setters, seen = new Set()) => {
     const flags = new Set();
     walk(root, (inner) => {
       const argument = inner.type === "CallExpression" ? inner.arguments[0] : undefined;
@@ -376,7 +456,7 @@ const isHandRolledForm = (source) => {
         writes = true;
       } else if (follow && functions.has(inner.name) && !seen.has(inner.name)) {
         seen.add(inner.name);
-        writes = storesThrough(functions.get(inner.name), seen);
+        writes = storesThrough(functions.get(inner.name), seen, setters);
       }
     });
     return writes;
@@ -389,11 +469,12 @@ const isHandRolledForm = (source) => {
     // `onChangeText`, or a DOM input's `onChange`. A component's `onChange` reports a structured
     // value (an editor's changed list), so only a setter it names outright counts.
     const intrinsic = element.name.type === "JSXIdentifier" && /^[a-z]/.test(element.name.name);
+    const setters = submitted.has(element) ? submittedSetters : draftSetters;
     for (const node of element.attributes) {
       if (node.type !== "JSXAttribute" || node.name.type !== "JSXIdentifier") continue;
       const name = node.name.name;
       if (INPUT_HANDLERS.has(name)) {
-        found ||= writesSetter(node.value, name === "onChangeText" || intrinsic);
+        found ||= writesSetter(node.value, name === "onChangeText" || intrinsic, setters);
       } else if (
         CHANGE_PROP.test(name) &&
         !VIEW_CHANGE_PROPS.has(name) &&

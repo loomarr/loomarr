@@ -58,7 +58,8 @@ type previewProgrammingInput struct {
 	Body struct {
 		// Lineup is the draft lineup (omit to use the saved one). Lowered by key like a PATCH —
 		// rich scheduling metadata carried forward, so the preview matches what a save would air.
-		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty"`
+		// The same 1000-entry ceiling as a PATCH, since the preview lowers what a save would.
+		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty" maxItems:"1000"`
 		// Policy is the draft policy (omit to use the saved one). Validated like a policy write.
 		Policy *schedule.ChannelPolicy `json:"policy,omitempty"`
 	}
@@ -226,7 +227,7 @@ type previewProgrammingChangesInput struct {
 	// Body is the SAME draft shape as programming/preview, deliberately restated rather than
 	// shared: naming the type would rename the existing endpoint's generated request type.
 	Body struct {
-		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty"`
+		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty" maxItems:"1000"`
 		Policy *schedule.ChannelPolicy      `json:"policy,omitempty"`
 	}
 }

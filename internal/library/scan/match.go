@@ -441,20 +441,32 @@ func releaseToken(w string) bool { return releaseMark.MatchString(w) || releaseW
 
 // releaseCut is where a name's title ends among its words: at its first releaseMark, or at a
 // releaseWord after the year, before another release word, or last in a name written with dots
-// ("Ashgrove.CAM").
+// ("Ashgrove.CAM"). In a name whose title is written in mixed case, a release writes its word in
+// capitals ("Ashgrove WEB 1080p") and a title does not ("Tangled Web 1080p", "The.Cam", "The
+// German 1080p"): there, only a word in capitals ends the title before the year.
 func releaseCut(words []string, dotted bool) int {
 	first := func(w string) string { return strings.SplitN(w, "-", 2)[0] }
+	mixed := mixedCase(words)
 	for i, w := range words {
 		if i == 0 {
 			continue
+		}
+		if releaseMark.MatchString(w) {
+			return i // "Web-DL" whole
 		}
 		w = first(w)
 		switch {
 		case releaseMark.MatchString(w):
 			return i
+		case mixed && releaseWord.MatchString(w) && titleCased(w) && !releaseYear(first(words[i-1])) &&
+			(i+1 == len(words) || !strings.EqualFold(words[i+1], "dl") &&
+				(titleCased(first(words[i+1])) || !releaseWord.MatchString(first(words[i+1])))):
+			// A language's "German DL", and a release's word in capitals after it, are a release's.
+			continue
 		// Radarr's "{Movie.CleanTitle}.{Release.Year}.{Edition.Tags}": an edition's word right
-		// after the year ends the title however it is written, "Gloam.Moss.2011.Theatrical".
-		case releaseYear(first(words[i-1])) && versionWords[strings.ToLower(w)] && w != "and":
+		// after the year ends the title however it is written, "Gloam.Moss.2011.Theatrical". A year
+		// that starts the name is its title's: "2020 Vision Street".
+		case i >= 2 && releaseYear(first(words[i-1])) && versionWords[strings.ToLower(w)] && w != "and":
 			return i
 		case !releaseWord.MatchString(w):
 			continue
@@ -465,6 +477,31 @@ func releaseCut(words []string, dotted bool) int {
 		}
 	}
 	return len(words)
+}
+
+// mixedCase says whether a name's words are written in mixed case, some capitalised and some not
+// all in capitals: "Tangled Web 1080p" is, "tangled.web.1080p" and "TANGLED WEB" are not.
+func mixedCase(words []string) bool {
+	titled := false
+	for _, w := range words {
+		if !strings.ContainsFunc(w, unicode.IsLetter) || releaseMark.MatchString(w) {
+			continue
+		}
+		if w == strings.ToLower(w) {
+			continue
+		}
+		if w != strings.ToUpper(w) {
+			titled = true
+		}
+	}
+	return titled
+}
+
+// titleCased says whether a word is written as a title's: its first letter alone in capitals,
+// "Web", not "WEB" or a release's "MULTi".
+func titleCased(w string) bool {
+	r, size := utf8.DecodeRuneInString(w)
+	return unicode.IsUpper(r) && w[size:] == strings.ToLower(w[size:])
 }
 
 // releaseNote says whether a bracketed group's words are a note on the release ("Dual Audio",
@@ -718,6 +755,13 @@ func withoutEdition(words []string) []string {
 		if n > 0 && slices.EqualFunc(words[n:], edition, strings.EqualFold) {
 			if n == 1 && slices.Contains([]string{"the", "a", "an"}, strings.ToLower(words[0])) {
 				return words
+			}
+			// The edition's article and the dash setting it off are its own: "Ashwood - The
+			// Directors Cut" is "Ashwood".
+			if n > 2 && strings.EqualFold(words[n-1], "the") && words[n-2] == "-" {
+				n -= 2
+			} else if n > 1 && words[n-1] == "-" {
+				n--
 			}
 			return words[:n]
 		}

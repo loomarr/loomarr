@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -769,6 +770,10 @@ func stageParentForSplitReview(st *splitMemStore, hash string) {
 }
 
 func newSplitter(st filler.SplitStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string) *filler.Splitter {
+	return newSplitterLogging(st, tools, provider, dropDir, nil)
+}
+
+func newSplitterLogging(st filler.SplitStore, tools tools.MediaTools, provider *testkit.LLM, dropDir string, log *slog.Logger) *filler.Splitter {
 	materializeSplitSources(st, dropDir)
 	var p llm.Provider
 	if provider != nil {
@@ -781,7 +786,7 @@ func newSplitter(st filler.SplitStore, tools tools.MediaTools, provider *testkit
 	return filler.NewSplitter(st, tools, p, dropDir,
 		func() time.Duration { return 10 * time.Second },
 		func() string { n++; return fmt.Sprintf("sp_%d", n) },
-		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, nil)
+		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, log)
 }
 
 func splitFixtureBytes(path string) []byte {
@@ -1528,6 +1533,41 @@ func TestPropose_DedupFlagsExistingClips(t *testing.T) {
 	// would cry wolf on exactly the clips that are new.
 	if p.Segments[1].DupOf != "" {
 		t.Errorf("segment flagged against its OWN compilation: %+v", p.Segments[1])
+	}
+}
+
+// A segment whose fingerprint cannot be read keeps no duplicate verdict, and the pass says so
+// instead of silently treating "could not check" as "not a copy".
+func TestPropose_DedupWarnsWhenASegmentCannotBeFingerprinted(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/unreadable.mp4", 60_000)
+	existing := clipstore.Clip{}
+	existing.Hash = "hash-of-unreadable-candidate"
+	existing.Path = "old/unreadable-candidate.mp4"
+	existing.DurationMs = 30_000
+	st.clips[existing.Hash] = existing
+
+	tools := &fakeTools{
+		blacks: []tools.Interval{{StartMs: 29800, EndMs: 30200}},
+		spans: map[string]creative.Fingerprint{
+			key3("unreadable.mp4", 0, 30000): spot(1), // the first segment reads and is a copy
+			// the second segment has no entry: its fingerprint fails
+			key3("unreadable.mp4", 0, 60_000):           spot(2),
+			key3("unreadable-candidate.mp4", 0, 30_000): spot(1),
+		},
+	}
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	p, err := newSplitterLogging(st, tools, nil, t.TempDir(), log).Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Segments) != 2 || p.Segments[0].DupOf != existing.Path || p.Segments[1].DupOf != "" {
+		t.Fatalf("segments = %+v, want the readable copy flagged and the unreadable one left unflagged", p.Segments)
+	}
+	got := logs.String()
+	if !strings.Contains(got, "level=WARN") || !strings.Contains(got, "unchecked=1") {
+		t.Fatalf("an unfingerprintable segment was skipped without a WARN; log:\n%s", got)
 	}
 }
 

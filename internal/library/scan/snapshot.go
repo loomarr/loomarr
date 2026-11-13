@@ -262,7 +262,19 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 //	    the folders one deeper ("01/Disc 1/", "All/x265/"); "Christmas_Specials",
 //	    "시즌.1" and "season i" are season folders; a show's home settles the folders in it
 //	    (settleFolders); a name only its words read as a shelf is one only among shelves (shelfAt).
-const writeVersion = 67
+//	68: a box set's disc folders hold the episodes or films their files name, not one film in
+//	    parts; a film's bonus disc ("Disc 2", "Disc 2 - Extras") holds its extras; another show's
+//	    episode numbered as one of its folder's own is that show's (splitNamed); "1of2", "_A"/"_B",
+//	    "pt1" and "2015 Part 1" are a film's parts; "S01E02 - Sample" beside S01E02 and "Making of
+//	    Season 1" are extras; "- The Directors Cut" leaves the title; "- 12 (2019)" is an anime's
+//	    episode; a title's "Web" or "German" in mixed case stays its; specials and a missing season
+//	    keep a show whole (seasonsApart).
+//	69: a commentary, promo or blooper beside its episode, or named by its season ("Show.S01.
+//	    Bloopers"), is an extra (extrasBeside); a folder labelled "Miniseries" is a show's on any
+//	    shelf; "Sesaon 3" is a season's folder; "(Season 3)" is an anime's season; "1.01" in a
+//	    show's folder and "Larchmere 1" in "Larchmere Series 2" are episodes; a year first in a
+//	    title, "2020 Vision Street", stays the title's.
+const writeVersion = 69
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that

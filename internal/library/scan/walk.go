@@ -74,6 +74,10 @@ func extrasFolder(name, parent string) bool {
 	if len(head) == 0 || parent == "." {
 		return false
 	}
+	// A disc's label names its title's extras as the title does: "Disc 2 - Extras".
+	if partFolder.MatchString(strings.Join(head, " ")) {
+		return true
+	}
 	// The title is its show's, or its film's without its year: "Sallowmere (2008)/Sallowmere Extras".
 	title, _, _ := searchQuery(path.Base(parent), 0)
 	for _, own := range [][]string{showWordsOf(path.Base(parent)), strings.Fields(normName(title))} {
@@ -82,6 +86,13 @@ func extrasFolder(name, parent string) bool {
 		}
 	}
 	return false
+}
+
+// bonusDisc says whether a disc's folder ("Disc 2", "DVD2") beside a film's own video holds the
+// film's extras: the folder of a film's parts holds no film of its own (partFolderOf), and a
+// show's or a season's discs hold its episodes. videos are the folder's own videos.
+func bonusDisc(name string, videos []string, shows bool) bool {
+	return !shows && partFolder.MatchString(name) && len(videos) == 1 && !episodeMark.MatchString(videos[0])
 }
 
 // seasonExtrasFolder says whether a folder is a season's extras by its own name, wherever it is:
@@ -398,10 +409,14 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	}
 	shows := dir != w.root && underShows(path.Join(w.shelf, w.rel(dir)))
 	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
+	for name := range extrasBeside(videoNames) {
+		extras[name] = true
+	}
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
 	notes, parts := notesOf(videoNames), partsOf(videoNames)
-	if shows {
-		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder).
+	if shows || showLabelled(folder) {
+		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder), as
+		// are a folder's labelled a show's on any shelf, "Movies/The Long Watch Miniseries/".
 		parts = nil
 	}
 	marked := 0
@@ -496,6 +511,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 		switch {
 		case isDir && skippedDir(w.rel(dir), e.Name(), titled):
+		case isDir && bonusDisc(e.Name(), videoNames, shows || seasonDirOf(w.rel(dir)) != ""):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
 		case isDir:
@@ -937,9 +953,58 @@ func kindEnds(words []string) bool {
 		if len(words) < len(kind) || !slices.EqualFunc(words[:len(kind)], kind, func(w, k string) bool { return bare(w) == k }) {
 			continue
 		}
+		// "Making of Season 1" is its season's extra.
+		if _, season := seasonIn(strings.Join(words[len(kind):], " ")); season && len(words) > len(kind) {
+			return true
+		}
 		return !slices.ContainsFunc(words[len(kind):], func(w string) bool { return !digits(w) && !releaseToken(w) })
 	}
 	return false
+}
+
+// extrasBeside is which of a folder's videos are extras of the episodes or the season beside them,
+// read whole by the folder:
+//   - An episode's name titled by a kind of extra alone after its mark, "S01E02 - Sample",
+//     "S01E01 - Commentary", is that episode's extra when another video beside it numbers the same
+//     episode. Alone, it is the episode, titled so.
+//   - A show's season and a kind of extra with no episode's mark, "Fernhollow.S01.Bloopers",
+//     "Gullhaven - Season 1 Promo", is the season's extra, as a folder so named is
+//     (seasonExtrasFolder).
+func extrasBeside(names []string) map[string]bool {
+	var out map[string]bool
+	add := func(name string) {
+		if out == nil {
+			out = map[string]bool{}
+		}
+		out[name] = true
+	}
+	titledExtra := func(name string) bool {
+		_, after, ok := strings.Cut(stem(name), " - ")
+		for ok && episodeMark.MatchString(after) {
+			_, after, ok = strings.Cut(after, " - ")
+		}
+		words := extraWords(after)
+		return ok && len(words) > 0 && extraKindAt(words) == 0 && kindEnds(words)
+	}
+	for _, name := range names {
+		mark, marked := numberingIn(name)
+		if !marked {
+			if seasonExtrasFolder(stem(name)) {
+				add(name)
+			}
+			continue
+		}
+		if !titledExtra(name) {
+			continue
+		}
+		if slices.ContainsFunc(names, func(other string) bool {
+			n, ok := numberingIn(other)
+			return other != name && ok && !titledExtra(other) && n.Season == mark.Season && n.Episode == mark.Episode
+		}) {
+			add(name)
+		}
+	}
+	return out
 }
 
 // episodeExtra matches Jellyfin's mark for an episode's own extra, joined to its name with a dash:
@@ -991,9 +1056,13 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 	var kinds []marked
 	out := map[string]bool{}
 	episodes := slices.ContainsFunc(names, episodeMark.MatchString)
-	// The film a film's own folder holds, named as the folder is: "Corbel Ridge (2013).mkv".
+	// The film a film's own folder holds, named as the folder is: "Corbel Ridge (2013).mkv". One
+	// ending in a kind of extra, "Corbel Ridge (2013) 1080p-trailer", is no film; "Sample Lane
+	// (2011)" is.
 	film := titled && slices.ContainsFunc(names, func(name string) bool {
-		return !strings.Contains(stem(name), " - ") && titles[key(strings.Fields(stem(name)))]
+		words := extraWords(name)
+		at := extraKindAt(words)
+		return !strings.Contains(stem(name), " - ") && titles[key(strings.Fields(stem(name)))] && (at <= 0 || !kindEnds(words[at:]))
 	})
 	for _, name := range names {
 		words := extraWords(name)
@@ -1073,6 +1142,12 @@ func filmVersion(name, after string) bool {
 	if _, part, ok := partIn(name); ok && part > 0 {
 		return true
 	}
+	// Radarr's "- [Remux-1080p][DTS-HD MA 5.1][h264]-HiFi": notes in brackets and the group that
+	// released it say which copy it is, whatever their words.
+	if strings.TrimSpace(releaseGroupTail.ReplaceAllString(bracketedNotes.ReplaceAllString(after, ""), "")) == "" &&
+		strings.Contains(after, "[") {
+		return true
+	}
 	words := strings.FieldsFunc(after, func(r rune) bool { return strings.ContainsRune(" ._-[]()", r) })
 	if len(words) == 0 {
 		return false
@@ -1084,6 +1159,12 @@ func filmVersion(name, after string) bool {
 	versioned := len(rest) > 0 && !slices.ContainsFunc(rest, func(w string) bool { return !versionWords[strings.ToLower(w)] })
 	return len(rest) == 0 || editionOnly(rest) || editionOnly(unmarked) || versioned
 }
+
+// bracketedNotes matches a release's notes in square brackets anywhere in a name: "[Remux-1080p]".
+var bracketedNotes = regexp.MustCompile(`\[[^\]]*\]`)
+
+// releaseGroupTail matches the group a release names last, after a dash: "-HiFi".
+var releaseGroupTail = regexp.MustCompile(`^[ ._]*-?[ ._]*[A-Za-z0-9]+$|^[ ._-]*$`)
 
 // versionWords are the words a household names a film's copy by: its cut, framing, colour, voice
 // or release. A label of these alone is a version, never an extra; any other word ("Animatic",
