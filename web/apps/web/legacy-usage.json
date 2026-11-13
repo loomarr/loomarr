@@ -16,7 +16,13 @@
       "rawButton": 1
     },
     "src/channels/channel-watch/channel-watch.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 9
+    },
+    "src/channels/channel-watch/paused-cover/paused-cover.tsx": {
+      "tailwindClasses": 2
+    },
+    "src/channels/channel-watch/sheet-for/sheet-for.tsx": {
+      "tailwindClasses": 5
     },
     "src/channels/guide-page/guide-page.tsx": {
       "tailwindClasses": 36
