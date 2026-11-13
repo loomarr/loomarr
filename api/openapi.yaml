@@ -4699,6 +4699,7 @@ components:
             type: string
           maxItems: 8
           type: array
+          uniqueItems: true
       type: object
     FillerSourceCheckSummaryDTO:
       additionalProperties: false
@@ -13970,18 +13971,28 @@ components:
           format: date-time
           type: string
         days:
+          description: "Weekdays the rule applies on, each once: 0 is Sunday, 6 is Saturday"
           items:
             format: int64
+            maximum: 6
+            minimum: 0
             type: integer
           maxItems: 7
           type: array
+          uniqueItems: true
         holiday:
           type: string
         hourFrom:
+          description: First hour of the window, 0 to 23; with hourTo 0, the window runs to midnight
           format: int64
+          maximum: 23
+          minimum: 0
           type: integer
         hourTo:
+          description: Hour the window ends before, 0 to 24 (24 is the end of the day); it wraps past midnight when below hourFrom. Equal non-zero ends hold no hour and are refused
           format: int64
+          maximum: 24
+          minimum: 0
           type: integer
         weekday:
           type: boolean

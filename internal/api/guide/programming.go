@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -118,7 +119,7 @@ func (s *Handlers) previewChannelProgramming(ctx context.Context, in *previewPro
 	if err != nil {
 		return nil, err
 	}
-	draftLineup, draftPolicy, err := lowerProgrammingDraft(in.Body.Lineup, in.Body.Policy)
+	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), in.Body.Lineup, in.Body.Policy)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +194,7 @@ func parsePreviewInstant(name, raw string) (time.Time, error) {
 // lowerProgrammingDraft validates and lowers a {lineup?, policy?} draft exactly as a save would.
 // Shared by both draft previews so the change list cannot accept a draft the single-point
 // preview refuses, or lower it differently.
-func lowerProgrammingDraft(lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
+func lowerProgrammingDraft(holidays holidayvocab.Vocabulary, lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
 	// Draft lineup: validate + convert the lossy DTOs; the engine lowers them by key like a
 	// PATCH (ApplyLineup PreserveByKey). Nil ⇒ the saved lineup.
 	var draftLineup []schedule.LineupEntry
@@ -210,7 +211,7 @@ func lowerProgrammingDraft(lineup []channelsapi.LineupEntryDTO, policy *schedule
 		if err := policy.DateAliasConflict(); err != nil {
 			return nil, nil, httpcore.AmbiguousDatesError(err)
 		}
-		if err := policy.Validate(); err != nil {
+		if err := policy.ValidateWithHolidays(holidays); err != nil {
 			return nil, nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", err)
 		}
@@ -277,7 +278,7 @@ func (s *Handlers) previewChannelProgrammingChanges(ctx context.Context, in *pre
 	if err != nil {
 		return nil, err
 	}
-	draftLineup, draftPolicy, err := lowerProgrammingDraft(in.Body.Lineup, in.Body.Policy)
+	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), in.Body.Lineup, in.Body.Policy)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/langcode"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 )
@@ -248,14 +249,14 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range           `json:"era,omitempty"`                // year window; nil = inherit Scope.Dates at derivation.
-	EraWindows []Range          `json:"eraWindows,omitempty"`         // explicit union; mutually exclusive with Era
-	Audience   string           `json:"audience,omitempty"`           // "" = any; else kids|family|general|late_night
-	Categories []string         `json:"categories,omitempty"`         // empty = any; else a subset of the closed category set
-	Roles      []string         `json:"roles,omitempty" maxItems:"8"` // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
-	Pinned     []string         `json:"pinned,omitempty"`             // clip hashes always included (a top-priority pool)
-	Excluded   []string         `json:"excluded,omitempty"`           // clip hashes never used (wins over Pinned)
-	Geography  *FillerGeography `json:"geography,omitempty"`          // nil = inherit Installation geography
+	Era        *Range           `json:"era,omitempty"`                                   // year window; nil = inherit Scope.Dates at derivation.
+	EraWindows []Range          `json:"eraWindows,omitempty"`                            // explicit union; mutually exclusive with Era
+	Audience   string           `json:"audience,omitempty"`                              // "" = any; else kids|family|general|late_night
+	Categories []string         `json:"categories,omitempty"`                            // empty = any; else a subset of the closed category set
+	Roles      []string         `json:"roles,omitempty" maxItems:"8" uniqueItems:"true"` // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
+	Pinned     []string         `json:"pinned,omitempty"`                                // clip hashes always included (a top-priority pool)
+	Excluded   []string         `json:"excluded,omitempty"`                              // clip hashes never used (wins over Pinned)
+	Geography  *FillerGeography `json:"geography,omitempty"`                             // nil = inherit Installation geography
 	// Language is the channel's commercial language (#2030 decision 12): "" = the household's
 	// `filler.language`. Any ISO 639 form; it is independent of Playout.AudioLanguage, so an anime
 	// channel with Japanese audio keeps English commercials.
@@ -344,10 +345,15 @@ func (f *FillerSelection) validate() error {
 	if f.Audience != "" && !fillerAudiences[f.Audience] {
 		return fmt.Errorf("filler: unknown audience %q", f.Audience)
 	}
+	seenRole := make(map[string]bool, len(f.Roles))
 	for _, r := range f.Roles {
 		if !fillerRoles[r] {
 			return fmt.Errorf("filler: unknown role %q", r)
 		}
+		if seenRole[r] {
+			return fmt.Errorf("filler: role %q is listed more than once", r)
+		}
+		seenRole[r] = true
 	}
 	if f.Language != "" && !langcode.Valid(f.Language) {
 		return fmt.Errorf("filler: unknown language %q", f.Language)
@@ -898,14 +904,34 @@ func orInt(v, def int) int {
 	return v
 }
 
+// ValidateWithHolidays is Validate plus the one check that needs the household's holiday
+// vocabulary: a rule's holiday id must be one it defines, exactly as written (the engine compares
+// ids as they are), because an unknown id is a rule that never fires. Writers that can reach the
+// vocabulary use this; Validate alone leaves holiday ids to the vocabulary-free callers.
+func (p ChannelPolicy) ValidateWithHolidays(v holidayvocab.Vocabulary) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	for i, rule := range p.Rules {
+		if id := rule.When.Holiday; id != "" && !knownHoliday(id, v) {
+			return fmt.Errorf("channel policy: rule %d: holiday %q is not a holiday this household's calendar defines", i+1, id)
+		}
+	}
+	return nil
+}
+
 // Validate rejects a policy with an unknown non-empty enum value or an unmappable
 // audience ceiling (grounding: the suggester must never emit a ceiling outside the
-// closed ladder). Empty/omitted fields are always valid (they resolve to defaults).
+// closed ladder), and a rule whose weekday or hour values name nothing (WhenPredicate.validate).
+// Empty/omitted fields are always valid (they resolve to defaults).
 func (p ChannelPolicy) Validate() error {
 	if err := validateDates("channel policy: scope.dates", p.Scope.Dates); err != nil {
 		return err
 	}
-	for _, rule := range p.Rules {
+	for i, rule := range p.Rules {
+		if err := rule.When.validate(); err != nil {
+			return fmt.Errorf("channel policy: rule %d: %w", i+1, err)
+		}
 		if rule.What == nil {
 			continue
 		}

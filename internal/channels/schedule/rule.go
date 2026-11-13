@@ -95,11 +95,11 @@ type WhenPredicate struct {
 	Weekend bool `json:"weekend,omitempty"`
 	Weekday bool `json:"weekday,omitempty"`
 	// Days restricts to specific weekdays (0=Sunday…6=Saturday). Empty = any day. A week has seven.
-	Days []time.Weekday `json:"days,omitempty" maxItems:"7"`
+	Days []time.Weekday `json:"days,omitempty" minimum:"0" maximum:"6" maxItems:"7" uniqueItems:"true" doc:"Weekdays the rule applies on, each once: 0 is Sunday, 6 is Saturday"`
 	// HourFrom/HourTo is an inclusive-start, exclusive-end hour window [from, to) in
 	// 24h wall-clock; it WRAPS when from > to (late-night, e.g. 23→2). Both 0 = any hour.
-	HourFrom int `json:"hourFrom,omitempty"`
-	HourTo   int `json:"hourTo,omitempty"`
+	HourFrom int `json:"hourFrom,omitempty" minimum:"0" maximum:"23" doc:"First hour of the window, 0 to 23; with hourTo 0, the window runs to midnight"`
+	HourTo   int `json:"hourTo,omitempty" minimum:"0" maximum:"24" doc:"Hour the window ends before, 0 to 24 (24 is the end of the day); it wraps past midnight when below hourFrom. Equal non-zero ends hold no hour and are refused"`
 	// Holiday matches when `now` falls in the named holiday's window in the household's
 	// country (the §6 Calendar's ids: "christmas", "halloween", …). "" = no holiday constraint.
 	Holiday string `json:"holiday,omitempty"`
@@ -107,6 +107,39 @@ type WhenPredicate struct {
 	// end. For a one-off ("this weekend's marathon") without a recurring predicate.
 	DateFrom *time.Time `json:"dateFrom,omitempty"`
 	DateTo   *time.Time `json:"dateTo,omitempty"`
+}
+
+// validate rejects a predicate whose values name no weekday or hour, or an empty date range: such a
+// rule validates and then never fires, so the channel silently never airs what it was scheduled for.
+// Days are 0 (Sunday) to 6, each once; hourFrom is 0 to 23 and hourTo 0 to 24 (24 is the end of the
+// day), with both 0 meaning any hour and a window that wraps (23 to 2) allowed; a window whose two
+// ends are the same non-zero hour holds no hour; DateFrom may not follow DateTo. The holiday id is
+// checked against the household's vocabulary by ChannelPolicy.ValidateWithHolidays, which has one.
+func (w WhenPredicate) validate() error {
+	var seen [7]bool
+	for _, d := range w.Days {
+		if d < time.Sunday || d > time.Saturday {
+			return fmt.Errorf("days: %d is not a weekday (0 is Sunday, 6 is Saturday)", int(d))
+		}
+		if seen[d] {
+			return fmt.Errorf("days: weekday %d is listed more than once", int(d))
+		}
+		seen[d] = true
+	}
+	if w.HourFrom < 0 || w.HourFrom > 23 {
+		return fmt.Errorf("hourFrom: %d is not an hour (0 to 23)", w.HourFrom)
+	}
+	if w.HourTo < 0 || w.HourTo > 24 {
+		return fmt.Errorf("hourTo: %d is not an hour (0 to 24)", w.HourTo)
+	}
+	if w.HourFrom == w.HourTo && w.HourFrom != 0 {
+		return fmt.Errorf("hours: hourFrom and hourTo are both %d, a window with no hours in it", w.HourFrom)
+	}
+	if w.DateFrom != nil && w.DateTo != nil && w.DateFrom.After(*w.DateTo) {
+		return fmt.Errorf("date range: dateFrom %s is after dateTo %s",
+			w.DateFrom.Format(time.DateOnly), w.DateTo.Format(time.DateOnly))
+	}
+	return nil
 }
 
 // isZero reports whether the predicate constrains nothing — an always-match base rule.
@@ -162,7 +195,8 @@ func containsWeekday(days []time.Weekday, d time.Weekday) bool {
 }
 
 // hourInWindow reports whether hour h is in [from, to), wrapping when from > to so a
-// late-night window like 23→2 covers 23,0,1. from==to (both non-zero) is a single hour.
+// late-night window like 23→2 covers 23,0,1. from==to holds no hour (ChannelPolicy.Validate
+// refuses it, so no saved rule has one).
 func hourInWindow(h, from, to int) bool {
 	if from <= to {
 		return h >= from && h < to
