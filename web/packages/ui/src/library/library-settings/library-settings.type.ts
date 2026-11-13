@@ -56,6 +56,16 @@ interface LibraryScan {
   quiet: boolean;
 }
 
+/** How the titles' details are getting on. */
+interface LibraryDetails {
+  /** Movies and series whose details haven't been looked up yet. */
+  waiting: number;
+  /** TMDB didn't answer the last lookup. */
+  unreachable: boolean;
+  /** When looking up is tried again, ISO; absent when nothing waits on a retry. */
+  retryAt?: string;
+}
+
 /** A title that became ready while the import runs (decision 29). */
 interface LibraryReadyTitle {
   id: string;
@@ -70,6 +80,10 @@ interface LibraryHeldRemoval {
   movies: number;
   episodes: number;
   other: number;
+  /** A few of the titles those files are, by name: a show once for all its episodes. */
+  titles: readonly string[];
+  /** How many titles those files are in all. */
+  titleCount: number;
 }
 
 /** Whether an arr tells Loomarr about new downloads. */
@@ -86,7 +100,11 @@ interface LibrarySettingsProps {
   /** The latest few titles that became ready, last first, shown while the import runs. */
   readySoFar?: readonly LibraryReadyTitle[];
   held: readonly LibraryHeldRemoval[];
+  /** Files the scan can't keep because their names can't be read, by path: to rename. */
+  unreadable?: readonly string[];
   hooks: readonly LibraryHook[];
+  /** How the titles' details are getting on; absent reads as nothing waiting. */
+  details?: LibraryDetails;
   /** A check of every folder is running. */
   checking: boolean;
   onCheckAgain: () => void;
@@ -103,6 +121,8 @@ interface LibrarySettingsProps {
   onMapFolder: (mapping: { authority: LibraryAuthority; authorityPath: string; localPath: string }) => void;
   /** Injected for stories and tests; defaults to the current time. */
   now?: number;
+  /** The household's timezone, which times are told in; the device's while undefined. */
+  timeZone?: string;
 }
 
 /** The setup wizard's Library step: the folders, each with Use this folder, and Check again. */
@@ -124,6 +144,7 @@ type LibraryWizardStepProps = Pick<
 
 export type {
   LibraryAuthority,
+  LibraryDetails,
   LibraryFolder,
   LibraryHealth,
   LibraryHeldRemoval,

@@ -1,14 +1,15 @@
 import type { SettingResult } from "@loomarr/api/models/settingResult";
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { useSettingsDraft } from "../settings-draft";
 
 // The Settings edit buffer, owned by the LAYOUT rather than a page (config-design §5, V9).
 //
-// ⚠ This is the whole point of the cross-tab save bar. `SettingsPage` used to hold `edits` in
-// its own `useState`, so switching tabs unmounted the page and silently discarded them — an
-// operator who edited a connection, stepped over to check a default, and came back found their
-// first edit gone with nothing having said so. Hoisting the buffer above the `<Outlet />` makes
-// the tab bar navigation rather than a commit boundary.
+// ⚠ This is the whole point of the cross-tab save bar. Edits held in a page's own `useState`
+// would be silently discarded when switching tabs unmounts the page — an operator who edits a
+// connection, steps over to check a default, and comes back would find their first edit gone
+// with nothing having said so. Holding the buffer above the `<Outlet />` makes the tab bar
+// navigation rather than a commit boundary.
 //
 // One map keyed by setting id, one bar, one Save. Per-tab buffers were the alternative and are
 // worse: the bar's "3 unsaved" would then mean something different depending on where you were
@@ -28,22 +29,25 @@ type SettingsEditsValue = {
 const SettingsEditsContext = createContext<SettingsEditsValue | undefined>(undefined);
 
 const SettingsEditsProvider = ({ children }: { children: ReactNode }) => {
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  // The buffer itself is the shared settings draft; this layout adds the save's per-key results.
+  const draft = useSettingsDraft();
   const [results, setResults] = useState<SettingResult[]>([]);
+  const { edits, clearEdits } = draft;
+  const draftSetEdit = draft.setEdit;
+  const draftReset = draft.resetEdits;
 
-  const setEdit = useCallback((key: string, value: string) => {
-    setEdits((prev) => ({ ...prev, [key]: value }));
-    setResults((previous) => previous.filter((result) => result.key !== key));
-  }, []);
+  const setEdit = useCallback(
+    (key: string, value: string) => {
+      draftSetEdit(key, value);
+      setResults((previous) => previous.filter((result) => result.key !== key));
+    },
+    [draftSetEdit],
+  );
 
   const resetEdits = useCallback(() => {
-    setEdits({});
+    draftReset();
     setResults([]);
-  }, []);
-  const clearEdits = useCallback((keys: readonly string[]) => {
-    const cleared = new Set(keys);
-    setEdits((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !cleared.has(key))));
-  }, []);
+  }, [draftReset]);
 
   const value = useMemo(
     () => ({ edits, results, setEdit, setResults, clearEdits, resetEdits }),

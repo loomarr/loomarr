@@ -8,6 +8,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/defectfloor"
 	"github.com/loomarr/loomarr/internal/filler/identity"
 	"github.com/loomarr/loomarr/internal/filler/routine"
+	"github.com/loomarr/loomarr/internal/filler/upkeep"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
@@ -138,6 +139,19 @@ func fillerIdentityJob(ci *identity.Job) jobs.Job {
 		Description: "Matches copies of the same ad by picture and sound, keeps the best copy, and links cut-downs and other versions.",
 		DefaultCron: "0 20 * * * *", ScheduleKey: settings.JobFillerIdentitySchedule.Key(),
 		Run: func(ctx context.Context) error { _, err := ci.Run(ctx); return err },
+	}
+}
+
+// fillerUpkeepJob lets filler go of what it no longer needs (#3855): fetched rejects a week old,
+// leftover download staging, and quarantined files a day old. Hourly; its numbers are fixed
+// (decision 25 of #3838), so it has no schedule setting.
+func fillerUpkeepJob(u *upkeep.Job) jobs.Job {
+	return jobs.Job{
+		Timeout: jobs.LongJobTimeout,
+		Name:    "filler-upkeep", Group: jobs.GroupFiller, Title: "Let go of failed filler",
+		Description: "Deletes the files of ads Loomarr downloaded and turned down a week ago, and leftovers from finished downloads, keeping a note of why.",
+		DefaultCron: "0 40 * * * *",
+		Run:         func(ctx context.Context) error { _, err := u.Run(ctx); return err },
 	}
 }
 

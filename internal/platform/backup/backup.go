@@ -133,8 +133,12 @@ func (b *Service) Run(ctx context.Context) (Entry, error) {
 		return Entry{}, err
 	}
 	// Prune AFTER the write, never before — see store.PruneBackups. A prune failure does
-	// not fail the call: the backup the operator asked for is on disk and valid.
-	_, _ = store.PruneBackups(dir, b.retain())
+	// not fail the call: the backup the operator asked for is on disk and valid. It is logged,
+	// because a prune that keeps failing lets the backup directory grow without bound.
+	if removed, err := store.PruneBackups(dir, b.retain()); err != nil {
+		slog.WarnContext(ctx, "backup written but old backups could not all be pruned; the backup directory may keep growing",
+			"event", "backup.prune_failed", "subsystem", "backup", "dir", dir, "pruned", removed, "err", err)
+	}
 	return Entry{
 		Name:      filepath.Base(bf.Path),
 		Bytes:     bf.Bytes,

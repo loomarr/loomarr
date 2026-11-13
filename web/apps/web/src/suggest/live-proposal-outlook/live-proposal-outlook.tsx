@@ -2,6 +2,7 @@ import { getProposalOutlook } from "@loomarr/api/endpoints/proposals";
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { Proposal } from "@loomarr/api/models/proposal";
 import { useQuery } from "@tanstack/react-query";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ProposalOutlook } from "@/components/loomarr/ai/proposal-outlook";
 
 interface LiveProposalOutlookProps {
@@ -32,8 +33,10 @@ const useProposalOutlook = ({ id, proposal, edit }: ProposalOutlookQuery) =>
 
 const LiveProposalOutlook = ({ id, proposal, edit }: LiveProposalOutlookProps) => {
   const query = useProposalOutlook({ id, proposal, edit });
+  const timeZone = useHouseholdTimeZone();
   return (
     <ProposalOutlook
+      timeZone={timeZone}
       pending={query.isFetching}
       assessment={query.isFetching || query.isError ? undefined : query.data}
     />

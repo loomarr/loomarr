@@ -1,6 +1,7 @@
 package filler_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -275,5 +276,43 @@ func TestAutoConfirmable_ThresholdChangesTheAnswer(t *testing.T) {
 func TestAutoConfirmable_RefusesAnEmptyProposal(t *testing.T) {
 	if got := filler.AutoConfirmable(proposalOf(), policy(true, 85, 120*time.Second), floor).Verdict(); got != filler.RejectNoSegments {
 		t.Errorf("confirmed a proposal with no segments: %q", got)
+	}
+}
+
+// A segment whose duplicate check could not run is held back, not accepted: filler is a cache, so a
+// stalled split recovers once the check works, while a duplicate that has aired does not.
+func TestAutoConfirmable_HoldsBackASegmentItCouldNotCheckForDuplicates(t *testing.T) {
+	unchecked := goodSeg(1, 30_000, 60_000)
+	unchecked.DedupUnchecked = true
+	p := proposalOf(goodSeg(0, 0, 30_000), unchecked, goodSeg(2, 60_000, 90_000))
+
+	got := filler.AutoConfirmable(p, policy(true, 85, 120*time.Second), floor)
+	if len(got.Confirm) != 2 || got.Confirm[0].StartMs != 0 || got.Confirm[1].StartMs != 60_000 {
+		t.Fatalf("confirmed %+v, want the two checked segments", got.Confirm)
+	}
+	if len(got.Hold) != 1 || got.Hold[0].StartMs != 30_000 || got.Hold[0].HoldReason != string(filler.RejectDedupUnchecked) {
+		t.Fatalf("held %+v, want the unchecked segment with its reason", got.Hold)
+	}
+}
+
+func TestAutoConfirmable_AllUncheckedConfirmsNothing(t *testing.T) {
+	a, b := goodSeg(0, 0, 30_000), goodSeg(1, 30_000, 60_000)
+	a.DedupUnchecked, b.DedupUnchecked = true, true
+
+	got := filler.AutoConfirmable(proposalOf(a, b), policy(true, 85, 120*time.Second), floor)
+	if len(got.Confirm) != 0 || len(got.Hold) != 2 || got.Verdict() != filler.RejectDedupUnchecked {
+		t.Fatalf("partition = %+v, verdict %q", got, got.Verdict())
+	}
+}
+
+// A proposal stored before the field existed has no such key and must read as checked.
+func TestAutoConfirmable_AStoredSegmentWithoutTheFieldStillConfirms(t *testing.T) {
+	var stored split.Segment
+	if err := json.Unmarshal([]byte(`{"startMs":0,"endMs":30000,"name":"Advert","era":1993,"audience":"kids","category":"toys","boundaryConfidence":90}`), &stored); err != nil {
+		t.Fatal(err)
+	}
+	got := filler.AutoConfirmable(proposalOf(stored), policy(true, 85, 120*time.Second), floor)
+	if len(got.Confirm) != 1 || len(got.Hold) != 0 {
+		t.Fatalf("partition = %+v, want the legacy segment confirmed", got)
 	}
 }

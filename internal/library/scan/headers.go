@@ -44,13 +44,28 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 	}
 	im.mu.Lock()
 	if im.reading {
+		// A file the stage already holds is handed over again only when the import handing it wrote
+		// it, which makes the stage's earlier read of it stale. Every pass queues each file still
+		// pending, so without this a long stage would count, and hold, the library once a pass.
+		kept := 0
+		for _, job := range queue {
+			if im.staged[job.file.Path] && im.touched[job.file.Path] != job.gen {
+				continue
+			}
+			im.staged[job.file.Path] = true
+			im.handoff = append(im.handoff, job)
+			kept++
+		}
 		// Counted under the pass lock, so the stage's Begin is never after a hand-off's Grow.
-		im.Tracker.Grow(StepReading, len(queue))
-		im.handoff = append(im.handoff, queue...)
+		im.Tracker.Grow(StepReading, kept)
 		im.mu.Unlock()
 		return nil
 	}
 	im.reading = true
+	im.staged = make(map[string]bool, len(queue))
+	for _, job := range queue {
+		im.staged[job.file.Path] = true
+	}
 	im.Tracker.Begin(StepReading, len(queue))
 	im.mu.Unlock()
 	// released is set when this stage stops taking files, after which the next pass may become a
@@ -61,7 +76,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		if !released {
 			// Ended early (a share fault, the kill switch, an error): the files handed to it stay
 			// pending, and the next walk over them queues them again.
-			im.reading, im.handoff = false, nil
+			im.reading, im.handoff, im.staged = false, nil, nil
 		}
 		ended := !im.reading
 		im.mu.Unlock()
@@ -71,33 +86,18 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 	}()
 	im.prioritize(ctx, queue)
 
-	// staged is every file this stage has queued. A file handed over again is read again only when
-	// the import that handed it wrote it, which makes the stage's earlier read of it stale.
-	staged := map[string]bool{}
-	for _, job := range queue {
-		staged[job.file.Path] = true
-	}
 	next := func() (pending, bool) {
 		for len(queue) == 0 {
 			im.mu.Lock()
 			more := im.handoff
 			im.handoff = nil
 			if len(more) == 0 {
-				im.reading, released = false, true
+				im.reading, im.staged, released = false, nil, true
 				im.mu.Unlock()
 				return pending{}, false
 			}
-			dropped := 0
-			for _, job := range more {
-				if staged[job.file.Path] && im.touched[job.file.Path] != job.gen {
-					dropped++
-					continue
-				}
-				staged[job.file.Path] = true
-				queue = append(queue, job)
-			}
 			im.mu.Unlock()
-			im.Tracker.Grow(StepReading, -dropped)
+			queue = append(queue, more...)
 			im.prioritize(ctx, queue)
 		}
 		job := queue[0]

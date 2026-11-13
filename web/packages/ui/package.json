@@ -15,6 +15,7 @@
     "@loomarr/core": "workspace:*",
     "@loomarr/design-system": "workspace:*",
     "@loomarr/player": "workspace:*",
+    "@tanstack/react-form": "1.33.5",
     "@tanstack/react-virtual": "3.14.22"
   },
   "peerDependencies": {

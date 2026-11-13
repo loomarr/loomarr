@@ -110,6 +110,8 @@ type BlockProps = {
   airing: GuideAiringLayout;
   /** Set when a key moved the selection here: the block takes focus once it mounts. */
   focusPending?: RefObject<boolean>;
+  /** Bumped when the host asks focus to come home: the Tab stop takes it, as a moved selection does. */
+  focusTick?: number;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
   /** The channel is paused: nothing airs, so no block wears the airing tone. */
@@ -125,6 +127,7 @@ type BlockProps = {
 const Block = ({
   airing,
   focusPending,
+  focusTick,
   focusable,
   offAir = false,
   onOpen,
@@ -175,11 +178,11 @@ const Block = ({
         : "guideBlockAccent";
 
   useEffect(() => {
-    if (selected && focusPending?.current) {
+    if ((selected || (focusable && focusTick)) && focusPending?.current) {
       focusPending.current = false;
       ref.current?.focus();
     }
-  }, [focusPending, selected]);
+  }, [focusPending, focusTick, focusable, selected]);
 
   return (
     <PreviewAnchor content={preview}>
@@ -289,6 +292,7 @@ type WaitingBlockProps = Omit<BlockProps, "airing" | "offAir" | "preview" | "px"
 const WaitingBlock = ({
   airings,
   focusPending,
+  focusTick,
   focusable,
   label,
   onOpen,
@@ -305,11 +309,11 @@ const WaitingBlock = ({
   });
 
   useEffect(() => {
-    if (selected && focusPending?.current) {
+    if ((selected || (focusable && focusTick)) && focusPending?.current) {
       focusPending.current = false;
       ref.current?.focus();
     }
-  }, [focusPending, selected]);
+  }, [focusPending, focusTick, focusable, selected]);
 
   if (!first || !last) return null;
   return (
@@ -367,6 +371,7 @@ const Row = memo(
   ({
     channel,
     focusPending,
+    focusTick,
     nowRatio,
     onOpenChannel,
     onOpenChannelInfo,
@@ -380,6 +385,7 @@ const Row = memo(
   }: {
     channel: GuideChannelLayout;
     focusPending: RefObject<boolean>;
+    focusTick?: number;
     nowRatio?: number;
     onOpenChannel?: (channelId: string) => void;
     onOpenChannelInfo?: (channelId: string) => void;
@@ -478,6 +484,7 @@ const Row = memo(
               airings={channel.airings}
               focusable={inRow}
               focusPending={focusPending}
+              focusTick={focusTick}
               label={waiting}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
@@ -489,6 +496,7 @@ const Row = memo(
                 airing={airing}
                 focusable={airing.scheduleBlockId === tabStop}
                 focusPending={focusPending}
+                focusTick={focusTick}
                 key={airing.scheduleBlockId}
                 offAir={health === "paused"}
                 onOpen={() => onOpenChannel?.(channel.source.channelId)}
@@ -508,6 +516,7 @@ const Row = memo(
 );
 
 const GuideGrid = ({
+  focusRequest,
   layout,
   nowMs,
   onMove,
@@ -522,6 +531,14 @@ const GuideGrid = ({
   const railWidth = guideRailWidth(windowWidth);
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
+  // A host's request for focus to come home (a retry took the control focus was on): the Tab stop
+  // takes it once the blocks have seen the tick.
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    if (!focusRequest) return;
+    focusPending.current = true;
+    setFocusTick((tick) => tick + 1);
+  }, [focusRequest]);
   const typed = useRef({ at: 0, query: "" });
   const span = Math.max(1, layout.toMs - layout.fromMs);
   const nowRatio = nowMs >= layout.fromMs && nowMs < layout.toMs ? (nowMs - layout.fromMs) / span : undefined;
@@ -644,6 +661,7 @@ const GuideGrid = ({
           <Row
             channel={channel}
             focusPending={focusPending}
+            focusTick={focusTick}
             nowRatio={nowRatio}
             onOpenChannel={onOpenChannel}
             onOpenChannelInfo={onOpenChannelInfo ?? onOpenChannel}

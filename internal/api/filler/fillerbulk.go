@@ -33,7 +33,7 @@ import (
 // bulkTagFillerInput retags a selection in one request.
 type bulkTagFillerInput struct {
 	Body struct {
-		Hashes []string `json:"hashes" minItems:"1" doc:"Clip identities (content hashes, §10 V45a)"`
+		Hashes []string `json:"hashes" minItems:"1" maxItems:"500" doc:"Clip identities (content hashes, §10 V45a), at most 500: the catalog page size, since a selection is the rows on screen"`
 		// Each field is optional: the bulk bar has three independent dropdowns, and an
 		// operator setting only the audience must not blank the other two.
 		Era      *int    `json:"era,omitempty" doc:"Set the era on every selected clip. Omit to leave it alone."`
@@ -41,7 +41,7 @@ type bulkTagFillerInput struct {
 		// Tags REPLACES the old flat category (§10 V45a): the taxonomy tag set applied to every
 		// selected clip. Grounded against the live vocabulary (an unknown slug 422s the whole batch);
 		// each clip's `category` shadow is derived. Omit to leave tags alone; send [] to clear them.
-		Tags *[]string `json:"tags,omitempty" doc:"Taxonomy tags to set on every selected clip. Grounded on write; category derived. Omit to leave alone (§10 V45a)."`
+		Tags *[]string `json:"tags,omitempty" maxItems:"64" doc:"Taxonomy tags to set on every selected clip, at most 64. Grounded on write; category derived. Omit to leave alone (§10 V45a)."`
 	}
 }
 
@@ -159,7 +159,7 @@ func (s *Handlers) bulkTagFiller(ctx context.Context, in *bulkTagFillerInput) (*
 
 type bulkRemoveFillerInput struct {
 	Body struct {
-		Hashes  []string `json:"hashes" minItems:"1" doc:"Clip identities (content hashes, §10 V45a)"`
+		Hashes  []string `json:"hashes" minItems:"1" maxItems:"500" doc:"Clip identities (content hashes, §10 V45a), at most 500: the catalog page size"`
 		Restore bool     `json:"restore,omitempty" doc:"Put the clips back in the catalog instead of removing them"`
 	}
 }

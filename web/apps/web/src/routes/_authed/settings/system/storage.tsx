@@ -1,4 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -21,17 +22,20 @@ const StorageSettings = () => (
       },
     ]}
     footer={
-      <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
-        <h2 className="font-medium">Back up the image volume separately</h2>
-        <p className="text-muted-foreground mt-1">
+      <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4">
+        <Text as="h2" textRole="cardLabel">
+          Back up the image volume separately
+        </Text>
+        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
           Downloaded artwork can be rebuilt, but uploaded channel images cannot. Loomarr's database backup
           does not copy this directory.
-        </p>
+        </Text>
       </aside>
     }
   />
 );
 
+// no-loader: reads only the settings list the Settings layout's loader ensured
 const Route = createFileRoute("/_authed/settings/system/storage")({
   component: StorageSettings,
 });

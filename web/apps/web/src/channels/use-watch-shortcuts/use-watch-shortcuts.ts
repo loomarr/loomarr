@@ -6,11 +6,16 @@ import { useNumberEntry } from "../use-number-entry";
 const INFO_PLAYING_MS = 8_000;
 
 // The one sheet the chrome can have open at a time (§9.1, layer 4).
-type WatchSheet = "audio" | "channels" | "details" | "info" | "more" | "picture";
+type WatchSheet = "audio" | "channels" | "details" | "info" | "more" | "picture" | "subtitles";
 
 type WatchShortcutsOptions = {
+  // C steps the subtitles to the next choice, round to Off; omitted while there is nothing to step.
+  onNextSubtitles?: () => void;
   // I toggles Playback details (§9.3): a sheet (a phone), or `onDetails` for the pointer's panel.
   detailsAsSheet?: boolean;
+  // Info is the strip's on-air card (a pointer, variant J): nothing in it takes focus, so opening it
+  // hands focus straight back to what opened the layer, where Escape still reaches the player.
+  infoAsCard?: boolean;
   onDetails?: () => void;
   // The channels drawer's list, which a typed number is looked up in; undefined without a drawer.
   channels?: DrawerChannel[];
@@ -23,13 +28,16 @@ type WatchShortcutsOptions = {
   viewerPaused: boolean;
 };
 
-// The Watch player's one right-hand sheet (Audio, Picture, More, Info or Channels) and its keys
-// (§9.3): A opens Audio, I Playback details, G Channels, L goes to the last channel; digits open a number entry;
+// The Watch player's one right-hand sheet (Subtitles, Audio, Picture, More, Info or Channels) and its
+// keys (§9.3): A opens Audio, C steps the subtitles, I Playback details, G Channels, L goes to the last
+// channel; digits open a number entry;
 // Enter tunes it at once; Escape closes the sheet, then leaves. Closing a sheet hands focus back to
 // what opened it (its button, or the frame for a key).
 const useWatchShortcuts = ({
   detailsAsSheet = false,
+  infoAsCard = false,
   onDetails,
+  onNextSubtitles,
   channels,
   onLast,
   onLeave,
@@ -46,10 +54,11 @@ const useWatchShortcuts = ({
   const closeSheet = useCallback(() => setSheet(undefined), []);
 
   useEffect(() => {
-    if (sheet) return;
+    const focusless = sheet === "info" && infoAsCard;
+    if (sheet && !focusless) return;
     openerRef.current?.focus({ preventScroll: true });
-    openerRef.current = null;
-  }, [sheet]);
+    if (!sheet) openerRef.current = null;
+  }, [sheet, infoAsCard]);
 
   useEffect(() => {
     if (sheet !== "info" || viewerPaused) return;
@@ -69,6 +78,10 @@ const useWatchShortcuts = ({
     }
     if (key === "a" || key === "A") {
       toggleSheet("audio");
+      return true;
+    }
+    if ((key === "c" || key === "C") && onNextSubtitles) {
+      onNextSubtitles();
       return true;
     }
     if ((key === "i" || key === "I") && (detailsAsSheet || onDetails)) {

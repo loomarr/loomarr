@@ -1,6 +1,6 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Card } from "@loomarr/design-system";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -64,14 +64,14 @@ const HelpPage = () => {
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card gap={12} padding={12}>
             <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
-            <ul className="flex flex-col gap-1">
+            <Stack gap="1" render="ul">
               {visible.map((d) => (
                 <li key={d.slug}>
                   {/* A link, not a button: each page is a place with its own URL, so it opens in a new
@@ -91,9 +91,11 @@ const HelpPage = () => {
                 </li>
               ))}
               {visible.length === 0 && (
-                <li className="text-muted-foreground px-2 py-1.5 text-sm">No pages match.</li>
+                <Text as="li" className="px-2 py-1.5" textRole="compact" tone="secondary">
+                  No pages match.
+                </Text>
               )}
-            </ul>
+            </Stack>
           </Card>
         </nav>
 
@@ -101,7 +103,9 @@ const HelpPage = () => {
           {doc.error ? (
             <ErrorState error={doc.error} onRetry={() => doc.refetch()} />
           ) : doc.isLoading ? (
-            <p className="text-muted-foreground text-sm">Loading…</p>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loading…
+            </Text>
           ) : (
             <DocView
               markdown={markdown}
@@ -112,7 +116,7 @@ const HelpPage = () => {
           )}
         </div>
       </div>
-    </div>
+    </Stack>
   );
 };
 

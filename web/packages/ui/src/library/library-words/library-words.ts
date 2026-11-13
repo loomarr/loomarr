@@ -1,6 +1,11 @@
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
-import type { LibraryHeldRemoval, LibraryScan } from "../library-settings/library-settings.type";
+import type {
+  LibraryDetails,
+  LibraryHeldRemoval,
+  LibraryScan,
+} from "../library-settings/library-settings.type";
 
 // The Library's shared plain words (design/library, PLAIN-WORDS.md): a folder is named for what it
 // holds, never by its path; counts read the way people say them.
@@ -26,6 +31,27 @@ const heldTitle = (held: LibraryHeldRemoval) => {
   ].filter(Boolean);
   const one = held.movies + held.episodes + held.other === 1;
   return `${joinNames(parts)} ${one ? "seems" : "seem"} to be gone from your ${folderName(held.path)} folder`;
+};
+
+// "That's Amber Hollow, Brightwater, Calder Point and 2,403 more." — what letting them go removes.
+// Empty when no title is named (only extras are gone).
+const heldNames = (held: LibraryHeldRemoval) => {
+  if (held.titles.length === 0) return "";
+  const rest = held.titleCount - held.titles.length;
+  const names = rest > 0 ? [...held.titles, `${rest.toLocaleString("en-US")} more`] : held.titles;
+  return `That's ${joinNames(names)}.`;
+};
+
+// "2 files have names Loomarr can't read".
+const unreadableTitle = (paths: readonly string[]) =>
+  `${count(paths.length, "file has a name", "files have names")} Loomarr can't read`;
+
+// "Rename Ferrow �t� (1999).mkv and Kettle�.mkv using ordinary letters, then check again." Each
+// file by its own name: the folder it sits in is plain.
+const unreadableNames = (paths: readonly string[]) => {
+  const names = paths.slice(0, 3).map((p) => p.split("/").pop() ?? p);
+  const rest = paths.length - names.length;
+  return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check again.`;
 };
 
 // The three steps of adding media, as the maintainer reads them.
@@ -118,4 +144,30 @@ const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
   };
 };
 
-export { folderName, heldTitle, joinNames, scanHeadline };
+// Titles waiting for their details, said only while a retry is due: while step 3 is looking them up
+// the progress says so instead. A key problem never shows here — the household has nothing to do
+// about it (a release build ships its own key), so only the server's log says it. undefined when
+// nothing waits on a retry.
+//   line:   "12 titles are waiting on details — trying again at 3:40 PM" (the Library's line)
+//   title:  "12 titles are waiting on details" (Settings → Library's row)
+//   reason: "Can't reach TMDB — trying again at 3:40 PM", or "Trying again at 3:40 PM"
+// The time is told on the household's clock (the Guide's), the device's while that is unknown.
+const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, timeZone?: string) => {
+  if (!details?.retryAt || details.waiting === 0 || scan.step === "lookingUp") return undefined;
+  const title = `${count(details.waiting, "title", "titles")} ${details.waiting === 1 ? "is" : "are"} waiting on details`;
+  const at = formatGuideTime(Date.parse(details.retryAt), timeZone);
+  const retry = `trying again at ${at}`;
+  const reason = details.unreachable ? `Can't reach TMDB — ${retry}` : `Trying again at ${at}`;
+  return { title, line: `${title} — ${retry}`, reason };
+};
+
+export {
+  detailsWaiting,
+  folderName,
+  heldNames,
+  heldTitle,
+  joinNames,
+  scanHeadline,
+  unreadableNames,
+  unreadableTitle,
+};

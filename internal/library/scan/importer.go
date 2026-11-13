@@ -121,6 +121,8 @@ type Importer struct {
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int
+	// nfoRoots are the NFOs read for whether they say their file is an episode.
+	nfoRoots nfoRoots
 
 	// run serializes every write to the Library: a pass's walk and import, and each header read's
 	// write. The header stage waits for playback without it, so a pass is never held up by a viewer
@@ -140,10 +142,12 @@ type Importer struct {
 	mu       sync.Mutex
 	progress Progress
 	// reading is true while a header stage takes files; handoff are the files later passes queued
-	// for it. touched is the import that last wrote each file, one entry a path: a read queued by
-	// an older one is dropped. Guarded by mu.
+	// for it, and staged every file the stage has taken, so a pass's hand-off of one it already
+	// holds is dropped as it arrives. touched is the import that last wrote each file, one entry a
+	// path: a read queued by an older one is dropped. Guarded by mu.
 	reading bool
 	handoff []pending
+	staged  map[string]bool
 	touched map[string]int64
 	// arrChanged are arr items to read again before the next folder pass uses the index; relist
 	// asks for every arr to be listed again. Guarded by mu.
@@ -176,6 +180,9 @@ type RootResult struct {
 	Empty bool
 	// Held is how many files the walk no longer found while they wait for confirmation.
 	Held int
+	// Unreadable are the files the walk could not keep because their names are not UTF-8, relative
+	// to the root, each as near its name as text allows: for the maintainer to rename.
+	Unreadable []string
 }
 
 // Progress is how the scanner's last passes ended, for the status endpoint. How far a running
@@ -352,6 +359,12 @@ func (im *Importer) importFolders(ctx context.Context, root string, dirs []strin
 	im.setProgress(func(p *Progress) {
 		for i := range p.Roots {
 			if p.Roots[i].Root == root {
+				// The names it could not read outside the folders it walked still stand.
+				for _, rel := range p.Roots[i].Unreadable {
+					if !under(filepath.Join(root, filepath.FromSlash(rel)), dirs) {
+						result.Unreadable = append(result.Unreadable, rel)
+					}
+				}
 				p.Roots[i] = result
 			}
 		}
@@ -617,6 +630,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	}
 	for _, path := range walk.Skipped {
 		im.log().Warn("library scan: a name is not UTF-8 and was skipped", "path", path)
+		result.Unreadable = append(result.Unreadable, strings.ToValidUTF8(relTo(root, path), "�"))
 	}
 	rows, err := im.Store.LibraryFiles(ctx, root)
 	if err != nil {
@@ -635,26 +649,32 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	for _, file := range walk.Files {
 		found[file.Path] = true
 	}
-	inScope := func(path string) bool { return scope == nil || under(path, scope) }
+	// A folder or file the walk couldn't read is out of scope too: whatever it holds stands as it was,
+	// while a file gone from anywhere the walk did read is still gone.
+	inScope := func(path string) bool { return (scope == nil || under(path, scope)) && !under(path, walk.Unread) }
 	moved := movedFrom(prev, found, inScope)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
+	var others []identity
 	for _, r := range rows {
-		if inScope(r.Path) || !r.MissingAt.IsZero() || r.Problem == ProblemDiscImage {
+		if inScope(r.Path) || !r.MissingAt.IsZero() || walkProblem(r.Problem) {
 			continue
 		}
 		if rel, err := filepath.Rel(root, r.Path); err == nil {
-			b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)})
+			others = append(others, b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)}))
 		}
 	}
 	// Every file is identified before any is written, so an episode's series knows each season on
-	// disk when the episode is described (decision 53).
+	// disk when the episode is described (decision 53), and a show kept in several places is one.
 	ids := make([]identity, len(walk.Files))
 	for i, file := range walk.Files {
 		if file.Problem == "" {
 			ids[i] = b.identify(file)
 		}
 	}
+	b.splitNamed(ids, others)
+	b.settleFolders(ids, others)
+	b.joinShows(ids, others)
 	// The walk is over; the writes below are the other half of step 1, and can take as long.
 	report.writing()
 	writingDir := ""
@@ -678,12 +698,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		id := ids[i]
 		row := librarystore.LibraryFile{Path: file.Path, Root: root, Size: file.Stat.Size, ModifiedNs: file.Stat.ModifiedNs,
 			Identity: id.digest, Kind: string(kindOf(id.kind)), Header: librarystore.LibraryHeaderPending, SeenAt: now}
-		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs && old.MissingAt.IsZero()
+		// The same bytes as the row recorded, whether the file stayed or came back as it went (a
+		// drive plugged in again after its titles were let go): the header read then is still its
+		// own. Only one that stayed is unchanged; one that came back is written present again.
+		sameBytes := known && old.Size == file.Stat.Size && old.ModifiedNs == file.Stat.ModifiedNs
 		if sameBytes {
 			row.Header = old.Header
 		}
 		switch {
-		case sameBytes && old.Identity == id.digest && old.ItemID != "":
+		case sameBytes && old.MissingAt.IsZero() && old.Identity == id.digest && old.ItemID != "":
 			// Unchanged: never written, never opened again.
 			if prev[file.Path].Held {
 				save = append(save, old)
@@ -767,11 +790,18 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	removed, present := removals(prev, found, inScope)
 	// While an arr fails to list nothing is marked missing: a file it renamed meanwhile waits at its
 	// new path, and marking the old one missing would take the title off the air until it answers.
-	if walk.Complete && idx.complete {
+	if idx.complete {
 		// A confirmation is spent by the first complete walk of the whole root after it, held or
 		// not: it answers the removal the maintainer saw, never a later one.
-		confirmed := scope == nil && im.takeConfirmed(root)
-		over := len(removed) > holdAtLeast || (present > 0 && float64(len(removed)) > holdShare*float64(present))
+		confirmed := scope == nil && walk.Complete && im.takeConfirmed(root)
+		// Only importable files count toward the hold, as they do toward what the root holds.
+		importable := 0
+		for _, r := range removed {
+			if r.Problem == "" {
+				importable++
+			}
+		}
+		over := importable > holdAtLeast || (present > 0 && float64(importable) > holdShare*float64(present))
 		held := over && !confirmed
 		for _, r := range removed {
 			if held && r.Problem == "" {
@@ -785,7 +815,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			save = append(save, r)
 		}
 		if held {
-			result.State, result.Held = RootHeld, len(removed)
+			result.State, result.Held = RootHeld, importable
 		}
 	}
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {
@@ -794,14 +824,15 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	if len(save) > 0 {
 		im.titlesChanged()
 	}
-	// Origins are marked unseen only after a complete walk, with no removal held and every arr
-	// answering: a file that waited for an arr was not written, and its series not seen.
-	if walk.Complete && result.State != RootHeld && idx.complete {
+	// Origins are marked unseen only with no removal held and every arr answering: a file that waited
+	// for an arr was not written, and its series not seen. What an unread folder holds was identified
+	// above, so it is seen.
+	if result.State != RootHeld && idx.complete {
 		if err := im.markUnseen(ctx, root, b.seen, now); err != nil {
 			return result, nil, err
 		}
 		im.titlesChanged()
-		if scope == nil {
+		if scope == nil && walk.Complete {
 			if err := im.Store.SetLibraryRootScanned(ctx, root, now); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return result, nil, err
 			}
@@ -887,6 +918,7 @@ func under(path string, dirs []string) bool {
 // root that is not: a folder deleted with everything in it is a change to the folder above.
 func existingFolders(root string, dirs []string) []string {
 	out := []string{}
+	realRoot, rootErr := filepath.EvalSymlinks(root)
 	for _, d := range dirs {
 		d = filepath.Clean(d)
 		for d != root && under(d, []string{root}) {
@@ -897,6 +929,13 @@ func existingFolders(root string, dirs []string) []string {
 		}
 		if !under(d, []string{root}) {
 			d = root
+		}
+		// A folder named through a symlink is scoped as the walk records it: its canonical path,
+		// so the pass's removals cover the files it lists (#3227).
+		if real, err := filepath.EvalSymlinks(d); err == nil && rootErr == nil {
+			if canonical, ok := canonicalPath(root, realRoot, real); ok {
+				d = canonical
+			}
 		}
 		out = append(out, d)
 	}

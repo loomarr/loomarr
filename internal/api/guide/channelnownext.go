@@ -107,7 +107,9 @@ func (s *Handlers) channelUpcoming(ctx context.Context, in *upcomingInput) (*upc
 	}
 	entries, err := s.guide.Upcoming(ctx, ch.ID, time.Now(), limit)
 	if err != nil {
-		return out, nil // a backend hiccup must not blank the Overview
+		// A backend hiccup must not blank the Overview, but it must stay findable.
+		s.log.Warn("guide: upcoming strip unavailable", "channel", ch.ID, "err", err)
+		return out, nil
 	}
 	out.Body.Upcoming = entries
 	return out, nil

@@ -15,15 +15,21 @@ import type { Meta, StoryObj } from "@storybook/react-native";
 
 // The design-system Dialog on a device: a React Native Modal, closed by its corner button, Cancel,
 // the scrim, or Back.
-const NativeDialogWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => (
+const NativeDialogWorkshop = ({
+  density = "touch",
+  dismissible = true,
+}: {
+  density?: "touch" | "tv";
+  dismissible?: boolean;
+}) => (
   <Screen density={density}>
-    <Dialog defaultOpen>
+    <Dialog defaultOpen dismissible={dismissible}>
       <DialogTrigger>
         <Action density={density} tone="secondary">
           Edit task
         </Action>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent density={density}>
         <DialogHeader>
           <DialogTitle>Modify Library scan</DialogTitle>
           <DialogDescription>How often this task runs.</DialogDescription>
@@ -31,7 +37,7 @@ const NativeDialogWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" 
         <Text density={density} textRole="body">
           Every 6 hours, starting at midnight.
         </Text>
-        <DialogFooter>
+        <DialogFooter stacked={density === "touch"}>
           <DialogClose>
             <Action density={density} tone="secondary">
               Cancel
@@ -53,6 +59,7 @@ type Story = StoryObj<typeof meta>;
 const Touch: Story = {};
 const Tv: Story = { args: { density: "tv" } };
 const Light: Story = { globals: { theme: "light" } };
+const MustBeAnswered: Story = { args: { dismissible: false } };
 
 export default meta;
-export { Light, Touch, Tv };
+export { Light, MustBeAnswered, Touch, Tv };

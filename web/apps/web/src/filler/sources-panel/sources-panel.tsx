@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { useRef } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { FillerSources } from "@/components/loomarr/filler/filler-sources";
@@ -13,9 +14,8 @@ import { useSourceActions } from "./use-source-actions";
 // (folders, libraries, archive.org, YouTube), each switchable, fetchable and (if `removable`)
 // forgettable, plus per-source search for archive.org and the "Add a source" form.
 //
-// ⚠ `useSyncFiller` and `useTagFiller` were called here and are gone (V38c). Both were
-// whole-catalog buttons in the header; the sync runs on its own schedule and drains the watch
-// folder every pass, and tagging follows it. The per-source "Look for new clips" in the source
+// ⚠ No whole-catalog sync or tag buttons here (`useSyncFiller`, `useTagFiller`; V38c): the sync
+// runs on its own schedule and drains the watch folder every pass, and tagging follows it. The per-source "Look for new clips" in the source
 // drawer uses its own route — so nothing here is left unreachable.
 const SourcesPanel = ({
   sources,
@@ -31,7 +31,7 @@ const SourcesPanel = ({
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack flexShrink={0} gap="section">
       <SourceStorageCard />
 
       <FillerSources
@@ -61,7 +61,7 @@ const SourcesPanel = ({
         finalFocus={sourceTrigger}
         onClose={onCloseSource}
       />
-    </div>
+    </Stack>
   );
 };
 

@@ -193,6 +193,62 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  // A lookup that's stuck is never silent: how many wait and when it tries again. 3:40 PM here is
+  // local time, as the line shows it.
+  const RETRY = new Date(2026, 10, 2, 15, 40).toISOString();
+  it.each([
+    [true, "Can't reach TMDB — trying again at 3:40 PM"],
+    [false, "Trying again at 3:40 PM"],
+  ] as const)(
+    "says when titles waiting for details are tried again (unreachable: %s)",
+    (unreachable, reason) => {
+      const { host, cleanup } = render({
+        health: "ok",
+        folders: [TV_IN_USE],
+        details: { waiting: 12, unreachable, retryAt: RETRY },
+      });
+      expect(host.textContent).toContain("12 titles are waiting on details");
+      expect(host.textContent).toContain(reason);
+      expect(host.textContent).not.toContain("All caught up");
+      expect(host.textContent).toContain("Up to date");
+      cleanup();
+    },
+  );
+
+  it("tells the retry time on the household's clock, whatever the device's", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      details: { waiting: 12, unreachable: false, retryAt: "2026-11-02T02:40:00Z" },
+      timeZone: "Pacific/Auckland",
+    });
+    expect(host.textContent).toContain("Trying again at 3:40 PM");
+    cleanup();
+  });
+
+  // A key problem is never the household's to fix: nothing is tried again, and nothing is said.
+  it("says nothing of waiting titles when no retry is due", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      details: { waiting: 12, unreachable: false },
+    });
+    expect(host.textContent).not.toContain("waiting on details");
+    expect(host.textContent).not.toMatch(/key/i);
+    cleanup();
+  });
+
+  it("leaves waiting titles to the progress while step 3 is looking them up", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...IDLE, step: "lookingUp", stepNumber: 3, done: 3, total: 15 },
+      details: { waiting: 12, unreachable: false, retryAt: RETRY },
+    });
+    expect(host.textContent).not.toContain("waiting on details");
+    cleanup();
+  });
+
   it("says nothing of being caught up beside an offline folder while no import runs", () => {
     const { host, cleanup } = render({ health: "folder_offline", folders: [MOVIES, TV_IN_USE] });
     expect(host.textContent).toContain("Can't reach your Movies folder");
@@ -347,14 +403,46 @@ describe("LibrarySettings", () => {
     const { host, props, button, cleanup } = render({
       health: "ok",
       folders: [TV_IN_USE],
-      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+      held: [
+        {
+          path: "/media/movies",
+          movies: 2406,
+          episodes: 0,
+          other: 0,
+          titles: ["Amber Hollow", "Brightwater", "Calder Point"],
+          titleCount: 2406,
+        },
+      ],
     });
     expect(host.textContent).toContain("2,406 movies seem to be gone from your Movies folder");
+    // What letting them go removes, by name.
+    expect(host.textContent).toContain("That's Amber Hollow, Brightwater, Calder Point and 2,403 more.");
     expect(host.textContent).not.toContain("All caught up");
     act(() => button("Check again").click());
     expect(props.onRescan).toHaveBeenCalled();
     act(() => button("They're gone, remove them").click());
     expect(props.onConfirmRemoval).toHaveBeenCalledWith("/media/movies");
+    cleanup();
+  });
+
+  it("asks for files whose names it can't read to be renamed", () => {
+    const { host, props, button, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      unreadable: [
+        "/media/movies/Ferrow �t� (1999).mkv",
+        "/media/tv/Kettle Bay/Kettle� 01.mkv",
+        "/media/tv/a�.mkv",
+        "/media/tv/b�.mkv",
+      ],
+    });
+    expect(host.textContent).toContain("4 files have names Loomarr can't read");
+    expect(host.textContent).toContain(
+      "Rename Ferrow �t� (1999).mkv, Kettle� 01.mkv, a�.mkv and 1 more using ordinary letters, then check again.",
+    );
+    expect(host.textContent).not.toContain("All caught up");
+    act(() => button("Check again").click());
+    expect(props.onRescan).toHaveBeenCalled();
     cleanup();
   });
 
@@ -386,6 +474,74 @@ describe("LibrarySettings", () => {
     expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/missing");
     expect(host.textContent).toContain("Loomarr can't open that folder");
     expect(input.value).toBe("/mnt/missing");
+    cleanup();
+  });
+
+  const openAddFolder = (overrides: Partial<LibrarySettingsProps> = {}) => {
+    const rendered = render(overrides);
+    act(() => rendered.button("Add a folder").click());
+    const input = rendered.host.querySelector('input[aria-label="Where is the folder?"], input') as El;
+    return { ...rendered, input };
+  };
+  const pressEnter = (input: El) =>
+    act(async () => {
+      const dom = globalThis as unknown as {
+        KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => Event;
+      };
+      input.dispatchEvent(new dom.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+
+  it("adds the trimmed path and closes the box once it is accepted", async () => {
+    const { host, props, button, input, cleanup } = openAddFolder({
+      onAddFolder: vi.fn(async () => undefined),
+    });
+    type(input, "  /mnt/new  ");
+    await act(async () => button("Add folder").click());
+    expect(props.onAddFolder).toHaveBeenCalledTimes(1);
+    expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/new");
+    expect(host.textContent).not.toContain("Where is the folder?");
+    expect(host.textContent).toContain("Add a folder");
+    cleanup();
+  });
+
+  it("adds the path when Enter is pressed in the box", async () => {
+    const { props, input, cleanup } = openAddFolder({ onAddFolder: vi.fn(async () => undefined) });
+    type(input, "/mnt/enter");
+    await pressEnter(input);
+    expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/enter");
+    cleanup();
+  });
+
+  it("has nothing to add until a path is typed", async () => {
+    const { props, button, input, cleanup } = openAddFolder({ onAddFolder: vi.fn(async () => undefined) });
+    await act(async () => button("Add folder").click());
+    type(input, "   ");
+    await act(async () => button("Add folder").click());
+    expect(props.onAddFolder).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("clears a refusal as soon as the path is edited", async () => {
+    const { host, button, input, cleanup } = openAddFolder();
+    type(input, "/mnt/missing");
+    await act(async () => button("Add folder").click());
+    expect(host.textContent).toContain("Loomarr can't open that folder");
+    type(input, "/mnt/missing2");
+    expect(host.textContent).not.toContain("Loomarr can't open that folder");
+    cleanup();
+  });
+
+  it("forgets the path and the refusal when cancelled", async () => {
+    const { host, props, button, input, cleanup } = openAddFolder();
+    type(input, "/mnt/missing");
+    await act(async () => button("Add folder").click());
+    act(() => button("Cancel").click());
+    expect(host.textContent).not.toContain("Where is the folder?");
+    act(() => button("Add a folder").click());
+    const reopened = host.querySelector('input[aria-label="Where is the folder?"], input') as El;
+    expect(reopened.value).toBe("");
+    expect(host.textContent).not.toContain("Loomarr can't open that folder");
+    expect(props.onAddFolder).toHaveBeenCalledTimes(1);
     cleanup();
   });
 

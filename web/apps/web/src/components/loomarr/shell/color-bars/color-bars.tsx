@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ColorBarsProps, ColorBarsSize } from "./color-bars.type";
 
@@ -31,7 +32,11 @@ const WIDTH: Record<ColorBarsSize, string> = {
 const BREATHE_STAGGER_S = 0.28;
 
 const ColorBars = ({ size = "lg", breathe = false, className }: ColorBarsProps) => (
-  <div className={cn("flex overflow-hidden rounded-[2px]", HEIGHT[size], WIDTH[size], className)} aria-hidden>
+  <Stack
+    aria-hidden
+    className={cn("overflow-hidden rounded-[2px]", HEIGHT[size], WIDTH[size], className)}
+    direction="row"
+  >
     {SEGMENTS.map((bg, i) => (
       <span
         key={bg}
@@ -42,7 +47,7 @@ const ColorBars = ({ size = "lg", breathe = false, className }: ColorBarsProps) 
         style={breathe ? { animationDelay: `${i * BREATHE_STAGGER_S}s` } : undefined}
       />
     ))}
-  </div>
+  </Stack>
 );
 
 export { ColorBars };

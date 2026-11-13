@@ -11,16 +11,15 @@ import type { FieldHelpProps } from "./field-help.type";
 //
 // Base UI's Tooltip is deliberately visual-only: its Popup carries no `role="tooltip"` and its
 // Trigger gets no `aria-describedby`, and its docs say so outright — "Tooltips are visual-only
-// elements and are not a replacement for labeling the trigger." Radix wired that association for
-// us, so the swap silently removed it. Everywhere else in the app that costs nothing, because the
-// trigger's `aria-label` already restates the tooltip ("Sign out" → "Sign out"). HERE it does not:
-// the content is the field's DOCUMENTATION (`entry.detail` for a setting), which appears nowhere
-// else in the DOM. A screen-reader user would have heard "About Ordering, button" and nothing more.
+// elements and are not a replacement for labeling the trigger." Everywhere else in the app that
+// costs nothing, because the trigger's `aria-label` already restates the tooltip ("Sign out" →
+// "Sign out"). HERE it does not: the content is the field's DOCUMENTATION (`entry.detail` for a
+// setting), which appears nowhere else in the DOM. Without the wiring below, a screen-reader user
+// hears "About Ordering, button" and nothing more.
 //
 // So the description is declared explicitly and permanently, and `aria-describedby` points at it.
-// That is what Radix did under the hood; it is written out here because the primitive no longer
-// does it. This file's comment previously claimed the SR user "hears the same guidance" — under
-// Base UI that claim would have been false, which is exactly why it is spelled out now.
+// The primitive does not do it, so it is written out here; do not assume the SR user "hears the
+// same guidance" from the tooltip alone.
 const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps) => {
   const ownId = useId();
   // Reuse the consumer's existing description when there is one (SettingField renders the doc for

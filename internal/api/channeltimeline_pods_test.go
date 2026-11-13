@@ -57,12 +57,12 @@ func startTimelinePodsHarness(
 			use = failingClipListStore{Store: defaults.Store}
 		}
 		return api.Router(defaults.Log, api.Options{
-			Store:        use,
-			Auth:         defaults.Auth,
-			Log:          defaults.Log,
-			PlayoutGuide: g,
-			Pods:         pods,
-			Images:       imageService,
+			Store:   use,
+			Auth:    defaults.Auth,
+			Log:     defaults.Log,
+			Playout: api.PlayoutOptions{Guide: g},
+			Guide:   api.GuideOptions{Pods: pods},
+			Images:  imageService,
 		})
 	})
 }

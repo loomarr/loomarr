@@ -32,7 +32,9 @@ ends with a completed terminal rung that the ready commit validates against.
   `ready`, `complete` (a processed composite container, not playable), `rejected`, `dismissed`. A
   failed rung carries a stable failure code, the retryable rung and one sanctioned recovery action.
   Retrying a terminal execution failure and clearing its tombstone is one transaction, and the clip is
-  held before it reappears.
+  held before it reappears. A fetched reject a week old is let go
+  ([upkeep](filler.md#filler-lets-go-on-its-own)): its row stays `rejected` with its failure code,
+  records `files_deleted_at`, and offers no recovery action, since the bytes are gone.
 
 State lives in **`filler_clip_pipeline`, a sibling of `clips`**, because `clips` is a synced cache
 that has been dropped and rebuilt; pipeline state records work already paid for. The finished ladder

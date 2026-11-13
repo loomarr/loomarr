@@ -7,6 +7,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { goDurationMinutes, pluralize } from "@loomarr/core/format";
 import {
   Action,
+  Card,
   CompactSelect,
   Dialog,
   DialogContent,
@@ -15,11 +16,11 @@ import {
   DialogTitle,
   Disclosure,
   Field,
-  Icon,
-  icons,
+  Stack,
   Surface,
   Text,
 } from "@loomarr/design-system";
+import { useCommittedDraft } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { type ComponentProps, useEffect, useState } from "react";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -108,12 +109,14 @@ const DurationChoiceField = ({
   };
   const mode = value === undefined ? "default" : "custom";
   const defaultAmount = inUnit(defaultValue) ?? choice.fallbackDefault;
-  const [customValue, setCustomValue] = useState(String(inUnit(value) ?? defaultAmount));
+  const { draft: customValue, editDraft: setCustomValue } = useCommittedDraft(
+    String(inUnit(value) ?? defaultAmount),
+  );
 
   useEffect(() => {
     const minutes = goDurationMinutes(value);
     if (minutes !== undefined) setCustomValue(String(minutes / unit.minutes));
-  }, [value, unit.minutes]);
+  }, [value, unit.minutes, setCustomValue]);
 
   const options = [
     { value: "default", label: `Follow default (${unit.describe(defaultAmount)})` },
@@ -144,7 +147,7 @@ const DurationChoiceField = ({
   };
 
   return (
-    <div className="grid gap-2 sm:max-w-md">
+    <Stack gap="2" maxWidth={448}>
       <Text as="label" htmlFor={choice.id} textRole="label">
         {choice.label}
       </Text>
@@ -157,7 +160,7 @@ const DurationChoiceField = ({
         value={mode}
       />
       {mode === "custom" && (
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <AmountBox
             accessibilityLabel={choice.customAriaLabel}
             disabled={disabled}
@@ -166,11 +169,15 @@ const DurationChoiceField = ({
             onChangeText={changeCustomValue}
             value={customValue}
           />
-          <span className="text-muted-foreground text-sm">{unit.words}</span>
-        </div>
+          <Text as="span" textRole="compact" tone="secondary">
+            {unit.words}
+          </Text>
+        </Stack>
       )}
-      <p className="text-muted-foreground text-sm">{choice.help}</p>
-    </div>
+      <Text as="p" textRole="compact" tone="secondary">
+        {choice.help}
+      </Text>
+    </Stack>
   );
 };
 
@@ -192,11 +199,13 @@ const poolSummary = (
 const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakFrequencyFieldProps) => {
   const mode = value === undefined ? "default" : value === 0 ? "off" : "custom";
   const seed = defaultValue != null && defaultValue > 0 ? defaultValue : 1;
-  const [customValue, setCustomValue] = useState(String(value != null && value > 0 ? value : seed));
+  const { draft: customValue, editDraft: setCustomValue } = useCommittedDraft(
+    String(value != null && value > 0 ? value : seed),
+  );
 
   useEffect(() => {
     if (value != null && value > 0) setCustomValue(String(value));
-  }, [value]);
+  }, [value, setCustomValue]);
 
   const defaultLabel =
     defaultValue === 0
@@ -233,7 +242,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
   };
 
   return (
-    <div className="grid gap-2 sm:max-w-md">
+    <Stack gap="2" maxWidth={448}>
       <Text as="label" htmlFor="channel-break-frequency" textRole="label">
         Break frequency
       </Text>
@@ -246,7 +255,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
         value={mode}
       />
       {mode === "custom" && (
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           <AmountBox
             accessibilityLabel="Custom breaks per program hour"
             disabled={disabled}
@@ -255,17 +264,19 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
             onChangeText={changeCustomValue}
             value={customValue}
           />
-          <span className="text-muted-foreground text-sm">breaks per program hour</span>
-        </div>
+          <Text as="span" textRole="compact" tone="secondary">
+            breaks per program hour
+          </Text>
+        </Stack>
       )}
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         How often this channel pauses for filler. Manage the inherited value in{" "}
         <Link to="/settings/defaults" className="text-signal underline-offset-2 hover:underline">
           Channel defaults
         </Link>
         .
-      </p>
-    </div>
+      </Text>
+    </Stack>
   );
 };
 
@@ -333,63 +344,69 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
   const entries = preview?.entries ?? [];
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    <Stack className={className} gap="section">
       <div>
         {/* Reached from a Filler Overview coverage card, this page is a detour out of the Filler
             area; the header's back arrow goes to the channel list, so the detour gets its own way
             home (#1817, decided on #1908). The Settings index's "← Manage" link is the pattern. */}
         {from === "filler" ? (
-          <Link
-            to="/filler"
-            className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
-          >
-            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-            Filler overview
-          </Link>
+          <Stack align="start" marginBottom={12}>
+            <Action accessibilityRole="link" icon="goBack" render={<Link to="/filler" />} variant="ghost">
+              Filler overview
+            </Action>
+          </Stack>
         ) : null}
-        <h2 className="text-lg font-semibold">Filler</h2>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h2" textRole="headline" strong>
+          Filler
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           This channel picks its commercials and clips automatically. Only change these settings if it needs
           something different.
-        </p>
+        </Text>
       </div>
 
       {/* Saved truth comes before authoring. An operator should see whether this channel already
           works before meeting the controls that can make its pool narrower. This is intentionally
           not collapsed: coverage is the primary answer, not advanced diagnosis. The headings and
           sentences on this page are the web mock's. */}
-      <section className="border-border bg-card flex flex-col gap-3 rounded-lg border p-5">
+      <Card gap={12} padding={20} render="section">
         <div>
-          <h3 className="text-base font-semibold">What this channel can play</h3>
-          <p className="text-muted-foreground text-sm">
+          <Text as="h3" textRole="heading">
+            What this channel can play
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             {poolSummary(coverage, poolPlaceLabel) ?? "Clips that fit this channel's settings right now."}
-          </p>
+          </Text>
         </div>
         {coverageQuery.isLoading ? (
-          <p className="text-muted-foreground text-sm">Checking saved coverage…</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Checking saved coverage…
+          </Text>
         ) : coverageQuery.error ? (
-          <p className="text-onair-300 text-sm">
+          <Text as="p" textRole="compact" tone="danger">
             Saved coverage could not be checked. Your existing channel settings are unchanged.
-          </p>
+          </Text>
         ) : coverage ? (
           <CoverageMeter coverage={coverage} />
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             Coverage becomes available after filler is configured for this install.
-          </p>
+          </Text>
         )}
-      </section>
+      </Card>
 
-      <section className="border-border bg-card flex flex-col gap-5 rounded-lg border p-5">
+      <Card gap={20} padding={20} render="section">
         <div>
-          <h3 className="text-base font-semibold">Choose what fits</h3>
-          <p className="text-muted-foreground text-sm">
+          <Text as="h3" textRole="heading">
+            Choose what fits
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
             <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
               filler library
             </Link>
             .
-          </p>
+          </Text>
         </div>
 
         <BreakFrequencyField
@@ -426,7 +443,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           installationGeography={{ country: homeCountry, place: homePlace }}
           defaultRoles={coverage?.defaultRoles}
         />
-      </section>
+      </Card>
 
       <Disclosure
         label="Specific clips (advanced)"
@@ -436,7 +453,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             : `${pluralize(pinned.length + excluded.length, "saved override")}.`
         } Always include, or never include, particular clips.`}
       >
-        <div className="flex flex-col gap-4">
+        <Stack gap="4">
           <FillerClipList
             label="Prefer on this channel"
             hint="Play these clips ahead of automatic rotation, even when year, audience, or topics differ. Location, type, and length restrictions still apply. Preferred clips may repeat."
@@ -457,18 +474,20 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             disabled={isApplying}
             excludeIds={pinned}
           />
-        </div>
+        </Stack>
       </Disclosure>
 
       {/* The live break — the ground-truth preview of the current draft. */}
-      <section className="border-border bg-card flex flex-col gap-2 rounded-lg border p-5">
-        <h3 className="text-base font-semibold">Preview break</h3>
+      <Card gap={8} padding={20} render="section">
+        <Text as="h3" textRole="heading">
+          Preview break
+        </Text>
         {previewError ? (
-          <p className="text-onair-300 text-sm">
+          <Text as="p" textRole="compact" tone="danger">
             Couldn't assemble a preview for this selection. Adjust the criteria and try again.
-          </p>
+          </Text>
         ) : entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             {isPreviewing ? (
               "Assembling preview…"
             ) : (
@@ -481,29 +500,42 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
                 .
               </>
             )}
-          </p>
+          </Text>
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
-            <p className="text-muted-foreground mt-2 text-sm">
-              {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
-            </p>
+            <Stack marginTop={8}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
+              </Text>
+            </Stack>
           </div>
         )}
-      </section>
+      </Card>
 
       {/* Apply / Discard — only offered when the draft differs from what's saved. Apply is
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
-        <div className="border-border bg-background/95 sticky bottom-0 flex items-center gap-2 rounded-lg border p-3 shadow-lg backdrop-blur">
+        <Stack
+          align="center"
+          borderColor="borderDecorative"
+          borderRadius={12}
+          borderWidth={1}
+          className="bg-background/95 sticky bottom-0 shadow-lg backdrop-blur"
+          direction="row"
+          gap="inline"
+          padding={12}
+        >
           <Action disabled={isApplying} onPress={apply} tone="suggest">
             {isApplying ? "Applying…" : "Apply filler"}
           </Action>
           <Action disabled={isApplying} onPress={discard} variant="ghost">
             Discard
           </Action>
-          <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
-        </div>
+          <Text marginLeft="auto" textRole="hint" tone="secondary">
+            Unsaved changes
+          </Text>
+        </Stack>
       )}
 
       <Dialog open={Boolean(previewingClip)} onOpenChange={(open) => !open && setPreviewingClip(undefined)}>
@@ -513,15 +545,15 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
               <DialogTitle>{previewingClip.name}</DialogTitle>
               <DialogDescription>Preview from this assembled break</DialogDescription>
             </DialogHeader>
-            <div className="p-6">
-              <div className="border-border overflow-hidden rounded-lg border">
+            <Stack padding={24}>
+              <Card overflow="hidden">
                 <ClipPreview clip={{ hash: previewingClip.hash, name: previewingClip.name }} />
-              </div>
-            </div>
+              </Card>
+            </Stack>
           </DialogContent>
         ) : null}
       </Dialog>
-    </div>
+    </Stack>
   );
 };
 
