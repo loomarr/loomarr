@@ -140,7 +140,7 @@ const UsersPage = () => {
         title="People"
         description="Who can sign in, and what they can ask for."
         actions={
-          <Stack direction="row" gap="inline" wrap>
+          <Stack direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
             <InvitationDialog
               libraryAvailable={importAvailable}
               candidates={
