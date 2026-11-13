@@ -75,6 +75,37 @@ func TestSharedChannelArraysRefusePastTheirCeilings(t *testing.T) {
 	}
 }
 
+// The ceilings that closed the ledger are enforced on the wire, one per request family. The
+// schema refuses before any handler runs, so the answer does not depend on what the store holds.
+func TestBodyArrayCeilingsRefuseOversizeRequests(t *testing.T) {
+	srv := newChannelsHarness(t).Server
+	list := func(item string, n int) string {
+		return `[` + strings.TrimSuffix(strings.Repeat(item+",", n), ",") + `]`
+	}
+	for _, tc := range []struct {
+		name, method, path, body, refusal string
+	}{
+		{"bulk clip hashes", http.MethodPost, "/v1/filler/bulk/remove", `{"hashes":` + list(`"h"`, 501) + `}`, "array length <= 500"},
+		{"filler ingest urls", http.MethodPost, "/v1/filler/ingest", `{"urls":` + list(`"https://example.test/p"`, 51) + `}`, "array length <= 50"},
+		{"bulk proposal approval", http.MethodPost, "/v1/proposals/approve", `{"ids":` + list(`"p"`, 101) + `}`, "array length <= 100"},
+		{"approval additions", http.MethodPost, "/v1/proposals/p1/approve", `{"add":` + list(`{"mediaType":"movie","name":"A","inLibrary":false}`, 1001) + `}`, "array length <= 1000"},
+		{"title cast", http.MethodPost, "/v1/proposals/p1/outlook", `{"add":[{"mediaType":"movie","name":"A","inLibrary":false,"cast":` + list(`"c"`, 51) + `}]}`, "array length <= 50"},
+		{"taxon synonyms", http.MethodPost, "/v1/taxonomy", `{"slug":"s","label":"S","axis":"product","synonyms":` + list(`"x"`, 101) + `}`, "array length <= 100"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := do(t, srv, tc.method, tc.path, adminToken, tc.body)
+			defer func() { _ = resp.Body.Close() }()
+			raw, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(raw), tc.refusal) {
+				t.Fatalf("status %d body %.300s, want a 422 saying %q", resp.StatusCode, raw, tc.refusal)
+			}
+		})
+	}
+}
+
 func readLedger(t *testing.T) map[string]bool {
 	t.Helper()
 	f, err := os.Open(unboundedBodyLedger)
