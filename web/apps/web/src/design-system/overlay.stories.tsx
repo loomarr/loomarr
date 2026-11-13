@@ -95,11 +95,6 @@ const TouchTransient: Story = { args: { density: "touch" } };
 const TvTransient: Story = { args: { density: "tv" } };
 const LightTransient: Story = { globals: { theme: "light" } };
 const Confirmation: Story = { args: { kind: "modal" }, tags: ["portal"] };
-const LightConfirmation: Story = {
-  args: { kind: "modal" },
-  globals: { theme: "light" },
-  tags: ["portal"],
-};
 const TvConfirmation: Story = { args: { density: "tv", kind: "modal" }, tags: ["portal"] };
 const InteractiveConfirmation: Story = {
   args: { initialVisible: false, kind: "modal" },
@@ -115,7 +110,6 @@ export {
   AutoDismiss,
   Confirmation,
   InteractiveConfirmation,
-  LightConfirmation,
   LightTransient,
   TouchTransient,
   TransientBottom,
