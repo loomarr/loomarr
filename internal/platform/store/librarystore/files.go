@@ -103,6 +103,9 @@ type LibraryFileStore interface {
 	// show once for all its episodes, by name, and counts them all: what the maintainer is asked
 	// to let go.
 	LibraryHeldTitles(ctx context.Context, root string, limit int) ([]string, int, error)
+	// LibrarySkippedFiles lists the present files the scan skips, by why: each reason's count and
+	// its first perProblem paths.
+	LibrarySkippedFiles(ctx context.Context, perProblem int) ([]LibrarySkipped, error)
 }
 
 // LibraryPlayingPart is one file of what a library item plays, with its header's length (0 until
@@ -406,6 +409,45 @@ func (s *Store) LibraryHeldTitles(ctx context.Context, root string, limit int) (
 		return nil, 0, fmt.Errorf("library held titles: %w", err)
 	}
 	return names, total, nil
+}
+
+// LibrarySkipped is one reason the scan skips files, how many it skips for it, and the first few
+// of them by path.
+type LibrarySkipped struct {
+	Problem string
+	Total   int
+	Paths   []string
+}
+
+// LibrarySkippedFiles lists the present files the scan skips, grouped by why: each reason's count
+// and its first perProblem paths, in path order; reasons in name order.
+func (s *Store) LibrarySkippedFiles(ctx context.Context, perProblem int) ([]LibrarySkipped, error) {
+	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT problem, path, total FROM (
+		SELECT problem, path, COUNT(*) OVER (PARTITION BY problem) AS total,
+			ROW_NUMBER() OVER (PARTITION BY problem ORDER BY path) AS n
+		FROM library_files WHERE missing_at_ms = 0 AND problem <> '') skipped
+		WHERE n <= ? ORDER BY problem, path`), perProblem)
+	if err != nil {
+		return nil, fmt.Errorf("library skipped files: %w", err)
+	}
+	out := []LibrarySkipped{}
+	for rows.Next() {
+		var problem, path string
+		var total int
+		if err := rows.Scan(&problem, &path, &total); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("library skipped files: %w", err)
+		}
+		if len(out) == 0 || out[len(out)-1].Problem != problem {
+			out = append(out, LibrarySkipped{Problem: problem, Total: total, Paths: []string{}})
+		}
+		last := &out[len(out)-1]
+		last.Paths = append(last.Paths, path)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return nil, fmt.Errorf("library skipped files: %w", err)
+	}
+	return out, nil
 }
 
 func (s *Store) LibraryFileCounts(ctx context.Context) (LibraryFileCounts, error) {

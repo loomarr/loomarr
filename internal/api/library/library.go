@@ -34,6 +34,7 @@ type LibraryRootService interface {
 	Importing() scan.ProgressSnapshot
 	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
 	HeldTitles(ctx context.Context, root string) ([]string, int, error)
+	Skipped(ctx context.Context) ([]librarystore.LibrarySkipped, error)
 	Details(ctx context.Context) (scan.Details, error)
 	Rescan() error
 	RefreshEverything(ctx context.Context) error
@@ -355,6 +356,13 @@ type libraryHeldDTO struct {
 	TitleCount int      `json:"titleCount" doc:"How many titles those files are in all"`
 }
 
+// librarySkippedDTO is one reason the scan skips files, with its files.
+type librarySkippedDTO struct {
+	Reason string   `json:"reason" enum:"broken_link,link_outside,disc_image,identity_conflict,invalid_facts" doc:"Why: broken_link, a shortcut whose file is gone; link_outside, a shortcut to a file outside the media folders; disc_image, a whole disc's image; identity_conflict, a file that claims another's identity; invalid_facts, a file whose details were refused"`
+	Total  int      `json:"total" doc:"How many files are skipped for this reason"`
+	Paths  []string `json:"paths" doc:"The first of them, by path"`
+}
+
 type libraryStatusOutput struct {
 	Body struct {
 		Health    string `json:"health" enum:"needs_folders,folder_offline,folder_empty,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open; folder_empty: they all opened, but one held nothing"`
@@ -363,15 +371,16 @@ type libraryStatusOutput struct {
 		Empty     int    `json:"empty" doc:"Folders in use that opened with nothing in them at their last check"`
 		ToConfirm int    `json:"toConfirm" doc:"Readable folders found but not yet in use"`
 
-		Scan           libraryScanDTO    `json:"scan"`
-		Files          int               `json:"files" doc:"Media files found in folders in use"`
-		HeadersPending int               `json:"headersPending" doc:"Files not read yet"`
-		Problems       int               `json:"problems" doc:"Files Loomarr skips, such as disc images"`
-		NeedsYou       int               `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
-		Held           []libraryHeldDTO  `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
-		Unreadable     []string          `json:"unreadable" doc:"Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"`
-		Hooks          []libraryHookDTO  `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
-		Details        libraryDetailsDTO `json:"details" doc:"How the titles' details are getting on"`
+		Scan           libraryScanDTO      `json:"scan"`
+		Files          int                 `json:"files" doc:"Media files found in folders in use"`
+		HeadersPending int                 `json:"headersPending" doc:"Files not read yet"`
+		Problems       int                 `json:"problems" doc:"Files Loomarr skips, such as disc images"`
+		Skipped        []librarySkippedDTO `json:"skipped" doc:"The files Loomarr skips, by why, each reason with its count and its first few paths"`
+		NeedsYou       int                 `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
+		Held           []libraryHeldDTO    `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Unreadable     []string            `json:"unreadable" doc:"Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"`
+		Hooks          []libraryHookDTO    `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
+		Details        libraryDetailsDTO   `json:"details" doc:"How the titles' details are getting on"`
 	}
 }
 
@@ -402,6 +411,14 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	b := &out.Body
 	b.Health, b.InUse, b.Offline, b.Empty, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.Empty, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
+	skipped, err := svc.Skipped(ctx)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
+	b.Skipped = make([]librarySkippedDTO, 0, len(skipped))
+	for _, sk := range skipped {
+		b.Skipped = append(b.Skipped, librarySkippedDTO{Reason: sk.Problem, Total: sk.Total, Paths: sk.Paths})
+	}
 	b.Held = heldView(counts.Held)
 	for i := range b.Held {
 		h := &b.Held[i]

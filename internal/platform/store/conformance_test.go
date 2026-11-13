@@ -36,6 +36,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("LibraryRootCheck", func(t *testing.T) { testLibraryRootCheck(t, newStore) })
 		t.Run("LibraryFiles", func(t *testing.T) { testLibraryFiles(t, newStore) })
 		t.Run("LibraryHeldTitles", func(t *testing.T) { testLibraryHeldTitles(t, newStore) })
+		t.Run("LibrarySkippedFiles", func(t *testing.T) { testLibrarySkippedFiles(t, newStore) })
 		t.Run("LibraryItems", func(t *testing.T) { testLibraryItems(t, newStore) })
 		t.Run("LibraryItemsReadyAndChannels", func(t *testing.T) { testLibraryItemsReadyAndChannels(t, newStore) })
 		t.Run("LibraryItemProblems", func(t *testing.T) { testLibraryItemProblems(t, newStore) })

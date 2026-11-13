@@ -10,6 +10,7 @@ export type {
   LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
+  LibrarySkipped,
   LibraryWizardStepProps,
 } from "./library-settings.type";
 export { LibraryWizardStep } from "./library-wizard-step";

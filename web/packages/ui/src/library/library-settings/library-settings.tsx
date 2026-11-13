@@ -19,6 +19,7 @@ const LibrarySettings = ({
   readySoFar,
   held,
   unreadable,
+  skipped,
   hooks,
   details,
   checking,
@@ -41,6 +42,7 @@ const LibrarySettings = ({
         details={details}
         held={held}
         unreadable={unreadable}
+        skipped={skipped}
         hooks={hooks}
         onCheckAgain={onCheckAgain}
         onConfirmRemoval={onConfirmRemoval}

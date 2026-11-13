@@ -7525,6 +7525,32 @@ components:
         - season
         - episodes
       type: object
+    LibrarySkippedDTO:
+      additionalProperties: false
+      properties:
+        paths:
+          description: The first of them, by path
+          items:
+            type: string
+          type: array
+        reason:
+          description: "Why: broken_link, a shortcut whose file is gone; link_outside, a shortcut to a file outside the media folders; disc_image, a whole disc's image; identity_conflict, a file that claims another's identity; invalid_facts, a file whose details were refused"
+          enum:
+            - broken_link
+            - link_outside
+            - disc_image
+            - identity_conflict
+            - invalid_facts
+          type: string
+        total:
+          description: How many files are skipped for this reason
+          format: int64
+          type: integer
+      required:
+        - reason
+        - total
+        - paths
+      type: object
     LibrarySourceDTO:
       additionalProperties: false
       properties:
@@ -7609,6 +7635,11 @@ components:
           type: integer
         scan:
           $ref: "#/components/schemas/LibraryScanDTO"
+        skipped:
+          description: The files Loomarr skips, by why, each reason with its count and its first few paths
+          items:
+            $ref: "#/components/schemas/LibrarySkippedDTO"
+          type: array
         toConfirm:
           description: Readable folders found but not yet in use
           format: int64
@@ -7628,6 +7659,7 @@ components:
         - files
         - headersPending
         - problems
+        - skipped
         - needsYou
         - held
         - unreadable

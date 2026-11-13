@@ -5,6 +5,7 @@ import type {
   LibraryDetails,
   LibraryHeldRemoval,
   LibraryScan,
+  LibrarySkipped,
 } from "../library-settings/library-settings.type";
 
 // The Library's shared plain words (design/library, PLAIN-WORDS.md): a folder is named for what it
@@ -53,6 +54,58 @@ const unreadableNames = (paths: readonly string[]) => {
   const rest = paths.length - names.length;
   return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check again.`;
 };
+
+// What the scan skips, said a callout per kind: each names the first three files by their own
+// names, the rest as "N more", and says what fixes them. A file Loomarr refused, for whatever
+// reason, is Loomarr's to fix, so those two reasons are said as one.
+const SKIPPED_KINDS = [
+  {
+    reasons: ["broken_link"],
+    title: (n: number) =>
+      count(n, "shortcut points to a file that's gone", "shortcuts point to files that are gone"),
+    body: (names: string, n: number) =>
+      n === 1
+        ? `${names}. Point it at the file again or delete it, then check again.`
+        : `${names}. Point them at the files again or delete them, then check again.`,
+  },
+  {
+    reasons: ["link_outside"],
+    title: (n: number) =>
+      count(n, "shortcut leads outside your media folders", "shortcuts lead outside your media folders"),
+    body: (names: string, n: number) =>
+      `Loomarr only reads inside your media folders. Move ${names} into one, or add ${n === 1 ? "its folder" : "their folders"}.`,
+  },
+  {
+    reasons: ["disc_image"],
+    title: (n: number) => count(n, "disc image Loomarr can't play", "disc images Loomarr can't play"),
+    body: (names: string, n: number) =>
+      `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check again.`,
+  },
+  {
+    reasons: ["identity_conflict", "invalid_facts"],
+    title: (n: number) => count(n, "file Loomarr couldn't add", "files Loomarr couldn't add"),
+    body: (names: string, n: number) =>
+      `Loomarr couldn't make sense of ${names}. Check again; if ${n === 1 ? "it's" : "they're"} still here, it's a problem in Loomarr, not your ${n === 1 ? "file" : "files"}.`,
+  },
+] as const satisfies readonly {
+  reasons: readonly LibrarySkipped["reason"][];
+  title: (n: number) => string;
+  body: (names: string, n: number) => string;
+}[];
+
+const skippedCallouts = (skipped: readonly LibrarySkipped[]) =>
+  SKIPPED_KINDS.flatMap((kind) => {
+    const mine = skipped.filter((s) => (kind.reasons as readonly string[]).includes(s.reason));
+    const total = mine.reduce((sum, s) => sum + s.total, 0);
+    if (total === 0) return [];
+    const names = mine
+      .flatMap((s) => s.paths)
+      .slice(0, 3)
+      .map((p) => p.split("/").pop() ?? p);
+    const rest = total - names.length;
+    const listed = joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names);
+    return [{ key: kind.reasons[0], title: kind.title(total), body: kind.body(listed, total) }];
+  });
 
 // The three steps of adding media, as the maintainer reads them.
 const STEP_NAMES: Record<Exclude<LibraryScan["step"], "idle">, string> = {
@@ -168,6 +221,7 @@ export {
   heldTitle,
   joinNames,
   scanHeadline,
+  skippedCallouts,
   unreadableNames,
   unreadableTitle,
 };

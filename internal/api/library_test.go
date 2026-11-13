@@ -221,6 +221,11 @@ type libraryScanStatus struct {
 		TitleCount int      `json:"titleCount"`
 	} `json:"held"`
 	Unreadable []string `json:"unreadable"`
+	Skipped    []struct {
+		Reason string   `json:"reason"`
+		Total  int      `json:"total"`
+		Paths  []string `json:"paths"`
+	} `json:"skipped"`
 }
 
 func scanStatus(t *testing.T, resp *http.Response, want int) libraryScanStatus {
@@ -234,6 +239,46 @@ func scanStatus(t *testing.T, resp *http.Response, want int) libraryScanStatus {
 		t.Fatal(err)
 	}
 	return body
+}
+
+// The files a scan skips reach the status by why, each with its path: a shortcut whose file is
+// gone, and one to a file outside the media folders.
+func TestLibraryScan_StatusListsSkippedFiles(t *testing.T) {
+	h, lib := newScanHarness(t)
+	movies, elsewhere := t.TempDir(), t.TempDir()
+	_ = decodeLibraryRoots(t, h.Do(http.MethodPost, "/v1/library/roots", adminToken, `{"path":"`+movies+`"}`))
+	if err := os.WriteFile(filepath.Join(movies, "Kept (2001).mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(elsewhere, "Away (2002).mkv")
+	if err := os.WriteFile(outside, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	broken, away := filepath.Join(movies, "Gone (2003).mkv"), filepath.Join(movies, "Away (2002).mkv")
+	if err := os.Symlink(filepath.Join(elsewhere, "nothing.mkv"), broken); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, away); err != nil {
+		t.Fatal(err)
+	}
+	st := scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
+	if st.Skipped == nil || len(st.Skipped) != 0 {
+		t.Fatalf("before a scan skipped = %+v, want an empty list", st.Skipped)
+	}
+	if err := lib.Scanner.Importer.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st = scanStatus(t, h.Do(http.MethodGet, "/v1/library/status", adminToken, ""), http.StatusOK)
+	got := map[string][]string{}
+	for _, s := range st.Skipped {
+		if s.Total != len(s.Paths) {
+			t.Errorf("%s total = %d, paths %q", s.Reason, s.Total, s.Paths)
+		}
+		got[s.Reason] = s.Paths
+	}
+	if !slices.Equal(got["broken_link"], []string{broken}) || !slices.Equal(got["link_outside"], []string{away}) || len(got) != 2 {
+		t.Fatalf("skipped = %+v", st.Skipped)
+	}
 }
 
 // The scanner's state reaches the status strip, a held removal is listed by kind and applied on
