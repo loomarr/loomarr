@@ -158,6 +158,27 @@ func TestCertifiedStructureMaterializableRefusesDuplicateAndShortCertifiedCandid
 	}
 }
 
+// The certified plan stays together: one segment whose duplicate check could not run holds the whole
+// plan for review, every segment reads a reason, and the unchecked one names the real cause.
+func TestCertifiedStructureMaterializableHoldsAPlanWithAnUncheckedSegment(t *testing.T) {
+	proposal := certifiedStructureProposal(t)
+	proposal.Segments[1].DedupUnchecked = true
+	partition := CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
+	if partition.Reject != RejectDedupUnchecked || len(partition.Confirm) != 0 || len(partition.Hold) != 2 {
+		t.Fatalf("partition = %+v, want the whole plan held for the unchecked segment", partition)
+	}
+	if got := partition.Hold[1].HoldReason; got != string(RejectDedupUnchecked) {
+		t.Fatalf("unchecked hold reason = %q", got)
+	}
+
+	// Once checked, the same plan confirms.
+	proposal.Segments[1].DedupUnchecked = false
+	partition = CertifiedStructureMaterializable(proposal, certifiedAutoPolicy(), allowCertifiedStructure(t), 10*time.Second)
+	if partition.Reject != AutoSplitOK || len(partition.Confirm) != 2 {
+		t.Fatalf("checked partition = %+v", partition)
+	}
+}
+
 func TestCertifiedStructureMaterializableUsesDistinctWindowAuthority(t *testing.T) {
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = passingWindowStructureDecision(t, *proposal.StructureDecision)

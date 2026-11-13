@@ -79,7 +79,7 @@ type Job struct {
 	CreatedBy  string
 	// ChannelID names the channel a refine or re-curation job re-curates; its approval changes
 	// that channel instead of creating one. Empty for a job that originates a channel, which the
-	// channel's `intent_ref` binds.
+	// channel's `intent_ref` binds. A foreign key: the job goes with its channel (#2793).
 	ChannelID        string
 	LastError        string
 	FailureCode      string
@@ -155,7 +155,7 @@ func (s *Store) CreateJob(ctx context.Context, j Job) error {
 
 		j.ID, j.Kind, j.Status, jobIntent(j.IntentJSON), j.IntentHash, j.CreatedBy, j.LastError, j.FailureCode,
 		workflowVersionForCreate(j.WorkflowVersion), j.ReachedLive, storedb.Epoch(j.Deadline), j.Attempts,
-		storedb.Epoch(j.CreatedAt), storedb.Epoch(j.UpdatedAt), storedb.OptionalJSON(j.FailureTraceJSON), j.ChannelID)
+		storedb.Epoch(j.CreatedAt), storedb.Epoch(j.UpdatedAt), storedb.OptionalJSON(j.FailureTraceJSON), storedb.OptionalID(j.ChannelID))
 	if err != nil {
 		return fmt.Errorf("create job %s: %w", j.ID, err)
 	}
@@ -247,7 +247,7 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 		&out.Job.ID, &out.Job.Kind, &out.Job.Status, &out.Job.IntentJSON, &out.Job.IntentHash,
 		&out.Job.CreatedBy, &out.Job.LastError, &out.Job.FailureCode, &out.Job.WorkflowVersion, &out.Job.ReachedLive,
 		&deadline, &out.Job.Attempts, &jobCreatedAt, &jobUpdatedAt, (*storedb.OptionalJSON)(&out.Job.FailureTraceJSON),
-		&out.Job.ChannelID,
+		(*storedb.OptionalID)(&out.Job.ChannelID),
 		&pID, &pJobID, &pStatus, &pCreatedBy, &pApprovedBy, &pDenyReason,
 		&pModSummary, &pNote, &pJSON, &pApprovedAt, &pCreatedAt, &pUpdatedAt,
 	)
@@ -280,7 +280,7 @@ func (s *Store) GetProposalJob(ctx context.Context, id string) (ProposalJob, err
 	channel, channelErr := channelstore.ChannelForJobIn(ctx, s.channels, tx, id)
 	if channelErr == nil {
 		out.Channel = &channel
-	} else if !errors.Is(channelErr, storedb.ErrNotFound) && !errors.Is(channelErr, channelstore.ErrJobChannelGone) {
+	} else if !errors.Is(channelErr, storedb.ErrNotFound) {
 		return ProposalJob{}, fmt.Errorf("get proposal job %s Channel: %w", id, channelErr)
 	}
 	if err := tx.Commit(); err != nil {
@@ -348,9 +348,6 @@ func (s *Store) ClaimDueJobs(ctx context.Context, now time.Time, lease time.Dura
 		}
 
 		nextAttempt := job.Attempts + 1
-		if job.WorkflowVersion == 0 {
-			nextAttempt = 1
-		}
 		result, err := tx.ExecContext(ctx, s.h.Rebind(
 			`UPDATE proposal_jobs
 			    SET status='running', workflow_version=?, attempts=?, deadline=?, updated_at=?
@@ -440,7 +437,7 @@ func scanJob(sc storedb.Scannable) (Job, error) {
 		deadline, createdAt, updatedAt int64
 	)
 	err := sc.Scan(&j.ID, &j.Kind, &j.Status, &j.IntentJSON, &j.IntentHash, &j.CreatedBy,
-		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, (*storedb.OptionalJSON)(&j.FailureTraceJSON), &j.ChannelID)
+		&j.LastError, &j.FailureCode, &j.WorkflowVersion, &j.ReachedLive, &deadline, &j.Attempts, &createdAt, &updatedAt, (*storedb.OptionalJSON)(&j.FailureTraceJSON), (*storedb.OptionalID)(&j.ChannelID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, storedb.ErrNotFound
 	}

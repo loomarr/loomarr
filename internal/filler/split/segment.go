@@ -45,7 +45,7 @@ type Segment struct {
 	// Tags is the grounded taxonomy leaf set (§10 V45a); Category is its DERIVED product-leaf shadow,
 	// carried so the review and the confirmed clip both have the cheap read-path value. Both come from
 	// the same Classify the tag job uses.
-	Tags     []string `json:"tags,omitempty"`
+	Tags     []string `json:"tags,omitempty" maxItems:"64"` // at most 64, as on a clip
 	Category string   `json:"category,omitempty"`
 	// BoundaryConfidence is how much Loomarr trusts WHERE this was cut, 0–100 (§10 V34 ladder).
 	// `0` means never scored — every proposal detected before V54 deserialises that way, and the
@@ -96,6 +96,11 @@ type Segment struct {
 	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
 	// stage then discards it before classification because it cannot add a new catalog clip.
 	DupOf string `json:"dupOf,omitempty"`
+	// DedupUnchecked means the comparison against the catalog could not be made for this segment (its
+	// fingerprint could not be read, or the catalog could not be listed). It is not a finding: an
+	// empty DupOf then reads as "not checked", not as "checked and new", and the review says so. A
+	// proposal stored before this field existed reads as checked.
+	DedupUnchecked bool `json:"dedupUnchecked,omitempty"`
 	// Unsplittable means the segment is over-long AND the rescue could not run or
 	// found nothing (no whisper, whisper/LLM failure). The review must say so —
 	// the alternative is guessing, which is exactly what the era rule forbids in

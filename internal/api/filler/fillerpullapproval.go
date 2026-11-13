@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
@@ -19,8 +20,9 @@ type approveFillerPullInput struct {
 	Body struct {
 		// DropSourceIDs are the rows the operator excluded. Recorded on the pull rather than
 		// removed from it, so the audit shows what was proposed as well as what was agreed to.
-		DropSourceIDs    []string `json:"dropSourceIds,omitempty"`
-		DropCandidateIDs []string `json:"dropCandidateIds,omitempty"`
+		// At most 1000 each: a pull proposes a playlist's worth of sources and candidates.
+		DropSourceIDs    []string `json:"dropSourceIds,omitempty" maxItems:"1000"`
+		DropCandidateIDs []string `json:"dropCandidateIds,omitempty" maxItems:"1000"`
 		Note             string   `json:"note,omitempty" doc:"Optional annotation for the approval record; does not change what is downloaded"`
 	}
 }
@@ -137,7 +139,7 @@ func (s *Handlers) approveFillerPull(ctx context.Context, in *approveFillerPullI
 		if errors.Is(err, records.ErrPullNotPending) {
 			return nil, httpcore.Conflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
 		}
-		if errors.Is(err, ErrIngestUnavailable) {
+		if errors.Is(err, operator.ErrIngestUnavailable) {
 			return nil, httpcore.Conflict("Downloading isn't available on this install",
 				"This build can't run the download tooling, so an approved pull would have nothing to fetch with.")
 		}

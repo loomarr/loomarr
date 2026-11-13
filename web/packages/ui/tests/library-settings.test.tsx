@@ -42,7 +42,26 @@ const TV: LibraryFolder = {
 };
 const MOVIES: LibraryFolder = { ...TV, path: "/media/movies", inUse: true, readable: false, foundIn: [] };
 const TV_IN_USE: LibraryFolder = { ...TV, inUse: true };
-const IDLE: LibraryScan = { enabled: true, stage: "idle", headersDone: 0, headersTotal: 0, paused: false };
+const IDLE: LibraryScan = {
+  enabled: true,
+  step: "idle",
+  stepNumber: 0,
+  done: 0,
+  total: 0,
+  paused: false,
+  quiet: false,
+};
+const WALKING: LibraryScan = {
+  ...IDLE,
+  step: "walking",
+  stepNumber: 1,
+  done: 112,
+  total: 533,
+  current: "TV / Night Ferry / Season 2",
+  etaSeconds: 540,
+};
+const READING: LibraryScan = { ...IDLE, step: "reading", stepNumber: 2, done: 25, total: 100 };
+const twirls = (host: Host) => host.querySelectorAll('[data-testid="library-twirl"]').length;
 
 const render = (overrides: Partial<LibrarySettingsProps>) => {
   const props: LibrarySettingsProps = {
@@ -58,6 +77,7 @@ const render = (overrides: Partial<LibrarySettingsProps>) => {
     checking: false,
     onCheckAgain: vi.fn(),
     onRescan: vi.fn(),
+    onRefreshEverything: vi.fn(),
     onConfirmRemoval: vi.fn(),
     onUseFolder: vi.fn(),
     onAddFolder: vi.fn(async () => "Loomarr can't open that folder"),
@@ -138,22 +158,193 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("shows the import's progress, and pauses it in plain words", () => {
-    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
-    const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading });
-    expect(adding.host.textContent).toContain("Adding your media");
-    expect(adding.host.textContent).toContain("Titles appear as they're ready.");
-    expect(adding.host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
-    adding.cleanup();
+  it("keeps the import's bar, step and time left on screen beside an offline folder", () => {
+    const { host, cleanup } = render({
+      health: "folder_offline",
+      folders: [MOVIES, TV_IN_USE],
+      scan: WALKING,
+    });
+    expect(host.textContent).toContain("Can't reach your Movies folder");
+    expect(host.textContent).toContain("Step 1 of 3 · Looking through your folders · 112 of 533");
+    expect(host.textContent).toContain("About 9 minutes left in this step");
+    expect(host.textContent).toContain("TV / Night Ferry / Season 2");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("21");
+    expect(host.textContent).not.toContain("All caught up");
+    cleanup();
+  });
 
-    const paused = render({ health: "ok", folders: [TV_IN_USE], scan: { ...reading, paused: true } });
-    expect(paused.host.textContent).toContain("Paused while someone is watching");
-    expect(paused.host.textContent).toContain("Picks up again when everyone's done watching.");
+  // An unmounted share leaves its mount point an empty folder: it opens, so it isn't offline, but
+  // nothing in it is the library's.
+  it("asks whether the drive is connected for an empty folder, and never says all is caught up", () => {
+    const { host, props, cleanup } = render({
+      health: "folder_empty",
+      folders: [{ ...TV_IN_USE, empty: true }],
+    });
+    expect(host.textContent).toContain("This folder is empty — is the drive connected?");
+    expect(host.textContent).not.toContain("Loomarr can open this folder");
+    expect(host.textContent).toContain("Up to date");
+    expect(host.textContent).not.toContain("All caught up");
+    act(() =>
+      Array.from(host.querySelectorAll("button, [role=button]"))
+        .find((n) => n.textContent === "Check again")
+        ?.click(),
+    );
+    expect(props.onCheckAgain).toHaveBeenCalled();
+    cleanup();
+  });
+
+  // A lookup that's stuck is never silent: how many wait and when it tries again. 3:40 PM here is
+  // local time, as the line shows it.
+  const RETRY = new Date(2026, 10, 2, 15, 40).toISOString();
+  it.each([
+    [true, "Can't reach TMDB — trying again at 3:40 PM"],
+    [false, "Trying again at 3:40 PM"],
+  ] as const)(
+    "says when titles waiting for details are tried again (unreachable: %s)",
+    (unreachable, reason) => {
+      const { host, cleanup } = render({
+        health: "ok",
+        folders: [TV_IN_USE],
+        details: { waiting: 12, unreachable, retryAt: RETRY },
+      });
+      expect(host.textContent).toContain("12 titles are waiting on details");
+      expect(host.textContent).toContain(reason);
+      expect(host.textContent).not.toContain("All caught up");
+      expect(host.textContent).toContain("Up to date");
+      cleanup();
+    },
+  );
+
+  it("tells the retry time on the household's clock, whatever the device's", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      details: { waiting: 12, unreachable: false, retryAt: "2026-11-02T02:40:00Z" },
+      timeZone: "Pacific/Auckland",
+    });
+    expect(host.textContent).toContain("Trying again at 3:40 PM");
+    cleanup();
+  });
+
+  // A key problem is never the household's to fix: nothing is tried again, and nothing is said.
+  it("says nothing of waiting titles when no retry is due", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      details: { waiting: 12, unreachable: false },
+    });
+    expect(host.textContent).not.toContain("waiting on details");
+    expect(host.textContent).not.toMatch(/key/i);
+    cleanup();
+  });
+
+  it("leaves waiting titles to the progress while step 3 is looking them up", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...IDLE, step: "lookingUp", stepNumber: 3, done: 3, total: 15 },
+      details: { waiting: 12, unreachable: false, retryAt: RETRY },
+    });
+    expect(host.textContent).not.toContain("waiting on details");
+    cleanup();
+  });
+
+  it("says nothing of being caught up beside an offline folder while no import runs", () => {
+    const { host, cleanup } = render({ health: "folder_offline", folders: [MOVIES, TV_IN_USE] });
+    expect(host.textContent).toContain("Can't reach your Movies folder");
+    expect(host.textContent).not.toContain("All caught up");
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    cleanup();
+  });
+
+  it("shows step 1: the folders looked through, the time left and the folder it's in", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: WALKING });
+    expect(host.textContent).toContain("Adding your media");
+    expect(host.textContent).toContain("Step 1 of 3 · Looking through your folders · 112 of 533");
+    expect(host.textContent).toContain("About 9 minutes left in this step");
+    expect(host.textContent).toContain("TV / Night Ferry / Season 2");
+    expect(host.textContent).not.toContain("Titles appear as they're ready.");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("21");
+    expect(twirls(host)).toBe(1);
+    cleanup();
+  });
+
+  it("shows step 2 with the file it reads, and says it is still working out the time", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...READING, current: "Night Ferry S02E03.mkv" },
+    });
+    expect(host.textContent).toContain("Step 2 of 3 · Reading each file · 25 of 100");
+    expect(host.textContent).toContain("Working out how long this takes…");
+    expect(host.textContent).toContain("Night Ferry S02E03.mkv");
+    expect(host.textContent).toContain("Titles appear as they're ready.");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
+    cleanup();
+  });
+
+  it("shows step 3, the last, with its time left and the title it looks up", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: {
+        ...IDLE,
+        step: "lookingUp",
+        stepNumber: 3,
+        done: 40,
+        total: 80,
+        etaSeconds: 150,
+        current: "Paper Kites (2019)",
+      },
+    });
+    expect(host.textContent).toContain("Step 3 of 3 · Looking up details · 40 of 80");
+    expect(host.textContent).toContain("About 3 minutes left");
+    expect(host.textContent).not.toContain("in this step");
+    expect(host.textContent).toContain("Paper Kites (2019)");
+    // Looking up details never holds up a scan.
+    expect(host.textContent).toContain("Scan now");
+    cleanup();
+  });
+
+  it("pauses in plain words, with a still dot and no time or current line", () => {
+    const paused = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...READING, paused: true, current: "Night Ferry S02E03.mkv", etaSeconds: 60 },
+    });
+    const text = paused.host.textContent;
+    expect(text).toContain("Paused while someone is watching");
+    expect(text).toContain("Step 2 of 3 · Reading each file · 25 of 100");
+    expect(text).toContain("Picks up again when everyone's done watching.");
+    expect(text).not.toContain("left");
+    expect(text).not.toContain("Working out");
+    expect(text).not.toContain("Night Ferry S02E03.mkv");
+    expect(twirls(paused.host)).toBe(0);
     paused.cleanup();
   });
 
+  it("says only that it's checking the folders on a quiet pass", () => {
+    const { host, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...WALKING, quiet: true },
+    });
+    expect(host.textContent).toContain("Checking your folders…");
+    expect(host.textContent).not.toContain("Adding your media");
+    expect(host.textContent).not.toContain("Step 1 of 3");
+    expect(host.querySelector('[role="progressbar"]')).toBeNull();
+    expect(twirls(host)).toBe(1);
+    cleanup();
+  });
+
+  it("keeps the still dot when nothing runs", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    expect(twirls(host)).toBe(0);
+    cleanup();
+  });
+
   it("shows the first five titles ready so far while the import runs, and none while paused", () => {
-    const reading: LibraryScan = { ...IDLE, stage: "reading", headersDone: 25, headersTotal: 100 };
+    const reading = READING;
     const readySoFar = ["Quiet Harbor", "Paper Kites", "Tidewater", "Harbour Lights", "Alpha", "Zulu"].map(
       (name, i) => ({ id: `9000095${i}`, name }),
     );
@@ -177,18 +368,121 @@ describe("LibrarySettings", () => {
     paused.cleanup();
   });
 
+  it("scans now, and refreshes everything only once asked", () => {
+    const { host, props, button, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
+    act(() => button("Scan now").click());
+    expect(props.onRescan).toHaveBeenCalled();
+
+    // The confirm may draw outside the host, so look through the whole page.
+    const page = (globalThis as unknown as { document: { body: Host } }).document.body;
+    const buttons = (name: string) =>
+      Array.from(page.querySelectorAll('[role="button"], button')).filter(
+        (n) => n.textContent?.trim() === name,
+      );
+    expect(host.textContent).not.toContain("Refresh every title?");
+    act(() => button("Refresh everything").click());
+    expect(page.textContent).toContain("Refresh every title?");
+    act(() => buttons("Not now")[0]?.click());
+    expect(props.onRefreshEverything).not.toHaveBeenCalled();
+
+    act(() => button("Refresh everything").click());
+    const confirm = buttons("Refresh everything");
+    act(() => confirm[confirm.length - 1]?.click());
+    expect(props.onRefreshEverything).toHaveBeenCalledTimes(1);
+    cleanup();
+  });
+
+  it("says a scan is running and offers no second one", () => {
+    const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE], scan: WALKING });
+    expect(host.textContent).toContain("Scanning…");
+    expect(host.textContent).not.toContain("Scan now");
+    cleanup();
+  });
+
   it("holds a removal until the maintainer answers", () => {
     const { host, props, button, cleanup } = render({
       health: "ok",
       folders: [TV_IN_USE],
-      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+      held: [
+        {
+          path: "/media/movies",
+          movies: 2406,
+          episodes: 0,
+          other: 0,
+          titles: ["Amber Hollow", "Brightwater", "Calder Point"],
+          titleCount: 2406,
+        },
+      ],
     });
     expect(host.textContent).toContain("2,406 movies seem to be gone from your Movies folder");
+    // What letting them go removes, by name.
+    expect(host.textContent).toContain("That's Amber Hollow, Brightwater, Calder Point and 2,403 more.");
     expect(host.textContent).not.toContain("All caught up");
     act(() => button("Check again").click());
     expect(props.onRescan).toHaveBeenCalled();
     act(() => button("They're gone, remove them").click());
     expect(props.onConfirmRemoval).toHaveBeenCalledWith("/media/movies");
+    cleanup();
+  });
+
+  it("asks for files whose names it can't read to be renamed", () => {
+    const { host, props, button, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      unreadable: [
+        "/media/movies/Ferrow �t� (1999).mkv",
+        "/media/tv/Kettle Bay/Kettle� 01.mkv",
+        "/media/tv/a�.mkv",
+        "/media/tv/b�.mkv",
+      ],
+    });
+    expect(host.textContent).toContain("4 files have names Loomarr can't read");
+    expect(host.textContent).toContain(
+      "Rename Ferrow �t� (1999).mkv, Kettle� 01.mkv, a�.mkv and 1 more using ordinary letters, then check again.",
+    );
+    expect(host.textContent).not.toContain("All caught up");
+    act(() => button("Check again").click());
+    expect(props.onRescan).toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("says which files it skips and what fixes each kind", () => {
+    const { host, props, button, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      skipped: [
+        {
+          reason: "broken_link",
+          total: 5,
+          paths: [
+            "/media/movies/Gone (2003).mkv",
+            "/media/movies/Old Reel.mkv",
+            "/media/tv/a.mkv",
+            "/media/tv/b.mkv",
+          ],
+        },
+        { reason: "link_outside", total: 1, paths: ["/media/movies/Away (2002).mkv"] },
+        { reason: "disc_image", total: 2, paths: ["/media/movies/Tarn.iso", "/media/movies/Wick.iso"] },
+        { reason: "identity_conflict", total: 1, paths: ["/media/tv/x.mkv"] },
+        { reason: "invalid_facts", total: 1, paths: ["/media/tv/y.mkv"] },
+      ],
+    });
+    expect(host.textContent).toContain("5 shortcuts point to files that are gone");
+    expect(host.textContent).toContain(
+      "Gone (2003).mkv, Old Reel.mkv, a.mkv and 2 more. Point them at the files again or delete them, then check again.",
+    );
+    expect(host.textContent).toContain("1 shortcut leads outside your media folders");
+    expect(host.textContent).toContain(
+      "Loomarr only reads inside your media folders. Move Away (2002).mkv into one, or add its folder.",
+    );
+    expect(host.textContent).toContain("2 disc images Loomarr can't play");
+    expect(host.textContent).toContain("Rip Tarn.iso and Wick.iso to video files, then check again.");
+    // Two reasons Loomarr refuses a file are said as one: they're Loomarr's to fix.
+    expect(host.textContent).toContain("2 files Loomarr couldn't add");
+    expect(host.textContent).toContain("Loomarr couldn't make sense of x.mkv and y.mkv.");
+    expect(host.textContent).not.toContain("All caught up");
+    act(() => button("Check again").click());
+    expect(props.onRescan).toHaveBeenCalled();
     cleanup();
   });
 
@@ -220,6 +514,74 @@ describe("LibrarySettings", () => {
     expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/missing");
     expect(host.textContent).toContain("Loomarr can't open that folder");
     expect(input.value).toBe("/mnt/missing");
+    cleanup();
+  });
+
+  const openAddFolder = (overrides: Partial<LibrarySettingsProps> = {}) => {
+    const rendered = render(overrides);
+    act(() => rendered.button("Add a folder").click());
+    const input = rendered.host.querySelector('input[aria-label="Where is the folder?"], input') as El;
+    return { ...rendered, input };
+  };
+  const pressEnter = (input: El) =>
+    act(async () => {
+      const dom = globalThis as unknown as {
+        KeyboardEvent: new (type: string, init: { key: string; bubbles: boolean }) => Event;
+      };
+      input.dispatchEvent(new dom.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+
+  it("adds the trimmed path and closes the box once it is accepted", async () => {
+    const { host, props, button, input, cleanup } = openAddFolder({
+      onAddFolder: vi.fn(async () => undefined),
+    });
+    type(input, "  /mnt/new  ");
+    await act(async () => button("Add folder").click());
+    expect(props.onAddFolder).toHaveBeenCalledTimes(1);
+    expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/new");
+    expect(host.textContent).not.toContain("Where is the folder?");
+    expect(host.textContent).toContain("Add a folder");
+    cleanup();
+  });
+
+  it("adds the path when Enter is pressed in the box", async () => {
+    const { props, input, cleanup } = openAddFolder({ onAddFolder: vi.fn(async () => undefined) });
+    type(input, "/mnt/enter");
+    await pressEnter(input);
+    expect(props.onAddFolder).toHaveBeenCalledWith("/mnt/enter");
+    cleanup();
+  });
+
+  it("has nothing to add until a path is typed", async () => {
+    const { props, button, input, cleanup } = openAddFolder({ onAddFolder: vi.fn(async () => undefined) });
+    await act(async () => button("Add folder").click());
+    type(input, "   ");
+    await act(async () => button("Add folder").click());
+    expect(props.onAddFolder).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it("clears a refusal as soon as the path is edited", async () => {
+    const { host, button, input, cleanup } = openAddFolder();
+    type(input, "/mnt/missing");
+    await act(async () => button("Add folder").click());
+    expect(host.textContent).toContain("Loomarr can't open that folder");
+    type(input, "/mnt/missing2");
+    expect(host.textContent).not.toContain("Loomarr can't open that folder");
+    cleanup();
+  });
+
+  it("forgets the path and the refusal when cancelled", async () => {
+    const { host, props, button, input, cleanup } = openAddFolder();
+    type(input, "/mnt/missing");
+    await act(async () => button("Add folder").click());
+    act(() => button("Cancel").click());
+    expect(host.textContent).not.toContain("Where is the folder?");
+    act(() => button("Add a folder").click());
+    const reopened = host.querySelector('input[aria-label="Where is the folder?"], input') as El;
+    expect(reopened.value).toBe("");
+    expect(host.textContent).not.toContain("Loomarr can't open that folder");
+    expect(props.onAddFolder).toHaveBeenCalledTimes(1);
     cleanup();
   });
 

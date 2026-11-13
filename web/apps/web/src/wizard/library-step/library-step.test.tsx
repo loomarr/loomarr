@@ -4,13 +4,15 @@ import {
   getListLibraryItemsMockHandler,
   getListLibraryRootsMockHandler,
   getSettingsListMockHandler,
+  getSettingsPatchMockHandler,
   getSetupStatusMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
+import { FakeEventSource } from "@/test/fake-event-source";
 import { libraryStatus } from "@/test/fixtures/library";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
@@ -40,6 +42,7 @@ const MOVIES = {
   path: "/media/movies",
   inUse: false,
   readable: true,
+  empty: false,
   addedByHand: false,
   foundIn: [{ authority: "radarr" as const, path: "/movies" }],
 };
@@ -76,10 +79,12 @@ describe("LibraryStep", () => {
         libraryStatus({
           scan: {
             enabled: true,
-            stage: "reading",
-            headersDone: 10,
-            headersTotal: 40,
+            step: "reading",
+            stepNumber: 2,
+            done: 10,
+            total: 40,
             paused: false,
+            quiet: false,
             arrIncomplete: false,
           },
         }),
@@ -104,6 +109,52 @@ describe("LibraryStep", () => {
     expect(await screen.findByText("You can carry on — titles appear as they're ready.")).toBeInTheDocument();
     expect(await screen.findByText("Ready so far")).toBeInTheDocument();
     expect(screen.getByText("Quiet Harbor")).toBeInTheDocument();
+    expect(screen.getByText("Step 2 of 3 · Reading each file · 10 of 40")).toBeInTheDocument();
+
+    // The step opens its own event stream, and each library_scan frame moves the progress.
+    const stream = FakeEventSource.instances.at(-1);
+    if (!stream) throw new Error("the step opened no event stream");
+    act(() =>
+      stream.emit("library_scan", {
+        step: "reading",
+        stepNumber: 2,
+        done: 30,
+        total: 40,
+        current: "Quiet Harbor (2001).mkv",
+        etaSeconds: 120,
+        paused: false,
+        quiet: false,
+      }),
+    );
+    expect(await screen.findByText("Step 2 of 3 · Reading each file · 30 of 40")).toBeInTheDocument();
+    expect(screen.getByText("About 2 minutes left in this step")).toBeInTheDocument();
+    expect(screen.getByText("Quiet Harbor (2001).mkv")).toBeInTheDocument();
+  });
+
+  // The arrs are set but Loomarr's own address is not: the step asks for it and saves that key alone.
+  it("saves Loomarr's address, and the field clears once it is saved", async () => {
+    const sent: unknown[] = [];
+    server.use(
+      getListLibraryRootsMockHandler({ roots: [MOVIES], pathMap: [] }),
+      getLibraryStatusMockHandler(libraryStatus({ health: "needs_folders", inUse: 0 })),
+      getSettingsPatchMockHandler(async ({ request }) => {
+        sent.push(await request.json());
+        return { results: [{ key: "server.public_url", status: "saved" }] };
+      }),
+    );
+    renderStep([
+      setting({ key: "sonarr.url", group: "connections.sonarr", value: "http://sonarr.invalid:8989" }),
+      setting({ key: "radarr.url", group: "connections.radarr", value: "http://radarr.invalid:7878" }),
+      setting({ key: "server.public_url", group: "server", label: "Loomarr address", set: false }),
+    ]);
+
+    await userEvent.type(await screen.findByLabelText("Loomarr address"), "http://loomarr:8080");
+    await userEvent.click(screen.getByRole("button", { name: "Save address" }));
+
+    await waitFor(() => expect(sent).toEqual([{ edits: { "server.public_url": "http://loomarr:8080" } }]));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Save address" })).not.toBeInTheDocument(),
+    );
   });
 
   // Sonarr without an address: the step asks Seerr once, says what it filled in, and, with no

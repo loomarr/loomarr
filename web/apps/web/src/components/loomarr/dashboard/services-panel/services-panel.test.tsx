@@ -81,8 +81,84 @@ describe("ServicesPanel", () => {
   // An unconfigured integration has no target; saying so beats an empty cell that reads as a
   // rendering bug.
   it("names an unconfigured integration rather than showing a blank", () => {
-    render(<ServicesPanel view={{ loomarr, rows: [{ name: "filler", ok: false }] }} onFix={() => {}} />);
+    render(
+      <ServicesPanel
+        view={{ loomarr, rows: [{ name: "filler", ok: false, notSetUp: true }] }}
+        onFix={() => {}}
+      />,
+    );
     expect(screen.getByText("not configured")).toBeInTheDocument();
+  });
+
+  // #3403: on a fresh install every optional service carries a hint ("set the Seerr URL") but is
+  // not a failure. The server's notSetUp decides, so Health agrees with Connections.
+  it("shows a fresh install's unset optional services as Not set up, not Needs attention", () => {
+    render(
+      <ServicesPanel
+        view={{
+          loomarr,
+          rows: [
+            { name: "media_server", ok: true, target: "http://emby.lan:8096" },
+            {
+              name: "requester",
+              ok: false,
+              hint: "set the Seerr URL",
+              notSetUp: true,
+              settingsGroup: "requester",
+            },
+            {
+              name: "tunarr",
+              ok: false,
+              hint: "set the Tunarr URL",
+              notSetUp: true,
+              settingsGroup: "tunarr",
+            },
+            { name: "tunarr_library", ok: false, hint: "set the Tunarr URL", notSetUp: true },
+            { name: "llm", ok: false, hint: "set the Ollama URL", notSetUp: true, settingsGroup: "ai" },
+            { name: "livetv", ok: false, hint: "Set up a media server first.", notSetUp: true },
+          ],
+        }}
+        onFix={() => {}}
+        onDiagnose={() => {}}
+      />,
+    );
+    expect(screen.getAllByText("Not set up")).toHaveLength(5);
+    expect(screen.queryByText("Needs attention")).not.toBeInTheDocument();
+    expect(screen.getByText("set the Seerr URL")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /diagnostics/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fix Requester" })).toBeInTheDocument();
+  });
+
+  it("keeps a failing service red even though it carries a hint", () => {
+    render(
+      <ServicesPanel
+        view={{ loomarr, rows: [{ name: "media_server", ok: false, hint: "connection refused" }] }}
+        onFix={() => {}}
+      />,
+    );
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.queryByText("Not set up")).not.toBeInTheDocument();
+  });
+
+  // One vocabulary with Settings: the shared status words, not lower-case pass/fail.
+  it("says OK, Needs attention or Not set up in words", () => {
+    render(
+      <ServicesPanel
+        view={{
+          loomarr,
+          rows: [
+            { name: "requester", ok: false, hint: "connection refused" },
+            { name: "filler", ok: false, notSetUp: true },
+          ],
+        }}
+        onFix={() => {}}
+      />,
+    );
+    expect(screen.getByText("OK")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByText("Not set up")).toBeInTheDocument();
+    expect(screen.queryByText("pass")).not.toBeInTheDocument();
+    expect(screen.queryByText("fail")).not.toBeInTheDocument();
   });
 
   // #2734: TMDB has no target by design, so a passing TMDB row read "not configured · pass"

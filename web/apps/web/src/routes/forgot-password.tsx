@@ -23,6 +23,7 @@ const ForgotPasswordScreen = () => {
   );
 };
 
+// no-loader: a form that reads nothing
 const Route = createFileRoute("/forgot-password")({ component: ForgotPasswordScreen });
 
 export { Route };

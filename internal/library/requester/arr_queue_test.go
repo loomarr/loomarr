@@ -2,9 +2,13 @@ package requester
 
 import (
 	"context"
+	"errors"
+	"math"
+	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 // QueueStatus correlates queue records to titles by the arr's internal id (resolved via lookup),
@@ -119,5 +123,57 @@ func TestArr_QueueStatus_SeriesCountsMissingKeepProgress(t *testing.T) {
 	}
 	if got := items[0]; !got.Grabbed || got.Progress != 0.5 || got.EpisodesHave != 0 || got.EpisodesWanted != 0 {
 		t.Errorf("series item = %+v, want grabbed at 0.5 with no counts", got)
+	}
+}
+
+// Sonarr queues one record per episode, so a series' progress is the whole season pack's:
+// total bytes done over total bytes, and the status is the one of the records that are
+// actually moving rather than whichever record the arr listed last.
+func TestArr_QueueStatus_SeriesAggregatesEpisodeRecords(t *testing.T) {
+	stub := newArrStub(t, "series")
+	stub.lookupID = 90000007
+	stub.queueRecords = []map[string]any{
+		{"id": 90000001, "seriesId": 90000007, "size": 100, "sizeleft": 10, "status": "downloading", "timeleft": "00:01:00"},
+		{"id": 90000002, "seriesId": 90000007, "size": 100, "sizeleft": 90, "status": "downloading", "timeleft": "00:09:00"},
+		{"id": 90000003, "seriesId": 90000007, "size": 100, "sizeleft": 100, "status": "warning", "timeleft": ""},
+		{"id": 90000004, "seriesId": 90000008, "size": 100, "sizeleft": 0, "status": "completed"},
+	}
+	a := arrFor("series", stub.server.URL, "", "")
+
+	items, err := a.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Series, TVDBID: 90090001, Name: "A sitcom"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := items[0]
+	if !got.Grabbed {
+		t.Fatalf("series with queued episodes should be grabbed: %+v", got)
+	}
+	if want := 100.0 / 300.0; math.Abs(got.Progress-want) > 1e-9 {
+		t.Errorf("progress = %v, want %v (300 bytes, 200 left)", got.Progress, want)
+	}
+	if got.Status != "downloading" {
+		t.Errorf("status = %q, want downloading (two records are moving)", got.Status)
+	}
+}
+
+// A queue that refuses the request (a wrong API key answers 401 with a JSON body) is an error
+// the poller sees, not an empty queue that reads as "nothing is downloading".
+func TestArr_QueueStatus_NonSuccessQueueIsAnError(t *testing.T) {
+	stub := newArrStub(t, "movie")
+	stub.lookupID = 42
+	stub.queueHTTPStatus = http.StatusUnauthorized
+	a := arrFor("movie", stub.server.URL, "", "")
+
+	items, err := a.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"},
+	})
+	if err == nil {
+		t.Fatalf("QueueStatus on a 401 queue returned no error, items=%+v", items)
+	}
+	var se *httpx.StatusError
+	if !errors.As(err, &se) || se.Status != http.StatusUnauthorized {
+		t.Errorf("err = %v, want a 401 status error", err)
 	}
 }

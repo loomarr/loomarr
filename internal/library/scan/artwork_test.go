@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // fakeArtwork keeps each title's image file name per kind; fail makes every import fail and
@@ -40,7 +40,7 @@ func (f *fakeArtwork) Art(_ context.Context, itemID, kind, ref string) error {
 // art is each listed title's image of one kind, by name.
 func (h *harness) art(f *fakeArtwork, kind string) map[string]string {
 	h.t.Helper()
-	page, err := h.st.ListLibraryItems(context.Background(), store.LibraryItemQuery{})
+	page, err := h.st.ListLibraryItems(context.Background(), librarystore.LibraryItemQuery{})
 	if err != nil {
 		h.t.Fatal(err)
 	}

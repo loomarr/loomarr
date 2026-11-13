@@ -6,17 +6,19 @@ import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Outlet, redirect, useMatch, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useMatch, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
 import { watchChannelId } from "@/channels/watch-channel-id";
-import { AppShell } from "@/components/loomarr/shell/app-shell";
+import { AppShell, navPaths } from "@/components/loomarr/shell/app-shell";
 import { DemoTour, useDemoTour } from "@/demo/demo-tour";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { HealthNotice } from "@/diagnostics/startup-notice";
 import { LoomarrEventsProvider } from "@/events/events-provider";
+import { runAtIdle } from "@/lib/run-at-idle";
+import { serverVersionLabel } from "@/lib/server-version";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
 import { useNeedsYouCount } from "@/queue/use-requests";
@@ -41,12 +43,12 @@ const AuthedLayout = () => {
   const needsYouCount = useNeedsYouCount();
   // The Library nav badge (#2151 decision 27): the titles Loomarr can't tell what they are — the
   // same number as the Needs you heading. Admin-only, like the Library.
-  const libraryStatus = libraryApi.useLibraryStatus({ query: { enabled: isAdmin, staleTime: 30_000 } });
+  const libraryStatus = libraryApi.useLibraryStatus({ query: { enabled: isAdmin } });
   const libraryNeedsYou = isAdmin ? (unwrap(libraryStatus.data)?.needsYou ?? 0) : 0;
   // Watch's target (#1817 item 3, #1659 Shell, decision X2), shared by the desktop rail and
   // PhoneBottomBar — one fetch, one selector, passed down as a single prop so neither shell
   // derives its own fallback chain.
-  const channels = channelsApi.useListChannels({ query: { staleTime: 30_000 } });
+  const channels = channelsApi.useListChannels();
   const channelList = unwrap(channels.data)?.channels ?? [];
   const viewing = dashboardApi.useHouseholdViewing({
     query: { enabled: channelList.length > 0, staleTime: 30_000 },
@@ -60,10 +62,16 @@ const AuthedLayout = () => {
   // Failure is deliberately quiet: version visibility must never hold the application shell.
   const version = systemApi.useSystemVersion({ query: { retry: false } });
   const versionBody = version.data?.status === 200 ? version.data.data : undefined;
-  const serverVersion = versionBody
-    ? `${versionBody.version}${versionBody.dirty ? " (modified)" : ""}`
-    : undefined;
+  const serverVersion = versionBody ? serverVersionLabel(versionBody) : undefined;
   useEffect(() => clientDiagnostics.setVersion(versionBody?.version), [versionBody?.version]);
+  // After first paint, at idle, warm each main-nav route's code and data one at a time (#3399, 9.6)
+  // so the first click on the rail finds its chunk downloaded.
+  const router = useRouter();
+  const warmNav = router.options.context.warmNavAtIdle === true;
+  useEffect(
+    () => (warmNav ? runAtIdle(navPaths(isAdmin).map((to) => () => router.preloadRoute({ to }))) : undefined),
+    [warmNav, isAdmin, router],
+  );
   useEffect(() => {
     clientDiagnostics.setAuthenticated(true);
     return () => clientDiagnostics.setAuthenticated(false);
@@ -104,17 +112,19 @@ const AuthedLayout = () => {
   );
 };
 
+// no-loader: the session gate reads `me` in beforeLoad; the shell's own reads are not a page's data
 const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
     } catch (err) {
-      // ⚠ **Only a 401 means "signed out".** This used to be a bare `catch {}`, and with
-      // `meQueryOptions` setting retry:false ("a 401 is a definite answer") NOTHING inspected the
-      // status — so a network blip, a 500, a proxy hiccup or this app's own self-restart bounced a
-      // user holding a perfectly valid cookie to /login?redirect=… . That is not an edge case
-      // here: RestartWatchProvider/RestartOverlay are wired into this very layout because the
-      // operator can restart the server from the Dashboard, and every such restart hit this path.
+      // ⚠ **Only a 401 means "signed out".** `meQueryOptions` sets retry:false ("a 401 is a
+      // definite answer"), so this guard is the only place the status is inspected: a network
+      // blip, a 500, a proxy hiccup or this app's own self-restart must surface as the failure it
+      // is, not bounce a user holding a valid cookie to /login?redirect=… . That is not an edge
+      // case here: RestartWatchProvider/RestartOverlay are wired into this very layout because the
+      // operator can restart the server from the Dashboard, and every such restart passes through
+      // this guard.
       //
       // A non-401 is rethrown so it surfaces as the failure it is — the restart overlay and the
       // error boundary exist to handle exactly that, and neither can if the guard has already

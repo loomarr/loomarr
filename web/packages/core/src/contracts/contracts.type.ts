@@ -1,6 +1,6 @@
-// FE-only view models with NO 1:1 API equivalent. Everything that used to mirror a DTO
-// here (Clip, the proposal shapes, media/state enums) now uses the orval-generated type
-// from @loomarr/api directly (§12) — mirroring a generated type is drift-risk for no gain
+// FE-only view models with NO 1:1 API equivalent. Anything that has a DTO (Clip, the
+// proposal shapes, media/state enums) uses the orval-generated type from @loomarr/api
+// directly (§12), not a mirror here — mirroring a generated type is drift-risk for no gain
 // (packages/api runs on RN too, §4.2).
 //
 // The ⌘K palette merges API search candidates + local channels + help links into one

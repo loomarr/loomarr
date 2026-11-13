@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/platform/store/storedb"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ProposalApproval is the complete durable consequence of one approval decision.
@@ -313,11 +313,10 @@ func validateApprovalChannel(p Proposal, ch Channel) error {
 	if err := ch.Validate(); err != nil {
 		return fmt.Errorf("invalid channel: %w", err)
 	}
-	if err := ch.Policy.Validate(); err != nil {
-		return fmt.Errorf("invalid channel policy: %w", err)
-	}
-	if ch.IntentRef == "" {
-		return fmt.Errorf("channel %s has no intent ref", ch.ID)
+	// The policy is checked inside the transaction (validateApprovalBinding), against the policy the
+	// channel already stores: a rule an older writer allowed is kept, not re-judged.
+	if !ch.FromRequest {
+		return fmt.Errorf("channel %s was not made from a request", ch.ID)
 	}
 	return nil
 }
@@ -334,10 +333,16 @@ func (s *sqlStore) validateApprovalBinding(ctx context.Context, q channelstore.D
 			// reloads and replans, exactly as for a lost uniqueness race.
 			return fmt.Errorf("%w: proposal job %q belongs to channel %s, not %s", ErrChannelConflict, p.JobID, bound.ID, ch.ID)
 		}
+		if err := ch.Policy.ValidateKeeping(bound.Policy); err != nil {
+			return fmt.Errorf("invalid channel policy: %w", err)
+		}
 		return nil
 	case errors.Is(err, ErrNotFound):
 		if ch.IntentRef != p.JobID {
 			return fmt.Errorf("new channel %s intent ref %q does not match proposal job %q", ch.ID, ch.IntentRef, p.JobID)
+		}
+		if err := ch.Policy.Validate(); err != nil {
+			return fmt.Errorf("invalid channel policy: %w", err)
 		}
 		return nil
 	default:

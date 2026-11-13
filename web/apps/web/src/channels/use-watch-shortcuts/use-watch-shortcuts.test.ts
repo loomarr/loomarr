@@ -14,7 +14,7 @@ describe("useWatchShortcuts", () => {
 
   const setup = (overrides: Partial<Props> = {}) => {
     const onTune = vi.fn();
-    const initialProps: Props = { hasInfo: true, channels, onTune, viewerPaused: false, ...overrides };
+    const initialProps: Props = { channels, onTune, viewerPaused: false, ...overrides };
     const hook = renderHook((p: Props) => useWatchShortcuts(p), { initialProps });
     const press = (key: string) => {
       let handled = false;
@@ -26,23 +26,61 @@ describe("useWatchShortcuts", () => {
     return { hook, onTune, press, initialProps };
   };
 
-  it("opens and closes Info on I, and Channels on G", () => {
-    const { hook, press } = setup();
+  it("toggles Playback details on I, and opens Channels on G", () => {
+    const onDetails = vi.fn();
+    const { hook, press } = setup({ onDetails });
     expect(press("i")).toBe(true);
-    expect(hook.result.current.sheet).toBe("info");
     expect(press("I")).toBe(true);
-    expect(hook.result.current.sheet).toBeUndefined();
+    expect(onDetails).toHaveBeenCalledTimes(2);
     expect(press("g")).toBe(true);
     expect(hook.result.current.sheet).toBe("channels");
     expect(press("Escape")).toBe(true);
     expect(hook.result.current.sheet).toBeUndefined();
   });
 
+  it("opens Audio on A, goes to the last channel on L", () => {
+    const onLast = vi.fn();
+    const { hook, press } = setup({ onLast });
+    expect(press("a")).toBe(true);
+    expect(hook.result.current.sheet).toBe("audio");
+    expect(press("A")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+    expect(press("l")).toBe(true);
+    expect(onLast).toHaveBeenCalledTimes(1);
+  });
+
+  it("steps the subtitles on C, and leaves C to the player while there is nothing to step", () => {
+    const onNextSubtitles = vi.fn();
+    expect(setup({ onNextSubtitles }).press("c")).toBe(true);
+    expect(onNextSubtitles).toHaveBeenCalledTimes(1);
+    expect(setup({ channels: undefined }).press("C")).toBe(false);
+  });
+
+  it("toggles Playback details as a sheet on a phone, where there is no panel", () => {
+    const { hook, press } = setup({ detailsAsSheet: true });
+    expect(press("i")).toBe(true);
+    expect(hook.result.current.sheet).toBe("details");
+    expect(press("I")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+  });
+
+  it("closes the open sheet on Escape, and leaves only when nothing is open", () => {
+    const onLeave = vi.fn();
+    const { hook, press } = setup({ onLeave });
+    press("g");
+    expect(press("Escape")).toBe(true);
+    expect(hook.result.current.sheet).toBeUndefined();
+    expect(onLeave).not.toHaveBeenCalled();
+    expect(press("Escape")).toBe(true);
+    expect(onLeave).toHaveBeenCalledTimes(1);
+  });
+
   it("leaves keys it has nothing for to the player", () => {
-    const { press } = setup({ hasInfo: false, channels: undefined });
+    const { press } = setup({ channels: undefined });
     expect(press("i")).toBe(false);
     expect(press("g")).toBe(false);
     expect(press("7")).toBe(false);
+    expect(press("l")).toBe(false);
     expect(press("Escape")).toBe(false);
   });
 
@@ -55,15 +93,16 @@ describe("useWatchShortcuts", () => {
 
   it("closes Info by itself while the channel plays, but not while paused", () => {
     vi.useFakeTimers();
-    const { hook, press, initialProps } = setup();
-    press("i");
+    const { hook, initialProps } = setup();
+    const open = () => act(() => hook.result.current.toggleSheet("info"));
+    open();
     act(() => vi.advanceTimersByTime(7_999));
     expect(hook.result.current.sheet).toBe("info");
     act(() => vi.advanceTimersByTime(1));
     expect(hook.result.current.sheet).toBeUndefined();
 
     hook.rerender({ ...initialProps, viewerPaused: true });
-    press("i");
+    open();
     act(() => vi.advanceTimersByTime(60_000));
     expect(hook.result.current.sheet).toBe("info");
   });
@@ -73,7 +112,7 @@ describe("useWatchShortcuts", () => {
     document.body.append(opener);
     opener.focus();
     const { hook } = setup();
-    act(() => hook.result.current.toggleSheet("settings"));
+    act(() => hook.result.current.toggleSheet("more"));
     document.body.focus();
     act(() => hook.result.current.closeSheet());
     expect(opener).toHaveFocus();

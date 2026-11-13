@@ -11,11 +11,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // artFileMax bounds an artwork file read from a share. A real one is a few hundred KB to a few MB
@@ -58,7 +58,7 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 		return fmt.Errorf("library artwork: %q is not an imported kind", kind)
 	}
 	if ref == "" {
-		return p.refs.DeleteImageRefsByRole(ctx, store.LibraryItemImageOwner, itemID, string(role))
+		return p.refs.DeleteImageRefsByRole(ctx, librarystore.LibraryItemImageOwner, itemID, string(role))
 	}
 	var (
 		rec images.Image
@@ -75,11 +75,11 @@ func (p libraryArtwork) Art(ctx context.Context, itemID, kind, ref string) error
 	if err != nil {
 		return err
 	}
-	if err := p.refs.DeleteImageRefsByRole(ctx, store.LibraryItemImageOwner, itemID, string(role)); err != nil {
+	if err := p.refs.DeleteImageRefsByRole(ctx, librarystore.LibraryItemImageOwner, itemID, string(role)); err != nil {
 		return err
 	}
 	return p.refs.PutImageRef(ctx, clipstore.ImageRef{
-		ImageHash: rec.Hash, OwnerKind: store.LibraryItemImageOwner, OwnerID: itemID, Role: string(role),
+		ImageHash: rec.Hash, OwnerKind: librarystore.LibraryItemImageOwner, OwnerID: itemID, Role: string(role),
 	})
 }
 

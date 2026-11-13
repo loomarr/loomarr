@@ -74,7 +74,7 @@ const CopyAction = ({ onCopy }: { onCopy: () => Promise<void> }) => {
   };
   return (
     <Stack gap="inline">
-      <Action disabled={state === "copying" || state === "copied"} onPress={copy} variant="secondary">
+      <Action disabled={state === "copying" || state === "copied"} onPress={copy} variant="outline">
         {state === "copied" ? "Copied — it's under Yours" : "Make my own copy"}
       </Action>
       {state === "failed" ? (
@@ -124,11 +124,7 @@ const LibraryCollections = ({ collections, sets, onNew, onEdit, onCopy }: Librar
           {collections.map((c) => (
             <Card
               action={
-                <Action
-                  accessibilityLabel={`Edit ${c.name}`}
-                  onPress={() => onEdit(c.id)}
-                  variant="secondary"
-                >
+                <Action accessibilityLabel={`Edit ${c.name}`} onPress={() => onEdit(c.id)} variant="outline">
                   Edit
                 </Action>
               }

@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 type nameGroundingResult struct {
@@ -73,19 +72,14 @@ func (s *Suggester) groundPickNames(
 	}
 
 	results := make([]nameGroundingResult, len(queries))
-	var wg sync.WaitGroup
-	for index, query := range queries {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			candidates, err := s.catalog.Search(ctx, query.name, titlesearch.ScopeAll, catalogSearchLimit)
-			if err != nil {
-				err = fmt.Errorf("ground proposed title %q: %w", query.name, err)
-			}
-			results[index] = nameGroundingResult{query: query, candidates: candidates, err: err}
-		}()
-	}
-	wg.Wait()
+	forEachBounded(len(queries), func(index int) {
+		query := queries[index]
+		candidates, err := s.catalog.Search(ctx, query.name, titlesearch.ScopeAll, catalogSearchLimit)
+		if err != nil {
+			err = fmt.Errorf("ground proposed title %q: %w", query.name, err)
+		}
+		results[index] = nameGroundingResult{query: query, candidates: candidates, err: err}
+	})
 
 	grounded := make([]pick, 0, len(results))
 	groundedKeys := make(map[provision.Key]bool)

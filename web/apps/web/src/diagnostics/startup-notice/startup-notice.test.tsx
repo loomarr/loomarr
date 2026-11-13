@@ -20,9 +20,14 @@ const mocks = vi.hoisted(() => ({
       "error-toast",
   ),
   dismiss: vi.fn(),
+  location: { pathname: "/settings" },
 }));
 
-vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }));
+vi.mock("@tanstack/react-router", () => ({
+  useLocation: (options?: { select?: (location: { pathname: string }) => unknown }) =>
+    options?.select ? options.select(mocks.location) : mocks.location,
+  useNavigate: () => mocks.navigate,
+}));
 vi.mock("sonner", () => ({
   toast: { success: mocks.success, warning: mocks.warning, error: mocks.error, dismiss: mocks.dismiss },
 }));
@@ -63,8 +68,21 @@ const renderNotice = (enabled = true) => {
 };
 
 describe("HealthNotice", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    mocks.location.pathname = "/settings";
+  });
   afterEach(() => vi.clearAllMocks());
+
+  // #2750: Home's status strip already shows the incident, so the toast would only sit over its cards.
+  it("raises no toast on Home, and leaves the incident unacknowledged for the next page", async () => {
+    mocks.location.pathname = "/";
+    server.use(getGetCurrentHealthMockHandler(report("degraded")));
+    renderNotice();
+    await waitFor(() => expect(localStorage.getItem("loomarr.health.sequence.startup-1")).toBe("1"));
+    expect(mocks.warning).not.toHaveBeenCalled();
+    expect(localStorage.getItem("loomarr.health.ack.startup-1:1:degraded:media_server:warning")).toBeNull();
+  });
 
   it("keeps an initially healthy shell silent", async () => {
     server.use(getGetCurrentHealthMockHandler(report("healthy")));

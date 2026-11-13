@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/people/notifications"
+	"github.com/loomarr/loomarr/internal/platform/currenthealth"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/settings"
@@ -167,7 +168,7 @@ func buildHandler(
 	// One household calendar (#2030): the channel engine, the on-screen logo and the commercial
 	// breaks date holidays alike.
 	calendar := householdCalendar(set, foundation.holidays, log)
-	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
+	watermarks := newChannelWatermarks(owner, st, set, calendar, foundation.diagnostics, log)
 
 	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
@@ -208,12 +209,12 @@ func buildHandler(
 	offerCuratedSources(rootCtx, st, log)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	// Not a setup connection test: the public address is checked only as a health fact.
-	healthProbes[diagnostics.StartupCheckPublicURL] = publicURLProbe(set, &http.Client{Timeout: startupIntegrationTimeout})
-	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
-	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
+	healthProbes[diagnostics.StartupCheckPublicURL] = currenthealth.PublicURLProbe(set, &http.Client{Timeout: currenthealth.IntegrationTimeout})
+	currenthealth.CompleteStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
+	healthRunner := currenthealth.NewRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())
 	foundation.startup.Complete(diagnostics.StartupCheckScheduledTasks, diagnostics.StartupSkipped,
-		"checked by Current Health once the scheduler is running", scheduledTasksRoute, "")
+		"checked by Current Health once the scheduler is running", currenthealth.ScheduledTasksRoute, "")
 
 	operations, err := buildOperations(
 		rootCtx, st, set, desiredSet, secrets, readGeneratedSecret, refreshSecretRedactor,
@@ -225,7 +226,7 @@ func buildHandler(
 		return nil, nil, nil, err
 	}
 	if operations.scheduler != nil {
-		healthRunner.watchTasks(operations.scheduler)
+		healthRunner.WatchTasks(operations.scheduler)
 	}
 	emitter.setNotifications(operations.productNotifications)
 	if playoutRes != nil {
@@ -233,7 +234,7 @@ func buildHandler(
 	}
 
 	handler := buildHTTP(httpBuild{
-		rootCtx: rootCtx, store: st, log: log, overrides: ov, foundation: foundation,
+		rootCtx: rootCtx, owner: owner, store: st, log: log, overrides: ov, foundation: foundation,
 		channels: channelsBuilt, approval: approval, suggestions: suggestions, fillers: fillers,
 		auth: operations.auth, backups: operations.backups, watermarks: watermarks,
 		restart: operations.restart, bootConfig: operations.bootConfig,
@@ -245,11 +246,11 @@ func buildHandler(
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
 		library: buildLibrary(st, foundation.set, libraryBuild{
-			lib: libraryClient, budget: channelsBuilt.resourceBudget,
+			lib: libraryClient, watched: channelsBuilt.watched,
 			ffmpegPath: settings.PlayoutFFmpegPath.Get(foundation.set), processes: foundation.processDiagnostics,
 			images:     suggestions.images,
 			hookSecret: secrets.ArrWebhookSecret(), notify: libraryNotifierOf(operations.productNotifications),
-			tmdb: tmdbClient, log: log, owner: owner,
+			tmdb: tmdbClient, frames: emitter, log: log, owner: owner,
 		}),
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only

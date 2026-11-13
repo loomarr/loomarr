@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -180,7 +180,7 @@ func TestCatalogSearch_InLibraryOrderedFirst(t *testing.T) {
 func TestCatalogSearch_AllScopeKeepsOutsideLibraryDiscoveryWhenLibraryFillsLimit(t *testing.T) {
 	titles := make(libraryTitlesFake, 24)
 	for i := range titles {
-		titles[i] = store.LibraryTitle{
+		titles[i] = librarystore.LibraryTitle{
 			ID: fmt.Sprintf("owned-%02d", i), Kind: "movie", Name: fmt.Sprintf("Archive Pick %02d", i),
 			IDs: tmdbIDs(strconv.Itoa(90_010_000 + i)),
 		}
@@ -299,8 +299,8 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 // the merge with the same title's TMDB row, which has no size (#1817). It is display
 // metadata from the response already in hand: no lookup is added to read it.
 func TestCatalogSearch_CarriesLibrarySizeThroughMerge(t *testing.T) {
-	lib := &catalogfixture.Library{Results: []library.SearchResult{{
-		LibraryItemID: "lib-90000603", Name: "Marigold Protocol", Year: 1999, MediaType: library.Movie,
+	lib := &catalogfixture.Library{Results: []mediaserver.SearchResult{{
+		LibraryItemID: "lib-90000603", Name: "Marigold Protocol", Year: 1999, MediaType: mediaserver.Movie,
 		TMDBID: 90000603, SizeBytes: 21_914_038_799,
 	}}}
 	corpus := &catalogfixture.Corpus{Candidates: []titlesearch.Candidate{{

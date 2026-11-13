@@ -11,9 +11,9 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/ideas"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Home's Channel ideas (#1665): channels the household's own library could make, built without
@@ -99,7 +99,7 @@ type channelIdeaDTO struct {
 	// Titles is Keys again, but with the name/year/library-presence a picker needs to show
 	// each one individually — the manual/AI-off builder's facet chips (#1817, G2) let a person
 	// add titles from a facet one at a time, which a bare key can't render. Same data
-	// `request-channel-idea` already turns into a Proposal's lineup (ideaLineup below); this
+	// `request-channel-idea` already turns into a Proposal's lineup (IdeaLineup below); this
 	// DTO just also exposes it for display before that request happens.
 	Titles     []proposals.ProposalItem `json:"titles" doc:"Keys, with display fields, in the same order"`
 	Movies     int                      `json:"movies"`
@@ -246,7 +246,7 @@ func (s *Handlers) requestChannelIdea(ctx context.Context, in *channelIdeaInput)
 		}
 		name, pitch := ideas.Describe(idea, labels[idea.Reason.HolidayID])
 		built := proposals.Proposal{
-			ChannelName: name, FromIdea: idea.ID, Lineup: ideaLineup(idea.Titles), Rationale: pitch,
+			ChannelName: name, FromIdea: idea.ID, Lineup: IdeaLineup(idea.Titles), Rationale: pitch,
 			// Every title is already in the library: nothing to download.
 			Scores: proposals.Scores{AvailabilityRatio: 1},
 		}
@@ -265,7 +265,7 @@ func (s *Handlers) requestChannelIdea(ctx context.Context, in *channelIdeaInput)
 type submitManualChannelBody struct {
 	Name        string                   `json:"name" maxLength:"200" doc:"The channel's name, as the person typed it or the chosen starter template filled it"`
 	Description string                   `json:"description,omitempty" maxLength:"2000" doc:"A one-line reason, shown on the review card where the LLM's rationale would otherwise go"`
-	Lineup      []proposals.ProposalItem `json:"lineup" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
+	Lineup      []proposals.ProposalItem `json:"lineup" maxItems:"1000" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
 }
 
 type submitManualChannelInput struct {
@@ -315,9 +315,9 @@ func (s *Handlers) submitManualChannel(ctx context.Context, in *submitManualChan
 	return out, nil
 }
 
-// ideaLineup turns an idea's library titles into proposal items, in the idea's order (newest
+// IdeaLineup turns an idea's library titles into proposal items, in the idea's order (newest
 // first). Each carries the id its key names, which is what grounds it for the approval gate.
-func ideaLineup(titles []ideas.Item) []proposals.ProposalItem {
+func IdeaLineup(titles []ideas.Item) []proposals.ProposalItem {
 	out := make([]proposals.ProposalItem, 0, len(titles))
 	for _, it := range titles {
 		if len(it.Keys) == 0 {
@@ -370,7 +370,7 @@ func channelIdeaToDTO(idea ideas.Idea, holidayLabels map[string]string) channelI
 	name, pitch := ideas.Describe(idea, holidayLabels[idea.Reason.HolidayID])
 	return channelIdeaDTO{
 		ID: idea.ID, Name: name, Pitch: pitch, Facet: string(idea.Facet), Value: idea.Value, Reason: reason, Keys: keys,
-		Titles: ideaLineup(idea.Titles), Movies: idea.Movies, Series: idea.Series, InLibrary: idea.Movies + idea.Series,
+		Titles: IdeaLineup(idea.Titles), Movies: idea.Movies, Series: idea.Series, InLibrary: idea.Movies + idea.Series,
 	}
 }
 

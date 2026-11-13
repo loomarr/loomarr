@@ -12,12 +12,11 @@ package playoutresolve
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
+
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,14 +27,14 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/encode"
 	"github.com/loomarr/loomarr/internal/media/measure"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // CyclePreviewer is the scheduling surface the resolver needs — satisfied by *channels.Engine.
@@ -169,9 +168,13 @@ type Resolver struct {
 	// libraryVideo is a Library item's video format as the scanner read it, for lineup formats and
 	// still tone mapping; nil, or any other id, reads the inventory.
 	libraryVideo LibraryVideoReader
+	// librarySubtitles and subtitleCues serve a channel's soft subtitles (#2088 decision 5); nil
+	// until SetSubtitles, which leaves every window empty.
+	librarySubtitles LibrarySubtitleReader
+	subtitleCues     SubtitleCues
 	// itemFacts answers the guide's metadata for a library item id from the Library's tables; nil
 	// leaves the guide without descriptions, and any other id has none.
-	itemFacts store.LibraryItemFactsReader
+	itemFacts librarystore.LibraryItemFactsReader
 	// probeTracks lists a source's audio AND subtitle tracks for the Watch pickers (§9.1, V46) —
 	// the options come from the airing media, not a list. Nil ⇒ empty tracks, so the pickers show
 	// only the current channel default rather than blocking.
@@ -202,7 +205,7 @@ type Resolver struct {
 	inputsOnce     sync.Once
 	detectReady    atomic.Bool
 	detectedMu     sync.RWMutex
-	detectContext  context.Context
+	goDetect       func(func(context.Context)) bool
 	detected       encode.Encoder
 	maxChannels    atomic.Int64
 	// encodeHostBytes is the capability probe's measured per-encode host memory (0 = unmeasured).
@@ -237,8 +240,10 @@ type Config struct {
 	Now func() time.Time
 	// Metrics receives the filler rotation counters.
 	Metrics *metrics.Recorder
-	// DetectContext bounds the background encoder detection; it is the application's lifetime.
-	DetectContext context.Context
+	// GoDetect starts the background encoder detection as work its owner joins at shutdown, on a
+	// context the owner cancels then; it reports false, and starts nothing, once the owner is
+	// closing. Nil runs it unowned on the requesting context, detached from its cancellation.
+	GoDetect func(run func(context.Context)) bool
 	// Titles resolves a block's acquisition record for the grid's provenance line.
 	Titles TitleReader
 	// ClipPlays counts a filler clip having aired (V28).
@@ -256,7 +261,7 @@ type Config struct {
 	// LibraryVideo is a Library item's video format as the scanner read it.
 	LibraryVideo LibraryVideoReader
 	// ItemFacts answers the guide's metadata for a library item id.
-	ItemFacts store.LibraryItemFactsReader
+	ItemFacts librarystore.LibraryItemFactsReader
 
 	// Tier, Encoder and ToneCurve read playout.quality_tier, playout.encoder and
 	// playout.tone_curve live.
@@ -291,7 +296,7 @@ func New(cfg Config) *Resolver {
 	return &Resolver{
 		engine: cfg.Engine, now: cfg.Now,
 		metrics:            cfg.Metrics,
-		detectContext:      cfg.DetectContext,
+		goDetect:           cfg.GoDetect,
 		titles:             cfg.Titles,
 		clipPlays:          cfg.ClipPlays,
 		airings:            cfg.Airings,
@@ -400,15 +405,21 @@ func (r *Resolver) AiringAt(ctx context.Context, channelID string, now time.Time
 
 	// Resolve the input ffmpeg reads: the library item's file, directly. This is where direct play
 	// begins — reading the file lets the encoder `-c copy` it.
-	input := r.itemInput(ctx, airing.LibraryItemID)
-	if input == "" {
+	input := r.programmeInput(ctx, airing.LibraryItemID, airing.Offset)
+	if input.Path == "" {
 		// The lineup names an item whose file is gone or unreadable, or an id the Library does
 		// not hold. Reporting it as "nothing airing" rather than an error means the channel shows
 		// the offline card instead of failing to tune — the same outcome the viewer would get
 		// from an error, minus the retry storm.
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
-	return airing, input, nil
+	// A movie in parts airs a part at a time: the encode ends where the part does, and the
+	// packager, asking again there, gets the next part from its start.
+	airing.PartStart = input.Start
+	if input.End > 0 {
+		airing.Remaining = min(airing.Remaining, input.End-airing.Offset)
+	}
+	return airing, input.Path, nil
 }
 
 // servedWriteTimeout bounds the airing-history write RecordAiringServed makes after its caller's
@@ -491,12 +502,12 @@ func (r *Resolver) StillAiring(ctx context.Context, channelID string) (playout.S
 		Offset: airing.Offset,
 		At:     airing.StartedAt,
 		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
-			input := r.itemInput(ctx, itemID)
-			if input == "" {
+			input := r.programmeInput(ctx, itemID, airing.Offset)
+			if input.Path == "" {
 				return playout.StillSource{}, false, nil
 			}
-			source := playout.StillSource{Input: input, HDR: r.inventoryHDR(ctx, itemID)}
-			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, input, airing.Offset)
+			source := playout.StillSource{Input: input.Path, HDR: r.inventoryHDR(ctx, itemID), PartStart: input.Start}
+			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, input.Path, airing.Offset-input.Start)
 			return source, true, nil
 		},
 	}, true, nil
@@ -595,552 +606,6 @@ func (r *Resolver) airingCycle(ctx context.Context, ch channelstore.Channel, at 
 	}
 	c.slots, c.epoch = slots, turnEpoch
 	return c, nil
-}
-
-// ComputeChannelCodec derives the channel's uniform BROADCAST CODEC (§9.1 V50) from its library
-// content: it samples the channel's program slots, probes each file's video codec, and takes the
-// MAJORITY (Q2). The result is what the timeline normalizes to — the show that already matches
-// copies, everything else (minority-codec titles, all filler) transcodes to match — which is what
-// keeps the stream single-codec and therefore HEVC-fMP4-legal.
-//
-// Called at CURATION (after a bind writes the lineup), not on the play hot path: the codec is
-// stored (Q1) so the session start reads a column, not a probe. It reuses the SAME resolve+probe
-// path AiringNow uses (CyclePreview → itemInput → probeFormat), so the codec we store is
-// measured from the very files we broadcast — it cannot drift from what actually plays.
-//
-// Returns BroadcastCodecH264 as the safe answer whenever it cannot measure (no probe wired, no
-// resolvable files, an empty/all-pending lineup): h264/TS plays on every client, so an
-// un-measurable channel stays maximally compatible rather than guessing HEVC. Ties break to h264
-// for the same reason — a 50/50 channel is not clearly HEVC-dominant.
-//
-// If r.codecs is wired the measured codec is persisted; the measured value is returned either way.
-func (r *Resolver) ComputeChannelCodec(ctx context.Context, channelID string) (string, error) {
-	if r.codecs == nil {
-		return r.measureChannelCodec(ctx, channelID), nil
-	}
-	if r.channels == nil {
-		return channelstore.BroadcastCodecH264, errors.New("persist broadcast codec: channel reader is not configured")
-	}
-
-	// Measuring spans cycle construction, library resolution, and several probes. A lineup can
-	// change during that window, so the derived codec is only valid when the channel revision is
-	// unchanged on both sides of the measurement. The targeted write uses that same revision and
-	// advances it, preventing either a stale probe or a full-row writer from overwriting the other.
-	const maxCodecWriteAttempts = 4
-	codec := channelstore.BroadcastCodecH264
-	for attempt := 0; attempt < maxCodecWriteAttempts; attempt++ {
-		before, err := r.channels.GetChannel(ctx, channelID)
-		if err != nil {
-			return codec, fmt.Errorf("read channel %s before codec measurement: %w", channelID, err)
-		}
-		codec = r.measureChannelCodec(ctx, channelID)
-		after, err := r.channels.GetChannel(ctx, channelID)
-		if err != nil {
-			return codec, fmt.Errorf("read channel %s after codec measurement: %w", channelID, err)
-		}
-		if before.Revision != after.Revision {
-			continue
-		}
-		if _, err := r.codecs.SetChannelBroadcastCodec(ctx, channelID, after.Revision, codec); err == nil {
-			return codec, nil
-		} else if !errors.Is(err, channelstore.ErrChannelStale) {
-			return codec, fmt.Errorf("persist broadcast codec for %s: %w", channelID, err)
-		}
-		if err := ctx.Err(); err != nil {
-			return codec, err
-		}
-	}
-	return codec, fmt.Errorf("persist broadcast codec for %s: channel kept changing", channelID)
-}
-
-// ChannelCodec reads the channel's STORED broadcast codec (§9.1 V50) — the hot-path read the play
-// URL and program routing use to decide the served container + the transcode target. It is a plain
-// column read (set at curation by ComputeChannelCodec / backfilled at boot), NOT a probe: the whole
-// point of storing it (Q1) is that a session start costs a row read, not N ffprobes.
-//
-// Defaults to BroadcastCodecH264 on any miss (no channel reader wired, channel not found, or an
-// empty column on an un-backfilled row) — h264/TS is the maximally-compatible fallback, so a
-// lookup failure degrades a channel to "plays everywhere", never to a black screen.
-func (r *Resolver) ChannelCodec(ctx context.Context, channelID string) string {
-	if r.channels == nil {
-		return channelstore.BroadcastCodecH264
-	}
-	ch, err := r.channels.GetChannel(ctx, channelID)
-	if err != nil {
-		if r.log != nil {
-			r.log.Debug("codec: channel read failed; defaulting h264", "channel", channelID, "err", err)
-		}
-		return channelstore.BroadcastCodecH264
-	}
-	if ch.BroadcastCodec == "" {
-		return channelstore.BroadcastCodecH264
-	}
-	return ch.BroadcastCodec
-}
-
-// LineupFormats returns the stream facts of each distinct programme in the channel's cycle, the
-// input to playout.DeriveChannelFormats (#1512 G10). The facts are the scanner's read of each
-// item's playing file, never probed. An item the Library has not read is the zero MediaFormat,
-// which the derivation ignores.
-func (r *Resolver) LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error) {
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	var formats []playout.MediaFormat
-	for _, sl := range slots {
-		// Filler and pending acquisitions are SDR and file-less; only landed programmes can warrant 4K/HDR.
-		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" || seen[sl.LibraryItemID] {
-			continue
-		}
-		seen[sl.LibraryItemID] = true
-		format, _ := r.libraryFormat(ctx, sl.LibraryItemID)
-		formats = append(formats, format)
-	}
-	return formats, nil
-}
-
-// maxCodecProbes bounds how many program files ComputeChannelCodec probes to decide the majority.
-//
-// Curation is a human-triggered action, not a hot loop, but a household lineup can still be scores
-// of titles and each probe is an ffprobe exec (~tens–hundreds of ms). Sampling the first N program
-// slots is enough to establish the majority codec reliably — a channel's library is overwhelmingly
-// one codec in practice, and a genuinely mixed one is decided by the same N-sample majority the
-// full scan would reach. Past N, the tail would only confirm the lead. Bounds the approve latency.
-const maxCodecProbes = 12
-
-// measureChannelCodec is the pure-ish measurement half of ComputeChannelCodec: sample → probe →
-// majority, no persistence. Split out so the storing wrapper stays trivial and the sampling policy
-// (which slots, how many, tiebreak) lives in one place.
-func (r *Resolver) measureChannelCodec(ctx context.Context, channelID string) string {
-	if r.probeFormat == nil {
-		return channelstore.BroadcastCodecH264 // cannot measure → safe default
-	}
-	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
-	if err != nil {
-		if r.log != nil {
-			r.log.Debug("codec: cycle preview failed; defaulting h264", "channel", channelID, "err", err)
-		}
-		return channelstore.BroadcastCodecH264
-	}
-
-	var codecs []string
-	probed := 0
-	for _, sl := range slots {
-		if probed >= maxCodecProbes {
-			break
-		}
-		// Only real, landed PROGRAMS carry a file to probe. Pending acquisitions have no
-		// LibraryItemID yet, and filler/flex are normalized TO the channel codec, not sources of it.
-		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" {
-			continue
-		}
-		input := r.itemInput(ctx, sl.LibraryItemID)
-		if input == "" {
-			continue
-		}
-		fmtInfo, perr := r.probeFormat(ctx, input)
-		if perr != nil {
-			if r.log != nil {
-				r.log.Debug("codec: probe failed; skipping title", "channel", channelID, "item", sl.LibraryItemID, "err", perr)
-			}
-			continue
-		}
-		probed++
-		codecs = append(codecs, fmtInfo.VideoCodec)
-	}
-	return majorityBroadcastCodec(codecs)
-}
-
-// majorityBroadcastCodec turns a sample of probed video-codec strings into the one broadcast codec
-// the channel normalizes to (§9.1 V50 Q2: MAJORITY WINS). Everything non-HEVC counts as h264 —
-// h264/mpeg2/vp9/… all normalize DOWN to h264 — so the vote is strictly HEVC vs. not-HEVC.
-//
-// An even split (including the empty sample: no probes, or an all-pending/filler lineup) breaks to
-// h264, the maximally-compatible choice: h264/TS needs no fMP4 and no HEVC decoder, so a channel
-// that isn't clearly HEVC-dominant stays playable everywhere. Pure + total, so the sampling policy
-// above and this decision are testable in isolation.
-func majorityBroadcastCodec(codecs []string) string {
-	var hevc, other int
-	for _, c := range codecs {
-		if playout.IsHEVCCodec(c) {
-			hevc++
-		} else {
-			other++
-		}
-	}
-	if hevc > other {
-		return channelstore.BroadcastCodecHEVC
-	}
-	return channelstore.BroadcastCodecH264
-}
-
-// BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
-//
-// Deliberately on the SAME type as AiringNow. The rolling window on air reads the SAME cycle as
-// the encoder (airingCycle); only other windows use CyclePreview as a forecast.
-//
-// `at` is the window's START, not `now`. CyclePreview evaluates curation rules at an instant —
-// a rule that switches the channel to horror at 21:00 changes the lineup — and a guide built at
-// `now` would advertise the current rule's lineup for the whole window. Using `from` means the
-// listings reflect what the rules said when the window opened; a window spanning a rule
-// boundary is a known limitation rather than a silent wrong answer (the mid-window portion
-// shows the earlier rule's programmes).
-//
-// cycleAt is CyclePreview with the arranged cycle memoised (cyclecache.go). It is always a
-// FORECAST: the window on air comes from airingCycle, which segmentedBroadcasts reads first.
-//
-// GUIDE PATHS ONLY. AiringNow deliberately does not use this: it is what ffmpeg streams, and
-// §9.1's one-source rule is worth more on the broadcast path than the milliseconds a cache would
-// save there (one channel, once per programme, versus every channel on every grid poll).
-//
-// Degrades to the live computation whenever the cache cannot be trusted: no store, no cache, or
-// a channel that will not load or fingerprint. Every one of those returns the same answer
-// CyclePreview would — only slower — so a cache failure is a performance regression, never a
-// wrong lineup.
-// Returns the arranged slots AND the resolved rolling-window horizon, which segmentedBroadcasts
-// needs to know where the deck rotates. The window is part of the same CyclePreview answer, so
-// carrying it costs nothing and saves the caller re-deriving the rule > channel > default
-// precedence (and getting it subtly different).
-func (r *Resolver) cycleAt(
-	ctx context.Context, channelID string, at time.Time,
-) ([]schedule.Slot, time.Duration, error) {
-	if r.cycles == nil || r.channels == nil {
-		_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, window, err
-	}
-
-	ch, err := r.channels.GetChannel(ctx, channelID)
-	if err != nil {
-		// The engine loads the channel itself and will surface the real error (or succeed, if
-		// this was a transient read) — so fall through rather than failing the row here.
-		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, window, cerr
-	}
-
-	// The key carries what `at` changes about the arrangement (active rule, active holidays; the
-	// rolling-window index is added inside the cache), not the wall-clock — so a navigated window
-	// or a later visit reuses the work. See the cycle cache's header.
-	_, zone := r.engine.RollingWindow(ch.Policy, at)
-	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at, r.engine.Calendar()))
-	if !ok {
-		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
-		return slots, window, cerr
-	}
-
-	if slots, window, hit := r.cycles.get(key, at, zone); hit {
-		return slots, window, nil
-	}
-
-	_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
-	if err != nil {
-		return nil, 0, err
-	}
-	r.cycles.put(key, at, zone, slots, window)
-	return slots, window, nil
-}
-
-// maxGuideSegments bounds how many rolling windows one guide request will re-resolve.
-//
-// The FE offers a 7-day forward span (RETENTION_DAYS + FORWARD_DAYS) against a 24h default
-// window, so 8 covers the whole picker with a segment to spare. The cap is a backstop against a
-// pathological window (a channel configured to a one-minute horizon must not turn one guide
-// request into thousands of arrangements), not an expected limit: past it the tail of the span
-// keeps the last segment's cycle.
-const maxGuideSegments = 8
-
-// segmentedBroadcasts walks [from, to) one ROLLING WINDOW at a time, re-resolving the channel's
-// cycle at each turn, and concatenates the results. The window on air is the encoder's own
-// (airingCycle). With carry-over (#1675) a window turns where the programme crossing its boundary
-// ends, not on the boundary itself (carryOverLegs).
-//
-// # Why this exists
-//
-// The scheduler ROTATES: windowSliceDealt advances its start by the window index, so day 0 airs one
-// slice of the deck and day 1 continues where it left off (§6.5, "over a full cycle every program
-// airs"). Reconciliation commits that rotation into Desired at the new window; AiringNow reads the
-// accepted value. A multi-day guide still has to forecast the later windows: resolving ONE cycle
-// at `from` and looping it across the whole requested span would advertise a rotation that will
-// never happen.
-//
-// Measured on a 27-title channel at the same instant 24h out: the guide advertised RoboCop / The
-// Running Man / The Empire Strikes Back while the scheduler would arrange Lethal Weapon / Lethal
-// Weapon 2 / Akira. Not merely under-reporting variety — a wrong EPG.
-//
-// (The XMLTV document escaped this: it publishes a 24h window, which is one rotation step, so it
-// was right by construction. Loomarr's own grid queries up to 7 days, which is where it showed.)
-//
-// # Why here and not inside playout.BroadcastsBetween
-//
-// That walk is SHARED with the encoder and is deliberately a pure function of one slot list — it
-// is what guarantees the grid and the encoder cannot disagree about what is on at 21:00. Teaching
-// it to re-resolve would give it a dependency on the engine and put the invariant at risk. The
-// segmentation belongs to the caller that spans multiple windows; each segment still goes through
-// the identical shared walk.
-//
-// A window of 0 (WindowFull / unbounded) means the deck never rotates, so one segment is the
-// whole answer.
-func (r *Resolver) segmentedBroadcasts(
-	ctx context.Context, channelID string, from, to time.Time,
-	project func(slots []schedule.Slot, epoch, segFrom, segTo time.Time) []playout.Broadcast,
-) ([]playout.Broadcast, error) {
-	if r.channels == nil {
-		return nil, errors.New("read channel playout anchor: channel reader is not configured")
-	}
-	ch, err := r.channels.GetChannel(ctx, channelID)
-	if err != nil {
-		return nil, fmt.Errorf("read channel playout anchor %s: %w", channelID, err)
-	}
-	// Reconcile stamps the anchor when the channel's first playable deck goes live, so a channel
-	// that has never been live has no timeline yet: an empty row, not corrupt state (#1630, which
-	// logged a failure for it on every guide read). Live and drifted keep the refusal below.
-	if ch.PlayoutAnchor.IsZero() && ch.Status != schedule.StatusLive && ch.Status != schedule.StatusDrifted {
-		return nil, nil
-	}
-	live, err := r.airingCycle(ctx, ch, r.now())
-	if err != nil {
-		return nil, err
-	}
-	if live.slots == nil { // nothing accepted yet: forecast the window on air, from its opening
-		now := r.now()
-		if live.slots, _, err = r.cycleAt(ctx, channelID, now); err != nil {
-			return nil, err
-		}
-		if live.carriesOver && live.window > 0 {
-			live.epoch = later(live.epoch, schedule.WindowStart(now, live.window, live.zone))
-		}
-	}
-	// Unbounded window ⇒ no rotation ⇒ nothing to segment.
-	if live.window <= 0 {
-		return project(live.slots, live.epoch, from, to), nil
-	}
-
-	var legs []guideLeg
-	if live.carriesOver {
-		legs = r.carryOverLegs(ctx, channelID, live, from, to)
-	} else {
-		legs = r.fixedAnchorLegs(ctx, channelID, live, from, to)
-	}
-	out := make([]playout.Broadcast, 0, 32)
-	for _, leg := range legs {
-		segFrom, segTo := later(from, leg.from), earlier(to, leg.to)
-		if !segTo.After(segFrom) {
-			continue
-		}
-		// Project keeps the true start/stop of a programme crossing the requested viewport.
-		// That is correct at the OUTER Guide edges, but an INTERNAL leg edge changes which
-		// arranged cycle is authoritative. Clip there or the outgoing cycle's tail and the
-		// incoming cycle's head occupy the same wall-clock time. A carry-over edge is a programme
-		// boundary, so the clip is a no-op there; it cuts only where the channel really cuts.
-		clipFrom, clipTo := time.Time{}, time.Time{}
-		if leg.from.After(from) {
-			clipFrom = leg.from
-		}
-		if leg.to.Before(to) {
-			clipTo = leg.to
-		}
-		for _, broadcast := range project(leg.slots, leg.epoch, segFrom, segTo) {
-			if clipped, ok := broadcast.ClipTo(clipFrom, clipTo); ok {
-				out = append(out, clipped)
-			}
-		}
-	}
-	return out, nil
-}
-
-// guideLeg is one stretch of a channel's timeline: `slots` walked from `epoch`, airing over
-// [from, to).
-type guideLeg struct {
-	slots    []schedule.Slot
-	epoch    time.Time
-	from, to time.Time
-}
-
-// carryOverLegs lays out the timeline of a channel whose rolling window turns with carry-over
-// (#1675): the window on air runs until the programme crossing its boundary ends, and each later
-// window is forecast from where the one before it ends, through the same turn rule reconcile
-// commits (playout.CarryOverEnd). No programme is cut at a boundary and none is joined part-way.
-//
-// Windows BEFORE the one on air are no longer in state (each turn moved the anchor), so each is
-// walked from its own opening, the closest estimate of where it began, and the last runs to where
-// the window on air began. The past is a reconstruction either way: it is recomputed from the
-// current lineup, which is why the guide's lookback is bounded.
-//
-// One segment failing must not empty the guide — keep what we have. The grid renders a shorter
-// forecast rather than nothing, the same posture the per-channel failure takes in
-// api.channelGuide.
-func (r *Resolver) carryOverLegs(ctx context.Context, channelID string, live airingCycle, from, to time.Time) []guideLeg {
-	var legs []guideLeg
-	liveOpened := schedule.WindowStart(live.epoch, live.window, live.zone)
-	// A `from` between the live window's opening and its anchor still needs the window before:
-	// that stretch is its carried-over programme.
-	first := schedule.WindowStart(earlier(from, liveOpened.Add(-time.Nanosecond)), live.window, live.zone)
-	for opened := first; from.Before(live.epoch) && opened.Before(liveOpened) && opened.Before(to) && len(legs) < maxGuideSegments; {
-		next := schedule.NextWindowStart(opened, live.window, live.zone)
-		slots, _, err := r.cycleAt(ctx, channelID, opened)
-		if err != nil {
-			break
-		}
-		leg := guideLeg{slots: slots, epoch: opened, from: opened, to: next}
-		if !next.Before(liveOpened) {
-			leg.to = live.epoch
-		}
-		legs = append(legs, leg)
-		opened = next
-	}
-
-	leg := guideLeg{slots: live.slots, epoch: live.epoch, from: live.epoch}
-	for {
-		leg.to = playout.CarryOverEnd(leg.slots, leg.epoch, schedule.NextWindowStart(leg.epoch, live.window, live.zone))
-		legs = append(legs, leg)
-		if !leg.to.Before(to) || len(legs) >= maxGuideSegments {
-			break
-		}
-		slots, _, err := r.cycleAt(ctx, channelID, leg.to)
-		if err != nil {
-			break
-		}
-		leg = guideLeg{slots: slots, epoch: leg.to, from: leg.to}
-	}
-	return legs
-}
-
-// fixedAnchorLegs lays out the timeline of a channel that cannot carry over (Tunarr-backed; see
-// CarriesOver): every rolling window is walked from the channel's one fixed anchor and cut at the
-// window's edges, because that is where the backend swaps the list.
-func (r *Resolver) fixedAnchorLegs(ctx context.Context, channelID string, live airingCycle, from, to time.Time) []guideLeg {
-	var legs []guideLeg
-	onAir := schedule.WindowStart(r.now(), live.window, live.zone)
-	for segFrom := from; segFrom.Before(to) && len(legs) < maxGuideSegments; {
-		next := schedule.NextWindowStart(segFrom, live.window, live.zone)
-		slots := live.slots
-		if !schedule.WindowStart(segFrom, live.window, live.zone).Equal(onAir) {
-			var err error
-			if slots, _, err = r.cycleAt(ctx, channelID, segFrom); err != nil {
-				break
-			}
-		}
-		legs = append(legs, guideLeg{slots: slots, epoch: live.epoch, from: segFrom, to: next})
-		segFrom = next
-	}
-	return legs
-}
-
-func later(a, b time.Time) time.Time {
-	if a.After(b) {
-		return a
-	}
-	return b
-}
-
-func earlier(a, b time.Time) time.Time {
-	if a.Before(b) {
-		return a
-	}
-	return b
-}
-
-func (r *Resolver) BroadcastsBetween(
-	ctx context.Context, channelID string, from, to time.Time,
-) ([]playout.Broadcast, error) {
-	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsBetween)
-	if err != nil {
-		return nil, err
-	}
-	r.attachMetadata(ctx, bs)
-	return bs, nil
-}
-
-// BroadcastsWithPending is BroadcastsBetween plus pending acquisitions, for the time grid
-// (V13b). Same CyclePreview, same epoch, same arithmetic — only the projection differs, so the
-// grid cannot disagree with the encoder about what airs when.
-func (r *Resolver) BroadcastsWithPending(
-	ctx context.Context, channelID string, from, to time.Time,
-) ([]playout.Broadcast, error) {
-	bs, err := r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsWithPending)
-	if err != nil {
-		return nil, err
-	}
-	r.attachMetadata(ctx, bs)
-	r.attachProvenance(ctx, bs)
-	return bs, nil
-}
-
-// attachProvenance fills in each block's one-line "why is this here" (§12 hover card).
-//
-// Only for the GRID, never the XMLTV guide: an EPG lists what is on, and "acquiring · 62%" is
-// an operator's answer, not a viewer's listing. That split is why this is a separate pass
-// rather than part of attachMetadata.
-//
-// BEST-EFFORT, like the metadata pass: a store hiccup leaves the blocks exactly as they were.
-// A hover card missing one line is far better than a guide that fails to load.
-func (r *Resolver) attachProvenance(ctx context.Context, bs []playout.Broadcast) {
-	if r.titles == nil || len(bs) == 0 {
-		return
-	}
-	now := r.now()
-	// One lookup per DISTINCT key: a channel airing six episodes of one series shares a
-	// single acquisition record, so keying the cache on the provisioning key collapses those
-	// to one read.
-	cache := map[provision.Key]string{}
-	for i := range bs {
-		k := bs[i].Key
-		if k == "" {
-			continue // filler/flex have no acquisition to describe
-		}
-		if p, ok := cache[k]; ok {
-			bs[i].Provenance = p
-			continue
-		}
-		rec, err := r.titles.GetTitle(ctx, k)
-		if err != nil {
-			cache[k] = "" // remember the miss too, so one bad key is not re-read per block
-			continue
-		}
-		p := provenanceOf(rec, now)
-		cache[k] = p
-		bs[i].Provenance = p
-	}
-}
-
-// attachMetadata fills in descriptions, genres, years and ratings from the Library's tables, in
-// ONE read for the whole channel (#2151 step 16).
-//
-// BEST-EFFORT BY DESIGN. A failure leaves the broadcasts exactly as they were — titles and times
-// intact — because a guide with thin entries is far better than no guide.
-func (r *Resolver) attachMetadata(ctx context.Context, bs []playout.Broadcast) {
-	if r.itemFacts == nil || len(bs) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(bs))
-	for _, b := range bs {
-		if b.LibraryItemID != "" {
-			ids = append(ids, b.LibraryItemID)
-		}
-	}
-	if len(ids) == 0 {
-		return
-	}
-
-	meta, err := ItemMetadata{Facts: r.itemFacts}.ItemMetadataByID(ctx, ids)
-	if err != nil && r.log != nil {
-		// Logged, not returned: the partial map is still applied below, so a failing read does
-		// not cost the whole document its descriptions.
-		r.log.Debug("playout: guide metadata partially unavailable",
-			"err", err, "resolved", len(meta), "wanted", len(ids))
-	}
-	for i := range bs {
-		m, ok := meta[bs[i].LibraryItemID]
-		if !ok {
-			continue // removed from the library since the lineup was built; keep the title
-		}
-		bs[i].Description = m.Overview
-		bs[i].Genres = m.Genres
-		bs[i].Year = m.Year
-		bs[i].Rating = m.OfficialRating
-		bs[i].RuntimeMs = m.RuntimeMs
-	}
 }
 
 // airingFiller resolves a break gap to ONE specific commercial file.
@@ -1292,521 +757,6 @@ func (r *Resolver) preferredAudioLanguage(ctx context.Context, channelID string)
 		}
 	}
 	return prefer
-}
-
-// LibraryFileReader is the store's read of the file a Library item plays.
-type LibraryFileReader interface {
-	LibraryPlayingFile(ctx context.Context, itemID string) (string, bool, error)
-}
-
-// itemInput is the input ffmpeg reads for a programme: the library item's own playing file, while
-// it is readable. Playout reads only files Loomarr's scan found (#2151 step 16); an id the Library
-// does not hold, or a file that is gone, has nothing to play: "".
-func (r *Resolver) itemInput(ctx context.Context, itemID string) string {
-	if r.libraryFile == nil {
-		return ""
-	}
-	path, ok, err := r.libraryFile.LibraryPlayingFile(ctx, itemID)
-	if err != nil && r.log != nil {
-		r.log.Debug("playout: library file unavailable", "item", itemID, "err", err)
-	}
-	if !ok || !readableFile(path) {
-		return ""
-	}
-	return path
-}
-
-// readableFile reports whether path is a regular file this process can open. A directory, a
-// missing path or an unreadable file is false.
-func readableFile(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return false
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	_ = f.Close()
-	return true
-}
-
-// LibraryVideoReader is the store's read of the video a Library item plays.
-type LibraryVideoReader interface {
-	LibraryPlayingVideo(ctx context.Context, itemID string) (store.LibraryStream, bool, error)
-}
-
-// libraryFormat is a library item's video format as the scanner read its playing file's header
-// (#2151 step 15): what a channel's format and a still's tone mapping need. ok is false for any
-// other id, which the inventory answers.
-func (r *Resolver) libraryFormat(ctx context.Context, itemID string) (playout.MediaFormat, bool) {
-	if r.libraryVideo == nil {
-		return playout.MediaFormat{}, false
-	}
-	v, ok, err := r.libraryVideo.LibraryPlayingVideo(ctx, itemID)
-	if err != nil || !ok {
-		if err != nil && r.log != nil {
-			r.log.Debug("playout: library video unavailable", "item", itemID, "err", err)
-		}
-		return playout.MediaFormat{}, false
-	}
-	return playoutFormatOf(inventory.SourceFacts{Streams: []inventory.Stream{{
-		Index: v.Index, Kind: inventory.StreamVideo, Codec: v.Codec, Width: v.Width, Height: v.Height,
-		FrameRate: v.FrameRate, PixelFormat: v.PixelFormat, ColorTransfer: v.ColorTransfer,
-	}}}), true
-}
-
-// LibraryAudioReader is the store's one Library read audio selection makes.
-type LibraryAudioReader interface {
-	LibraryAudioTracks(ctx context.Context, path string, sizeBytes, modifiedNs int64) ([]store.LibraryStream, bool, error)
-}
-
-// libraryAudioTracks is a local file's audio tracks as the Library lists them, when the scanner
-// read the file as it is now (#2151 decision 47).
-func (r *Resolver) libraryAudioTracks(ctx context.Context, streamURL string) ([]playout.AudioTrack, bool) {
-	if r.libraryAudio == nil {
-		return nil, false
-	}
-	_, info, ok := localInventoryOrigin(streamURL)
-	if !ok {
-		return nil, false
-	}
-	streams, ok, err := r.libraryAudio.LibraryAudioTracks(ctx, streamURL, info.Size(), info.ModTime().UnixNano())
-	if err != nil || !ok {
-		return nil, false
-	}
-	tracks := make([]playout.AudioTrack, 0, len(streams))
-	for _, s := range streams {
-		tracks = append(tracks, playout.AudioTrack{SourceIndex: s.Index, Language: s.Language})
-	}
-	return tracks, true
-}
-
-// inventoryAudioTracks is a local file's audio tracks as the Library lists them, else as Loomarr
-// measured the file's current bytes. A file neither has read falls through to one probe.
-func (r *Resolver) inventoryAudioTracks(ctx context.Context, streamURL string) ([]playout.AudioTrack, bool) {
-	if tracks, ok := r.libraryAudioTracks(ctx, streamURL); ok {
-		return tracks, true
-	}
-	if r.inventory == nil {
-		return nil, false
-	}
-	if localOrigin, ok := r.ensureLocalInventorySource(ctx, streamURL); ok {
-		source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
-			Item: inventory.ItemRef{Origin: &localOrigin}, Now: r.inventoryNow(),
-			Kinds: []inventory.SourceKind{inventory.SourceLocalFile}, RequiredCoverage: []string{"audioStreams"},
-		})
-		if err == nil && found {
-			return playoutAudioTracks(source.Observation.Facts.Streams), true
-		}
-	}
-	// A local file's stat revision is the authoritative freshness boundary, so a miss falls
-	// directly through to one probe.
-	return nil, false
-}
-
-// recordSourceMeasurement files a probe of a local file under its current bytes, so the next
-// programme of the same file reads it back instead of probing again.
-func (r *Resolver) recordSourceMeasurement(ctx context.Context, streamURL string, observed playout.SourceObservation) {
-	if r.inventory == nil {
-		return
-	}
-	localOrigin, ok := r.ensureLocalInventorySource(ctx, streamURL)
-	if !ok {
-		return
-	}
-	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{Item: inventory.ItemRef{Origin: &localOrigin}})
-	if err != nil || !ok {
-		return
-	}
-	measurement := inventory.NewFactsMeasurement(source.ID, source.Revision, r.inventoryNow(), InventoryFactsOf(observed))
-	if err := r.inventory.RecordMeasurement(ctx, measurement); err != nil && r.log != nil {
-		r.log.Debug("playout: measured audio observation not persisted", "err", err)
-	}
-}
-
-// localInventoryOrigin is the inventory identity of a local file: its path's origin key and the
-// stat revision of its current bytes.
-func localInventoryOrigin(input string) (inventory.OriginKey, os.FileInfo, bool) {
-	info, err := os.Stat(input)
-	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
-		return inventory.OriginKey{}, nil, false
-	}
-	digest := sha256.Sum256([]byte(input))
-	return inventory.OriginKey{Authority: "local-playout:v1", ExternalItemID: hex.EncodeToString(digest[:16])}, info, true
-}
-
-// knownLocalSource reads, never registers, the inventory source of a local file's current bytes.
-func (r *Resolver) knownLocalSource(ctx context.Context, input string) (inventory.Source, bool) {
-	if r.inventory == nil {
-		return inventory.Source{}, false
-	}
-	origin, info, ok := localInventoryOrigin(input)
-	if !ok {
-		return inventory.Source{}, false
-	}
-	revision := localInventoryRevision(info)
-	item, found, err := r.inventory.Item(ctx, inventory.ItemRef{Origin: &origin})
-	if err != nil || !found {
-		return inventory.Source{}, false
-	}
-	for _, source := range item.Sources {
-		if source.Kind == inventory.SourceLocalFile && source.Revision == revision {
-			return source, true
-		}
-	}
-	return inventory.Source{}, false
-}
-
-func (r *Resolver) ensureLocalInventorySource(ctx context.Context, input string) (inventory.OriginKey, bool) {
-	origin, info, ok := localInventoryOrigin(input)
-	if !ok {
-		return inventory.OriginKey{}, false
-	}
-	revision := localInventoryRevision(info)
-	if _, known := r.knownLocalSource(ctx, input); known {
-		return origin, true
-	}
-	at := r.inventoryNow()
-	_, err := r.inventory.ApplySnapshot(ctx, inventory.Snapshot{
-		Origin: origin, Kind: "unknown",
-		Observation: inventory.Observation[inventory.ItemFacts]{
-			SchemaVersion: 1, ObservedAt: at,
-			Coverage: map[string]inventory.Coverage{"sources": inventory.CoveragePresent},
-		},
-		Sources: []inventory.SourceSnapshot{{
-			ExternalSourceID: "file", Kind: inventory.SourceLocalFile,
-			Revision: revision,
-			Locator:  inventory.Locator{Path: input},
-			Observation: inventory.Observation[inventory.SourceFacts]{
-				SchemaVersion: 1, ObservedAt: at,
-				Coverage: map[string]inventory.Coverage{"sourceStat": inventory.CoveragePresent},
-				Facts: inventory.SourceFacts{
-					SizeBytes: info.Size(), ModifiedUnixNano: info.ModTime().UnixNano(),
-				},
-			},
-		}},
-	})
-	return origin, err == nil
-}
-
-func localInventoryRevision(info os.FileInfo) string {
-	return fmt.Sprintf("stat:%d:%d", info.Size(), info.ModTime().UnixNano())
-}
-
-func InventoryFactsOf(observed playout.SourceObservation) inventory.SourceFacts {
-	facts := inventory.SourceFacts{
-		Container: observed.Container, DurationMillis: observed.DurationMillis, Bitrate: observed.Bitrate,
-		UnsafePreroll: observed.UnsafePreroll,
-	}
-	for _, stream := range observed.Streams {
-		facts.Streams = append(facts.Streams, inventory.Stream{
-			Index: stream.Index, Kind: inventory.StreamKind(stream.Kind), Codec: stream.Codec,
-			Profile: stream.Profile, Level: stream.Level, Language: stream.Language, Title: stream.Title,
-			Disposition: inventory.Disposition{Default: stream.Default, Forced: stream.Forced, Comment: stream.Comment,
-				HearingImpaired: stream.HearingImpaired, VisualImpaired: stream.VisualImpaired},
-			Channels: stream.Channels, ChannelLayout: stream.ChannelLayout, SampleRate: stream.SampleRate,
-			Width: stream.Width, Height: stream.Height, FrameRate: stream.FrameRate,
-			PixelFormat: stream.PixelFormat, ColorSpace: stream.ColorSpace,
-			ColorTransfer: stream.ColorTransfer, ColorPrimaries: stream.ColorPrimaries,
-			HDR: stream.HDR, DolbyVision: stream.DolbyVision, Interlaced: stream.Interlaced,
-			SubtitleFormat: func() string {
-				if stream.Kind == string(inventory.StreamSubtitle) {
-					return stream.Codec
-				}
-				return ""
-			}(),
-		})
-	}
-	return facts
-}
-
-func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
-	format := playout.MediaFormat{
-		Container:    strings.ToLower(strings.TrimSpace(facts.Container)),
-		Duration:     float64(facts.DurationMillis) / float64(time.Second/time.Millisecond),
-		Bitrate:      facts.Bitrate,
-		VideoPreroll: facts.UnsafePreroll,
-	}
-	for _, stream := range facts.Streams {
-		switch stream.Kind {
-		case inventory.StreamVideo:
-			if format.VideoCodec != "" {
-				continue
-			}
-			format.VideoCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
-			format.Width = stream.Width
-			format.Height = stream.Height
-			format.FrameRate = playout.ParseFrameRate(stream.FrameRate)
-			format.PixelFormat = strings.ToLower(strings.TrimSpace(stream.PixelFormat))
-			format.ColorTransfer = strings.ToLower(strings.TrimSpace(stream.ColorTransfer))
-			format.Interlaced = stream.Interlaced
-		case inventory.StreamAudio:
-			if format.AudioCodec != "" {
-				continue
-			}
-			format.AudioCodec = strings.ToLower(strings.TrimSpace(stream.Codec))
-			format.AudioChannels = stream.Channels
-			format.AudioSampleRate = stream.SampleRate
-		}
-	}
-	return format
-}
-
-func (r *Resolver) inventoryNow() time.Time {
-	if r.now != nil {
-		return r.now()
-	}
-	return time.Now()
-}
-
-func playoutAudioTracks(streams []inventory.Stream) []playout.AudioTrack {
-	tracks := make([]playout.AudioTrack, 0)
-	for _, stream := range streams {
-		if stream.Kind == inventory.StreamAudio {
-			tracks = append(tracks, playout.AudioTrack{SourceIndex: stream.Index, Language: stream.Language})
-		}
-	}
-	return tracks
-}
-
-// Tracks probes the audio + subtitle tracks of what's airing on a channel right now (§9.1 Watch,
-// V46). It resolves the current program's source URL exactly as the broadcast path does, then
-// probes it.
-//
-// BEST-EFFORT, like AudioTrackFor: nothing airing, no prober wired, or a failed probe all return
-// empty tracks rather than an error, so the Watch pickers degrade to "just the channel default"
-// instead of erroring. The one thing it does NOT swallow is a genuine store/resolve error (a
-// missing channel), which the handler needs to render a 404 rather than an empty list.
-func (r *Resolver) Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error) {
-	airing, streamURL, err := r.AiringNow(ctx, channelID)
-	if err != nil {
-		return playout.MediaTracks{}, err
-	}
-	if r.probeTracks == nil || !airing.Playable() || streamURL == "" {
-		return playout.MediaTracks{}, nil
-	}
-	tracks, err := r.probeTracks(ctx, streamURL)
-	if err != nil {
-		if r.log != nil {
-			r.log.Debug("playout: tracks not probed for Watch pickers", "channel", channelID, "err", err)
-		}
-		return playout.MediaTracks{}, nil // degrade, don't fail the UI request
-	}
-	return tracks, nil
-}
-
-// FormatOf probes an input once and returns everything the probe measured: geometry, framerate,
-// pixel format, colour transfer, audio shape, duration, bitrate (playout.MediaFormat).
-//
-// BEST-EFFORT, and it fails SAFE: no prober wired, no input, or a probe error all return the zero
-// MediaFormat, which reads as SDR/unknown rather than as anything asserted, so the item transcodes.
-// A copy of an unprobed source could ship a codec the output cannot play — a black frame — whereas
-// an unnecessary transcode is merely slow.
-//
-// A library item's colour transfer comes from the scanner's header read of its playing file when
-// that names one (#2173): an HDR10 Matroska file can signal PQ only in the HEVC parameter set, which
-// the header reader parses and ffprobe's stream summary reports as unknown, so the airing would skip
-// tone mapping. Any other id keeps the probe's.
-func (r *Resolver) FormatOf(ctx context.Context, libraryItemID, input string) playout.MediaFormat {
-	format := r.probedFormat(ctx, input)
-	if libraryItemID == "" {
-		return format
-	}
-	if header, ok := r.libraryFormat(ctx, libraryItemID); ok && header.ColorTransfer != "" && header.ColorTransfer != "unknown" {
-		format.ColorTransfer = header.ColorTransfer
-	}
-	return format
-}
-
-func (r *Resolver) probedFormat(ctx context.Context, input string) playout.MediaFormat {
-	if input == "" {
-		return playout.MediaFormat{}
-	}
-	if r.inventory != nil {
-		if origin, ok := r.ensureLocalInventorySource(ctx, input); ok {
-			source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
-				Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(),
-				Kinds: []inventory.SourceKind{inventory.SourceLocalFile}, RequiredCoverage: []string{"streams"},
-			})
-			if err == nil && found {
-				format := playoutFormatOf(source.Observation.Facts)
-				format.Active = r.activePicture(ctx, source.ID)
-				r.submitAnalysis(source.ID, source.Revision, input, source.Observation.Facts)
-				return format
-			}
-			if format, ok := r.measureFirstPlay(ctx, origin, input); ok {
-				return format
-			}
-		}
-	}
-	if r.probeFormat == nil {
-		return playout.MediaFormat{}
-	}
-	f, err := r.probeFormat(ctx, input)
-	if err != nil {
-		if r.log != nil {
-			r.log.Debug("playout: format not probed, transcoding", "input", input, "err", err)
-		}
-		return playout.MediaFormat{}
-	}
-	return f
-}
-
-// Profile is the encode profile at the ladder rung the ResourceBudget admitted a session at,
-// resolved against the measured encoder and the operator's quality tier (§9.1: "best picture the
-// hardware sustains, then adapt"). A new session takes the best rung that fits and keeps it.
-func (r *Resolver) Profile(ctx context.Context, rung int) playout.Profile {
-	enc := encode.Encoder(r.encoder())
-	if enc == "" {
-		// A matching persisted result is available to this first tune after only its host fingerprint
-		// matches. Its real encoder validation runs asynchronously; a miss likewise starts the full
-		// benchmark in the background and uses software until a safe result is ready.
-		//
-		// Falling straight through to libx264 would leave a box with a working GPU silently
-		// encoding in software forever. Detect trial-encodes each candidate, so its answer is
-		// measured rather than inferred from `ffmpeg -encoders` (which lists encoders the
-		// hardware cannot actually run — the exact trap that took a live channel down: the
-		// host listed h264_vulkan, the container had no /dev/dri).
-		r.reuseEncoderEvidence(ctx)
-		enc = encode.EncoderSoftware
-		if r.detectReady.Load() {
-			enc = r.PublishedEncoder()
-		}
-		r.warmEncoderDetection(ctx)
-	}
-	return playout.Resolve(playout.TierFor(r.tier()), enc, rung)
-}
-
-// WarmProfile loads the host's persisted encoder evidence ahead of the first tune (#1512 G2: its
-// host fingerprint was 0.2 s of a cold first tune). It is cheap (one `ffmpeg -version`); the full
-// encoder measurement still starts only on the first demand.
-func (r *Resolver) WarmProfile(ctx context.Context) { r.reuseEncoderEvidence(ctx) }
-
-func (r *Resolver) reuseEncoderEvidence(ctx context.Context) {
-	r.detectEvidence.Do(func() {
-		var capacity playout.Capacity
-		var ok bool
-		if r.loadCapabilityEvidence != nil {
-			capacity, ok = r.loadCapabilityEvidence(ctx)
-		} else {
-			bin, gpu, root := r.capabilityInputs()
-			capacity, ok = playout.LoadMatchingObservedCapabilityEvidence(
-				ctx, bin, playout.DefaultProfile(), gpu, root,
-			)
-		}
-		if ok {
-			r.publishDetectedCapacity(capacity, true)
-		}
-	})
-}
-
-// warmEncoderDetection starts the expensive host probe once without putting it on a viewer's
-// critical path. The composition root's lifetime wins over an individual request context so one
-// TV disconnecting cannot discard the result every later tune needs.
-func (r *Resolver) warmEncoderDetection(fallback context.Context) {
-	r.detectStart.Do(func() {
-		ctx := r.detectContext
-		if ctx == nil {
-			ctx = context.WithoutCancel(fallback)
-		}
-		go r.detectedEncoder(ctx)
-	})
-}
-
-// detectedEncoder returns the best encoder that actually WORKS here, probing once. Control-plane
-// callers may wait for it; Profile deliberately uses warmEncoderDetection + detectReady instead.
-//
-// Lazily and exactly once per process, which is the only workable timing: a full Detect trials
-// every candidate and then measures the winner warm. The first demand starts it asynchronously;
-// everything after completion reads the result. A matching persisted hardware result substitutes
-// one short real TS encode, while an FFmpeg/GPU/profile mismatch or failed validation performs the
-// complete measurement and atomically replaces that evidence.
-func (r *Resolver) detectedEncoder(ctx context.Context) encode.Encoder {
-	r.detectOnce.Do(func() {
-		bin, gpu, root := r.capabilityInputs()
-		cap, reused := playout.DetectObservedWithEvidence(
-			ctx, bin, playout.DefaultProfile(), gpu, root, r.processDiagnostics,
-		)
-		r.publishDetectedCapacity(cap, reused)
-	})
-	return r.PublishedEncoder()
-}
-
-func (r *Resolver) capabilityInputs() (bin, gpu, root string) {
-	r.inputsOnce.Do(func() {
-		if r.ffmpegPath != nil {
-			r.capabilityBin = r.ffmpegPath()
-		}
-		if r.capabilityBin == "" {
-			r.capabilityBin = "ffmpeg"
-		}
-		if r.gpuName != nil {
-			r.capabilityGPU = r.gpuName()
-		}
-		if r.capabilityRoot != nil {
-			r.capabilityPath = r.capabilityRoot()
-		}
-	})
-	return r.capabilityBin, r.capabilityGPU, r.capabilityPath
-}
-
-func (r *Resolver) publishDetectedCapacity(cap playout.Capacity, reused bool) {
-	r.detectedMu.Lock()
-	r.detected = cap.Chosen
-	r.detectedMu.Unlock()
-	r.maxChannels.Store(int64(cap.MaxChannels))
-	if cap.EncodeHostBytes > 0 {
-		// Only a real measurement replaces the previous one; a cheap evidence reload carries none.
-		r.encodeHostBytes.Store(cap.EncodeHostBytes)
-	}
-	if r.log != nil {
-		skipped := make([]string, 0, len(cap.All))
-		for _, c := range cap.All {
-			if !c.Works {
-				skipped = append(skipped, string(c.Encoder)+": "+c.Err)
-			}
-		}
-		r.log.Info("playout: encoder probed",
-			"chosen", cap.Chosen, "measured_max_channels", cap.MaxChannels,
-			"reused_verified_evidence", reused, "skipped", skipped)
-	}
-	r.detectReady.Store(true)
-}
-
-func (r *Resolver) PublishedEncoder() encode.Encoder {
-	r.detectedMu.RLock()
-	defer r.detectedMu.RUnlock()
-	return r.detected
-}
-
-// FileEncodeHost is the hardware filler derivatives encode on (#2121), the channels' own: the
-// operator's pinned encoder, else the one detection published, and software until detection
-// settles. encode.FileFamily then keeps a family without a measured level in software.
-func (r *Resolver) FileEncodeHost(pinned encode.Encoder) encode.HostProfile {
-	enc := pinned
-	if enc == "" && r != nil && r.detectReady.Load() {
-		enc = r.PublishedEncoder()
-	}
-	if enc == "" {
-		enc = encode.EncoderSoftware
-	}
-	return encode.HostFor(enc, false, encode.GPUFilters{})
-}
-
-// PublishedCapability returns only the encoder result already published by the asynchronous
-// capability probe. Dashboard polling must never start or wait for a benchmark.
-func (r *Resolver) PublishedCapability() playout.Capacity {
-	if !r.detectReady.Load() {
-		return playout.Capacity{}
-	}
-	return playout.Capacity{Chosen: r.PublishedEncoder(), MaxChannels: int(r.maxChannels.Load())}
-}
-
-// EncodeHostBytes is the measured host memory one hardware encode holds, 0 until a trial encode
-// has measured it on this host.
-func (r *Resolver) EncodeHostBytes() int64 {
-	return r.encodeHostBytes.Load()
 }
 
 // effectivePlayoutAnchor enforces the persisted timeline origin. A live channel without

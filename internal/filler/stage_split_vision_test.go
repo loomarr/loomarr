@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The auto-confirm gate has had NO data source since V51g removed the text classifier, so
@@ -154,7 +154,7 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 	})
 
 	segs := twoSegments()
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	// THE assertion: the same gate that refused above now accepts.
 	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != AutoSplitOK {
@@ -187,7 +187,7 @@ func TestSegmentVisionNamesFromTheExistingBoundedCall(t *testing.T) {
 	segments[0].Name = fallbackSegmentName("80s-tv-commercials.mp4", 1)
 	segments[0].NameOrigin = SplitNameFallback
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
 
 	if model.calls != 1 {
 		t.Fatalf("provider calls = %d, want the existing single grounding call", model.calls)
@@ -212,7 +212,7 @@ func TestSegmentVisionRejectsUnsupportedNameWithoutDiscardingOtherFields(t *test
 	segments[0].Name = fallbackSegmentName("holiday-reel.mp4", 1)
 	segments[0].NameOrigin = SplitNameFallback
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
 
 	if segments[0].NameOrigin != SplitNameFallback || segments[0].NameEvidence != "" {
 		t.Fatalf("unsupported identity replaced fallback: %+v", segments[0])
@@ -231,7 +231,7 @@ func TestSegmentVisionDropsMalformedTitleWithoutDiscardingOtherFields(t *testing
 	segments[0].Name = fallbackSegmentName("reel.mp4", 1)
 	segments[0].NameOrigin = SplitNameFallback
 
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segments)
 
 	if segments[0].NameOrigin != SplitNameFallback || segments[0].NameEvidence != "" || segments[0].Category != "toys" {
 		t.Fatalf("malformed title poisoned independent fields: %+v", segments[0])
@@ -296,7 +296,7 @@ func TestSegmentVisionRetainsExactPerSpanRoleEvidence(t *testing.T) {
 	})
 	source := structureSource(61_000)
 	segments := twoSegments()
-	pass := s.groundAt(context.Background(), cliplibrary.StoreClip{}, "source.mp4", source, segments)
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", source, segments)
 	if pass.Looked != 2 || pass.Pending != 0 {
 		t.Fatalf("ground pass = %+v", pass)
 	}
@@ -342,7 +342,7 @@ func TestSegmentVisionMissingAttributionCannotEstablishRole(t *testing.T) {
 		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
 	segments := twoSegments()[:1]
-	s.groundAt(context.Background(), cliplibrary.StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
 	if segments[0].RoleEvidence != nil {
 		t.Fatalf("unattributed model output established a role: %+v", segments[0].RoleEvidence)
 	}
@@ -359,7 +359,7 @@ func TestSegmentVisionEscalatesOnlyUnresolvedRolesToBoundedVideo(t *testing.T) {
 		Taxa: seedTaxa{}, Budget: func() int { return 2 },
 	})
 	segments := twoSegments()
-	s.groundAt(context.Background(), cliplibrary.StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
 	if escalator.calls != 2 || len(escalator.spans) != 2 || escalator.spans[0] != [2]int64{0, 30_000} || escalator.spans[1] != [2]int64{30_000, 61_000} {
 		t.Fatalf("escalation calls=%d spans=%v", escalator.calls, escalator.spans)
 	}
@@ -376,7 +376,7 @@ func TestSegmentVisionCanEscalateWhenSparseFramesAreUnavailable(t *testing.T) {
 		Tools: &spanTools{}, Provider: &fixedVision{}, RoleEscalator: escalator, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
 	segments := twoSegments()[:1]
-	pass := s.groundAt(context.Background(), cliplibrary.StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
 	if pass.Looked != 1 || pass.Pending != 0 || escalator.calls != 1 || segments[0].RoleEvidence == nil || segments[0].RoleEvidence.VideoSHA256 == "" {
 		t.Fatalf("pass=%+v escalation=%d segment=%+v", pass, escalator.calls, segments[0])
 	}
@@ -389,7 +389,7 @@ func TestSegmentVisionDirectVideoCanResolveAnIndependentFrameProviderFailure(t *
 		RoleEscalator: escalator, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
 	segments := twoSegments()[:1]
-	pass := s.groundAt(context.Background(), cliplibrary.StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	pass := s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
 	if pass.Looked != 1 || pass.Pending != 0 || escalator.calls != 1 || segments[0].RoleEvidence == nil {
 		t.Fatalf("pass=%+v escalation=%d segment=%+v", pass, escalator.calls, segments[0])
 	}
@@ -400,7 +400,7 @@ func TestSegmentVisionDirectVideoCanResolveAnIndependentFrameProviderFailure(t *
 		RoleEscalator: failing, Taxa: seedTaxa{}, Budget: func() int { return 1 },
 	})
 	segments = twoSegments()[:1]
-	pass = s.groundAt(context.Background(), cliplibrary.StoreClip{}, "source.mp4", structureSource(61_000), segments)
+	pass = s.groundAt(context.Background(), clipstore.Clip{}, "source.mp4", structureSource(61_000), segments)
 	if pass.Looked != 0 || pass.Pending != 1 || failing.calls != 1 || segments[0].Looked {
 		t.Fatalf("dual failure burned retry: pass=%+v escalation=%d segment=%+v", pass, failing.calls, segments[0])
 	}
@@ -419,7 +419,7 @@ func TestSegmentVision_ResumesWhereThePreviousPassStopped(t *testing.T) {
 		Tools: tools, Provider: model, Taxa: seedTaxa{}, ClipDir: "/clips",
 		Budget: func() int { return 1 }, // one segment per pass — two passes for two segments
 	})
-	clip := cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}
+	clip := clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}
 	segs := twoSegments()
 
 	first := s.ground(context.Background(), clip, segs)
@@ -458,7 +458,7 @@ func TestSegmentVision_APassThatAchievesNothingReportsNoProgress(t *testing.T) {
 		Budget: func() int { return 0 }, // vision switched off
 	})
 
-	got := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	got := s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if got.Looked != 0 || got.Pending != 2 {
 		t.Fatalf("zero-budget pass = %+v, want {Looked:0 Pending:2} — Looked>0 would defer forever", got)
 	}
@@ -475,7 +475,7 @@ func TestSegmentVision_BudgetLeavesTheRestUngroundedAndTheReelInReview(t *testin
 	})
 
 	segs := twoSegments()
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if model.calls != 1 {
 		t.Errorf("model called %d times, want 1 — the budget is not bounding the pass", model.calls)
@@ -500,7 +500,7 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 		segs[i].Name = fallbackSegmentName("reel.mp4", i+1)
 		segs[i].NameOrigin = SplitNameFallback
 	}
-	pass := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	pass := s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if pass.Looked != 0 || pass.Pending != 2 {
 		t.Fatalf("provider failure pass = %+v, want no consumed segments", pass)
 	}
@@ -524,7 +524,7 @@ func TestSegmentVision_ZeroBudgetAsksNothing(t *testing.T) {
 	})
 
 	segs := twoSegments()
-	s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 
 	if model.calls != 0 {
 		t.Errorf("model called %d times with vision off, want 0", model.calls)
@@ -543,12 +543,12 @@ func TestSegmentVision_ResumesAfterTheCheckedBatch(t *testing.T) {
 	})
 	segs := twoSegments()
 
-	first := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	first := s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if first.Looked != 1 || first.Pending != 1 || !segs[0].Looked || segs[1].Looked {
 		t.Fatalf("first batch = %+v segments %+v", first, segs)
 	}
 
-	second := s.ground(context.Background(), cliplibrary.StoreClip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
+	second := s.ground(context.Background(), clipstore.Clip{Clip: clips.Clip{Path: "reel.mp4"}}, segs)
 	if second.Looked != 1 || second.Pending != 0 || model.calls != 2 {
 		t.Fatalf("second batch = %+v calls %d", second, model.calls)
 	}
@@ -601,6 +601,35 @@ func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 	}
 }
 
+// A review holding a segment whose duplicate check could not run is offered back to the split stage,
+// at restart and on the slow re-check cadence; checked and duplicate-free reviews are not.
+func TestSplitStage_RequeuesReviewsHoldingAnUncheckedSegment(t *testing.T) {
+	ready := func(hash string, seg split.Segment) SplitProposal {
+		return SplitProposal{ClipHash: hash, Segments: []split.Segment{seg}}
+	}
+	queue := proposalQueue{proposals: []SplitProposal{
+		ready("unchecked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true, DedupUnchecked: true}),
+		ready("checked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true}),
+	}}
+	s := NewSplitStage(nil, queue).WithAutoConfirm(*gatePolicy(), func() time.Duration { return 10 * time.Second })
+
+	for name, pick := range map[string]func(context.Context) (map[string]struct{}, error){
+		"restart scan":    s.resumableReviewHashes,
+		"recheck cadence": s.uncheckedReviewHashes,
+	} {
+		hashes, err := pick(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := hashes["unchecked"]; !ok {
+			t.Errorf("%s: the unchecked review was not requeued", name)
+		}
+		if _, ok := hashes["checked"]; ok {
+			t.Errorf("%s: a checked review was requeued", name)
+		}
+	}
+}
+
 type pendingStructureShadow struct {
 	pending map[string]bool
 }
@@ -631,6 +660,42 @@ func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testin
 	}
 	if _, ok := hashes["observed"]; ok {
 		t.Fatal("observed proposal was requeued again")
+	}
+}
+
+type failingStructureShadow struct {
+	pendingStructureShadow
+	failing string
+}
+
+func (s failingStructureShadow) NeedsStructureSplitObservation(ctx context.Context, proposal SplitProposal) (bool, error) {
+	if proposal.ClipHash == s.failing {
+		return false, errors.New("shadow store unavailable")
+	}
+	return s.pendingStructureShadow.NeedsStructureSplitObservation(ctx, proposal)
+}
+
+// One proposal whose shadow state cannot be read stays in review; it does not stop every other
+// proposal from being requeued.
+func TestSplitStageResumesOtherReviewsPastAnUnreadableShadow(t *testing.T) {
+	queue := proposalQueue{proposals: []SplitProposal{
+		{ClipHash: "unreadable", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "unobserved", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+	}}
+	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: failingStructureShadow{
+		pendingStructureShadow: pendingStructureShadow{pending: map[string]bool{"unobserved": true}},
+		failing:                "unreadable",
+	}})
+
+	hashes, err := stage.resumableReviewHashes(t.Context())
+	if err != nil {
+		t.Fatalf("one unreadable shadow failed the whole requeue: %v", err)
+	}
+	if _, ok := hashes["unobserved"]; !ok {
+		t.Fatal("the readable unobserved proposal was not requeued")
+	}
+	if _, ok := hashes["unreadable"]; ok {
+		t.Fatal("the proposal whose shadow could not be read was requeued; it stays in review")
 	}
 }
 

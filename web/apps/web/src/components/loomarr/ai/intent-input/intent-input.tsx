@@ -1,5 +1,4 @@
-import { Action, Chip } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Action, Chip, Stack } from "@loomarr/design-system";
 import type { IntentInputProps } from "./intent-input.type";
 
 // IntentInput — the hero (§3). A natural-language channel intent wearing the
@@ -21,7 +20,7 @@ const IntentInput = ({
     if (canSubmit) onSubmit?.();
   };
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control">
       <textarea
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
@@ -39,26 +38,26 @@ const IntentInput = ({
       />
 
       {templates.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" wrap>
           {templates.map((t) => (
             <Chip disabled={submitting} key={t.value} onPress={() => onValueChange(t.value)} shape="pill">
               {t.label}
             </Chip>
           ))}
-        </div>
+        </Stack>
       )}
 
-      <div className="flex justify-end">
+      <Stack direction="row" justify="end">
         <Action
           disabled={!canSubmit}
           icon={submitting ? "loading" : "suggest"}
           onPress={submit}
-          variant="suggest"
+          tone="suggest"
         >
           {submitting ? "Suggesting…" : "Suggest a lineup"}
         </Action>
-      </div>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

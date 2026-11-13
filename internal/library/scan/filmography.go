@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Filmographer defaults (decision 50).
@@ -34,7 +34,7 @@ type FilmographyCatalog interface {
 // person's is fetched when they first qualify and monthly after. Each tick first removes the
 // people no title credits any more.
 type Filmographer struct {
-	Store   store.LibraryPeopleStore
+	Store   librarystore.LibraryPeopleStore
 	Catalog FilmographyCatalog
 	// Enabled is the scanner's kill switch; nil is on. Off, nothing is fetched.
 	Enabled  func() bool
@@ -76,7 +76,7 @@ func (f *Filmographer) Tick(ctx context.Context) error {
 	now := f.now()
 	caps := f.Catalog.Capabilities()
 	// Only people the catalog knows by its own ids have a filmography there.
-	due, err := f.Store.DueLibraryFilmographies(ctx, store.LibraryFilmographyDue{
+	due, err := f.Store.DueLibraryFilmographies(ctx, librarystore.LibraryFilmographyDue{
 		Namespace: string(caps.Catalog), Now: now, StaleBefore: now.Add(-orDuration(f.Refresh, FilmographyRefresh)),
 		Limit: filmographyBatch,
 	})
@@ -103,9 +103,9 @@ func (f *Filmographer) Tick(ctx context.Context) error {
 			f.log().Debug("library filmographies: fetch failed", "person", person.ID, "err", err)
 			return f.Store.FailLibraryFilmography(ctx, person.ID, now.Add(filmographyRetry))
 		}
-		entries := make([]store.LibraryFilmEntry, 0, len(credits))
+		entries := make([]librarystore.LibraryFilmEntry, 0, len(credits))
 		for _, c := range credits {
-			entries = append(entries, store.LibraryFilmEntry{Kind: string(c.Kind), ID: libraryID(c.ID), Title: c.Title,
+			entries = append(entries, librarystore.LibraryFilmEntry{Kind: string(c.Kind), ID: libraryID(c.ID), Title: c.Title,
 				Year: c.Year, Role: string(c.Role), Character: c.Character})
 		}
 		if err := f.Store.SaveLibraryFilmography(ctx, person.ID, entries, now); err != nil {

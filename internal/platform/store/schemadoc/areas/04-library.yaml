@@ -19,6 +19,9 @@ tables:
         1 when the folder is confirmed for scanning. A discovered folder starts at 0; one typed by hand
         starts at 1.
       readable: 1 when the last check could open the folder.
+      empty: >
+        1 when the last check opened the folder and found nothing in it, which usually means the share
+        behind a mount point isn't mounted. Always 0 when the folder isn't readable.
       checked_at_ms: When the folder was last checked for readability, in Unix milliseconds; 0 means never.
       by_hand: 1 when someone typed the folder in rather than a media server or arr reporting it.
       added_at_ms: When the folder was added, in Unix milliseconds.
@@ -65,8 +68,9 @@ tables:
         (it can't be read, so the file can't be played).
       problem: >
         Why the file is skipped, or empty for none. One of disc_image (a disc image),
-        identity_conflict (what names the file disagrees), or invalid_facts (the library refused what
-        was read from it).
+        identity_conflict (what names the file disagrees), invalid_facts (the library refused what
+        was read from it), broken_link (a symlink whose target is gone), or link_outside (a symlink
+        to a path outside the root, which the scan never follows).
       held: >
         1 when a walk no longer found the file and that walk's removals are waiting for a person to
         confirm them. A held file still counts as present.
@@ -262,20 +266,6 @@ tables:
       role: What they did on it, one of actor, creator, director or writer.
       character_name: An actor's part; empty for crew or when unknown.
 
-  - name: library_id_map
-    about: >
-      The cutover's id map: each media-server item id Loomarr may have stored, and the library item
-      it names. Movies and episodes pair by file path through the derived path map; a series pairs
-      through its episodes. Replaced whole on each pass while the media server still lists the
-      catalog, and read once by the cutover's rewrite.
-    retention: The whole table is replaced on each mapping pass; only the last pass is kept.
-    columns:
-      media_id: The media server's item id.
-      kind: movie, episode or series.
-      item_id: The library item it names (a library_items id); empty when it did not pair.
-      reason: Why it did not pair; empty when it did.
-      mapped_at_ms: When the pass that wrote it ran, in Unix milliseconds.
-
   - name: library_credits
     about: >
       A title's credits: its cast in billing order, then its key crew (creators, directors, writers).
@@ -312,7 +302,8 @@ tables:
       bitrate: The file's overall bitrate in bits per second; 0 when unknown.
       duration_ms: The file's length in milliseconds from its header; 0 until the header is read.
       edition: Which version of the title this file is, such as a director's cut; empty for the usual one.
-      plays: True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest).
+      part: Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file.
+      plays: True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order.
 
   - name: library_streams
     about: >
@@ -423,6 +414,18 @@ tables:
       language: >
         The language the record was fetched in, such as en-US; empty before languages were noted. A
         record in another language than the household's is fetched again first.
+      changed: >
+        1 when the catalog's nightly change feed named the record after it was fetched; it is fetched
+        again ahead of the refresh, which sets it back to 0.
+
+  - name: library_catalog_feeds
+    about: >
+      When each catalog's change feed was last read, so the nightly read asks only for what changed
+      since and picks up where it left off after a restart.
+    retention: One row per catalog, kept and overwritten each night.
+    columns:
+      provider: The catalog, such as tmdb.
+      read_at_ms: When the feed was last read through, in Unix milliseconds.
 
   - name: library_candidates
     about: >

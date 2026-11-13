@@ -4,7 +4,7 @@ import { forwardRef } from "react";
 import { Pressable } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { Text, type TextTone } from "../primitives";
+import { Text, type TextTone } from "../text";
 import { semanticRadius, semanticSpace } from "../tokens";
 
 type ChipTone = Extract<TextTone, "danger" | "info" | "muted" | "success" | "warning">;
@@ -82,7 +82,7 @@ const Chip: ForwardRefExoticComponent<ChipProps & RefAttributes<ChipRef>> = forw
         >
           <Text
             strong={on}
-            textRole={mono ? "captionMono" : "caption"}
+            textRole={mono ? "mono" : "caption"}
             tone={on && tone === "muted" ? "primary" : tone}
           >
             {children}

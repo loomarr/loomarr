@@ -1,10 +1,9 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import { unwrap } from "@loomarr/api/unwrap";
-import { formatEpgTime } from "@loomarr/core/format";
-import { formatGuideEpisode } from "@loomarr/core/guide";
-import { Badge, Surface, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
+import { Badge, Stack, Surface, Text } from "@loomarr/design-system";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import type { ChannelUpcomingProps } from "./channel-upcoming.type";
 
 // ChannelUpcoming — the viewer-facing "what's on later" strip (P7 / plan finding 5): the
@@ -17,6 +16,8 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
     query: { retry: false },
   });
   const entries = unwrap(upcoming.data, (b) => b.upcoming) ?? [];
+  // Start times on the household clock, as the Guide tells them.
+  const timeZone = useHouseholdTimeZone();
   // The upcoming list carries only a title; the channel's timeline knows the show and the episode
   // (#2753). Joined on the start time, and the row falls back to the bare title without it.
   const timeline = channelsApi.useChannelTimeline(channelId, undefined, { query: { retry: false } });
@@ -30,14 +31,18 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
   // and a red NOW badge on the one airing. Every row keeps its time, so the NOW row still says
   // when it started.
   return (
-    <section className={cn("flex flex-col gap-1.5", className)}>
-      <h3 className="text-2xs text-muted-foreground mb-1 font-normal">What's on</h3>
+    <Stack className={className} gap="1.5" render="section">
+      <Text as="h3" className="mb-1" textRole="hint" tone="secondary">
+        What's on
+      </Text>
       {entries.length === 0 ? (
         // The API deliberately lowers no guide, an empty schedule, and a backend read failure to
         // the same empty list. Do not infer broadcast state from a response that cannot prove it.
-        <p className="text-muted-foreground text-sm">Programme information isn't available.</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Programme information isn't available.
+        </Text>
       ) : (
-        <ol className="flex flex-col gap-1.5">
+        <Stack gap="1.5" render="ol">
           {entries.map((entry, i) => {
             // The first entry is what's airing now when the channel is live and it has already
             // started (start ≤ now); everything after is genuinely upcoming.
@@ -49,15 +54,21 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
               ? [formatGuideEpisode(detail.season, detail.episode), detail.title].filter(Boolean).join(" · ")
               : "";
             return (
-              <li key={`${entry.startMs}-${entry.title}`} className="flex items-baseline gap-3 text-sm">
-                <span
-                  className={cn(
-                    "w-16 shrink-0 font-mono text-xs tabular-nums",
-                    onNow ? "text-foreground" : "text-muted-foreground",
-                  )}
+              <Stack
+                align="baseline"
+                direction="row"
+                gap="control"
+                key={`${entry.startMs}-${entry.title}`}
+                render="li"
+              >
+                <Text
+                  as="span"
+                  className="w-16 shrink-0 tabular-nums"
+                  textRole="mono"
+                  tone={onNow ? "primary" : "secondary"}
                 >
-                  {formatEpgTime(entry.startMs)}
-                </span>
+                  {formatGuideTime(entry.startMs, timeZone)}
+                </Text>
                 <Surface backgroundColor="transparent" borderWidth={0} flex={1} minWidth={0}>
                   <Text numberOfLines={1} textRole="compact">
                     {name}
@@ -73,12 +84,12 @@ const ChannelUpcoming = ({ channelId, live = false, className }: ChannelUpcoming
                     Now
                   </Badge>
                 )}
-              </li>
+              </Stack>
             );
           })}
-        </ol>
+        </Stack>
       )}
-    </section>
+    </Stack>
   );
 };
 

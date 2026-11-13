@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 )
@@ -54,6 +55,15 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if n, err := st.CountLibraryCatalog(ctx); err != nil || n != 3 {
 		t.Fatalf("count = %d, %v", n, err)
 	}
+	// Due as new counts only the never-fetched movie: the failed show waits, and the old movie is
+	// stale, not new.
+	if n, err := st.CountDueLibraryCatalog(ctx, LibraryCatalogDue{Now: at, New: 1}); err != nil || n != 1 {
+		t.Fatalf("due as new = %d, %v; want 1", n, err)
+	}
+	// Once the show's hold has passed, it counts too.
+	if n, err := st.CountDueLibraryCatalog(ctx, LibraryCatalogDue{Now: at.Add(2 * time.Hour)}); err != nil || n != 2 {
+		t.Fatalf("due as new after the hold = %d, %v; want 2", n, err)
+	}
 
 	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, "en-US", at); err != nil || !changed {
 		t.Fatalf("first save changed = %v, %v", changed, err)
@@ -93,12 +103,19 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	if err := st.SaveLibraryItems(ctx, []LibraryItem{
-		{ID: "m1", Kind: "movie", Name: "Film", Catalog: movie},
+		{ID: "m1", Kind: "movie", Name: "Film", Year: 2001, Catalog: movie},
 		{ID: "s1", Kind: "series", Name: "Show", Catalog: show},
 		{ID: "m2", Kind: "movie", Name: "Other"},
 		{ID: "e1", Kind: "episode", Name: "Pilot"},
 	}, at); err != nil {
 		t.Fatal(err)
+	}
+	// A title being looked up is named as the Library holds it; a key no title has, by nothing.
+	if name, year, err := st.LibraryCatalogTitle(ctx, movie); err != nil || name != "Film" || year != 2001 {
+		t.Fatalf("movie title = %q (%d), %v; want Film (2001)", name, year, err)
+	}
+	if name, _, err := st.LibraryCatalogTitle(ctx, old); err != nil || name != "" {
+		t.Fatalf("old title = %q, %v; want none", name, err)
 	}
 	file := func(path, item, series string) LibraryFile {
 		return LibraryFile{Path: path, Root: "/media", Size: 1, ModifiedNs: 1, Identity: "digest", Kind: "movie",
@@ -147,5 +164,101 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 		if rewritten != (f.Identity == "") {
 			t.Errorf("%s identity = %q, rewritten %v", f.Path, f.Identity, rewritten)
 		}
+	}
+
+	// Refresh everything: every present file is written again with its header kept, and every
+	// fetched record, whatever its kind, is due again while it is still read.
+	if _, err := st.SaveLibraryCatalog(ctx, old, `{"Kind":"movie"}`, 1, "fr-US", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FailLibraryCatalog(ctx, show, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || len(due) != 1 || due[0] != show {
+		t.Fatalf("due before refresh = %+v, %v; want only the never-fetched show", due, err)
+	}
+	if err := st.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	due, err = st.DueLibraryCatalog(ctx, moviesV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(due) != 3 || !slices.Contains(due, movie) || !slices.Contains(due, old) || !slices.Contains(due, show) {
+		t.Fatalf("due after refresh = %+v, want every record", due)
+	}
+	if n, err := st.CountDueLibraryCatalog(ctx, moviesV1); err != nil || n != 3 {
+		t.Fatalf("due as new after refresh = %d, %v; want every record", n, err)
+	}
+	if rec, fetched, err := st.LibraryCatalogRecord(ctx, movie); err != nil || !fetched || rec == "" {
+		t.Fatalf("a refreshed record is still read: %q, %v, %v", rec, fetched, err)
+	}
+	if files, err = st.LibraryFiles(ctx, "/media"); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		present := f.MissingAt.IsZero()
+		if present != (f.Identity == "") || f.Header != LibraryHeaderRead {
+			t.Errorf("after refresh %s identity = %q header = %q, present %v", f.Path, f.Identity, f.Header, present)
+		}
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 1, "fr-US", at.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if due, err = st.DueLibraryCatalog(ctx, moviesV1); err != nil || slices.Contains(due, movie) {
+		t.Fatalf("due = %+v, %v; a record fetched again is not due", due, err)
+	}
+	if n, err := st.CountDueLibraryCatalog(ctx, moviesV1); err != nil || n != 2 {
+		t.Fatalf("due as new = %d, %v; want the two records still refreshing", n, err)
+	}
+}
+
+// The change feed marks only fetched records it names; they are due as changed, not as new, until
+// a save clears them. The feed's cursor survives a reopen of the store's rows (#3225).
+func testLibraryCatalogChanges(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+	at := time.UnixMilli(1_790_000_000_000).UTC()
+	fetched := LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000111"}
+	pending := LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000112"}
+	show := LibraryCatalogKey{Provider: "tmdb", Kind: "series", ExternalID: "90000111"}
+	if err := st.WantLibraryCatalog(ctx, []LibraryCatalogKey{fetched, pending, show}); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []LibraryCatalogKey{fetched, show} {
+		if _, err := st.SaveLibraryCatalog(ctx, k, `{}`, 0, "en-US", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A movie and a series share an id on TMDB; only the movie changed. The unfetched one and one
+	// the cache does not hold are not marked.
+	named := []LibraryCatalogKey{fetched, pending, {Provider: "tmdb", Kind: "movie", ExternalID: "90009999"}}
+	if n, err := st.MarkLibraryCatalogChanged(ctx, named); err != nil || n != 1 {
+		t.Fatalf("marked %d, %v; want the one fetched record named", n, err)
+	}
+	due := LibraryCatalogDue{Now: at, StaleBefore: at.Add(-time.Hour), Changed: 10, Language: "en-US"}
+	if got, err := st.DueLibraryCatalog(ctx, due); err != nil || !slices.Equal(got, []LibraryCatalogKey{fetched}) {
+		t.Fatalf("due as changed = %v, %v; want the changed movie", got, err)
+	}
+	if n, err := st.CountDueLibraryCatalog(ctx, due); err != nil || n != 1 {
+		t.Fatalf("due as new = %d, %v; want only the unfetched one: a changed record is no new title", n, err)
+	}
+	if _, err := st.SaveLibraryCatalog(ctx, fetched, `{}`, 0, "en-US", at); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.DueLibraryCatalog(ctx, due); err != nil || len(got) != 0 {
+		t.Fatalf("due as changed after the save = %v, %v; want none", got, err)
+	}
+
+	if _, ok, err := st.LibraryCatalogFeedRead(ctx, "tmdb"); err != nil || ok {
+		t.Fatalf("feed read before any = %v, %v; want none", ok, err)
+	}
+	for _, read := range []time.Time{at, at.Add(24 * time.Hour)} {
+		if err := st.SaveLibraryCatalogFeedRead(ctx, "tmdb", read); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, ok, err := st.LibraryCatalogFeedRead(ctx, "tmdb"); err != nil || !ok || !got.Equal(at.Add(24*time.Hour)) {
+		t.Fatalf("feed read = %v, %v, %v; want the latest", got, ok, err)
 	}
 }

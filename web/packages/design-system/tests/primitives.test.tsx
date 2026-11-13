@@ -289,7 +289,7 @@ describe("Text", () => {
   it("keeps a caller's own textTransform when not shouting", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <Text textRole="guideLabel" textTransform="uppercase">
+        <Text textRole="label" textTransform="uppercase">
           hi
         </Text>
       </LoomarrProvider>,
@@ -301,7 +301,7 @@ describe("Text", () => {
 
   // Amber means focus or the primary action (#1909 Q4): a number role is foreground at rest, and a
   // display numeral asks for amber by name.
-  it.each(["channelNumber", "code", "cardChannelNumber", "guideNumber"] as const)(
+  it.each(["channelNumber", "bandNumber", "code", "cardChannelNumber", "guideNumber"] as const)(
     "draws %s in foreground unless a display numeral opts in",
     (textRole) => {
       const colour = (tone?: "signal") => {

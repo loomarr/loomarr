@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/activity"
@@ -32,7 +32,7 @@ type foundationBuild struct {
 	fillerLayout           cliplibrary.Layout
 	secrets                *settings.Secrets
 	log                    *slog.Logger
-	libraryClient          *library.Client
+	libraryClient          *mediaserver.Client
 	tmdbClient             *tmdb.Client
 	refreshSecretRedactor  func()
 	readGeneratedSecret    func(context.Context, settings.GeneratedSecret) (string, error)
@@ -120,7 +120,7 @@ func buildFoundation(
 		result.startup.AttachPersistence(result.diagnostics, instanceID)
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 
-		holidays := newHolidaySnapshot(st, log)
+		holidays := holidayvocab.NewSnapshot(st, log)
 		holidays.Reload(rootCtx)
 		owner.goRunAfterBuild(holidays.Run)
 		result.holidays, result.reloadHolidays = holidays.Current, holidays.Reload
@@ -187,7 +187,7 @@ func buildFoundation(
 		fallbackLog = redactedLog
 		secretRedactor = redactor
 		result.secretRedactor = redactor
-		result.libraryClient = library.NewDynamicObserved(result.set.libraryConn(), instanceID, result.metrics)
+		result.libraryClient = mediaserver.NewDynamicObserved(result.set.libraryConn(), instanceID, result.metrics)
 		key := func() string { return settings.TMDBAPIKey.Get(result.set) }
 		if overrides.TMDBBaseURL != "" {
 			result.tmdbClient = tmdb.NewDynamicWithBaseObserved(overrides.TMDBBaseURL, key, result.metrics)

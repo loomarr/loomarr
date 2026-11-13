@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // --- probe -------------------------------------------------------------------
 
 type probeMemStore struct {
-	upserts    []cliplibrary.StoreClip
+	upserts    []clipstore.Clip
 	composites []string
 }
 
-func (m *probeMemStore) UpsertClip(_ context.Context, c cliplibrary.StoreClip) error {
+func (m *probeMemStore) UpsertClip(_ context.Context, c clipstore.Clip) error {
 	m.upserts = append(m.upserts, c)
 	return nil
 }
@@ -36,8 +36,8 @@ func proberReturning(p tools.Probed, err error) tools.Prober {
 	return func(context.Context, string) (tools.Probed, error) { return p, err }
 }
 
-func probeClip() cliplibrary.StoreClip {
-	return cliplibrary.StoreClip{Clip: clips.Clip{Hash: "c1", Path: "a3/f9/c1.mp4", Name: "Toy ad"}}
+func probeClip() clipstore.Clip {
+	return clipstore.Clip{Clip: clips.Clip{Hash: "c1", Path: "a3/f9/c1.mp4", Name: "Toy ad"}}
 }
 
 // The hard gates, each with the MEASURED fact attached — "too short" is an assertion, "8.2s; the
@@ -150,10 +150,10 @@ func TestFinishStage_AlwaysAppliesAndContinues(t *testing.T) {
 		{Hash: "c1", Path: "a3/f9/c1.mp4", Role: clips.Commercial, Held: true},
 		{Hash: "c2", Path: "b4/e8/c2.mp4", Role: clips.Unclassified, Held: true, Transcript: clips.TranscriptNone},
 	} {
-		if ok, why := s.Applies(context.Background(), cliplibrary.StoreClip{Clip: clip}); !ok {
+		if ok, why := s.Applies(context.Background(), clipstore.Clip{Clip: clip}); !ok {
 			t.Fatalf("finish skipped %s (%s) — the ready commit would never validate", clip.Hash, why)
 		}
-		out, err := s.Run(context.Background(), cliplibrary.StoreClip{Clip: clip})
+		out, err := s.Run(context.Background(), clipstore.Clip{Clip: clip})
 		if err != nil || out.Verdict != pipelinestate.VerdictContinue || out.Reason != "" {
 			t.Fatalf("finish on %s = %+v, %v; want a plain continue", clip.Hash, out, err)
 		}

@@ -70,11 +70,22 @@ func (im *Importer) stalled(root string) bool {
 	}
 }
 
+// markStalled records a call under root that was given up on, a walk or a header read; done closes
+// when the call ends. A root with one still outstanding stays stalled until every one has ended.
 func (im *Importer) markStalled(root string, done <-chan struct{}) {
 	im.mu.Lock()
 	defer im.mu.Unlock()
 	if im.stalledWalks == nil {
 		im.stalledWalks = map[string]<-chan struct{}{}
+	}
+	if earlier, ok := im.stalledWalks[root]; ok {
+		both := make(chan struct{})
+		go func() {
+			<-earlier
+			<-done
+			close(both)
+		}()
+		done = both
 	}
 	im.stalledWalks[root] = done
 }

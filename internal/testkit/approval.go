@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ApprovalStore is the shared scripted persistence double for approval-coordinator tests.
@@ -84,8 +84,8 @@ func validateApproval(commit store.ProposalApproval) error {
 	if err := ch.Policy.Validate(); err != nil {
 		return fmt.Errorf("invalid channel policy: %w", err)
 	}
-	if ch.IntentRef == "" {
-		return fmt.Errorf("channel %s has no intent ref", ch.ID)
+	if !ch.FromRequest {
+		return fmt.Errorf("channel %s was not made from a request", ch.ID)
 	}
 	for _, rec := range commit.Titles {
 		want, err := rec.Title.Key()
@@ -132,7 +132,7 @@ func (c *ApprovalChannels) PlanApprovedChannel(_ context.Context, p proposalstor
 func ApprovedChannel(p proposalstore.Proposal, number int) channelstore.Channel {
 	ch := channelstore.Channel{}
 	ch.ID = "ch_" + p.ID
-	ch.IntentRef = p.JobID
+	ch.IntentRef, ch.FromRequest = p.JobID, true
 	ch.Name = "Approved channel"
 	ch.Number = number
 	ch.Strategy = schedule.Sequential

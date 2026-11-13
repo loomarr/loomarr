@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"slices"
+	"sync"
 	"time"
 
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Enricher defaults (decision 20).
@@ -38,11 +41,14 @@ var catalogVersions = map[string]int{string(mp.KindMovie): 2, string(mp.KindSeri
 
 // EnrichStore is the cache the Enricher fills.
 type EnrichStore interface {
-	DueLibraryCatalog(ctx context.Context, due store.LibraryCatalogDue) ([]store.LibraryCatalogKey, error)
+	DueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) ([]librarystore.LibraryCatalogKey, error)
 	CountLibraryCatalog(ctx context.Context) (int, error)
-	SaveLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
-	FailLibraryCatalog(ctx context.Context, key store.LibraryCatalogKey, retryAt time.Time) error
-	RewriteLibraryCatalogFiles(ctx context.Context, key store.LibraryCatalogKey) ([]store.LibraryFilePath, error)
+	CountDueLibraryCatalog(ctx context.Context, due librarystore.LibraryCatalogDue) (int, error)
+	LibraryCatalogTitle(ctx context.Context, key librarystore.LibraryCatalogKey) (string, int, error)
+	SaveLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, record string, version int, language string, at time.Time) (bool, error)
+	FailLibraryCatalog(ctx context.Context, key librarystore.LibraryCatalogKey, retryAt time.Time) error
+	LibraryCatalogWaiting(ctx context.Context, now time.Time) (librarystore.LibraryCatalogWaiting, error)
+	RewriteLibraryCatalogFiles(ctx context.Context, key librarystore.LibraryCatalogKey) ([]librarystore.LibraryFilePath, error)
 }
 
 // Enricher fetches the catalog records the walk asked for (#2151, decision 20): titles new to the
@@ -55,6 +61,9 @@ type Enricher struct {
 	Provider mp.Provider
 	// Rewrite asks for a pass over folders under a root.
 	Rewrite func(root string, dirs ...string)
+	// Settled reports whether every pass Rewrite asked for has run; nil is always settled. Step 3
+	// ends only once it does, and whatever ends a pass must Wake the Enricher to see it.
+	Settled func() bool
 	// Language is the language records are read in now ("en-US"); a record cached in another is
 	// fetched again first (decision 21). Nil, or "", checks none.
 	Language func() string
@@ -66,57 +75,254 @@ type Enricher struct {
 	Log      *slog.Logger
 	// Sleep waits between fetches, per the provider's rate hint; nil sleeps on the clock.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Tracker records the fetches of new titles, step 3 of an import; nil records none.
+	Tracker *Tracker
+
+	// woken holds one ask to look up new titles ahead of the next tick; wakeOnce makes it.
+	woken    chan struct{}
+	wakeOnce sync.Once
+
+	// lookups is how the last lookup went, for Settings → Library and the Library's line.
+	mu      sync.Mutex
+	lookups Lookups
 }
 
-// Run fetches until ctx ends.
+// LookupState is whether details can be looked up now, and when not, why.
+type LookupState string
+
+const (
+	// LookupsOK: the last lookup answered, or none has been tried.
+	LookupsOK LookupState = "ok"
+	// LookupsNoKey: the catalog has no key, so nothing is looked up until one is added.
+	LookupsNoKey LookupState = "no_key"
+	// LookupsKeyRefused: the catalog turned the key down.
+	LookupsKeyRefused LookupState = "key_refused"
+	// LookupsUnreachable: the catalog didn't answer, or answered with an error.
+	LookupsUnreachable LookupState = "unreachable"
+)
+
+// Lookups is how the Enricher's last lookup went.
+type Lookups struct {
+	State LookupState
+	// RetryAt is when the next try is, after a failed one; zero otherwise.
+	RetryAt time.Time
+}
+
+// Lookups reports how the last lookup went. Safe on a nil Enricher, which reads as ok.
+func (e *Enricher) Lookups() Lookups {
+	if e == nil {
+		return Lookups{State: LookupsOK}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.lookups.State == "" {
+		return Lookups{State: LookupsOK}
+	}
+	return e.lookups
+}
+
+// setLookups records how a lookup went, and says so in the log when that changed: a catalog that
+// stopped answering is a warning, never only a debug line.
+func (e *Enricher) setLookups(next Lookups, err error) {
+	e.mu.Lock()
+	was := e.lookups.State
+	e.lookups = next
+	e.mu.Unlock()
+	if was == next.State || (was == "" && next.State == LookupsOK) {
+		return
+	}
+	switch next.State {
+	case LookupsOK:
+		e.log().Info("library enrich: details are being looked up again")
+	case LookupsNoKey:
+		e.log().Info("library enrich: no catalog key; details wait until one is added")
+	default:
+		e.log().Warn("library enrich: the catalog can't be used; titles wait for their details",
+			"why", string(next.State), "retry_at", next.RetryAt, "err", err)
+	}
+}
+
+// Run fetches until ctx ends: everything due at each tick, and the titles new to the cache as soon
+// as Wake asks.
 func (e *Enricher) Run(ctx context.Context) {
 	tick := time.NewTicker(orDuration(e.Interval, EnrichInterval))
 	defer tick.Stop()
+	refresh := true
 	for {
-		if err := e.Tick(ctx); err != nil && ctx.Err() == nil {
+		if err := e.tick(ctx, refresh); err != nil && ctx.Err() == nil {
 			e.log().Warn("library enrich: tick failed", "err", err)
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+			refresh = true
+		case <-e.wake():
+			refresh = false
 		}
 	}
 }
 
+// Wake asks Run to look up the titles new to the cache without waiting for the next tick: an
+// import wrote titles, and step 3 follows step 2 at once instead of up to a tick later. It never
+// blocks, and asks made while a lookup runs fold into one. Safe on a nil Enricher.
+func (e *Enricher) Wake() {
+	if e == nil {
+		return
+	}
+	select {
+	case e.wake() <- struct{}{}:
+	default:
+	}
+}
+
+// wake is the one-slot channel Wake fills and Run drains.
+func (e *Enricher) wake() chan struct{} {
+	e.wakeOnce.Do(func() { e.woken = make(chan struct{}, 1) })
+	return e.woken
+}
+
 // Tick fetches what is due now. It stops early when the catalog cannot be reached at all.
-func (e *Enricher) Tick(ctx context.Context) error {
+//
+// Fetching the titles new to the cache is step 3 of an import ("Looking up details"): it runs
+// from the first one fetched until a tick finds none due as new or the catalog can't be reached,
+// and counts each fetched.
+// The share of old records refreshed each tick is not part of it.
+func (e *Enricher) Tick(ctx context.Context) error { return e.tick(ctx, true) }
+
+// tick fetches the titles new to the cache and, when refresh is set, this tick's share of the
+// oldest records. A lookup Wake asked for refreshes none: the share is sized for one tick per
+// Interval, and every extra tick taking one would refresh the cache faster than Refresh says.
+func (e *Enricher) tick(ctx context.Context, refresh bool) error {
 	if e.Enabled != nil && !e.Enabled() {
+		e.Tracker.End(StepLookingUp)
 		return nil
 	}
 	now := e.now()
-	total, err := e.Store.CountLibraryCatalog(ctx)
+	due := e.due(now)
+	due.New = enrichNewBatch
+	fresh, err := e.Store.DueLibraryCatalog(ctx, due)
 	if err != nil {
 		return err
 	}
-	due, err := e.Store.DueLibraryCatalog(ctx, store.LibraryCatalogDue{
-		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
-		New: enrichNewBatch, Stale: e.staleShare(total), Versions: catalogVersions, Language: e.language(),
-	})
-	if err != nil {
-		return err
+	var stale []librarystore.LibraryCatalogKey
+	if refresh {
+		total, err := e.Store.CountLibraryCatalog(ctx)
+		if err != nil {
+			return err
+		}
+		// Records the change feed named come before the oldest, and are not new titles: they
+		// are no part of an import's step 3.
+		due.New, due.Changed, due.Stale = 0, enrichNewBatch, e.staleShare(total)
+		if stale, err = e.Store.DueLibraryCatalog(ctx, due); err != nil {
+			return err
+		}
 	}
+	isNew := map[librarystore.LibraryCatalogKey]bool{}
+	for _, key := range fresh {
+		isNew[key] = true
+	}
+	keys := slices.Concat(fresh, slices.DeleteFunc(stale, func(k librarystore.LibraryCatalogKey) bool { return isNew[k] }))
 	gap := e.Provider.Capabilities().Rate.MinInterval
-	for i, key := range due {
+	for i, key := range keys {
 		if i > 0 && gap > 0 {
 			if err := e.sleep(ctx, gap); err != nil {
 				return err
 			}
 		}
+		var name string
+		if isNew[key] {
+			name = e.title(ctx, key)
+			e.Tracker.Current(StepLookingUp, name)
+		}
 		outcome, err := e.fetch(ctx, key, now)
 		if err != nil {
 			return err
 		}
-		if outcome != fetchDone {
+		switch outcome {
+		case fetchUnconfigured:
+			// Nothing is looked up until the catalog has a key, so nothing is shown running.
+			e.Tracker.End(StepLookingUp)
 			return nil
+		case fetchFailed:
+			// The catalog can't be reached: nothing is moving, so nothing is shown running.
+			e.Tracker.End(StepLookingUp)
+			return nil
+		case fetchHeld:
+			// That title waits its retry; the catalog answers, so the next title goes on.
+			continue
+		}
+		if isNew[key] {
+			if err := e.begin(ctx, name); err != nil {
+				return err
+			}
+			e.Tracker.Advance(StepLookingUp, 1)
 		}
 	}
+	return e.track(ctx, e.due(e.now()))
+}
+
+// begin starts step 3 at the first title looked up (named first), counting it and what is left
+// due as new. The step starts only once a lookup succeeds, so a catalog without a key or out of
+// reach never shows it.
+func (e *Enricher) begin(ctx context.Context, first string) error {
+	if e.Tracker == nil || e.Tracker.Active(StepLookingUp) {
+		return nil
+	}
+	left, err := e.Store.CountDueLibraryCatalog(ctx, e.due(e.now()))
+	if err != nil {
+		return err
+	}
+	e.Tracker.Begin(StepLookingUp, left+1)
+	e.Tracker.Current(StepLookingUp, first)
 	return nil
+}
+
+// due is what is due at now, uncapped.
+func (e *Enricher) due(now time.Time) librarystore.LibraryCatalogDue {
+	return librarystore.LibraryCatalogDue{
+		Now: now, StaleBefore: now.Add(-orDuration(e.Refresh, EnrichRefresh)),
+		Versions: catalogVersions, Language: e.language(),
+	}
+}
+
+// track counts the titles due as new and tells a running step 3: it grows as more become due and
+// ends when none are left.
+func (e *Enricher) track(ctx context.Context, due librarystore.LibraryCatalogDue) error {
+	if e.Tracker == nil {
+		return nil
+	}
+	left, err := e.Store.CountDueLibraryCatalog(ctx, due)
+	switch {
+	case err != nil:
+		return err
+	case left == 0:
+		// Nothing is left to fetch, but the titles fetched are written again with their details
+		// by a folder pass. Until that has run the step stays, done, rather than the import
+		// reading as finished over titles still showing their file names.
+		if e.Settled == nil || e.Settled() {
+			e.Tracker.End(StepLookingUp)
+		} else {
+			e.Tracker.Current(StepLookingUp, "")
+		}
+	case e.Tracker.Active(StepLookingUp):
+		e.Tracker.Due(StepLookingUp, left)
+	}
+	return nil
+}
+
+// title names a title being looked up: its name and year as the Library holds them, else its
+// catalog key.
+func (e *Enricher) title(ctx context.Context, key librarystore.LibraryCatalogKey) string {
+	name, year, err := e.Store.LibraryCatalogTitle(ctx, key)
+	switch {
+	case err != nil || name == "":
+		return key.String()
+	case year > 0:
+		return fmt.Sprintf("%s (%d)", name, year)
+	default:
+		return name
+	}
 }
 
 // staleShare is how many old records one tick refreshes: enough that the whole cache is refreshed
@@ -132,14 +338,14 @@ func (e *Enricher) staleShare(total int) int {
 // Update fetches one title's record now, for "Update details" (decision 20), and writes its titles
 // again when it changed. ErrNoCatalog when the catalog is not configured; ErrCatalogUnreachable
 // when it failed, and the record is then tried again later as any failed fetch is.
-func (e *Enricher) Update(ctx context.Context, key store.LibraryCatalogKey) error {
+func (e *Enricher) Update(ctx context.Context, key librarystore.LibraryCatalogKey) error {
 	outcome, err := e.fetch(ctx, key, e.now())
 	switch {
 	case err != nil:
 		return err
 	case outcome == fetchUnconfigured:
 		return ErrNoCatalog
-	case outcome == fetchFailed:
+	case outcome == fetchFailed, outcome == fetchHeld:
 		return ErrCatalogUnreachable
 	}
 	return nil
@@ -158,10 +364,26 @@ const (
 	fetchUnconfigured
 	// fetchFailed is a catalog that failed: the next key would fail too.
 	fetchFailed
+	// fetchHeld is a fetch that failed for this title alone: it waits enrichRetry, and the next
+	// key goes on.
+	fetchHeld
 )
 
+// catalogFault reports whether a failed fetch says the catalog can't be used now (no key, a key
+// turned down, out of reach, overloaded) rather than something about the one title asked for. A
+// catalog fault holds no title back: every title is tried again at the next tick, so none waits
+// hours after the catalog is fixed.
+func catalogFault(err error) bool {
+	switch tmdb.FailureClass(err) {
+	case tmdb.FailureNoKey, tmdb.FailureUnauthorized, tmdb.FailureRateLimited, tmdb.FailureServerError,
+		tmdb.FailureTimeout, tmdb.FailureNetwork:
+		return true
+	}
+	return false
+}
+
 // fetch fetches one key.
-func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now time.Time) (fetchOutcome, error) {
+func (e *Enricher) fetch(ctx context.Context, key librarystore.LibraryCatalogKey, now time.Time) (fetchOutcome, error) {
 	ref := mp.Ref{Kind: mp.Kind(key.Kind), ID: mp.ExternalID{Namespace: mp.Namespace(key.Provider), Value: key.ExternalID}}
 	rec, fetchErr := e.Provider.Fetch(ctx, ref)
 	record := ""
@@ -175,19 +397,32 @@ func (e *Enricher) fetch(ctx context.Context, key store.LibraryCatalogKey, now t
 	case errors.Is(fetchErr, mp.ErrNotFound), errors.Is(fetchErr, mp.ErrUnsupported):
 		// The catalog has no such title: remember that, so it is not asked again until the
 		// refresh.
-	case errors.Is(fetchErr, tmdb.ErrAPIKeyRequired):
+	case errors.Is(fetchErr, mp.ErrNotConfigured), errors.Is(fetchErr, tmdb.ErrAPIKeyRequired):
+		// The catalog provider says mp.ErrNotConfigured without a key; the TMDB client itself,
+		// tmdb.ErrAPIKeyRequired.
 		// Not configured: nothing is fetched until it is, and no title is held back for it.
+		e.setLookups(Lookups{State: LookupsNoKey}, nil)
 		return fetchUnconfigured, nil
-	default:
-		if ctx.Err() != nil {
-			return fetchFailed, ctx.Err()
+	case ctx.Err() != nil:
+		return fetchFailed, ctx.Err()
+	case catalogFault(fetchErr):
+		// Every title would fail the same way: stop, and try them all at the next tick.
+		state := LookupsUnreachable
+		if tmdb.FailureClass(fetchErr) == tmdb.FailureUnauthorized {
+			state = LookupsKeyRefused
 		}
+		e.setLookups(Lookups{State: state, RetryAt: now.Add(orDuration(e.Interval, EnrichInterval))}, fetchErr)
+		return fetchFailed, nil
+	default:
+		// Something about this title alone: it waits enrichRetry, and the next one goes on.
 		if err := e.Store.FailLibraryCatalog(ctx, key, now.Add(enrichRetry)); err != nil {
 			return fetchFailed, err
 		}
-		e.log().Debug("library enrich: fetch failed", "catalog", key.String(), "err", fetchErr)
-		return fetchFailed, nil
+		e.log().Info("library enrich: a title's details couldn't be read; trying it again later",
+			"catalog", key.String(), "retry_at", now.Add(enrichRetry), "err", fetchErr)
+		return fetchHeld, nil
 	}
+	e.setLookups(Lookups{State: LookupsOK}, nil)
 	// A record says the language it was read in; "the catalog has no such title" holds in any.
 	language := rec.Language
 	if fetchErr != nil {

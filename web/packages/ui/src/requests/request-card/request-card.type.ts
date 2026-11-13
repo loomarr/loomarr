@@ -11,6 +11,8 @@ type RequestCardProps = {
   nowMs?: number;
   /** Opens the request. Omitted, the card is read-only. */
   onOpen?: () => void;
+  /** The household's timezone, which dates are told in; the device's while undefined. */
+  timeZone?: string;
   trailing?: ReactNode;
 };
 

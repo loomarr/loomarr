@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/platform/activity"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/housekeeping"
@@ -21,7 +22,7 @@ import (
 func buildProvisioning(
 	st records.Store,
 	set resolved,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	emitter *eventEmitter,
 	registry *jobs.Registry,
 	activityRecorder *activity.Recorder,
@@ -33,7 +34,7 @@ func buildProvisioning(
 		return
 	}
 	reconciler := provisionbackstop.NewDynamic(st, set.requesterFor(metricRecorder), func() provisionbackstop.LibraryLookup {
-		return libraryLookup{titles: st}
+		return resolvers.NewOwnedLookup(st)
 	}, emitter, provisionbackstop.Config{
 		RequestTTL: settings.RequestTTL.Get(set), DownloadingTTL: settings.DownloadingTTL.Get(set),
 	}, time.Now, log).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
@@ -53,7 +54,7 @@ func buildProvisioning(
 	registry.Add(keeper.Job())
 
 	libraryScan := provisionbackstop.NewLibraryScan(
-		st, libraryTitleScanner{titles: st}, emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
+		st, resolvers.NewScanner(st), emitter, settings.JobLibraryScanLookback.Get(set), time.Now, log,
 	).WithActivity(activityRecorder).WithQualityRecorder(quality.NewAcquisitionRecorder(st, log))
 	registry.AddAll(libraryScan.Jobs())
 

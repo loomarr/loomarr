@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // fakeNeedsStore holds titles that need the household and which of them a notice counted.
@@ -15,10 +15,10 @@ type fakeNeedsStore struct {
 	noticed map[string]bool
 }
 
-func (f *fakeNeedsStore) LibraryNeeds(context.Context) ([]store.LibraryNeed, error) {
-	out := make([]store.LibraryNeed, 0, len(f.needs))
+func (f *fakeNeedsStore) LibraryNeeds(context.Context) ([]librarystore.LibraryNeed, error) {
+	out := make([]librarystore.LibraryNeed, 0, len(f.needs))
 	for _, id := range f.needs {
-		var n store.LibraryNeed
+		var n librarystore.LibraryNeed
 		n.ID = id
 		out = append(out, n)
 	}

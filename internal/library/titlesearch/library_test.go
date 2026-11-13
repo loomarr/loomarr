@@ -5,41 +5,43 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
-	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // tmdbIDs is a title's ids when TMDB's is its only one.
-func tmdbIDs(v string) []store.LibraryID { return []store.LibraryID{{Namespace: "tmdb", Value: v}} }
+func tmdbIDs(v string) []librarystore.LibraryID {
+	return []librarystore.LibraryID{{Namespace: "tmdb", Value: v}}
+}
 
-type libraryTitlesFake []store.LibraryTitle
+type libraryTitlesFake []librarystore.LibraryTitle
 
-func (f libraryTitlesFake) SearchLibraryTitles(_ context.Context, _ string, limit int) ([]store.LibraryTitle, error) {
+func (f libraryTitlesFake) SearchLibraryTitles(_ context.Context, _ string, limit int) ([]librarystore.LibraryTitle, error) {
 	if len(f) > limit {
 		return f[:limit], nil
 	}
 	return f, nil
 }
 
-func (f libraryTitlesFake) LibraryTitles(context.Context, time.Time) ([]store.LibraryTitle, error) {
+func (f libraryTitlesFake) LibraryTitles(context.Context, time.Time) ([]librarystore.LibraryTitle, error) {
 	return f, nil
 }
 
-func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (store.LibraryTitle, bool, error) {
+func (f libraryTitlesFake) LibraryTitleByProviderID(_ context.Context, kind, namespace, value string) (librarystore.LibraryTitle, bool, error) {
 	for _, t := range f {
-		if t.Kind == kind && store.IDIn(t.IDs, namespace) == value {
+		if t.Kind == kind && librarystore.IDIn(t.IDs, namespace) == value {
 			return t, true, nil
 		}
 	}
-	return store.LibraryTitle{}, false, nil
+	return librarystore.LibraryTitle{}, false, nil
 }
 
-type itemFactsFake map[string]store.LibraryItemFacts
+type itemFactsFake map[string]librarystore.LibraryItemFacts
 
-func (f itemFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]store.LibraryItemFacts, error) {
-	out := map[string]store.LibraryItemFacts{}
+func (f itemFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]librarystore.LibraryItemFacts, error) {
+	out := map[string]librarystore.LibraryItemFacts{}
 	for _, id := range ids {
 		if facts, ok := f[id]; ok {
 			out[id] = facts
@@ -52,7 +54,7 @@ var ownedTitles = libraryTitlesFake{
 	{ID: "lib-film", Kind: "movie", Name: "Harbor Lights", IDs: tmdbIDs("90000001"), Rating: "PG",
 		Genres: []string{"Drama"}, SizeBytes: 4_000},
 	{ID: "lib-show", Kind: "series", Name: "Harbor Watch", IDs: append(tmdbIDs("90000003"),
-		store.LibraryID{Namespace: "tvdb", Value: "90000002"}), Rating: "TV-Y"},
+		librarystore.LibraryID{Namespace: "tvdb", Value: "90000002"}), Rating: "TV-Y"},
 }
 
 // Title search answers from the Library only (#2151 step 16): its titles come back under their
@@ -70,7 +72,7 @@ func TestLibrarySearchAnswersFromTheLibrary(t *testing.T) {
 		film.RuntimeMinutes != 95 || film.Overview != "A lighthouse." || film.OfficialRating != "PG" || film.SizeBytes != 4_000 {
 		t.Errorf("film = %+v; want it under its library item id with its facts", film)
 	}
-	if show := got[1]; show.LibraryItemID != "lib-show" || show.MediaType != library.Series || show.TVDBID != 90000002 {
+	if show := got[1]; show.LibraryItemID != "lib-show" || show.MediaType != mediaserver.Series || show.TVDBID != 90000002 {
 		t.Errorf("show = %+v", show)
 	}
 	if got, err := (titlesearch.LibrarySearch{Titles: libraryTitlesFake{}, Facts: facts}).Search(ctx, "nothing", 10); err != nil || len(got) != 0 {

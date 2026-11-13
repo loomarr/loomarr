@@ -5,7 +5,6 @@ package filler
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -22,14 +21,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
-
-// ErrIngestUnavailable reports that this install cannot run the ingest tooling. It is NOT
-// a configuration error — no setting can assert that a binary executes — which is why the
-// API renders it as a distinct problem type rather than feature_not_configured.
-//
-// The single image always ships the tooling (§16), so this means a DEGRADED install: a custom
-// build without the vendored binaries, or a path that is missing or not executable.
-var ErrIngestUnavailable = errors.New("ingest tooling not present in this image")
 
 // Store is the slice of the filler store these routes read and write: the clip catalog, the
 // channel list a catalog change reconciles, and the filler persistence roles.
@@ -83,7 +74,7 @@ type Deps struct {
 	Filler Service
 	// FillerLayout is the clip folder topology this server generation runs on.
 	FillerLayout cliplibrary.Layout
-	// The Filler prefix matches the api.Options fields these are copied from.
+	// The Filler* fields are copied from api.FillerOptions (Layout, Research, Defects).
 	FillerResearch ResearchService
 	FillerDefects  *defectfloor.DefectReports
 	// Channels reconciles the channels a catalog change touches.

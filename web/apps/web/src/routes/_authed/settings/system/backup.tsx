@@ -1,8 +1,10 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { BackupPanel } from "@/components/loomarr/settings/backup-panel";
 import { SettingsPage } from "@/settings/settings-page";
@@ -61,13 +63,15 @@ const BackupPage = () => {
         },
       ]}
       footer={
-        <div className="flex flex-col gap-3">
-          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
-            <h2 className="font-medium">The image volume is separate</h2>
-            <p className="text-muted-foreground mt-1">
+        <Stack gap="control">
+          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4">
+            <Text as="h2" textRole="cardLabel">
+              The image volume is separate
+            </Text>
+            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
               This backup contains the database, including settings, channels, people, and generated secrets.
               It does not copy image files or operator-uploaded artwork.
-            </p>
+            </Text>
           </aside>
           <BackupPanel
             list={list.data.data}
@@ -77,7 +81,7 @@ const BackupPage = () => {
             pending={backUpNow.isPending}
             error={error}
           />
-        </div>
+        </Stack>
       }
     />
   );
@@ -85,6 +89,11 @@ const BackupPage = () => {
 
 const Route = createFileRoute("/_authed/settings/system/backup")({
   component: BackupPage,
+  // The backups on disk, so the page opens on its list. Admin-only like the page.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    await queryClient.ensureQueryData(systemApi.getSystemBackupsListQueryOptions());
+  },
 });
 
 export { Route };

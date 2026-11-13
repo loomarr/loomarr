@@ -9,6 +9,11 @@ interface TunerLoaderProps {
    * wash simply rests at its drained look.
    */
   heldFrame?: boolean;
+  /**
+   * The programme's fanart, for a long wait (1.5 s and up, §9.4): shown dimmed behind the snow, contained
+   * at 16:9 (letterboxed, never stretched), so the wait shows what is on.
+   */
+  backdrop?: string;
   className?: string;
 }
 

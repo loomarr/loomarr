@@ -13,6 +13,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
@@ -22,7 +23,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/outlook"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // registerProposals mounts /v1/proposals* (§7/§8). Submit is open to any
@@ -105,8 +105,12 @@ func (s *Handlers) submitProposal(ctx context.Context, in *submitInput) (*submit
 	if s.suggest == nil {
 		return nil, httpcore.FeatureNotConfigured("AI isn't set up", "Connect an AI provider and select a tool-capable lineup model in Settings → AI to build channels from a sentence.")
 	}
-	if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
-		return nil, err
+	// A demo submitter builds its proposal from the library with no AI, so the AI and TMDB settings
+	// it would otherwise need are not required (#2729).
+	if canned, ok := s.suggest.(interface{ Canned() bool }); !ok || !canned.Canned() {
+		if err := httpcore.SuggestionConfigurationError(ctx, s.settings); err != nil {
+			return nil, err
+		}
 	}
 	if err := checkDescription(in.Body.Description); err != nil {
 		return nil, err
@@ -319,7 +323,7 @@ type ApprovalEditDTO struct {
 	// Drop lists provisioning keys ("movie:tmdb:603") the approver removed. Keys rather than
 	// indexes: an index means "the third one in the list I was looking at", which is wrong the
 	// moment anything reorders between render and submit.
-	Drop []string `json:"drop,omitempty" doc:"Provisioning keys to remove from the proposal before approving"`
+	Drop []string `json:"drop,omitempty" maxItems:"1000" doc:"Provisioning keys to remove from the proposal before approving"`
 	// Add lists titles the approver added via search or a grounded collection. The approval
 	// gate rechecks Library presence: owned titles join the Lineup and only missing titles
 	// become acquisitions.
@@ -327,7 +331,7 @@ type ApprovalEditDTO struct {
 	// The DOMAIN type, not a hand-written mirror — the same call this file makes for
 	// ProposalDTO.Proposal, and for the same reason recorded there: a mirror drifts from what it
 	// mirrors.
-	Add []proposals.ProposalItem `json:"add,omitempty" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
+	Add []proposals.ProposalItem `json:"add,omitempty" maxItems:"1000" doc:"Titles to add; current Library presence determines Lineup or acquisition placement"`
 	// Note is the message to whoever requested this — why it came back altered.
 	Note string `json:"note,omitempty" doc:"A message to the requester, stored with the approval"`
 	// Audience is the card's "Raise to <rating>" (#3012): a new audience limit, applied as the
@@ -454,7 +458,7 @@ type bulkApproveInput struct {
 		// No edit field, deliberately. Edit-before-approve (V25b) is a per-proposal judgement —
 		// "drop these two titles" means nothing applied across a batch — so bulk is the
 		// unmodified path only. An admin who wants to change a proposal opens it.
-		IDs []string `json:"ids" minItems:"1" doc:"Proposal ids to approve, each through the single approval gate"`
+		IDs []string `json:"ids" minItems:"1" maxItems:"100" doc:"Proposal ids to approve, each through the single approval gate (at most 100, the same ceiling as bulk pull approval)"`
 	}
 }
 

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // A shared fake refuses what the real thing refuses; one that accepts anything hides the bugs
@@ -21,7 +21,7 @@ import (
 func TestMediaServerRefusesAReadWithoutItsToken(t *testing.T) {
 	ms := NewMediaServer(t)
 	defer ms.Close()
-	for _, path := range []string{"/Items?SearchTerm=matrix", "/Users", "/Library/VirtualFolders"} {
+	for _, path := range []string{"/Users", "/Library/VirtualFolders"} {
 		for name, token := range map[string]string{"none": "", "wrong": "not-the-admin-token"} {
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ms.URL+path, nil)
 			if err != nil {
@@ -155,9 +155,9 @@ func TestApprovalStoreRefusesASecondApprovalOfOneProposal(t *testing.T) {
 // or whose title key does not match its title.
 func TestApprovalStoreRefusesAnInvalidCommit(t *testing.T) {
 	cases := map[string]func(*store.ProposalApproval){
-		"not approved":    func(c *store.ProposalApproval) { c.Proposal.Status = "submitted" },
-		"no intent ref":   func(c *store.ProposalApproval) { c.Channel.IntentRef = "" },
-		"invalid channel": func(c *store.ProposalApproval) { c.Channel.Name = "" },
+		"not approved":       func(c *store.ProposalApproval) { c.Proposal.Status = "submitted" },
+		"not from a request": func(c *store.ProposalApproval) { c.Channel.FromRequest = false },
+		"invalid channel":    func(c *store.ProposalApproval) { c.Channel.Name = "" },
 		"title key mismatch": func(c *store.ProposalApproval) {
 			c.Titles = []provision.Record{{
 				Key:   "movie:tmdb:90000001",

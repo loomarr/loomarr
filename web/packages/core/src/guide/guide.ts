@@ -20,8 +20,91 @@ const GUIDE_BUCKET_MS = 60_000;
 const LOOKBACK_MINUTES = 30;
 const DEFAULT_WINDOW_MINUTES = 240;
 
-const startOfDay = (date: Date): number =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+// The Guide's days and hours are the household's wall clock (the zone its axis is labelled in),
+// not the device's: a phone in another zone, or a day a clock change makes 23 or 25 hours long,
+// still opens "8 PM tomorrow" at 8 PM there. An undefined zone is the device's own.
+const wallFormatters = new Map<string | undefined, Intl.DateTimeFormat>();
+const wallClock = (at: number, timeZone?: string) => {
+  let formatter = wallFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+    });
+    wallFormatters.set(timeZone, formatter);
+  }
+  const part: Record<string, number> = {};
+  for (const { type, value } of formatter.formatToParts(at)) part[type] = Number(value);
+  return {
+    year: part.year ?? 0,
+    month: part.month ?? 1,
+    day: part.day ?? 1,
+    hour: (part.hour ?? 0) % 24,
+    minute: part.minute ?? 0,
+    second: part.second ?? 0,
+  };
+};
+
+// How far a zone's wall clock runs ahead of UTC at a moment.
+const zoneOffset = (at: number, timeZone?: string): number => {
+  const w = wallClock(at, timeZone);
+  return Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - Math.floor(at / 1000) * 1000;
+};
+
+// The moment a zone's wall clock reads a date at an hour, resolved as a Date or Temporal
+// ("compatible") would: the two offsets either side of a clock change give two candidates; a
+// repeated hour is the earlier one that reads right, and an hour the change skips is the later
+// one (the hour moved forward by the gap).
+const zonedTime = (year: number, month: number, day: number, hour: number, timeZone?: string): number => {
+  const asUTC = Date.UTC(year, month - 1, day, hour);
+  const first = asUTC - zoneOffset(asUTC, timeZone);
+  const second = asUTC - zoneOffset(first, timeZone);
+  const reads = (at: number) => {
+    const w = wallClock(at, timeZone);
+    return w.day === day && w.hour === hour;
+  };
+  const matches = [first, second].filter(reads);
+  return matches.length ? Math.min(...matches) : Math.max(first, second);
+};
+
+// The household's wall-clock date and time at a moment (month from 1), for a picker that shows and
+// edits times the way the household reads them.
+const guideWallClock = (at: number, timeZone?: string) => wallClock(at, timeZone);
+
+// The moment the household's wall clock reads a date and time, to the minute (month from 1).
+const guideWallTime = (
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone?: string,
+) => zonedTime(year, month, day, hour, timeZone) + minute * 60_000;
+
+// The household's date `days` after the one it is at a moment, as a UTC midnight to count with.
+const wallDate = (at: number, days: number, timeZone?: string): Date => {
+  const w = wallClock(at, timeZone);
+  return new Date(Date.UTC(w.year, w.month - 1, w.day + days));
+};
+
+/** The moment the household's day `dayOffset` days from `at` reaches `hour` (midnight by default). */
+const guideDayStart = (at: number, dayOffset: number, timeZone?: string, hour = 0): number => {
+  const d = wallDate(at, dayOffset, timeZone);
+  return zonedTime(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), hour, timeZone);
+};
+
+/** Whole household days from `nowMs`'s date to `atMs`'s. */
+const guideDayOffset = (atMs: number, nowMs: number, timeZone?: string): number =>
+  Math.round((wallDate(atMs, 0, timeZone).getTime() - wallDate(nowMs, 0, timeZone).getTime()) / 86_400_000);
+
+/** The household's hour of the day at a moment. */
+const guideHourOf = (at: number, timeZone?: string): number => wallClock(at, timeZone).hour;
 
 /** Resolve the stable API window shared by route prefetch and every client presentation. */
 const guideWindow = ({
@@ -30,15 +113,16 @@ const guideWindow = ({
   windowMinutes,
   hourShift,
   startHour,
+  timeZone,
 }: GuideWindowArgs): GuideWindow => {
   const span = windowMinutes * 60_000;
   const shift = hourShift * 3_600_000;
-  const midnight = startOfDay(new Date(at)) + dayOffset * 86_400_000;
 
   if (startHour !== null) {
-    const start = midnight + startHour * 3_600_000 + shift;
+    const start = guideDayStart(at, dayOffset, timeZone, startHour) + shift;
     return { from: start, to: start + span };
   }
+  const midnight = guideDayStart(at, dayOffset, timeZone);
   if (dayOffset === 0) {
     const start = Math.floor((at - LOOKBACK_MINUTES * 60_000 + shift) / GUIDE_BUCKET_MS) * GUIDE_BUCKET_MS;
     return { from: start, to: start + span };
@@ -56,7 +140,7 @@ const defaultGuideWindow = (at: number): GuideWindow =>
   });
 
 // One formatter per zone: constructing an Intl.DateTimeFormat costs ~0.35 ms, and a 100-channel
-// guide asks for hundreds of times on mount (measured on #1705: 143 ms of it before this cache).
+// guide asks for hundreds of times on mount (measured on #1705: 143 ms of it uncached).
 const guideTimeFormatters = new Map<string | undefined, Intl.DateTimeFormat>();
 
 /** Household guide clocks are explicit and consistent across browser, mobile, and TV. */
@@ -111,11 +195,16 @@ const GUIDE_KIND_LABEL = {
   flex: "Filler",
 } as const;
 
-/** The compact identity shared by Guide blocks and their accessible names. */
-const guideAiringLabel = (airing: GuideAiring): string => {
+/**
+ * The one name an airing goes by, wherever it is shown (Home, the Guide, the player's band, a
+ * channel's page): "Series · Title", the title alone for a movie, or the kind's own word when the
+ * airing has no title. The episode's number is a separate fact: `formatGuideEpisode`.
+ */
+const formatProgrammeTitle = (airing: Pick<GuideAiring, "kind" | "series" | "title">): string => {
   const title = airing.title.trim();
   if (!title) return GUIDE_KIND_LABEL[airing.kind];
-  return airing.series ? `${airing.series} · ${title}` : title;
+  const series = airing.series?.trim();
+  return series ? `${series} · ${title}` : title;
 };
 
 /**
@@ -364,16 +453,21 @@ export {
   formatGuideEpisode,
   formatGuideTime,
   formatGuideTimeRange,
+  formatProgrammeTitle,
   GUIDE_BUCKET_MS,
-  guideAiringLabel,
   guideBreakProgramme,
   guideChannelForTypeahead,
   guideChannelState,
+  guideDayOffset,
+  guideDayStart,
   guideFillerEntryLabel,
   guideFillerNowLabel,
+  guideHourOf,
   guideSelectionForChannel,
   guideTimeFormatter,
   guideWaitingForTitles,
+  guideWallClock,
+  guideWallTime,
   guideWindow,
   LOOKBACK_MINUTES,
   layoutGuide,

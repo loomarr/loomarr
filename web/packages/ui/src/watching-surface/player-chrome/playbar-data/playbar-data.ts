@@ -1,6 +1,15 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { type GuideAiringLayout, guideAiringLabel } from "@loomarr/core/guide";
+import {
+  formatGuideEpisode,
+  formatProgrammeTitle,
+  type GuideAiringLayout,
+  type GuideLayout,
+  guideBreakProgramme,
+  guideFillerNowLabel,
+} from "@loomarr/core/guide";
+import type { PlayerSnapshot } from "@loomarr/player";
 
+import { watchingScheduleTimeMs } from "../../watching-surface-state";
 import type {
   PlaybarSegment,
   PlaybarSpot,
@@ -49,15 +58,11 @@ const spotOf = (entry: PodEntry, index: number): PlaybarSpot => {
   };
 };
 
-const episodeLine = (airing: TimelineAiring) => {
-  const se = [
-    airing.season === undefined ? "" : `S${airing.season}`,
-    airing.episode === undefined ? "" : `E${airing.episode}`,
-  ]
+// A series airing's second line: its episode number and the episode's own name.
+const episodeLine = (airing: TimelineAiring) =>
+  [formatGuideEpisode(airing.season, airing.episode), airing.title.trim() ? `“${airing.title.trim()}”` : ""]
     .filter(Boolean)
     .join(" ");
-  return [se, airing.title.trim() ? `“${airing.title.trim()}”` : ""].filter(Boolean).join(" ");
-};
 
 const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
   if (airing.kind === "filler")
@@ -69,7 +74,7 @@ const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
       stopMs: airing.stopMs,
     };
   const series = airing.series?.trim();
-  const name = series || guideAiringLabel(airing);
+  const name = series || formatProgrammeTitle(airing);
   const line = series
     ? episodeLine(airing)
     : [airing.year ? String(airing.year) : "", airing.genres?.[0] ?? ""].filter(Boolean).join(" · ");
@@ -83,9 +88,12 @@ const segmentOf = (airing: TimelineAiring): PlaybarSegment => {
     id: airing.scheduleBlockId,
     kind: "programme",
     line: line || undefined,
+    ...(airing.logoImage ? { logo: airing.logoImage } : {}),
     name,
     startMs: airing.startMs,
-    stillUri: airing.thumbImage?.src ?? (airing.thumbUrl || undefined),
+    // The programme's fanart is what the strip and its card show (§9.2, variant J); a thumbnail when
+    // the Library holds none.
+    stillUri: airing.backdropImage?.src ?? airing.thumbImage?.src ?? (airing.thumbUrl || undefined),
     stopMs: airing.stopMs,
     synopsis: airing.description?.trim() || undefined,
   };
@@ -114,47 +122,94 @@ interface ChromeChannel {
 
 // The lower third reads the block under the PLAYHEAD, not under live: a viewer behind is watching
 // what aired then.
+const fraction = (at: number, from: number, to: number) =>
+  to > from ? Math.min(1, Math.max(0, (at - from) / (to - from))) : 0;
+
+// A programme's name, second line and art, as the band and the playbar read them. The art is the title's
+// own clear logo and backdrop (an episode's show's), absent when the Library holds none.
+const programmeOf = (airing: TimelineAiring) => {
+  const segment = segmentOf(airing);
+  const art = {
+    ...(airing.logoImage ? { logo: airing.logoImage } : {}),
+    ...(airing.backdropImage ? { backdrop: airing.backdropImage } : {}),
+    // The rating rides with the programme: Leave wears it while the controls are up (§9.3).
+    ...(airing.rating ? { rating: airing.rating } : {}),
+  };
+  return segment.kind === "programme"
+    ? { ...art, line: segment.line, name: segment.name }
+    : { line: undefined, name: airing.title };
+};
+
 const bandOf = (
   channel: ChromeChannel,
+  airings: readonly TimelineAiring[],
   airing: TimelineAiring | undefined,
   playheadMs: number,
   live: PlayerLiveState,
+  nowMs: number,
 ): PlayerBandData => {
   const station = [eraLabel(channel.era), channel.place?.trim()].filter(Boolean).join(" · ");
   const base = {
     channelName: channel.name,
     channelNumber: channel.number,
+    clockMs: playheadMs,
     ...(channel.decade === undefined ? {} : { decade: channel.decade }),
     station: station || undefined,
   };
   if (!airing) return base;
-  const progress = Math.min(1, Math.max(0, (playheadMs - airing.startMs) / (airing.stopMs - airing.startMs)));
-  const behind = live.mode === "live" ? undefined : `${formatClipDuration(live.lagSeconds * 1000)} behind`;
+  const behindLabel =
+    live.mode === "live" ? undefined : `${formatClipDuration(live.lagSeconds * 1000)} behind`;
+  const nextAfter = (stopMs: number) => {
+    const next = airings.find((a) => a.kind !== "filler" && a.startMs >= stopMs);
+    return next ? { name: programmeOf(next).name, startMs: next.startMs } : undefined;
+  };
   if (airing.kind === "filler") {
-    // The clip on air: walk the pod by duration from the break's start.
-    let at = airing.startMs;
-    const entry = airing.pod?.entries.find((e) => {
-      at += e.durationMs;
-      return playheadMs < at;
-    });
-    const name = entry?.name.trim();
+    // A break is a state of the programme it leads back to (#2761): its title, Back in n min.
+    const returning = guideBreakProgramme(
+      airings.filter((a) => a.kind !== "filler"),
+      airing,
+    );
+    const shown: ReturnType<typeof programmeOf> = returning
+      ? programmeOf(returning)
+      : { line: undefined, name: airing.title };
     return {
       ...base,
+      ...(behindLabel ? { behindLabel } : {}),
+      breakMinutesLeft: Math.max(1, minutes(airing.stopMs - playheadMs)),
       inBreak: true,
-      programmeLine: name ? `Commercials · ${name}` : "Commercials",
-      progress,
-      timeLabel: behind ?? `Break · ${minutes(airing.stopMs - airing.startMs)} min`,
+      next: returning ? nextAfter(returning.stopMs) : undefined,
+      progress: returning ? 0 : fraction(playheadMs, airing.startMs, airing.stopMs),
+      startMs: returning?.startMs ?? airing.startMs,
+      stopMs: returning?.stopMs ?? airing.stopMs,
+      title: shown.name,
+      ...("logo" in shown ? { logo: shown.logo } : {}),
+      ...("backdrop" in shown ? { backdrop: shown.backdrop } : {}),
+      ...("rating" in shown ? { rating: shown.rating } : {}),
     };
   }
-  const series = airing.series?.trim();
-  const line = series ? `${series} · ${episodeLine(airing)}` : guideAiringLabel(airing);
-  const elapsed = `${minutes(playheadMs - airing.startMs)}m in`;
+  const { line, name, ...art } = programmeOf(airing);
+  const behind = playheadMs < nowMs - 1000;
   return {
     ...base,
-    programmeLine: line,
-    progress,
-    timeLabel: `${elapsed} · ${behind ?? `${minutes(airing.stopMs - playheadMs)}m left`}`,
+    ...(behindLabel ? { behindLabel } : {}),
+    ...(behind ? { liveProgress: fraction(nowMs, airing.startMs, airing.stopMs) } : {}),
+    line,
+    next: nextAfter(airing.stopMs),
+    progress: fraction(playheadMs, airing.startMs, airing.stopMs),
+    startMs: airing.startMs,
+    stopMs: airing.stopMs,
+    title: name,
+    ...art,
   };
+};
+
+// The clip on air in a break: walk the pod by duration from the break's start.
+const podEntryAt = (airing: TimelineAiring, playheadMs: number): PodEntry | undefined => {
+  let at = airing.startMs;
+  return airing.pod?.entries.find((e) => {
+    at += e.durationMs;
+    return playheadMs < at;
+  });
 };
 
 // The Info sheet (§9, mock "info"): the block at the playhead as the band reads it, with the
@@ -163,14 +218,20 @@ const infoOf = (
   airings: readonly TimelineAiring[],
   airing: TimelineAiring | undefined,
   band: PlayerBandData,
+  playheadMs: number,
 ): PlayerInfoData | undefined => {
-  if (!airing || !band.programmeLine) return undefined;
+  if (!airing) return undefined;
   const next = airings.find((a) => a.kind !== "filler" && a.startMs >= airing.stopMs);
   const nextSegment = next ? segmentOf(next) : undefined;
   const facts =
     airing.kind === "filler"
       ? ""
-      : [airing.year ? String(airing.year) : "", airing.rating ?? "", ...(airing.genres ?? [])]
+      : [
+          formatGuideEpisode(airing.season, airing.episode) ?? "",
+          airing.year ? String(airing.year) : "",
+          airing.rating ?? "",
+          ...(airing.genres ?? []),
+        ]
           .filter(Boolean)
           .join(" · ");
   const segment = segmentOf(airing);
@@ -181,8 +242,14 @@ const infoOf = (
     stillUri: segment.kind === "programme" ? segment.stillUri : undefined,
     stopMs: airing.stopMs,
     synopsis: segment.kind === "programme" ? segment.synopsis : undefined,
-    timeLabel: band.timeLabel,
-    title: band.programmeLine,
+    timeLabel:
+      airing.kind === "filler"
+        ? (band.behindLabel ?? `Break · ${minutes(airing.stopMs - airing.startMs)} min`)
+        : `${minutes(playheadMs - airing.startMs)}m in · ${band.behindLabel ?? `${minutes(airing.stopMs - playheadMs)}m left`}`,
+    title:
+      airing.kind === "filler"
+        ? guideFillerNowLabel(podEntryAt(airing, playheadMs))
+        : formatProgrammeTitle(airing),
     upNext:
       next && nextSegment?.kind === "programme"
         ? { line: nextSegment.line, name: nextSegment.name, startMs: next.startMs }
@@ -221,8 +288,40 @@ const playbarFromTimeline = ({ airings, channel, live, nowMs, playheadMs }: Play
     atPlayhead && atPlayhead.kind !== "filler" && atPlayhead.startMs >= window.startMs
       ? atPlayhead.startMs
       : undefined;
-  const band = bandOf(channel, atPlayhead, playheadMs, live);
-  return { band, info: infoOf(airings, atPlayhead, band), segments, startOverMs, window };
+  const band = bandOf(channel, airings, atPlayhead, playheadMs, live, nowMs);
+  return { band, info: infoOf(airings, atPlayhead, band, playheadMs), segments, startOverMs, window };
 };
 
-export { playbarFromTimeline };
+interface PlayerChromeFromGuideArgs {
+  /** The client's guide, which holds the tuned channel's row of airings. */
+  layout: GuideLayout | undefined;
+  snapshot: PlayerSnapshot;
+  /** The live edge: the server's clock where the client has it, else this device's. */
+  nowMs: number;
+}
+
+/**
+ * The chrome's data on a native client (§9), read through the same `playbarFromTimeline` as the web:
+ * the tuned channel's guide row is its timeline, and the frame on screen is the playhead. Undefined
+ * until a channel is tuned.
+ */
+const playerChromeFromGuide = ({ layout, nowMs, snapshot }: PlayerChromeFromGuideArgs) => {
+  const { channel, livePlayback } = snapshot;
+  if (!channel) return undefined;
+  const row = layout?.channels.find((candidate) => candidate.source.channelId === channel.id);
+  return playbarFromTimeline({
+    airings: row?.airings.map((airing) => airing.source) ?? [],
+    channel: {
+      ...(row?.source.decade === undefined ? {} : { decade: row.source.decade }),
+      name: channel.name,
+      number: String(channel.number),
+    },
+    live: livePlayback ? { lagSeconds: livePlayback.lagSeconds, mode: livePlayback.mode } : LIVE,
+    nowMs,
+    playheadMs: watchingScheduleTimeMs(snapshot, nowMs),
+  });
+};
+
+const LIVE: PlayerLiveState = { lagSeconds: 0, mode: "live" };
+
+export { playbarFromTimeline, playerChromeFromGuide };

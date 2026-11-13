@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type {
+  LibraryDetails,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryScan,
@@ -34,6 +35,8 @@ interface LibraryShelfStatus {
   offline: readonly string[];
   /** Something in Needs you is waiting, so the line can't say every title's ready. */
   needsYou?: boolean;
+  /** How the titles' details are getting on; absent reads as nothing waiting. */
+  details?: LibraryDetails;
 }
 
 interface LibraryShelfProps {
@@ -53,12 +56,16 @@ interface LibraryShelfProps {
   /** The first page hasn't arrived: the grid draws nothing yet. */
   loading: boolean;
   onOpenTitle: (id: string) => void;
+  /** The grid's last rows are on screen: load the next page, if there is one. */
+  onEndReached?: () => void;
   /** Needs you, under the status line: the strip, or on its own screen the cards. */
   needs?: ReactNode;
   /** False on Needs you's own screen: the tabs stay, the search and the grid go. Default true. */
   showTitles?: boolean;
   /** The Collections tab's content, in place of the search and the grid while it's chosen. */
   collections?: ReactNode;
+  /** The household's timezone, which times are told in; the device's while undefined. */
+  timeZone?: string;
 }
 
 export type { LibraryFilter, LibraryKind, LibraryShelfProps, LibraryShelfStatus, LibraryShelfTitle };

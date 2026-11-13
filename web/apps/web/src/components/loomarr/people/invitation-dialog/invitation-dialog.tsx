@@ -5,7 +5,7 @@ import type { IssueInvitationGrantOutputBody } from "@loomarr/api/models/issueIn
 import { createInvitationSchema } from "@loomarr/core/schemas";
 import {
   Action,
-  Badge,
+  Card,
   ChoiceGroup,
   Dialog,
   DialogContent,
@@ -14,6 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
   FieldHint,
+  Stack,
+  StatusLabel,
+  Text,
   Toggle,
 } from "@loomarr/design-system";
 import { QrCode } from "@loomarr/design-system/qr-code-web";
@@ -184,7 +187,7 @@ const InvitationDialog = ({
           </DialogHeader>
 
           {!invitation ? (
-            <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
+            <Stack flexShrink={0} gap="4" noValidate onSubmit={submit} render="form">
               <form.Field name="kind">
                 {(field) => (
                   <ChoiceGroup
@@ -225,7 +228,7 @@ const InvitationDialog = ({
                       (candidate) => candidate.id === field.state.value,
                     );
                     return (
-                      <div className="flex flex-col gap-1.5">
+                      <Stack gap="1.5">
                         <field.SelectField
                           disabled={busy}
                           label="Library account"
@@ -247,7 +250,7 @@ const InvitationDialog = ({
                             Media-server role: {selectedCandidate.isAdmin ? "Administrator" : "Member"}
                           </FieldHint>
                         )}
-                      </div>
+                      </Stack>
                     );
                   }}
                 </form.AppField>
@@ -267,7 +270,7 @@ const InvitationDialog = ({
                 </form.AppField>
                 <form.AppField name="role">
                   {(field) => (
-                    <div className="flex flex-col gap-1.5">
+                    <Stack gap="1.5">
                       <field.SelectField disabled={busy} label="Initial role" options={ROLE_OPTIONS} />
                       <FieldHint>
                         Initial Loomarr role:{" "}
@@ -275,7 +278,7 @@ const InvitationDialog = ({
                           ? "Administrator"
                           : "Member"}
                       </FieldHint>
-                    </div>
+                    </Stack>
                   )}
                 </form.AppField>
               </div>
@@ -283,7 +286,7 @@ const InvitationDialog = ({
               {onSendEmail && (
                 <form.Field name="sendEmail">
                   {(field) => (
-                    <div className="rounded-lg border px-3 py-1">
+                    <Card paddingHorizontal={12} paddingVertical={4}>
                       <Toggle
                         id={emailId}
                         label="Also send by email"
@@ -292,7 +295,7 @@ const InvitationDialog = ({
                         disabled={busy || !contactEmail.trim()}
                         onCheckedChange={field.handleChange}
                       />
-                    </div>
+                    </Card>
                   )}
                 </form.Field>
               )}
@@ -306,23 +309,23 @@ const InvitationDialog = ({
                   {busy ? "Creating…" : "Create invitation"}
                 </Action>
               </DialogFooter>
-            </form>
+            </Stack>
           ) : terminal ? (
-            <div className="space-y-4">
-              <div className="border-border bg-static-900 rounded-lg border p-5">
-                <p className="font-medium">
+            <Stack gap="4">
+              <Card gap={4} padding={20}>
+                <Text as="p" textRole="cardLabel">
                   Invitation {invitation.status === "revoked" ? "revoked" : invitation.status}
-                </p>
-                <p className="text-muted-foreground mt-1 text-sm">
+                </Text>
+                <Text as="p" textRole="compact" tone="secondary">
                   This invitation can no longer issue a QR code or copied link.
-                </p>
-              </div>
+                </Text>
+              </Card>
               <DialogFooter>
                 <Action onPress={() => changeOpen(false)}>Done</Action>
               </DialogFooter>
-            </div>
+            </Stack>
           ) : grant ? (
-            <div className="space-y-5">
+            <Stack gap="5">
               <div className="grid items-center gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
                 <div className="mx-auto rounded-xl bg-white p-3 forced-colors:border forced-colors:border-current">
                   <QrCode
@@ -331,36 +334,42 @@ const InvitationDialog = ({
                     value={grant.url}
                   />
                 </div>
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge shape="square" tone={invitation.role === "admin" ? "tune" : "neutral"}>
+                <Stack gap="3">
+                  <Stack direction="row" gap="inline" wrap>
+                    <StatusLabel tone={invitation.role === "admin" ? "notice" : "off"}>
                       {invitation.role === "admin" ? "Administrator" : "Member"}
-                    </Badge>
-                    <Badge shape="square" tone="neutral">
-                      Expires {expiryLabel(grant.expiresAt)}
-                    </Badge>
-                  </div>
-                  <p className="text-sm">
+                    </StatusLabel>
+                    <StatusLabel tone="pending">Expires {expiryLabel(grant.expiresAt)}</StatusLabel>
+                  </Stack>
+                  <Text as="p" textRole="compact">
                     Ask {invitationName(invitation)} to scan this code, or copy the same private link.
-                  </p>
-                  <p className="text-muted-foreground text-xs">
+                  </Text>
+                  <Text as="p" textRole="hint" tone="secondary">
                     Regenerating replaces every outstanding invitation link, including links already emailed.
-                  </p>
-                </div>
+                  </Text>
+                </Stack>
               </div>
 
               {emailProblem && (
-                <p role="alert" className="border-destructive/50 rounded-lg border p-3 text-sm">
-                  The invitation is ready, but email could not be queued. Share this QR code or copied link.
-                </p>
+                <Stack borderRadius={12} className="border-destructive/50 border" padding={12} role="alert">
+                  <Text as="p" textRole="compact">
+                    The invitation is ready, but email could not be queued. Share this QR code or copied link.
+                  </Text>
+                </Stack>
               )}
               {problem != null && <ErrorState error={problem} className="p-4" />}
 
               <DialogFooter spread>
-                <Action disabled={busy} icon="delete" onPress={() => void revoke()} variant="destructive">
+                <Action
+                  disabled={busy}
+                  icon="delete"
+                  onPress={() => void revoke()}
+                  tone="danger"
+                  variant="outline"
+                >
                   Revoke invitation
                 </Action>
-                <div className="flex flex-wrap gap-2">
+                <Stack direction="row" gap="inline" wrap>
                   <Action
                     disabled={busy}
                     icon="refresh"
@@ -390,25 +399,27 @@ const InvitationDialog = ({
                   >
                     {copied ? "Copied" : "Copy link"}
                   </Action>
-                </div>
+                </Stack>
               </DialogFooter>
-            </div>
+            </Stack>
           ) : (
-            <div className="space-y-4">
-              <div className="border-border bg-static-900 rounded-lg border p-5">
-                <p className="font-medium">{busy ? "Preparing a private link…" : "Ready to share"}</p>
-                <p className="text-muted-foreground mt-1 text-sm">
+            <Stack gap="4">
+              <Card gap={4} padding={20}>
+                <Text as="p" textRole="cardLabel">
+                  {busy ? "Preparing a private link…" : "Ready to share"}
+                </Text>
+                <Text as="p" textRole="compact" tone="secondary">
                   Generating a new link invalidates every earlier copied, QR, or email link for this
                   invitation.
-                </p>
-              </div>
+                </Text>
+              </Card>
               {problem != null && <ErrorState error={problem} className="p-4" />}
               <DialogFooter>
                 <Action disabled={busy} onPress={() => void issue(invitation)}>
                   {busy ? "Generating…" : "Generate QR and link"}
                 </Action>
               </DialogFooter>
-            </div>
+            </Stack>
           )}
         </DialogContent>
       </Dialog>

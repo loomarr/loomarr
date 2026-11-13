@@ -23,10 +23,10 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -179,14 +179,16 @@ func newChannelsHarness(t *testing.T) *channelsHarness {
 	ltv := &fakeLiveTVSvc{}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:    defaults.Store,
-			Auth:     defaults.Auth,
-			Log:      defaults.Log,
-			Channels: chSvc,
-			LiveTV:   ltv,
-			// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
-			// (channeledit asks the binder) matches production wiring.
-			Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Setup: api.SetupOptions{LiveTV: ltv},
+			Channels: api.ChannelsOptions{
+				Service: chSvc,
+				// chSvc satisfies approval.Reconciler (Reconcile(ctx, id) error), so the number check
+				// (channeledit asks the binder) matches production wiring.
+				Binder: approval.New(defaults.Store, chSvc, nil, defaults.Log),
+			},
 		})
 	})
 	return &channelsHarness{apiHarness: base, Channels: chSvc, LiveTV: ltv}
@@ -202,8 +204,8 @@ func newInternalServerWithoutTunarr(t *testing.T) (*httptest.Server, records.Sto
 	chSvc := &fakeChannelSvc{}
 	log := slog.New(slog.DiscardHandler)
 	h := api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, Channels: chSvc,
-		Binder: approval.New(st, chSvc, nil, log),
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels: api.ChannelsOptions{Service: chSvc, Binder: approval.New(st, chSvc, nil, log)},
 		// In particular: tunarr.url is unconfigured.
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	})
@@ -891,11 +893,11 @@ func newServerWithSchedulerAndSuggest(t *testing.T) (*httptest.Server, records.S
 	t.Cleanup(func() { _ = st.Close() })
 	fs := &fakeSuggest{}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store:    st,
-		Auth:     testAuthorizer{},
-		Log:      slog.New(slog.DiscardHandler),
-		Channels: &fakeChannelSvc{},
-		Suggest:  fs,
+		Store:     st,
+		Auth:      testAuthorizer{},
+		Log:       slog.New(slog.DiscardHandler),
+		Channels:  api.ChannelsOptions{Service: &fakeChannelSvc{}},
+		Proposals: api.ProposalsOptions{Suggest: fs},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -914,7 +916,7 @@ func TestRefineChannel_RequiresAdmin(t *testing.T) {
 
 func TestRefineChannel_HandMadeChannel422(t *testing.T) {
 	srv, st, _ := newServerWithSchedulerAndSuggest(t)
-	// A channel with NO IntentRef (hand-made) can't be refined — there's no job to re-run.
+	// A hand-made channel (not FromRequest) can't be refined — there's no request to re-run.
 	ch := channelstore.Channel{}
 	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "handmade", "Hand", 3, schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
@@ -940,7 +942,7 @@ func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testi
 			{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 		},
 	}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "c1", "job-purged", true, "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
@@ -981,7 +983,7 @@ func TestRefineChannel_SeedsFromTheChannelsOwnIntentAfterItsJobIsPurged(t *testi
 func TestRefineChannel_UnavailableOriginalRequest422(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ch := channelstore.Channel{}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-purged", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "c1", "job-purged", true, "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
@@ -1405,7 +1407,8 @@ func TestChannelLifecycle_StopsInternalPlayoutAndRescansOnRemoval(t *testing.T) 
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: channelSvc, Playout: playback, TunerRescanner: rescanner,
+		Channels:     api.ChannelsOptions{Service: channelSvc, TunerRescanner: rescanner},
+		Playout:      api.PlayoutOptions{Service: playback},
 		LiveSettings: mapSettings{"playout.backend": schedule.PlayoutBackendInternal},
 	}))
 	t.Cleanup(srv.Close)
@@ -1475,13 +1478,14 @@ func TestChannelLifecycle_StopsPreparedInternalTransportOnPauseAndDetach(t *test
 	log := slog.New(slog.DiscardHandler)
 	srv := httptest.NewServer(api.Router(log, api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: log,
-		Channels: &fakeChannelSvc{}, Playout: playback, TunerRescanner: rescanner,
-		BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
+		Channels: api.ChannelsOptions{Service: &fakeChannelSvc{}, TunerRescanner: rescanner},
+		Playout:  api.PlayoutOptions{Service: playback},
+		Setup: api.SetupOptions{BackendCheckpoint: func(context.Context) (httpcore.BackendCheckpoint, error) {
 			return httpcore.BackendCheckpoint{
 				Applied: schedule.PlayoutBackendTunarr, Prepared: schedule.PlayoutBackendInternal,
 				PublishedInternal: true,
 			}, nil
-		},
+		}},
 	}))
 	t.Cleanup(srv.Close)
 
@@ -1943,8 +1947,9 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 
 // fakeGuide is a scripted api.GuideReader keyed by Loomarr channel id.
 type fakeGuide struct {
-	byChannel map[string]guideapi.ChannelNowNext
-	upcoming  map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	byChannel   map[string]guideapi.ChannelNowNext
+	upcoming    map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	upcomingErr error                              // when set, Upcoming fails with it
 }
 
 func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
@@ -1952,6 +1957,9 @@ func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.Chan
 }
 
 func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]guideapi.NowNextEntry, error) {
+	if f.upcomingErr != nil {
+		return nil, f.upcomingErr
+	}
 	got := f.upcoming[channelID]
 	if limit > 0 && len(got) > limit {
 		got = got[:limit]
@@ -1983,10 +1991,10 @@ func TestChannelsNowNext_RoutesAndMapsToLoomarrChannelIDs(t *testing.T) {
 		Store: st,
 		Auth:  testAuthorizer{},
 		Log:   slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
+		Guide: api.GuideOptions{Reader: fakeGuide{byChannel: map[string]guideapi.ChannelNowNext{
 			"ch-live": {Now: &guideapi.NowNextEntry{Title: "On Now"}, Next: &guideapi.NowNextEntry{Title: "Up Next", Gap: true}},
 			"ch-new":  {Now: &guideapi.NowNextEntry{Title: "Internal Now"}},
-		}},
+		}}},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -2025,9 +2033,9 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler),
-		Guide: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
+		Guide: api.GuideOptions{Reader: fakeGuide{upcoming: map[string][]guideapi.NowNextEntry{
 			"ch-internal": {{Title: "Playing locally"}},
-		}},
+		}}},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -2044,6 +2052,61 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	if len(body.Upcoming) != 1 || body.Upcoming[0].Title != "Playing locally" {
 		t.Fatalf("upcoming = %+v, want local-id guide result", body.Upcoming)
+	}
+}
+
+// locked is a log sink the server goroutine and the test can share under -race.
+type locked struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (l *locked) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *locked) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// A guide failure keeps the Overview strip empty, but it is logged: an empty strip that is
+// really a broken guide must be findable by the operator.
+func TestChannelUpcoming_AGuideFailureStaysEmptyButIsLogged(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/upcoming-fail.db")
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
+		Channel: schedule.Channel{ID: "ch-internal", Name: "Internal", Number: 42, Status: schedule.StatusLive},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	logs := &locked{}
+	log := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	h := api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Guide: api.GuideOptions{Reader: fakeGuide{upcomingErr: errors.New("playout timeline unavailable")}},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-internal/upcoming", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upcoming with a failing guide → %d, want 200 (the strip stays empty)", resp.StatusCode)
+	}
+	var body struct {
+		Upcoming []guideapi.NowNextEntry `json:"upcoming"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Upcoming == nil || len(body.Upcoming) != 0 {
+		t.Fatalf("upcoming = %#v, want an empty list", body.Upcoming)
+	}
+	if got := logs.String(); !strings.Contains(got, "level=WARN") || !strings.Contains(got, "playout timeline unavailable") {
+		t.Fatalf("a guide failure was swallowed without a WARN; log:\n%s", got)
 	}
 }
 
@@ -2064,7 +2127,7 @@ func TestRefineChannel_RefusedWhileAnotherChannelJobIsUnfinished(t *testing.T) {
 	srv, st, fs := newServerWithSchedulerAndSuggest(t)
 	ctx := context.Background()
 	ch := channelstore.Channel{IntentJSON: `{"description":"90s action"}`}
-	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-origin", "90s Action", 42
+	ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "c1", "job-origin", true, "90s Action", 42
 	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusBuilding
 	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)

@@ -1,4 +1,7 @@
+import { Stack, Surface, Text, typography } from "@loomarr/design-system";
 import { webType } from "@loomarr/design-system/web-theme";
+
+const TYPE_ROLES = ["display", "heading", "body", "label", "mono"] as const;
 
 // Typography — the type system documenting itself (frontend-design §2.2, §5.1a).
 //
@@ -21,45 +24,80 @@ const SIZE_USE: Record<string, string> = {
 };
 
 const Typography = () => (
-  <div className="flex flex-col gap-8 p-6">
-    <header className="flex flex-col gap-1">
-      <h1 className="text-xl font-semibold">Typography</h1>
-      <p className="text-muted-foreground max-w-2xl text-sm">
+  <Stack className="p-6" gap="screen">
+    <Stack gap="1" render="header">
+      <Text as="h1" textRole="title">
+        Typography
+      </Text>
+      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
         Geist and Geist Mono, self-hosted (§2.2) — no webfont CDN, because the app must work on a LAN with no
         internet. Sizes come from the generated tokens; the samples below render at their real values.
-      </p>
-    </header>
+      </Text>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">The two families</h2>
+    <Stack gap="control" render="section">
+      <Text as="h2" textRole="heading">
+        The two families
+      </Text>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="border-border flex flex-col gap-2 rounded-md border p-4">
+        <Stack className="border-border rounded-md border p-4" gap="inline">
           <div className="text-static-400 font-mono text-[11px]">Sans</div>
           <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
             Saturday Morning Cartoons
           </div>
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             Everything a person wrote or would say aloud: titles, descriptions, prose, buttons.
-          </p>
-        </div>
-        <div className="border-border flex flex-col gap-2 rounded-md border p-4">
+          </Text>
+        </Stack>
+        <Stack className="border-border rounded-md border p-4" gap="inline">
           <div className="text-static-400 font-mono text-[11px]">Mono</div>
           <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
             CH 42 · 21:30–22:00
           </div>
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             <strong className="text-foreground">{MONO_RULE}</strong> Channel numbers, clock times, durations,
             ids, state badges — anything the system emitted rather than authored.
-          </p>
-        </div>
+          </Text>
+        </Stack>
       </div>
-    </section>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">Scale</h2>
-      <div className="divide-border flex flex-col divide-y">
+    <Surface backgroundColor="transparent" borderWidth={0} gap="control" padding={0}>
+      <Text as="h2" density="pointer" strong textRole="heading">
+        The five roles
+      </Text>
+      <Text density="pointer" textRole="body" tone="muted">
+        Display, Heading, Body, Label and Mono, sized per density. Mono is for channel numbers and clocks
+        only. Size / weight, read from the tokens.
+      </Text>
+      {TYPE_ROLES.map((role) => (
+        <Surface
+          key={role}
+          backgroundColor="transparent"
+          borderWidth={0}
+          gap="control"
+          padding={0}
+          paddingVertical={12}
+        >
+          <Text density="pointer" textRole={role}>
+            {role === "mono" ? "CH 42 · 21:30" : "Channels play what's ready"}
+          </Text>
+          <Text density="pointer" textRole="mono" tone="muted">
+            {`${role}: ${(["pointer", "touch", "tv"] as const)
+              .map((d) => `${d} ${typography[d][role].size}/${typography[d][role].weight}`)
+              .join(" · ")}`}
+          </Text>
+        </Surface>
+      ))}
+    </Surface>
+
+    <Stack gap="control" render="section">
+      <Text as="h2" textRole="heading">
+        Scale
+      </Text>
+      <Stack className="divide-border divide-y">
         {Object.entries(webType.size).map(([name, px]) => (
-          <div key={name} className="flex items-baseline gap-4 py-3">
+          <Stack align="baseline" className="py-3" direction="row" gap="4" key={name}>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px]">{name}</span>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px] tabular-nums">
               {`${px}px`}
@@ -68,31 +106,33 @@ const Typography = () => (
               Channels play what's ready
             </span>
             <span className="text-muted-foreground hidden shrink-0 text-xs sm:block">{SIZE_USE[name]}</span>
-          </div>
+          </Stack>
         ))}
-      </div>
-      <p className="text-muted-foreground max-w-2xl text-sm">
+      </Stack>
+      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
         Seven sizes, and nothing between them. A component reaching for an off-scale value is usually solving
         a spacing problem with type — the scale is short on purpose so that shows up as a decision rather than
         a drift.
-      </p>
-    </section>
+      </Text>
+    </Stack>
 
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">Leading</h2>
+    <Stack gap="control" render="section">
+      <Text as="h2" textRole="heading">
+        Leading
+      </Text>
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(webType.leading).map(([name, value]) => (
-          <div key={name} className="border-border flex flex-col gap-2 rounded-md border p-4">
+          <Stack className="border-border rounded-md border p-4" gap="inline" key={name}>
             <div className="text-static-400 font-mono text-[11px]">{`${name} · ${value}`}</div>
             <p style={{ lineHeight: value }} className="text-sm">
               A channel is a wall clock, not a playlist that starts when someone watches. Tune in forty
               minutes into an hour-long film and you land forty minutes in.
             </p>
-          </div>
+          </Stack>
         ))}
       </div>
-    </section>
-  </div>
+    </Stack>
+  </Stack>
 );
 
 export { Typography };

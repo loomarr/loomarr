@@ -15,9 +15,10 @@ import (
 	"golang.org/x/image/webp"
 
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/media/images/storeadapter"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/imagetestkit"
 )
@@ -61,19 +62,19 @@ func artworkFixture(t *testing.T) (context.Context, records.Store, *images.Servi
 	t.Helper()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
-	svc := imagetestkit.NewService(t, t.TempDir(), "", imageStore{st})
+	svc := imagetestkit.NewService(t, t.TempDir(), "", storeadapter.New(st))
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha"}}, at); err != nil {
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{{ID: "90000001", Kind: "movie", Name: "Alpha"}}, at); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(ctx, []store.LibraryFile{{Path: "/media/a.mkv", Root: "/media", Size: 1,
-		ModifiedNs: 1, Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: "90000001"}}); err != nil {
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{{Path: "/media/a.mkv", Root: "/media", Size: 1,
+		ModifiedNs: 1, Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: "90000001"}}); err != nil {
 		t.Fatal(err)
 	}
 	return ctx, st, svc
 }
 
-func libraryItem(t *testing.T, st records.Store) store.LibraryItemSummary {
+func libraryItem(t *testing.T, st records.Store) librarystore.LibraryItemSummary {
 	t.Helper()
 	it, err := st.LibraryItem(context.Background(), "90000001")
 	if err != nil {
@@ -115,7 +116,7 @@ func TestLibraryPosters(t *testing.T) {
 	if got := poster(); got == hash || got == "" {
 		t.Fatalf("replaced poster = %q, want a new image", got)
 	}
-	if owned, err := st.ImagesForOwner(ctx, store.LibraryItemImageOwner, "90000001"); err != nil || len(owned) != 1 {
+	if owned, err := st.ImagesForOwner(ctx, librarystore.LibraryItemImageOwner, "90000001"); err != nil || len(owned) != 1 {
 		t.Fatalf("owned = %d images, %v; want only the new poster", len(owned), err)
 	}
 

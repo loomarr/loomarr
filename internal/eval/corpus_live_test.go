@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // These tests pin corpus.go, the live corpus that runs real channel intents against a real LLM,

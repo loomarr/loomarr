@@ -33,6 +33,8 @@ type fakeImageService struct {
 	lastIngest images.IngestRequest
 	lastBytes  []byte
 	ingests    int
+	// adopts counts Adopt calls: each is a write in the real service.
+	adopts int
 
 	// ingestErr, when set, makes Ingest fail — for the "storage broke" branch.
 	ingestErr error
@@ -82,14 +84,27 @@ func (f *fakeImageService) Ingest(_ context.Context, r io.Reader, req images.Ing
 }
 
 // Adopt hands back the record keyed by the source URL, as one the fetch job has fetched; an
-// unknown URL is pending, with no bytes.
+// unknown URL is recorded pending, with no bytes. Each call counts in adopts.
 func (f *fakeImageService) Adopt(_ context.Context, srcURL string, _ images.IngestRequest) (images.Image, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.adopts++
+	if img, ok := f.records[srcURL]; ok {
+		return img, nil
+	}
+	img := images.Image{SourceURL: srcURL, Origin: images.OriginRemote}
+	f.records[srcURL] = img
+	return img, nil
+}
+
+// Lookup reads what Adopt recorded of the source URL.
+func (f *fakeImageService) Lookup(_ context.Context, srcURL string) (images.Image, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if img, ok := f.records[srcURL]; ok {
 		return img, nil
 	}
-	return images.Image{SourceURL: srcURL, Origin: images.OriginRemote}, nil
+	return images.Image{}, images.ErrNotFound
 }
 
 func (f *fakeImageService) Get(_ context.Context, hash string) (images.Image, error) {
@@ -128,9 +143,9 @@ func (f *fakeImageService) PathFor(hash string, width int, format images.Format)
 	return fmt.Sprintf("/v1/images/%s/w%d.%s", hash, width, format.Ext())
 }
 
-func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format) string {
+func (f *fakeImageService) SrcSet(hash string, role images.Role, format images.Format, sourceWidth int) string {
 	out := ""
-	for i, w := range role.Widths() {
+	for i, w := range role.WidthsFor(sourceWidth) {
 		if i > 0 {
 			out += ", "
 		}

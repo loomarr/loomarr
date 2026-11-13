@@ -13,10 +13,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // --- doubles -----------------------------------------------------------------
@@ -27,7 +27,7 @@ import (
 // PATH and hid two shipped bugs for two phases (§10 V51a); a double that indexes differently from
 // the thing it stands in for cannot see key confusion by construction.
 type pipeMemStore struct {
-	clips     map[string]cliplibrary.StoreClip
+	clips     map[string]clipstore.Clip
 	rows      map[string]pipelinestate.ClipPipeline
 	proposals []filler.SplitProposal
 	removed   []string
@@ -69,10 +69,10 @@ func (m *pipeMemStore) ListSplitProposals(context.Context) ([]filler.SplitPropos
 func (m *pipeMemStore) DeleteSplitProposal(context.Context, string) error { return nil }
 
 func newPipeMemStore() *pipeMemStore {
-	return &pipeMemStore{clips: map[string]cliplibrary.StoreClip{}, rows: map[string]pipelinestate.ClipPipeline{}}
+	return &pipeMemStore{clips: map[string]clipstore.Clip{}, rows: map[string]pipelinestate.ClipPipeline{}}
 }
 
-func (m *pipeMemStore) put(c cliplibrary.StoreClip) { m.clips[c.Hash] = c }
+func (m *pipeMemStore) put(c clipstore.Clip) { m.clips[c.Hash] = c }
 
 // SetClipsRemoved records the tombstone the RUNNER writes on a reject (§10 V51b).
 //
@@ -94,7 +94,7 @@ func (m *pipeMemStore) SetClipsRemoved(_ context.Context, paths []string, at tim
 	return n, nil
 }
 
-func (m *pipeMemStore) GetClip(_ context.Context, id string) (cliplibrary.StoreClip, bool, error) {
+func (m *pipeMemStore) GetClip(_ context.Context, id string) (clipstore.Clip, bool, error) {
 	c, ok := m.clips[id]
 	return c, ok, nil
 }
@@ -161,8 +161,8 @@ func (m *pipeMemStore) PipelineOverview(_ context.Context, at time.Time) (pipeli
 	return filler.SummarizePipelines(rows, at), nil
 }
 
-func (m *pipeMemStore) ListClipsWithoutPipeline(_ context.Context, limit int) ([]cliplibrary.StoreClip, error) {
-	var out []cliplibrary.StoreClip
+func (m *pipeMemStore) ListClipsWithoutPipeline(_ context.Context, limit int) ([]clipstore.Clip, error) {
+	var out []clipstore.Clip
 	for h, c := range m.clips {
 		if _, ok := m.rows[h]; ok {
 			continue
@@ -257,10 +257,10 @@ type fakeStage struct {
 
 func (f *fakeStage) ID() pipelinestate.StageID { return f.id }
 func (f *fakeStage) Cost() filler.StageCost    { return f.cost }
-func (f *fakeStage) Applies(context.Context, cliplibrary.StoreClip) (bool, string) {
+func (f *fakeStage) Applies(context.Context, clipstore.Clip) (bool, string) {
 	return f.applies, f.note
 }
-func (f *fakeStage) Run(ctx context.Context, _ cliplibrary.StoreClip) (filler.StageResult, error) {
+func (f *fakeStage) Run(ctx context.Context, _ clipstore.Clip) (filler.StageResult, error) {
 	f.runs++
 	if f.onRun != nil {
 		f.onRun()
@@ -357,7 +357,7 @@ func asSlice(m map[pipelinestate.StageID]*fakeStage) []filler.Stage {
 
 func seedEnrolled(st *pipeMemStore, hash string) {
 	at := time.Unix(1_799_999_000, 0).UTC()
-	st.put(cliplibrary.StoreClip{Clip: clips.Clip{
+	st.put(clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: "a/b/" + hash + ".mp4", Name: hash,
 		Role: clips.Unclassified, Source: "test-source", Held: true,
 	}})
@@ -526,6 +526,24 @@ func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	}
 }
 
+// A reject Loomarr let go (#3855) has no files; a rewind would put it back on the conveyor with
+// its reason erased.
+func TestPipeline_RewindRefusesAClipWhoseFilesWereDeleted(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "let-go")
+	row := st.rows["let-go"]
+	row.Disposition, row.RejectReason = pipelinestate.DispositionRejected, pipelinestate.ReasonUnplayable
+	row.FilesDeletedAt = time.Unix(1_900_000_000, 0).UTC()
+	st.rows["let-go"] = row
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(t.Context(), "let-go", pipelinestate.StageVision, false); !errors.Is(err, filler.ErrFilesDeleted) {
+		t.Fatalf("Rewind = %v, want ErrFilesDeleted", err)
+	}
+	if got := st.rows["let-go"]; got.Disposition != row.Disposition || got.RejectReason != row.RejectReason {
+		t.Fatalf("refused rewind changed the row: %+v", got)
+	}
+}
+
 func TestPipeline_RewindTranscodeRequiresExplicitForce(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "encoded")
@@ -597,7 +615,7 @@ func TestPipeline_RetryFailureRefusesContentDecision(t *testing.T) {
 func TestPipeline_DoesNotFileCompositeStillWaitingForDecision(t *testing.T) {
 	st := newPipeMemStore()
 	const hash = "review-reel"
-	st.put(cliplibrary.StoreClip{Clip: clips.Clip{
+	st.put(clipstore.Clip{Clip: clips.Clip{
 		Hash: hash, Path: "reels/review.mp4", Name: "Review reel",
 		IsComposite: true, Held: true,
 	}})
@@ -1052,7 +1070,7 @@ func TestPipeline_SpawnedClipsAreEnrolledFromTheStart(t *testing.T) {
 	}
 	// The segment exists only once the split has cut it, which is after the pass's own enrolment.
 	stages[pipelinestate.StageSplit].onRun = func() {
-		st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "seg1", Path: "a/b/seg1.mp4"}})
+		st.put(clipstore.Clip{Clip: clips.Clip{Hash: "seg1", Path: "a/b/seg1.mp4"}})
 	}
 
 	if _, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).RunOnce(context.Background()); err != nil {
@@ -1119,7 +1137,7 @@ func TestPipeline_TerminalClipsAreNotReWorked(t *testing.T) {
 // Enrolment is lazy: a catalogued clip with no row gets one, at the start.
 func TestPipeline_EnrolsCataloguedClips(t *testing.T) {
 	st := newPipeMemStore()
-	st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "c1", Path: "a/b/c1.mp4"}})
+	st.put(clipstore.Clip{Clip: clips.Clip{Hash: "c1", Path: "a/b/c1.mp4"}})
 
 	res, err := newPipe(st, asSlice(allStages()), filler.DefaultBudget()).RunOnce(context.Background())
 	if err != nil {
@@ -1147,7 +1165,7 @@ func TestPipeline_EnrolmentCarriesAcquisitionFromSidecar(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := newPipeMemStore()
-	st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "c1", Path: rel}})
+	st.put(clipstore.Clip{Clip: clips.Clip{Hash: "c1", Path: rel}})
 
 	if _, err := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, dir).EnrolMissing(context.Background()); err != nil {
 		t.Fatal(err)
@@ -1161,7 +1179,7 @@ func TestPipeline_EnrolmentCarriesAcquisitionFromSidecar(t *testing.T) {
 // conveyor without unexpectedly spending a transcode/Whisper budget on an unrelated backlog.
 func TestPipeline_EnrolMissingDoesNotRunAStage(t *testing.T) {
 	st := newPipeMemStore()
-	st.put(cliplibrary.StoreClip{Clip: clips.Clip{Hash: "c1", Path: "a/b/c1.mp4"}})
+	st.put(clipstore.Clip{Clip: clips.Clip{Hash: "c1", Path: "a/b/c1.mp4"}})
 	stages := allStages()
 
 	n, err := newPipe(st, asSlice(stages), filler.DefaultBudget()).EnrolMissing(context.Background())

@@ -1,4 +1,9 @@
-import { getApproveProposalMockHandler, getDenyProposalMockHandler } from "@loomarr/api/msw";
+import {
+  getApproveProposalMockHandler,
+  getChannelUpcomingMockHandler,
+  getDenyProposalMockHandler,
+  getPreviewChannelPodsMockHandler,
+} from "@loomarr/api/msw";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -95,7 +100,7 @@ describe("RequestDetail", () => {
         proposal: { ...proposal, id: "p-w", jobId: "j-w" },
       });
 
-    it("lets an admin approve it from the detail page", async () => {
+    it("lets an admin approve it from the detail page, and lands on the new channel", async () => {
       let approvedId: string | undefined;
       stub({ me: ADMIN, journeys: [waiting()] });
       server.use(
@@ -103,11 +108,15 @@ describe("RequestDetail", () => {
           approvedId = String(params.id);
           return { channelId: "ch-new" } as never;
         }),
+        // The new channel's page, where approving lands.
+        getChannelUpcomingMockHandler({ upcoming: [] }),
+        getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "bumper_card" }),
       );
-      renderAt("/requests/j-w");
+      const router = renderAt("/requests/j-w");
 
       await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
       await waitFor(() => expect(approvedId).toBe("p-w"));
+      await waitFor(() => expect(router.state.location.pathname).toMatch(/\/channels\/ch-new/));
     });
 
     it("lets an admin deny it from the detail page", async () => {

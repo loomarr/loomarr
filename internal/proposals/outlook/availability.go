@@ -8,15 +8,15 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Library is the existing media adapter's read-only metadata boundary.
 type Library interface {
-	ItemMetadataByID(context.Context, []string) (map[string]library.ItemMetadata, error)
+	ItemMetadataByID(context.Context, []string) (map[string]mediaserver.ItemMetadata, error)
 }
 
 // Titles observes arrivals already recorded by the normal provisioning path.

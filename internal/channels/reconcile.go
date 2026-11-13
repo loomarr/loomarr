@@ -8,16 +8,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/filler/clips"
-	"github.com/loomarr/loomarr/internal/filler/language"
-	"github.com/loomarr/loomarr/internal/filler/pod"
+
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/platform/store/activitystore"
+
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Reconcile materializes one channel's durable desired lineup (§9). For a
@@ -313,8 +311,15 @@ func (e *Engine) planReconcile(
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now(), accepted, ch.PlayoutAnchor)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
-	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
+	avail, readFailed := e.reconcileAvailability(ctx)
+	desired, err := schedule.ComputeDesiredAtCtx(ctx, chDomain, ch.Lineup, avail, e.policy, ch.Policy, e.now())
 	if err != nil {
+		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
+	}
+	// A lineup computed while a read was failing has titles missing that the library holds.
+	// Committing it would take them off the air, so the reconcile stops here and the channel
+	// keeps what it had.
+	if err := readFailed(); err != nil {
 		return nil, fmt.Errorf("compute desired lineup for channel %s: %w", channelID, err)
 	}
 	// What the channel airs right now, as the encoder walks it: the accepted cycle from its anchor.
@@ -682,357 +687,6 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 	}
 }
 
-// SelectionForChannel translates a channel's persisted filler policy (§10
-// FillerSelection) into the filler-package Selection the assembler consumes — the
-// boundary translation that keeps the filler domain free of the schedule type. The era
-// defaults from the channel's PROGRAM scope era when the filler selection sets no era of
-// its own (a "90s action" channel gets 90s ads for free); a Range is a from–to window,
-// so we take its lower bound as the representative era for the ladder. A nil filler
-// policy yields the zero Selection = the whole catalog (the additive default).
-//
-// Exported so the §12 pod PREVIEW derives the selection identically. If preview computed
-// its own, the two would drift and the UI would confidently show pods the reconciler
-// never builds — the whole failure mode preview exists to prevent.
-func SelectionForChannel(ch channelstore.Channel) pod.Selection {
-	return SelectionForPolicy(ch.Policy, ch.Lineup)
-}
-
-// SelectionForPolicy is SelectionForChannel for a policy that is not (yet) the saved one — a draft.
-// It carries everything the saved path does, break length and commercial spacing included, so a
-// draft preview cannot assemble with the install defaults while the channel airs its own.
-func SelectionForPolicy(pol schedule.ChannelPolicy, lineup []schedule.LineupEntry) pod.Selection {
-	sel := SelectionFrom(pol.Filler, pol.Scope, schedule.DeriveFiller(pol, lineup))
-	if pol.BreakDuration != nil {
-		sel.BreakDurationMs = pol.BreakDuration.Std().Milliseconds()
-	}
-	if pol.CommercialSpacing != nil {
-		spacing := pol.CommercialSpacing.Std()
-		sel.Spacing = &spacing
-	}
-	return sel
-}
-
-// BreaksPerHourFor resolves a channel's commercial-break density (§10, V51f).
-//
-// ⚠ **One writer.** Reconcile and preview both call this rather than each carrying a copy of
-// "no pool ⇒ 0, else the global value": that shape grows a quiet disagreement the moment a
-// per-channel override exists. Preview claiming a density reconcile does not apply is the
-// drift preview exists to prevent.
-//
-// ⚠ **The dead-air rule wins over the operator's override, deliberately.** No pool means no
-// breaks whatever the policy says: break gaps with nothing to fill them leave empty flex that
-// Tunarr renders as large channel-named blocks. The override lowers density or switches breaks
-// off; it cannot conjure clips.
-func BreaksPerHourFor(pol schedule.ChannelPolicy, hasFillerPool bool, global int) int {
-	if !hasFillerPool {
-		return 0
-	}
-	if pol.BreaksPerHour == nil {
-		return global
-	}
-	if n := *pol.BreaksPerHour; n > 0 {
-		return n
-	}
-	// A present zero (or a nonsense negative) is "no breaks on this channel".
-	return 0
-}
-
-// MidRollFor reports whether a channel breaks INSIDE long programmes (§10 mid-roll): only on
-// internal playout (Tunarr inserts filler at programme boundaries only), and on unless the
-// channel's policy switches it off. Density and the filler pool are BreaksPerHourFor's decision.
-func MidRollFor(pol schedule.ChannelPolicy, playsInternally bool) bool {
-	return playsInternally && (pol.MidRoll == nil || *pol.MidRoll)
-}
-
-// MidRollFreezeHorizon is how far ahead of `now` a programme's accepted split is frozen: whatever is
-// on air, or starts within it, keeps the parts the encoder and the guide were given, and a new
-// fade or a flipped switch applies to later airings only. Longer than the default reconcile
-// interval (10 min), so a programme cannot go from "later" to "on air" between two passes
-// without being pinned by one of them.
-const MidRollFreezeHorizon = 30 * time.Minute
-
-// pinnedCutsAt is the split every programme on air or about to be must keep (schedule.PinnedCuts),
-// read from the accepted Desired cycle with the encoder's own arithmetic. Nil before a channel has
-// an anchored cycle, or on Tunarr, which never splits.
-func pinnedCutsAt(ch channelstore.Channel, playsInternally bool, at time.Time) map[string][]int64 {
-	if !playsInternally || ch.PlayoutAnchor.IsZero() || len(ch.Desired) == 0 {
-		return nil
-	}
-	return playout.CommittedSplits(ch.Desired, ch.PlayoutAnchor, at, at.Add(MidRollFreezeHorizon))
-}
-
-// naturalBreaksFor is the scene-fade source for one scheduling pass, or nil when the channel does
-// not break mid-programme.
-func (e *Engine) naturalBreaksFor(ctx context.Context, pol schedule.ChannelPolicy, playsInternally bool) schedule.NaturalBreakSource {
-	if e.naturalBreaks == nil || !MidRollFor(pol, playsInternally) {
-		return nil
-	}
-	return e.naturalBreaks(ctx)
-}
-
-// BreakDurationFor resolves the per-channel break length against the live global setting, through
-// pod.ResolveBreakDurationMs — the same rule the pod is assembled to. An invalid (zero or
-// sub-30s) value falls to the next level, ending at the documented 2m default; disabling belongs
-// exclusively to BreaksPerHour.
-func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Duration {
-	var channelMs int64
-	if pol.BreakDuration != nil {
-		channelMs = pol.BreakDuration.Std().Milliseconds()
-	}
-	return time.Duration(pod.ResolveBreakDurationMs(channelMs, global.Milliseconds())) * time.Millisecond
-}
-
-// SelectionFrom is the ONE place a filler selection becomes a domain Selection, scope era and all.
-//
-// ⚠ **It is exported so every derivation (saved channel, draft, pod preview) shares one rule.**
-// Parallel copies drift, and two copies can cancel each other's mistakes so nothing looks wrong
-// until "explicitly any era" is chosen: a fallback keyed on `Era == 0` cannot tell an unset era
-// from a chosen one, so it would overwrite the operator's answer with the channel's.
-//
-// `derived` is what the channel's programming implies (schedule.DeriveFiller). It fills ONLY what
-// the operator left unset — an explicit audience or era, including an explicit "any" era, is never
-// overridden — and is applied live so channels created before it existed benefit too.
-func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, derived schedule.DerivedFiller) pod.Selection {
-	sel := pod.Selection{}
-	inheritEra := true
-	if f != nil {
-		sel.Audience = clips.Audience(f.Audience)
-		sel.Categories = append([]string(nil), f.Categories...)
-		sel.Roles = append([]string(nil), f.Roles...)
-		sel.Pinned = append([]string(nil), f.Pinned...)
-		sel.Excluded = append([]string(nil), f.Excluded...)
-		if f.Geography != nil {
-			sel.Geography = pod.Geography{Country: f.Geography.Country, Place: f.Geography.Place}.Normalize()
-		}
-		sel.Language = language.Normalize(f.Language)
-		if f.Era != nil {
-			// ⚠ **PRESENCE is the opt-in, and that is what makes "any era" reachable
-			// (§10, V51f).** A present range means the operator has ANSWERED the era question —
-			// including answering "any" with `{0,0}`. Only absence inherits. Keying the scope
-			// default off `sel.Era == 0` would re-inherit on the very next derivation, leaving a
-			// channel with a programming era no way to say "draw from the whole catalog". Same
-			// pattern as `AutoCurate`, for the same reason.
-			inheritEra = false
-			sel.Era = pod.EraRange{From: f.Era.From, To: f.Era.To}
-		} else if len(f.EraWindows) > 0 {
-			inheritEra = false
-			sel.EraWindows = rangesToFiller(f.EraWindows)
-		}
-	}
-	// The "seed filler era from scope dates" default, applied live rather than only stamped at
-	// create — so an existing channel benefits, and a channel whose scope later changes follows.
-	if inheritEra {
-		if era, windows := scope.FillerEra(); era != nil {
-			sel.Era = pod.EraRange{From: era.From, To: era.To}
-		} else if len(windows) > 0 {
-			sel.EraWindows = rangesToFiller(windows)
-		} else if derived.Era != nil {
-			sel.Era = pod.EraRange{From: derived.Era.From, To: derived.Era.To}
-		}
-	}
-	// ⚠ An empty audience is "operator said nothing" — the string has no explicit-any value, and
-	// the seed always writes one — so it derives. A kids ceiling then reaches the ladder's
-	// fail-closed audience rules instead of the open general pool.
-	if sel.Audience == "" {
-		sel.Audience = clips.Audience(derived.Audience)
-	}
-	return sel
-}
-
-func rangesToFiller(ranges []schedule.Range) []pod.EraRange {
-	out := make([]pod.EraRange, len(ranges))
-	for i, r := range ranges {
-		out[i] = pod.EraRange{From: r.From, To: r.To}
-	}
-	return pod.NormalizeEraWindows(out)
-}
-
-// PodSeed derives a deterministic pod seed from the channel id (§10 seeded-
-// deterministic — same channel rebuilds the same clip pool, so the filler-list
-// attach is idempotent across reconciles). Exported for the same reason as PodEra:
-// preview must seed from the identical value or it previews a different pod.
-func PodSeed(channelID string) int64 {
-	var h int64 = 1469598103934665603 // FNV-1a offset basis
-	for _, b := range []byte(channelID) {
-		h ^= int64(b)
-		h *= 1099511628211
-	}
-	return h
-}
-
-// PodSeedAt derives the seed for the break STARTING AT a specific instant — what
-// pod.Window has always documented ("channel + window start") and what real television
-// does: consecutive breaks do not replay the same three adverts.
-//
-// PodSeed (channel-only) remains for the two callers that legitimately want ONE pool per
-// channel rather than one pod per break:
-//
-//   - BuildFillerList attaches a Tunarr filler-list to the channel, and Tunarr picks from
-//     that pool itself. There is no break to seed from at attach time.
-//   - HasPool only asks "is there anything to play at all".
-//
-// Internal playout and the guide, which both resolve A SPECIFIC BREAK, use this instead. The
-// two must agree — the hover card promises the clips that will actually air — and they do,
-// because both derive the seed from the same (channel, break start).
-func PodSeedAt(channelID string, breakStartMs int64) int64 {
-	h := PodSeed(channelID)
-	// Mix the start in with the same FNV-1a step, byte by byte, so nearby breaks land far
-	// apart in the sequence rather than producing near-identical pods.
-	for i := 0; i < 8; i++ {
-		h ^= (breakStartMs >> (8 * i)) & 0xff
-		h *= 1099511628211
-	}
-	return h
-}
-
-// ensureChannel creates or updates the Tunarr channel. On create, Tunarr assigns
-// the id (Phase-0 finding 1) — EnsureChannel returns it; we must persist it.
-// Handles out-of-band deletion: if we hold a TunarrID but the channel is gone,
-// recreate it.
-// Returns the Tunarr id, the number actually used, and whether Ensure created/recreated the
-// remote row. The number may differ from the requested one when Tunarr already had a channel
-// there (see below). The caller must persist both id and number in one checkpoint, or Loomarr's
-// row and Tunarr disagree about what number the channel is on.
-func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec tunarr.ChannelSpec) (string, int, bool, error) {
-	created := spec.TunarrID == ""
-	if spec.TunarrID != "" {
-		actual, ok, err := e.prog.GetChannel(ctx, spec.TunarrID)
-		if err != nil {
-			return "", spec.Number, false, fmt.Errorf("check channel %s: %w", spec.TunarrID, err)
-		}
-		if !ok {
-			// The channel was deleted in Tunarr out of band; recreate it.
-			spec.TunarrID = ""
-			created = true
-		} else {
-			// Preserve Tunarr's existing loop anchor across the update PUT (§9) — without
-			// this the channel's lineup would jump back to its start every reconcile. This
-			// reuses the GET we already make here, so it costs no extra round-trip.
-			spec.StartTime = actual.StartTime
-		}
-	}
-	// ⚠ **A CREATE onto a number Tunarr already uses can never succeed, so move rather than retry
-	// it forever** (§9 V54). Tunarr reports the collision as `500` with an EMPTY BODY — there is
-	// nothing in the response to match on — so the occupancy is checked BEFORE the create instead
-	// of interpreting the failure afterwards.
-	//
-	// ⚠ It renumbers LOOMARR'S channel and never touches the occupant. §9's "channels Loomarr
-	// didn't create are never touched" is the rule this design is shaped around: after a database
-	// reset Loomarr genuinely cannot tell its own orphan from a stranger's channel, so it must
-	// assume stranger. Moving ourselves is the only self-healing option that cannot damage
-	// somebody else's channel.
-	//
-	// The renumber is REPORTED, not silent: the number is what a viewer tunes to, so a channel
-	// that quietly moved would be a worse surprise than the failure it replaces.
-	if spec.TunarrID == "" {
-		moved, err := e.freeNumberFor(ctx, localChannelID, spec.Number)
-		if err != nil {
-			return "", spec.Number, false, err
-		}
-		if moved != spec.Number {
-			e.log.Warn("channel number already used in Tunarr; moving this channel rather than failing",
-				"channel", spec.Name, "wanted", spec.Number, "using", moved)
-			if e.acts != nil {
-				e.acts.Warn(ctx, activitystore.ActivityKindChannel, spec.Name, fmt.Sprintf(
-					"%q moved to channel %d — Tunarr already had a channel on %d. Loomarr never changes a channel it didn't create.",
-					spec.Name, moved, spec.Number))
-			}
-			spec.Number = moved
-		}
-	}
-	id, err := e.prog.EnsureChannel(ctx, spec)
-	if err != nil {
-		return "", spec.Number, false, fmt.Errorf("ensure channel: %w", err)
-	}
-	return id, spec.Number, created, nil
-}
-
-// freeNumberFor returns `want` when neither Tunarr nor another local channel holds it, else the
-// lowest number free in both stores. Best-effort for Tunarr: if its list can't be read the caller
-// keeps its number and the create either succeeds or fails as before. The local list is required;
-// creating remotely on a number the database already owns would manufacture an orphan before the
-// unique index rejects the attachment.
-func (e *Engine) freeNumberFor(ctx context.Context, localChannelID string, want int) (int, error) {
-	existing, err := e.prog.ListChannels(ctx)
-	if err != nil {
-		e.log.Warn("couldn't read Tunarr's channels to check the number; keeping it", "number", want, "err", err)
-		return want, nil //nolint:nilerr // deliberate: a list failure must not renumber a channel
-	}
-	used := make(map[int]bool, len(existing))
-	for _, c := range existing {
-		used[c.Number] = true
-	}
-	local, err := e.store.ListChannels(ctx)
-	if err != nil {
-		return want, fmt.Errorf("list local channels for number allocation: %w", err)
-	}
-	for _, c := range local {
-		if c.ID != localChannelID {
-			used[c.Number] = true
-		}
-	}
-	if !used[want] {
-		return want, nil
-	}
-	for n := 1; ; n++ {
-		if !used[n] {
-			return n, nil
-		}
-	}
-}
-
-// statusFor derives the channel's Loomarr-side status from its desired lineup.
-//
-// ⚠ AN EMPTY DECK IS NOT `live`. A channel that computed to nothing must not report healthy:
-// the operator's only symptom would be an empty grid, with no hint that filtering was the
-// cause (a seasonal bench hid exactly that way: six titles on the lineup, every one benched
-// `out_of_season`, `desired_json` literally `[]`).
-//
-// Checked AFTER drift, because drift is the more specific claim: a channel that both
-// drifted and emptied is better described by what changed under it.
-//
-// This does not collide with `building`, which is set at create time and by edits
-// (channels/edit) and never by this function — reconcile only ever runs on a channel
-// that has already been created, so "no slots yet" here means filtering removed them,
-// not that the channel is still on its way.
-func (e *Engine) statusFor(d schedule.DesiredLineup, drifted bool) schedule.ChannelStatus {
-	if drifted {
-		return schedule.StatusDrifted
-	}
-	// ⚠ Counts PROGRAMMES, not slots. `len(d.Slots) == 0` would be the wrong predicate:
-	// a deck with nothing to play still carries SlotFiller entries (breaks/flex), so it is
-	// non-empty while airing no content.
-	for _, s := range d.Slots {
-		if s.Kind == schedule.SlotProgram {
-			return schedule.StatusLive
-		}
-	}
-	return schedule.StatusEmpty
-}
-
-// pokeGuide triggers a guide refresh, logging (never returning) failures (§9).
-func (e *Engine) pokeGuide(ctx context.Context, channelID string) {
-	if e.guide == nil {
-		return
-	}
-	if err := e.guide.PokeGuideRefresh(ctx); err != nil {
-		e.log.Warn("guide refresh poke failed (freshness degraded, reconcile ok)",
-			"channel", channelID, "err", err)
-	}
-}
-
-// rescanTuner asks the media server to re-read the tuner channel list so a newly
-// created channel is discovered (§9), logging (never returning) failures.
-func (e *Engine) rescanTuner(ctx context.Context, channelID string) {
-	if e.guide == nil {
-		return
-	}
-	if err := e.guide.RescanTuner(ctx); err != nil {
-		e.log.Warn("tuner re-scan failed (new channel may not appear until periodic scan, reconcile ok)",
-			"channel", channelID, "err", err)
-	}
-}
-
 // staleProgramCount reports how many Keys that were real programs in the
 // previously-persisted desired the library can no longer supply (§9 slot
 // revalidation). A non-zero count means scheduled items genuinely vanished from
@@ -1062,9 +716,9 @@ func staleProgramCount(prev []schedule.Slot, eligible map[provision.Key]bool) in
 
 // lineupDiffers reports whether the desired slots differ from Tunarr's actual
 // programming in a way that requires a push. Comparison is on the pushable shape
-// (kind + library item + duration) since Tunarr can't round-trip our Key
-// (lineup.go itemToSlot). A length change or any positional difference triggers a
-// push — this is the minimal-diff decision (§9): equal ⇒ no Tunarr write.
+// (pushShape) since Tunarr can't round-trip our Key (lineup.go itemToSlot). A
+// different slot count, program, or break length triggers a push — this is the
+// minimal-diff decision (§9): equal ⇒ no Tunarr write.
 func lineupDiffers(desired, actual []schedule.Slot) bool {
 	if len(desired) != len(actual) {
 		return true
@@ -1077,25 +731,29 @@ func lineupDiffers(desired, actual []schedule.Slot) bool {
 	return false
 }
 
-// pushEqual compares two slots by what actually reaches Tunarr. A desired
-// program/filler-with-item is a "content" item keyed by LibraryItemID; everything
-// else is flex. So two slots are push-equal iff they render to the same Tunarr
-// item type + id.
+// pushEqual compares two slots by what actually reaches Tunarr: two slots are
+// push-equal iff they render to the same pushShape.
 func pushEqual(want, got schedule.Slot) bool {
-	wType, wID := pushShape(want)
-	gType, gID := pushShape(got)
-	return wType == gType && wID == gID
+	return pushShape(want) == pushShape(got)
 }
 
-// pushShape returns the (tunarr-type, item-id) a slot renders to, matching
-// tunarr.slotToItem's logic. Kept here (not exported from tunarr) so the
-// diff is expressed in domain terms. Filler lives in a Tunarr filler-list (§10), so
-// filler slots are ALWAYS flex in the pushed lineup — only a program is content.
-func pushShape(s schedule.Slot) (string, string) {
+// slotShape is what one slot sends Tunarr: a program by its item, a break by its length.
+type slotShape struct {
+	content bool
+	itemID  string
+	flexMs  int64
+}
+
+// pushShape returns what a slot renders to, matching tunarr.slotToItem's logic. Filler
+// lives in a Tunarr filler-list (§10), so filler slots are ALWAYS flex in the pushed
+// lineup — only a program is content. A break compares by the length it is pushed with
+// (Tunarr's floor applied). A program compares by its item alone: its length is the
+// item's runtime, which Tunarr may report as its own.
+func pushShape(s schedule.Slot) slotShape {
 	if s.Kind == schedule.SlotProgram {
-		return "content", s.LibraryItemID
+		return slotShape{content: true, itemID: s.LibraryItemID}
 	}
-	return "flex", ""
+	return slotShape{flexMs: tunarr.PushedFlexMs(s.DurationMs)}
 }
 
 // isNotFound reports whether err is the store's not-found sentinel.

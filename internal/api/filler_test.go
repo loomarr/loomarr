@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
@@ -236,7 +237,7 @@ func (f *fakeFiller) EnrichDiscovered(_ context.Context, ids []string) (map[stri
 
 func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
 	return "job-1", nil
@@ -244,7 +245,7 @@ func (f *fakeFiller) Ingest(_ context.Context, urls []string) (string, error) {
 
 func (f *fakeFiller) IngestSourceItems(_ context.Context, sourceID, sourceKind string, items []source.Item) (string, error) {
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	for _, item := range items {
 		f.sourceItems = append(f.sourceItems, acquisition.AcquisitionTarget{
@@ -261,7 +262,7 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []ac
 	f.pullMu.Lock()
 	defer f.pullMu.Unlock()
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	if f.ingestPullErr != nil {
 		return "", f.ingestPullErr
@@ -282,7 +283,7 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []ac
 // wrong for a release — a double that collapsed them could not have caught it.
 func (f *fakeFiller) IngestAsked(_ context.Context, urls []string) (string, error) {
 	if f.unavailable {
-		return "", fillerapi.ErrIngestUnavailable
+		return "", operator.ErrIngestUnavailable
 	}
 	f.ingested = append(f.ingested, urls...)
 	f.asked = append(f.asked, urls...)
@@ -299,7 +300,7 @@ type fakeSplitCall struct {
 
 func (f *fakeFiller) Split(_ context.Context, clipID string) (string, error) {
 	if f.splitUnavailable {
-		return "", fillerapi.ErrSplitUnavailable
+		return "", operator.ErrSplitUnavailable
 	}
 	if f.splitNotFound {
 		return "", store.ErrNotFound
@@ -352,13 +353,12 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService imagesapi.Image
 		// with it a test that passes `memberToken` is really testing an anonymous caller — which
 		// is the exact gap api_test.go records four tests once falling into. `/v1/filler/watch`
 		// is member-readable and that has to be provable.
-		Auth:            testAuthorizer{},
-		Log:             slog.New(slog.DiscardHandler),
-		Filler:          ff,
-		SourceProviders: testSourceProviders(t),
-		Images:          imageService,
-		LiveSettings:    live,
-		Now:             now,
+		Auth:         testAuthorizer{},
+		Log:          slog.New(slog.DiscardHandler),
+		Filler:       api.FillerOptions{Service: ff, SourceProviders: testSourceProviders(t)},
+		Images:       imageService,
+		LiveSettings: live,
+		Now:          now,
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -1448,8 +1448,10 @@ func TestGetFillerSplit_ReportsCheckedAndCurrentLanguages(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	current := "en,fr"
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
-		IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: api.FillerOptions{
+			Service:         &fakeFiller{},
+			IntakeLanguages: func(context.Context) (string, error) { return current, nil },
+		},
 	}))
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{
@@ -1488,8 +1490,10 @@ func TestGetFillerSplit_AFailedLanguageReadKeepsReviewOpen(t *testing.T) {
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: &fakeFiller{},
-		IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+		Store: st, Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), Filler: api.FillerOptions{
+			Service:         &fakeFiller{},
+			IntakeLanguages: func(context.Context) (string, error) { return "", errors.New("db down") },
+		},
 	}))
 	t.Cleanup(srv.Close)
 	if err := st.UpsertSplitProposal(context.Background(), filler.SplitProposal{

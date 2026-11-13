@@ -3,23 +3,23 @@ package playoutresolve
 import (
 	"context"
 
-	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // ItemMetadata answers a guide's and a lineup's item metadata from the Library's own tables
 // (#2151 step 16). An id that is no library item is absent: the media server is never asked.
 type ItemMetadata struct {
-	Facts store.LibraryItemFactsReader
+	Facts librarystore.LibraryItemFactsReader
 }
 
 // ItemMetadataByID keeps library.Client's contract: missing ids are absent, and a partial answer
 // rides with its error.
-func (m ItemMetadata) ItemMetadataByID(ctx context.Context, ids []string) (map[string]library.ItemMetadata, error) {
+func (m ItemMetadata) ItemMetadataByID(ctx context.Context, ids []string) (map[string]mediaserver.ItemMetadata, error) {
 	facts, err := m.Facts.LibraryItemFacts(ctx, ids)
-	out := make(map[string]library.ItemMetadata, len(facts))
+	out := make(map[string]mediaserver.ItemMetadata, len(facts))
 	for id, f := range facts {
-		out[id] = library.ItemMetadata{Overview: f.Overview, Genres: f.Genres, Year: f.Year,
+		out[id] = mediaserver.ItemMetadata{Overview: f.Overview, Genres: f.Genres, Year: f.Year,
 			OfficialRating: f.Rating, RuntimeMs: f.RuntimeMs}
 	}
 	return out, err

@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // ErrNotAnswerable is a title the maintainer cannot answer for: one the scanner did not write, so
@@ -20,10 +20,10 @@ var ErrNotAnswerable = errors.New("this title has no scan origin")
 
 // Need is a title that needs the maintainer, with what a search found for it, best first.
 type Need struct {
-	store.LibraryNeed
-	Candidates []store.LibraryCandidate
+	librarystore.LibraryNeed
+	Candidates []librarystore.LibraryCandidate
 	// Present is its present files (a series' episodes), in path order.
-	Present []store.LibraryFile
+	Present []librarystore.LibraryFile
 }
 
 // Needs lists Needs you: every present title nothing grounds and nobody answered.
@@ -40,13 +40,13 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	if err != nil {
 		return nil, err
 	}
+	files, err := l.ItemStore.LibraryItemsFiles(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Need, 0, len(needs))
 	for _, n := range needs {
-		files, err := l.ItemStore.LibraryItemFiles(ctx, n.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files})
+		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID]})
 	}
 	return out, nil
 }
@@ -64,7 +64,7 @@ func (l *Library) NeedCount(ctx context.Context) (int, error) {
 			return 0, err
 		}
 	}
-	problems, err := l.ItemStore.ListLibraryItems(ctx, store.LibraryItemQuery{Problems: true})
+	problems, err := l.ItemStore.ListLibraryItems(ctx, librarystore.LibraryItemQuery{Problems: true})
 	return len(needs) + orders + problems.Total, err
 }
 
@@ -73,7 +73,7 @@ func (l *Library) NeedCount(ctx context.Context) (int, error) {
 var ErrNotCatalogID = errors.New("scan: the catalog does not fetch that id")
 
 // Link answers a title: it is the catalog title id. Its files are written again with the link.
-func (l *Library) Link(ctx context.Context, itemID string, id store.LibraryID) error {
+func (l *Library) Link(ctx context.Context, itemID string, id librarystore.LibraryID) error {
 	id.Namespace, id.Value = strings.TrimSpace(id.Namespace), strings.TrimSpace(id.Value)
 	kind, _, err := l.origin(ctx, itemID)
 	if err != nil {
@@ -82,7 +82,7 @@ func (l *Library) Link(ctx context.Context, itemID string, id store.LibraryID) e
 	if l.Keys.For(mp.Kind(kind), []mp.ExternalID{externalID(id)}).String() == "" {
 		return ErrNotCatalogID
 	}
-	return l.answer(ctx, itemID, store.LibraryAnswer{ID: id})
+	return l.answer(ctx, itemID, librarystore.LibraryAnswer{ID: id})
 }
 
 // MatchBySearch answers a title for the Matcher: a search agreed it is the catalog title id
@@ -95,12 +95,12 @@ func (l *Library) MatchBySearch(ctx context.Context, itemID string, id mp.Extern
 	if _, answered, err := l.NeedStore.LibraryAnswerFor(ctx, origin); err != nil || answered {
 		return err
 	}
-	return l.answer(ctx, itemID, store.LibraryAnswer{ID: libraryID(id), By: store.AnsweredBySearch})
+	return l.answer(ctx, itemID, librarystore.LibraryAnswer{ID: libraryID(id), By: librarystore.AnsweredBySearch})
 }
 
 // Ignore answers a title: it is not one. It leaves the Library and Needs you.
 func (l *Library) Ignore(ctx context.Context, itemID string) error {
-	return l.answer(ctx, itemID, store.LibraryAnswer{Ignored: true})
+	return l.answer(ctx, itemID, librarystore.LibraryAnswer{Ignored: true})
 }
 
 // Unanswer takes a title's answer back. A title nothing else grounds needs the maintainer again.
@@ -140,7 +140,7 @@ func (l *Library) SearchTitles(ctx context.Context, term, kind string) ([]Search
 // ErrNoCatalog is a search with no catalog, or one without its key.
 var ErrNoCatalog = errors.New("no catalog to search")
 
-func (l *Library) answer(ctx context.Context, itemID string, a store.LibraryAnswer) error {
+func (l *Library) answer(ctx context.Context, itemID string, a librarystore.LibraryAnswer) error {
 	kind, origin, err := l.origin(ctx, itemID)
 	if err != nil {
 		return err
@@ -152,13 +152,13 @@ func (l *Library) answer(ctx context.Context, itemID string, a store.LibraryAnsw
 	return l.rewrite(ctx, itemID, origin)
 }
 
-func (l *Library) origin(ctx context.Context, itemID string) (string, store.LibraryOrigin, error) {
+func (l *Library) origin(ctx context.Context, itemID string) (string, librarystore.LibraryOrigin, error) {
 	kind, origin, err := l.NeedStore.LibraryItemOrigin(ctx, itemID)
 	if err != nil {
-		return "", store.LibraryOrigin{}, err
+		return "", librarystore.LibraryOrigin{}, err
 	}
 	if origin.Key == "" || (kind != "movie" && kind != "series") {
-		return "", store.LibraryOrigin{}, ErrNotAnswerable
+		return "", librarystore.LibraryOrigin{}, ErrNotAnswerable
 	}
 	return kind, origin, nil
 }
@@ -166,7 +166,7 @@ func (l *Library) origin(ctx context.Context, itemID string) (string, store.Libr
 // rewrite sends a title's folders to the scanner, which writes its files again. A link can make
 // a title's file a copy of another title, which then holds the origin, so that title's files are
 // written again too: taking the link back has to find the file where it went.
-func (l *Library) rewrite(ctx context.Context, itemID string, origin store.LibraryOrigin) error {
+func (l *Library) rewrite(ctx context.Context, itemID string, origin librarystore.LibraryOrigin) error {
 	ids := []string{itemID}
 	if l.Inventory != nil {
 		key := inventory.OriginKey{Authority: inventory.AuthorityID(origin.Authority), ExternalItemID: origin.Key}
@@ -178,7 +178,7 @@ func (l *Library) rewrite(ctx context.Context, itemID string, origin store.Libra
 			ids = append(ids, string(holder.ID))
 		}
 	}
-	var files []store.LibraryFilePath
+	var files []librarystore.LibraryFilePath
 	for _, id := range ids {
 		found, err := l.NeedStore.RewriteLibraryItemFiles(ctx, id)
 		if err != nil {
@@ -198,7 +198,7 @@ func (l *Library) now() time.Time {
 }
 
 // rewriteFolders asks for a pass over the folders holding files, one call per root.
-func rewriteFolders(files []store.LibraryFilePath, rewrite func(root string, dirs ...string)) {
+func rewriteFolders(files []librarystore.LibraryFilePath, rewrite func(root string, dirs ...string)) {
 	dirs := map[string]map[string]bool{}
 	for _, f := range files {
 		if dirs[f.Root] == nil {

@@ -13,7 +13,7 @@ import type { SettingsFieldsProps } from "./settings-fields.type";
 // saves one group per step, whereas a Settings page has several blocks (Connections alone
 // has media server, requester, Tunarr and TMDB) behind ONE sticky save bar, because
 // connection settings change together and half-saved pairs mid-test are a footgun. A
-// component that owned its own form could not serve both, so ownership moved out.
+// component that owned its own form could not serve both, so the caller owns the form.
 //
 // Advanced keys stay behind a per-group toggle (§5) — that is a property of the group's
 // presentation, so it does belong here.
@@ -88,7 +88,7 @@ const SettingsFields = ({
             layout="text"
             onPress={() => setShowAdvanced((v) => !v)}
             style={{ alignSelf: "flex-start" }}
-            variant="link"
+            variant="ghost"
           >
             {showAdvanced ? "Hide advanced" : `Show advanced (${advancedCount})`}
           </Action>

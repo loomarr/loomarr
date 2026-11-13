@@ -5,14 +5,14 @@
 
 # test-pg's packages (mk/store.mk; its recipe is audited literally by releaseverify). A drift here
 # costs cache hits, never gate coverage.
-GO_CACHE_WARM_PG_PACKAGES := ./internal/platform/store/./internal/playout/backendtransition/ ./internal/app/ ./internal/filler/records/
+GO_CACHE_WARM_PG_PACKAGES := ./internal/platform/store/ ./internal/playout/backendtransition/ ./internal/app/ ./internal/filler/records/
 
 .PHONY: go-cache-warm
 go-cache-warm: ## CI cache warming only: build one gate's Go test binaries without running them (GO_CACHE_WARM names a race lane or postgres)
 	@case "$(GO_CACHE_WARM)" in \
 	  postgres) GO_TEST_COMPILE_ONLY=1 GOFLAGS=-tags=integration GO_BIN="$(GO)" \
 	    ./scripts/go-test-packages.sh race 20m $(GO_CACHE_WARM_PG_PACKAGES) ;; \
-	  1/2|2/2|certification-1/2|certification-2/2) GO_TEST_COMPILE_ONLY=1 GO_BIN="$(GO)" \
+	  1/2|2/2|certification-[1-9]/[1-9]) GO_TEST_COMPILE_ONLY=1 GO_BIN="$(GO)" \
 	    GO_TEST_LANE="$(GO_CACHE_WARM)" ./scripts/go-test-lane.sh ;; \
 	  *) echo "go-cache-warm: GO_CACHE_WARM must name a race lane or postgres, got '$(GO_CACHE_WARM)'" >&2; exit 2 ;; \
 	esac

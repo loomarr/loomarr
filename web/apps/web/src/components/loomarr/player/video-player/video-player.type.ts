@@ -67,7 +67,8 @@ interface VideoPlayerProps {
   // not learn channel ids/catalog order. Arrow/Page/media Channel keys all lower to this seam.
   onChannelStep?: (direction: -1 | 1) => void;
   // Fill the container's height instead of keeping a 16:9 frame; the <video> letterboxes the
-  // picture inside it. Watch uses it wider than a portrait phone, where the picture fills the window.
+  // picture inside it, centred. On an upright phone that is the strip mid-screen the chrome's toolbar,
+  // band and keys sit clear of (§9.7).
   fill?: boolean;
 }
 

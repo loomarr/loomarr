@@ -154,7 +154,7 @@ const NavTabs = ({ activeId, label, linkComponent: Link, tabs, variant = "pill" 
             {tab.label}
             {/* ⚠ Omitted when a tab has no count, rather than rendered as "0" — see NavTab.count. */}
             {tab.count !== undefined && (
-              <Text as="span" style={countStyle(tab, active)} textRole="captionMono">
+              <Text as="span" style={countStyle(tab, active)} textRole="mono">
                 {tab.count}
               </Text>
             )}

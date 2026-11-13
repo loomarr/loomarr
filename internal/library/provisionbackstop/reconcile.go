@@ -15,10 +15,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Emitter receives domain events for terminal transitions (§4 inv. 2); the
@@ -51,7 +51,7 @@ type AcquisitionQuality interface {
 
 // LibraryLookup is the narrow media-library seam used by one reconcile pass.
 type LibraryLookup interface {
-	Lookup(ctx context.Context, providerKind library.ProviderKind, providerID string, mediaType library.MediaType) (itemID string, present bool, err error)
+	Lookup(ctx context.Context, providerKind mediaserver.ProviderKind, providerID string, mediaType mediaserver.MediaType) (itemID string, present bool, err error)
 }
 
 // LibrarySource binds one immutable media-library operation. It is invoked once
@@ -153,7 +153,15 @@ func (r *Reconciler) retryWanted(ctx context.Context, rec provision.Record, now 
 // now is the wall clock (for UpdatedAt); due-ness is proven by the claim.
 func (r *Reconciler) giveUp(ctx context.Context, lib LibraryLookup, rec provision.Record, now time.Time) {
 	// Missed-webhook re-check: maybe it landed and we never got the Import hook.
-	if id, present, err := lookup(ctx, lib, rec.Title); err == nil && present {
+	id, present, err := lookup(ctx, lib, rec.Title)
+	if err != nil {
+		// The library did not answer, so nothing is known about the title. It keeps its state
+		// and its request; the claim leased its deadline forward, so the next claim after the
+		// lease looks again.
+		r.log.Warn("reconcile: library check failed, the title is left for the next claim", "key", rec.Key, "err", err)
+		return
+	}
+	if present {
 		next, emitted := provision.Apply(rec, provision.Event{Kind: provision.LibraryConfirmed, LibraryID: id}, now)
 		r.persist(ctx, next, emitted)
 		return
@@ -176,13 +184,13 @@ func (r *Reconciler) giveUp(ctx context.Context, lib LibraryLookup, rec provisio
 }
 
 func lookup(ctx context.Context, lib LibraryLookup, t provision.Title) (string, bool, error) {
-	kind := library.TMDB
+	kind := mediaserver.TMDB
 	id := itoa(t.TMDBID)
-	mt := library.Movie
+	mt := mediaserver.Movie
 	if t.MediaType == provision.Series {
-		mt = library.Series
+		mt = mediaserver.Series
 		if t.TVDBID > 0 {
-			kind, id = library.TVDB, itoa(t.TVDBID)
+			kind, id = mediaserver.TVDB, itoa(t.TVDBID)
 		}
 	}
 	return lib.Lookup(ctx, kind, id, mt)

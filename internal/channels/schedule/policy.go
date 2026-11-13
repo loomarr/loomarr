@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
+
 	"github.com/loomarr/loomarr/internal/platform/langcode"
 	"github.com/loomarr/loomarr/internal/platform/rating"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // ChannelPolicy is the per-channel programming contract (programming-design.md §2):
@@ -35,12 +36,14 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	Applied []AppliedRelaxation `json:"applied,omitempty"`
+	// The ladder descends at most maxLadderSteps (8) steps, so a channel never records more.
+	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
 	// revert it (§8.2). Bookkeeping only; rides policy_json, so it needs no migration.
-	OperatorSet []string `json:"operatorSet,omitempty"`
+	// There are five pinnable fields (scope, audience, separation, ordering, seasonal).
+	OperatorSet []string `json:"operatorSet,omitempty" maxItems:"5"`
 }
 
 // ProposalPolicy is the suggester-extracted half of ChannelPolicy (embedded, flattened).
@@ -56,7 +59,8 @@ type ProposalPolicy struct {
 	// seeds llm rules, the editor authors operator rules, and MergeFromProposal replaces
 	// only the llm rules — so refine-authored and hand-authored rules COMPOSE (§8.2).
 	// Every rule VALUE is grounded/clamped, evaluation is deterministic.
-	Rules []SchedulingRule `json:"rules,omitempty"`
+	// A household has a handful of rules (a weekend, a holiday, a daypart); 32 is far past that.
+	Rules []SchedulingRule `json:"rules,omitempty" maxItems:"32"`
 }
 
 // OperatorPolicy is the channel-page-edited half of ChannelPolicy (embedded, flattened).
@@ -248,14 +252,14 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range           `json:"era,omitempty"`        // year window; nil = inherit Scope.Dates at derivation.
-	EraWindows []Range          `json:"eraWindows,omitempty"` // explicit union; mutually exclusive with Era
-	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
-	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
-	Roles      []string         `json:"roles,omitempty"`      // empty = the default roles (all but political and news); else the chosen subset
-	Pinned     []string         `json:"pinned,omitempty"`     // clip hashes always included (a top-priority pool)
-	Excluded   []string         `json:"excluded,omitempty"`   // clip hashes never used (wins over Pinned)
-	Geography  *FillerGeography `json:"geography,omitempty"`  // nil = inherit Installation geography
+	Era        *Range           `json:"era,omitempty"`                                   // year window; nil = inherit Scope.Dates at derivation.
+	EraWindows []Range          `json:"eraWindows,omitempty" maxItems:"8"`               // explicit union; mutually exclusive with Era; validate rejects more than 8
+	Audience   string           `json:"audience,omitempty"`                              // "" = any; else kids|family|general|late_night
+	Categories []string         `json:"categories,omitempty" maxItems:"128"`             // empty = any; taxonomy slugs, seeded with 60 and operator-extensible
+	Roles      []string         `json:"roles,omitempty" maxItems:"8" uniqueItems:"true"` // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
+	Pinned     []string         `json:"pinned,omitempty" maxItems:"1000"`                // clip hashes always included (a top-priority pool); 1000 is the most one channel pins
+	Excluded   []string         `json:"excluded,omitempty" maxItems:"1000"`              // clip hashes never used (wins over Pinned); same ceiling as Pinned
+	Geography  *FillerGeography `json:"geography,omitempty"`                             // nil = inherit Installation geography
 	// Language is the channel's commercial language (#2030 decision 12): "" = the household's
 	// `filler.language`. Any ISO 639 form; it is independent of Playout.AudioLanguage, so an anime
 	// channel with Japanese audio keeps English commercials.
@@ -344,10 +348,15 @@ func (f *FillerSelection) validate() error {
 	if f.Audience != "" && !fillerAudiences[f.Audience] {
 		return fmt.Errorf("filler: unknown audience %q", f.Audience)
 	}
+	seenRole := make(map[string]bool, len(f.Roles))
 	for _, r := range f.Roles {
 		if !fillerRoles[r] {
 			return fmt.Errorf("filler: unknown role %q", r)
 		}
+		if seenRole[r] {
+			return fmt.Errorf("filler: role %q is listed more than once", r)
+		}
+		seenRole[r] = true
 	}
 	if f.Language != "" && !langcode.Valid(f.Language) {
 		return fmt.Errorf("filler: unknown language %q", f.Language)
@@ -406,12 +415,12 @@ func sameRanges(a, b []Range) bool {
 // Dates is the only date scope. The retired `era` field is still read as an alias on
 // decode (see UnmarshalJSON in datescope.go) and is never written.
 type ScopePolicy struct {
-	Series      []provision.Key `json:"series,omitempty"`      // restrict to these series (resolved ids)
-	Collections []string        `json:"collections,omitempty"` // media-server collections
-	Seasons     *Range          `json:"seasons,omitempty"`     // per-series season window
-	Dates       *DateScope      `json:"dates,omitempty"`       // separate movie, premiere, and episode-airing windows
-	Genres      GenreFilter     `json:"genres,omitempty"`      // include/exclude by genre name
-	RuntimeMax  int             `json:"runtimeMax,omitempty"`  // seconds; 0 = unbounded ("nothing over an hour")
+	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
+	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens
+	Seasons     *Range          `json:"seasons,omitempty"`                    // per-series season window
+	Dates       *DateScope      `json:"dates,omitempty"`                      // separate movie, premiere, and episode-airing windows
+	Genres      GenreFilter     `json:"genres,omitempty"`                     // include/exclude by genre name
+	RuntimeMax  int             `json:"runtimeMax,omitempty"`                 // seconds; 0 = unbounded ("nothing over an hour")
 
 	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
 	// policy decodes to their intersection; a request with both is ambiguous and the API
@@ -422,9 +431,10 @@ type ScopePolicy struct {
 // DateScope keeps date meanings separate: title metadata supplies movie release and
 // series premiere; resolved episodes supply series airing. Each list is a union.
 type DateScope struct {
-	MovieRelease   []Range `json:"movieRelease,omitempty"`
-	SeriesPremiere []Range `json:"seriesPremiere,omitempty"`
-	SeriesAiring   []Range `json:"seriesAiring,omitempty"`
+	// Each union holds at most 16 year ranges, twice a filler selection's eraWindows.
+	MovieRelease   []Range `json:"movieRelease,omitempty" maxItems:"16"`
+	SeriesPremiere []Range `json:"seriesPremiere,omitempty" maxItems:"16"`
+	SeriesAiring   []Range `json:"seriesAiring,omitempty" maxItems:"16"`
 }
 
 func (d *DateScope) empty() bool {
@@ -541,8 +551,9 @@ func upperBound(r Range) int {
 // GenreFilter is an include/exclude pair over genre names (§2). Include empty =
 // any genre allowed; Exclude always subtracts.
 type GenreFilter struct {
-	Include []string `json:"include,omitempty"`
-	Exclude []string `json:"exclude,omitempty"`
+	// TMDB names about forty genres across movies and series; 50 is every one of them.
+	Include []string `json:"include,omitempty" maxItems:"50"`
+	Exclude []string `json:"exclude,omitempty" maxItems:"50"`
 }
 
 // Range is an inclusive [From, To] window; 0 means unbounded on that end (§2).
@@ -585,9 +596,9 @@ type SeparationPolicy struct {
 
 // SeasonalPolicy controls holiday-aware programming (§6).
 type SeasonalPolicy struct {
-	Mode      SeasonalMode `json:"mode,omitempty"`      // off | auto | exclusive; "" = auto
-	Holidays  []string     `json:"holidays,omitempty"`  // subset of the built-in calendar ids
-	OffSeason OffSeason    `json:"offSeason,omitempty"` // exclusive-mode fallback; "" = loop
+	Mode      SeasonalMode `json:"mode,omitempty"`                   // off | auto | exclusive; "" = auto
+	Holidays  []string     `json:"holidays,omitempty" maxItems:"32"` // subset of the built-in calendar ids (15 ship; 32 leaves room for a custom calendar)
+	OffSeason OffSeason    `json:"offSeason,omitempty"`              // exclusive-mode fallback; "" = loop
 	// Strength and Placement shape the auto-mode feature of holiday EPISODES inside an
 	// ordinary series (§6 "Holiday episodes"). Both are "" = default enums, never a zero value
 	// that means something different from unset.
@@ -750,209 +761,3 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 
 // Std returns the underlying time.Duration.
 func (d Duration) Std() time.Duration { return time.Duration(d) }
-
-// --- built-in defaults (design §15; the two-tier `channel-policy > built-in`) ---
-// The registry-default middle tier (config-design.md) is deferred until the
-// settings registry lands; these constants are the v1 default source of truth.
-const (
-	defaultEpisodeNoRepeat = 168 * time.Hour // 7d
-	defaultMovieNoRepeat   = 720 * time.Hour // 30d
-	defaultSeriesMinGap    = 2 * time.Hour
-	defaultBlockMax        = 2
-	defaultOrdering        = OrderSyndication
-	defaultSeasonalMode    = SeasonalAuto
-	defaultOffSeason       = OffSeasonLoop
-	defaultHolidayStrength = HolidayStrengthFeatured
-)
-
-// ResolvedPolicy is the fully-populated form enforcement consumes: every default
-// filled, no zero-means-default ambiguity, so slotting/filter code never repeats
-// "if unset use default". Produced once per reconcile by ChannelPolicy.Resolved().
-type ResolvedPolicy struct {
-	Scope    ScopePolicy
-	Ceiling  rating.Rating
-	Unrated  UnratedPolicy // resolved to exclude|allow (never "")
-	Sep      ResolvedSeparation
-	Ordering OrderingMode // resolved to a concrete mode (never OrderInherit)
-	Seasonal ResolvedSeasonal
-	// LastAired is when each unit (library item id) last aired ON THIS CHANNEL (§3.1) — the
-	// recency signal placement biases on. Nil/empty ⇒ no history, and ordering is exactly what
-	// it was before the signal existed.
-	//
-	// NOT a policy field: it is observed state, not something an operator or the LLM authors,
-	// which is why it has no ChannelPolicy counterpart and no §9 extensibility entry. It rides
-	// here because it is an INPUT to placement and this is what placement receives.
-	LastAired map[string]time.Time
-	// Calendar is the household's holiday calendar (#2030), which judges and dates the seasonal
-	// pass and the holiday-episode matchers. Household state, not policy — it rides here for the
-	// same reason LastAired does.
-	Calendar Calendar
-}
-
-// ResolvedSeparation is the separation policy with every window/limit filled.
-type ResolvedSeparation struct {
-	EpisodeNoRepeat time.Duration
-	MovieNoRepeat   time.Duration
-	SeriesMinGap    time.Duration
-	BlockMax        int // 0 = unbounded (single-series auto-relax)
-}
-
-// ResolvedSeasonal is the seasonal policy with mode/off-season concrete.
-type ResolvedSeasonal struct {
-	Mode      SeasonalMode
-	Holidays  []string
-	OffSeason OffSeason
-	Strength  HolidayStrength // never "": light | featured | heavy
-	Evenings  bool            // featured holiday episodes air in the evening band
-}
-
-// Resolved fills every default and applies the single-series auto-relax (§2).
-//
-//   - strategy: the channel's Strategy — an omitted policy Ordering inherits it
-//     (a policy-less channel keeps its existing behavior, the locked decision).
-//   - singleSeries: true when the eligible entry set is exactly one series and no
-//     movies; separation there is EPISODE spacing, so SeriesMinGap/BlockMax relax
-//     (rule-based, not LLM judgment).
-func (p ChannelPolicy) Resolved(strategy Strategy, singleSeries bool) ResolvedPolicy {
-	sep := ResolvedSeparation{
-		EpisodeNoRepeat: orDur(p.Separation.EpisodeNoRepeat, defaultEpisodeNoRepeat),
-		MovieNoRepeat:   orDur(p.Separation.MovieNoRepeat, defaultMovieNoRepeat),
-		SeriesMinGap:    orDur(p.Separation.SeriesMinGap, defaultSeriesMinGap),
-		BlockMax:        orInt(p.Separation.BlockMax, defaultBlockMax),
-	}
-	if singleSeries {
-		// Separation is episode spacing here, not series spacing — relax both.
-		sep.SeriesMinGap = 0
-		sep.BlockMax = 0 // unbounded
-	}
-
-	ordering := p.Ordering
-	if ordering == OrderInherit {
-		ordering = orderingFromStrategy(strategy)
-	}
-
-	mode := p.Seasonal.Mode
-	if mode == SeasonalDefault {
-		mode = defaultSeasonalMode
-	}
-	off := p.Seasonal.OffSeason
-	if off == OffSeasonDefault {
-		off = defaultOffSeason
-	}
-	strength := p.Seasonal.Strength
-	if strength == HolidayStrengthDefault {
-		strength = defaultHolidayStrength
-	}
-
-	return ResolvedPolicy{
-		Scope:    p.Scope,
-		Ceiling:  p.Audience.Ceiling,
-		Unrated:  resolveUnrated(p.Audience),
-		Sep:      sep,
-		Ordering: ordering,
-		Seasonal: ResolvedSeasonal{
-			Mode: mode, Holidays: p.Seasonal.Holidays, OffSeason: off,
-			Strength: strength, Evenings: p.Seasonal.Placement != HolidayPlacementAnytime,
-		},
-	}
-}
-
-// resolveUnrated fills the unrated policy: explicit value wins; otherwise a kids
-// ceiling (TV-Y..TV-PG) defaults to exclude (fail-closed) and any other ceiling
-// (including none) defaults to allow (§4).
-func resolveUnrated(a AudiencePolicy) UnratedPolicy {
-	if a.Unrated != UnratedDefault {
-		return a.Unrated
-	}
-	if rank, _ := a.Ceiling.Rank(); a.Ceiling != "" && rank <= rating.KidsCeilingRank {
-		return UnratedExclude
-	}
-	return UnratedAllow
-}
-
-// orderingFromStrategy maps the channel's Strategy onto an OrderingMode for the
-// inherit case. TimeSlot has no separate ordering yet → sequential (its block
-// mapping happens at push time, matching lineup.go's TimeSlot handling).
-func orderingFromStrategy(s Strategy) OrderingMode {
-	switch s {
-	case Shuffle:
-		return OrderShuffle
-	case Sequential, TimeSlot:
-		return OrderSequential
-	default:
-		return defaultOrdering
-	}
-}
-
-func orDur(d Duration, def time.Duration) time.Duration {
-	if d == 0 {
-		return def
-	}
-	return d.Std()
-}
-
-func orInt(v, def int) int {
-	if v == 0 {
-		return def
-	}
-	return v
-}
-
-// Validate rejects a policy with an unknown non-empty enum value or an unmappable
-// audience ceiling (grounding: the suggester must never emit a ceiling outside the
-// closed ladder). Empty/omitted fields are always valid (they resolve to defaults).
-func (p ChannelPolicy) Validate() error {
-	if err := validateDates("channel policy: scope.dates", p.Scope.Dates); err != nil {
-		return err
-	}
-	for _, rule := range p.Rules {
-		if rule.What == nil {
-			continue
-		}
-		if err := validateDates("channel policy: rule.what.dates", rule.What.Dates); err != nil {
-			return err
-		}
-	}
-	if !p.Ordering.valid() {
-		return fmt.Errorf("channel policy: unknown ordering %q", p.Ordering)
-	}
-	if !p.Audience.Unrated.valid() {
-		return fmt.Errorf("channel policy: unknown unrated policy %q", p.Audience.Unrated)
-	}
-	if p.Audience.Ceiling != "" && !p.Audience.Ceiling.Mapped() {
-		return fmt.Errorf("channel policy: ceiling %q is not on the rating ladder", p.Audience.Ceiling)
-	}
-	if !p.Seasonal.Mode.valid() {
-		return fmt.Errorf("channel policy: unknown seasonal mode %q", p.Seasonal.Mode)
-	}
-	if !p.Seasonal.OffSeason.valid() {
-		return fmt.Errorf("channel policy: unknown offSeason %q", p.Seasonal.OffSeason)
-	}
-	if !p.Seasonal.Strength.valid() {
-		return fmt.Errorf("channel policy: unknown holiday strength %q", p.Seasonal.Strength)
-	}
-	if !p.Seasonal.Placement.valid() {
-		return fmt.Errorf("channel policy: unknown holiday placement %q", p.Seasonal.Placement)
-	}
-	if err := p.Filler.validate(); err != nil {
-		return fmt.Errorf("channel policy: %w", err)
-	}
-	if err := p.Watermark.validate(); err != nil {
-		return fmt.Errorf("channel policy: %w", err)
-	}
-	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
-		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
-	}
-	if p.CommercialSpacing != nil && p.CommercialSpacing.Std() < 0 {
-		return fmt.Errorf("channel policy: commercialSpacing %s must not be negative", p.CommercialSpacing.Std())
-	}
-	if p.AutoCurate != nil {
-		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {
-			return fmt.Errorf("channel policy: autoCurate.minScorePct %d out of range (0–100)", p.AutoCurate.MinScorePct)
-		}
-		if p.AutoCurate.MaxTitles < 0 {
-			return fmt.Errorf("channel policy: autoCurate.maxTitles %d must not be negative", p.AutoCurate.MaxTitles)
-		}
-	}
-	return nil
-}

@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -346,6 +346,50 @@ func TestStoreWorkflowClaimFailsPoisonJobAndReturnsTheRest(t *testing.T) {
 	}
 }
 
+func TestStoreWorkflowClaimAbandonsAJobThatKeepsKillingItsWorker(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, testkit.MigratedSQLiteDSN(t), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	clock := time.Date(2026, time.November, 11, 9, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return clock }, testIntentHash)
+	if err := st.CreateJob(ctx, proposalstore.Job{
+		ID: "crasher", Kind: "suggest", Status: "queued", CreatedBy: "alice",
+		IntentJSON: `{"description":"Noir"}`, WorkflowVersion: proposalstore.ProposalWorkflowVersion,
+		Deadline: clock, CreatedAt: clock, UpdatedAt: clock,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Each claim's worker dies before reporting; the lease expires and the next claim recovers it.
+	for attempt := 1; attempt <= MaxInterruptedAttempts; attempt++ {
+		works, err := workflow.Claim(ctx, clock, time.Minute, 1)
+		if err != nil || len(works) != 1 || works[0].Attempt != attempt {
+			t.Fatalf("claim %d = (%+v, %v)", attempt, works, err)
+		}
+		clock = clock.Add(2 * time.Minute)
+	}
+
+	works, err := workflow.Claim(ctx, clock, time.Minute, 1)
+	if err != nil || len(works) != 0 {
+		t.Fatalf("claim after %d interruptions = (%+v, %v), want the Job abandoned", MaxInterruptedAttempts, works, err)
+	}
+	job, err := st.GetJob(ctx, "crasher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != "failed" || job.FailureCode != string(FailureGenerationFailed) || !strings.Contains(job.LastError, "interrupted") {
+		t.Fatalf("abandoned Job = status %q code %q last_error %q", job.Status, job.FailureCode, job.LastError)
+	}
+	if again, err := workflow.Claim(ctx, clock.Add(time.Hour), time.Minute, 1); err != nil || len(again) != 0 {
+		t.Fatalf("claim after abandonment = (%+v, %v), want nothing", again, err)
+	}
+}
+
 func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
 	t.Parallel()
 
@@ -379,7 +423,7 @@ func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testi
 		}
 		prop.Status, prop.ApprovedBy, prop.ApprovedAt = "approved", "admin", now
 		ch := channelstore.Channel{}
-		ch.ID, ch.IntentRef, ch.Name, ch.Number = "ch-"+jobID, jobID, "Channel "+jobID, number
+		ch.ID, ch.IntentRef, ch.FromRequest, ch.Name, ch.Number = "ch-"+jobID, jobID, true, "Channel "+jobID, number
 		ch.Strategy, ch.Status, ch.ReconcileDeadline = schedule.Sequential, schedule.StatusBuilding, now
 		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: prop, Channel: ch}); err != nil {
 			t.Fatal(err)
@@ -446,6 +490,13 @@ func TestStoreWorkflowSubmitForChannelIsFreshAndNeverCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The job names its channel, a foreign key (#2793).
+	ch := channelstore.Channel{}
+	ch.ID, ch.Name, ch.Number, ch.FromRequest = "ch-1", "Cartoons", 1, true
+	ch.Strategy, ch.Status = schedule.Sequential, schedule.StatusLive
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
 	jobID, err := workflow.SubmitForChannel(ctx, "ch-1", intent, "suggest", "admin")
 	if err != nil || jobID == first.JobID {
 		t.Fatalf("SubmitForChannel = %q, %v; want a new job", jobID, err)

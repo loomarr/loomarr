@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/media/images"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // externalID is a title's catalog id on the wire.
@@ -30,36 +30,36 @@ func TestLibraryNeedsYou(t *testing.T) {
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		lib = newScanLibrary(t, defaults.Store)
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs, LibraryRoots: lib,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs, Library: api.LibraryOptions{Roots: lib},
 		})
 	})
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	origin := func(key string) store.LibraryOrigin {
-		return store.LibraryOrigin{Authority: "library:/media", Key: key}
+	origin := func(key string) librarystore.LibraryOrigin {
+		return librarystore.LibraryOrigin{Authority: "library:/media", Key: key}
 	}
-	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Mystery Film", Origin: origin("file:a")},
-		{ID: "90000002", Kind: "movie", Name: "Known Film", Origin: origin("file:b"), Match: store.LibraryMatch{Basis: "embedded_id"}},
+		{ID: "90000002", Kind: "movie", Name: "Known Film", Origin: origin("file:b"), Match: librarystore.LibraryMatch{Basis: "embedded_id"}},
 		{ID: "90000003", Kind: "movie", Name: "Arr Film"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	var files []store.LibraryFile
+	var files []librarystore.LibraryFile
 	for _, id := range []string{"90000001", "90000002", "90000003"} {
-		files = append(files, store.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
-			Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: id})
+		files = append(files, librarystore.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
+			Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id})
 	}
 	// Arr Film's file doesn't parse: it needs a look.
-	files[2].Header = store.LibraryHeaderFailed
+	files[2].Header = librarystore.LibraryHeaderFailed
 	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)
 	}
 	posterURL := "https://image.example.org/90000101.jpg"
-	if err := h.Store.SaveLibraryCandidates(ctx, "90000001", "Mystery Film|0", []store.LibraryCandidate{
-		{Kind: "movie", ID: store.LibraryID{Namespace: "tmdb", Value: "90000101"}, Name: "Mystery Film", Year: 2002,
+	if err := h.Store.SaveLibraryCandidates(ctx, "90000001", "Mystery Film|0", []librarystore.LibraryCandidate{
+		{Kind: "movie", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90000101"}, Name: "Mystery Film", Year: 2002,
 			Poster: posterURL, NameMatch: true, LengthMatch: true},
-		{Kind: "movie", ID: store.LibraryID{Namespace: "tmdb", Value: "90000102"}, Name: "Mystery Films", Year: 2003, Poster: "https://image.example.org/pending.jpg"},
+		{Kind: "movie", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90000102"}, Name: "Mystery Films", Year: 2003, Poster: "https://image.example.org/pending.jpg"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +105,14 @@ func TestLibraryNeedsYou(t *testing.T) {
 		best.Poster == nil || other.Poster != nil {
 		t.Fatalf("candidates = %+v, want the fetched poster only", got.Needs[0].Candidates)
 	}
+	// Only the poster never seen is adopted, once: the list's next load only reads.
+	if imgs.adopts != 1 {
+		t.Fatalf("adopts after one load = %d, want 1 (the pending poster)", imgs.adopts)
+	}
+	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)
+	if imgs.adopts != 1 || got.Needs[0].Candidates[0].Poster == nil {
+		t.Fatalf("adopts after a second load = %d, want still 1, and the poster still shown", imgs.adopts)
+	}
 	if len(got.Problems) != 1 || got.Problems[0].Item.ID != "90000003" || got.Problems[0].Item.Unplayable != 1 ||
 		got.Problems[0].Item.ExtraCopies != 0 || got.Problems[0].ExtraBytes != 0 {
 		t.Fatalf("problems = %+v, want Arr Film with one file that can't be played", got.Problems)
@@ -133,7 +141,7 @@ func TestLibraryNeedsYou(t *testing.T) {
 		}
 	}
 	answer, ok, err := h.Store.LibraryAnswerFor(ctx, origin("file:a"))
-	if err != nil || !ok || answer.ID != (store.LibraryID{Namespace: "tmdb", Value: "90000101"}) || answer.Kind != "movie" {
+	if err != nil || !ok || answer.ID != (librarystore.LibraryID{Namespace: "tmdb", Value: "90000101"}) || answer.Kind != "movie" {
 		t.Fatalf("answer = %+v, %v, %v", answer, ok, err)
 	}
 	decode(t, h.Do(http.MethodGet, "/v1/library/needs", adminToken, ""), &got)

@@ -1,12 +1,12 @@
-import { Action, Field, typography } from "@loomarr/design-system";
+import { Action, Field, Stack, typography } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentityFieldProps } from "./channel-identity-field.type";
 
 // ChannelIdentityField — an inline-editable channel identity field (name / number) with
-// explicit per-field confirmation. Unlike the old ghost inputs that committed silently on
-// blur, this looks clearly editable, and CHANGING it reveals Save (✓) / Cancel (✕) so the
+// explicit per-field confirmation. Rather than a ghost input that commits silently on blur,
+// this looks clearly editable, and CHANGING it reveals Save (✓) / Cancel (✕) so the
 // operator confirms that one field before it commits. Enter saves, Escape cancels.
 //
 // `onSave` is async: it RESOLVES on success (the field adopts the new value + closes) or
@@ -80,8 +80,8 @@ const ChannelIdentityField = ({
   const wraps = variant === "title" && narrow;
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      <div className="flex items-center gap-2">
+    <Stack className={className} gap="1">
+      <Stack align="center" direction="row" gap="inline">
         {/* 448 px at most from `sm` up; below it the row is the name's alone (#1785). */}
         <div className={cn("min-w-0", variant === "title" ? "flex-1 sm:max-w-md" : "w-20")}>
           <Field
@@ -118,28 +118,28 @@ const ChannelIdentityField = ({
         {/* Save / Cancel appear ONLY when the field diverges from what's committed — the
             explicit per-field confirmation. */}
         {dirty && (
-          <div className="flex shrink-0 items-center gap-1">
+          <Stack align="center" direction="row" flexShrink={0} gap="1">
             <Action
               disabled={!canSave}
               icon="success"
               layout="icon"
               onPress={() => void save()}
-              variant="suggest"
+              tone="suggest"
             >
               {`Save ${label}`}
             </Action>
             <Action disabled={saving} icon="close" layout="icon" onPress={reset} variant="ghost">
               {`Cancel ${label} edit`}
             </Action>
-          </div>
+          </Stack>
         )}
-      </div>
+      </Stack>
       {error && (
         <p className="text-onair-300 text-xs" role="alert">
           {error}
         </p>
       )}
-    </div>
+    </Stack>
   );
 };
 

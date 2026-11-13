@@ -1,7 +1,20 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
 import type { HealthCheck } from "@loomarr/api/models/healthCheck";
+import { HealthCheckStatus } from "@loomarr/api/models/healthCheckStatus";
 import type { HealthReport } from "@loomarr/api/models/healthReport";
-import { StatusDot, type StatusTone } from "@loomarr/design-system";
+import { HealthReportState } from "@loomarr/api/models/healthReportState";
+import {
+  Stack,
+  StatusWord,
+  type StatusWordKind,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  Text,
+} from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 
@@ -12,65 +25,67 @@ const dateTime = (millis?: number) => {
   );
 };
 
-const statusTone = (status: string): StatusTone => {
-  if (status === "passed" || status === "ready" || status === "healthy") return "ok";
-  if (status === "warning" || status === "degraded") return "warn";
-  if (status === "failed" || status === "blocked" || status === "unhealthy" || status === "stale")
-    return "error";
-  if (status === "pending" || status === "starting") return "pending";
-  return "off";
+// Health speaks the same five words as the rest of Settings. A check still in flight has no
+// verdict yet, so it keeps a plain "Checking" instead of borrowing one.
+const checkWord = (status: HealthCheck["status"]): StatusWordKind | undefined => {
+  if (status === HealthCheckStatus.passed) return "ok";
+  if (status === HealthCheckStatus.skipped) return "notSetUp";
+  if (status === HealthCheckStatus.pending) return undefined;
+  return "attention";
 };
 
-const healthStateCopy = (state: HealthReport["state"]) => {
-  if (state === "healthy") return "Healthy";
-  if (state === "degraded") return "Needs attention";
-  if (state === "unhealthy") return "Unhealthy";
-  return "Checking";
+const stateWord = (state: HealthReport["state"]): StatusWordKind | undefined => {
+  if (state === HealthReportState.healthy) return "ok";
+  if (state === HealthReportState.starting) return undefined;
+  return "attention";
 };
 
-const readableStatus = (status: string) =>
-  status === "skipped" ? "Not configured" : `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+const Verdict = ({ word }: { word: StatusWordKind | undefined }) =>
+  word ? <StatusWord kind={word} /> : <span className="text-muted-foreground">Checking</span>;
 
 const CheckIdentity = ({ check }: { check: HealthCheck }) => (
   <>
-    <span className="font-medium">{check.label}</span>
-    <span className="text-muted-foreground text-xs">
+    <Text as="span" textRole="cardLabel">
+      {check.label}
+    </Text>
+    <Text as="span" textRole="hint" tone="secondary">
       {check.required ? "Required" : "Optional"} · {check.mode === "continuous" ? "Monitored" : "Startup"}
-    </span>
+    </Text>
   </>
 );
 
 const HealthCheckRow = ({ check }: { check: HealthCheck }) => (
-  <tr className="border-border border-t align-top">
-    <th scope="row" className="px-4 py-3 text-left font-normal">
-      <span className="flex flex-col gap-0.5">
+  <TableRow>
+    <TableCell rowHeader verticalAlign="top">
+      <Stack gap="0.5" render="span">
         <CheckIdentity check={check} />
-      </span>
-    </th>
-    <td className="px-4 py-3">
-      <span className="inline-flex items-center gap-2">
-        <StatusDot tone={statusTone(check.status)} label={readableStatus(check.status)} />
-        {readableStatus(check.status)}
-      </span>
-    </td>
-    <td className="text-muted-foreground px-4 py-3 text-xs">
+      </Stack>
+    </TableCell>
+    <TableCell verticalAlign="top">
+      <Verdict word={checkWord(check.status)} />
+    </TableCell>
+    <TableCell verticalAlign="top">
       <time dateTime={check.observedAt ? new Date(check.observedAt).toISOString() : undefined}>
-        {dateTime(check.observedAt)}
+        <Text as="span" textRole="hint" tone="secondary">
+          {dateTime(check.observedAt)}
+        </Text>
       </time>
-    </td>
-    <td className="text-muted-foreground px-4 py-3">
-      {check.detail || "—"}
-      {check.remediationRoute && (
-        <>
-          {/* A real separator, so the detail and its link never run together as text (#2734). */}
-          <span aria-hidden> · </span>
-          <a className="text-signal underline underline-offset-4" href={check.remediationRoute}>
-            Open
-          </a>
-        </>
-      )}
-    </td>
-  </tr>
+    </TableCell>
+    <TableCell verticalAlign="top">
+      <span className="text-muted-foreground">
+        {check.detail || "—"}
+        {check.remediationRoute && (
+          <>
+            {/* A real separator, so the detail and its link never run together as text (#2734). */}
+            <span aria-hidden> · </span>
+            <a className="text-signal underline underline-offset-4" href={check.remediationRoute}>
+              Open
+            </a>
+          </>
+        )}
+      </span>
+    </TableCell>
+  </TableRow>
 );
 
 const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
@@ -79,36 +94,42 @@ const CurrentHealthCard = ({ report }: { report: HealthReport }) => {
       className="border-border bg-card overflow-hidden rounded-lg border"
       aria-label="Current health summary"
     >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-4">
+      <Stack
+        align="center"
+        columnGap="4"
+        direction="row"
+        paddingHorizontal={16}
+        paddingVertical={16}
+        rowGap="2"
+        wrap
+      >
         <div className="min-w-0 flex-1">
-          <p className="inline-flex items-center gap-2 text-lg font-medium">
-            <StatusDot tone={statusTone(report.state)} label={healthStateCopy(report.state)} />
-            {healthStateCopy(report.state)}
-          </p>
-          <p className="text-muted-foreground text-xs">Continuously monitored</p>
+          <Text as="p" textRole="headline">
+            <Verdict word={stateWord(report.state)} />
+          </Text>
+          <Text as="p" textRole="hint" tone="secondary">
+            Continuously monitored
+          </Text>
         </div>
-        <span className="text-muted-foreground font-mono text-xs">{report.version}</span>
-      </div>
+        <Text as="span" textRole="mono">
+          {report.version}
+        </Text>
+      </Stack>
       <div className="border-border border-t">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] text-sm">
-            <caption className="sr-only">Current health checks</caption>
-            <thead className="border-border bg-muted/30 text-muted-foreground border-t text-xs">
-              <tr>
-                {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
-                  <th key={label} scope="col" className="px-4 py-2 text-left font-medium">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {report.checks.map((check) => (
-                <HealthCheckRow key={check.key} check={check} />
+        <Table caption="Current health checks" framed={false} minWidth={704}>
+          <TableHeader>
+            <TableRow>
+              {(["Check", "Status", "Last checked", "Detail"] as const).map((label) => (
+                <TableHeaderCell key={label}>{label}</TableHeaderCell>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {report.checks.map((check) => (
+              <HealthCheckRow key={check.key} check={check} />
+            ))}
+          </TableBody>
+        </Table>
       </div>
     </section>
   );
@@ -135,16 +156,18 @@ const StartupReportPage = ({ embedded = false }: { embedded?: boolean }) => {
       {currentHealth ? (
         <CurrentHealthCard report={currentHealth} />
       ) : (
-        <p className="text-muted-foreground text-sm">Checking app health…</p>
+        <Text as="p" textRole="compact" tone="secondary">
+          Checking app health…
+        </Text>
       )}
     </div>
   );
   if (embedded) return content;
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack className="h-full min-h-0">
       <PageHeader title="Current Health" description="What is working now and what needs your attention." />
       {content}
-    </div>
+    </Stack>
   );
 };
 

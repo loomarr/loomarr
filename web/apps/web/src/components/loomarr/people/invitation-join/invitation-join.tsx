@@ -1,5 +1,5 @@
 import { redeemInvitationSchema } from "@loomarr/core/schemas";
-import { Action, Badge, Icon, icons, LoadingStrip } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, StatusLabel, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { InvitationJoinProps } from "./invitation-join.type";
@@ -24,10 +24,17 @@ const InvitationJoin = ({
 
   if (isLoading) {
     return (
-      <div className="text-muted-foreground flex min-h-48 items-center justify-center gap-2" role="status">
+      <Stack
+        align="center"
+        className="text-muted-foreground min-h-48"
+        direction="row"
+        gap="inline"
+        justify="center"
+        role="status"
+      >
         <LoadingStrip decorative width={32} />
         Checking invitation…
-      </div>
+      </Stack>
     );
   }
   if (!preview) {
@@ -35,10 +42,12 @@ const InvitationJoin = ({
       <ErrorState error={error} />
     ) : (
       <div className="space-y-2 text-center">
-        <h1 className="font-display text-2xl font-semibold">Invitation unavailable</h1>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h1" strong textRole="display">
+          Invitation unavailable
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           This invitation is missing, expired, revoked, or already used. Ask an administrator for a new one.
-        </p>
+        </Text>
       </div>
     );
   }
@@ -49,57 +58,67 @@ const InvitationJoin = ({
   );
 
   return (
-    <form
-      className="flex w-full flex-col gap-5"
+    <Stack
+      gap="5"
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
+      render="form"
+      width="100%"
     >
       <div className="space-y-2 text-center">
-        <h1 className="font-display text-2xl font-semibold">Join Loomarr</h1>
-        <p className="text-muted-foreground text-sm">Review the account below before activating it.</p>
+        <Text as="h1" strong textRole="display">
+          Join Loomarr
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          Review the account below before activating it.
+        </Text>
       </div>
 
       <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex">
+        <Stack align="start" direction="row" gap="control">
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
-          </span>
+          </Stack>
           <div className="min-w-0 flex-1">
-            <p className="text-muted-foreground text-xs">Invited identity</p>
-            <p className="font-medium break-words">{identity}</p>
+            <Text as="p" textRole="hint" tone="secondary">
+              Invited identity
+            </Text>
+            <Text as="p" className="break-words" textRole="cardLabel">
+              {identity}
+            </Text>
           </div>
-          <Badge
-            shape="square"
-            tone={preview.role === "admin" ? "onair" : "neutral"}
-            tintOpacity={preview.role === "admin" ? 0.12 : undefined}
-          >
-            {preview.role}
-          </Badge>
-        </div>
+          <StatusLabel tone={preview.role === "admin" ? "error" : "off"}>
+            {preview.role === "admin" ? "Admin" : "Member"}
+          </StatusLabel>
+        </Stack>
         {preview.role === "admin" ? (
-          <p className="text-onair-300 flex gap-2 text-sm">
-            <span className="mt-0.5 flex">
+          <Stack className="text-onair-300" direction="row" gap="inline" render="p">
+            <Stack className="mt-0.5" direction="row" render="span">
               <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
-            </span>
-            This account will have administrator access to people, settings, and approvals.
-          </p>
+            </Stack>
+            <Text as="span" textRole="compact" tone="danger">
+              This account will have administrator access to people, settings, and approvals.
+            </Text>
+          </Stack>
         ) : null}
-        <p className="text-muted-foreground flex gap-2 text-sm">
-          <span className="mt-0.5 flex">
+        <Stack className="text-muted-foreground" direction="row" gap="inline" render="p">
+          <Stack className="mt-0.5" direction="row" render="span">
             <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
-          </span>
-          This invitation expires {expires}.
-        </p>
+          </Stack>
+          <Text as="span" textRole="compact" tone="secondary">
+            This invitation expires {expires}.
+          </Text>
+        </Stack>
       </div>
 
-      <p className="text-muted-foreground text-sm">
+      <Text as="p" textRole="compact" tone="secondary">
         {library
           ? "Sign in with the current username and password for this Emby or Jellyfin account. The provider must verify it before Loomarr activates access."
           : "Create a Loomarr password for this reserved local account. Activation happens only when you submit this form."}
-      </p>
+      </Text>
 
       {error ? <ErrorState error={error} /> : null}
 
@@ -136,7 +155,7 @@ const InvitationJoin = ({
       <Action disabled={isRedeeming} submit>
         {isRedeeming ? "Activating…" : "Activate account"}
       </Action>
-    </form>
+    </Stack>
   );
 };
 

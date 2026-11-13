@@ -1,7 +1,7 @@
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { GuideChannelTimelineStatus } from "@loomarr/api/models/guideChannelTimelineStatus";
+import { formatProgrammeTitle } from "@loomarr/core/guide";
 import type { DrawerChannel } from "../channel-drawer";
 
 // The drawer's strip is "NOW → NEXT 2H" with a little of the show already airing before the now
@@ -9,10 +9,6 @@ import type { DrawerChannel } from "../channel-drawer";
 const STRIP_BEFORE_MS = 24 * 60_000;
 const STRIP_AFTER_MS = 120 * 60_000;
 const DRAWER_NOW_PERCENT = (STRIP_BEFORE_MS / (STRIP_BEFORE_MS + STRIP_AFTER_MS)) * 100;
-
-// The mock's programme line: "Series — “Episode”" for an episode, the title alone for a film.
-const programmeLine = (airing: GuideAiring): string =>
-  airing.series ? `${airing.series} — “${airing.title}”` : airing.title;
 
 // drawerChannels reads the guide the Watch page already shares with Home and the Guide into the
 // drawer's rows: what's on now, the minutes left, and the blocks from just before now to two hours
@@ -56,7 +52,8 @@ const drawerChannels = (timelines: GuideChannelTimeline[], nowMs: number): Drawe
         id: timeline.channelId,
         number: timeline.number,
         name: timeline.name,
-        now: current ? programmeLine(current) : undefined,
+        // The one name an airing goes by everywhere: "Series · Title" (#2748).
+        now: current ? formatProgrammeTitle(current) : undefined,
         minutesLeft: current ? Math.max(1, Math.round((current.stopMs - nowMs) / 60_000)) : undefined,
         offAir,
         blocks,

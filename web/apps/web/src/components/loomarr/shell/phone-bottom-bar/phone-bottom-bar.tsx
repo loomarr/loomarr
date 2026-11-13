@@ -1,7 +1,16 @@
-import { Badge, BottomSheet, Icon, icons, Surface, TabBar, Text } from "@loomarr/design-system";
+import {
+  Badge,
+  BottomSheet,
+  Dialog,
+  DialogContent,
+  Icon,
+  icons,
+  Surface,
+  TabBar,
+  Text,
+} from "@loomarr/design-system";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import type { ComponentRef } from "react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useState } from "react";
 import { Pressable } from "react-native";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import {
@@ -49,14 +58,10 @@ const SheetRow = ({ destination, onSelect }: { destination: PhoneDestination; on
 /**
  * Web's phone-width "More": the admin/member destinations that don't fit the bar (#1785, Alt A,
  * approved 2026-10-03). A docked raised surface (`BottomSheet` from #1776, no grabber — this is a
- * plain list, not drag-to-dismiss content), behind a full-screen backdrop that owns the dialog
- * semantics `BottomSheet` itself doesn't provide on web: focus moves in on open, `Escape`/backdrop/
- * close dismiss, a Tab loop keeps focus inside while open, and focus returns to the More button.
- *
- * The backdrop and the dialog's own viewport anchor are the only two plain (unstyled) DOM nodes
- * here: `position: fixed` is a web-only concept `@loomarr/design-system`'s View props don't carry
- * (RN only knows "absolute"/"relative"), so there is nothing in the design system to place a
- * full-screen overlay with. Everything inside them is a design-system view.
+ * plain list, not drag-to-dismiss content), held by the design system's bottom-placed `Dialog`,
+ * which owns the dialog semantics `BottomSheet` itself doesn't provide on web: focus moves in on
+ * open, `Escape`/backdrop/close dismiss, a Tab loop keeps focus inside while open, and focus returns
+ * to the More button.
  */
 const MoreSheet = ({
   destinations,
@@ -67,61 +72,14 @@ const MoreSheet = ({
   onClose: () => void;
   onSelect: (destination: PhoneDestination) => void;
 }) => {
-  const titleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<ComponentRef<typeof Pressable>>(null);
-
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], [tabindex]:not([tabindex="-1"])',
-      );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
   return (
-    <>
-      <button
-        aria-hidden="true"
-        data-testid="phone-bottom-bar-backdrop"
-        onClick={onClose}
-        style={{
-          background: "rgba(0, 0, 0, 0.5)",
-          border: "none",
-          inset: 0,
-          padding: 0,
-          position: "fixed",
-          zIndex: 50,
-        }}
-        tabIndex={-1}
-        type="button"
-      />
-      <div
-        aria-labelledby={titleId}
-        aria-modal="true"
-        ref={dialogRef}
-        role="dialog"
-        style={{ bottom: 0, left: 0, position: "fixed", right: 0, zIndex: 50 }}
-      >
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent accessibilityLabel="More" placement="bottom">
         <BottomSheet accessibilityLabel="More destinations" handle={false}>
           <Surface
             alignItems="center"
@@ -130,14 +88,13 @@ const MoreSheet = ({
             flexDirection="row"
             justifyContent="space-between"
           >
-            <Text density="touch" id={titleId} textRole="label">
+            <Text density="touch" textRole="label">
               More
             </Text>
             <Pressable
               accessibilityLabel="Close"
               accessibilityRole="button"
               onPress={onClose}
-              ref={closeRef}
               style={{ alignItems: "center", height: 32, justifyContent: "center", width: 32 }}
             >
               <Icon decorative glyph={icons.close} size="control" tone="secondary" />
@@ -153,8 +110,8 @@ const MoreSheet = ({
             ))}
           </Surface>
         </BottomSheet>
-      </div>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 };
 

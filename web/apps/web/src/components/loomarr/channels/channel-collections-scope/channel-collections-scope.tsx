@@ -2,9 +2,8 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import type { LibraryCollection } from "@loomarr/api/models/libraryCollection";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { SearchCommand } from "../../shell";
 import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.type";
@@ -12,14 +11,14 @@ import type { ChannelCollectionsScopeProps } from "./channel-collections-scope.t
 // ChannelCollectionsScope — `policy.scope.collections`, the "only what I shelved" narrowing
 // (programming-design §2.2). The collections are the operator's own media-server BoxSets.
 //
-// ⚠ **This began as a checkbox list, and the real stack disproved the premise.** The design
-// note said "a small closed set the operator curates by hand", so showing all of them looked
-// obviously right. The maintainer's Emby returns **125** — Kometa and similar tools generate a
-// franchise collection per movie series in bulk — which rendered as a wall of near-identical
-// rows taller than every other control on the Programming page combined. Bounding it in a
-// scroll box only contained the mess; 125 checkboxes is still 125 checkboxes to scan.
+// ⚠ **Not a checkbox list: a real library is not a small set.** The design note calls it "a
+// small closed set the operator curates by hand", but the maintainer's Emby returns **125** —
+// Kometa and similar tools generate a franchise collection per movie series in bulk — and a
+// checkbox per collection is a wall of near-identical rows taller than every other control on
+// the Programming page combined. A scroll box only contains the mess; 125 checkboxes is still
+// 125 checkboxes to scan.
 //
-// So it is now the SAME type-ahead + chips shape as ChannelSeriesScope next to it: nothing
+// So it is the SAME type-ahead + chips shape as ChannelSeriesScope next to it: nothing
 // listed until you type, picks become removable chips, and the field is two rows regardless of
 // whether the library holds 5 collections or 500. One pattern to learn per page.
 //
@@ -93,31 +92,37 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
   if (unavailable) return null;
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex items-center gap-1.5">
+    <Stack className={className} gap="inline">
+      <Stack align="center" direction="row" gap="1.5">
         <Text textRole="label">Only these collections</Text>
         <FieldHelp label="Only these collections">
           Restrict the channel to titles in the collections you keep in your media server. Leave empty for no
           restriction. Changes to a collection are picked up the next time the channel rebuilds.
         </FieldHelp>
-      </div>
+      </Stack>
 
       {q.isError ? (
         // A failure must NOT read as "you have none" — that would send the operator off to
         // create a collection they may already have.
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           Couldn't load your collections. Check the media server connection in Settings.
-        </p>
+        </Text>
       ) : (
-        <fieldset className="flex flex-col gap-2" aria-label="Only these collections">
+        <Stack aria-label="Only these collections" gap="inline" render="fieldset">
           {selected.length > 0 && (
-            <ul className="flex flex-wrap gap-2">
+            <Stack direction="row" gap="inline" render="ul" wrap>
               {selected.map((id) => (
-                <li
+                <Stack
                   key={id}
-                  className="border-border bg-muted/40 flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm"
+                  align="center"
+                  className="border-border bg-muted/40 rounded-md border px-2 py-1"
+                  direction="row"
+                  gap="1.5"
+                  render="li"
                 >
-                  <span>{labelOf(id)}</span>
+                  <Text as="span" textRole="compact" tone="primary">
+                    {labelOf(id)}
+                  </Text>
                   <Action
                     compact
                     icon="close"
@@ -127,13 +132,13 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                   >
                     {`Remove ${labelOf(id)}`}
                   </Action>
-                </li>
+                </Stack>
               ))}
-            </ul>
+            </Stack>
           )}
 
           {adding ? (
-            <div className="flex flex-col gap-2">
+            <Stack gap="inline">
               <SearchCommand
                 query={query}
                 onQueryChange={setQuery}
@@ -144,7 +149,7 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
                 // ⚠ Escape closes the picker. SearchCommand does not bind it by default (the
                 // ⌘K palette binds it window-level and would close twice), and the Cancel
                 // button below is a POINTER affordance — a keyboard user presses Escape first
-                // and, before this, nothing happened.
+                // and, without this, nothing happens.
                 onEscape={() => {
                   setQuery("");
                   setAdding(false);
@@ -173,12 +178,12 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               >
                 Cancel
               </Action>
-            </div>
+            </Stack>
           ) : collections.length === 0 && !q.isPending ? (
             // A real answer, not a failure: a library is connected but nothing is shelved.
-            <p className="text-muted-foreground text-sm">
+            <Text as="p" textRole="compact" tone="secondary">
               You have no collections yet. Make one in your media server and it will show up here.
-            </p>
+            </Text>
           ) : (
             <Action
               icon="plus"
@@ -189,9 +194,9 @@ const ChannelCollectionsScope = ({ policy, onChange, className }: ChannelCollect
               Add a collection…
             </Action>
           )}
-        </fieldset>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

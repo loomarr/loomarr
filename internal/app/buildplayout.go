@@ -27,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/playout/backendtransition"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
+	"github.com/loomarr/loomarr/internal/playout/subtitles"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
 )
 
@@ -43,6 +44,9 @@ type playoutBuild struct {
 	setResidentVRAM   func(func(context.Context) (float64, string))
 	// budget is the one admission ledger; filler's media work waits on it (playbackHeadroomFor).
 	budget *playout.ResourceBudget
+	// watched reports whether a viewer is fetching a channel (PackagerHLS.Watched); nil without the
+	// channel packager.
+	watched func() bool
 }
 
 type playoutDeps struct {
@@ -146,6 +150,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}).WithLog(log)
 	// The channel packager is built after the resolver it reads the schedule through.
 	var packagedHLS *playout.PackagerHLS
+	var watched func() bool
 	// Host measurements live in playout.state_dir. The retired prepared library's setting is gone, so
 	// its default home, <data dir>/prepared (the sibling of the default state directory), is the one
 	// place left to reclaim; a custom layout finds nothing there.
@@ -167,8 +172,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	})
 	playoutRes = playoutresolve.New(playoutresolve.Config{
 		Engine: channelEngine, Now: time.Now,
-		Metrics:       deps.metrics,
-		DetectContext: rootCtx,
+		Metrics:  deps.metrics,
+		GoDetect: owner.goOnDemand,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
 		// state and must not be able to change it.
 		Titles: st,
@@ -233,7 +238,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	measurer := playoutRes.NewMeasurer(
 		measure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.SetMeasurer(measurer, st)
-	go measurer.Run(rootCtx)
+	owner.goRun(measurer.Run)
+	// Soft subtitles (#2088 decision 5): each text track is read once, at background priority, and
+	// kept under the playout state directory so a restart doesn't read it again.
+	subtitleReader := subtitles.NewExtractor(ffmpegBin, filepath.Join(stateDir, "subtitles"), log)
+	playoutRes.SetSubtitles(st, subtitleReader)
+	owner.goRun(subtitleReader.Run)
 	playoutResolverSvc = playoutRes
 
 	// Broadcast-codec backfill (§9.1 V50), run on EVERY boot. The migration defaults every
@@ -334,6 +344,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			eventBus.Publish(events.Event{Type: "playout", Payload: opsapi.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
 		})
 		playoutObserver = packagedHLS
+		watched = packagedHLS.Watched
 		owner.addStop(func(context.Context) error {
 			packagedHLS.Stop()
 			return nil
@@ -412,6 +423,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 		budget:          resourceBudget,
+		watched:         watched,
 	}, nil
 }
 

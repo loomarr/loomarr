@@ -10,8 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/media/images"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Library → Items lists present titles with their readiness, finds them by name, opens a series
@@ -20,7 +20,7 @@ func TestLibraryItemsListAndPage(t *testing.T) {
 	h := newLibraryHarness(t)
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Alpha Movie", Year: 2001},
 		{ID: "90000002", Kind: "series", Name: "Bravo Show", Year: 2010},
 		{ID: "90000011", Kind: "episode", Name: "Bravo E1", SeriesID: "90000002"},
@@ -28,14 +28,14 @@ func TestLibraryItemsListAndPage(t *testing.T) {
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(path, item, series, header string) store.LibraryFile {
-		return store.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Header: header,
+	file := func(path, item, series, header string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Header: header,
 			SeenAt: at, ItemID: item, SeriesID: series}
 	}
-	if err := h.Store.SaveLibraryFiles(ctx, []store.LibraryFile{
-		file("/media/alpha.mkv", "90000001", "", store.LibraryHeaderRead),
-		file("/media/bravo/e1.mkv", "90000011", "90000002", store.LibraryHeaderRead),
-		file("/media/bravo/e2.mkv", "90000012", "90000002", store.LibraryHeaderPending),
+	if err := h.Store.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		file("/media/alpha.mkv", "90000001", "", librarystore.LibraryHeaderRead),
+		file("/media/bravo/e1.mkv", "90000011", "90000002", librarystore.LibraryHeaderRead),
+		file("/media/bravo/e2.mkv", "90000012", "90000002", librarystore.LibraryHeaderPending),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -106,21 +106,21 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
 			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Images: imgs,
-			LibraryRoots: newScanLibrary(t, defaults.Store),
+			Library: api.LibraryOptions{Roots: newScanLibrary(t, defaults.Store)},
 		})
 	})
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "movie", Name: "Alpha Movie"},
 		{ID: "90000002", Kind: "movie", Name: "Bravo Movie"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	var files []store.LibraryFile
+	var files []librarystore.LibraryFile
 	for _, id := range []string{"90000001", "90000002"} {
-		files = append(files, store.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
-			Kind: "movie", Header: store.LibraryHeaderRead, SeenAt: at, ItemID: id})
+		files = append(files, librarystore.LibraryFile{Path: "/media/" + id + ".mkv", Root: "/media", Size: 7, ModifiedNs: 1,
+			Kind: "movie", Header: librarystore.LibraryHeaderRead, SeenAt: at, ItemID: id})
 	}
 	if err := h.Store.SaveLibraryFiles(ctx, files); err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 		if err := h.Store.PutImage(ctx, row); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: img.Hash, OwnerKind: store.LibraryItemImageOwner,
+		if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: img.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
 			OwnerID: item, Role: "poster"}); err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +164,7 @@ func TestLibraryItemsCarryPosters(t *testing.T) {
 		Visibility: "member", CreatedAt: at, UpdatedAt: at, LastUsedAt: at}); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: logo.Hash, OwnerKind: store.LibraryItemImageOwner,
+	if err := h.Store.PutImageRef(ctx, clipstore.ImageRef{ImageHash: logo.Hash, OwnerKind: librarystore.LibraryItemImageOwner,
 		OwnerID: "90000001", Role: "logo"}); err != nil {
 		t.Fatal(err)
 	}
@@ -205,20 +205,20 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 	h := newLibraryHarness(t)
 	ctx := context.Background()
 	at := time.UnixMilli(1_790_000_000_000).UTC()
-	if err := h.Store.SaveLibraryItems(ctx, []store.LibraryItem{
+	if err := h.Store.SaveLibraryItems(ctx, []librarystore.LibraryItem{
 		{ID: "90000001", Kind: "series", Name: "Alpha Show",
-			Match: store.LibraryMatch{Basis: "manager", App: "sonarr", Page: "http://sonarr.invalid/series/alpha-show"}},
-		{ID: "90000002", Kind: "movie", Name: "Bravo Movie", Match: store.LibraryMatch{Basis: "sidecar", App: "nfo"}},
+			Match: librarystore.LibraryMatch{Basis: "manager", App: "sonarr", Page: "http://sonarr.invalid/series/alpha-show"}},
+		{ID: "90000002", Kind: "movie", Name: "Bravo Movie", Match: librarystore.LibraryMatch{Basis: "sidecar", App: "nfo"}},
 		{ID: "90000003", Kind: "movie", Name: "Charlie Movie"},
 		{ID: "90000011", Kind: "episode", Name: "Alpha E1", SeriesID: "90000001"},
 	}, at); err != nil {
 		t.Fatal(err)
 	}
-	file := func(path, item, series string) store.LibraryFile {
-		return store.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Identity: "digest",
-			Header: store.LibraryHeaderFailed, SeenAt: at, ItemID: item, SeriesID: series}
+	file := func(path, item, series string) librarystore.LibraryFile {
+		return librarystore.LibraryFile{Path: path, Root: "/media", Size: 7, ModifiedNs: 1, Kind: "movie", Identity: "digest",
+			Header: librarystore.LibraryHeaderFailed, SeenAt: at, ItemID: item, SeriesID: series}
 	}
-	if err := h.Store.SaveLibraryFiles(ctx, []store.LibraryFile{
+	if err := h.Store.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
 		file("/media/alpha/e1.mkv", "90000011", "90000001"),
 		file("/media/bravo.mkv", "90000002", ""),
 		file("/media/charlie.mkv", "90000003", ""),
@@ -249,10 +249,10 @@ func TestLibraryItemMatchAndActions(t *testing.T) {
 		t.Fatalf("check = %d", resp.StatusCode)
 	}
 	files, err := h.Store.LibraryItemFiles(ctx, "90000001")
-	if err != nil || len(files) != 1 || files[0].Header != store.LibraryHeaderPending {
+	if err != nil || len(files) != 1 || files[0].Header != librarystore.LibraryHeaderPending {
 		t.Fatalf("checked files = %+v, %v; want the episode's header back to read", files, err)
 	}
-	if files, _ := h.Store.LibraryItemFiles(ctx, "90000002"); files[0].Header != store.LibraryHeaderFailed {
+	if files, _ := h.Store.LibraryItemFiles(ctx, "90000002"); files[0].Header != librarystore.LibraryHeaderFailed {
 		t.Errorf("another title's file was checked too: %+v", files)
 	}
 

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
-	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	mptmdb "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -19,7 +19,7 @@ const serverLocaleRetry = time.Hour
 // metadata.language and metadata.country, each defaulting to the media server's, read per call so
 // a saved setting applies at once. Only the US ratings ladder exists, so a media server set to
 // another country reads as the US; the setting itself refuses one.
-func metadataLocale(set resolved, lib *library.Client) mptmdb.Locale {
+func metadataLocale(set resolved, lib *mediaserver.Client) mptmdb.Locale {
 	server := &serverLocale{lib: lib}
 	return func() (string, string) {
 		language := strings.TrimSpace(settings.MetadataLanguage.Get(set))
@@ -41,7 +41,7 @@ func metadataLocale(set resolved, lib *library.Client) mptmdb.Locale {
 // answer keeps the last answer it gave, so a blip does not switch every title's language back and
 // forth.
 type serverLocale struct {
-	lib *library.Client
+	lib *mediaserver.Client
 
 	mu                sync.Mutex
 	language, country string

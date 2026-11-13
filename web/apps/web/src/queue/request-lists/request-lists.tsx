@@ -3,13 +3,15 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { CardAction, ListGroup } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { useRouteContent } from "@/lib/use-route-content";
 import { RequestRow } from "@/queue/request-row";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
@@ -34,14 +36,17 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
 };
 
 // The date reads relative, like the rest of the app; the full date shows on hover and the `<time>`
-// carries it machine-readable.
-const When = ({ at, verb }: { at: string; verb: string }) => (
-  <Text textRole="cardMeta" tone="secondary">
-    <time dateTime={at} title={new Date(at).toLocaleString()}>
-      {verb} {formatRelative(at)}
-    </time>
-  </Text>
-);
+// carries it machine-readable. The full date is on the household's clock, as the Guide tells it.
+const When = ({ at, verb }: { at: string; verb: string }) => {
+  const timeZone = useHouseholdTimeZone();
+  return (
+    <Text textRole="cardMeta" tone="secondary">
+      <time dateTime={at} title={new Date(at).toLocaleString(undefined, { timeZone })}>
+        {verb} {formatRelative(at)}
+      </time>
+    </Text>
+  );
+};
 
 // The title as a link to the request's detail, for a row whose one action goes somewhere else.
 const DetailLink = ({ jobId, title }: { jobId: string; title: string }) => (
@@ -148,7 +153,8 @@ const pullRowFor = (pull: PullDTO) => {
 
 const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
   const { isAdmin } = useAuth();
-  const { inTab, error, refetch } = useRequests();
+  const { inTab, isLoading, error, refetch } = useRequests();
+  useRouteContent(!isLoading && error == null);
   const entries = inTab(tab);
 
   // Filler pulls are an admin-only list server-side (§10 V35), so a member's Done tab asks for
@@ -196,7 +202,8 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
 // (§342).
 const NeedsYouList = () => {
   const { isAdmin } = useAuth();
-  const { inTab, pendingApprovals, error, refetch } = useRequests();
+  const { inTab, pendingApprovals, isLoading, error, refetch } = useRequests();
+  useRouteContent(!isLoading && error == null);
   // ⚠ Kept true while a bulk review is open: approving the last pending items drops the count to
   // zero, and unmounting the queue then would discard the result the operator is about to read.
   const [reviewing, setReviewing] = useState(false);
@@ -212,20 +219,20 @@ const NeedsYouList = () => {
     );
   }
   return (
-    <div className="max-w-reading mx-auto flex w-full flex-col gap-6">
+    <Stack className="max-w-reading mx-auto w-full" gap="section">
       {showApprovals && (
-        <section aria-labelledby="needs-approvals" className="flex flex-col gap-3">
-          <h2 id="needs-approvals" className="text-lg font-semibold">
+        <Stack aria-labelledby="needs-approvals" gap="control" render="section">
+          <Text as="h2" id="needs-approvals" strong textRole="headline">
             Waiting for your approval
-          </h2>
+          </Text>
           <ApprovalQueue onReviewingChange={setReviewing} />
-        </section>
+        </Stack>
       )}
       {failed.length > 0 && (
-        <section aria-labelledby="needs-failed" className="flex flex-col gap-3">
-          <h2 id="needs-failed" className="text-lg font-semibold">
+        <Stack aria-labelledby="needs-failed" gap="control" render="section">
+          <Text as="h2" id="needs-failed" strong textRole="headline">
             Couldn't be built
-          </h2>
+          </Text>
           <ListGroup aria-labelledby="needs-failed">
             {failed.map((e) =>
               failedRowFor(
@@ -235,9 +242,9 @@ const NeedsYouList = () => {
               ),
             )}
           </ListGroup>
-        </section>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

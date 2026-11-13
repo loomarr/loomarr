@@ -21,6 +21,7 @@ import (
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -30,7 +31,6 @@ import (
 	"github.com/loomarr/loomarr/internal/proposals/quality"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -43,7 +43,10 @@ type fakeSuggest struct {
 	lastChannelID string
 	lastRequester string
 	last          proposals.Intent
+	canned        bool // the demo submitter: builds from the library, needs no AI settings (#2729)
 }
+
+func (f *fakeSuggest) Canned() bool { return f.canned }
 
 func (f *fakeSuggest) Submit(_ context.Context, intent proposals.Intent, _ string) (string, error) {
 	f.submits++
@@ -67,6 +70,7 @@ func (f *fakeSuggest) Refine(_ context.Context, channelID string, intent proposa
 type proposalHarnessConfig struct {
 	Settings        setupapi.SettingsService
 	DecisionQuality proposalsapi.ProposalDecisionQuality
+	Canned          bool
 }
 
 // proposalHarness hides the fixed proposal-route assembly behind the common API
@@ -85,7 +89,7 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 	if len(configs) == 1 {
 		config = configs[0]
 	}
-	fs := &fakeSuggest{}
+	fs := &fakeSuggest{canned: config.Canned}
 	search := &testkit.SearchService[catalogapi.SearchRequest, httpcore.SearchCandidate]{Results: []httpcore.SearchCandidate{{
 		MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
 	}}}
@@ -93,19 +97,21 @@ func newProposalHarness(t *testing.T, configs ...proposalHarnessConfig) *proposa
 		chBinder := approval.New(defaults.Store, nil, nil, defaults.Log)
 		flow := workflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now, suggest.IntentHash)
 		return api.Router(defaults.Log, api.Options{
-			Store:            defaults.Store,
-			Auth:             defaults.Auth,
-			Log:              defaults.Log,
-			Suggest:          fs,
-			Search:           search,
-			Events:           events.NewBus(),
-			ProposalWorkflow: flow,
-			DecisionQuality:  config.DecisionQuality,
-			// No Reconciler wired here (channels isn't under test) — mirrors the
-			// composition root's nil-guard: the bind still creates/patches the
-			// channel row and just skips the immediate Tunarr reconcile push.
-			Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
-			Binder:   chBinder,
+			Store: defaults.Store,
+			Auth:  defaults.Auth,
+			Log:   defaults.Log,
+			Proposals: api.ProposalsOptions{
+				Suggest:         fs,
+				Workflow:        flow,
+				DecisionQuality: config.DecisionQuality,
+				// No Reconciler wired here (channels isn't under test) — mirrors the
+				// composition root's nil-guard: the bind still creates/patches the
+				// channel row and just skips the immediate Tunarr reconcile push.
+				Approver: accept.NewApprover(defaults.Store, chBinder, time.Now),
+			},
+			Library:  api.LibraryOptions{Search: search},
+			Ops:      api.OpsOptions{Events: events.NewBus()},
+			Channels: api.ChannelsOptions{Binder: chBinder},
 			Settings: config.Settings,
 		})
 	})
@@ -238,6 +244,16 @@ func TestSubmit_UnconfiguredAIFailsBeforeCreatingJob(t *testing.T) {
 	}
 	if problem.Type != "feature_not_configured" || !strings.Contains(problem.Detail, "tool-capable lineup model") {
 		t.Errorf("problem = %+v, want actionable feature-not-configured guidance", problem)
+	}
+}
+
+// The demo has no AI or TMDB key, yet a guest's description must reach its canned submitter (#2729).
+func TestSubmit_ACannedSubmitterNeedsNoAISettings(t *testing.T) {
+	harness := newProposalHarness(t, proposalHarnessConfig{Settings: &fakeSettings{}, Canned: true})
+	resp := do(t, harness.Server, http.MethodPost, "/v1/proposals", adminToken, `{"description":"90s action"}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK || harness.Suggest.submits != 1 {
+		t.Fatalf("submit → %d (%d jobs), want 200 and one job with no AI configured", resp.StatusCode, harness.Suggest.submits)
 	}
 }
 

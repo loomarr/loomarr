@@ -1,3 +1,4 @@
+import { Stack, Text } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelDrawerProps, DrawerChannel } from "./channel-drawer.type";
@@ -62,20 +63,29 @@ const ChannelDrawer = ({
   }
 
   return (
+    // A sheet like the player's others (role=dialog), so the player's ↑/↓ leave its list alone.
     <section
       aria-labelledby="channel-drawer-title"
-      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l backdrop-blur-md"
+      role="dialog"
+      className="border-static-700 bg-static-950/95 flex h-full w-[372px] max-w-full flex-col border-l"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
         onClose();
       }}
     >
-      <div className="border-static-800 flex items-center gap-2.5 border-b px-[18px] pt-4 pb-3">
-        <h2 id="channel-drawer-title" className="text-sm font-semibold">
+      <Stack
+        align="center"
+        className="border-static-800 border-b px-[18px] pt-4 pb-3"
+        direction="row"
+        gap="2.5"
+      >
+        <Text as="h2" id="channel-drawer-title" strong textRole="cardLabel" tone="primary">
           Channels
-        </h2>
-        <span className="text-muted-foreground font-mono text-[11px] tracking-[.06em]">NOW → NEXT 2H</span>
+        </Text>
+        <Text as="span" textRole="mono" tone="secondary" tracking={0.06}>
+          NOW → NEXT 2H
+        </Text>
         <button
           type="button"
           onClick={onClose}
@@ -86,7 +96,7 @@ const ChannelDrawer = ({
             ✕
           </span>
         </button>
-      </div>
+      </Stack>
       <div className="px-2.5 pt-2.5">
         <input
           ref={findRef}
@@ -101,12 +111,16 @@ const ChannelDrawer = ({
       <div className="flex-1 overflow-y-auto p-2.5">
         {groups.map((group) => (
           <section key={group.header} aria-labelledby={groupHeadingId(group.header)}>
-            <h3
+            <Text
+              as="h3"
               id={groupHeadingId(group.header)}
-              className="text-muted-foreground px-1 pt-1.5 pb-[7px] font-mono text-[11px] font-normal tracking-[.14em]"
+              className="px-1 pt-1.5 pb-[7px]"
+              textRole="mono"
+              tone="secondary"
+              tracking={0.14}
             >
               {group.header}
-            </h3>
+            </Text>
             {group.rows.map((channel) => (
               <DrawerRow
                 key={channel.id}
@@ -170,13 +184,25 @@ const DrawerRow = ({
         )}
       >
         <span className="flex items-center gap-[9px] pr-7">
-          <span className="text-muted-foreground w-[26px] font-mono text-sm">
+          <Text as="span" className="w-[26px]" textRole="mono" tone="secondary">
             {channelNumber(channel.number)}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold">{channel.name}</span>
-          {tuned && <span className="text-muted-foreground font-mono text-[11px]">TUNED</span>}
+          </Text>
+          <Text as="span" className="min-w-0 flex-1 truncate" strong textRole="cardLabel" tone="primary">
+            {channel.name}
+          </Text>
+          {tuned && (
+            <Text as="span" textRole="mono" tone="secondary">
+              TUNED
+            </Text>
+          )}
         </span>
-        <span aria-hidden className="relative flex h-6 gap-0.5 overflow-hidden rounded">
+        <Stack
+          aria-hidden
+          className="relative h-6 overflow-hidden rounded"
+          direction="row"
+          gap="0.5"
+          render="span"
+        >
           {channel.blocks.map((block) => (
             <span
               key={block.key}
@@ -187,20 +213,24 @@ const DrawerRow = ({
               style={{ flex: `${block.minutes} 1 0px` }}
             >
               {block.label && total > 0 && block.minutes / total > LABEL_SHARE && (
-                <span className="text-foreground block min-w-0 truncate text-[11px]">{block.label}</span>
+                <Text as="span" className="block min-w-0 truncate" textRole="cardMeta" tone="primary">
+                  {block.label}
+                </Text>
               )}
             </span>
           ))}
           {channel.blocks.length > 0 && (
             <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
           )}
-        </span>
-        <span className="text-muted-foreground flex items-center gap-[7px] text-[11px]">
-          <span className="min-w-0 truncate">{line ? `▸ ${line}` : ""}</span>
-          <span className="ml-auto shrink-0 font-mono">
+        </Stack>
+        <Stack align="center" direction="row" gap="1.75" render="span">
+          <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
+            {line ? `▸ ${line}` : ""}
+          </Text>
+          <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
             {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
-          </span>
-        </span>
+          </Text>
+        </Stack>
       </button>
       <button
         type="button"

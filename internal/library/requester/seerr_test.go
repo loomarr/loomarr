@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -126,7 +126,11 @@ func TestSeerrQueueStatus(t *testing.T) {
 	ms := testkit.NewSeerr(t)
 	t.Cleanup(ms.Close)
 	// 90082728 downloading, 90065733 partly available, 90003022 still pending; 90000999 not in the set at all.
-	ms.Processing = map[int]int{90082728: 3, 90065733: 4, 90003022: 2}
+	ms.Processing = []testkit.SeerrMedia{
+		{TMDBID: 90082728, MediaType: "tv", Status: 3},
+		{TMDBID: 90065733, MediaType: "tv", Status: 4},
+		{TMDBID: 90003022, MediaType: "tv", Status: 2},
+	}
 	r := NewSeerr(ms.URL, "k")
 
 	titles := []provision.Title{
@@ -163,5 +167,55 @@ func TestSeerrQueueStatus(t *testing.T) {
 		if got.Progress != 0 {
 			t.Errorf("tmdb %d: Progress=%v, want 0 (Seerr has no percentage)", w.tmdb, got.Progress)
 		}
+	}
+}
+
+// Seerr pages /media. A household with more titles in flight than one page holds must still see
+// the ones past it as downloading, not as merely requested.
+func TestSeerrQueueStatus_ReadsEveryPage(t *testing.T) {
+	ms := testkit.NewSeerr(t)
+	t.Cleanup(ms.Close)
+	for i := range 450 {
+		ms.Processing = append(ms.Processing, testkit.SeerrMedia{TMDBID: 90200000 + i, MediaType: "movie", Status: 3})
+	}
+	r := NewSeerr(ms.URL, "k")
+
+	items, err := r.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Movie, TMDBID: 90200000},
+		{MediaType: provision.Movie, TMDBID: 90200449},
+	})
+	if err != nil {
+		t.Fatalf("QueueStatus: %v", err)
+	}
+	for _, it := range items {
+		if !it.Grabbed || it.Status != "Downloading" {
+			t.Errorf("%s = %+v, want grabbed Downloading", it.Key, it)
+		}
+	}
+}
+
+// TMDB numbers movies and TV separately, so a movie and a series can share an id. Only the
+// title of the kind Seerr reports as processing is grabbed.
+func TestSeerrQueueStatus_MovieAndSeriesSharingATMDBID(t *testing.T) {
+	ms := testkit.NewSeerr(t)
+	t.Cleanup(ms.Close)
+	ms.Processing = []testkit.SeerrMedia{{TMDBID: 90001399, MediaType: "movie", Status: 3}}
+	r := NewSeerr(ms.URL, "k")
+
+	items, err := r.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Movie, TMDBID: 90001399},
+		{MediaType: provision.Series, TMDBID: 90001399},
+	})
+	if err != nil {
+		t.Fatalf("QueueStatus: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("got %d items, want 2", len(items))
+	}
+	if !items[0].Grabbed || items[0].Status != "Downloading" {
+		t.Errorf("movie 90001399 = %+v, want grabbed Downloading", items[0])
+	}
+	if items[1].Grabbed || items[1].Status != "" {
+		t.Errorf("series 90001399 = %+v, want not grabbed (only the movie is processing)", items[1])
 	}
 }

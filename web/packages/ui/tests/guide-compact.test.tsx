@@ -61,6 +61,15 @@ describe("GuideCompact", () => {
     );
   });
 
+  it("offers no Favorites chip while there are no favourites (#2751)", () => {
+    const html = markup({ myChannels: { favouriteIds: [], recentIds: ["ch-1"] } });
+    expect(html).not.toContain("Favorites");
+    expect(html).toContain("Recent · 1");
+    expect(markup({ filter: "favourites", myChannels: { favouriteIds: [], recentIds: [] } })).toContain(
+      'aria-label="1 Channel 1,',
+    );
+  });
+
   it("keeps only the filter's rows, and falls back to All when the filter has emptied", () => {
     expect(markup({ filter: "favourites" })).not.toContain('aria-label="1 Channel 1,');
     expect(markup({ filter: "favourites" })).toContain('aria-label="2 Channel 2,');

@@ -34,16 +34,17 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/filler/records"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout/tunarr/tunarrtest"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -68,7 +69,7 @@ func (a clipCatalog) AllClips(ctx context.Context) ([]clips.Clip, error) {
 // libraryDurationResolver reads an item's runtime from the Library's facts (mirrors the app's
 // itemMetadata), so a program slot gets its real runtime — which is what makes the
 // commercial-break interleave fire.
-func libraryDurationResolver(facts store.LibraryItemFactsReader) channels.DurationResolver {
+func libraryDurationResolver(facts librarystore.LibraryItemFactsReader) channels.DurationResolver {
 	return func(ctx context.Context, itemID string) (int64, error) {
 		got, err := facts.LibraryItemFacts(ctx, []string{itemID})
 		return got[itemID].RuntimeMs, err
@@ -135,10 +136,11 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 		Store:    st,
 		Auth:     httpcore.NewTokenAuthorizer(adminToken),
 		Log:      log,
-		Channels: engine,
-		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
-		Approver: approver,
-		Binder:   chBinder,
+		Channels: api.ChannelsOptions{Service: engine, Binder: chBinder},
+		Proposals: api.ProposalsOptions{
+			Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
+			Approver: approver,
+		},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

@@ -3,11 +3,13 @@ package scan
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A title's present files are listed in path order with labelled tracks; the copy its arr lists
@@ -73,14 +75,69 @@ func TestLibraryStreamLabelsAChannelLayout(t *testing.T) {
 	}
 }
 
+// A title sorts by its letters, not their accents: "À Nous" files under A, beside "Alpha", rather
+// than after Z, where an accented first letter's bytes put it.
+func TestATitleSortsByItsLettersNotTheirAccents(t *testing.T) {
+	ext, _ := json.Marshal(originExtension{Listed: &listedExtension{}})
+	sortName := func(title string) string {
+		item, ok := ProjectLibraryItem(inventory.Item{ID: "m1", Kind: kindMovie, Origins: []inventory.ItemOrigin{{
+			Key: inventory.OriginKey{Authority: inventory.AuthorityID(authorityPrefix + "a"), ExternalItemID: "file:1"},
+			Observation: inventory.Observation[inventory.ItemFacts]{Extension: ext,
+				Facts: inventory.ItemFacts{Name: title, SortTitle: title}},
+		}}})
+		if !ok {
+			t.Fatalf("%s is not listed", title)
+		}
+		return item.SortName
+	}
+	if got := sortName("À Nous la Liberté"); got != "a nous la liberte" {
+		t.Errorf("sort name = %q, want %q", got, "a nous la liberte")
+	}
+	titles := []string{"Zulu Hour", "Éclair Noir", "Alpha Hour", "À Nous la Liberté", "Øster Bay", "Echo Point"}
+	slices.SortFunc(titles, func(a, b string) int { return strings.Compare(sortName(a), sortName(b)) })
+	want := []string{"À Nous la Liberté", "Alpha Hour", "Echo Point", "Éclair Noir", "Øster Bay", "Zulu Hour"}
+	if !slices.Equal(titles, want) {
+		t.Errorf("sorted %q, want %q", titles, want)
+	}
+}
+
+// A title with two copies, only one of them grounded in the catalog (its NFO names the TMDB id, the
+// other has only a name), is listed by the grounded one whichever was written last: a full rewrite
+// writing the bare copy after it must not rename the title to that copy's file name.
+func TestATitleIsListedByItsGroundedCopyWhicheverWasWrittenLast(t *testing.T) {
+	at := time.Date(2026, 11, 11, 20, 0, 0, 0, time.UTC)
+	listed := func(catalog librarystore.LibraryCatalogKey) json.RawMessage {
+		raw, _ := json.Marshal(originExtension{Listed: &listedExtension{Catalog: catalog}})
+		return raw
+	}
+	copyOf := func(key, name string, observed time.Time, ext json.RawMessage) inventory.ItemOrigin {
+		return inventory.ItemOrigin{
+			Key: inventory.OriginKey{Authority: inventory.AuthorityID(authorityPrefix + "a"), ExternalItemID: key},
+			Observation: inventory.Observation[inventory.ItemFacts]{ObservedAt: observed, Extension: ext,
+				Facts: inventory.ItemFacts{Name: name, SortTitle: name, ProductionYear: 1972}},
+		}
+	}
+	grounded := copyOf("file:remux", "Yankee Lane", at, listed(librarystore.LibraryCatalogKey{
+		Provider: "tmdb", Kind: "movie", ExternalID: "90000573"}))
+	bare := copyOf("file:bluray", "Yankee Lane (1972) - [Bluray-2160p][HDR10]-GRP", at.Add(time.Minute),
+		listed(librarystore.LibraryCatalogKey{}))
+
+	for _, origins := range [][]inventory.ItemOrigin{{grounded, bare}, {bare, grounded}} {
+		got, ok := ProjectLibraryItem(inventory.Item{ID: "m1", Kind: kindMovie, Origins: origins})
+		if !ok || got.Name != "Yankee Lane" || got.Catalog.ExternalID != "90000573" {
+			t.Errorf("listed %q from %+v, want \"Yankee Lane\" from its grounded copy", got.Name, got.Catalog)
+		}
+	}
+}
+
 // A title is listed from its present scanner origin over a newer missing one, never from another
 // authority's, and not at all by an origin written before it carried how it is listed.
 func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	at := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	listed := func(page string) json.RawMessage {
 		raw, _ := json.Marshal(originExtension{Listed: &listedExtension{
-			Catalog: store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
-			Match:   store.LibraryMatch{Basis: "manager", App: "radarr", Page: page},
+			Catalog: librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
+			Match:   librarystore.LibraryMatch{Basis: "manager", App: "radarr", Page: page},
 		}})
 		return raw
 	}
@@ -111,14 +168,14 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	if !ok {
 		t.Fatal("a movie with a present scanner origin is not listed")
 	}
-	want := store.LibraryItem{ID: "m1", Kind: "movie", Name: "Kept Film", SortName: "sort kept film", Year: 2001,
-		Catalog: store.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
-		Origin:  store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "file:1"},
-		Match:   store.LibraryMatch{Basis: "manager", App: "radarr", Page: "https://radarr.invalid/1"},
+	want := librarystore.LibraryItem{ID: "m1", Kind: "movie", Name: "Kept Film", SortName: "sort kept film", Year: 2001,
+		Catalog: librarystore.LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000801"},
+		Origin:  librarystore.LibraryOrigin{Authority: authorityPrefix + "a", Key: "file:1"},
+		Match:   librarystore.LibraryMatch{Basis: "manager", App: "radarr", Page: "https://radarr.invalid/1"},
 		Studios: []string{"Ironbell Pictures", "Second Shift Films"}, Countries: []string{"Canada"},
 		Tagline: "Kept, at last.", Trailer: "https://www.youtube.com/watch?v=kept9000",
-		Credits: []store.LibraryCredit{
-			{Name: "Kept Lead", Role: "actor", Character: "Keeper", ID: store.LibraryID{Namespace: "tmdb", Value: "90003301"},
+		Credits: []librarystore.LibraryCredit{
+			{Name: "Kept Lead", Role: "actor", Character: "Keeper", ID: librarystore.LibraryID{Namespace: "tmdb", Value: "90003301"},
 				Photo: "https://img.invalid/kept.jpg"},
 			{Name: "Kept Director", Role: "director"},
 		}}
@@ -136,7 +193,7 @@ func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	// An episode is listed with its numbering and its series' origin; its genres, studios and
 	// countries are its show's, so it has none of its own (decision 42).
 	epExt, _ := json.Marshal(originExtension{Listed: &listedExtension{
-		Series: store.LibraryOrigin{Authority: authorityPrefix + "a", Key: "series:dir:1"}}})
+		Series: librarystore.LibraryOrigin{Authority: authorityPrefix + "a", Key: "series:dir:1"}}})
 	ep := origin(authorityPrefix+"a", "file:4", "Pilot", at, false, epExt)
 	ep.Observation.Facts.SeasonNumber, ep.Observation.Facts.EpisodeNumber = 1, 1
 	ep.Observation.Facts.Genres, ep.Observation.Facts.Studios = []string{"Drama"}, []string{"Network"}

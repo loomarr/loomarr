@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Two files of one movie: the sharper plays and the other is an extra copy. Removing the copy that
@@ -96,17 +97,26 @@ func TestRemoveExtraCopyMovesItToTheTrash(t *testing.T) {
 }
 
 // The file an arr lists plays, however sharp another copy is; without one, the sharper, then the
-// bigger.
+// bigger. A copy under half as long as the longest never plays: a sharp trailer the walk took for a
+// copy loses to the film. One whose length isn't read yet is not held back.
 func TestTheCopyThatPlays(t *testing.T) {
 	hd := &Picture{Width: 1920, Height: 1080}
 	sd := &Picture{Width: 720, Height: 480}
+	const film, trailer = 6_000_000, 150_000
 	for name, tc := range map[string]struct {
 		files []ItemFile
 		plays int
 	}{
 		"arr's file": {[]ItemFile{{Picture: hd}, {Picture: sd, managed: true}}, 1},
 		"sharper":    {[]ItemFile{{Picture: sd}, {Picture: hd}}, 1},
-		"bigger":     {[]ItemFile{{LibraryFile: store.LibraryFile{Size: 9}}, {LibraryFile: store.LibraryFile{Size: 3}}}, 0},
+		"bigger":     {[]ItemFile{{LibraryFile: librarystore.LibraryFile{Size: 9}}, {LibraryFile: librarystore.LibraryFile{Size: 3}}}, 0},
+		"a sharp trailer loses to the film": {
+			[]ItemFile{{Picture: hd, LengthMillis: trailer}, {Picture: sd, LengthMillis: film}}, 1,
+		},
+		"even its arr's": {
+			[]ItemFile{{Picture: hd, LengthMillis: trailer, managed: true}, {Picture: sd, LengthMillis: film}}, 1,
+		},
+		"a length not read yet": {[]ItemFile{{Picture: hd}, {Picture: sd, LengthMillis: film}}, 0},
 	} {
 		markExtras(tc.files)
 		for i, f := range tc.files {

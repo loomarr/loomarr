@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Home's On the way (#1667): a downloading series carries "8 of 36 episodes" next to its

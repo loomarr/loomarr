@@ -9,8 +9,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
+import { LoomarrEventsProvider } from "@/events/events-provider";
 import { readyTitleOf } from "@/library/ready-title";
 import { useLibraryFolders } from "@/library/use-library-folders";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { ChecklistStep } from "../checklist-step";
 import { useArrsFromRequester } from "../use-arrs-from-requester";
@@ -24,7 +26,15 @@ import type { LibraryStepProps } from "./library-step.type";
 // Seerr knows them, and editable when the address Seerr uses isn't one Loomarr can reach. Their
 // webhooks need Loomarr's own address, asked here when nothing has set it yet.
 
-const LibraryStep = ({ backend }: LibraryStepProps) => {
+// The wizard sits outside the signed-in app frame and its one event stream, so this step, which
+// only an admin reaches, opens the stream itself: the import's progress arrives on it.
+const LibraryStep = (props: LibraryStepProps) => (
+  <LoomarrEventsProvider>
+    <LibraryStepBody {...props} />
+  </LoomarrEventsProvider>
+);
+
+const LibraryStepBody = ({ backend }: LibraryStepProps) => {
   const folders = useLibraryFolders();
   const entries = useSettingsEntries();
   const value = (key: SettingKey) => entries.find((e) => e.key === key)?.value ?? "";
@@ -88,12 +98,13 @@ const LibraryStep = ({ backend }: LibraryStepProps) => {
 const LoomarrAddress = () => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries().filter((e) => e.key === SettingKey.ServerPublicURL);
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const { edits, setEdit, dropSaved } = useSettingsDraft();
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, { data }) => {
         await invalidateSettings(queryClient);
-        setEdits({});
+        // A refused address stays in the field, beside the message the results give for it.
+        dropSaved(response, data.edits);
       },
     },
   });
@@ -102,7 +113,7 @@ const LoomarrAddress = () => {
       <SettingsFields
         entries={entries}
         values={edits}
-        onChange={(key, v) => setEdits((previous) => ({ ...previous, [key]: v }))}
+        onChange={setEdit}
         results={unwrap(patch.data, (b) => b.results) ?? undefined}
         descriptionIds={{ [SettingKey.ServerPublicURL]: "library-step-address" }}
       />

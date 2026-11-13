@@ -7,22 +7,22 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A collection lists its titles in the household's order; a member that has left the library drops
 // out of the titles and comes back in its place when it returns.
 func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	h := newHarness(t)
-	h.file("Alpha (1999) {tmdb-90000651}/Alpha.mkv", 10)
-	bravo := h.file("Bravo (2003) {tmdb-90000652}/Bravo.mkv", 10)
-	h.file("Charlie (2005) {tmdb-90000653}/Charlie.mkv", 10)
+	h.file("Alpha {tmdb-90000651}/Alpha.mkv", 10)
+	bravo := h.file("Bravo {tmdb-90000652}/Bravo.mkv", 10)
+	h.file("Charlie {tmdb-90000653}/Charlie.mkv", 10)
 	h.run()
 
 	lib := &Library{ItemStore: h.st, CollectionStore: h.st, Scanner: NewScanner(h.im, 0)}
 	ctx := context.Background()
 	ids := map[string]string{}
-	all, err := lib.Items(ctx, store.LibraryItemQuery{})
+	all, err := lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestCollectionsKeepTheHouseholdsOrder(t *testing.T) {
 	}
 
 	// It comes back in its place.
-	h.file("Bravo (2003) {tmdb-90000652}/Bravo.mkv", 10)
+	h.file("Bravo {tmdb-90000652}/Bravo.mkv", 10)
 	h.run()
 	if got := titles(); !slices.Equal(got, []string{"Charlie", "Bravo", "Alpha"}) {
 		t.Fatalf("titles after Bravo returned = %v, want Charlie, Bravo, Alpha", got)
@@ -88,12 +88,12 @@ func TestCollectionsRefuseAnUnknownTitle(t *testing.T) {
 	h.run()
 	lib := &Library{ItemStore: h.st, CollectionStore: h.st}
 	ctx := context.Background()
-	all, err := lib.Items(ctx, store.LibraryItemQuery{})
+	all, err := lib.Items(ctx, librarystore.LibraryItemQuery{})
 	if err != nil || len(all.Items) != 1 {
 		t.Fatalf("items = %+v, %v", all, err)
 	}
 	alpha := all.Items[0].ID
-	if _, err := lib.CreateCollection(ctx, "Strays", "", []string{alpha, "90000662"}); !errors.Is(err, store.ErrUnknownLibraryItem) {
+	if _, err := lib.CreateCollection(ctx, "Strays", "", []string{alpha, "90000662"}); !errors.Is(err, librarystore.ErrUnknownLibraryItem) {
 		t.Fatalf("create = %v, want ErrUnknownLibraryItem", err)
 	}
 	if list, err := lib.Collections(ctx); err != nil || len(list) != 0 {

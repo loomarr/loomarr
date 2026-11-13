@@ -1,8 +1,9 @@
 import {
   formatGuideTime,
+  formatProgrammeTitle,
   type GuideAiringLayout,
   type GuideChannelLayout,
-  guideAiringLabel,
+  guideBreakProgramme,
   guideChannelState,
 } from "@loomarr/core/guide";
 import { Action, ProgressTrack, Surface, semanticRadius, Text } from "@loomarr/design-system";
@@ -19,10 +20,11 @@ import type { GuideNowNextProps, GuidePhoneHeaderProps } from "./guide-now-next.
 const GUTTER = 12;
 const WIDE_GUTTER = 24;
 const ROW_GAP = 6;
-// The desktop row's columns, from the mock: a fixed channel column, then On now and Next sharing
-// the rest 1.4 : 1.
+// The desktop row's columns: a fixed channel column, then On now and Next sharing the rest equally
+// (the mock's 1.4 : 1 cut Next's title off at 1440px, #3406).
 const CHANNEL_COLUMN = 240;
 const COLUMN_GAP = 32;
+const NUMBER_COLUMN = 36;
 const NEXT_TIME = 80;
 const NEXT_TIME_GAP = 16;
 const UNTIL_COLUMN = 176;
@@ -70,9 +72,29 @@ const rowOf = (channel: GuideChannelLayout, nowMs: number, timezone?: string): N
   const percent = ((nowMs - now.startMs) / (now.stopMs - now.startMs)) * 100;
   const minutesLeft = Math.max(1, Math.ceil((now.stopMs - nowMs) / 60_000));
   if (now.kind === "program") {
-    return { kind: "show", minutesLeft, next, percent, title: guideAiringLabel(now), untilMs: now.stopMs };
+    return {
+      kind: "show",
+      minutesLeft,
+      next,
+      percent,
+      title: formatProgrammeTitle(now),
+      untilMs: now.stopMs,
+    };
   }
-  const title = now.kind === "pending" ? guideAiringLabel(now) : "Commercial break";
+  if (now.kind === "pending") {
+    return {
+      kind: "break",
+      minutesLeft,
+      next,
+      percent,
+      title: formatProgrammeTitle(now),
+      untilMs: now.stopMs,
+    };
+  }
+  // A break is a note on the programme it leads back to, never a title of its own (#2761); only
+  // with no programme in the window does the row fall back to a break label.
+  const programme = guideBreakProgramme(airings, now);
+  const title = programme ? formatProgrammeTitle(programme) : "Commercial break";
   return { kind: "break", minutesLeft, next, percent, title, untilMs: now.stopMs };
 };
 
@@ -106,7 +128,7 @@ const itemText = (channel: GuideChannelLayout, nowMs: number, timezone?: string)
     row.kind === "downloading"
       ? "When its first show arrives"
       : row.next
-        ? guideAiringLabel(row.next)
+        ? formatProgrammeTitle(row.next)
         : "Later tonight";
   return { nextLine, nextTime, row };
 };
@@ -134,25 +156,35 @@ const NowNextItem = ({ channel, nowMs, onOpenChannelInfo, onWatch, timezone }: I
       >
         <View style={{ alignItems: "baseline", flexDirection: "row", gap: 6 }}>
           <GuideNumberBlock decade={channel.source.decade} number={number} />
-          <Text density="touch" numberOfLines={1} style={{ flex: 1 }} textRole="cardLabel" tone="secondary">
+          <Text
+            density="touch"
+            numberOfLines={1}
+            style={{ flex: 1 }}
+            textAlign="left"
+            textRole="cardLabel"
+            tone="secondary"
+          >
             {name}
           </Text>
-          {row.kind === "show" ? (
-            <Text density="touch" textRole="cardLabel" tone="secondary">
-              {`${minutesText(row.minutesLeft)} left`}
+          {row.kind === "show" || row.kind === "break" ? (
+            <Text density="touch" textAlign="left" textRole="cardLabel" tone="secondary">
+              {row.kind === "show"
+                ? `${minutesText(row.minutesLeft)} left`
+                : `Back in ${minutesText(row.minutesLeft)}`}
             </Text>
           ) : null}
         </View>
         <Text
           density="touch"
           numberOfLines={2}
+          textAlign="left"
           textRole="label"
           tone={row.kind === "show" ? "primary" : "secondary"}
         >
           {row.title}
         </Text>
         {row.kind === "downloading" ? (
-          <Text density="touch" textRole="cardMeta" tone="secondary">
+          <Text density="touch" textAlign="left" textRole="cardMeta" tone="secondary">
             Commercials play until its shows arrive.
           </Text>
         ) : row.kind === "show" || row.kind === "break" ? (
@@ -160,10 +192,17 @@ const NowNextItem = ({ channel, nowMs, onOpenChannelInfo, onWatch, timezone }: I
         ) : null}
         {nextLine === undefined ? null : (
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <Text density="touch" textRole="cardTime" tone="secondary">
+            <Text density="touch" textAlign="left" textRole="cardTime" tone="secondary">
               {nextTime ?? "—"}
             </Text>
-            <Text density="touch" numberOfLines={1} style={{ flex: 1 }} textRole="cardMeta" tone="secondary">
+            <Text
+              density="touch"
+              numberOfLines={1}
+              style={{ flex: 1 }}
+              textAlign="left"
+              textRole="cardMeta"
+              tone="secondary"
+            >
               {nextLine}
             </Text>
           </View>
@@ -214,24 +253,25 @@ const WideNowNextItem = ({ channel, nowMs, onOpenChannelInfo, onWatch, timezone 
         }}
       >
         <View style={{ alignItems: "baseline", flexDirection: "row", gap: 12, width: CHANNEL_COLUMN }}>
-          <Text strong style={{ textAlign: "right", width: 28 }} textRole="data" tone="secondary">
-            {String(number)}
-          </Text>
-          <Text style={{ flexShrink: 1, minWidth: 0 }} textRole="label" tone="primary">
+          <View style={{ alignItems: "flex-end", width: NUMBER_COLUMN }}>
+            <GuideNumberBlock decade={channel.source.decade} number={number} />
+          </View>
+          <Text style={{ flexShrink: 1, minWidth: 0 }} textAlign="left" textRole="label" tone="primary">
             {name}
           </Text>
         </View>
-        <View style={{ flex: 1.4, gap: 8, minWidth: 0 }}>
+        <View style={{ flex: 1, gap: 8, minWidth: 0 }}>
           <Text
             numberOfLines={1}
             strong
+            textAlign="left"
             textRole="headline"
-            tone={row.kind === "show" ? "primary" : "secondary"}
+            tone={row.kind === "show" || row.kind === "break" ? "primary" : "secondary"}
           >
             {row.title}
           </Text>
           {row.kind === "downloading" ? (
-            <Text numberOfLines={1} textRole="body" tone="secondary">
+            <Text numberOfLines={1} textAlign="left" textRole="body" tone="secondary">
               Commercials play until its shows arrive.
             </Text>
           ) : progress ? (
@@ -239,7 +279,7 @@ const WideNowNextItem = ({ channel, nowMs, onOpenChannelInfo, onWatch, timezone 
               <View style={{ flex: 1, minWidth: 0 }}>
                 <ProgressTrack height={3} percent={row.percent} width="100%" />
               </View>
-              <Text style={{ width: UNTIL_COLUMN }} textRole="cardMeta" tone="secondary">
+              <Text style={{ width: UNTIL_COLUMN }} textAlign="left" textRole="cardMeta" tone="secondary">
                 {row.kind === "show" && row.untilMs !== undefined
                   ? `until ${formatGuideTime(row.untilMs, timezone)} · ${minutesText(row.minutesLeft)} left`
                   : `Back in ${minutesText(row.minutesLeft)}`}
@@ -253,7 +293,7 @@ const WideNowNextItem = ({ channel, nowMs, onOpenChannelInfo, onWatch, timezone 
           <Text style={{ textAlign: "right", width: NEXT_TIME }} textRole="data" tone="secondary">
             {nextTime ?? ""}
           </Text>
-          <Text numberOfLines={1} style={{ flex: 1 }} textRole="reading" tone="primary">
+          <Text numberOfLines={1} style={{ flex: 1 }} textAlign="left" textRole="reading" tone="primary">
             {nextLine ?? ""}
           </Text>
         </View>
@@ -286,7 +326,7 @@ const WideHeadings = ({ menu }: { menu: boolean }) => (
         Channel
       </Text>
     </View>
-    <View style={{ flex: 1.4, minWidth: 0 }}>
+    <View style={{ flex: 1, minWidth: 0 }}>
       <Text textRole="cardMeta" tone="secondary">
         On now
       </Text>
@@ -334,7 +374,8 @@ const GuideNowNext = ({
   );
 };
 
-// The guide's heading: its title and a line under it, with the view switch to the right.
+// The guide's heading: its title and a line under it, with the view switch to the right. A view
+// whose page heading already names it passes no title and keeps the line.
 const GuidePhoneHeader = ({ children, subtitle, title, wide }: GuidePhoneHeaderProps) => (
   <View
     style={{
@@ -348,9 +389,11 @@ const GuidePhoneHeader = ({ children, subtitle, title, wide }: GuidePhoneHeaderP
     }}
   >
     <View style={{ flexShrink: 1, gap: 2, minWidth: 0 }}>
-      <Text as="h2" density={wide ? "pointer" : "touch"} textRole="title">
-        {title}
-      </Text>
+      {title ? (
+        <Text as="h2" density={wide ? "pointer" : "touch"} textRole="title">
+          {title}
+        </Text>
+      ) : null}
       <Text density={wide ? "pointer" : "touch"} textRole="cardMeta" tone="secondary">
         {subtitle}
       </Text>

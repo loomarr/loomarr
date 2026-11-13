@@ -198,18 +198,54 @@ const Rows: Story = {
   ),
 };
 
+// A row with less than 180px left for its title beside the action (a phone list that also carries a
+// switch, #3429): the action drops to its own line, on the trailing edge, and the name keeps the row.
+const RowsNarrow: Story = {
+  decorators: [
+    (Story) => (
+      <div style={{ maxWidth: 300 }}>
+        <Story />
+      </div>
+    ),
+  ],
+  render: () => (
+    <ListGroup aria-label="Sources">
+      <RowCard
+        action={<CardAction>Manage</CardAction>}
+        lead={<Icon decorative glyph={icons.folder} size="default" tone="muted" />}
+        meta={[<CardStatus key="s" label="Ready" tone="ok" />, "42 clips · checked 2 hours ago"]}
+        title="/data/filler/a-deliberately-long-folder-name"
+      />
+      <RowCard
+        action={<CardAction attention>Try again</CardAction>}
+        lead={<Icon decorative glyph={icons.archive} size="default" tone="muted" />}
+        meta={[<CardStatus key="s" label="Hasn’t checked in for 23 hours" tone="warn" />, "18 clips"]}
+        title="Local news breaks"
+      />
+    </ListGroup>
+  ),
+};
+
 const People: Story = {
   render: () => (
     <ListGroup aria-label="People">
       <RowCard
         action={<CardAction>Manage</CardAction>}
-        lead={<Text textRole="cardInitials">A</Text>}
+        lead={
+          <Text textRole="label" tone="primary">
+            A
+          </Text>
+        }
         meta={[<CardStatus key="s" label="You" tone="ok" />, "Admin", "Media-server account · seen today"]}
         title="Ada Marlowe"
       />
       <RowCard
         action={<CardAction attention>New invite</CardAction>}
-        lead={<Text textRole="cardInitials">J</Text>}
+        lead={
+          <Text textRole="label" tone="primary">
+            J
+          </Text>
+        }
         meta={[<CardStatus key="s" label="Invitation expired" tone="warn" />, "Member", "Invited 9 days ago"]}
         title="Juniper Oake"
       />
@@ -238,4 +274,4 @@ const Ratios: Story = {
 };
 
 export default meta;
-export { Clips, People, Phone, Programmes, Ratios, Requests, Rows };
+export { Clips, People, Phone, Programmes, Ratios, Requests, Rows, RowsNarrow };

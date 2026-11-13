@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channeldatastore"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // lineupEntry is film n's lineup entry, keyed like acqItem(n).
@@ -26,9 +26,10 @@ func lineupEntry(n int, title string) schedule.LineupEntry {
 // scheduled (ch.Desired) and the rest retirable.
 func seedFullChannel(t *testing.T, st store.Store, id, jobID string, lineup []schedule.LineupEntry, airing []provision.Key) {
 	t.Helper()
+	seedOriginJob(t, st, jobID)
 	ch := channelstore.Channel{Lineup: lineup}
 	ch.ID = id
-	ch.IntentRef = jobID
+	ch.IntentRef, ch.FromRequest = jobID, jobID != ""
 	ch.Name = "Full " + id
 	ch.Number = 77
 	ch.Strategy = schedule.Sequential

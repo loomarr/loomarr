@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/llm"
@@ -21,7 +22,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // buildSuggester constructs the REAL suggester exactly as main.go does — real LLM
@@ -42,7 +42,9 @@ func buildSuggester() (*suggest.Suggester, ScheduleMaterializer, *observedProvid
 
 type evalClients struct {
 	library LibraryReader
-	tmdb    *tmdb.Client
+	// evidence is the Library's tags and credits for owned discovery hits (#3006); nil skips it.
+	evidence store.LibraryEvidenceReader
+	tmdb     *tmdb.Client
 }
 
 // buildEvalClients constructs only evidence adapters. It deliberately cannot
@@ -66,12 +68,12 @@ func buildEvalClients() (evalClients, error) {
 		return evalClients{}, fmt.Errorf("TMDB_API_KEY required for the eval (grounding + discovery)")
 	}
 	tm := tmdb.New(tmdbKey)
-	return evalClients{library: lib, tmdb: tm}, nil
+	return evalClients{library: lib, evidence: lib, tmdb: tm}, nil
 }
 
 func buildSuggesterWithClients(clients evalClients) (*suggest.Suggester, *observedProvider, error) {
 	cat := titlesearch.New(titlesearch.LibrarySearch{Titles: clients.library, Facts: clients.library}, clients.tmdb).
-		WithPresence(titlesearch.LibraryOwnership{Titles: clients.library})
+		WithPresence(titlesearch.LibraryOwnership{Titles: clients.library}).WithEvidence(clients.evidence)
 	provider, err := buildProvider()
 	if err != nil {
 		return nil, nil, err

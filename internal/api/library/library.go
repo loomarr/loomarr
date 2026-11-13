@@ -3,7 +3,9 @@ package library
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -11,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Settings → Library (#2151 decisions 6 and 29): the folders Loomarr reads media from, the path
@@ -20,34 +23,39 @@ import (
 // LibraryRootService discovers, checks and records scan roots, and runs the scanner over them
 // (scan.Library).
 type LibraryRootService interface {
-	List(ctx context.Context) (store.LibraryRoots, error)
-	Discover(ctx context.Context) (store.LibraryRoots, []scan.SourceResult, error)
+	List(ctx context.Context) (librarystore.LibraryRoots, error)
+	Discover(ctx context.Context) (librarystore.LibraryRoots, []scan.SourceResult, error)
 	Add(ctx context.Context, path string) error
 	SetInUse(ctx context.Context, path string, inUse bool) error
 	SetMapping(ctx context.Context, authority, authorityPath, local string) error
 
 	Enabled() bool
 	Progress() scan.Progress
-	Counts(ctx context.Context) (store.LibraryFileCounts, error)
+	Importing() scan.ProgressSnapshot
+	Counts(ctx context.Context) (librarystore.LibraryFileCounts, error)
+	HeldTitles(ctx context.Context, root string) ([]string, int, error)
+	Skipped(ctx context.Context) ([]librarystore.LibrarySkipped, error)
+	Details(ctx context.Context) (scan.Details, error)
 	Rescan() error
+	RefreshEverything(ctx context.Context) error
 	ConfirmRemovals(ctx context.Context, root string) error
 
-	Items(ctx context.Context, q store.LibraryItemQuery) (store.LibraryItemPage, error)
+	Items(ctx context.Context, q librarystore.LibraryItemQuery) (librarystore.LibraryItemPage, error)
 	Item(ctx context.Context, id string) (scan.ItemDetail, error)
 	UpdateDetails(ctx context.Context, id string) error
 	CheckFiles(ctx context.Context, id string) error
 	RemoveExtraCopy(ctx context.Context, id, path string) error
 
 	Needs(ctx context.Context) ([]scan.Need, error)
-	Problems(ctx context.Context) ([]store.LibraryItemSummary, error)
+	Problems(ctx context.Context) ([]librarystore.LibraryItemSummary, error)
 	NeedCount(ctx context.Context) (int, error)
-	Link(ctx context.Context, itemID string, id store.LibraryID) error
+	Link(ctx context.Context, itemID string, id librarystore.LibraryID) error
 	Ignore(ctx context.Context, itemID string) error
 	Unanswer(ctx context.Context, itemID string) error
 	SearchTitles(ctx context.Context, term, kind string) ([]scan.SearchHit, error)
 	// Episode orders (#2151 decision 53).
 	OrderNeeds(ctx context.Context) ([]scan.OrderNeed, error)
-	ChooseOrder(ctx context.Context, seriesID string, choice store.LibraryOrderChoice, orderID string) error
+	ChooseOrder(ctx context.Context, seriesID string, choice librarystore.LibraryOrderChoice, orderID string) error
 	// Collections (#2151 step 12, decision 28).
 	Collections(ctx context.Context) ([]scan.Collection, error)
 	Collection(ctx context.Context, id string) (scan.Collection, error)
@@ -105,6 +113,13 @@ func (s *Handlers) registerLibrary(api huma.API) {
 		Tags:        []string{"library"}, DefaultStatus: http.StatusAccepted,
 	}, httpcore.RoleAdmin), s.rescanLibrary)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "refreshLibrary", Method: http.MethodPost, Path: "/v1/library/refresh",
+		Summary: "Refresh everything in the library",
+		Description: "Writes every file again on a scan started now, and fetches every title's catalog record again " +
+			"in the background. Titles keep playing meanwhile. 409 when the scanner is turned off.",
+		Tags: []string{"library"}, DefaultStatus: http.StatusAccepted,
+	}, httpcore.RoleAdmin), s.refreshLibrary)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "confirmLibraryRemoval", Method: http.MethodPost, Path: "/v1/library/roots/confirm-removal",
 		Summary: "Remove the titles a scan no longer found",
 		Description: "Applies a held removal: a scan that would remove many titles from one folder waits for this. " +
@@ -126,6 +141,7 @@ type libraryRootDTO struct {
 	Path        string                 `json:"path" doc:"The folder on this machine"`
 	InUse       bool                   `json:"inUse" doc:"The maintainer confirmed it for scanning"`
 	Readable    bool                   `json:"readable" doc:"Loomarr opened it at the last check"`
+	Empty       bool                   `json:"empty" doc:"Loomarr opened it and found nothing in it at the last check; usually a drive or share that isn't connected"`
 	CheckedAt   *time.Time             `json:"checkedAt,omitempty" doc:"The last check; absent when never checked"`
 	AddedByHand bool                   `json:"addedByHand"`
 	FoundIn     []libraryFolderNameDTO `json:"foundIn" doc:"Every app that names this folder, and what it calls it"`
@@ -155,7 +171,7 @@ type libraryRootsOutput struct {
 	Body libraryRootsBody
 }
 
-func libraryRootsView(all store.LibraryRoots, results []scan.SourceResult) *libraryRootsOutput {
+func libraryRootsView(all librarystore.LibraryRoots, results []scan.SourceResult) *libraryRootsOutput {
 	out := &libraryRootsOutput{Body: libraryRootsBody{
 		Roots: make([]libraryRootDTO, 0, len(all.Roots)), PathMap: make([]libraryPathMappingDTO, 0, len(all.Paths)),
 	}}
@@ -169,7 +185,7 @@ func libraryRootsView(all store.LibraryRoots, results []scan.SourceResult) *libr
 		}
 	}
 	for _, r := range all.Roots {
-		dto := libraryRootDTO{Path: r.Path, InUse: r.InUse, Readable: r.Readable, AddedByHand: r.ByHand, FoundIn: names[r.Path]}
+		dto := libraryRootDTO{Path: r.Path, InUse: r.InUse, Readable: r.Readable, Empty: r.Empty, AddedByHand: r.ByHand, FoundIn: names[r.Path]}
 		if dto.FoundIn == nil {
 			dto.FoundIn = []libraryFolderNameDTO{}
 		}
@@ -283,39 +299,88 @@ func (s *Handlers) setLibraryPathMapping(ctx context.Context, in *setLibraryPath
 	return s.listLibraryRoots(ctx, nil)
 }
 
+// ScanProgress is how far a running import is: the earliest of its three steps still running.
+// It is the status endpoint's scan and, whole, the library_scan live frame, so the two never
+// differ in shape.
+type ScanProgress struct {
+	Step       string `json:"step" enum:"idle,walking,reading,lookingUp" doc:"The earliest step running: walking looks through the folders, reading reads each new file, lookingUp looks up each new title's details; idle when none runs"`
+	StepNumber int    `json:"stepNumber" minimum:"0" maximum:"3" doc:"The step's number, 1 to 3; 0 when idle"`
+	Done       int    `json:"done" doc:"How much of the step is done: top-level folder entries, files or titles"`
+	Total      int    `json:"total" doc:"How much the step has to do; 0 while it is still being counted"`
+	Current    string `json:"current,omitempty" doc:"What the step is on now: a folder, a file or a title; absent when unknown or paused"`
+	// EtaSeconds is absent until the step has run 30 s and done 2% of its total, and while paused.
+	EtaSeconds *int `json:"etaSeconds,omitempty" minimum:"0" doc:"Seconds the step has left; absent until it can be told, and while paused"`
+	Paused     bool `json:"paused" doc:"The step waits while someone is watching"`
+	Quiet      bool `json:"quiet" doc:"A pass nobody asked for, with nothing to read or look up: shown as one small line"`
+}
+
+// ScanProgressOf is the wire shape of p.
+func ScanProgressOf(p scan.ProgressSnapshot) ScanProgress {
+	out := ScanProgress{
+		Step: "idle", StepNumber: p.Number, Done: p.Done, Total: p.Total, Current: p.Current,
+		Paused: p.Paused, Quiet: p.Quiet,
+	}
+	if p.Step != "" {
+		out.Step = string(p.Step)
+	}
+	if p.HasETA {
+		eta := int(math.Ceil(p.ETA.Seconds()))
+		out.EtaSeconds = &eta
+	}
+	return out
+}
+
+// libraryDetailsDTO is how the titles' details are getting on: how many wait and when the next try
+// is. A key problem is never the household's to fix (a release build ships its own key), so it is
+// said only in the server's log, never here.
+type libraryDetailsDTO struct {
+	Waiting     int        `json:"waiting" doc:"Movies and series whose details haven't been looked up yet"`
+	Unreachable bool       `json:"unreachable" doc:"The catalog didn't answer the last lookup"`
+	RetryAt     *time.Time `json:"retryAt,omitempty" doc:"When looking up is tried again; absent when nothing is waiting on a retry"`
+}
+
 type libraryScanDTO struct {
-	Enabled bool   `json:"enabled" doc:"library.scanner.enabled: false stops every scan"`
-	Stage   string `json:"stage" enum:"idle,walking,reading" doc:"walking: listing folders; reading: reading new files"`
-	// HeadersDone and HeadersTotal are the reading stage's progress.
-	HeadersDone  int  `json:"headersDone" doc:"Files read so far in this scan"`
-	HeadersTotal int  `json:"headersTotal" doc:"Files this scan reads"`
-	Paused       bool `json:"paused" doc:"Reading waits while someone is watching"`
+	Enabled bool `json:"enabled" doc:"library.scanner.enabled: false stops every scan"`
+	ScanProgress
 	// ArrIncomplete is true when Sonarr or Radarr did not answer the last scan.
 	ArrIncomplete bool       `json:"arrIncomplete" doc:"Sonarr or Radarr didn't answer the last scan"`
 	LastScanAt    *time.Time `json:"lastScanAt,omitempty" doc:"When the last scan finished; absent before the first"`
 }
 
 type libraryHeldDTO struct {
-	Path     string `json:"path" doc:"The folder whose scan is waiting"`
-	Movies   int    `json:"movies" doc:"Movies the scan no longer found"`
-	Episodes int    `json:"episodes" doc:"Episodes the scan no longer found"`
-	Other    int    `json:"other" doc:"Extras the scan no longer found"`
+	Path       string   `json:"path" doc:"The folder whose scan is waiting"`
+	Movies     int      `json:"movies" doc:"Movies the scan no longer found"`
+	Episodes   int      `json:"episodes" doc:"Episodes the scan no longer found"`
+	Other      int      `json:"other" doc:"Extras the scan no longer found"`
+	Titles     []string `json:"titles" doc:"A few of the titles whose files it no longer found, by name: a show once for all its episodes"`
+	TitleCount int      `json:"titleCount" doc:"How many titles those files are in all"`
+}
+
+// librarySkippedDTO is one reason the scan skips files, with its files.
+type librarySkippedDTO struct {
+	Reason string   `json:"reason" enum:"broken_link,link_outside,disc_image,identity_conflict,invalid_facts" doc:"Why: broken_link, a shortcut whose file is gone; link_outside, a shortcut to a file outside the media folders; disc_image, a whole disc's image; identity_conflict, a file that claims another's identity; invalid_facts, a file whose details were refused"`
+	Total  int      `json:"total" doc:"How many files are skipped for this reason"`
+	Paths  []string `json:"paths" doc:"The first of them, by path"`
 }
 
 type libraryStatusOutput struct {
 	Body struct {
-		Health    string `json:"health" enum:"needs_folders,folder_offline,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open"`
+		Health    string `json:"health" enum:"needs_folders,folder_offline,folder_empty,ok" doc:"needs_folders: none in use; folder_offline: one in use didn't open; folder_empty: they all opened, but one held nothing"`
 		InUse     int    `json:"inUse" doc:"Folders in use"`
 		Offline   int    `json:"offline" doc:"Folders in use that didn't open at their last check"`
+		Empty     int    `json:"empty" doc:"Folders in use that opened with nothing in them at their last check"`
 		ToConfirm int    `json:"toConfirm" doc:"Readable folders found but not yet in use"`
 
-		Scan           libraryScanDTO   `json:"scan"`
-		Files          int              `json:"files" doc:"Media files found in folders in use"`
-		HeadersPending int              `json:"headersPending" doc:"Files not read yet"`
-		Problems       int              `json:"problems" doc:"Files Loomarr skips, such as disc images"`
-		NeedsYou       int              `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
-		Held           []libraryHeldDTO `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
-		Hooks          []libraryHookDTO `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
+		Scan           libraryScanDTO      `json:"scan"`
+		Files          int                 `json:"files" doc:"Media files found in folders in use"`
+		HeadersPending int                 `json:"headersPending" doc:"Files not read yet"`
+		Problems       int                 `json:"problems" doc:"Files Loomarr skips, such as disc images"`
+		Skipped        []librarySkippedDTO `json:"skipped" doc:"The files Loomarr skips, by why, each reason with its count and its first few paths"`
+		NeedsYou       int                 `json:"needsYou" doc:"Everything Needs you holds: titles Loomarr can't tell what they are, and titles that need a look"`
+		Held           []libraryHeldDTO    `json:"held" doc:"Removals waiting for the maintainer, one per folder"`
+		Unreadable     []string            `json:"unreadable" doc:"Files the scan can't keep because their names aren't UTF-8, by path, each as near its name as text allows: to rename"`
+		Hooks          []libraryHookDTO    `json:"hooks" doc:"Sonarr's and Radarr's webhooks to Loomarr"`
+		Details        libraryDetailsDTO   `json:"details" doc:"How the titles' details are getting on"`
 	}
 }
 
@@ -336,19 +401,47 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
 	}
+	details, err := svc.Details(ctx)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
 	st := scan.StatusOf(all)
 	out := &libraryStatusOutput{}
 	out.Body.NeedsYou = needsYou
 	b := &out.Body
-	b.Health, b.InUse, b.Offline, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.ToConfirm
+	b.Health, b.InUse, b.Offline, b.Empty, b.ToConfirm = string(st.Health), st.InUse, st.Offline, st.Empty, st.ToConfirm
 	b.Files, b.HeadersPending, b.Problems = counts.Files, counts.HeadersPending, counts.Problems
+	skipped, err := svc.Skipped(ctx)
+	if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+	}
+	b.Skipped = make([]librarySkippedDTO, 0, len(skipped))
+	for _, sk := range skipped {
+		b.Skipped = append(b.Skipped, librarySkippedDTO{Reason: sk.Problem, Total: sk.Total, Paths: sk.Paths})
+	}
 	b.Held = heldView(counts.Held)
+	for i := range b.Held {
+		h := &b.Held[i]
+		if h.Titles, h.TitleCount, err = svc.HeldTitles(ctx, h.Path); err != nil {
+			return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read the library status", "Try again in a moment.", err)
+		}
+	}
+	b.Details = libraryDetailsDTO{Waiting: details.Waiting, Unreachable: details.State == scan.LookupsUnreachable}
+	if !details.RetryAt.IsZero() {
+		at := details.RetryAt
+		b.Details.RetryAt = &at
+	}
 	b.Hooks = s.libraryHooksView()
 
 	p := svc.Progress()
+	b.Unreadable = []string{}
+	for _, r := range p.Roots {
+		for _, rel := range r.Unreadable {
+			b.Unreadable = append(b.Unreadable, path.Join(r.Root, rel))
+		}
+	}
 	b.Scan = libraryScanDTO{
-		Enabled: svc.Enabled(), Stage: string(p.Stage), HeadersDone: p.HeadersDone, HeadersTotal: p.HeadersAll,
-		Paused: p.Waiting, ArrIncomplete: p.ArrIncomplete,
+		Enabled: svc.Enabled(), ScanProgress: ScanProgressOf(svc.Importing()), ArrIncomplete: p.ArrIncomplete,
 	}
 	if !p.CompletedAt.IsZero() {
 		at := p.CompletedAt
@@ -358,7 +451,7 @@ func (s *Handlers) libraryStatus(ctx context.Context, _ *struct{}) (*libraryStat
 }
 
 // heldView groups held counts by folder, in folder order.
-func heldView(counts []store.LibraryHeldCount) []libraryHeldDTO {
+func heldView(counts []librarystore.LibraryHeldCount) []libraryHeldDTO {
 	out := []libraryHeldDTO{}
 	for _, c := range counts {
 		if len(out) == 0 || out[len(out)-1].Path != c.Root {
@@ -386,6 +479,19 @@ func (s *Handlers) rescanLibrary(ctx context.Context, _ *struct{}) (*libraryStat
 		return nil, httpcore.Conflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
 	} else if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't start a scan", "Try again in a moment.", err)
+	}
+	return s.libraryStatus(ctx, nil)
+}
+
+func (s *Handlers) refreshLibrary(ctx context.Context, _ *struct{}) (*libraryStatusOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	if err := svc.RefreshEverything(ctx); errors.Is(err, scan.ErrScannerOff) {
+		return nil, httpcore.Conflict("The scanner is turned off", "Turn library.scanner.enabled back on to scan your folders.")
+	} else if err != nil {
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't start the refresh", "Try again in a moment.", err)
 	}
 	return s.libraryStatus(ctx, nil)
 }

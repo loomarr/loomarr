@@ -6,9 +6,9 @@ import (
 
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
 )
@@ -106,17 +106,5 @@ func TestSearchAdapterNarrowsTitleResultsByMediaType(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].TMDBID != 90000002 {
 		t.Fatalf("media-type narrowed title results = %+v", got)
-	}
-}
-
-func TestTMDBFranchises_UnconfiguredIsUnavailableNotReconcileFailure(t *testing.T) {
-	resolver := tmdbFranchises{tmdb: tmdb.NewDynamic(func() string { return "" })}
-
-	collectionID, resolved, err := resolver.Collection(context.Background(), provision.Key("movie:tmdb:90000603"))
-	if err != nil {
-		t.Fatalf("Collection() error = %v, want nil for an unconfigured optional enrichment", err)
-	}
-	if resolved || collectionID != 0 {
-		t.Fatalf("Collection() = (%d, %v), want unresolved so a configured reconcile can heal it", collectionID, resolved)
 	}
 }

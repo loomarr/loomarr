@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // Rewind (§10 V51b) — the sanctioned way to make a clip re-run part of the pipeline, INCLUDING the
@@ -50,6 +51,10 @@ type RewindStore interface {
 
 // ErrTranscodeNeedsForce is returned when a rewind would re-encode a clip without `force`.
 var ErrTranscodeNeedsForce = errors.New("re-encoding loses a generation of quality and the original is gone; pass force to do it anyway")
+
+// ErrFilesDeleted refuses to re-run a clip Loomarr let go (#3855): its files are gone, and its row
+// is the record of why.
+var ErrFilesDeleted = errors.New("this clip's files were deleted a week after it was turned down; there is nothing to run again")
 
 // ErrPipelineNotRetryable distinguishes an execution retry from an arbitrary rewind or content
 // override. API callers map it to a conflict after reloading the authoritative row.
@@ -98,6 +103,11 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from pipelinestate.S
 	}
 	if clip.Path == "" {
 		return fmt.Errorf("clip %s has no playable path", hash)
+	}
+	if current, found, err := p.store.GetClipPipeline(ctx, hash); err != nil {
+		return err
+	} else if found && !current.FilesDeletedAt.IsZero() {
+		return ErrFilesDeleted
 	}
 	// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
 	// "preparing", and the terminal Ready transaction then rejects it forever because publication
@@ -149,7 +159,7 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from pipelinestate.S
 
 // evidenceReleased reports whether the clip keeps a source master but no evidence copy: admitted,
 // with its evidence dropped.
-func (p *Pipeline) evidenceReleased(clip cliplibrary.StoreClip) bool {
+func (p *Pipeline) evidenceReleased(clip clipstore.Clip) bool {
 	full, err := cliplibrary.ClipPath(p.clipDir, clip.Path, filepath.Ext(clip.Path))
 	if err != nil {
 		return false
@@ -263,16 +273,16 @@ func (p *Pipeline) Requeue(ctx context.Context, hash string) (bool, error) {
 	clip, _, _ := p.clips.GetClip(ctx, hash)
 	p.publish(row, clip)
 	if p.log != nil {
-		// ⚠ Logged HERE, not at the call site: the operator-facing adapter has no logger by
-		// design, and this is the line that distinguishes "the re-detect worked and the reel is
-		// moving" from "the reel is stuck" — the one fact that was unobservable before V54a.
+		// ⚠ The success is logged HERE, so the line that distinguishes "the re-detect worked and
+		// the reel is moving" from "the reel is stuck" is written by the code that knows it moved
+		// something. The caller logs a failure.
 		p.log.Info("split: re-detected reel returned to the belt", "clip", hash)
 	}
 	return true, nil
 }
 
 // invalidate clears the derived data owned by every rung at or after `idx`.
-func (p *Pipeline) invalidate(ctx context.Context, clip cliplibrary.StoreClip, idx int) error {
+func (p *Pipeline) invalidate(ctx context.Context, clip clipstore.Clip, idx int) error {
 	now := p.now().UTC()
 	at := func(id pipelinestate.StageID) bool { return pipelinestate.StageIndex(id) >= idx }
 

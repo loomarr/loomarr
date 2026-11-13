@@ -1,6 +1,7 @@
 import {
   getChannelGuideMockHandler,
   getGuideHighlightsMockHandler,
+  getHouseholdViewingMockHandler,
   getJobsListMockHandler,
 } from "@loomarr/api/msw";
 import { act, screen, waitFor, within } from "@testing-library/react";
@@ -11,6 +12,15 @@ import { server } from "@/test/msw/server";
 import { ADMIN, MEMBER, proposal, renderAt, stub } from "@/test/requests-harness";
 
 afterEach(() => vi.restoreAllMocks());
+
+// A programme far enough ahead to still be "next" after the fake clock runs five hours on.
+const PILOT = {
+  kind: "program",
+  scheduleBlockId: "b1",
+  startMs: Date.now() + 24 * 60 * 60_000,
+  stopMs: Date.now() + 25 * 60 * 60_000,
+  title: "The pilot",
+} as const;
 
 describe("HomePage (#1659)", () => {
   it("on an empty install, says nothing is on and offers the first channel", async () => {
@@ -31,7 +41,14 @@ describe("HomePage (#1659)", () => {
     server.use(
       getChannelGuideMockHandler({
         channels: [
-          { airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" },
+          {
+            airings: [{ ...PILOT, series: "A sci-fi anthology", season: 4 }],
+            channelId: "c1",
+            name: "Test",
+            number: 7,
+            pendingCount: 0,
+            status: "live",
+          },
         ],
         fromMs: 0,
         toMs: 0,
@@ -41,15 +58,7 @@ describe("HomePage (#1659)", () => {
         toMs: 0,
         highlights: [
           {
-            airing: {
-              kind: "program",
-              scheduleBlockId: "b1",
-              series: "A sci-fi anthology",
-              season: 4,
-              startMs: 0,
-              stopMs: 1,
-              title: "The pilot",
-            },
+            airing: { ...PILOT, series: "A sci-fi anthology", season: 4 },
             channelId: "c1",
             channelName: "Test",
             channelNumber: 7,
@@ -60,9 +69,11 @@ describe("HomePage (#1659)", () => {
     );
     renderAt("/dashboard");
     expect(await screen.findByRole("heading", { name: "Tonight" })).toBeInTheDocument();
+    // The guide is here before the page is, so the row is too; its reason follows with the
+    // highlights, which are read once a channel is on.
     const row = screen.getByRole("link", { name: /A sci-fi anthology/ });
     expect(row).toHaveTextContent("07");
-    expect(row).toHaveTextContent("Season 4 premiere");
+    await waitFor(() => expect(row).toHaveTextContent("Season 4 premiere"));
   });
 
   // The guide window is part of the query key. It is pinned at mount, so minutes passing never
@@ -76,7 +87,9 @@ describe("HomePage (#1659)", () => {
       releaseSlide = resolve;
     });
     const body = {
-      channels: [{ airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" }],
+      channels: [
+        { airings: [PILOT], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" },
+      ],
       fromMs: 0,
       toMs: 0,
     };
@@ -92,7 +105,7 @@ describe("HomePage (#1659)", () => {
         toMs: 0,
         highlights: [
           {
-            airing: { kind: "program", scheduleBlockId: "b1", startMs: 0, stopMs: 1, title: "The pilot" },
+            airing: PILOT,
             channelId: "c1",
             channelName: "Test",
             channelNumber: 7,
@@ -185,5 +198,52 @@ describe("HomePage — Needs you (#2785)", () => {
 
     expect(await screen.findByRole("heading", { name: "On now" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Needs you" })).not.toBeInTheDocument();
+  });
+});
+
+// Names on the wall's tiles are an admin's view only (#2785, privacy decision on #3010): a member is
+// not told who else is watching.
+describe("HomePage — who is watching on the wall (#2785)", () => {
+  const channel = { airings: [], channelId: "c1", name: "Test", number: 7, pendingCount: 0, status: "live" };
+  const guide = getChannelGuideMockHandler({
+    channels: [{ ...channel, status: "live" }],
+    fromMs: 0,
+    toMs: 0,
+  });
+  const sam = { channelId: "c1", device: "TV", name: "Sam", since: "2026-11-09T10:00:00Z", userId: "u1" };
+
+  it("names the viewers on their tile for an admin", async () => {
+    stub({ me: ADMIN });
+    server.use(
+      guide,
+      getHouseholdViewingMockHandler({
+        channels: [{ channelId: "c1", viewers: 1 }],
+        scope: "household",
+        viewers: [{ ...sam, you: false }],
+        watching: 1,
+      }),
+    );
+    renderAt("/dashboard");
+
+    expect(await screen.findByText("Sam watching")).toBeInTheDocument();
+    expect(screen.getByText("1 channel · 1 person watching")).toBeInTheDocument();
+  });
+
+  it("gives a member no names and no count on the wall", async () => {
+    stub({ me: MEMBER });
+    server.use(
+      guide,
+      getHouseholdViewingMockHandler({
+        channels: [{ channelId: "c1", viewers: 1 }],
+        scope: "self",
+        viewers: [],
+        watching: 1,
+      }),
+    );
+    renderAt("/dashboard");
+
+    expect(await screen.findByRole("heading", { name: "On now" })).toBeInTheDocument();
+    expect(screen.getByText("1 channel")).toBeInTheDocument();
+    expect(screen.queryByText(/Sam/)).not.toBeInTheDocument();
   });
 });

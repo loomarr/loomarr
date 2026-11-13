@@ -4,7 +4,7 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Badge, type BadgeTone, Card, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -128,11 +128,11 @@ const readinessAction = (readiness: FillerReadinessDTO): ReadinessAction | undef
 // label). The tones are NOT the mock's: it painted the worst rung green and the best amber, and
 // the redesign map (#1659) corrects that so green means good and red means nothing to play.
 // Keyed by the generated union, so a new rung is a compile error here.
-const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: BadgeTone }> = {
-  exact: { label: "Good match", tone: "lock" },
-  widened: { label: "Years loosened", tone: "caution" },
-  audience: { label: "Audience only", tone: "caution" },
-  bumper_card: { label: "Bumpers only", tone: "onair" },
+const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; tone: StatusTone }> = {
+  exact: { label: "Good match", tone: "ok" },
+  widened: { label: "Years loosened", tone: "warn" },
+  audience: { label: "Audience only", tone: "warn" },
+  bumper_card: { label: "Bumpers only", tone: "error" },
 };
 
 // The numbers a coverage card shows. Channels whose numbers all match share one pool.
@@ -152,23 +152,21 @@ const CoverageCard = ({ coverage, title }: { coverage: PoolChannelDTO; title: Re
   const badge = COVERAGE_BADGE[coverage.level];
   return (
     <Card padding={16}>
-      <div className="flex items-start justify-between gap-3">
+      <Stack align="start" direction="row" gap="control" justify="between">
         <div className="min-w-0">
           {title}
-          <p className="text-muted-foreground mt-1 text-sm">
+          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
             {coverage.level === "bumper_card"
               ? "Only a bumper card"
               : `${formatDuration(coverage.durationMs)} playable · ${pluralize(coverage.total, "clip")}`}
-          </p>
+          </Text>
         </div>
-        <Badge shape="square" tone={badge.tone} flexShrink={0} className="whitespace-nowrap">
-          {badge.label}
-        </Badge>
-      </div>
-      <p className="text-muted-foreground mt-3 text-xs">
+        <StatusLabel tone={badge.tone}>{badge.label}</StatusLabel>
+      </Stack>
+      <Text as="p" className="mt-3" textRole="hint" tone="secondary">
         {coverage.categories} {coverage.categories === 1 ? "category" : "categories"} ·{" "}
         {pluralize(coverage.brands, "brand")}
-      </p>
+      </Text>
     </Card>
   );
 };
@@ -184,8 +182,12 @@ const FillerOverview = () => {
   if (!readiness) {
     return (
       <Card aria-live="polite" padding={24}>
-        <p className="font-medium">Checking filler health…</p>
-        <p className="text-muted-foreground mt-1 text-sm">Finding out what's ready and what's on the way.</p>
+        <Text as="p" textRole="heading">
+          Checking filler health…
+        </Text>
+        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
+          Finding out what's ready and what's on the way.
+        </Text>
       </Card>
     );
   }
@@ -194,25 +196,27 @@ const FillerOverview = () => {
   const shared = sharedPool(readiness.pool.channels);
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       {/* Normal is quiet and the exception is loud (#1817, decided on #1908). Amber is the brand's
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
         <Card className="border-caution/40! bg-caution/5!" padding={20}>
-          <div className="flex flex-col items-start gap-4 sm:flex-row">
+          <Stack align="start" direction={{ base: "column", sm: "row" }} gap="4">
             <div className="min-w-0 flex-1">
-              <Badge shape="square" tone="caution">
-                Action recommended
-              </Badge>
-              <h2 className="mt-3 text-xl font-semibold">{action.title}</h2>
-              <p className="text-muted-foreground mt-1 max-w-3xl text-sm">{action.description}</p>
+              <StatusLabel tone="warn">Action recommended</StatusLabel>
+              <Text as="h2" className="mt-3" textRole="title">
+                {action.title}
+              </Text>
+              <Text as="p" className="mt-1 max-w-3xl" textRole="compact" tone="secondary">
+                {action.description}
+              </Text>
               {/* Every destination behind the button is admin-only, so a member got a button
                   that bounced. They get the state and who can act on it instead. */}
               {isAdmin ? null : (
-                <p className="text-muted-foreground mt-2 text-sm">
+                <Text as="p" className="mt-2" textRole="compact" tone="secondary">
                   An admin can sort this out from Filler › Manage.
-                </p>
+                </Text>
               )}
             </div>
             {isAdmin ? (
@@ -229,34 +233,36 @@ const FillerOverview = () => {
                 {action.label}
               </Action>
             ) : null}
-          </div>
+          </Stack>
         </Card>
       ) : (
         <Card alignItems="center" flexDirection="row" gap={10} padding={16}>
           <span aria-hidden className="bg-lock size-2 shrink-0 rounded-full" />
           <div className="min-w-0">
-            <h2 className="font-semibold">Filler is working on its own</h2>
-            <p className="text-muted-foreground text-sm">
+            <Text as="h2" textRole="heading">
+              Filler is working on its own
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               Loomarr is preparing clips automatically. Nothing needs your attention.
-            </p>
+            </Text>
           </div>
         </Card>
       )}
 
       <section aria-labelledby="coverage-heading">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <Stack align="end" className="mb-3" direction="row" gap="control" justify="between" wrap>
           <div>
-            <h2 id="coverage-heading" className="text-lg font-semibold">
+            <Text as="h2" id="coverage-heading" textRole="headline" strong>
               Channel coverage
-            </h2>
-            <p className="text-muted-foreground text-sm">
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
               See how much filler each channel has ready to play.
-            </p>
+            </Text>
           </div>
           <Action accessibilityRole="link" render={<Link to="/filler/library" />} variant="outline">
             Browse library
           </Action>
-        </div>
+        </Stack>
         {readiness?.pool.channels.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
             {shared ? (
@@ -290,14 +296,16 @@ const FillerOverview = () => {
             )}
           </div>
         ) : (
-          <Card className="text-muted-foreground text-sm" padding={16}>
-            {readinessQuery.error
-              ? "Channel coverage is temporarily unavailable."
-              : "No live channels need filler coverage yet."}
+          <Card padding={16}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {readinessQuery.error
+                ? "Channel coverage is temporarily unavailable."
+                : "No live channels need filler coverage yet."}
+            </Text>
           </Card>
         )}
       </section>
-    </div>
+    </Stack>
   );
 };
 

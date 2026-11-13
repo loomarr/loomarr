@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -37,7 +37,7 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
 	}
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
-		lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		lib := mediaserver.New(mediaserver.Emby, ms.URL, ms.AdminToken, "dev")
 		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", identitystore.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", identitystore.RoleMember)
@@ -46,11 +46,13 @@ func newAuthFlowHarness(t *testing.T) *authFlowHarness {
 			Store:        defaults.Store,
 			Auth:         sessionAuth(mgr, "break-glass-token"),
 			Log:          defaults.Log,
-			Login:        auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:     mgr,
-			Passwords:    auth.NewPasswordService(defaults.Store, func() string { return "u-new" }, time.Now),
-			UserSync:     auth.NewUserSync(lib, defaults.Store, time.Now),
 			CookieSecure: "false",
+			People: api.PeopleOptions{
+				Login:     auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+				Sessions:  mgr,
+				Passwords: auth.NewPasswordService(defaults.Store, func() string { return "u-new" }, time.Now),
+				UserSync:  auth.NewUserSync(lib, defaults.Store, time.Now),
+			},
 		})
 	})
 	return &authFlowHarness{apiHarness: base}

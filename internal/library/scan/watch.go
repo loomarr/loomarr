@@ -201,10 +201,9 @@ func (w *Watcher) addTree(fsw *fsnotify.Watcher, root, dir string) {
 				return
 			}
 		}
+		titled := holdsTitle(relTo(root, d), entries)
 		for _, e := range entries {
-			lower := strings.ToLower(e.Name())
-			if !e.IsDir() || skippedDirs[lower] || strings.HasPrefix(lower, ".trash-") || discDirs[lower] ||
-				(d != root && extrasDirs[lower]) {
+			if !e.IsDir() || skippedDir(relTo(root, d), e.Name(), titled) || discDirs[strings.ToLower(e.Name())] {
 				continue
 			}
 			add(filepath.Join(d, e.Name()))

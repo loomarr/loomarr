@@ -2,14 +2,11 @@ export * from "./clip-card";
 export * from "./clip-preview";
 export * from "./clip-row";
 export * from "./coverage-meter";
-// ⚠ `discover-panel` is DELETED (V35), not merely unrendered. Discover stopped being a tab —
-// searching is something you do to a source — and the redesigned per-source search is a
-// different shape (a result row carries date · duration · quality and a "Queue download"),
-// so the old panel was not reusable.
-//
-// Left barrel-exported it would have been "built and imported by nothing", which is the exact
-// state the reachability suite exists to catch — and a reviewer caught it here. Its replacement
-// is `source-search` below, which is why `GET /v1/filler/discover` is no longer API-only.
+// ⚠ There is no `discover-panel` (V35). Discover is not a tab — searching is something you do
+// to a source — and the per-source search is its own shape (a result row carries date ·
+// duration · quality and a "Queue download"): `source-search` below, the UI path for
+// `GET /v1/filler/discover`. A component exported here but rendered by nothing is "built and
+// imported by nothing", the exact state the reachability suite exists to catch.
 export * from "./filler-sources";
 export * from "./pod-timeline";
 export * from "./pool-health";

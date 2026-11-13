@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/filler/operator"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -41,12 +42,14 @@ type TaxonDTO struct {
 // command and query shapes prevents generated clients from asking an operator to submit counts the
 // server computes.
 type CreateTaxonDTO struct {
-	Slug           string   `json:"slug" doc:"Stable machine id — immutable after creation"`
-	Label          string   `json:"label"`
-	Parent         string   `json:"parent,omitempty"`
-	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
-	Synonyms       []string `json:"synonyms,omitempty"`
-	RetiredAliases []string `json:"retiredAliases,omitempty"`
+	Slug   string `json:"slug" doc:"Stable machine id — immutable after creation"`
+	Label  string `json:"label"`
+	Parent string `json:"parent,omitempty"`
+	Axis   string `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
+	// A taxon has a few near-miss forms and the odd renamed slug: 100 synonyms and 50 retired
+	// aliases are far past any real vocabulary entry (create, update and impact share them).
+	Synonyms       []string `json:"synonyms,omitempty" maxItems:"100"`
+	RetiredAliases []string `json:"retiredAliases,omitempty" maxItems:"50"`
 }
 
 // UpdateTaxonDTO omits the immutable slug: the path identifies the node and is authoritative.
@@ -55,8 +58,8 @@ type UpdateTaxonDTO struct {
 	Label          string   `json:"label"`
 	Parent         string   `json:"parent,omitempty"`
 	Axis           string   `json:"axis" enum:"product,format,seasonal,audience-cue,presentation"`
-	Synonyms       []string `json:"synonyms,omitempty"`
-	RetiredAliases []string `json:"retiredAliases,omitempty"`
+	Synonyms       []string `json:"synonyms,omitempty" maxItems:"100"`
+	RetiredAliases []string `json:"retiredAliases,omitempty" maxItems:"50"`
 }
 
 // TaxonomyImpactCommandDTO describes one prospective advanced vocabulary edit. A single command
@@ -68,8 +71,8 @@ type TaxonomyImpactCommandDTO struct {
 	Label          string   `json:"label,omitempty"`
 	Parent         string   `json:"parent,omitempty"`
 	Axis           string   `json:"axis,omitempty" enum:"product,format,seasonal,audience-cue,presentation"`
-	Synonyms       []string `json:"synonyms,omitempty"`
-	RetiredAliases []string `json:"retiredAliases,omitempty"`
+	Synonyms       []string `json:"synonyms,omitempty" maxItems:"100"`
+	RetiredAliases []string `json:"retiredAliases,omitempty" maxItems:"50"`
 }
 
 type TaxonomyImpactNodeDTO struct {
@@ -180,7 +183,7 @@ func (s *Handlers) previewTaxonomyEdit(ctx context.Context, in *previewTaxonomyE
 	if err != nil {
 		return nil, err
 	}
-	var impact TaxonomyImpact
+	var impact operator.Impact
 	if s.taxonomy != nil {
 		impact, err = s.taxonomy.Preview(ctx, edit)
 	} else if s.store != nil {
@@ -213,7 +216,7 @@ func impactCommandToEdit(command TaxonomyImpactCommandDTO) (clipstore.TaxonomyEd
 	}
 }
 
-func taxonomyImpactToDTO(impact TaxonomyImpact, deleting bool) TaxonomyImpactDTO {
+func taxonomyImpactToDTO(impact operator.Impact, deleting bool) TaxonomyImpactDTO {
 	out := TaxonomyImpactDTO{
 		DirectStoredClips:      impact.Store.DirectStoredClips,
 		DescendantStoredClips:  impact.Store.DescendantStoredClips,

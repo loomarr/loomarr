@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -93,7 +93,7 @@ func TestJourney_NewAdmin(t *testing.T) {
 		}
 	}
 
-	// A5: MODEL PICKER probe — the real systemLLMService + Prober over the Ollama
+	// A5: MODEL PICKER probe — the real picker service + Prober over the Ollama
 	// double: reachable, provider ollama, version from the double.
 	var sys struct {
 		Provider      string `json:"provider"`

@@ -3,7 +3,7 @@ package schedule
 import (
 	"time"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
 )
 
 // Lineup application (programming-design §9). Every write to a channel's approved lineup
@@ -14,6 +14,12 @@ import (
 // (deterministic, §10); the only non-pure inputs — library availability for the additive
 // prune, rating/collection lookups for the heal — are injected as callbacks in ApplyOpts, so
 // store/TMDB I/O stays in the caller.
+
+// MaxLineupEntries is the most titles one channel's approved lineup holds: the ceiling the editor
+// saves a whole list under (the `maxItems:"1000"` of the lineup fields, which struct tags cannot
+// spell as this constant; tests hold the two together) and the one every writer keeps the stored
+// lineup under, so a lineup the unattended paths grew is one the editor can still save.
+const MaxLineupEntries = 1000
 
 // LineupMode selects how ApplyLineup combines the current lineup with the incoming one.
 type LineupMode int
@@ -50,6 +56,11 @@ type ApplyOpts struct {
 	// Enrich (LineupHeal only): fills empty metadata on an entry in place (injected rating/
 	// collection lookups). Nil ⇒ no-op.
 	Enrich func(*LineupEntry)
+	// Full (LineupAdditive only): called for each genuinely-new pick the lineup had no room for
+	// (it holds at most MaxLineupEntries), in the order the picks came. A title already in the
+	// lineup is never turned away, and neither is one kept to make room: the lineup stops growing,
+	// it does not lose titles. Nil ⇒ the picks are turned away unreported.
+	Full func(LineupEntry)
 	// Now (LineupReplace only): the AddedAt stamped on an entry new to the lineup that carries
 	// none (a manual add through the API). Injected so this function stays pure.
 	Now time.Time
@@ -60,7 +71,7 @@ type ApplyOpts struct {
 func ApplyLineup(current, incoming []LineupEntry, mode LineupMode, opts ApplyOpts) []LineupEntry {
 	switch mode {
 	case LineupAdditive:
-		return applyAdditive(current, incoming, opts.Drop)
+		return applyAdditive(current, incoming, opts.Drop, opts.Full)
 	case LineupHeal:
 		return applyHeal(current, opts.Enrich)
 	default: // LineupReplace
@@ -132,8 +143,9 @@ func mergePreserve(cur, in LineupEntry) LineupEntry {
 
 // applyAdditive unions `fresh` onto `existing`: keep every existing entry except one that is
 // (a) not re-picked by `fresh` AND (b) reported droppable, then append the genuinely-new
-// picks. Order: existing-kept first (preserve the channel's shape), then new.
-func applyAdditive(existing, fresh []LineupEntry, drop func(LineupEntry) bool) []LineupEntry {
+// picks, while the lineup has room for them (MaxLineupEntries; a pick it has no room for goes to
+// full). Order: existing-kept first (preserve the channel's shape), then new.
+func applyAdditive(existing, fresh []LineupEntry, drop func(LineupEntry) bool, full func(LineupEntry)) []LineupEntry {
 	freshByKey := make(map[provision.Key]LineupEntry, len(fresh))
 	for _, e := range fresh {
 		freshByKey[e.Key] = e
@@ -153,6 +165,13 @@ func applyAdditive(existing, fresh []LineupEntry, drop func(LineupEntry) bool) [
 	}
 	for _, e := range fresh {
 		if _, dup := kept[e.Key]; dup {
+			continue
+		}
+		if len(out) >= MaxLineupEntries {
+			if full != nil {
+				full(e)
+			}
+			kept[e.Key] = struct{}{} // a pick listed twice is refused once
 			continue
 		}
 		out = append(out, e)

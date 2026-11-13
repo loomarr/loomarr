@@ -7,13 +7,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
-// The ids stored records name, and their rewrite: titles, airings (two ids for one item keep one
-// row per airing), a channel's slots, membership stamps, scope and rules, and open proposals; a
-// decided proposal is history, and the media server's caches go.
+// The ids stored records name: titles, airings, a channel's slots, membership stamps, scope and
+// rules, and open proposals; a decided proposal is history.
 func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	st := newStore(t)
@@ -39,8 +38,7 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	ch.Lineup[0].BoxSetIDs, ch.Lineup[0].BoxSetsResolved = []string{"boxset-1"}, true
 	ch.Policy.Scope.Collections = []string{"boxset-1", "own-1"}
 	ch.Policy.Rules = []schedule.SchedulingRule{{What: &schedule.ScopePolicy{Collections: []string{"boxset-2"}}}}
-	saved, err := st.SaveChannel(ctx, ch)
-	if err != nil {
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
 		t.Fatal(err)
 	}
 	for _, a := range []struct {
@@ -80,50 +78,7 @@ func testLibraryReferences(t *testing.T, newStore NewStoreFunc) {
 	if want := []string{"boxset-1", "boxset-2", "own-1"}; !slices.Equal(refs.Collections, want) {
 		t.Errorf("collections = %v, want %v", refs.Collections, want)
 	}
-
-	items := map[string]string{
-		"emby-film": "lib-film", "emby-film-alt": "lib-film", "emby-show": "lib-show", "emby-ep": "lib-ep",
-		"emby-old": "lib-old",
-	}
-	collections := map[string]string{"boxset-1": "own-9", "boxset-2": "own-8"}
-	if _, err := st.RewriteLibraryReferences(ctx, items, collections); err != nil {
-		t.Fatal(err)
-	}
-
-	refs, err = st.LibraryReferences(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{"lib-ep", "lib-film", "lib-home", "lib-show"}; !slices.Equal(refs.Items, want) {
-		t.Errorf("items after = %v, want %v", refs.Items, want)
-	}
-	if want := []string{"own-1", "own-8", "own-9"}; !slices.Equal(refs.Collections, want) {
-		t.Errorf("collections after = %v, want %v", refs.Collections, want)
-	}
-	if got, _ := st.GetTitle(ctx, show.Key); got.LibraryID != "lib-show" {
-		t.Errorf("show library id = %q", got.LibraryID)
-	}
-	got, err := st.GetChannel(ctx, "ch-1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Revision != saved.Revision+1 || got.Desired[0].LibraryItemID != "lib-film" || got.Lineup[0].BoxSetIDs[0] != "own-9" ||
-		!slices.Equal(got.Policy.Scope.Collections, []string{"own-9", "own-1"}) || got.Policy.Rules[0].What.Collections[0] != "own-8" {
-		t.Errorf("channel after = rev %d %+v %+v %+v", got.Revision, got.Desired, got.Lineup[0].BoxSetIDs, got.Policy)
-	}
-	last, err := st.LastAiredByKey(ctx, "ch-1")
-	if err != nil || len(last) != 1 {
-		t.Errorf("airings after = %v, %v", last, err)
-	}
-	if decided, err := st.GetProposal(ctx, "decided"); err != nil || decided.Body.Lineup[0].LibraryItemID != "emby-old" {
-		t.Errorf("a decided proposal was rewritten: %+v, %v", decided.Body.Lineup, err)
-	}
-	if open, err := st.GetProposal(ctx, "open"); err != nil || open.Body.Refused[0].Item.LibraryItemID != "lib-film" ||
-		open.Body.Policy.Scope.Collections[0] != "own-8" {
-		t.Errorf("open proposal after = %+v, %v", open.Body, err)
-	}
-	// Run again: nothing left to change.
-	if n, err := st.RewriteLibraryReferences(ctx, items, collections); err != nil || n != 0 {
-		t.Errorf("a second rewrite changed %d, %v; want 0", n, err)
+	if refs.Keys["emby-show"] != show.Key || refs.Keys["emby-film"] != film.Key {
+		t.Errorf("keys = %v, want the titles' keys", refs.Keys)
 	}
 }

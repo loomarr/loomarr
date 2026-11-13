@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/storedb"
 )
 
 // The per-clip ingest pipeline's persistence (§10 V51b, migration 00044).
@@ -28,7 +28,7 @@ import (
 const clipPipelineSelect = `SELECT clip_hash, acquisition_id, stage, status, progress, disposition,
 	reject_reason, reject_detail, attempts, force_run, next_run,
 	preparation_attempt, preparation_started_at, preparation_start_reason, preparation_progress,
-	stage_queued_at, stage_started_at, stages_json, enrolled_at, updated_at
+	stage_queued_at, stage_started_at, stages_json, enrolled_at, updated_at, files_deleted_at
 	FROM filler_clip_pipeline`
 
 // scanClipPipeline reads one row, decoding the ladder.
@@ -51,11 +51,12 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 		stageStartedAt         int64
 		enrolledAt             int64
 		updatedAt              int64
+		filesDeletedAt         int64
 	)
 	if err := sc.Scan(&p.ClipHash, &p.AcquisitionID, &stage, &status, &p.Progress, &dispo,
 		&reason, &p.RejectDetail, &p.Attempts, &p.ForceRun, &nextRun,
 		&p.PreparationAttempt, &preparationStartedAt, &preparationStartReason, &p.PreparationProgress,
-		&stageQueuedAt, &stageStartedAt, &raw, &enrolledAt, &updatedAt); err != nil {
+		&stageQueuedAt, &stageStartedAt, &raw, &enrolledAt, &updatedAt, &filesDeletedAt); err != nil {
 		return pipelinestate.ClipPipeline{}, err
 	}
 	p.Stage = pipelinestate.StageID(stage)
@@ -69,6 +70,7 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 	p.StageStartedAt = fromEpoch(stageStartedAt)
 	p.EnrolledAt = fromEpoch(enrolledAt)
 	p.UpdatedAt = fromEpoch(updatedAt)
+	p.FilesDeletedAt = fromEpoch(filesDeletedAt)
 	if raw != "" {
 		if err := json.Unmarshal([]byte(raw), &p.Stages); err != nil {
 			return pipelinestate.ClipPipeline{}, fmt.Errorf("pipeline ladder for %s is corrupt: %w", p.ClipHash, err)
@@ -82,7 +84,9 @@ func scanClipPipeline(sc scannable) (pipelinestate.ClipPipeline, error) {
 // ⚠ **This file is the ONLY writer of this table**, which is what keeps the state machine in one place. Unlike
 // `UpsertClip` there is no omission list to maintain here: the row is authored by exactly one
 // component (`filler.Pipeline`), so every column rides the update and none of them can be blanked
-// by a caller that did not know about them.
+// by a caller that did not know about them. The one exception is `files_deleted_at`, which only
+// `RetireRejectedClip` sets: a runner write carrying a row read before the files went must not
+// clear it.
 func (s *sqlStore) UpsertClipPipeline(ctx context.Context, p pipelinestate.ClipPipeline) error {
 	if err := s.writeClipPipeline(ctx, s.db, p); err != nil {
 		return fmt.Errorf("upsert clip pipeline %s: %w", p.ClipHash, err)
@@ -205,6 +209,56 @@ func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p pipelinestat
 	return nil
 }
 
+// RetireRejectedClip commits to deleting the files of a clip Loomarr fetched and rejected no later
+// than rejectedBy (#3855, decision 12 of #3838). In one transaction it re-checks the row is still
+// that reject (a retry since the caller listed it wins), that no channel pins the clip, and that the
+// clip is held; then it reaps the clip and stamps the row's files_deleted_at. The row keeps its
+// reason. It reports whether it retired the clip; the caller deletes the files after it commits.
+func (s *sqlStore) RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin retire rejected clip %s: %w", hash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	clipTx := s.db.Clips(tx)
+	// The clip row is locked first, as a retry locks it (RetryClipPipeline), so the two cannot
+	// deadlock on Postgres.
+	if _, err := clipTx.LockPublication(ctx, hash); errors.Is(err, clipstore.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock rejected clip %s: %w", hash, err)
+	}
+	query := storedb.LockRows(s.dialect, `SELECT clip_hash FROM filler_clip_pipeline
+		WHERE clip_hash = ? AND disposition = ? AND acquisition_id <> '' AND files_deleted_at = 0
+		  AND updated_at <= ?`)
+	var found string
+	err = tx.QueryRowContext(ctx, s.ph(query), hash, string(pipelinestate.DispositionRejected), epoch(rejectedBy)).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock rejected clip %s: %w", hash, err)
+	}
+	if pinned, err := clipTx.Pinned(ctx, hash); err != nil {
+		return false, fmt.Errorf("retire rejected clip %s: %w", hash, err)
+	} else if pinned {
+		return false, nil
+	}
+	if reaped, err := clipTx.Reap(ctx, hash, rejectedBy, at); err != nil {
+		return false, fmt.Errorf("reap rejected clip %s: %w", hash, err)
+	} else if !reaped {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET files_deleted_at = ? WHERE clip_hash = ?`),
+		epoch(at), hash); err != nil {
+		return false, fmt.Errorf("mark rejected clip %s files deleted: %w", hash, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit retire rejected clip %s: %w", hash, err)
+	}
+	return true, nil
+}
+
 // GetClipPipeline reads one row. Absence is not an error — an un-enrolled clip is ordinary.
 func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
 	p, err := scanClipPipeline(s.db.QueryRowContext(ctx, s.ph(clipPipelineSelect+` WHERE clip_hash = ?`), hash))
@@ -263,9 +317,10 @@ func (s *sqlStore) ListPipelineWork(ctx context.Context, now time.Time, limit in
 // next_run is in the future keeps the result bounded regardless of catalog size.
 func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (pipelinestate.PipelineOverview, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT disposition, status, stage, reject_reason,
-		CASE WHEN next_run > ? THEN 1 ELSE 0 END AS scheduled, COUNT(*)
+		CASE WHEN next_run > ? THEN 1 ELSE 0 END AS scheduled,
+		CASE WHEN files_deleted_at > 0 THEN 1 ELSE 0 END AS deleted, COUNT(*)
 		FROM filler_clip_pipeline
-		GROUP BY 1, 2, 3, 4, 5`), epoch(at))
+		GROUP BY 1, 2, 3, 4, 5, 6`), epoch(at))
 	if err != nil {
 		return pipelinestate.PipelineOverview{}, fmt.Errorf("pipeline overview: %w", err)
 	}
@@ -273,8 +328,8 @@ func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (pipeline
 	var out pipelinestate.PipelineOverview
 	for rows.Next() {
 		var disposition, status, stage, rejectReason string
-		var scheduled, count int
-		if err := rows.Scan(&disposition, &status, &stage, &rejectReason, &scheduled, &count); err != nil {
+		var scheduled, deleted, count int
+		if err := rows.Scan(&disposition, &status, &stage, &rejectReason, &scheduled, &deleted, &count); err != nil {
 			return pipelinestate.PipelineOverview{}, fmt.Errorf("scan pipeline overview: %w", err)
 		}
 		row := pipelinestate.ClipPipeline{
@@ -285,6 +340,9 @@ func (s *sqlStore) PipelineOverview(ctx context.Context, at time.Time) (pipeline
 		}
 		if scheduled != 0 {
 			row.NextRun = at.Add(time.Second)
+		}
+		if deleted != 0 {
+			row.FilesDeletedAt = at
 		}
 		out.AddLifecycle(row.Lifecycle(at), count)
 	}
@@ -409,7 +467,7 @@ func clipPipelineWhere(f pipelinestate.PipelineFilter, includeCursor bool) (stri
 // ⚠ Removed clips are excluded. A tombstoned clip is not work: enrolling it would run the whole
 // ladder against something deliberately taken out of rotation. Held clips and composites are
 // work, so the read includes them.
-func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error) {
+func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]clipstore.Clip, error) {
 	q := `SELECT hash FROM clips WHERE removed_at = 0 AND NOT EXISTS (
 			SELECT 1 FROM filler_clip_pipeline p WHERE p.clip_hash = clips.hash)
 		ORDER BY hash`
@@ -439,9 +497,9 @@ func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]c
 		return nil, fmt.Errorf("list clips without pipeline: %w", err)
 	}
 	sort.Slice(clips, func(i, j int) bool { return clips[i].Hash < clips[j].Hash })
-	out := make([]cliplibrary.StoreClip, 0, len(clips))
+	out := make([]clipstore.Clip, 0, len(clips))
 	for _, c := range clips {
-		out = append(out, cliplibrary.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
+		out = append(out, clipstore.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 	}
 	return out, nil
 }

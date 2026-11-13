@@ -1,61 +1,121 @@
-import { Icon, icons, playerChrome, Text } from "@loomarr/design-system";
-import { ScrollView, View } from "react-native";
+import {
+  type Density,
+  Icon,
+  icons,
+  NonModalDialog,
+  playerChrome,
+  Text,
+  useFocusLook,
+  useViewportInsets,
+} from "@loomarr/design-system";
+import { useCallback, useState } from "react";
+import { Pressable, ScrollView, View } from "react-native";
 
-import { webOnly } from "../glass";
+import { BarsEdge, ChannelBlock } from "../channel-band";
+import { nativeFocus, webOnly } from "../flat";
 import type { PlayerSheetProps } from "../player-chrome.type";
-import { ToolButton } from "../player-transport";
 
-// The one right-hand sheet (§9.1, plane 5): Settings, Info, Channels and the rest all open here, over
-// a dimmed picture, full height on the frame's right edge, so the picture stays in view beside it.
+// The one right-hand sheet (§9.5, layer 4): Subtitles, Audio, Picture, More, Info and Channels all
+// open here, over a dimmed picture, full height on the frame's right edge. It wears the band's
+// identity: the seven-bar edge, a compact channel block and the channel's name in the header.
 
-const PlayerSheet = ({ channelLabel, children, density, icon, onClose, title }: PlayerSheetProps) => (
-  <View
-    aria-label={title}
-    role="dialog"
-    style={{
-      backgroundColor: playerChrome.sheet,
-      borderLeftColor: playerChrome.glassRing,
-      borderLeftWidth: 1,
-      bottom: 0,
-      maxWidth: "100%",
-      position: "absolute",
-      right: 0,
-      top: 0,
-      width: density === "touch" ? 384 : 416,
-      zIndex: 40,
-      ...webOnly({
-        backdropFilter: `blur(${playerChrome.glassBlur}px)`,
-        boxShadow: playerChrome.shadowCard,
-      }),
-    }}
-  >
-    <View
+const CloseKey = ({ title, onPress }: { title: string; onPress: () => void }) => {
+  const [hovered, setHovered] = useState(false);
+  const { focused, ...focusHandlers } = useFocusLook();
+  // Focus moves into the sheet when it opens, so Esc and Tab act on it, not on a key that just left.
+  // A stable callback ref runs once, on mount. (Native has no focus to move; the web's host element does.)
+  const focusOnMount = useCallback((el: unknown) => {
+    (el as { focus?: () => void } | null)?.focus?.();
+  }, []);
+  return (
+    <Pressable
+      ref={focusOnMount}
+      accessibilityLabel={`Close ${title}`}
+      accessibilityRole="button"
+      {...focusHandlers}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      onPress={onPress}
       style={{
         alignItems: "center",
-        borderBottomColor: playerChrome.glassRing,
-        borderBottomWidth: 1,
-        flexDirection: "row",
-        gap: 10,
-        paddingLeft: 16,
-        paddingRight: 8,
-        paddingVertical: 6,
+        backgroundColor: hovered ? playerChrome.surfaceHover : playerChrome.surfaceRaised,
+        borderColor: playerChrome.hairline,
+        borderRadius: 6,
+        borderWidth: 1,
+        height: 48,
+        justifyContent: "center",
+        width: 48,
+        ...webOnly({
+          outlineColor: playerChrome.signal,
+          outlineStyle: focused ? "solid" : "none",
+          outlineWidth: 2,
+          transition: "background-color 120ms ease",
+        }),
+        ...nativeFocus(focused),
       }}
     >
-      <Icon color={playerChrome.signal} decorative glyph={icons[icon]} size="compact" />
-      <View style={{ flex: 1 }}>
-        <Text as="h2" density={density} textRole="label" tone="primary">
-          {title}
-        </Text>
-      </View>
-      <Text density={density} numberOfLines={1} textRole="guideMeta" tone="muted">
-        {channelLabel}
-      </Text>
-      <ToolButton density={density} icon="close" label={`Close ${title}`} onPress={onClose} pointer={false} />
-    </View>
-    <ScrollView contentContainerStyle={{ padding: 16 }} style={{ flex: 1 }}>
-      {children}
-    </ScrollView>
-  </View>
-);
+      <Icon color={playerChrome.text} decorative glyph={icons.close} size="control" />
+    </Pressable>
+  );
+};
 
-export { PlayerSheet };
+/** J's right-hand sheet width, before the right safe area it widens by. */
+const SHEET_WIDTH = { pointer: 416, touch: 384 } as const;
+const sheetWidth = (density: Density) => (density === "touch" ? SHEET_WIDTH.touch : SHEET_WIDTH.pointer);
+
+// On a phone on its side the notch or the home indicator can sit at the right edge: the sheet widens by
+// that inset and pads it, so its content keeps J's width clear of them. A browser's insets are zero.
+const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheetProps) => {
+  const insets = useViewportInsets();
+  return (
+    <NonModalDialog
+      label={title}
+      style={{
+        backgroundColor: playerChrome.surface,
+        borderLeftColor: playerChrome.hairline,
+        borderLeftWidth: 1,
+        bottom: 0,
+        maxWidth: "100%",
+        paddingRight: insets.right,
+        position: "absolute",
+        right: 0,
+        top: 0,
+        width: sheetWidth(density) + insets.right,
+        zIndex: 40,
+      }}
+    >
+      <BarsEdge height={density === "touch" ? 8 : 10} />
+      <View
+        style={{
+          alignItems: "stretch",
+          borderBottomColor: playerChrome.hairline,
+          borderBottomWidth: 1,
+          flexDirection: "row",
+          gap: 16,
+          paddingRight: 16,
+        }}
+      >
+        <ChannelBlock density="touch" number={channel.number} width={72} />
+        <View style={{ flex: 1, gap: 4, justifyContent: "center", minWidth: 0, paddingVertical: 16 }}>
+          <Text density={density} numberOfLines={1} textRole="label" tone="secondary">
+            {channel.name}
+          </Text>
+          <Text as="h2" density={density} numberOfLines={1} strong textRole="title" tone="primary">
+            {title}
+          </Text>
+        </View>
+        <View style={{ justifyContent: "center" }}>
+          <CloseKey onPress={onClose} title={title} />
+        </View>
+      </View>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 32 + insets.bottom, paddingHorizontal: 24, paddingTop: 16 }}
+        style={{ flex: 1 }}
+      >
+        {children}
+      </ScrollView>
+    </NonModalDialog>
+  );
+};
+
+export { PlayerSheet, sheetWidth };

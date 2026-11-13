@@ -7,6 +7,10 @@ import type { WatchFrameProps } from "./watch-frame.type";
 // exact height, not at least it, so a picture told to fill has a definite height to fill (or it
 // falls back to 16:9 and leaves a band). What doesn't fit, a portrait phone's panel, scrolls under
 // the picture. Black in both themes: it is the picture's letterbox, not a theme surface.
+//
+// ⚠ It scrolls down only when something overflows (`auto`), and never sideways. `overflow: scroll`
+// draws both scrollbars permanently wherever scrollbars are not overlays (Windows, Linux), which
+// took 15px off the picture on each axis with nothing to scroll (#3405).
 
 // Off-screen but in the accessibility tree: the page still needs a heading to be reachable.
 const visuallyHidden = {
@@ -24,7 +28,8 @@ const WatchFrame = ({ children, title }: WatchFrameProps) => (
     borderWidth={0}
     flexDirection="column"
     height="100dvh"
-    overflow="scroll"
+    overflowX="hidden"
+    overflowY="auto"
     role="main"
   >
     <View style={visuallyHidden}>

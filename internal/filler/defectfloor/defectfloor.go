@@ -20,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // defectMeasureBudget bounds how long one pass spends decoding. A pass that runs out leaves the rest
@@ -47,7 +48,7 @@ type DefectStore interface {
 	// rung for a held clip's verdict. A held clip carries its conveyor's stage.
 	ListDefectClips(ctx context.Context) ([]DefectClip, error)
 	// GetClip re-reads one clip, so evidence is released only from a clip still unheld.
-	GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error)
+	GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error)
 	// ListClipPaths is every clip's path, removed ones included: a removed clip can be restored,
 	// and the assets its sidecar names must survive until then.
 	ListClipPaths(ctx context.Context) ([]string, error)
@@ -65,8 +66,7 @@ type FingerprintFunc func(ctx context.Context, file string, durationMs int64) (c
 
 // DefectClip is a catalog clip with its admission time, so a backlog is measured oldest first.
 type DefectClip struct {
-	cliplibrary.StoreClip
-	CreatedAt time.Time
+	clipstore.Clip
 	// Stage is a held clip's conveyor rung. The floor measures it only once it reaches the
 	// defects rung: before then the bytes are not yet the ones that air, and a whole break not yet
 	// split would be judged as one ad.
@@ -151,7 +151,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 	judge := d.judgeNow(ctx)
 	var asks []defectAsk
 	for _, c := range clips {
-		if !defectCandidate(c.Clip) || !c.awaitingFloor() {
+		if !defectCandidate(c.Clip.Clip) || !c.awaitingFloor() {
 			continue
 		}
 		rec, known := records[c.Hash]
@@ -171,7 +171,7 @@ func (d *DefectFloor) Run(ctx context.Context) (DefectFloorResult, error) {
 				res.Pending++
 				continue
 			}
-			readings, err := d.measureClip(ctx, c.Clip)
+			readings, err := d.measureClip(ctx, c.Clip.Clip)
 			if err != nil {
 				if ctx.Err() != nil {
 					res.Pending++ // the pass was cancelled, not the clip
@@ -247,7 +247,7 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 		}
 		admitted = append(admitted, c)
 	}
-	var referenced map[string]int
+	var referenced *identity.AssetRefs
 	for _, c := range admitted {
 		full, err := cliplibrary.ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
 		if err != nil {
@@ -269,6 +269,13 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 				return
 			}
 		}
+		// An unreadable sidecar might name this evidence copy too. Releasing it would drop this clip's
+		// pointer to a file that may be shared, or strand the file; the release waits for the next pass.
+		if len(referenced.Unreadable()) > 0 {
+			d.warn("defects: evidence copies were not released; a clip's sidecar could not be read",
+				"sidecars", referenced.Unreadable())
+			return
+		}
 		evidence := tags.MediaAssets.Evidence.Asset.Path // non-nil: checked above
 		tags.MediaAssets.Evidence = nil
 		if err := asset.WriteSidecarTags(full, tags, false); err != nil {
@@ -277,8 +284,7 @@ func (d *DefectFloor) releaseEvidence(ctx context.Context, clips []DefectClip, f
 		}
 		d.released[c.Hash] = true
 		res.Released++
-		referenced[evidence]--
-		if referenced[evidence] > 0 {
+		if !referenced.Claim(evidence) {
 			continue // another clip's sidecar names it too
 		}
 		if err := os.Remove(filepath.Join(d.clipDir, filepath.FromSlash(evidence))); err != nil && !os.IsNotExist(err) {
@@ -327,7 +333,7 @@ func (d *DefectFloor) retireFailures(ctx context.Context, clips []DefectClip, fi
 // retire records the copy's fingerprint when it has none (identity has not reached it yet), takes it off
 // the catalog, then deletes its own files. The durable write commits before any unlink, as in
 // identity.Job.merge, so a failed unlink leaves only bytes, never a failing copy on air.
-func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]creative.Fingerprint, referenced map[string]int) (bool, error) {
+func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]creative.Fingerprint, referenced *identity.AssetRefs) (bool, error) {
 	full, err := cliplibrary.ClipPath(d.clipDir, c.Path, filepath.Ext(c.Path))
 	if err != nil {
 		d.warn("defects: a failing copy has no usable path", "clip", c.Hash, "err", err)
@@ -366,12 +372,13 @@ func (d *DefectFloor) retire(ctx context.Context, c DefectClip, fps map[string]c
 }
 
 // referenced counts the sidecars naming each media asset across every clip, removed ones included.
-func (d *DefectFloor) referenced(ctx context.Context) (map[string]int, error) {
+// An unreadable sidecar is logged and recorded in the result, which then keeps every shared asset.
+func (d *DefectFloor) referenced(ctx context.Context) (*identity.AssetRefs, error) {
 	paths, err := d.store.ListClipPaths(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return identity.ReferencedAssets(d.clipDir, paths), nil
+	return identity.ReferencedAssets(d.clipDir, paths, d.log), nil
 }
 
 // judgeState is the judge as one pass sees it: asked which model it is once, then counted down.
@@ -412,7 +419,7 @@ func (d *DefectFloor) save(ctx context.Context, rec *DefectRecord, changed bool)
 // itself (an outage, a spent budget) ends the asking for this pass, and every clip still waiting
 // stays pending for the next.
 func (d *DefectFloor) ask(ctx context.Context, ask *defectAsk, judge *judgeState, res *DefectFloorResult) (bool, error) {
-	rec, c := &ask.rec, ask.clip.Clip
+	rec, c := &ask.rec, ask.clip.Clip.Clip
 	if errors.Is(judge.err, ErrNoDefectJudge) {
 		rec.Judgement = &defects.Judgement{Version: defects.JudgeVersion, Ruling: defects.RulingNoJudge}
 		res.Ruled++

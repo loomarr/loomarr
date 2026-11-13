@@ -35,8 +35,8 @@ const PickTitle = ({
   onSearch: LibraryNeedSearch;
   onPick: (c: LibraryNeedCandidate) => void;
 }) => {
-  const [typed, setTyped] = useState("");
-  const query = useSettled(typed.trim());
+  const [search, setSearch] = useState("");
+  const query = useSettled(search.trim());
   const [found, setFound] = useState<Found>({ query: "" });
   useEffect(() => {
     if (query === "") return;
@@ -55,9 +55,9 @@ const PickTitle = ({
     <Surface gap="inline" padding="control">
       <Field
         label="Search for the title"
-        onChangeText={setTyped}
+        onChangeText={setSearch}
         placeholder="Type a movie or show name"
-        value={typed}
+        value={search}
       />
       {searched && found.failed ? (
         <Text textRole="body" tone="secondary">
@@ -74,7 +74,7 @@ const PickTitle = ({
           <Stack flexBasis={0} flexGrow={1} minWidth={0}>
             <Text textRole="body">{nameYear(c)}</Text>
           </Stack>
-          <Action accessibilityLabel={`Use ${nameYear(c)}`} onPress={() => onPick(c)} variant="secondary">
+          <Action accessibilityLabel={`Use ${nameYear(c)}`} onPress={() => onPick(c)} variant="outline">
             Use this one
           </Action>
         </Line>

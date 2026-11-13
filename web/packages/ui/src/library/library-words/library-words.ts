@@ -1,6 +1,12 @@
+import { formatGuideTime } from "@loomarr/core/guide";
 import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
-import type { LibraryHeldRemoval, LibraryScan } from "../library-settings/library-settings.type";
+import type {
+  LibraryDetails,
+  LibraryHeldRemoval,
+  LibraryScan,
+  LibrarySkipped,
+} from "../library-settings/library-settings.type";
 
 // The Library's shared plain words (design/library, PLAIN-WORDS.md): a folder is named for what it
 // holds, never by its path; counts read the way people say them.
@@ -28,22 +34,194 @@ const heldTitle = (held: LibraryHeldRemoval) => {
   return `${joinNames(parts)} ${one ? "seems" : "seem"} to be gone from your ${folderName(held.path)} folder`;
 };
 
-// What the scanner is doing, as one sentence and its dot. reading is true while new files' details
-// are being read, which is when a progress bar shows. With anything waiting in Needs you, idle says
-// only "Up to date" (the word sheet's): "every title's ready to air" would contradict it (#2779).
-const scanHeadline = (scan: LibraryScan, needsYou = false) => {
-  const reading = scan.enabled && scan.stage === "reading" && scan.headersTotal > 0;
-  const percent = reading ? Math.round((scan.headersDone / scan.headersTotal) * 100) : 0;
-  const [tone, text]: [ComponentProps<typeof StatusDot>["tone"], string] = !scan.enabled
-    ? ["off", "Reading your media folders is turned off"]
-    : reading && scan.paused
-      ? ["pending", "Paused while someone is watching"]
-      : reading
-        ? ["progress", "Adding your media"]
-        : needsYou
-          ? ["ok", "Up to date"]
-          : ["ok", "All caught up — every title's ready to air"];
-  return { percent, reading, text, tone };
+// "That's Amber Hollow, Brightwater, Calder Point and 2,403 more." — what letting them go removes.
+// Empty when no title is named (only extras are gone).
+const heldNames = (held: LibraryHeldRemoval) => {
+  if (held.titles.length === 0) return "";
+  const rest = held.titleCount - held.titles.length;
+  const names = rest > 0 ? [...held.titles, `${rest.toLocaleString("en-US")} more`] : held.titles;
+  return `That's ${joinNames(names)}.`;
 };
 
-export { folderName, heldTitle, joinNames, scanHeadline };
+// "2 files have names Loomarr can't read".
+const unreadableTitle = (paths: readonly string[]) =>
+  `${count(paths.length, "file has a name", "files have names")} Loomarr can't read`;
+
+// "Rename Ferrow �t� (1999).mkv and Kettle�.mkv using ordinary letters, then check again." Each
+// file by its own name: the folder it sits in is plain.
+const unreadableNames = (paths: readonly string[]) => {
+  const names = paths.slice(0, 3).map((p) => p.split("/").pop() ?? p);
+  const rest = paths.length - names.length;
+  return `Rename ${joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names)} using ordinary letters, then check again.`;
+};
+
+// What the scan skips, said a callout per kind: each names the first three files by their own
+// names, the rest as "N more", and says what fixes them. A file Loomarr refused, for whatever
+// reason, is Loomarr's to fix, so those two reasons are said as one.
+const SKIPPED_KINDS = [
+  {
+    reasons: ["broken_link"],
+    title: (n: number) =>
+      count(n, "shortcut points to a file that's gone", "shortcuts point to files that are gone"),
+    body: (names: string, n: number) =>
+      n === 1
+        ? `${names}. Point it at the file again or delete it, then check again.`
+        : `${names}. Point them at the files again or delete them, then check again.`,
+  },
+  {
+    reasons: ["link_outside"],
+    title: (n: number) =>
+      count(n, "shortcut leads outside your media folders", "shortcuts lead outside your media folders"),
+    body: (names: string, n: number) =>
+      `Loomarr only reads inside your media folders. Move ${names} into one, or add ${n === 1 ? "its folder" : "their folders"}.`,
+  },
+  {
+    reasons: ["disc_image"],
+    title: (n: number) => count(n, "disc image Loomarr can't play", "disc images Loomarr can't play"),
+    body: (names: string, n: number) =>
+      `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check again.`,
+  },
+  {
+    reasons: ["identity_conflict", "invalid_facts"],
+    title: (n: number) => count(n, "file Loomarr couldn't add", "files Loomarr couldn't add"),
+    body: (names: string, n: number) =>
+      `Loomarr couldn't make sense of ${names}. Check again; if ${n === 1 ? "it's" : "they're"} still here, it's a problem in Loomarr, not your ${n === 1 ? "file" : "files"}.`,
+  },
+] as const satisfies readonly {
+  reasons: readonly LibrarySkipped["reason"][];
+  title: (n: number) => string;
+  body: (names: string, n: number) => string;
+}[];
+
+const skippedCallouts = (skipped: readonly LibrarySkipped[]) =>
+  SKIPPED_KINDS.flatMap((kind) => {
+    const mine = skipped.filter((s) => (kind.reasons as readonly string[]).includes(s.reason));
+    const total = mine.reduce((sum, s) => sum + s.total, 0);
+    if (total === 0) return [];
+    const names = mine
+      .flatMap((s) => s.paths)
+      .slice(0, 3)
+      .map((p) => p.split("/").pop() ?? p);
+    const rest = total - names.length;
+    const listed = joinNames(rest > 0 ? [...names, `${rest.toLocaleString("en-US")} more`] : names);
+    return [{ key: kind.reasons[0], title: kind.title(total), body: kind.body(listed, total) }];
+  });
+
+// The three steps of adding media, as the maintainer reads them.
+const STEP_NAMES: Record<Exclude<LibraryScan["step"], "idle">, string> = {
+  walking: "Looking through your folders",
+  reading: "Reading each file",
+  lookingUp: "Looking up details",
+};
+const LAST_STEP = 3;
+
+// Whole minutes left, never below one; past an hour and a half, whole hours.
+const timeLeft = (seconds: number) => {
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return minutes >= 90 ? { n: Math.round(minutes / 60), unit: "hour" } : { n: minutes, unit: "minute" };
+};
+
+// "About 9 minutes left in this step"; on the last step, "About 9 minutes left".
+const etaSentence = (seconds: number, lastStep: boolean) => {
+  const { n, unit } = timeLeft(seconds);
+  const left =
+    n === 1 ? `About ${unit === "hour" ? "an hour" : "a minute"} left` : `About ${n} ${unit}s left`;
+  return lastStep ? left : `${left} in this step`;
+};
+
+// "about 9 min left", for the shelf's one line.
+const etaShort = (seconds: number) => {
+  const { n, unit } = timeLeft(seconds);
+  return `about ${n} ${unit === "hour" ? "hr" : "min"} left`;
+};
+
+// What the scanner is doing, as one sentence and its dot, and the lines under it while a step runs.
+// running is true while an import shows its steps; quiet is an hourly pass that found nothing to
+// add, shown as one small line. With anything waiting in Needs you, or a folder in use that held
+// nothing (a drive that may not be connected), idle says only "Up to date" (the word sheet's):
+// "every title's ready to air" would contradict it (#2779).
+const scanHeadline = (scan: LibraryScan, notAllThere = false) => {
+  const active = scan.enabled && scan.step !== "idle";
+  const quiet = active && scan.quiet;
+  const running = active && !quiet;
+  const counted = scan.total > 0;
+  const percent = running && counted ? Math.min(100, Math.round((scan.done / scan.total) * 100)) : 0;
+  const [tone, text]: [ComponentProps<typeof StatusDot>["tone"], string] = !scan.enabled
+    ? ["off", "Reading your media folders is turned off"]
+    : quiet
+      ? ["progress", "Checking your folders…"]
+      : running && scan.paused
+        ? ["pending", "Paused while someone is watching"]
+        : running
+          ? ["progress", "Adding your media"]
+          : notAllThere
+            ? ["ok", "Up to date"]
+            : ["ok", "All caught up — every title's ready to air"];
+  const step = scan.step === "idle" ? undefined : scan.step;
+  const lastStep = scan.stepNumber === LAST_STEP;
+  const eta = running && !scan.paused && scan.etaSeconds !== undefined ? scan.etaSeconds : undefined;
+  return {
+    current: running && !scan.paused ? scan.current : undefined,
+    /** A step is moving: the headline's twirl, never while paused. */
+    moving: quiet || (running && !scan.paused),
+    percent,
+    quiet,
+    running,
+    /** "Step 1 of 3 · Looking through your folders · 112 of 533". */
+    stepLine:
+      running && step
+        ? [
+            `Step ${scan.stepNumber} of ${LAST_STEP}`,
+            STEP_NAMES[step],
+            counted ? `${scan.done.toLocaleString("en-US")} of ${scan.total.toLocaleString("en-US")}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : undefined,
+    /** "About 9 minutes left in this step", or the wait before there is one; none while paused. */
+    timeLine:
+      running && !scan.paused
+        ? eta !== undefined
+          ? etaSentence(eta, lastStep)
+          : "Working out how long this takes…"
+        : undefined,
+    /** The shelf's: "Step 1 of 3 · 21% · about 9 min left". */
+    shortLine:
+      running && step
+        ? [`Step ${scan.stepNumber} of ${LAST_STEP}`, `${percent}%`, eta !== undefined ? etaShort(eta) : ""]
+            .filter(Boolean)
+            .join(" · ")
+        : undefined,
+    text,
+    tone,
+  };
+};
+
+// Titles waiting for their details, said only while a retry is due: while step 3 is looking them up
+// the progress says so instead. A key problem never shows here — the household has nothing to do
+// about it (a release build ships its own key), so only the server's log says it. undefined when
+// nothing waits on a retry.
+//   line:   "12 titles are waiting on details — trying again at 3:40 PM" (the Library's line)
+//   title:  "12 titles are waiting on details" (Settings → Library's row)
+//   reason: "Can't reach TMDB — trying again at 3:40 PM", or "Trying again at 3:40 PM"
+// The time is told on the household's clock (the Guide's), the device's while that is unknown.
+const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, timeZone?: string) => {
+  if (!details?.retryAt || details.waiting === 0 || scan.step === "lookingUp") return undefined;
+  const title = `${count(details.waiting, "title", "titles")} ${details.waiting === 1 ? "is" : "are"} waiting on details`;
+  const at = formatGuideTime(Date.parse(details.retryAt), timeZone);
+  const retry = `trying again at ${at}`;
+  const reason = details.unreachable ? `Can't reach TMDB — ${retry}` : `Trying again at ${at}`;
+  return { title, line: `${title} — ${retry}`, reason };
+};
+
+export {
+  detailsWaiting,
+  folderName,
+  heldNames,
+  heldTitle,
+  joinNames,
+  scanHeadline,
+  skippedCallouts,
+  unreadableNames,
+  unreadableTitle,
+};

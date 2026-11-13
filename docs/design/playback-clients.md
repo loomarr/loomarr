@@ -21,7 +21,9 @@ playback.
   hidden player, `MediaSource` or decoder. The contract is platform-neutral: each platform adapter
   binds its native player behind the same catalog, attempt and telemetry vocabulary.
 - **Controls.** Channel Up/Down are visible controls; `ArrowUp`/`ArrowDown`, `PageUp`/`PageDown` and
-  `ChannelUp`/`ChannelDown` invoke them when focus is not in a control that owns those keys. The OSD
+  `ChannelUp`/`ChannelDown` invoke them from anywhere on the page, a button included, unless focus
+  is in a control that owns those keys (text entry, a slider, a menu, a list of options, radios,
+  tabs, a grid) or a sheet or dialog is open. The OSD
   switches at once to the target and `Tuning…` and stays over the held frame until the replacement
   decodes. A failed tune keeps the target visible with a retry, which takes focus on a TV. A start
   the server refuses (a 5xx answer to the master, the request that starts the stream) shows the
@@ -162,34 +164,49 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   live edge. The playbar's past is seekable by click or drag; its future is preview only. `L` (and
   the live indicator) goes live; **Start over** seeks to the current programme's start, offered
   only when that start is inside the window.
-- **Preview playbar.** Time-true from fifteen minutes behind to about two hours ahead, from the
-  Guide airings (stills, S/E, rating, synopsis) and each break's pod entries (one tick per spot,
-  with its thumbnail). A pointer hovers it for the preview card; touch opens the right-hand sheet.
+- **The band, with the film strip (#3449).** The chrome is variant J, channel-first: the band names
+  the channel and what is on. On desktop and television its foot is the film strip, the timeline of
+  what is on and what follows, with a preview card for the block under the pointer or the remote's
+  focus; phones keep one progress line and Next, and their film strip lives in More.
 - **Station ID.** Every settled tune shows the station-ID card for five seconds, and a break reads
-  `Commercials · <clip title>`, the same rules as [Android TV](#android-tv).
-- **Panels.** Info (`I`: still, synopsis, year, rating, genres, time bar and `Up next`; closes on
-  `Esc` and by itself after eight seconds during playback), Settings (`⚙`: quality Auto plus the
-  ladder's manual rungs, shown as `Auto · 720p`, with audio and subtitles), Playback info (from ⚙,
-  open to everyone: members see rung, resolution, codec, bitrate, buffer and lag; admins also see
-  the encoder, transcode reason and session, and get **Copy stream URL**), Channels (`G`) and
-  Shortcuts (`?`, replacing the always-visible hint line). One sheet is open at a time.
-- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
-  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
-  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
-  restarts the encoder.
+  the programme's title with `Back in n min`, the same rules as [Android TV](#android-tv).
+- **Panels.** Subtitles and Audio (utilities over the keys, `C` and `A`), Picture (quality Auto plus
+  the ladder's manual rungs, shown as `Auto · 720p`), Playback details (`I`: the one place technical
+  terms are allowed; members see rung, resolution, codec, bitrate, buffer and lag; admins also see
+  the encoder, transcode reason and session, and get **Copy stream URL**), Info (the on-air
+  programme's card in full) and Channels, all behind More except the utilities'. On desktop they open
+  as a menu over the keys; on a phone as a sheet (§9.5). One is open at a time.
+- **Audio, subtitles and quality are per viewer and remembered.** Audio and quality are among the
+  renditions the Channel publishes (the default audio plus at most one alternate); that choice
+  switches the rendition and never restarts the encoder. Subtitles are soft and served beside the
+  stream (`GET /v1/channels/{id}/subtitles`, [`playout.md`](playout.md)): the player asks for the
+  cues of the remembered track key around its playhead, on the channel's wall clock, and draws them
+  over the picture (`C` cycles them).
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
-  The route hides the app nav and has a ✕/back control.
+  The route hides the app nav and has a back arrow in the top left corner.
 - **Keys** (when focus is not in a control that owns them): `Space`/`K` play-pause · `←`/`→` ±10 s ·
   `L` live · `↑`/`↓`/`PgUp`/`PgDn` channel · digits + `Enter` tune · `G` channels · `M` mute ·
   `−`/`=` volume · `F` fullscreen · `P` picture-in-picture · `C` subtitles · `I` info · `?`
   shortcuts · `Esc` closes the top layer, then leaves `/watch`.
-- **Phone.** Portrait keeps the N5 layout (picture on top, panel below) with ⚙ and ⓘ added and the
-  playbar as a `Coming up` filmstrip; landscape is the full-bleed overlay with 44 px targets, tap to
-  show or hide the chrome, and double-tap either side to skip ten seconds.
+- **Volume** (desktop). The Volume key opens the volume level in the menu's place: a glyph, a
+  slider and the level, or "Off" when muted. Dragging to zero mutes. Any change of level or mute
+  (`M`, `−`/`=`) shows it for a moment. The first play's own mute does not; the unmute pill
+  speaks for that. A phone or a television has no Volume key: its own buttons set the level.
+- **Phone.** On its side, the band and keys at phone size over the picture; tap shows or hides the
+  chrome, and it leaves after 5 s untouched while playing. Upright, nothing covers the picture: a
+  toolbar above it, the band and keys below (#2775). On its side what a key opens is the right-hand
+  sheet; upright it rises from the bottom. The phone app turns with the phone only on Watching and
+  stays upright everywhere else (#1831).
 - **Other clients.** The phone, Android TV and Apple TV apps adopt the same chrome from
-  `@loomarr/ui` after the web route ships, one PR each; the TV's input mapping for the playbar is
-  decided then.
+  `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
+  remote focus starts on the film strip's on-air block (§9.7). Their Audio reads the same two things
+  the web's does (the airing programme's tracks and the channel's language, both a member's reads,
+  `@loomarr/core/channel-audio`), each time it opens. Subtitles are `@loomarr/core/channel-subtitles` on every
+  client: the menu's choices, `C`'s next one, and a follower that asks for the remembered track's
+  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The phone and TV
+  remember the choice on the device (`usePairedSubtitles`, `@loomarr/paired-client`); a television's
+  menu starts its focus on the choice in use, and its line stays while the controls are down.
 
 ## Android TV
 
@@ -201,7 +218,14 @@ media-server token and no second playback API. It installs as a Leanback launche
 the user's home-screen ordering.
 
 - **Watching** is full-screen video. Up/down and Channel keys tune adjacent Channels, number keys
-  enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. Channel
+  enter a Channel, OK opens Guide, Left (or Menu) opens Surf, Back returns to the launcher. While the
+  controls are up, Left and Right move focus through them instead (frontend-design §9.7). The More
+  key opens a menu over the keys (Channels, Info, and Start over and Go live when behind): every
+  arrow moves through its rows, the controls stay up until a choice, and Menu or Back closes it, as
+  they close Info, the on-air card pinned open, before doing anything else (§9.5). Closing a menu
+  hands the remote's focus back to the key that opened it. The Audio key
+  opens the channel's language in the same place, read-only, so focus stays on the key, whose OK
+  closes it as Menu or Back does. Channel
   identity and the programme bar appear together and clear after five seconds. During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
   never shown. The Guide supplies a clip title only when it is viewer copy. Each clip records where

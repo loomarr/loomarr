@@ -3,6 +3,7 @@ package defectfloor
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/media/creative"
 	"github.com/loomarr/loomarr/internal/media/defects"
 	"github.com/loomarr/loomarr/internal/media/tools"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 type defectMemStore struct {
@@ -42,14 +44,14 @@ func (m *defectMemStore) RetireDefectiveCopy(_ context.Context, hash string, at 
 	return ErrCopyGone
 }
 
-func (m *defectMemStore) GetClip(_ context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
+func (m *defectMemStore) GetClip(_ context.Context, hash string) (clipstore.Clip, bool, error) {
 	for _, c := range m.clips {
 		if c.Hash == hash {
 			c.Held = c.Held || m.heldNow[hash]
-			return c.StoreClip, true, nil
+			return c.Clip, true, nil
 		}
 	}
-	return cliplibrary.StoreClip{}, false, nil
+	return clipstore.Clip{}, false, nil
 }
 
 func (m *defectMemStore) ListClipPaths(context.Context) ([]string, error) {
@@ -231,10 +233,14 @@ func TestDefectFloor_RetiresOnlyWithAFingerprintAndKeepsSharedAssets(t *testing.
 	}
 	clip := func(body string, m asset.Identity) DefectClip {
 		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
-		if err := asset.WriteSidecarTags(filepath.Join(dir, cliplibrary.ClipRelPath(hash, ".mp4")), asset.SidecarTags{MediaAssets: &asset.Manifest{
-			Version: mediaAssetManifestVersion, SourceMaster: m,
-		}}, false); err != nil {
-			t.Fatal(err)
+		// A clip with no master has no manifest: a manifest naming an empty master is not a valid
+		// sidecar, and an unreadable sidecar holds every shared asset.
+		if m.Path != "" {
+			if err := asset.WriteSidecarTags(filepath.Join(dir, cliplibrary.ClipRelPath(hash, ".mp4")), asset.SidecarTags{MediaAssets: &asset.Manifest{
+				Version: mediaAssetManifestVersion, SourceMaster: m,
+			}}, false); err != nil {
+				t.Fatal(err)
+			}
 		}
 		c := DefectClip{CreatedAt: t0}
 		c.Hash, c.Path, c.Era, c.Role, c.Placement, c.DurationMs = hash, cliplibrary.ClipRelPath(hash, ".mp4"), 1988, clips.Commercial, clips.PlacementBreakBody, 30_000
@@ -393,6 +399,110 @@ func TestDefectFloor_ReleasesAnAdmittedClipsEvidenceCopy(t *testing.T) {
 	}
 	if _, err := os.Stat(evidenceFile); !os.IsNotExist(err) {
 		t.Fatalf("evidence both clips released in one pass is still on disk (err %v)", err)
+	}
+}
+
+// A clip whose sidecar cannot be read might name the same master or evidence copy as a clip the
+// floor is disposing of. Retiring a failing copy still takes the copy off air and deletes its own
+// playback file and sidecar, but keeps its master; releasing an admitted clip's evidence waits.
+func TestDefectFloor_AnUnreadableSidecarHoldsSharedAssets(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	t0 := time.Unix(1_800_000_000, 0).UTC()
+	manifest := screeningSubjectManifest(t)
+	var logged strings.Builder
+	log := slog.New(slog.NewTextHandler(&logged, nil))
+
+	evidenceFile := filepath.Join(dir, filepath.FromSlash(manifest.Evidence.Asset.Path))
+	masterFile := filepath.Join(dir, filepath.FromSlash(manifest.SourceMaster.Path))
+	for _, f := range []string{evidenceFile, masterFile} {
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte("bytes"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The failing copy's source master is its own, so only the damaged sidecar could be sharing it.
+	ownMaster := ".loomarr-media/masters/22/22/own-source.mp4"
+	ownMasterFile := filepath.Join(dir, filepath.FromSlash(ownMaster))
+	if err := os.MkdirAll(filepath.Dir(ownMasterFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ownMasterFile, []byte("bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clip := func(body, master string) DefectClip {
+		hash := writeContentAddressedClip(t, dir, []byte(body), ".mp4")
+		m := manifest
+		if master != "" {
+			m.SourceMaster.Path = master
+		}
+		if err := asset.WriteSidecarTags(filepath.Join(dir, cliplibrary.ClipRelPath(hash, ".mp4")), asset.SidecarTags{MediaAssets: &m}, false); err != nil {
+			t.Fatal(err)
+		}
+		c := DefectClip{CreatedAt: t0}
+		c.Hash, c.Path, c.Era, c.Role, c.Placement = hash, cliplibrary.ClipRelPath(hash, ".mp4"), 1988, clips.Commercial, clips.PlacementBreakBody
+		return c
+	}
+	failing, admitted := clip("a blocky ad", ownMaster), clip("a clean ad", "")
+	neighbour := clip("an ad whose sidecar is damaged", "")
+	neighbourSidecar := tools.SidecarPathFor(filepath.Join(dir, neighbour.Path))
+	if err := os.WriteFile(neighbourSidecar, []byte("{truncated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	st := &defectMemStore{clips: []DefectClip{failing, admitted, neighbour}, records: map[string]DefectRecord{}}
+	measure := func(_ context.Context, file string, _, _ int, _ bool) (defects.Readings, error) {
+		if strings.Contains(file, failing.Hash) {
+			return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40, BlockMean: 90}, nil
+		}
+		return defects.Readings{Version: defects.MeasurementVersion, Width: 640, Height: 480, Frames: 40}, nil
+	}
+	probe := func(context.Context, string) (tools.Probed, error) { return tools.Probed{Width: 640, Height: 480}, nil }
+	floor := NewDefectFloor(st, probe, measure, someFingerprint, nil, dir, func() time.Time { return t0 }, log)
+
+	res, err := floor.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(st.retired, failing.Hash) || res.Retired != 1 {
+		t.Fatalf("pass = %+v retired %v, want the failing copy taken off the catalog", res, st.retired)
+	}
+	for _, gone := range []string{filepath.Join(dir, failing.Path), tools.SidecarPathFor(filepath.Join(dir, failing.Path))} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Errorf("the retired copy's own file %s survived (err %v)", gone, err)
+		}
+	}
+	for _, kept := range []string{ownMasterFile, masterFile, evidenceFile} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Errorf("%s was deleted although an unreadable sidecar might name it: %v", kept, err)
+		}
+	}
+	if res.Released != 0 {
+		t.Errorf("pass = %+v, want no evidence released while a sidecar is unreadable", res)
+	}
+	if tags, _ := asset.ReadSidecarTags(filepath.Join(dir, admitted.Path)); tags.MediaAssets == nil || tags.MediaAssets.Evidence == nil {
+		t.Error("the admitted clip's sidecar lost its pointer to evidence that was not deleted")
+	}
+	if !strings.Contains(logged.String(), "level=WARN") || !strings.Contains(logged.String(), filepath.Base(neighbourSidecar)) {
+		t.Errorf("log = %q, want a warning naming the unreadable sidecar", logged.String())
+	}
+
+	// Once the sidecar is readable again, the held evidence is released and the file goes. The
+	// neighbour still names it, so only the last clip to release it deletes it.
+	m := manifest
+	if err := os.Remove(neighbourSidecar); err != nil {
+		t.Fatal(err)
+	}
+	if err := asset.WriteSidecarTags(filepath.Join(dir, neighbour.Path), asset.SidecarTags{MediaAssets: &m}, false); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := floor.Run(ctx); err != nil || res.Released != 2 {
+		t.Fatalf("repaired pass = %+v (err %v), want both remaining clips released", res, err)
+	}
+	if _, err := os.Stat(evidenceFile); !os.IsNotExist(err) {
+		t.Fatalf("evidence no clip names any more is still on disk (err %v)", err)
 	}
 }
 

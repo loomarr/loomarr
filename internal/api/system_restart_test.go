@@ -31,12 +31,14 @@ func newSystemRestartHarness(t *testing.T, config systemRestartHarnessConfig) *a
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:           defaults.Store,
-			Auth:            defaults.Auth,
-			Log:             defaults.Log,
-			Restart:         config.Restart,
-			PlayoutObserver: config.PlayoutObserver,
-			RestartDrift:    config.RestartDrift,
+			Store:   defaults.Store,
+			Auth:    defaults.Auth,
+			Log:     defaults.Log,
+			Playout: api.PlayoutOptions{Observer: config.PlayoutObserver},
+			System: api.SystemOptions{
+				Restart:      config.Restart,
+				RestartDrift: config.RestartDrift,
+			},
 		})
 	})
 }

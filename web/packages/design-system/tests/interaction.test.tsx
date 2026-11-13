@@ -65,7 +65,7 @@ describe("shared interaction controls", () => {
   it("draws a text action as an underlined hint-size line with no control box", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
-        <Action layout="text" variant="link">
+        <Action layout="text" variant="ghost">
           Reset to default
         </Action>
       </LoomarrProvider>,

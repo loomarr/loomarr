@@ -61,7 +61,7 @@ classify() {
       select_gate contracts
       ;;
     # inventedGoFixtures: Go test fixtures written as invented data.
-    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/metadataprovider/nfo/testdata/*)
+    internal/testkit/fixtures/sonarr/*|internal/testkit/fixtures/radarr/*|internal/library/metadataprovider/nfo/testdata/*)
       select_gate contracts
       ;;
     web/packages/fixtures/src/*)
@@ -405,7 +405,7 @@ classify() {
           ;;
       esac
       case "$path" in
-        web/apps/web/tests/e2e/tuner-*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-watch-player/*)
+        web/apps/web/tests/e2e/tuner-*|web/apps/web/tests/e2e/route-timing*|web/apps/web/src/channels/channel-watch/*|web/apps/web/src/channels/guide-*|web/apps/web/src/channels/tuner-*|web/apps/web/src/channels/use-watch-player/*)
           select_gate tuner
           ;;
       esac
@@ -615,8 +615,9 @@ classify() {
       select_gate contracts
       select_gate go
       ;;
-    internal/*/testdata/*)
-      # Go package fixtures belong to their owning package's tests. Treating a new fixture
+    internal/testdata/*|internal/*/testdata/*)
+      # The first form is the root package's ledgers (history-comments.txt), read by the
+      # architecture tests in package internal. Go package fixtures belong to their owning package's tests. Treating a new fixture
       # directory as unknown used to fan ordinary backend work out to every Apple/Android and
       # browser gate even though no native client consumes the file.
       known=true
@@ -912,7 +913,7 @@ classify() {
       select_gate contracts
       case "$path" in
         docker/compose.dev*|.node-version) select_gate agent ;;
-        docker/compose.yaml) select_gate go; select_gate go_full ;;
+        docker/compose.yaml|docker/compose.demo.yaml) select_gate go; select_gate go_full ;;
       esac
       ;;
   esac

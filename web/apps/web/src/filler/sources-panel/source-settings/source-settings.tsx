@@ -1,5 +1,5 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
-import { Action, Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { AutomaticDownloadsForm } from "../automatic-downloads-form";
@@ -35,7 +35,7 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
       expanded={open}
       onExpandedChange={setOpen}
     >
-      <div className="flex flex-col gap-3">
+      <Stack gap="control">
         {source.automaticDownloads && <AutomaticDownloadsForm source={source} actions={actions} />}
 
         {source.actions.includes("edit_location") && <SourceLocationForm source={source} actions={actions} />}
@@ -58,17 +58,18 @@ const SourceSettings = ({ source, actions }: SourceSettingsProps) => {
                 accessibilityLabel={`Remove ${source.target}`}
                 disabled={actions.removing}
                 onPress={() => setConfirmingRemove(true)}
-                variant="destructive"
+                tone="danger"
+                variant="outline"
               >
                 {actions.removingSourceID === source.id ? "Removing…" : "Remove source"}
               </Action>
             )}
-            <p className="text-muted-foreground mt-1 text-xs">
+            <Text as="p" className="mt-1" textRole="hint" tone="secondary">
               Clips already downloaded stay in your library.
-            </p>
+            </Text>
           </div>
         )}
-      </div>
+      </Stack>
     </Disclosure>
   );
 };

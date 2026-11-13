@@ -6,13 +6,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	opsapi "github.com/loomarr/loomarr/internal/api/ops"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/events"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // eventEmitter is the composition-root fan-out for provisioning domain events
@@ -153,6 +155,26 @@ func (e *eventEmitter) SettingsChanged() {
 	e.bus.Publish(events.Event{Type: "settings", Payload: opsapi.SettingsEvent{}})
 }
 
+// LibraryScanChanged publishes a `library_scan` frame: how far a running library import is, whole
+// (#2151). Satisfies libraryFrames, which paces it. Latest-wins: GET /v1/library/status is the
+// truth on load and reconnect.
+func (e *eventEmitter) LibraryScanChanged(p scan.ProgressSnapshot) {
+	e.bus.Publish(events.Event{Type: "library_scan", Payload: opsapi.LibraryScanEvent{ScanProgress: libraryapi.ScanProgressOf(p)}})
+}
+
+// LibraryTitlesChanged publishes an empty `library_titles` frame: the Library's titles changed,
+// and a page showing them refetches its list. Satisfies libraryFrames, which paces it.
+func (e *eventEmitter) LibraryTitlesChanged() {
+	e.bus.Publish(events.Event{Type: "library_titles", Payload: opsapi.LibraryTitlesEvent{}})
+}
+
+// LibraryRootsChanged publishes an empty `library_roots` frame: a media folder stopped or started
+// opening, or emptied or filled, and Settings → Library reads its folders again. Satisfies
+// libraryFrames.
+func (e *eventEmitter) LibraryRootsChanged() {
+	e.bus.Publish(events.Event{Type: "library_roots", Payload: opsapi.LibraryRootsEvent{}})
+}
+
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
 //
 // ⚠ **Throttled HERE rather than at the source, which is the call `PlayoutEvent` already
@@ -173,7 +195,7 @@ const (
 // the events the row is made of. The percentage between them is decoration, and dropping some of
 // it costs a slightly jumpy bar. Getting this backwards would silently hide the rejection frame
 // behind a rate limit.
-func (e *eventEmitter) FillerClipStage(p pipelinestate.ClipPipeline, c cliplibrary.StoreClip) {
+func (e *eventEmitter) FillerClipStage(p pipelinestate.ClipPipeline, c clipstore.Clip) {
 	if p.Status == pipelinestate.StatusRunning && p.Disposition == pipelinestate.DispositionRunning {
 		if !e.shouldPublishClipFrame(p.ClipHash, p.Progress) {
 			return

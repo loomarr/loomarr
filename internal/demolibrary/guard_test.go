@@ -264,7 +264,7 @@ var migratedGo = []string{
 	// covered by internal/library/ above.
 	"internal/channels/", "internal/platform/store/",
 	// The app, provision and proposals/workflow tests (slice 15).
-	"internal/app/", "internal/proposals/workflow/", "internal/provision/",
+	"internal/app/", "internal/proposals/workflow/", "internal/library/provision/",
 	// The eval tests with hand-written fixtures (slice 16). The rest of internal/eval pins its frozen
 	// corpora: the certification_* tests use invented names with synthetic ids that sha256-chained
 	// testdata freezes below ProviderIDBase, and the realDataGo files below exercise real titles on
@@ -299,7 +299,7 @@ var realDataGo = map[string]string{
 	"internal/filler/enrichment/deterministic_test.go":      "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
 	"internal/filler/station/directory_test.go":             "pins call-sign resolution against the real FCC station seed, whose networks and call signs are real",
 	"internal/platform/llm/ollama_test.go":                  "pins the captured Ollama final response (testkit/fixtures/llm), whose grounded tmdb_id 100 its tool turn supplies",
-	"internal/provision/webhook_parity_test.go":             "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
+	"internal/library/provision/webhook_parity_test.go":     "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
 	"internal/library/requester/seerr_contract_test.go":     "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
 	"internal/proposals/suggest/live_latency_test.go":       "drives a real LLM, whose world knowledge of real titles is what it measures",
 	"internal/proposals/suggest/live_named_titles_test.go":  "drives a real LLM on requests that name real titles",
@@ -549,7 +549,7 @@ func fixtureFiles(t *testing.T, root string) []string {
 var inventedGoFixtures = []string{
 	"internal/testkit/fixtures/sonarr/",
 	"internal/testkit/fixtures/radarr/",
-	"internal/metadataprovider/nfo/testdata/",
+	"internal/library/metadataprovider/nfo/testdata/",
 }
 
 // inventedGoFixtureFiles lists inventedGoFixtures' files, repo-relative. A missing entry fails, so

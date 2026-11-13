@@ -1,4 +1,4 @@
-import { formatGuideTime, formatGuideTimeRange, guideAiringLabel } from "@loomarr/core/guide";
+import { formatGuideTime, formatGuideTimeRange, formatProgrammeTitle } from "@loomarr/core/guide";
 import {
   Action,
   AdaptiveSplit,
@@ -156,7 +156,7 @@ const GuideSurface = ({
                       const selected =
                         channel.source.channelId === selection.channelId &&
                         airing.scheduleBlockId === selection.scheduleBlockId;
-                      const label = guideAiringLabel(airing.source);
+                      const label = formatProgrammeTitle(airing.source);
                       return (
                         <Action
                           accessibilityLabel={`${channel.source.name}, ${label}, ${formatGuideTimeRange(
@@ -271,11 +271,12 @@ const GuideExperience = (props: GuideExperienceProps) => {
   if (!props.state || props.state === "ready") return <GuideSurface {...props} />;
   const copy = unavailableGuideCopy[props.state];
   const onRetry = "onRetry" in props ? props.onRetry : undefined;
+  const retrying = "retrying" in props && props.retrying === true;
   return (
     <StatePanel
       action={
         onRetry && (props.state === "error" || props.state === "offline")
-          ? { label: "Try again", onPress: onRetry }
+          ? { label: retrying ? "Trying again…" : "Try again", onPress: retrying ? () => undefined : onRetry }
           : undefined
       }
       density={props.density}

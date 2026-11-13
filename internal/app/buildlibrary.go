@@ -10,41 +10,40 @@ import (
 
 	libraryapi "github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/library/arrhook"
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/arr"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/localart"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/nfo"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	mptmdb "github.com/loomarr/loomarr/internal/library/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/library/requester"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/media/images"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/arr"
-	"github.com/loomarr/loomarr/internal/metadataprovider/localart"
-	"github.com/loomarr/loomarr/internal/metadataprovider/nfo"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	mptmdb "github.com/loomarr/loomarr/internal/metadataprovider/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
 )
 
 // libraryStore is what Settings → Library and the scanner keep their state in.
 type libraryStore interface {
-	store.LibraryRootStore
-	store.LibraryFileStore
-	store.LibraryItemStore
+	librarystore.LibraryRootStore
+	librarystore.LibraryFileStore
+	librarystore.LibraryItemStore
 	store.LibraryProjection
-	store.LibraryCatalogStore
-	store.LibraryNeedsStore
-	store.LibraryEpisodeOrderStore
-	store.LibraryCollectionStore
-	store.LibraryPeopleStore
-	store.LibraryIDMapStore
-	store.LibraryReferenceStore
-	store.LibraryItemFactsReader
-	store.LibraryTitleReader
+	librarystore.LibraryCatalogStore
+	librarystore.LibraryNeedsStore
+	librarystore.LibraryEpisodeOrderStore
+	librarystore.LibraryCollectionStore
+	librarystore.LibraryPeopleStore
+	librarystore.LibraryItemFactsReader
+	librarystore.LibraryTitleReader
 	store.SettingStore
 	inventory.Repository
 	artRefs
@@ -52,10 +51,10 @@ type libraryStore interface {
 
 // libraryBuild is what Settings → Library needs beyond the store and settings.
 type libraryBuild struct {
-	lib *library.Client
-	// budget is playout's admission ledger; header reads wait while it holds a session. Nil
+	lib *mediaserver.Client
+	// watched reports whether a viewer is fetching a channel; header reads wait while one is. Nil
 	// without internal playout, when nothing on this box needs the disks first.
-	budget *playout.ResourceBudget
+	watched func() bool
 	// ffmpegPath locates ffprobe, the header reader's fallback.
 	ffmpegPath string
 	// images keeps the titles' posters; nil keeps none.
@@ -67,9 +66,11 @@ type libraryBuild struct {
 	// notify tells the operators about offline folders and delayed changes; nil tells no one.
 	notify libraryNotifier
 	// tmdb is the catalog the titles' details come from; nil fetches none.
-	tmdb  *tmdb.Client
-	log   *slog.Logger
-	owner *generationLifecycle
+	tmdb *tmdb.Client
+	// frames publishes the import's progress and title changes live; nil publishes none.
+	frames libraryFrames
+	log    *slog.Logger
+	owner  *generationLifecycle
 }
 
 // libraryNotifier is productNotificationCoordinator's library half (#2151 decision 32).
@@ -103,7 +104,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 	}
 	// The Library's rows follow every inventory write from here on (#2151 decision 43).
 	st.ProjectLibraryWith(scan.ProjectLibraryItem)
-	pathMap := func() library.PathMap { return library.ParsePathMap(settings.LibraryPathMap.Get(set)) }
+	pathMap := func() mediaserver.PathMap { return mediaserver.ParsePathMap(settings.LibraryPathMap.Get(set)) }
 	roots := &scan.Roots{
 		Store:   st,
 		Sources: func() []scan.Source { return libraryRootSources(set, deps.lib) },
@@ -134,7 +135,20 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		provider = mptmdb.New(deps.tmdb, metadataLocale(set, deps.lib))
 		keys = provider.Capabilities().Resolves
 	}
+	// One Tracker records the whole import: the walk and header reads here, the lookups below.
+	tracker, titlesChanged := libraryFramesFor(deps.frames)
+	// The Enricher is built below, once the scanner it rewrites through exists; it stays nil without
+	// a catalog. Every write that changes the titles wakes it, so a title's details are looked up as
+	// soon as the title is written instead of at the Enricher's next tick.
+	var enricher *scan.Enricher
 	im := &scan.Importer{
+		Tracker: tracker,
+		TitlesChanged: func() {
+			if titlesChanged != nil {
+				titlesChanged()
+			}
+			enricher.Wake()
+		},
 		Store:     st,
 		Inventory: inv,
 		Disk:      scan.OSDisk{},
@@ -155,8 +169,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Now:      time.Now,
 		Log:      deps.log,
 	}
-	if deps.budget != nil {
-		im.Busy = func() bool { return deps.budget.Sessions() > 0 }
+	im.Busy = deps.watched
+	if deps.frames != nil {
+		im.RootsChanged = deps.frames.LibraryRootsChanged
 	}
 	if deps.notify != nil {
 		im.RootReadability = deps.notify.LibraryFolder
@@ -176,28 +191,17 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		hooks.Degraded = deps.notify.LibraryChangesDegraded
 		notice := &scan.NeedsNotice{
 			Store: st, Notify: deps.notify.LibraryNeedsYou, Enabled: im.Enabled, Log: deps.log,
-			Settled: func() bool {
-				p := im.Progress()
-				return p.Stage == scan.StageIdle && !p.CompletedAt.IsZero()
-			},
+			Settled: im.Settled,
 		}
 		deps.owner.goRunAfterBuild(notice.Run)
 	}
 	deps.owner.goRunAfterBuild(scanner.Run)
 	deps.owner.goRunAfterBuild(watcher.Run)
-	if deps.lib != nil {
-		mapper := &scan.IDMapper{Store: st, ServerFiles: serverFiles(deps.lib), Enabled: im.Enabled, Log: deps.log,
-			References: &scan.ReferenceRewriter{
-				Store: st, Collections: serverCollections(deps.lib), Members: serverCollectionMembers(deps.lib),
-				Flavor: func() string { return string(deps.lib.Snapshot().Connection().Flavor) }, Log: deps.log,
-			}}
-		deps.owner.goRunAfterBuild(mapper.Run)
-	}
 	deps.owner.goRunAfterBuild(hooks.Run)
 	lib := &scan.Library{Roots: roots, Scanner: scanner, ItemStore: st, Inventory: inv, NeedStore: st,
 		Orders: st, CollectionStore: st, Records: st, Keys: keys}
 	if provider != nil {
-		enricher := &scan.Enricher{
+		enricher = &scan.Enricher{
 			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
 			Language: func() string {
 				language, err := provider.Language()
@@ -206,12 +210,19 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 				}
 				return language
 			},
-			Enabled: im.Enabled, Log: deps.log,
+			Enabled: im.Enabled, Log: deps.log, Tracker: tracker,
+			// The titles looked up are written again by folder passes: step 3 ends once those have
+			// run, and the end of each round wakes the Enricher to see it.
+			Settled: scanner.FoldersSettled,
 		}
+		scanner.AfterFolders = enricher.Wake
 		deps.owner.goRunAfterBuild(enricher.Run)
 		lib.Enricher = enricher
 		filmographer := &scan.Filmographer{Store: st, Catalog: provider, Enabled: im.Enabled, Log: deps.log}
 		deps.owner.goRunAfterBuild(filmographer.Run)
+		// Nightly, what TMDB changed is fetched again ahead of the refresh (#3225).
+		changes := &scan.ChangeFollower{Store: st, Feed: provider, Catalog: string(mp.NamespaceTMDB), Enabled: im.Enabled, Log: deps.log}
+		deps.owner.goRunAfterBuild(changes.Run)
 		lib.Search = tmdbSearcher(deps.tmdb)
 		matcher := &scan.Matcher{
 			Store: st, Search: lib.Search, Provider: provider, Inventory: inv,
@@ -220,50 +231,6 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		deps.owner.goRunAfterBuild(matcher.Run)
 	}
 	return libraryServices{roots: lib, hooks: hooks}
-}
-
-// serverFiles lists the media server's catalog for the cutover's id map, or says none is connected.
-func serverFiles(lib *library.Client) func(context.Context) ([]library.ServerFile, error) {
-	return func(ctx context.Context) ([]library.ServerFile, error) {
-		if _, err := lib.Snapshot().Connection().Validate(); err != nil {
-			return nil, scan.ErrNoServerCatalog
-		}
-		return lib.ServerFiles(ctx)
-	}
-}
-
-// serverCollections lists the media server's collections for the cutover's import.
-func serverCollections(lib *library.Client) func(context.Context) ([]scan.ServerCollection, error) {
-	return func(ctx context.Context) ([]scan.ServerCollection, error) {
-		lib := lib.Snapshot()
-		if _, err := lib.Connection().Validate(); err != nil {
-			return nil, scan.ErrNoServerCatalog
-		}
-		colls, err := lib.Collections(ctx)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]scan.ServerCollection, 0, len(colls))
-		for _, c := range colls {
-			out = append(out, scan.ServerCollection{ID: c.ID, Name: c.Name, FromTMDB: c.TMDBID != ""})
-		}
-		return out, nil
-	}
-}
-
-// serverCollectionMembers lists one media-server collection's titles by their media-server ids.
-func serverCollectionMembers(lib *library.Client) func(context.Context, string) ([]string, error) {
-	return func(ctx context.Context, id string) ([]string, error) {
-		members, err := lib.Snapshot().CollectionMembers(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		out := make([]string, 0, len(members))
-		for _, m := range members {
-			out = append(out, m.LibraryItemID)
-		}
-		return out, nil
-	}
 }
 
 // tmdbSearcher is TMDB's title search, as Needs you searches it.
@@ -317,7 +284,7 @@ func libraryHeader(probe playout.SourceProber) func(context.Context, string) (he
 
 // libraryRootSources is every authority that can name a library folder: the media server when
 // its connection is complete, then Sonarr and Radarr whatever requester is chosen (decision 2).
-func libraryRootSources(set resolved, lib *library.Client) []scan.Source {
+func libraryRootSources(set resolved, lib *mediaserver.Client) []scan.Source {
 	var sources []scan.Source
 	if lib != nil && set.libraryConfigured() {
 		if name, err := lib.FlavorName(); err == nil {

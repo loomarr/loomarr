@@ -60,6 +60,11 @@ func (s Setting) parseKind(raw string) (any, error) {
 			// select shows it as chosen. Every reader compares through langcode already.
 			return langcode.Normalize(raw), nil
 		}
+		if s.Presentation == PresentationTimezone {
+			// A zone name is never padded: a pasted " America/New_York " is America/New_York, and a
+			// blank one is the unset value rather than a name.
+			return strings.TrimSpace(raw), nil
+		}
 		return raw, nil
 	case KindSecret:
 		return parseSecret(s.Key, raw)

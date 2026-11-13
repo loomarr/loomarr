@@ -13,6 +13,10 @@ import {
   Field,
   Icon,
   icons,
+  PressableRow,
+  Stack,
+  StatusLabel,
+  Text,
   Tooltip,
 } from "@loomarr/design-system";
 import { useRef, useState } from "react";
@@ -68,10 +72,10 @@ const toDraft = (seg: SplitReviewSegmentDTO): DraftSegment => ({
 // mm:ss is the precision they were given to express it in.
 const resolveMs = (text: string, originalMs: number): number => {
   if (text === formatMmSs(originalMs)) return originalMs;
-  // ⚠ Falls back to the ORIGINAL, not to 0. This used to be `?? 0`, so a half-typed or invalid
-  // field ("1:") committed that segment as starting at zero — silently, since `isValid` blocks
-  // the Confirm button only while the row is on screen. The filmstrip twenty lines below already
-  // fell back to `d.startMs`; the two disagreed about the same input.
+  // ⚠ Falls back to the ORIGINAL, not to 0. `?? 0` would commit a half-typed or invalid field
+  // ("1:") as a segment starting at zero — silently, since `isValid` blocks the Confirm button
+  // only while the row is on screen. The filmstrip twenty lines below falls back to `d.startMs`
+  // too, so the two agree about the same input.
   return parseMmSs(text) ?? originalMs;
 };
 
@@ -203,6 +207,7 @@ const SplitReviewEditor = ({
       audience: a.audience || b.audience || undefined,
       category: a.category || b.category || undefined,
       dupOf: a.dupOf || b.dupOf || undefined,
+      dedupUnchecked: a.dedupUnchecked || b.dedupUnchecked || undefined,
       unsplittable: a.unsplittable || b.unsplittable || undefined,
       transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
       artwork: undefined,
@@ -243,7 +248,7 @@ const SplitReviewEditor = ({
   const selected = selectedIndex >= 0 ? draft[selectedIndex] : undefined;
 
   return (
-    <div className={cn("flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-hidden", className)}>
+    <Stack className={cn("overflow-x-hidden", className)} gap="4" maxWidth="100%" width="100%">
       {/* The reel stays stable while the selected clip is inspected in the side panel. */}
       <SegmentFilmstrip
         segments={stripSegments}
@@ -251,7 +256,7 @@ const SplitReviewEditor = ({
         onSelect={openSegment}
       />
 
-      <ol className="flex list-none flex-col gap-2" aria-label="Clips in this recording">
+      <Stack aria-label="Clips in this recording" className="list-none" gap="inline" render="ol">
         {draft.map((seg, i) => (
           <SegmentSummaryRow
             key={seg.key}
@@ -262,27 +267,35 @@ const SplitReviewEditor = ({
             onOpen={(trigger) => openSegment(seg.key, trigger)}
           />
         ))}
-      </ol>
+      </Stack>
 
       {draft.length === 0 && (
-        <p className="text-muted-foreground text-sm">
+        <Text as="p" textRole="compact" tone="secondary">
           You removed every clip. Go back to keep the original recording, or restore a clip before continuing.
-        </p>
+        </Text>
       )}
 
-      <div className="border-border flex items-center justify-between gap-3 border-t pt-4">
+      <Stack
+        align="center"
+        borderColor="borderDecorative"
+        borderTopWidth={1}
+        direction="row"
+        gap="control"
+        justify="between"
+        paddingTop={16}
+      >
         <Action onPress={onBack} variant="outline">
           Back
         </Action>
-        <div className="flex items-center gap-3">
-          <span className="text-muted-foreground font-mono text-sm tabular-nums">
+        <Stack align="center" direction="row" gap="control">
+          <Text as="span" className="tabular-nums" textRole="mono">
             {pluralize(draft.length, "clip")}
-          </span>
+          </Text>
           <Action disabled={!confirmable || confirming} onPress={() => onConfirm(toWire(draft))}>
             {confirming ? "Keeping clips…" : "Keep clips"}
           </Action>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
 
       <Dialog
         open={Boolean(selected)}
@@ -298,8 +311,8 @@ const SplitReviewEditor = ({
                 {`Clip ${selectedIndex + 1} of ${draft.length} · ${selected.startText}–${selected.endText}`}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-5 p-6">
-              <div className="flex items-center justify-between gap-3">
+            <Stack gap="5" padding={24}>
+              <Stack align="center" direction="row" gap="control" justify="between">
                 <Action
                   accessibilityLabel="Previous clip"
                   disabled={selectedIndex === 0}
@@ -309,9 +322,9 @@ const SplitReviewEditor = ({
                 >
                   Previous
                 </Action>
-                <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                <Text as="span" className="tabular-nums" textRole="mono">
                   {selectedIndex + 1} / {draft.length}
-                </span>
+                </Text>
                 <Action
                   accessibilityLabel="Next clip"
                   disabled={selectedIndex === draft.length - 1}
@@ -322,7 +335,7 @@ const SplitReviewEditor = ({
                 >
                   Next
                 </Action>
-              </div>
+              </Stack>
 
               <SegmentInspector
                 key={selected.key}
@@ -335,11 +348,11 @@ const SplitReviewEditor = ({
                 onDrop={() => drop(selectedIndex)}
                 onMergeWithNext={() => mergeWithNext(selectedIndex)}
               />
-            </div>
+            </Stack>
           </DialogContent>
         ) : null}
       </Dialog>
-    </div>
+    </Stack>
   );
 };
 
@@ -370,12 +383,10 @@ const SegmentSummaryRow = ({
   return (
     <li>
       {/* Selection is neutral (#1909): amber is for focus and the primary action. */}
-      <Card className={cn(selected && "ring-foreground ring-1")}>
-        <button
-          type="button"
+      <Card className={cn(selected && "ring-foreground ring-1")} overflow="hidden">
+        <PressableRow
           aria-current={selected ? "true" : undefined}
-          onClick={(event) => onOpen(event.currentTarget)}
-          className="focus-visible:ring-ring relative flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:ring-2 focus-visible:outline-none"
+          onPress={(event) => onOpen(event.currentTarget as unknown as HTMLButtonElement)}
         >
           {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3). */}
           <span className="sr-only">Open clip</span>{" "}
@@ -383,25 +394,35 @@ const SegmentSummaryRow = ({
             {segment.artwork ? (
               <ServedImage image={segment.artwork} alt="" sizes="96px" />
             ) : (
-              <span className="text-muted-foreground flex size-full items-center justify-center px-2 text-center text-[10px]">
-                Preview unavailable
-              </span>
+              <Stack
+                align="center"
+                direction="row"
+                height="100%"
+                justify="center"
+                paddingHorizontal={8}
+                render="span"
+                width="100%"
+              >
+                <Text as="span" className="text-center" textRole="hint" tone="secondary">
+                  Preview unavailable
+                </Text>
+              </Stack>
             )}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
-              <span className="text-muted-foreground font-mono text-xs tabular-nums">#{n}</span>
-              <span className="truncate text-sm font-medium">{segment.name || "Unnamed clip"}</span>
-            </span>
-            <span
-              className={cn(
-                "mt-1 block font-mono text-xs tabular-nums",
-                valid ? "text-muted-foreground" : "text-onair-300",
-              )}
-            >
+          {/* A button centres its text; the old row said text-left. */}
+          <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0} render="span" style={{ textAlign: "left" }}>
+            <Stack align="center" direction="row" gap="inline" render="span">
+              <Text as="span" className="tabular-nums" textRole="mono">
+                #{n}
+              </Text>
+              <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
+                {segment.name || "Unnamed clip"}
+              </Text>
+            </Stack>
+            <Text as="span" className="tabular-nums" textRole="mono" tone={valid ? "secondary" : "danger"}>
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
-            </span>
-            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            </Text>
+            <Stack align="center" direction="row" gap="1.5" marginTop={2} render="span" wrap>
               {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
               {segment.audience ? (
                 <Badge shape="square" tone="neutral">
@@ -418,15 +439,11 @@ const SegmentSummaryRow = ({
                   {segment.language === "none" ? "No speech" : languageName(segment.language)}
                 </Badge>
               ) : null}
-              {needsAttention ? (
-                <Badge shape="square" tone="caution">
-                  Needs a closer look
-                </Badge>
-              ) : null}
-            </span>
-          </span>
+              {needsAttention ? <StatusLabel tone="warn">Needs a closer look</StatusLabel> : null}
+            </Stack>
+          </Stack>
           <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
-        </button>
+        </PressableRow>
       </Card>
     </li>
   );
@@ -467,11 +484,12 @@ const SegmentInspector = ({
     namingMessage ||
       (!segment.language && languageMessage) ||
       segment.dupOf ||
+      segment.dedupUnchecked ||
       segment.boundaryConfidence ||
       segment.transcript,
   );
   return (
-    <section aria-label={`Clip ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-4">
+    <Stack aria-label={`Clip ${n}: ${segment.name || "unnamed"}`} gap="4" render="section">
       <SegmentPreview
         clipHash={clipHash}
         // Preview the draft the operator can actually keep. Untouched cuts retain detector
@@ -487,18 +505,14 @@ const SegmentInspector = ({
         embedded
       />
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p
-            className={cn(
-              "font-mono text-xs tabular-nums",
-              valid ? "text-muted-foreground" : "text-onair-300",
-            )}
-            title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
-          >
-            {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
+        <Stack flexBasis="0%" flexGrow={1} gap="2" minWidth={0}>
+          <p title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}>
+            <Text as="span" className="tabular-nums" textRole="mono" tone={valid ? "secondary" : "danger"}>
+              {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+            </Text>
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <Stack align="center" direction="row" gap="1.5" wrap>
             {segment.era ? <Badge shape="square" tone="neutral">{`${segment.era}s`}</Badge> : null}
             {segment.audience ? (
               <Badge shape="square" tone="neutral">
@@ -523,9 +537,9 @@ const SegmentInspector = ({
                 </Badge>
               ) : null;
             })()}
-          </div>
-        </div>
-        <div className="flex flex-wrap justify-end gap-1">
+          </Stack>
+        </Stack>
+        <Stack direction="row" gap="1" justify="end" wrap>
           {!last && (
             <Tooltip content="Join this clip and the next">
               <Action onPress={onMergeWithNext} variant="ghost">
@@ -538,30 +552,50 @@ const SegmentInspector = ({
               Remove
             </Action>
           </Tooltip>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
 
       {segment.holdReason ? (
-        <p role="status" className="bg-caution-tint-15 text-caution rounded-sm px-2 py-1.5 text-sm">
-          {`Take a closer look: ${segment.holdReason}.`}
-        </p>
+        <Stack
+          className="bg-caution-tint-15 rounded-sm"
+          paddingHorizontal={8}
+          paddingVertical={6}
+          render="p"
+          role="status"
+        >
+          <Text as="span" textRole="compact" tone="warning">
+            {`Take a closer look: ${segment.holdReason}.`}
+          </Text>
+        </Stack>
       ) : null}
       {segment.unsplittable ? (
-        <p className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
-          Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next clip,
-          or remove it.
-        </p>
+        <Stack className="bg-onair-tint-15 rounded-sm" paddingHorizontal={8} paddingVertical={6}>
+          <Text as="p" textRole="compact" tone="danger">
+            Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next
+            clip, or remove it.
+          </Text>
+        </Stack>
       ) : null}
       {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
-        <p role="status" className="bg-onair-tint-15 text-onair-300 rounded-sm px-2 py-1.5 text-sm">
-          This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer, join
-          it with the next clip, or remove it.
-        </p>
+        <Stack
+          className="bg-onair-tint-15 rounded-sm"
+          paddingHorizontal={8}
+          paddingVertical={6}
+          render="p"
+          role="status"
+        >
+          <Text as="span" textRole="compact" tone="danger">
+            This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer,
+            join it with the next clip, or remove it.
+          </Text>
+        </Stack>
       ) : null}
 
       {segment.suggestedEra ? (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
+        <Stack align="center" direction="row" gap="inline" wrap>
+          <Text as="span" textRole="compact" tone="primary">
+            Loomarr thinks this may be from around {segment.suggestedEra}.
+          </Text>
           <Action
             onPress={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
             variant="outline"
@@ -571,13 +605,15 @@ const SegmentInspector = ({
           <Action onPress={() => onChange({ suggestedEra: undefined })} variant="ghost">
             Not right
           </Action>
-        </div>
+        </Stack>
       ) : null}
 
       <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
-        <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
-          <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
-        </summary>
+        <Text as="summary" className="cursor-pointer list-none" textRole="cardLabel" tone="primary">
+          <Stack align="center" direction="row" gap="2" render="span">
+            <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
+          </Stack>
+        </Text>
         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
           <Field
             id={`seg-name-${position}`}
@@ -609,30 +645,53 @@ const SegmentInspector = ({
       </details>
 
       {hasDetails ? (
-        <details className="px-1 text-sm">
-          <summary className="text-muted-foreground cursor-pointer">Details</summary>
-          <div className="text-muted-foreground mt-2 space-y-2">
-            {namingMessage ? <p>{namingMessage}</p> : null}
-            {!segment.language && languageMessage ? (
-              <p title={segment.languageNote}>{languageMessage}</p>
+        <details className="px-1">
+          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
+            Details
+          </Text>
+          <Stack gap="2" marginTop={8}>
+            {namingMessage ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                {namingMessage}
+              </Text>
             ) : null}
-            {segment.dupOf ? <p>{`Looks like a clip already in your library: ${segment.dupOf}`}</p> : null}
+            {!segment.language && languageMessage ? (
+              <p title={segment.languageNote}>
+                <Text as="span" textRole="compact" tone="secondary">
+                  {languageMessage}
+                </Text>
+              </p>
+            ) : null}
+            {segment.dupOf ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                {`Looks like a clip already in your library: ${segment.dupOf}`}
+              </Text>
+            ) : null}
+            {segment.dedupUnchecked && !segment.dupOf ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                Couldn’t check this clip against your library, so it may already be there.
+              </Text>
+            ) : null}
             {segment.boundaryConfidence ? (
-              <p className="font-mono text-xs">
+              <Text as="p" textRole="mono">
                 {`Cut confidence ${segment.boundaryConfidence}%`}
                 {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
                 {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
-              </p>
+              </Text>
             ) : null}
             {segment.transcript ? (
-              <pre className="bg-static-800 max-h-48 overflow-auto rounded-sm p-3 font-mono text-xs whitespace-pre-wrap">
+              <Text
+                as="pre"
+                className="bg-static-800 max-h-48 overflow-auto rounded-sm p-3 whitespace-pre-wrap"
+                textRole="mono"
+              >
                 {segment.transcript}
-              </pre>
+              </Text>
             ) : null}
-          </div>
+          </Stack>
         </details>
       ) : null}
-    </section>
+    </Stack>
   );
 };
 

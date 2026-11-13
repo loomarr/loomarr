@@ -1,22 +1,26 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { NowNextEntry } from "@loomarr/api/models/nowNextEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
-import { Action, Icon, icons, Surface, Text } from "@loomarr/design-system";
+import { formatProgrammeTitle } from "@loomarr/core/guide";
+import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
 import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useRouteContent } from "@/lib/use-route-content";
 import { cn } from "@/lib/utils";
 import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
@@ -51,14 +55,19 @@ const NOW_TICK_MS = 30_000;
 // headerAirLine is the line under the name (the web mock): a red dot and "On now: <title> · Nm
 // left" while a programme airs, a grey dot and "Paused" for a paused channel. The mock draws only
 // those two; any other state shows the page's own air label (Off air, Updating…) on the grey dot.
+//
+// `airing` is the programme as the timeline knows it, so it is named the way every other surface
+// names it (#2748); the now/next entry carries only a title, and stands in until the timeline answers.
 const headerAirLine = (
   air: AirState,
   now: NowNextEntry | undefined,
   nowMs: number,
+  airing?: Pick<GuideAiring, "kind" | "series" | "title">,
 ): { onAir: boolean; text: string } => {
   if (air.dot === "live" && now && !now.gap && now.startMs <= nowMs && nowMs < now.stopMs) {
     const left = Math.max(1, Math.round((now.stopMs - nowMs) / 60_000));
-    return { onAir: true, text: `On now: ${now.title} · ${left}m left` };
+    const title = airing ? formatProgrammeTitle(airing) : now.title;
+    return { onAir: true, text: `On now: ${title} · ${left}m left` };
   }
   return { onAir: false, text: air.label };
 };
@@ -70,7 +79,7 @@ const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
   // (`tunarrId`); internal-playout channels — the DEFAULT backend, which never gets a
   // `tunarrId` — signal it with `inAppPlayable`, the server-resolved surfability truth
   // (§9.1 V57: effective backend plays internally AND the lifecycle is reconcilable). Keying
-  // "On air" on `tunarrId` alone told every working internal-playout channel it was "Not on
+  // "On air" on `tunarrId` alone would tell every working internal-playout channel it was "Not on
   // air yet — connect Tunarr", contradicting reality at the first-channel "aha" moment.
   const pushed = Boolean(ch.tunarrId);
   const broadcasting = pushed || ch.inAppPlayable;
@@ -92,8 +101,8 @@ const airStateOf = (ch: ChannelDTO, scheduled?: boolean): AirState => {
     };
   }
   if (ch.status === "live" && broadcasting && scheduled === false) {
-    // Live, but the guide has nothing for it now or next (#2728): On air here sat beside an empty
-    // guide row and "Programme information isn't available".
+    // Live, but the guide has nothing for it now or next (#2728): On air here would sit beside an
+    // empty guide row and "Programme information isn't available".
     return {
       dot: "off",
       label: "No schedule yet",
@@ -120,7 +129,7 @@ const ChannelDetailLayout = () => {
   const navigate = Route.useNavigate();
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  // ⚠ From `useLocation`, not `?section=`: which panel is active is now the PATH.
+  // ⚠ From `useLocation`, not `?section=`: which panel is active is the PATH.
   const { pathname } = useLocation();
   // Every section renders in the one scroller below, so a new tab would open at the last tab's
   // offset (#2744). Each section starts at its own top.
@@ -131,6 +140,9 @@ const ChannelDetailLayout = () => {
   }, [pathname]);
 
   const channel = channelsApi.useGetChannel(id);
+  // A channel's page has its content once the channel itself has arrived; the header's "On now"
+  // line and the section bodies fill in beside it (#3399).
+  useRouteContent(channel.data !== undefined);
   // The "Open in …" hand-off names and opens the configured media server. `library.flavor` gives the
   // name (Emby/Jellyfin) and `library.url` its front door, both non-secret settings. An unset URL
   // hides the link rather than leaving it doing nothing. The settings list is admin-only, so a
@@ -144,6 +156,11 @@ const ChannelDetailLayout = () => {
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
   // The header's "On now: … · Nm left" reads the shared now/next list; the minutes move on a tick.
   const nowNextBody = unwrap(channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } }).data);
+  // The programme itself (its series and title) comes from the channel's timeline, which names it
+  // the way every surface does; the now/next list has only a title.
+  const timelineBody = unwrap(
+    channelsApi.useChannelTimeline(id, undefined, { query: { retry: false, staleTime: 15_000 } }).data,
+  );
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const tick = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
@@ -199,13 +216,17 @@ const ChannelDetailLayout = () => {
     );
   }
   const ch = unwrap(channel.data);
-  if (!ch) return <p className="text-muted-foreground p-6 text-sm">Loading channel…</p>;
+  // The route's loader ensured the channel, so it is here before this page mounts.
+  if (!ch) return null;
 
   // The header state comes from now/next (#2728): a channel the guide has nothing for is not On air.
   const nowNext = nowNextBody?.channels.find((entry) => entry.channelId === id);
   const air = airStateOf(ch, nowNextBody ? Boolean(nowNext?.now || nowNext?.next) : undefined);
   const onNow = nowNext?.now;
-  const airLine = headerAirLine(air, onNow, nowMs);
+  const airing = timelineBody?.airings.find(
+    (a) => a.kind !== "filler" && a.startMs <= nowMs && nowMs < a.stopMs,
+  );
+  const airLine = headerAirLine(air, onNow, nowMs, airing);
 
   // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
   // read "12 of 15 shows ready" forever on a healthy channel with ad breaks. programCount +
@@ -223,11 +244,18 @@ const ChannelDetailLayout = () => {
   const saveLogo = (logo: string) => channelSave.save({ logo });
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack className="h-full">
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
-      <header className="border-border flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:px-6">
+      <Stack
+        align="center"
+        className="border-border border-b px-4 py-4 sm:px-6"
+        direction="row"
+        gap="control"
+        render="header"
+        wrap
+      >
         <Link
           to="/guide"
           aria-label="Back to channels"
@@ -258,17 +286,21 @@ const ChannelDetailLayout = () => {
                 onSave={saveName}
               />
             ) : (
-              <h1 className="text-xl leading-tight font-semibold">{ch.name}</h1>
+              <Text as="h1" textRole="title">
+                {ch.name}
+              </Text>
             )}
-            <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
+            <Stack align="center" direction="row" gap="1.5" render="span">
               <span
                 aria-hidden
                 className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
               />
-              {airLine.text}
-            </span>
+              <Text as="span" textRole="compact" tone="secondary">
+                {airLine.text}
+              </Text>
+            </Stack>
           </div>
-          <div className="text-muted-foreground ml-auto flex items-center gap-2 text-sm">
+          <Stack align="center" className="ml-auto" direction="row" gap="inline">
             <Text as="span" shout textRole="data">
               Ch
             </Text>
@@ -286,11 +318,13 @@ const ChannelDetailLayout = () => {
                 onSave={saveNumber}
               />
             ) : (
-              <span className="text-foreground px-1.5 py-0.5 font-mono">{channelNumber(ch.number)}</span>
+              <Text as="span" className="px-1.5 py-0.5" textRole="data" tone="primary">
+                {channelNumber(ch.number)}
+              </Text>
             )}
-          </div>
+          </Stack>
         </div>
-        {/* Watch opens the full-bleed player (#2088); it replaced the Watch tab. The media-server
+        {/* Watch opens the full-bleed player (#2088); there is no Watch tab. The media-server
             hand-off opens its front door in a new tab: Emby and Jellyfin expose no per-channel Live
             TV link, so the viewer goes on from there. */}
         <Surface
@@ -315,7 +349,7 @@ const ChannelDetailLayout = () => {
             </Action>
           )}
         </Surface>
-      </header>
+      </Stack>
 
       {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin
           sees every section; a viewer's only section is Channel info, so they get no bar (Watch is
@@ -325,9 +359,11 @@ const ChannelDetailLayout = () => {
         // One reachable section ⇒ no bar (a lone tab is chrome, not navigation).
         if (visible.length < 2) return null;
         // ⚠ No fallback tab. An admin's bar lights only the section the path names; lighting Channel
-        // info for any other path (the old `?? "info"`) said they were on a page they weren't (#1987).
+        // info for any other path (a `?? "info"` fallback) says they are on a page they aren't (#1987).
         return (
-          <div className="px-4 pt-2 sm:px-6">
+          // min-w-0 + overflow-x-auto: on a phone the four tabs scroll sideways inside this row
+          // instead of widening the page past the viewport (#3404).
+          <div className="min-w-0 overflow-x-auto px-4 pt-2 sm:px-6" data-testid="channel-tab-strip">
             <NavTabs
               label="Channel sections"
               linkComponent={Link}
@@ -340,8 +376,18 @@ const ChannelDetailLayout = () => {
 
       {/* One section at a time. The panel is centered at a comfortable width and scrolls if
           its own content is tall — but the page never grows into a long stack. */}
-      <div className="flex-1 overflow-auto" data-testid="channel-section-scroller" ref={sectionScroller}>
-        <div className="max-w-detail mx-auto flex w-full flex-col gap-4 p-6">
+      {/* ⚠ `position: relative` is load-bearing. Visually-hidden text (`sr-only`) is absolutely
+          positioned; with no positioned ancestor it is laid out against <body> at its natural
+          flow position and stretches the document's scroll height, giving a second scrollbar
+          behind this one. Making the scroller the containing block keeps it inside (#3404, the
+          same bug as #2724 for Settings). Inline style, not a class: the legacy ledger. */}
+      <div
+        className="flex-1 overflow-auto"
+        data-testid="channel-section-scroller"
+        ref={sectionScroller}
+        style={{ position: "relative" }}
+      >
+        <Stack className="max-w-detail mx-auto w-full p-6" gap="4">
           <ChannelDetailProvider
             value={{
               id,
@@ -361,14 +407,27 @@ const ChannelDetailLayout = () => {
           >
             <Outlet />
           </ChannelDetailProvider>
-        </div>
+        </Stack>
       </div>
-    </div>
+    </Stack>
   );
 };
 
 const Route = createFileRoute("/_authed/channels/$id")({
   component: ChannelDetailLayout,
+  // The header paints from the channel, so the channel is awaited and a failure reaches the route's
+  // error view. The reads that finish the header (the air line's now/next and timeline, and the
+  // admin's media-server link) are only warmed: a failure there leaves that detail off, as it does
+  // once the page is open, and prefetching never rejects.
+  loader: async ({ context: { queryClient }, params: { id } }) => {
+    const isAdmin = await viewerIsAdmin(queryClient);
+    await Promise.all([
+      queryClient.ensureQueryData(channelsApi.getGetChannelQueryOptions(id)),
+      queryClient.prefetchQuery(channelsApi.getChannelsNowNextQueryOptions()),
+      queryClient.prefetchQuery(channelsApi.getChannelTimelineQueryOptions(id, undefined)),
+      isAdmin ? queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions()) : undefined,
+    ]);
+  },
 });
 
-export { airStateOf, Route, SECTIONS };
+export { airStateOf, headerAirLine, Route, SECTIONS };

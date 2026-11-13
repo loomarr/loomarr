@@ -3,10 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strconv"
-	"sync"
-	"time"
 
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
 	"github.com/loomarr/loomarr/internal/api/httpcore"
@@ -14,30 +10,14 @@ import (
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
-	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
+	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
-	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/playout/livetvpublish"
 	"github.com/loomarr/loomarr/internal/playout/tunarr"
-	"github.com/loomarr/loomarr/internal/proposals"
-	"github.com/loomarr/loomarr/internal/provision"
 )
-
-// recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
-// PER CALL (resolved.intv resolves live), so raising recurate.min_score_pct / recurate.max_titles
-// takes effect without a restart, like every other setting (config-design §3).
-type recurateThresholds struct{ set resolved }
-
-func (t recurateThresholds) MinScorePct(context.Context) int {
-	return settings.RecurateMinScorePct.Get(t.set)
-}
-func (t recurateThresholds) MaxTitles(context.Context) int {
-	return settings.RecurateMaxTitles.Get(t.set)
-}
 
 // liveTVAdapter answers setup status for the durably applied tuner/listing target. The explicit
 // resolver matters on Postgres: another replica can advance the checkpoint without changing this
@@ -257,49 +237,6 @@ func searchCandidateFromCatalog(c titlesearch.Candidate) httpcore.SearchCandidat
 	}
 }
 
-type approvalAdditionAdapter struct {
-	presence titlesearch.LibraryPresenceSource
-}
-
-func (a approvalAdditionAdapter) ResolveApprovalAddition(
-	ctx context.Context,
-	item proposals.ProposalItem,
-) (proposals.ProposalItem, bool, error) {
-	key, err := (provision.Title{
-		MediaType: item.MediaType, TMDBID: item.TMDBID, TVDBID: item.TVDBID,
-	}).Key()
-	if err != nil {
-		return proposals.ProposalItem{}, false, fmt.Errorf("invalid title identity: %w", err)
-	}
-	mediaType, _, _, ok := provision.ParseKey(key)
-	if !ok {
-		return proposals.ProposalItem{}, false, errors.New("invalid title key")
-	}
-	item.InLibrary = false
-	item.LibraryItemID = ""
-	item.OfficialRating = ""
-	item = item.WithLibrarySize(0)
-	if a.presence == nil {
-		return item, false, nil
-	}
-	presence := a.presence()
-	if presence == nil {
-		return item, false, nil
-	}
-	owned, found, err := presence.Present(ctx, mediaType, item.TMDBID, item.TVDBID)
-	if err != nil {
-		return proposals.ProposalItem{}, false, err
-	}
-	if !found {
-		return item, false, nil
-	}
-	item.InLibrary = true
-	item.LibraryItemID = owned.LibraryItemID
-	item.OfficialRating = owned.OfficialRating
-	item.Genres = append([]string(nil), owned.Genres...)
-	return item.WithLibrarySize(owned.SizeBytes), true, nil
-}
-
 // tunarrNumbers adapts a Programmer to approval.NumberSource: it answers "which channel numbers
 // does Tunarr already use?" and nothing else (§9 V54).
 //
@@ -321,112 +258,14 @@ func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, e
 	return used, nil
 }
 
-// libraryRatings adapts the Library's titles to channels.RatingResolver: it resolves an approved
-// lineup entry's content rating by the entry's Key, for the reconcile-time heal of unrated entries
-// (§389 amendment), from the Library's own title (#2151 step 16), so the rating is never a guess.
-type libraryRatings struct {
-	titles store.LibraryTitleReader
-}
-
-func (a libraryRatings) Rating(ctx context.Context, key provision.Key) (string, bool, error) {
-	mt, provider, id, ok := provision.ParseKey(key)
-	if !ok {
-		return "", false, nil // an unparseable key can't be looked up; leave it unrated
-	}
-	kind := library.TMDB
-	if provider == "tvdb" {
-		kind = library.TVDB
-	}
-	lmt := library.Movie
-	if mt == provision.Series {
-		lmt = library.Series
-	}
-	t, ok, err := titlesearch.OwnedTitle(ctx, a.titles, kind, strconv.Itoa(id), lmt)
-	if err != nil || !ok {
-		return "", false, err
-	}
-	return t.Rating, true, nil
-}
-
-// libraryBoxSets adapts the household's collections to channels.BoxSetResolver: it answers "which
-// collections is this title in?" for the reconcile-time stamp backing scope.collections
-// (programming-design §2.2), from the household's collections alone (#2151 step 16).
-//
-// It builds a REVERSE INDEX in one read and caches it, rather than querying per key. Membership is
-// indexed under EVERY key form via provisionbackstop.ScanItemKeys, because a member carrying both
-// provider ids must be findable under whichever key the lineup entry was born with — the same
-// parity problem the availability scan solves, and the same solution.
-//
-// The cache is refreshed on a TTL: a collection edited in the Library takes effect within it,
-// which is consistent with the stamp only being read at reconcile anyway.
-type libraryBoxSets struct {
-	own ownCollections
-	ttl time.Duration
-
-	mu      sync.Mutex
-	index   map[provision.Key][]string
-	fetched time.Time
-}
-
-func (a *libraryBoxSets) BoxSets(ctx context.Context, key provision.Key) ([]string, bool, error) {
-	idx, err := a.ensureIndex(ctx)
-	if err != nil {
-		return nil, false, err // unresolved this pass; the entry stays unstamped and airs (§2.2 fail-open)
-	}
-	// A key absent from the index is a REAL answer — "in no collection" — not a failure. It
-	// must return ok=true so the stamp settles, or every non-member re-resolves forever.
-	return idx[key], true, nil
-}
-
-func (a *libraryBoxSets) ensureIndex(ctx context.Context) (map[provision.Key][]string, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	now := time.Now()
-	if a.index != nil && now.Sub(a.fetched) < a.ttl {
-		return a.index, nil
-	}
-	members, err := a.own.LibraryCollectionMemberIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	idx := make(map[provision.Key][]string)
-	for _, m := range members {
-		for _, k := range provisionbackstop.ScanItemKeys(ownMember(m)) {
-			idx[k] = append(idx[k], m.CollectionID)
-		}
-	}
-	a.index, a.fetched = idx, now
-	return idx, nil
-}
-
-// ownMember reads a household collection's title as a search result, so its keys come from the
-// one derivation every title uses.
-func ownMember(m store.LibraryCollectionMember) library.SearchResult {
-	r := library.SearchResult{MediaType: library.Movie}
-	if m.Kind == "series" {
-		r.MediaType = library.Series
-	}
-	// Provisioning keys speak TMDB and TVDB (the arrs' ids), so those are read by name.
-	r.TMDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TMDB)))
-	r.TVDBID, _ = strconv.Atoi(store.IDIn(m.IDs, string(library.TVDB)))
-	return r
-}
-
-// ownCollections is the household's collections (#2151 step 12), as the collection scope reads
-// them.
-type ownCollections interface {
-	LibraryCollectionMemberIDs(ctx context.Context) ([]store.LibraryCollectionMember, error)
-	ListLibraryCollections(ctx context.Context) ([]store.LibraryCollection, error)
-}
-
 // libraryCollections is api.CollectionService: the read-only list behind the scope.collections
 // picker (programming-design §2.2): the household's collections (#2151 step 16).
 //
-// Deliberately NOT sharing libraryBoxSets' cached index. That index is keyed for MEMBERSHIP
+// Deliberately NOT sharing resolvers.BoxSets' cached index. That index is keyed for MEMBERSHIP
 // lookups and is TTL-stale by design (membership is only read at reconcile), whereas an
 // operator who just made a collection and opened the picker expects to see it.
 type libraryCollections struct {
-	own ownCollections
+	own resolvers.OwnCollections
 }
 
 func (a libraryCollections) Collections(ctx context.Context) ([]libraryapi.LibraryCollection, error) {
@@ -440,33 +279,3 @@ func (a libraryCollections) Collections(ctx context.Context) ([]libraryapi.Libra
 	}
 	return out, nil
 }
-
-// tmdbFranchises adapts the tmdb.Client to channels.FranchiseResolver: it resolves a MOVIE
-// entry's TMDB collection (franchise) id from the entry's Key, for the reconcile-time heal
-// (§5 franchise ordering). Only a tmdb-keyed movie can be resolved — a tvdb-keyed movie or a
-// series returns ok=false (no lookup), so the entry stays ungrouped (harmless).
-type tmdbFranchises struct{ tmdb *tmdb.Client }
-
-func (a tmdbFranchises) Collection(ctx context.Context, key provision.Key) (int, bool, error) {
-	mt, provider, id, ok := provision.ParseKey(key)
-	if !ok || mt == provision.Series || provider != "tmdb" {
-		return 0, false, nil // only a tmdb-keyed movie has a resolvable collection
-	}
-	cid, err := a.tmdb.CollectionID(ctx, mt, id)
-	if errors.Is(err, tmdb.ErrAPIKeyRequired) {
-		// The adapter is deliberately wired before TMDB is configured. An absent or
-		// freshly cleared key means franchise metadata is unavailable, not that the
-		// channel reconcile failed. Returning ok=false leaves the entry unresolved so
-		// a later configured reconcile can heal it.
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	return cid, true, nil // ok=true (resolved); cid 0 means "standalone", a settled answer
-}
-
-// --- filler bridging adapters (§10) ---
-// These translate between the store's Clip/FillerClip types and the filler
-// package's port types, keeping filler free of a store/library import (the domain
-// stays pure; main does the wiring).

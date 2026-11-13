@@ -8,12 +8,12 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/split"
 	"github.com/loomarr/loomarr/internal/filler/taxonomy"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 )
 
 // The SPLIT stage (§10 V51b): a compilation is cut into the adverts it holds.
@@ -188,7 +188,7 @@ type TaxaLister interface {
 // which the gate then refuses — a reel that could not be judged goes to review rather than being
 // confirmed on missing data. That direction is the safety property, so every error path here
 // degrades toward review and never toward confirm.
-func (s *SplitStage) groundFromSource(ctx context.Context, c cliplibrary.StoreClip, source split.SourceAsset, segs []split.Segment) groundPass {
+func (s *SplitStage) groundFromSource(ctx context.Context, c clipstore.Clip, source split.SourceAsset, segs []split.Segment) groundPass {
 	if s.vision == nil {
 		return s.groundAt(ctx, c, "", source, segs)
 	}
@@ -210,7 +210,7 @@ func countPendingGrounding(segs []split.Segment) int {
 	return n
 }
 
-func (s *SplitStage) groundAt(ctx context.Context, c cliplibrary.StoreClip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
+func (s *SplitStage) groundAt(ctx context.Context, c clipstore.Clip, file string, source split.SourceAsset, segs []split.Segment) groundPass {
 	pending := func() int {
 		return countPendingGrounding(segs)
 	}
@@ -381,7 +381,7 @@ func (s *SplitStage) structureAssessedAt() time.Time {
 
 // groundSkipped reports a pass that never began. Each caller passes a DIFFERENT reason, which is
 // the entire point: these were four indistinguishable early returns.
-func (s *SplitStage) groundSkipped(ctx context.Context, c cliplibrary.StoreClip, why string, args ...any) {
+func (s *SplitStage) groundSkipped(ctx context.Context, c clipstore.Clip, why string, args ...any) {
 	if s.log == nil {
 		return
 	}
@@ -398,7 +398,7 @@ func (s *SplitStage) groundSkipped(ctx context.Context, c cliplibrary.StoreClip,
 // and the reel refused as untagged. Every counter along that path says "fine": no provider error,
 // no parse error, `Looked` incremented 37 times. Only `learned` tells the truth, and only by being
 // compared against `looked`.
-func (s *SplitStage) groundReport(ctx context.Context, c cliplibrary.StoreClip, t groundTally) {
+func (s *SplitStage) groundReport(ctx context.Context, c clipstore.Clip, t groundTally) {
 	if s.log == nil || (t.looked == 0 && t.providerErr == nil) {
 		return
 	}
@@ -508,7 +508,7 @@ func (s *SplitStage) Cost() StageCost           { return CostSplit }
 // the expensive boundary scan be gated on duration in ONE place, and it is why a 16-minute
 // recording is excluded from pods the moment it is measured rather than only once someone splits
 // it — the exact bug §10 V45 describes.
-func (s *SplitStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, string) {
+func (s *SplitStage) Applies(_ context.Context, c clipstore.Clip) (bool, string) {
 	if s.splitter == nil {
 		return false, "splitting is not available on this install"
 	}
@@ -519,7 +519,7 @@ func (s *SplitStage) Applies(_ context.Context, c cliplibrary.StoreClip) (bool, 
 }
 
 // Run detects the cuts and either makes them or leaves them for a human.
-func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageResult, error) {
+func (s *SplitStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, error) {
 	// Already review-pending: re-detecting would replace a proposal an operator may be halfway
 	// through editing. ⚠ Keyed by HASH on both sides — the identity `Propose` takes.
 	// ⚠ An existing proposal is RE-GROUNDED, never re-detected. Returning outright would look like
@@ -576,6 +576,22 @@ func (s *SplitStage) Run(ctx context.Context, c cliplibrary.StoreClip) (StageRes
 			}, nil
 		}
 		p = &assessed
+	}
+	// A segment whose duplicate check could not run is checked again on every pass, before the gate
+	// reads it: the tooling may be back. One that still cannot be checked is held back below, never
+	// accepted, because an aired duplicate cannot be recalled while a stalled split can.
+	if countDedupUnchecked(p.Segments) > 0 {
+		remaining, recheckErr := s.splitter.RecheckDedup(ctx, p)
+		if errors.Is(recheckErr, ErrProposalGone) {
+			return StageResult{Verdict: pipelinestate.VerdictContinue, Note: "already resolved"}, nil
+		}
+		if recheckErr != nil {
+			return StageResult{}, recheckErr
+		}
+		if remaining > 0 && s.log != nil {
+			s.log.WarnContext(ctx, "split auto-confirm: segments held back because they could not be checked for duplicates",
+				"clip", c.Hash, "held", remaining, "segments", len(p.Segments))
+		}
 	}
 	// Deterministic outcomes are curation, not decisions. Persist them before any model work so a
 	// restart and the review UI see the same smaller reel.
@@ -753,9 +769,28 @@ func (s *SplitStage) minClipFloor() time.Duration {
 // resumableReviewHashes finds older review rows that the current stage can improve without a
 // person: incomplete detection, deterministic discards, or unlooked segments with runnable vision.
 func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]struct{}, error) {
+	return s.reviewHashes(ctx, false)
+}
+
+// uncheckedReviewHashes finds the review rows holding a segment whose duplicate check could not run,
+// so a later pass can check it again once the tooling is back.
+func (s *SplitStage) uncheckedReviewHashes(ctx context.Context) (map[string]struct{}, error) {
+	return s.reviewHashes(ctx, true)
+}
+
+func (s *SplitStage) reviewHashes(ctx context.Context, uncheckedOnly bool) (map[string]struct{}, error) {
 	proposals, err := s.store.ListSplitProposals(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if uncheckedOnly {
+		out := make(map[string]struct{})
+		for _, p := range proposals {
+			if p.Ready() && countDedupUnchecked(p.Segments) > 0 {
+				out[p.ClipHash] = struct{}{}
+			}
+		}
+		return out, nil
 	}
 	canGround := s.autoConfirm != nil && s.autoConfirm.Enabled != nil && s.autoConfirm.Enabled() &&
 		s.vision != nil && s.vision.Provider != nil && s.vision.Tools != nil
@@ -780,7 +815,12 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 		if rt.Shadow != nil {
 			pending, shadowErr := rt.Shadow.NeedsStructureSplitObservation(ctx, p)
 			if shadowErr != nil {
-				return nil, shadowErr
+				// This proposal stays in review, unconsumed; the others are still requeued.
+				if s.log != nil {
+					s.log.WarnContext(ctx, "split review not requeued: its structure shadow could not be read",
+						"clip", p.ClipHash, "err", shadowErr)
+				}
+				continue
 			}
 			if pending {
 				out[p.ClipHash] = struct{}{}
@@ -789,6 +829,10 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 		}
 		kept, discarded := discardDeterministic(p.Segments, s.minClipFloor())
 		if len(kept) != len(p.Segments) || discarded.duplicates > 0 || discarded.short > 0 {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		if countDedupUnchecked(p.Segments) > 0 {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}

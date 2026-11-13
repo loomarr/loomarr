@@ -13,11 +13,14 @@ package titlesearch
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
-	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Scope selects which corpora a search fans out to (§7.2).
@@ -116,7 +119,7 @@ func (c Candidate) Key() (provision.Key, error) {
 
 // LibrarySearcher is the library-scope corpus (implemented by library.Client).
 type LibrarySearcher interface {
-	Search(ctx context.Context, term string, limit int) ([]library.SearchResult, error)
+	Search(ctx context.Context, term string, limit int) ([]mediaserver.SearchResult, error)
 }
 
 // TMDBSearcher is the TMDB-scope corpus (implemented by tmdb.Client).
@@ -198,7 +201,8 @@ type Presence struct {
 type Catalog struct {
 	lib      LibrarySearcher
 	tmdb     TMDBSearcher
-	presence LibraryPresenceSource // optional; binds one backfill operation
+	presence LibraryPresenceSource              // optional; binds one backfill operation
+	evidence librarystore.LibraryEvidenceReader // optional; grounds owned discovery hits
 	blend    CandidateBlendPolicy
 }
 
@@ -257,6 +261,14 @@ func (c *Catalog) WithPresence(p LibraryPresence) *Catalog {
 // before a backfill batch so all candidate lookups share one connection snapshot.
 func (c *Catalog) WithPresenceSource(source LibraryPresenceSource) *Catalog {
 	c.presence = source
+	return c
+}
+
+// WithEvidence wires the Library's own tags and credits as evidence for a discovered title the
+// household owns (#3006): the asked keyword or person it names is attached, as TMDB's discovery
+// attaches its own. Nil = an owned hit carries only what TMDB attached.
+func (c *Catalog) WithEvidence(e librarystore.LibraryEvidenceReader) *Catalog {
+	c.evidence = e
 	return c
 }
 
@@ -334,7 +346,7 @@ func (c *Catalog) Discover(ctx context.Context, query DiscoveryQuery, limit int)
 	if err != nil {
 		return nil, err
 	}
-	return c.finishDiscovery(ctx, res, poolLimit, limit)
+	return c.finishDiscovery(ctx, res, []DiscoveryQuery{query}, poolLimit, limit)
 }
 
 // DiscoverUnion retrieves all supplied normalized discovery windows as one
@@ -385,7 +397,7 @@ func (c *Catalog) DiscoverUnion(ctx context.Context, queries []DiscoveryQuery) (
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	finished, err := c.finishDiscovery(ctx, candidates, poolLimit*len(queries), limit)
+	finished, err := c.finishDiscovery(ctx, candidates, queries, poolLimit*len(queries), limit)
 	if err != nil {
 		return result, err
 	}
@@ -393,7 +405,7 @@ func (c *Catalog) DiscoverUnion(ctx context.Context, queries []DiscoveryQuery) (
 	return result, nil
 }
 
-func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimit, limit int) ([]Candidate, error) {
+func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, queries []DiscoveryQuery, poolLimit, limit int) ([]Candidate, error) {
 	byKey := map[string]*Candidate{}
 	order := []string{}
 	for i, cand := range res {
@@ -413,7 +425,65 @@ func (c *Catalog) finishDiscovery(ctx context.Context, res []Candidate, poolLimi
 	if err := c.backfillPresence(ctx, out); err != nil {
 		return nil, err
 	}
+	if err := c.attachLibraryEvidence(ctx, out, queries); err != nil {
+		return nil, err
+	}
 	return orderCandidatesWithPolicy(out, limit, c.blend), nil
+}
+
+// attachLibraryEvidence gives each owned candidate the asked keywords its Library tags hold and
+// the asked people its Library credits name (#3006). It only fills what TMDB left empty: TMDB can
+// attribute a keyword only for a one-keyword query, and the household's own record can for any.
+// No query reads nothing, and a title that names none of the terms gains nothing.
+func (c *Catalog) attachLibraryEvidence(ctx context.Context, cands []Candidate, queries []DiscoveryQuery) error {
+	if c.evidence == nil {
+		return nil
+	}
+	var keywords, people, ids []string
+	for _, q := range queries {
+		keywords = append(keywords, q.Keywords...)
+		people = append(append(people, q.Cast...), q.Creators...)
+	}
+	for _, cand := range cands {
+		if cand.InLibrary && cand.LibraryItemID != "" {
+			ids = append(ids, cand.LibraryItemID)
+		}
+	}
+	if len(ids) == 0 || len(keywords)+len(people) == 0 {
+		return nil
+	}
+	found, err := c.evidence.LibraryEvidence(ctx, ids, keywords, people)
+	if err != nil {
+		return fmt.Errorf("catalog: library evidence: %w", err)
+	}
+	asked := func(names []string, want func(DiscoveryQuery) []string) []string {
+		var out []string
+		for _, name := range names {
+			for _, q := range queries {
+				if slices.ContainsFunc(want(q), func(s string) bool { return strings.EqualFold(strings.TrimSpace(s), name) }) {
+					out = append(out, name)
+					break
+				}
+			}
+		}
+		return out
+	}
+	for i := range cands {
+		ev, ok := found[cands[i].LibraryItemID]
+		if !ok || !cands[i].InLibrary {
+			continue
+		}
+		if len(cands[i].Keywords) == 0 {
+			cands[i].Keywords = ev.Keywords
+		}
+		if len(cands[i].Cast) == 0 {
+			cands[i].Cast = asked(ev.People, func(q DiscoveryQuery) []string { return q.Cast })
+		}
+		if len(cands[i].Creators) == 0 {
+			cands[i].Creators = asked(ev.People, func(q DiscoveryQuery) []string { return q.Creators })
+		}
+	}
+	return nil
 }
 
 // TMDBRecommender is the adjacency corpus: TMDB's behavioural "also watched" graph for
@@ -754,7 +824,7 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 }
 
 // fromLibrary converts a library search result into a Candidate (in_library=true).
-func fromLibrary(r library.SearchResult) Candidate {
+func fromLibrary(r mediaserver.SearchResult) Candidate {
 	return Candidate{
 		MediaType:      mediaType(r.MediaType),
 		TMDBID:         r.TMDBID,
@@ -773,8 +843,8 @@ func fromLibrary(r library.SearchResult) Candidate {
 }
 
 // mediaType maps a library.MediaType (Emby "Movie"/"Series") to provision's.
-func mediaType(m library.MediaType) provision.MediaType {
-	if m == library.Series {
+func mediaType(m mediaserver.MediaType) provision.MediaType {
+	if m == mediaserver.Series {
 		return provision.Series
 	}
 	return provision.Movie

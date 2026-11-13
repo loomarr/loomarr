@@ -7,11 +7,11 @@ import (
 	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // Refiner submits a re-curation job for a channel against a refreshed intent (the §7 refine
@@ -116,7 +116,7 @@ func (r *Runner) Run(ctx context.Context) (kicked int, err error) {
 // catching up to the desired lineup"), not a reason to stop curating; excluding it would freeze
 // re-curation on any channel whose Tunarr push is momentarily behind.
 func eligible(ch channelstore.Channel) bool {
-	if ch.IntentRef == "" || ch.Policy.AutoCurate == nil {
+	if !ch.FromRequest || ch.Policy.AutoCurate == nil {
 		return false
 	}
 	return ch.Status.Reconcilable()

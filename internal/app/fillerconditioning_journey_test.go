@@ -26,14 +26,14 @@ import (
 type conditioningRekeyCrashStore struct {
 	st         records.Store
 	afterRekey bool
-	target     cliplibrary.StoreClip
+	target     clipstore.Clip
 }
 
-func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (cliplibrary.StoreClip, bool, error) {
+func (s *conditioningRekeyCrashStore) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
 	return storeadapter.NewPipelineClips(s.st).GetClip(ctx, hash)
 }
 
-func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target cliplibrary.StoreClip) error {
+func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, oldHash string, target clipstore.Clip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (storeadapter.NewPipelineClips(s.st)).ReplaceClipIdentity(ctx, oldHash, target); err != nil {
@@ -43,7 +43,7 @@ func (s *conditioningRekeyCrashStore) ReplaceClipIdentity(ctx context.Context, o
 	return errors.New("injected conditioning transaction failure")
 }
 
-func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target cliplibrary.StoreClip) error {
+func (s *conditioningRekeyCrashStore) CommitConditioningPublication(ctx context.Context, publication asset.ConditioningPublication, target clipstore.Clip) error {
 	s.target = target
 	if s.afterRekey {
 		if err := (storeadapter.NewPipelineClips(s.st)).CommitConditioningPublication(ctx, publication, target); err != nil {
@@ -164,7 +164,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				return stage
 			}
 			first := newStage(crashStore)
-			out, err := first.Run(ctx, cliplibrary.StoreClip{Clip: clips.Clip{
+			out, err := first.Run(ctx, clipstore.Clip{Clip: clips.Clip{
 				Hash: sourceHash, Path: filepath.Base(sourceFull), Name: "Reviewed child",
 				Role: clips.Commercial, ParentHash: parentHash,
 			}})
@@ -212,7 +212,7 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				t.Fatal(err)
 			}
 			restarted := newStage(storeadapter.NewPipelineClips(st))
-			result, err := restarted.Run(ctx, cliplibrary.StoreClip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
+			result, err := restarted.Run(ctx, clipstore.Clip{Clip: restartClip.Clip, UpdatedAt: restartClip.UpdatedAt})
 			if err != nil || result.Verdict != pipelinestate.VerdictContinue || result.Clip.Hash != crashStore.target.Hash {
 				t.Fatalf("restart result = %+v, %v; want committed target %s", result, err, crashStore.target.Hash)
 			}

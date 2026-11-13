@@ -3,10 +3,13 @@ package requester
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 
-	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 )
 
 // QueueItem is one title's download status from the arr queue — what the queue poller (§18.1)
@@ -40,6 +43,7 @@ type arrSeriesStats struct {
 // arrQueueRecord is the slice of an /api/v3/queue record we read. movieId/seriesId correlate
 // to the arr's internal id; size/sizeleft give progress; timeleft/status are display.
 type arrQueueRecord struct {
+	ID       int     `json:"id"`
 	MovieID  int     `json:"movieId"`
 	SeriesID int     `json:"seriesId"`
 	Size     float64 `json:"size"`
@@ -52,6 +56,57 @@ type arrQueuePage struct {
 	Records []arrQueueRecord `json:"records"`
 }
 
+// arrID is the arr-internal id this record belongs to for the endpoint kind.
+func (r arrQueueRecord) arrID(kind string) int {
+	if kind == "series" {
+		return r.SeriesID
+	}
+	return r.MovieID
+}
+
+// fetchQueue reads the arr's queue. A non-2xx answer (a wrong API key is a 401 with a JSON
+// body) is an error, never an empty queue.
+func (a *Arr) fetchQueue(ctx context.Context, ep arrEndpoint) ([]arrQueueRecord, error) {
+	resp, err := a.do(ctx, ep, http.MethodGet, "/api/v3/queue?pageSize=1000", nil)
+	if err != nil {
+		return nil, fmt.Errorf("arr queue: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := httpx.CheckStatus(resp); err != nil {
+		return nil, fmt.Errorf("arr queue: %w", err)
+	}
+	var page arrQueuePage
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		return nil, fmt.Errorf("arr queue decode: %w", err)
+	}
+	return page.Records, nil
+}
+
+// aggregateQueue folds a title's queue records into one. A series has a record per episode,
+// so progress is bytes done over bytes total across all of them. The status and time left are
+// the lead record's: among the records actually downloading (or, when none is, all of them),
+// the one with the most left to fetch, since that is what the title still waits on.
+func aggregateQueue(recs []arrQueueRecord) (progress float64, eta, status string) {
+	var size, left float64
+	for _, r := range recs {
+		size += r.Size
+		left += r.SizeLeft
+	}
+	candidates := recs
+	if slices.ContainsFunc(recs, isDownloading) {
+		candidates = slices.DeleteFunc(slices.Clone(recs), func(r arrQueueRecord) bool { return !isDownloading(r) })
+	}
+	lead := candidates[0]
+	for _, r := range candidates[1:] {
+		if r.SizeLeft > lead.SizeLeft {
+			lead = r
+		}
+	}
+	return progressFraction(size, left), lead.TimeLeft, lead.Status
+}
+
+func isDownloading(r arrQueueRecord) bool { return r.Status == "downloading" }
+
 // QueueStatus reports download status for a set of in-flight titles. It fetches each
 // configured arr's queue ONCE, indexes records by the arr-internal id, then resolves each
 // title's arr id via a lookup and probes the index — so the poll costs one queue fetch per arr
@@ -60,29 +115,20 @@ type arrQueuePage struct {
 // isn't configured are skipped.
 func (a *Arr) QueueStatus(ctx context.Context, titles []provision.Title) ([]QueueItem, error) {
 	// Fetch + index each arr's queue lazily (only if a title needs it), keyed by kind.
-	byKind := map[string]map[int]arrQueueRecord{} // "movie"/"series" → arrID → record
+	byKind := map[string]map[int][]arrQueueRecord{} // "movie"/"series" → arrID → records
 
 	loadQueue := func(ep arrEndpoint) error {
 		if _, done := byKind[ep.kind]; done {
 			return nil
 		}
-		resp, err := a.do(ctx, ep, http.MethodGet, "/api/v3/queue?pageSize=1000", nil)
+		records, err := a.fetchQueue(ctx, ep)
 		if err != nil {
 			return err
 		}
-		defer func() { _ = resp.Body.Close() }()
-		var page arrQueuePage
-		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			return err
-		}
-		idx := make(map[int]arrQueueRecord, len(page.Records))
-		for _, rec := range page.Records {
-			id := rec.MovieID
-			if ep.kind == "series" {
-				id = rec.SeriesID
-			}
-			if id != 0 {
-				idx[id] = rec
+		idx := make(map[int][]arrQueueRecord, len(records))
+		for _, rec := range records {
+			if id := rec.arrID(ep.kind); id != 0 {
+				idx[id] = append(idx[id], rec)
 			}
 		}
 		byKind[ep.kind] = idx
@@ -110,18 +156,13 @@ func (a *Arr) QueueStatus(ctx context.Context, titles []provision.Title) ([]Queu
 			continue
 		}
 		arrID, _ := toInt(obj["id"])
-		rec, queued := byKind[ep.kind][arrID]
-		if arrID == 0 || !queued {
+		recs := byKind[ep.kind][arrID]
+		if arrID == 0 || len(recs) == 0 {
 			out = append(out, QueueItem{Key: key}) // not in the queue → not grabbed
 			continue
 		}
-		item := QueueItem{
-			Key:      key,
-			Grabbed:  true,
-			Progress: progressFraction(rec.Size, rec.SizeLeft),
-			ETAText:  rec.TimeLeft,
-			Status:   rec.Status,
-		}
+		progress, eta, status := aggregateQueue(recs)
+		item := QueueItem{Key: key, Grabbed: true, Progress: progress, ETAText: eta, Status: status}
 		if ep.kind == "series" {
 			item.EpisodesHave, item.EpisodesWanted = a.seriesEpisodeCounts(ctx, ep, arrID)
 		}

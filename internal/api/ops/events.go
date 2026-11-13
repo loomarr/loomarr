@@ -8,6 +8,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/sse"
 
 	"github.com/loomarr/loomarr/internal/api/httpcore"
+	"github.com/loomarr/loomarr/internal/api/library"
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/platform/events"
 )
@@ -179,6 +180,40 @@ type PlayoutEvent struct {
 	Active int `json:"active"`
 }
 
+// LibraryScanEvent is how far a running library import is (#2151): the same ScanProgress the
+// status endpoint's scan carries, whole.
+//
+// ⚠ **A LATEST-WINS SNAPSHOT, unlike the deliberately empty frames above.** Each frame is the
+// whole state of the import at one moment, never a delta, so a dropped frame is harmless: the next
+// one replaces it, and GET /v1/library/status is the truth on load and reconnect. It is published
+// at most once a second while a step runs, at once when the step shown or its pause changes, and
+// once when everything goes idle. Admin-only, like the status it mirrors: what the scan is on
+// names the household's folders, so the stream leaves it out for a member.
+type LibraryScanEvent struct {
+	library.ScanProgress
+}
+
+// LibraryTitlesEvent announces that the Library's titles changed: one was written, became ready,
+// or was marked gone, by a scan or a header read.
+//
+// ⚠ **Deliberately EMPTY**, like ActivityEvent. The page refetches its title list, which stays the
+// truth: this bus drops frames for a slow subscriber, and a list built from frames would silently
+// lose rows. Published at most once every 2 s while titles change, with a trailing frame so the
+// last change is never missed.
+type LibraryTitlesEvent struct{}
+
+// LibraryRootsEvent announces that a scan pass found a media folder's state changed: it stopped
+// opening or opens again, or it emptied or filled (a share unmounted or mounted again). Empty like
+// LibraryTitlesEvent: Settings → Library refetches the folders and the status, which stay the
+// truth. A folder changes state rarely, so it is published as it happens.
+type LibraryRootsEvent struct{}
+
+// adminFrame reports whether a frame's payload is for admins only.
+func adminFrame(payload any) bool {
+	_, ok := payload.(LibraryScanEvent)
+	return ok
+}
+
 // EventTypeMap binds each frame's SSE event NAME to its payload type. huma reads the name off
 // the Go type, so this map is what makes `event: title` appear on the wire at all.
 //
@@ -189,19 +224,22 @@ type PlayoutEvent struct {
 // client that then waits forever. Guarded by TestEveryPublishedEventIsInTheEventTypeMap.
 func EventTypeMap() map[string]any {
 	return map[string]any{
-		"title":         TitleEvent{},
-		"channel":       ChannelEvent{},
-		"suggestion":    SuggestionEvent{},
-		"job":           JobEvent{},
-		"activity":      ActivityEvent{},
-		"health":        HealthEvent{},
-		"settings":      SettingsEvent{},
-		"filler_ingest": FillerIngestEvent{},
-		"filler_split":  FillerSplitEvent{},
-		"filler_clip":   FillerClipEvent{},
-		"llm_pull":      LLMPullEvent{},
-		"database":      DatabaseEvent{},
-		"playout":       PlayoutEvent{},
+		"title":          TitleEvent{},
+		"channel":        ChannelEvent{},
+		"suggestion":     SuggestionEvent{},
+		"job":            JobEvent{},
+		"activity":       ActivityEvent{},
+		"health":         HealthEvent{},
+		"settings":       SettingsEvent{},
+		"filler_ingest":  FillerIngestEvent{},
+		"filler_split":   FillerSplitEvent{},
+		"filler_clip":    FillerClipEvent{},
+		"llm_pull":       LLMPullEvent{},
+		"database":       DatabaseEvent{},
+		"playout":        PlayoutEvent{},
+		"library_scan":   LibraryScanEvent{},
+		"library_titles": LibraryTitlesEvent{},
+		"library_roots":  LibraryRootsEvent{},
 	}
 }
 
@@ -240,6 +278,7 @@ func (s *Handlers) streamEvents(ctx context.Context, _ *struct{}, send sse.Sende
 	}
 	ch, unsubscribe := s.events.Subscribe()
 	defer unsubscribe()
+	admin := httpcore.AuthorizeRole(httpcore.RoleAdmin, httpcore.RoleFrom(ctx))
 
 	// An opening comment so proxies flush headers and the client knows the stream is live.
 	_ = send.Comment("connected")
@@ -253,6 +292,9 @@ func (s *Handlers) streamEvents(ctx context.Context, _ *struct{}, send sse.Sende
 		case ev, ok := <-ch:
 			if !ok {
 				return // bus closed
+			}
+			if !admin && adminFrame(ev.Payload) {
+				continue
 			}
 			// Best-effort by design (§8). A write error means the client is gone; a payload
 			// huma cannot encode is a bug in the publisher, and dropping the frame is

@@ -1,9 +1,8 @@
 import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import type { DiscoveryFeedbackDTO } from "@loomarr/api/models/discoveryFeedbackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
-import { cn } from "@/lib/utils";
 
 type DiscoveryFeedbackAction = "keep" | "less" | "never" | "surprise";
 type DiscoveryFeedbackScope = { scope: "household" } | { scope: "channel"; scopeId: string };
@@ -80,8 +79,8 @@ const DiscoveryFeedbackControls = ({
       : "Household";
 
   return (
-    <div className={cn("flex flex-col gap-1", compact ? "items-end" : "items-start")}>
-      <fieldset className="flex flex-wrap gap-1 border-0 p-0">
+    <Stack align={compact ? "end" : "start"} gap="1">
+      <Stack direction="row" gap="1" render="fieldset" wrap>
         <legend className="sr-only">Taste feedback for {name}</legend>
         {actions.map(({ action, label }) => (
           <Action
@@ -91,24 +90,24 @@ const DiscoveryFeedbackControls = ({
             disabled={disabled}
             onPress={() => onSet(action)}
             // Flat until chosen, so four of them fit beside a title in a lineup row.
-            variant={selected === action ? "secondary" : "ghost"}
+            variant={selected === action ? "outline" : "ghost"}
           >
             {compact && action === "less" ? "Less" : compact && action === "surprise" ? "Surprise" : label}
           </Action>
         ))}
         {canClear && (
-          <Action disabled={disabled} onPress={onClear} variant="link">
+          <Action disabled={disabled} onPress={onClear} variant="ghost">
             Undo
           </Action>
         )}
-      </fieldset>
+      </Stack>
       {(selected || effectNote) && (
         <p className="text-muted-foreground text-xs">
           {selected ? `${source}: ${actionLabel(selected) ?? selected}. ` : ""}
           {effectNote ? "Affects future suggestions only." : ""}
         </p>
       )}
-    </div>
+    </Stack>
   );
 };
 

@@ -2,11 +2,12 @@ package scan
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Each folder waits on its own: a quiet one is due while a busy one keeps waiting, and the busy one
@@ -35,12 +36,43 @@ func TestDueFoldersWaitEachOnTheirOwn(t *testing.T) {
 
 // An arr's event names folders in the arr's own paths; each is mapped to its folder here and passed
 // over on its own, and a folder outside every root is left to the hourly walk.
+// A folder asked for is unsettled from the ask until its pass has run, and the end of the round is
+// told: that is what lets step 3 wait for its own rewrites and no longer.
+func TestScannerSettlesOnceItsFolderPassesHaveRun(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.file("Lima (2011)/Lima (2011).mkv", 10)
+	h.run()
+	sc := NewScanner(h.im, time.Hour)
+	sc.Debounce = 20 * time.Millisecond
+	rounds := make(chan bool, 4)
+	sc.AfterFolders = func() { rounds <- sc.FoldersSettled() }
+	if !sc.FoldersSettled() {
+		t.Fatal("a scanner asked for nothing is unsettled")
+	}
+
+	sc.PassFolders(h.root, filepath.Join(h.root, "Lima (2011)"))
+	if sc.FoldersSettled() {
+		t.Fatal("settled with a folder waiting for its pass")
+	}
+	go sc.passFolders(ctx)
+	select {
+	case settled := <-rounds:
+		if !settled {
+			t.Fatal("unsettled when the round's end was told")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the round's end was never told")
+	}
+}
+
 func TestScannerArrChangedPassesTheMappedFolder(t *testing.T) {
 	h := newHarness(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := h.st.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Found: []store.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
+	if err := h.st.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Found: []librarystore.LibraryRootPath{{Authority: "radarr", AuthorityPath: "/movies", RootPath: h.root}}, Complete: []string{"radarr"},
 	}, time.Now()); err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ServiceControlProps } from "./service-control.type";
@@ -24,7 +24,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   // The only consequence worth a confirm step. Everything else a restart does (sessions
   // survive, scans resume, Tunarr keeps playing) is either invisible or reassuring, and
-  // listing it was noise an operator had to read past to find the part that mattered.
+  // listing it is noise an operator has to read past to find the part that mattered.
   const dropWarning =
     cost.streamingChannels > 0
       ? `${pluralize(cost.streamingChannels, "channel")} Loomarr is streaming will cut out for a few seconds, then come back.`
@@ -32,12 +32,14 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
 
   return (
     <section className={cn("border-border rounded-lg border p-4", className)}>
-      <div className="flex items-center gap-3">
+      <Stack align="center" direction="row" gap="control">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-medium">Restart Loomarr</h2>
-          <p className="text-muted-foreground mt-0.5 text-sm">
+          <Text as="h2" textRole="cardLabel">
+            Restart Loomarr
+          </Text>
+          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
             {dropWarning ?? "Sessions survive; nobody has to sign in again."}
-          </p>
+          </Text>
         </div>
         {cost.available ? (
           <Action
@@ -49,31 +51,40 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
             Restart...
           </Action>
         ) : null}
-      </div>
+      </Stack>
 
       {/* ⚠ Not a hidden button. A build with no restart loop behind it says so, and says
           what to do instead — hiding the control would leave an operator hunting for a
           feature the docs mention. */}
       {!cost.available && (
-        <p className="border-border text-muted-foreground mt-3 rounded-md border border-dashed p-3 text-sm">
+        <Text
+          as="p"
+          className="border-border mt-3 rounded-md border border-dashed p-3"
+          textRole="compact"
+          tone="secondary"
+        >
           This build can't restart itself. Restart the container or service the way you started it.
-        </p>
+        </Text>
       )}
 
       {error ? (
-        <p className="text-danger mt-3 flex items-start gap-2 text-sm" role="alert">
-          <span className="mt-0.5 flex">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
-          </span>
-          {error}
-        </p>
+        <div className="mt-3" role="alert">
+          <Stack align="start" direction="row" gap="inline">
+            <Stack className="mt-0.5" direction="row" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
+            </Stack>
+            <Text as="p" textRole="compact" tone="danger">
+              {error}
+            </Text>
+          </Stack>
+        </div>
       ) : null}
 
       {confirming && (
-        <div className="border-border mt-3 flex items-center gap-2 border-t pt-3">
-          <p className="min-w-0 flex-1 text-sm">
+        <Stack align="center" className="border-border mt-3 border-t pt-3" direction="row" gap="inline">
+          <Text as="p" className="min-w-0 flex-1" textRole="compact">
             {dropWarning ? `Restart now? ${dropWarning}` : "Restart now?"}
-          </p>
+          </Text>
           <Action
             disabled={restarting}
             onPress={() => {
@@ -86,7 +97,7 @@ const ServiceControl = ({ cost, onRestart, restarting, error, className }: Servi
           <Action onPress={() => setConfirming(false)} variant="ghost">
             Cancel
           </Action>
-        </div>
+        </Stack>
       )}
     </section>
   );

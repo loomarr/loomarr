@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // A video's trickplay file beside it, by its name, is referenced with its source; another video's
@@ -28,7 +28,7 @@ func TestAFileReferencesItsTrickplay(t *testing.T) {
 	bif := write("Ember Coast S01E01.bif")
 	h.run()
 
-	trickplay := func(rel string) []store.LibraryTrickplay {
+	trickplay := func(rel string) []librarystore.LibraryTrickplay {
 		t.Helper()
 		sources := librarySources(h.item(fileOrigin(h.root, season+rel)))
 		if len(sources) != 1 {
@@ -36,7 +36,7 @@ func TestAFileReferencesItsTrickplay(t *testing.T) {
 		}
 		return sources[0].Trickplay
 	}
-	if got := trickplay("Ember Coast S01E01.mkv"); !slices.Equal(got, []store.LibraryTrickplay{{Ref: bif, Format: "bif"}}) {
+	if got := trickplay("Ember Coast S01E01.mkv"); !slices.Equal(got, []librarystore.LibraryTrickplay{{Ref: bif, Format: "bif"}}) {
 		t.Errorf("%s trickplay = %+v, want its own .bif", one, got)
 	}
 	if got := trickplay("Ember Coast S01E02.mkv"); len(got) != 0 {

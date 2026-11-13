@@ -2,11 +2,12 @@ package scan
 
 import (
 	"context"
+	"slices"
 	"strconv"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/metadataprovider/precedence"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // byNumber describes an episode with no TVDB id by its series' catalog, in the order its files
@@ -37,12 +38,12 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 	d := series.record.Descriptive
 	answer, answered := b.episodeOrder(ctx, s, series.catalog)
 	switch {
-	case answered && answer.Choice == store.OrderByFiles:
+	case answered && answer.Choice == librarystore.OrderByFiles:
 		return res
-	case answered && answer.Choice == store.OrderByOrder:
+	case answered && answer.Choice == librarystore.OrderByOrder:
 		res.catalog = orderKey(series.catalog, answer.OrderID)
 		return b.byEntry(ctx, s, in, res)
-	case answered && answer.Choice == store.OrderByCatalog:
+	case answered && answer.Choice == librarystore.OrderByCatalog:
 	case d == nil || d.Orders == nil:
 		return res
 	case !numberedLikeDisk(d, s.last):
@@ -50,11 +51,60 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		res.unnumbered = true
 		return res
 	}
-	res.catalog = store.LibraryCatalogKey{
+	res.catalog = librarystore.LibraryCatalogKey{
 		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
 	}
 	return b.byEntry(ctx, s, in, res)
+}
+
+// byAbsolute places an episode its file numbers across the whole show ("Show - 013") by its series'
+// catalog: the seasons, specials aside, in order, each as long as the catalog says, hold the
+// episodes one after another, so the 13th of a show of two 12-episode seasons is season 2's 1st.
+// It is then described by that season's entry, as a name's "S02E01" would be. With no series
+// record cached yet, or one too short to hold it, res is returned as it was.
+func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, abs int) resolution {
+	if s == nil {
+		return res
+	}
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.catalog.String() == "" || series.record.Descriptive == nil {
+		return res
+	}
+	season, episode, ok := absoluteAt(series.record.Descriptive.Seasons, abs)
+	if !ok {
+		return res
+	}
+	at := mp.Numbering{Season: season, Episode: episode, Absolute: abs}
+	records := make([]mp.Record, 0, len(in.Records))
+	for _, r := range in.Records {
+		if r.Source.Basis == mp.BasisEmbeddedID {
+			r.Numbering = &at
+		}
+		records = append(records, r)
+	}
+	in.Records = records
+	res.resolved = b.im.Resolver.Resolve(in)
+	res.catalog = librarystore.LibraryCatalogKey{
+		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
+		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(season),
+	}
+	return b.byEntry(ctx, s, in, res)
+}
+
+// absoluteAt is where the abs-th episode of a show sits in its seasons, specials aside.
+func absoluteAt(seasons []mp.SeasonSize, abs int) (int, int, bool) {
+	sorted := slices.SortedFunc(slices.Values(seasons), func(a, b mp.SeasonSize) int { return a.Number - b.Number })
+	for _, size := range sorted {
+		if size.Number <= 0 || size.Episodes <= 0 {
+			continue
+		}
+		if abs <= size.Episodes {
+			return size.Number, abs, true
+		}
+		abs -= size.Episodes
+	}
+	return 0, 0, false
 }
 
 // byEntry describes the episode by the entry of res.catalog's record (a season, or an episode
@@ -81,8 +131,62 @@ func (b *builder) byEntry(ctx context.Context, s *seriesSeen, in precedence.Inpu
 	return res
 }
 
+// byAirDate describes an episode its file names by the day it aired, by the series' catalog entry
+// that aired that day: the entry's season and number stand over any its NFO gives, which may be
+// another catalog's numbering. The day names one episode whatever order the household picked.
+//
+// Each of the series' seasons is read from the cache, and any not cached yet is asked for. While
+// the day is not found the episode keeps its file's name, keyed by a season still to come, so the
+// Enricher fetching it writes the episode again.
+func (b *builder) byAirDate(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, day string) resolution {
+	if s == nil {
+		return res
+	}
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.catalog.String() == "" || series.record.Descriptive == nil {
+		return res
+	}
+	var waiting librarystore.LibraryCatalogKey
+	for _, size := range series.record.Descriptive.Seasons {
+		key := librarystore.LibraryCatalogKey{
+			Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
+			ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(size.Number),
+		}
+		rec, ok := b.season(ctx, s, key)
+		if !ok {
+			if waiting.String() == "" {
+				waiting = key
+			}
+			continue
+		}
+		for _, entry := range rec.Children {
+			if entry.Descriptive == nil || entry.Descriptive.PremiereDate != day || entry.Numbering == nil {
+				continue
+			}
+			// The name's day is where the file is: it says the entry's season and number, as a name's
+			// "S02E02" would. A catalog entry never places a file itself (precedence).
+			at := *entry.Numbering
+			records := make([]mp.Record, 0, len(in.Records)+1)
+			for _, r := range in.Records {
+				r.Numbering = nil
+				if r.Source.Basis == mp.BasisEmbeddedID {
+					r.Numbering = &at
+				}
+				records = append(records, r)
+			}
+			entry.Numbering = nil
+			in.Records = append(records, entry)
+			res.resolved = b.im.Resolver.Resolve(in)
+			res.record, res.catalog = &rec, key
+			return res
+		}
+	}
+	res.catalog = waiting
+	return res
+}
+
 // episodeOrder is the household's answer for which order a show's files follow, read once a pass.
-func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series store.LibraryCatalogKey) (store.LibraryEpisodeOrder, bool) {
+func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series librarystore.LibraryCatalogKey) (librarystore.LibraryEpisodeOrder, bool) {
 	s.orderOnce.Do(func() {
 		if b.im.Answers == nil {
 			return
@@ -99,14 +203,14 @@ func (b *builder) episodeOrder(ctx context.Context, s *seriesSeen, series store.
 
 // wantOrders asks, once a pass, for the layout of each of a show's other episode orders, so Needs
 // you can say which one its files fit.
-func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series store.LibraryCatalogKey, orders []mp.EpisodeOrder) {
+func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series librarystore.LibraryCatalogKey, orders []mp.EpisodeOrder) {
 	s.seasonsMu.Lock()
 	defer s.seasonsMu.Unlock()
 	if s.ordersWanted || b.im.Catalog == nil || len(orders) == 0 {
 		return
 	}
 	s.ordersWanted = true
-	keys := make([]store.LibraryCatalogKey, 0, len(orders))
+	keys := make([]librarystore.LibraryCatalogKey, 0, len(orders))
 	for _, o := range orders {
 		keys = append(keys, orderKey(series, o.ID))
 	}
@@ -116,7 +220,7 @@ func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series store.Li
 }
 
 // season is a series' cached season record, read once a pass however many of its episodes ask.
-func (b *builder) season(ctx context.Context, s *seriesSeen, key store.LibraryCatalogKey) (mp.Record, bool) {
+func (b *builder) season(ctx context.Context, s *seriesSeen, key librarystore.LibraryCatalogKey) (mp.Record, bool) {
 	s.seasonsMu.Lock()
 	defer s.seasonsMu.Unlock()
 	if got, ok := s.seasons[key.ExternalID]; ok {

@@ -2,10 +2,9 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useGuideWindow } from "@loomarr/core/guide";
-import { Action, Disclosure } from "@loomarr/design-system";
-import { keepPreviousData } from "@tanstack/react-query";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
 import { ChannelAutoCurate } from "@/components/loomarr/channels/channel-auto-curate";
 import { ChannelCollectionsScope } from "@/components/loomarr/channels/channel-collections-scope";
@@ -19,9 +18,9 @@ import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal"
 import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
 import { cn } from "@/lib/utils";
 
-// ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
-// what used to be three peer tabs (Lineup, Programming rules, Refine with AI) into ONE surface
-// with a visible hierarchy, so an operator stops guessing which tab shapes what:
+// ChannelProgramming — the unified "what plays, and when" surface (design.md §12). Lineup,
+// Programming rules and Refine with AI are ONE surface with a visible hierarchy rather than
+// three peer tabs, so an operator never guesses which tab shapes what:
 //
 //   Refine with AI (the header affordance — describe a change, review a diff, apply)
 //   1. What plays      — the deck (lineup) + the content it's limited to (era + ceiling)
@@ -37,8 +36,8 @@ import { cn } from "@/lib/utils";
 // intermediate state is a different schedule. Everything else here — lineup, era/ceiling,
 // ordering, seasonal, auto-curate — is self-contained and stays seamless.
 //
-// The single cycle preview replaces the old split between the series-level lineup and a
-// separate episode-level "preview what airs" list. It follows the rules DRAFT while one is
+// One cycle preview serves both the series-level lineup and the episode-level "what airs"
+// question, rather than two separate lists. It follows the rules DRAFT while one is
 // dirty, so what you are looking at is what applying would ship.
 
 interface ChannelProgrammingProps {
@@ -50,10 +49,10 @@ interface ChannelProgrammingProps {
   // The channel's stored playback strategy. Not part of ChannelPolicy and read only here:
   // policy.ordering is the one editable play-order knob, whose unset option names this fallback.
   strategy?: string;
-  // The channel's stored intent (`ChannelDTO.intentRef`). Auto-curate re-runs that intent
-  // (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate — the
-  // control says so instead of offering a setting the job would skip.
-  intentRef?: string;
+  // Whether a member's request made the channel (`ChannelDTO.fromRequest`). Auto-curate re-runs
+  // that request (programming-design.md §8.2), so a hand-made channel has nothing to re-evaluate —
+  // the control says so instead of offering a setting the job would skip.
+  fromRequest?: boolean;
   onRefined: () => void;
 }
 
@@ -72,7 +71,7 @@ const Block = ({
   children: React.ReactNode;
 }) => (
   <Disclosure defaultExpanded={defaultOpen} description={hint} label={title}>
-    <div className="flex flex-col gap-4">{children}</div>
+    <Stack gap="4">{children}</Stack>
   </Disclosure>
 );
 
@@ -83,7 +82,7 @@ const ChannelProgramming = ({
   policy,
   onPolicyChange,
   strategy,
-  intentRef,
+  fromRequest,
   onRefined,
 }: ChannelProgrammingProps) => {
   const lineupKeys = lineup.map((e) => ({ key: e.key, title: e.name }));
@@ -92,7 +91,7 @@ const ChannelProgramming = ({
   // surface keeps saving inline through `onPolicyChange`.
   const rules = useChannelRulesDraft(channelId, policy);
 
-  // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
+  // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor never
   // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
   // it lands (a gate below), so its drafts are never derived against an empty vocabulary.
   const vocabQuery = channelsApi.useGetProgrammingVocabulary({
@@ -106,14 +105,8 @@ const ChannelProgramming = ({
   const savedCycle = channelsApi.usePreviewChannelCycle(channelId);
   const holidayEpisodes = unwrap(savedCycle.data)?.holidayEpisodes;
 
-  // The household guide timezone, so the change list's times read as the Guide shows them. The
-  // same pinned window the Watch tab, Home and the Guide share, so this is usually cached. A slide
-  // refetches behind the timezone already on screen.
-  const { window: guideWindow } = useGuideWindow();
-  const guide = channelsApi.useChannelGuide(guideWindow, {
-    query: { retry: false, placeholderData: keepPreviousData },
-  });
-  const guideTimeZone = unwrap(guide.data)?.timezone;
+  // The household timezone, so the change list's times read as the Guide shows them.
+  const guideTimeZone = useHouseholdTimeZone();
 
   // One full pass through this channel's titles, so Play order can say what its choice means
   // here. Same saved preview the cycle section below reads, so the two cannot disagree.
@@ -122,10 +115,14 @@ const ChannelProgramming = ({
   const cycle = cycleBody ? { ...cycleBody.cycle, ordering: cycleBody.trace.ordering } : undefined;
 
   return (
-    <div className="flex flex-col gap-6">
+    <Stack gap="section">
       <div>
-        <h2 className="text-lg font-semibold">Programming</h2>
-        <p className="text-muted-foreground text-sm">What this channel plays, and when.</p>
+        <Text as="h2" strong textRole="headline">
+          Programming
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          What this channel plays, and when.
+        </Text>
       </div>
 
       {/* Defaults summary (#1877 decision 1): how many fields below override a default. */}
@@ -190,15 +187,17 @@ const ChannelProgramming = ({
                 deliberately the same shape as the filler sandbox's bar: two drafts on one page
                 that commit differently would be two things to learn. */}
             {rules.isDirty && (
-              <div className="border-border flex items-center gap-2 border-t pt-4">
-                <Action disabled={rules.isApplying} onPress={rules.apply} variant="suggest">
+              <Stack align="center" className="border-border border-t pt-4" direction="row" gap="inline">
+                <Action disabled={rules.isApplying} onPress={rules.apply} tone="suggest">
                   {rules.isApplying ? "Applying…" : "Apply rules"}
                 </Action>
                 <Action disabled={rules.isApplying} onPress={rules.discard} variant="ghost">
                   Discard
                 </Action>
-                <span className="text-muted-foreground ml-auto text-xs">Unsaved changes</span>
-              </div>
+                <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+                  Unsaved changes
+                </Text>
+              </Stack>
             )}
 
             {/* ⚠ Seasonal stays SEAMLESS: it writes `policy.seasonal`, a self-contained field,
@@ -221,7 +220,9 @@ const ChannelProgramming = ({
             </div>
           </>
         ) : (
-          <p className="text-muted-foreground text-sm">Loading rule options…</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            Loading rule options…
+          </Text>
         )}
 
         {/* Auto-curate (§8.2) — the same "when does this change" question on a much slower
@@ -230,7 +231,7 @@ const ChannelProgramming = ({
             keeps both answers in one place instead of on a settings tab that never existed
             (§12). */}
         <div className="border-border/60 border-t pt-4">
-          <ChannelAutoCurate policy={policy} onChange={onPolicyChange} intentBacked={Boolean(intentRef)} />
+          <ChannelAutoCurate policy={policy} onChange={onPolicyChange} intentBacked={Boolean(fromRequest)} />
         </div>
       </Block>
 
@@ -241,18 +242,18 @@ const ChannelProgramming = ({
         description="Check what airs at a specific time and which rule wins."
         label="Preview schedule"
       >
-        <div className="flex flex-col gap-4">
-          <p
-            className={cn(
-              "rounded-md px-2.5 py-1.5 text-xs",
-              // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
-              rules.isDirty ? "bg-tune-tint-15 text-tune" : "bg-muted text-muted-foreground",
-            )}
+        <Stack gap="4">
+          <Text
+            as="p"
+            className={cn("rounded-md px-2.5 py-1.5", rules.isDirty ? "bg-tune-tint-15" : "bg-muted")}
+            textRole="hint"
+            // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
+            tone={rules.isDirty ? "info" : "secondary"}
           >
             {rules.isDirty
               ? "Previewing the unsaved rules draft — Apply above to make this the live schedule."
               : "Showing the saved, on-air schedule."}
-          </p>
+          </Text>
           <ChannelProgrammingChanges
             channelId={channelId}
             draftPolicy={rules.isDirty ? rules.draft : undefined}
@@ -263,9 +264,9 @@ const ChannelProgramming = ({
             lineupKeys={lineupKeys}
             draftPolicy={rules.isDirty ? rules.draft : undefined}
           />
-        </div>
+        </Stack>
       </Disclosure>
-    </div>
+    </Stack>
   );
 };
 

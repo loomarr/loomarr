@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Pass timing (decision 9).
@@ -37,9 +37,23 @@ type Scanner struct {
 	MaxWait  time.Duration
 	trigger  chan struct{}
 
+	// AfterFolders hears the end of each round of folder passes; nil hears nothing. It must not
+	// block.
+	AfterFolders func()
+
 	mu      sync.Mutex
 	folders map[string]map[string]folderWait // root → changed folders
+	// passing is whether a round of folder passes is running. Guarded by mu.
+	passing bool
 	changed chan struct{}
+}
+
+// FoldersSettled reports whether no folder waits for a pass and none is being passed over: every
+// pass asked for so far has written what it found.
+func (s *Scanner) FoldersSettled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.folders) == 0 && !s.passing
 }
 
 // folderWait is when a folder's waiting changes began, and its latest.
@@ -125,6 +139,14 @@ func (s *Scanner) passFolders(ctx context.Context) {
 				s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
 			}
 		}
+		if len(due) > 0 {
+			s.mu.Lock()
+			s.passing = false
+			s.mu.Unlock()
+			if s.AfterFolders != nil {
+				s.AfterFolders()
+			}
+		}
 		wake = nil
 		if next > 0 {
 			wake = time.After(next)
@@ -163,11 +185,15 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 	for root := range due {
 		slices.Sort(due[root])
 	}
+	// The folders taken are passed over next, so they count as unsettled until that round ends.
+	s.passing = len(due) > 0
 	return due, next
 }
 
-// Trigger asks for a pass soon. It never blocks.
+// Trigger asks for a pass soon. It never blocks. The pass is asked for, so it shows its progress
+// in full however little it finds.
 func (s *Scanner) Trigger() {
+	s.Importer.Tracker.Ask()
 	select {
 	case s.trigger <- struct{}{}:
 	default:
@@ -181,6 +207,10 @@ func (s *Scanner) Run(ctx context.Context) {
 	defer folders.Wait()
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
+	// The first pass of a library with no files yet is its first import, as good as asked for.
+	if counts, err := s.Importer.Store.LibraryFileCounts(ctx); err == nil && counts.Files == 0 {
+		s.Importer.Tracker.Ask()
+	}
 	for {
 		if err := s.Importer.Run(ctx); err != nil && ctx.Err() == nil {
 			s.Importer.log().Warn("library scan: pass failed", "err", err)
@@ -199,17 +229,17 @@ type Library struct {
 	*Roots
 	Scanner *Scanner
 	// ItemStore and Inventory read what the scanner wrote, for Library → Items.
-	ItemStore store.LibraryItemStore
+	ItemStore librarystore.LibraryItemStore
 	Inventory inventory.Service
 	// NeedStore keeps Needs you; Search finds titles to answer it with (nil: no catalog).
-	NeedStore store.LibraryNeedsStore
+	NeedStore librarystore.LibraryNeedsStore
 	Search    Searcher
 	// Orders keeps which order each show's episode files follow (nil: no show is asked about).
-	Orders store.LibraryEpisodeOrderStore
+	Orders librarystore.LibraryEpisodeOrderStore
 	// CollectionStore keeps the household's collections; Records reads cached catalog records: the
 	// ready-made sets' own (nil: none are listed), whose movies Keys places by their catalog rows,
 	// and a show's episode orders.
-	CollectionStore store.LibraryCollectionStore
+	CollectionStore librarystore.LibraryCollectionStore
 	Records         RecordReader
 	Keys            CatalogKeys
 	// Enricher fetches a title's catalog record on request (Update details); nil has no catalog.
@@ -217,12 +247,51 @@ type Library struct {
 	Now      func() time.Time
 }
 
-// Progress is the scanner's current state; the zero Progress when no scanner runs.
+// Progress is how the scanner's last passes ended; the zero Progress when no scanner runs.
 func (l *Library) Progress() Progress {
 	if l.Scanner == nil {
-		return Progress{Stage: StageIdle}
+		return Progress{}
 	}
 	return l.Scanner.Importer.Progress()
+}
+
+// Importing is how far a running import is now; the zero snapshot when none runs.
+func (l *Library) Importing() ProgressSnapshot {
+	if l.Scanner == nil {
+		return ProgressSnapshot{}
+	}
+	return l.Scanner.Importer.Tracker.Snapshot(l.now())
+}
+
+// Details is how the titles' details are getting on: how many movies and series still wait for
+// theirs, whether they can be looked up now, and when the next try is.
+type Details struct {
+	Waiting int
+	Lookups
+}
+
+// Details reads how the titles' details are getting on; the zero wait when there is no catalog.
+// RetryAt is the Enricher's next try after a failed lookup while that is still ahead; past it, a
+// tick that found every waiting title held back tried nothing, so it is when the first of those is
+// tried again. Zero when nothing waits, or when there is no key.
+func (l *Library) Details(ctx context.Context) (Details, error) {
+	if l.Enricher == nil {
+		return Details{Lookups: Lookups{State: LookupsOK}}, nil
+	}
+	now := l.now()
+	waiting, err := l.Enricher.Store.LibraryCatalogWaiting(ctx, now)
+	if err != nil {
+		return Details{}, err
+	}
+	d := Details{Waiting: waiting.Titles, Lookups: l.Enricher.Lookups()}
+	switch {
+	case d.Waiting == 0, d.State == LookupsNoKey:
+		// Nothing waits, or nothing is tried again until a key is added.
+		d.RetryAt = time.Time{}
+	case !d.RetryAt.After(now):
+		d.RetryAt = waiting.NextRetry
+	}
+	return d, nil
 }
 
 // Enabled reports whether the kill switch lets the scanner run.
@@ -235,20 +304,82 @@ func (l *Library) Enabled() bool {
 }
 
 // Counts counts the scanner's files.
-func (l *Library) Counts(ctx context.Context) (store.LibraryFileCounts, error) {
+func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, error) {
 	if l.Scanner == nil {
-		return store.LibraryFileCounts{}, nil
+		return librarystore.LibraryFileCounts{}, nil
 	}
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
+}
+
+// skippedListed is how many of the files skipped for one reason the maintainer is shown by path.
+const skippedListed = 20
+
+// Skipped lists the files the scan skips, by why (ProblemBrokenLink, ProblemLinkOutside,
+// ProblemDiscImage, ...): each reason's count and its first few paths, for the maintainer to fix.
+func (l *Library) Skipped(ctx context.Context) ([]librarystore.LibrarySkipped, error) {
+	if l.Scanner == nil {
+		return []librarystore.LibrarySkipped{}, nil
+	}
+	return l.Scanner.Importer.Store.LibrarySkippedFiles(ctx, skippedListed)
+}
+
+// heldNamed is how many of a held removal's titles the maintainer is shown by name.
+const heldNamed = 3
+
+// HeldTitles names a few of the titles a root's held removal would take, by name, and counts them
+// all: the maintainer sees what "They're gone, remove them" lets go before saying it.
+func (l *Library) HeldTitles(ctx context.Context, root string) ([]string, int, error) {
+	if l.Scanner == nil {
+		return []string{}, 0, nil
+	}
+	return l.Scanner.Importer.Store.LibraryHeldTitles(ctx, root, heldNamed)
 }
 
 // ErrScannerOff is a request the scanner cannot serve because it is not running.
 var ErrScannerOff = errors.New("scan: the scanner is off")
 
-// Rescan asks for a pass now ("Check again").
+// Rescan asks for a pass now ("Scan now", and "Check again" on a held removal).
 func (l *Library) Rescan() error {
 	if !l.Enabled() {
 		return ErrScannerOff
+	}
+	l.Scanner.Trigger()
+	return nil
+}
+
+// SetInUse confirms or releases a root. Confirming one ("Use this folder") asks for a pass, so
+// its media starts arriving now rather than at the next hourly pass.
+func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
+	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
+		return err
+	}
+	if inUse && l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// Add records a folder typed by hand, in use at once, and asks for a pass.
+func (l *Library) Add(ctx context.Context, path string) error {
+	if err := l.Roots.Add(ctx, path); err != nil {
+		return err
+	}
+	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
+// RefreshEverything is "Refresh everything", Update details for the whole library: every file is
+// written again on a pass asked for now, so what the files, sidecars and arrs say now is read, and
+// the enricher fetches every catalog record again. Headers are kept: a file's bytes are read
+// again only when they change, so no title stops playing while it runs.
+func (l *Library) RefreshEverything(ctx context.Context) error {
+	if !l.Enabled() {
+		return ErrScannerOff
+	}
+	if err := l.ItemStore.RefreshLibrary(ctx); err != nil {
+		return err
 	}
 	l.Scanner.Trigger()
 	return nil

@@ -24,7 +24,6 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/asset"
-	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/filler/enrichment"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/pod"
@@ -203,6 +202,9 @@ type FillerPipelineStore interface {
 	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
 	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
+	// RetireRejectedClip reaps a fetched, unpinned clip rejected no later than rejectedBy and marks
+	// its row's files deleted, in one transaction; false when the row no longer qualifies.
+	RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)
@@ -219,7 +221,7 @@ type FillerPipelineStore interface {
 	ListPreparationWork(ctx context.Context, f pipelinestate.PipelineFilter) ([]filler.PreparationWork, error)
 	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
 	// lazy and self-healing rather than a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]cliplibrary.StoreClip, error)
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]clipstore.Clip, error)
 	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
 	// row, and appends the effective Ready event. It is the only non-composite publication path.
 	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error

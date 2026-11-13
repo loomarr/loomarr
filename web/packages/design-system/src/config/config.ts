@@ -8,6 +8,7 @@ import {
   semanticSpace,
   semanticTargets,
   semanticThemes,
+  spaceSteps,
   typography,
 } from "../tokens";
 
@@ -43,6 +44,10 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   actionFocus: semanticThemes[mode].action.focus,
   actionDisabled: semanticThemes[mode].action.disabled,
   accentSuggest: semanticThemes[mode].accent.suggest,
+  identLetterTune: semanticThemes[mode].identLetter.tune,
+  identLetterSuggest: semanticThemes[mode].identLetter.suggest,
+  identLetterSignal: semanticThemes[mode].identLetter.signal,
+  identLetterOnair: semanticThemes[mode].identLetter.onair,
   artworkPlaceholder: semanticThemes[mode].artwork.placeholder,
   artworkScrim: semanticThemes[mode].artwork.scrim,
   artworkScrimStrong: semanticThemes[mode].artwork.scrimStrong,
@@ -99,6 +104,7 @@ const tokens = createTokens({
   },
   space: {
     ...semanticSpace,
+    ...spaceSteps,
   },
   zIndex: {
     base: 0,
@@ -135,6 +141,8 @@ const bodyFont = createFont({
   },
   letterSpacing: {
     display: -0.8,
+    heading: 0,
+    mono: 0,
     title: -0.25,
     body: 0,
     compact: 0,

@@ -6,6 +6,7 @@ import {
   LibraryNeedsStrip,
   type LibraryOrderNeed,
   type LibraryProblem,
+  type LibraryScan,
   LibraryShelf,
   type LibraryShelfProps,
   type LibraryShelfTitle,
@@ -29,7 +30,49 @@ const TITLES: LibraryShelfTitle[] = [
   { id: "90000807", kind: "movie", name: "Lantern Season", ready: true },
 ];
 
-const IDLE = { enabled: true, stage: "idle", headersDone: 0, headersTotal: 0, paused: false } as const;
+const IDLE: LibraryScan = {
+  enabled: true,
+  step: "idle",
+  stepNumber: 0,
+  done: 0,
+  total: 0,
+  paused: false,
+  quiet: false,
+};
+// The three steps of an import, each with its own bar, and a pause for watching.
+const WALKING: LibraryScan = {
+  ...IDLE,
+  step: "walking",
+  stepNumber: 1,
+  done: 112,
+  total: 533,
+  current: "TV / Night Ferry / Season 2",
+  etaSeconds: 540,
+};
+const READING: LibraryScan = {
+  ...IDLE,
+  step: "reading",
+  stepNumber: 2,
+  done: 412,
+  total: 1200,
+  current: "Night Ferry S02E03.mkv",
+};
+const LOOKING_UP: LibraryScan = {
+  ...IDLE,
+  step: "lookingUp",
+  stepNumber: 3,
+  done: 40,
+  total: 533,
+  current: "Saturday Club (1987)",
+  etaSeconds: 1500,
+};
+const PAUSED: LibraryScan = { ...READING, paused: true };
+const status = (scan: LibraryScan): LibraryShelfProps["status"] => ({
+  health: "ok",
+  scan,
+  held: [],
+  offline: [],
+});
 
 const shelf: LibraryShelfProps = {
   status: { health: "ok", scan: IDLE, held: [], offline: [] },
@@ -64,34 +107,27 @@ type Story = StoryObj<typeof meta>;
 
 const CaughtUp: Story = {};
 
-const Adding: Story = {
-  args: {
-    status: {
-      health: "ok",
-      scan: { enabled: true, stage: "reading", headersDone: 412, headersTotal: 1200, paused: false },
-      held: [],
-      offline: [],
-    },
-  },
-};
-
-const Paused: Story = {
-  args: {
-    status: {
-      health: "ok",
-      scan: { enabled: true, stage: "reading", headersDone: 412, headersTotal: 1200, paused: true },
-      held: [],
-      offline: [],
-    },
-  },
-};
+const AddingStep1: Story = { args: { status: status(WALKING) } };
+const Adding: Story = { args: { status: status(READING) } };
+const AddingStep3: Story = { args: { status: status(LOOKING_UP) } };
+const Paused: Story = { args: { status: status(PAUSED) } };
+const Checking: Story = { args: { status: status({ ...WALKING, quiet: true }) } };
 
 const HeldRemoval: Story = {
   args: {
     status: {
       health: "ok",
       scan: IDLE,
-      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+      held: [
+        {
+          path: "/media/movies",
+          movies: 2406,
+          episodes: 0,
+          other: 0,
+          titles: ["Amber Hollow", "Brightwater", "Calder Point"],
+          titleCount: 2406,
+        },
+      ],
       offline: [],
     },
   },
@@ -539,15 +575,30 @@ const WizardStepAdding: Story = {
       {...wizardStep}
       folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
       readySoFar={TITLES.filter((t) => t.ready).map((t) => ({ id: t.id, name: t.name, poster: t.poster }))}
-      scan={{ enabled: true, stage: "reading", headersDone: 412, headersTotal: 1200, paused: false }}
+      scan={READING}
     />
   ),
 };
 
+const wizardAdding = (scan: LibraryScan) => () => (
+  <LibraryWizardStep
+    {...wizardStep}
+    folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
+    scan={scan}
+  />
+);
+const WizardStepStep1: Story = { render: wizardAdding(WALKING) };
+const WizardStepStep3: Story = { render: wizardAdding(LOOKING_UP) };
+const WizardStepPaused: Story = { render: wizardAdding(PAUSED) };
+const WizardStepChecking: Story = { render: wizardAdding({ ...WALKING, quiet: true }) };
+
 export default meta;
 export {
   Adding,
+  AddingStep1,
+  AddingStep3,
   CaughtUp,
+  Checking,
   CollectionEditor,
   CollectionEditorInUse,
   Collections,
@@ -565,4 +616,8 @@ export {
   SeriesOrderWaiting,
   WizardStep,
   WizardStepAdding,
+  WizardStepChecking,
+  WizardStepPaused,
+  WizardStepStep1,
+  WizardStepStep3,
 };

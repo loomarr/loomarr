@@ -21,11 +21,12 @@ import { LoomarrEventsProvider, useLoomarrEventListener } from "./events-provide
 // this test drives the real stream — a fake EventSource emitting one frame of EVERY type — rather
 // than reading source, and fails if any type reaches no listener or invalidates the wrong queries.
 
-// Payloads for the two frames whose invalidation is conditional on the payload; every other frame
+// Payloads for the frames whose invalidation is conditional on the payload; every other frame
 // invalidates unconditionally, so any object serves.
 const PAYLOADS: Partial<Record<EventType, unknown>> = {
   filler_ingest: { status: "success" },
   filler_clip: { disposition: "filed" },
+  library_scan: { step: "idle" },
 };
 const payloadFor = (type: EventType): unknown => PAYLOADS[type] ?? { frame: type };
 
@@ -54,7 +55,12 @@ describe("LoomarrEventsProvider", () => {
     // and left out of the other.
     expect(EVENT_TYPES).toEqual(Object.keys(EVENT_INVALIDATIONS));
     expect(EVENT_TYPES).toContain("database");
-    expect(stream.subscribedTypes().sort()).toEqual([...EVENT_TYPES].sort());
+    // Beside the frames, the stream hears its own "open" (first or after a drop) and "error" (a source closed
+    // for good, which it replaces).
+    const lifecycle = ["error", "open"];
+    const subscribed = stream.subscribedTypes();
+    expect(subscribed.filter((type) => !lifecycle.includes(type)).sort()).toEqual([...EVENT_TYPES].sort());
+    expect(subscribed).toEqual(expect.arrayContaining(lifecycle));
   });
 
   it.each(EVENT_TYPES)("fires a component's handler for a %s frame", (type) => {

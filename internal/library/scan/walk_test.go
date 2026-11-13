@@ -2,12 +2,15 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
+	"time"
 
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 )
 
 func touch(t *testing.T, root, rel string) {
@@ -22,7 +25,7 @@ func touch(t *testing.T, root, rel string) {
 }
 
 // A walk lists media and disc images, skips by-products, extras and ignored folders, and follows a
-// symlink only inside the root.
+// symlink only inside the root, listing one out of it or gone as a problem.
 func TestWalkRoot(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	touch(t, root, "India/India.mkv")
@@ -52,8 +55,11 @@ func TestWalkRoot(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "November"), filepath.Join(root, "Oscar")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink(filepath.Join(root, "Gone", "Tango.mkv"), filepath.Join(root, "Tango.mkv")); err != nil {
+		t.Fatal(err)
+	}
 
-	w, err := walkRoot(context.Background(), root, nil)
+	w, err := walkRoot(context.Background(), root, nil, nil)
 	if err != nil || !w.Complete {
 		t.Fatalf("walk: %v complete=%v", err, w.Complete)
 	}
@@ -62,7 +68,8 @@ func TestWalkRoot(t *testing.T) {
 		got[f.Rel] = f
 	}
 	want := []string{
-		"India/India.mkv", "Kilo/VIDEO_TS", "Lima/Lima.iso", "November/November.mkv", "Shorts/Season 01/Shorts S01E01.mkv",
+		"India/India.mkv", "Kilo/VIDEO_TS", "Lima/Lima.iso", "Mike", "November/November.mkv",
+		"Shorts/Season 01/Shorts S01E01.mkv", "Tango.mkv",
 	}
 	var rels []string
 	for rel := range got {
@@ -80,6 +87,10 @@ func TestWalkRoot(t *testing.T) {
 	}
 	if got["Kilo/VIDEO_TS"].Problem != ProblemDiscImage || got["Lima/Lima.iso"].Problem != ProblemDiscImage {
 		t.Error("disc images not listed as problems")
+	}
+	// A link the walk can't follow is listed, not passed over: one out of the root, one gone.
+	if got["Mike"].Problem != ProblemLinkOutside || got["Tango.mkv"].Problem != ProblemBrokenLink {
+		t.Errorf("links not listed as problems: Mike %q, Tango %q", got["Mike"].Problem, got["Tango.mkv"].Problem)
 	}
 	if _, ok := got["India/India.mkv"].Sidecars[filepath.Join(root, "India", "India.nfo")]; !ok {
 		t.Errorf("sidecars = %v", got["India/India.mkv"].Sidecars)
@@ -101,7 +112,7 @@ func TestWalkUnreadableFolderIsIncomplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "Papa"), 0o755) })
-	w, err := walkRoot(context.Background(), root, nil)
+	w, err := walkRoot(context.Background(), root, nil, nil)
 	if err != nil || w.Complete {
 		t.Fatalf("walk: %v complete=%v", err, w.Complete)
 	}
@@ -114,12 +125,16 @@ func TestIDsAndNumberingInNames(t *testing.T) {
 		t.Errorf("ids = %v", ids)
 	}
 	cases := map[string]mp.Numbering{
-		"Show S01E02.mkv":         {Season: 1, Episode: 2},
-		"Show.s10e100.mkv":        {Season: 10, Episode: 100},
-		"Show - S02E03-E05.mkv":   {Season: 2, Episode: 3, EpisodeEnd: 5},
-		"Show S02E03E04.mkv":      {Season: 2, Episode: 3, EpisodeEnd: 4},
-		"Show 3x07 Title.mkv":     {Season: 3, Episode: 7},
-		"Show S00E01 Special.mkv": {Season: 0, Episode: 1},
+		"Show S01E02.mkv":       {Season: 1, Episode: 2},
+		"Show.s10e100.mkv":      {Season: 10, Episode: 100},
+		"Show - S02E03-E05.mkv": {Season: 2, Episode: 3, EpisodeEnd: 5},
+		"Show S02E03E04.mkv":    {Season: 2, Episode: 3, EpisodeEnd: 4},
+		// A file holding three or more episodes is read through its last, not its second.
+		"Show.S01E01E02E03.mkv":     {Season: 1, Episode: 1, EpisodeEnd: 3},
+		"Show.S01E01-E02-E03.mkv":   {Season: 1, Episode: 1, EpisodeEnd: 3},
+		"Show S01E01-S01E02-S01E04": {Season: 1, Episode: 1, EpisodeEnd: 4},
+		"Show 3x07 Title.mkv":       {Season: 3, Episode: 7},
+		"Show S00E01 Special.mkv":   {Season: 0, Episode: 1},
 	}
 	for name, want := range cases {
 		if got, ok := numberingIn(name); !ok || got != want {
@@ -158,11 +173,121 @@ func TestSeriesFolder(t *testing.T) {
 	}
 }
 
-// A movie takes ids from its own name or folder: not from a collection or series folder above it,
-// and never a tvdb id.
+// A file named by the day it aired, in a folder, is an episode of that folder's show, placed by the
+// day. A season and number in the name stand over a day, and a day that is no real date leaves the
+// file what it was. A file loose at the top whose name ends with its whole day is its own show's
+// episode: no film's title ends with a month and a day.
+func TestAFileNamedByItsAirDateIsAnEpisode(t *testing.T) {
+	for _, tc := range []struct {
+		rel, day, seriesDir string
+		kind                mp.Kind
+	}{
+		{"Papa Hour/Papa Hour - 2013-02-15 - February 15, 2013.mkv", "2013-02-15", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour {tmdb-90000802}/Papa.Hour.2014.03.07.mkv", "2014-03-07", "Papa Hour {tmdb-90000802}", mp.KindEpisode},
+		{"Papa Hour/Season 2014/Papa Hour 2014 03 21.mkv", "2014-03-21", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour/Papa Hour S02E05 2013-02-15.mkv", "", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour/Papa Hour - 2013-02-30.mkv", "", "", mp.KindMovie},
+		{"Papa Hour/Papa Hour - 2013-13-01.mkv", "", "", mp.KindMovie},
+		{"Papa Hour - 2013-02-15.mkv", "2013-02-15", "Papa Hour", mp.KindEpisode},
+		{"Papa Hour - 2013-02-15 - The Long Night.mkv", "", "", mp.KindMovie},
+		{"Quebec (2013)/Quebec (2013).mkv", "", "", mp.KindMovie},
+		{"Quebec (2013)/Quebec.2013.1080p.mkv", "", "", mp.KindMovie},
+	} {
+		rec, seriesDir := embeddedRecord(File{Rel: tc.rel})
+		id := identity{kind: rec.Kind, embedded: rec}
+		if rec.Kind != tc.kind || id.airDate() != tc.day || seriesDir != tc.seriesDir {
+			t.Errorf("%s = %v day %q in %q, want %v day %q in %q", tc.rel, rec.Kind, id.airDate(), seriesDir,
+				tc.kind, tc.day, tc.seriesDir)
+		}
+	}
+}
+
+// A root whose top-level count came back empty (its listing took longer than the count waits, as a
+// busy share's can) is counted when the walk lists it: step 1 shows its folders, rather than reading
+// full while the root's every file is still to come (a 533-folder TV root read "2,268 of 2,268"
+// for minutes).
+func TestStep1CountsARootItsEarlyCountMissed(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"Tango", "Uniform", "Victor", "Whiskey"} {
+		touch(t, root, name+"/"+name+" S01E01.mkv")
+	}
+	tr := NewTracker(nil, nil)
+	tr.Begin(StepWalking, 0)
+	other := &walkReport{tracker: tr, name: "Movies", entries: 6}
+	tr.Grow(StepWalking, other.entries)
+	other.listed(6)
+	other.wrote(6)
+
+	late := &walkReport{tracker: tr, name: "TV"} // its count timed out: 0 entries
+	if _, err := walkRoot(context.Background(), root, nil, late); err != nil {
+		t.Fatal(err)
+	}
+	got := tr.Snapshot(time.Now())
+	if got.Total != 10 {
+		t.Fatalf("step 1 total = %d after the late root was listed, want 10 (6 + 4)", got.Total)
+	}
+	if got.Done >= got.Total {
+		t.Errorf("step 1 = %d of %d before the late root's files are written, want it short of full", got.Done, got.Total)
+	}
+	late.writing()
+	late.wrote(4)
+	if got := tr.Snapshot(time.Now()); got.Done != 10 {
+		t.Errorf("step 1 done = %d once the late root is written, want 10", got.Done)
+	}
+}
+
+// A root that holds a few big folders ("/media" with Movies and TV) is counted by what is in them:
+// step 1's bar moves a movie or show at a time, not 0, half, then full over hours.
+func TestStep1CountsAFewBigFoldersByWhatTheyHold(t *testing.T) {
+	root := t.TempDir()
+	for i := range 30 {
+		name := fmt.Sprintf("Lima %02d (2001)", i)
+		touch(t, root, "Movies/"+name+"/"+name+".mkv")
+	}
+	for i := range 20 {
+		touch(t, root, fmt.Sprintf("TV/Mike %02d/Season 01/Mike %02d S01E01.mkv", i, i))
+	}
+	touch(t, root, "readme.txt")
+	var mu sync.Mutex
+	seen := map[int]bool{}
+	var tr *Tracker
+	tr = NewTracker(nil, func(bool) {
+		s := tr.Snapshot(time.Now())
+		mu.Lock()
+		seen[s.Done] = true
+		mu.Unlock()
+	})
+	tr.Begin(StepWalking, 0)
+	report := &walkReport{tracker: tr, name: "media"}
+	walk, err := walkRoot(context.Background(), root, nil, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.Snapshot(time.Now()); got.Total != 51 {
+		t.Fatalf("step 1 total = %d, want 51: 30 movies, 20 shows and the loose file", got.Total)
+	}
+	report.writing()
+	for _, f := range walk.Files {
+		report.wrote(f.Top)
+	}
+	report.close()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 25 {
+		t.Errorf("step 1 moved through %d values, want it to move a folder at a time", len(seen))
+	}
+	if got := tr.Snapshot(time.Now()); got.Done != 51 {
+		t.Errorf("step 1 done = %d once written, want 51", got.Done)
+	}
+}
+
+// A movie takes ids from its own name or folder, the one above a part's own folder: not from a
+// collection or series folder above it, and never a tvdb id.
 func TestMovieIDsComeFromItsOwnFolder(t *testing.T) {
 	cases := map[string][]mp.ExternalID{
 		"Saga {tmdb-90000700}/November (2001)/November (2001).mkv":   nil,
+		"November (2001) {tmdb-90000703}/CD1/nov-a.avi":              {{Namespace: mp.NamespaceTMDB, Value: "90000703"}},
+		"Saga {tmdb-90000700}/November (2001)/CD1/nov-a.avi":         nil,
 		"Saga/November (2001) {tmdb-90000701}/November (2001).mkv":   {{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
 		"Saga/November (2001)/November (2001) {imdb-tt90000702}.mkv": {{Namespace: mp.NamespaceIMDB, Value: "tt90000702"}},
 		"Oscar {tvdb-90081192}/Oscar.mkv":                            nil,

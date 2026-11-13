@@ -5,22 +5,22 @@ import (
 	"encoding/json"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
-	mp "github.com/loomarr/loomarr/internal/metadataprovider"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // CatalogStore is the cache of catalog records the walk reads (#2151, decision 20). Only the
 // Enricher fetches: a walk never waits on a catalog.
 type CatalogStore interface {
-	WantLibraryCatalog(ctx context.Context, keys []store.LibraryCatalogKey) error
-	LibraryCatalogRecord(ctx context.Context, key store.LibraryCatalogKey) (string, bool, error)
+	WantLibraryCatalog(ctx context.Context, keys []librarystore.LibraryCatalogKey) error
+	LibraryCatalogRecord(ctx context.Context, key librarystore.LibraryCatalogKey) (string, bool, error)
 }
 
 // AnswerStore is the maintainer's Needs you answers the walk reads (#2151 step 11).
 type AnswerStore interface {
-	LibraryAnswerFor(ctx context.Context, origin store.LibraryOrigin) (store.LibraryAnswer, bool, error)
+	LibraryAnswerFor(ctx context.Context, origin librarystore.LibraryOrigin) (librarystore.LibraryAnswer, bool, error)
 	// LibraryEpisodeOrderFor is which order a show's files follow, by its catalog row (decision 53).
-	LibraryEpisodeOrderFor(ctx context.Context, series store.LibraryCatalogKey) (store.LibraryEpisodeOrder, bool, error)
+	LibraryEpisodeOrderFor(ctx context.Context, series librarystore.LibraryCatalogKey) (librarystore.LibraryEpisodeOrder, bool, error)
 }
 
 // linkRecord is the answer for a movie or series nothing else grounded, as a record: the catalog
@@ -39,7 +39,7 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 		return mp.Record{}, false
 	}
 	basis := mp.BasisLink
-	if answer.By == store.AnsweredBySearch {
+	if answer.By == librarystore.AnsweredBySearch {
 		basis = mp.BasisSearch
 	}
 	return mp.Record{
@@ -49,11 +49,11 @@ func (im *Importer) linkRecord(ctx context.Context, kind mp.Kind, origin invento
 }
 
 // libraryID is id as the store keeps it; externalID, the store's id back.
-func libraryID(id mp.ExternalID) store.LibraryID {
-	return store.LibraryID{Namespace: string(id.Namespace), Value: id.Value}
+func libraryID(id mp.ExternalID) librarystore.LibraryID {
+	return librarystore.LibraryID{Namespace: string(id.Namespace), Value: id.Value}
 }
 
-func externalID(id store.LibraryID) mp.ExternalID {
+func externalID(id librarystore.LibraryID) mp.ExternalID {
 	return mp.ExternalID{Namespace: mp.Namespace(id.Namespace), Value: id.Value}
 }
 
@@ -67,24 +67,24 @@ type CatalogKeys []mp.Resolvable
 // namespace one of ids is in (an episode's by its own id, never its season and number; decision
 // 53). A title with none, or a kind the provider does not fetch, has the zero key. The key's
 // provider is the namespace the Enricher fetches it by.
-func (c CatalogKeys) For(kind mp.Kind, ids []mp.ExternalID) store.LibraryCatalogKey {
+func (c CatalogKeys) For(kind mp.Kind, ids []mp.ExternalID) librarystore.LibraryCatalogKey {
 	for _, r := range c {
 		if r.Kind != kind {
 			continue
 		}
 		for _, id := range ids {
 			if id.Namespace == r.Namespace && id.Value != "" {
-				return store.LibraryCatalogKey{Provider: string(r.Namespace), Kind: string(kind), ExternalID: id.Value}
+				return librarystore.LibraryCatalogKey{Provider: string(r.Namespace), Kind: string(kind), ExternalID: id.Value}
 			}
 		}
 	}
-	return store.LibraryCatalogKey{}
+	return librarystore.LibraryCatalogKey{}
 }
 
 // catalogRecord is the cached record for key. A key not fetched yet is noted as wanted, so the
 // Enricher fetches it and the title is written again with it. A catalog that does not know the
 // title, or a cache that cannot be read, says nothing.
-func (im *Importer) catalogRecord(ctx context.Context, key store.LibraryCatalogKey) (mp.Record, bool) {
+func (im *Importer) catalogRecord(ctx context.Context, key librarystore.LibraryCatalogKey) (mp.Record, bool) {
 	if im.Catalog == nil || key.String() == "" {
 		return mp.Record{}, false
 	}
@@ -94,7 +94,7 @@ func (im *Importer) catalogRecord(ctx context.Context, key store.LibraryCatalogK
 		return mp.Record{}, false
 	}
 	if !fetched {
-		if err := im.Catalog.WantLibraryCatalog(ctx, []store.LibraryCatalogKey{key}); err != nil {
+		if err := im.Catalog.WantLibraryCatalog(ctx, []librarystore.LibraryCatalogKey{key}); err != nil {
 			im.log().Warn("library scan: catalog record not asked for", "catalog", key.String(), "err", err)
 		}
 		return mp.Record{}, false

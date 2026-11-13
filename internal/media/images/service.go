@@ -377,6 +377,16 @@ func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (
 	return rec, nil
 }
 
+// Lookup finds the image Adopt made of srcURL, fetched or still pending, without writing:
+// ErrNotFound when it was never adopted, or is gone. A page that lists many remote images reads
+// them with it and adopts only the ones it misses.
+func (s *Service) Lookup(ctx context.Context, srcURL string) (Image, error) {
+	if existing, err := s.store.GetFetchedBySourceURL(ctx, srcURL); !errors.Is(err, ErrNotFound) {
+		return existing, err
+	}
+	return s.store.GetImage(ctx, hashOfURL(srcURL))
+}
+
 // Get returns a record.
 func (s *Service) Get(ctx context.Context, hash string) (Image, error) {
 	if !validHash(hash) {
@@ -419,7 +429,11 @@ func (s *Service) Rendition(ctx context.Context, hash string, f Format, width in
 	// ⚠ Snap the requested width to the role's ladder. Honouring an arbitrary width would let an
 	// unauthenticated caller request ten thousand distinct sizes and make the box encode ten
 	// thousand renditions — CPU and disk amplification with no login.
-	w := rec.Role.NearestWidth(width)
+	// The ladder is the rungs the original can fill, so the snap never upscales (#2774).
+	w := rec.Role.NearestWidthFor(width, rec.Width)
+	if f == FormatAVIF && w > maxAVIFWidth {
+		return Rendition{}, ErrNotFound // the widest rung is WebP and JPEG only
+	}
 	if !slices.Contains(rec.Role.Formats(), f) {
 		return Rendition{}, ErrNotFound // a logo's JPEG would lose its alpha
 	}
@@ -579,8 +593,14 @@ func (s *Service) URLFor(hash string, width int, f Format) string {
 // Width descriptors (`w`), not density (`2x`): the browser multiplies our `sizes` by the device's
 // DPR when choosing, so `w` already covers retina and a density list would be a second, redundant
 // axis that cannot express a fluid grid.
-func (s *Service) SrcSet(hash string, role Role, f Format) string {
-	widths := role.Widths()
+//
+// sourceWidth is the original's width: the set lists only rungs it can fill, never an upscale
+// (#2774), and an AVIF set stops at the widest rung the AVIF job encodes.
+func (s *Service) SrcSet(hash string, role Role, f Format, sourceWidth int) string {
+	widths := role.WidthsFor(sourceWidth)
+	if f == FormatAVIF {
+		widths = role.AVIFWidthsFor(sourceWidth)
+	}
 	parts := make([]string, 0, len(widths))
 	for _, w := range widths {
 		parts = append(parts, fmt.Sprintf("%s %dw", s.PathFor(hash, w, f), w))

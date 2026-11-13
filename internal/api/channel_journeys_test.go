@@ -14,12 +14,12 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/approval"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/library/provisionbackstop"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/proposalstore"
 	"github.com/loomarr/loomarr/internal/proposals"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
-	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/channeljourney"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
@@ -69,8 +69,9 @@ func approveReferenceJourney(t *testing.T, tc channeljourney.Case) (channelstore
 	log := testkit.Logger()
 	b := approval.New(st, nil, nil, log)
 	srv := httptest.NewServer(api.Router(log, api.Options{
-		Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-		Approver: accept.NewApprover(st, b, channeljourney.Clock),
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Channels:  api.ChannelsOptions{Binder: b},
+		Proposals: api.ProposalsOptions{Approver: accept.NewApprover(st, b, channeljourney.Clock)},
 	}))
 	t.Cleanup(srv.Close)
 	if err := createProposalWithJob(st, ctx, proposalstore.Proposal{
@@ -145,8 +146,9 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 			log := testkit.Logger()
 			b := approval.New(st, nil, nil, log)
 			srv := httptest.NewServer(api.Router(log, api.Options{
-				Store: st, Auth: testAuthorizer{}, Log: log, Binder: b,
-				Approver: accept.NewApprover(st, b, func() time.Time { return now }),
+				Store: st, Auth: testAuthorizer{}, Log: log,
+				Channels:  api.ChannelsOptions{Binder: b},
+				Proposals: api.ProposalsOptions{Approver: accept.NewApprover(st, b, func() time.Time { return now })},
 			}))
 			t.Cleanup(srv.Close)
 			// An entirely acquisition-dependent sparse library must not appear live.

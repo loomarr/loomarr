@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 type fakeLibraryLister struct {
-	items []library.SearchResult
+	items []mediaserver.SearchResult
 	calls int
 }
 
-func (f *fakeLibraryLister) AllItems(context.Context) ([]library.SearchResult, error) {
+func (f *fakeLibraryLister) AllItems(context.Context) ([]mediaserver.SearchResult, error) {
 	f.calls++
 	return f.items, nil
 }
@@ -23,10 +23,10 @@ func (f *fakeLibraryLister) AllItems(context.Context) ([]library.SearchResult, e
 // Channel ideas (#1665) read the whole library, and Home asks on every visit, so one listing
 // serves every request inside the TTL. An item answers to every key a lineup entry could carry.
 func TestLibraryIdeaItemsMapsKeysAndCaches(t *testing.T) {
-	lister := &fakeLibraryLister{items: []library.SearchResult{
-		{MediaType: library.Series, TVDBID: 90000007, TMDBID: 90000070, Name: "A show", Year: 2001, Genres: []string{"Comedy"}},
-		{MediaType: library.Movie, TMDBID: 90000008, Name: "A film", Year: 1999},
-		{MediaType: library.Movie, Name: "No provider id"},
+	lister := &fakeLibraryLister{items: []mediaserver.SearchResult{
+		{MediaType: mediaserver.Series, TVDBID: 90000007, TMDBID: 90000070, Name: "A show", Year: 2001, Genres: []string{"Comedy"}},
+		{MediaType: mediaserver.Movie, TMDBID: 90000008, Name: "A film", Year: 1999},
+		{MediaType: mediaserver.Movie, Name: "No provider id"},
 	}}
 	now := time.Unix(1_800_000_000, 0)
 	a := &libraryIdeaItems{lib: lister, now: func() time.Time { return now }}
@@ -56,10 +56,10 @@ func TestLibraryIdeaItemsMapsKeysAndCaches(t *testing.T) {
 	}
 }
 
-type ideaFactsFake map[string]store.LibraryItemFacts
+type ideaFactsFake map[string]librarystore.LibraryItemFacts
 
-func (f ideaFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]store.LibraryItemFacts, error) {
-	out := map[string]store.LibraryItemFacts{}
+func (f ideaFactsFake) LibraryItemFacts(_ context.Context, ids []string) (map[string]librarystore.LibraryItemFacts, error) {
+	out := map[string]librarystore.LibraryItemFacts{}
 	for _, id := range ids {
 		if facts, ok := f[id]; ok {
 			out[id] = facts

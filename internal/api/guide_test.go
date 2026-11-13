@@ -22,12 +22,13 @@ import (
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/media/images"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/provision"
 )
 
 // GET /v1/guide — the time-grid endpoint (V13b). Distinct from /v1/playout/guide.xml, which the
@@ -137,13 +138,12 @@ func newGuideHarness(t *testing.T, config guideHarnessConfig) *guideHarness {
 	t.Helper()
 	base := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		opts := api.Options{
-			Store:          defaults.Store,
-			Auth:           defaults.Auth,
-			Log:            defaults.Log,
-			PlayoutGuide:   config.Guide,
-			Pods:           config.Pods,
-			TimelineThumbs: config.TimelineThumbs,
-			Images:         config.Images,
+			Store:   defaults.Store,
+			Auth:    defaults.Auth,
+			Log:     defaults.Log,
+			Playout: api.PlayoutOptions{Guide: config.Guide},
+			Guide:   api.GuideOptions{Pods: config.Pods, TimelineThumbs: config.TimelineThumbs},
+			Images:  config.Images,
 		}
 		live := mapSettings{}
 		if config.Timezone != "" {
@@ -713,17 +713,17 @@ func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
 	harness := newGuideHarness(t, guideHarnessConfig{Guide: g, Images: img})
 	srv, st := harness.Server, harness.Store
 	seedGridChannel(t, st, "ch1", 1)
-	if err := st.SaveLibraryItems(ctx, []store.LibraryItem{
-		{ID: "film", Kind: "movie", Name: "Bellwether Junction", IDs: []store.LibraryID{{Namespace: "tmdb", Value: "90000091"}}},
-		{ID: "show", Kind: "series", Name: "Copperfield Lane", IDs: []store.LibraryID{{Namespace: "tvdb", Value: "90000092"}}},
+	if err := st.SaveLibraryItems(ctx, []librarystore.LibraryItem{
+		{ID: "film", Kind: "movie", Name: "Bellwether Junction", IDs: []librarystore.LibraryID{{Namespace: "tmdb", Value: "90000091"}}},
+		{ID: "show", Kind: "series", Name: "Copperfield Lane", IDs: []librarystore.LibraryID{{Namespace: "tvdb", Value: "90000092"}}},
 		{ID: "show-e2", Kind: "episode", Name: "Copperfield Lane E2", SeriesID: "show"},
 	}, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveLibraryFiles(ctx, []store.LibraryFile{
-		{Path: "/m/film.mkv", Root: "/m", Size: 1, ModifiedNs: 1, Kind: "movie", Header: store.LibraryHeaderRead,
+	if err := st.SaveLibraryFiles(ctx, []librarystore.LibraryFile{
+		{Path: "/m/film.mkv", Root: "/m", Size: 1, ModifiedNs: 1, Kind: "movie", Header: librarystore.LibraryHeaderRead,
 			SeenAt: now, ItemID: "film"},
-		{Path: "/m/show/e2.mkv", Root: "/m", Size: 1, ModifiedNs: 1, Kind: "episode", Header: store.LibraryHeaderRead,
+		{Path: "/m/show/e2.mkv", Root: "/m", Size: 1, ModifiedNs: 1, Kind: "episode", Header: librarystore.LibraryHeaderRead,
 			SeenAt: now, ItemID: "show-e2", SeriesID: "show"},
 	}); err != nil {
 		t.Fatal(err)
@@ -734,7 +734,7 @@ func TestGuide_ProgrammesCarryTheirTitlesLogoAndBackdrop(t *testing.T) {
 		{ImageHash: "show-fanart", OwnerID: "show", Role: "backdrop"},
 		{ImageHash: "show-logo", OwnerID: "show", Role: "logo"},
 	} {
-		ref.OwnerKind = store.LibraryItemImageOwner
+		ref.OwnerKind = librarystore.LibraryItemImageOwner
 		if err := st.PutImage(ctx, clipstore.Image{Hash: ref.ImageHash, Role: ref.Role, Width: 1, Height: 1,
 			Visibility: "member", CreatedAt: now}); err != nil {
 			t.Fatal(err)

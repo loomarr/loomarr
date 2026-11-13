@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // ErrNotAbsolute rejects a folder that is not an absolute path.
@@ -37,10 +37,24 @@ var ErrSkipped = errors.New("scan: source not configured")
 
 // Disk is what discovery needs from the local filesystem.
 type Disk interface {
-	// Readable reports whether a directory can be opened and listed.
-	Readable(ctx context.Context, path string) bool
+	// Look opens and lists a directory, and says whether it could and whether anything was in it.
+	Look(ctx context.Context, path string) Folder
 	// Mounts lists the mount points a folder named by another machine may live under.
 	Mounts() []string
+}
+
+// Folder is what one look at a directory found.
+type Folder struct {
+	// Readable: it opened and listed.
+	Readable bool
+	// Empty: it opened and held nothing, which for a mount point usually means the share behind
+	// it isn't mounted.
+	Empty bool
+}
+
+// check is a root's Folder as the store records it.
+func (f Folder) check(path string) librarystore.LibraryRootCheck {
+	return librarystore.LibraryRootCheck{Path: path, Readable: f.Readable, Empty: f.Readable && f.Empty}
 }
 
 // SourceResult is how one source answered a discovery pass.
@@ -54,10 +68,10 @@ type SourceResult struct {
 // Roots discovers, checks and records scan roots. Each call reads its sources and path map anew,
 // so a saved connection or mapping applies on the next call.
 type Roots struct {
-	Store   store.LibraryRootStore
+	Store   librarystore.LibraryRootStore
 	Sources func() []Source
 	// PathMap is the `library.path_map` setting, tried before a mount search.
-	PathMap func() library.PathMap
+	PathMap func() mediaserver.PathMap
 	Disk    Disk
 	Now     func() time.Time
 
@@ -74,26 +88,31 @@ const (
 	HealthNeedsFolders Health = "needs_folders"
 	// HealthFolderOffline: a folder in use could not be opened at its last check.
 	HealthFolderOffline Health = "folder_offline"
-	// HealthOK: every folder in use opened at its last check.
+	// HealthFolderEmpty: every folder in use opened, but one held nothing at its last check.
+	HealthFolderEmpty Health = "folder_empty"
+	// HealthOK: every folder in use opened, with something in it, at its last check.
 	HealthOK Health = "ok"
 )
 
 // Status counts the roots for the status strip.
 type Status struct {
 	Health Health
-	// InUse and Offline count confirmed folders; ToConfirm counts discovered folders that map to
-	// a readable local folder and wait for the maintainer.
-	InUse, Offline, ToConfirm int
+	// InUse, Offline and Empty count confirmed folders; ToConfirm counts discovered folders that
+	// map to a readable local folder and wait for the maintainer.
+	InUse, Offline, Empty, ToConfirm int
 }
 
 // StatusOf summarizes recorded roots.
-func StatusOf(all store.LibraryRoots) Status {
+func StatusOf(all librarystore.LibraryRoots) Status {
 	var s Status
 	for _, root := range all.Roots {
 		switch {
 		case root.InUse && !root.Readable:
 			s.InUse++
 			s.Offline++
+		case root.InUse && root.Empty:
+			s.InUse++
+			s.Empty++
 		case root.InUse:
 			s.InUse++
 		case root.Readable:
@@ -105,6 +124,8 @@ func StatusOf(all store.LibraryRoots) Status {
 		s.Health = HealthNeedsFolders
 	case s.Offline > 0:
 		s.Health = HealthFolderOffline
+	case s.Empty > 0:
+		s.Health = HealthFolderEmpty
 	default:
 		s.Health = HealthOK
 	}
@@ -112,18 +133,18 @@ func StatusOf(all store.LibraryRoots) Status {
 }
 
 // List reads the recorded roots and path map.
-func (r *Roots) List(ctx context.Context) (store.LibraryRoots, error) {
+func (r *Roots) List(ctx context.Context) (librarystore.LibraryRoots, error) {
 	return r.Store.LibraryRoots(ctx)
 }
 
 // Discover asks every source for its folders, derives a local folder for each, checks every root
 // and records the outcome. A source that fails keeps what it reported last time.
-func (r *Roots) Discover(ctx context.Context) (store.LibraryRoots, []SourceResult, error) {
+func (r *Roots) Discover(ctx context.Context) (librarystore.LibraryRoots, []SourceResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	before, err := r.Store.LibraryRoots(ctx)
 	if err != nil {
-		return store.LibraryRoots{}, nil, err
+		return librarystore.LibraryRoots{}, nil, err
 	}
 	handSet := map[[2]string]bool{}
 	for _, p := range before.Paths {
@@ -132,7 +153,7 @@ func (r *Roots) Discover(ctx context.Context) (store.LibraryRoots, []SourceResul
 		}
 	}
 
-	var d store.LibraryRootDiscovery
+	var d librarystore.LibraryRootDiscovery
 	var results []SourceResult
 	mounts := r.Disk.Mounts()
 	for _, src := range r.Sources() {
@@ -152,7 +173,7 @@ func (r *Roots) Discover(ctx context.Context) (store.LibraryRoots, []SourceResul
 			if folder == "" {
 				continue
 			}
-			found := store.LibraryRootPath{Authority: src.Authority, AuthorityPath: folder}
+			found := librarystore.LibraryRootPath{Authority: src.Authority, AuthorityPath: folder}
 			if !handSet[[2]string{src.Authority, folder}] {
 				found.RootPath = r.derive(ctx, folder, mounts)
 			}
@@ -176,29 +197,31 @@ func (r *Roots) Discover(ctx context.Context) (store.LibraryRoots, []SourceResul
 		}
 	}
 	for path := range candidates {
-		d.Checks = append(d.Checks, store.LibraryRootCheck{Path: path, Readable: r.Disk.Readable(ctx, path)})
+		d.Checks = append(d.Checks, r.Disk.Look(ctx, path).check(path))
 	}
-	slices.SortFunc(d.Checks, func(a, b store.LibraryRootCheck) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortFunc(d.Checks, func(a, b librarystore.LibraryRootCheck) int { return strings.Compare(a.Path, b.Path) })
 
 	if err := r.Store.RecordLibraryRootDiscovery(ctx, d, r.Now()); err != nil {
-		return store.LibraryRoots{}, results, err
+		return librarystore.LibraryRoots{}, results, err
 	}
 	after, err := r.Store.LibraryRoots(ctx)
 	return after, results, err
 }
 
-// Add records a folder the maintainer typed, confirmed. It must be absolute and readable.
+// Add records a folder the maintainer typed, confirmed. It must be absolute and readable. An empty
+// one is added, and recorded as empty so its card asks whether the drive is connected.
 func (r *Roots) Add(ctx context.Context, path string) error {
 	path, err := absoluteFolder(path)
 	if err != nil {
 		return err
 	}
-	if !r.Disk.Readable(ctx, path) {
+	look := r.Disk.Look(ctx, path)
+	if !look.Readable {
 		return ErrUnreadable
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.Store.AddLibraryRoot(ctx, store.LibraryRootCheck{Path: path, Readable: true}, r.Now())
+	return r.Store.AddLibraryRoot(ctx, look.check(path), r.Now())
 }
 
 // SetInUse confirms or releases a root.
@@ -226,24 +249,26 @@ func (r *Roots) SetMapping(ctx context.Context, authority, authorityPath, local 
 	if local == "" {
 		return nil
 	}
-	return r.Store.RecordLibraryRootDiscovery(ctx, store.LibraryRootDiscovery{
-		Checks: []store.LibraryRootCheck{{Path: local, Readable: r.Disk.Readable(ctx, local)}},
+	return r.Store.RecordLibraryRootDiscovery(ctx, librarystore.LibraryRootDiscovery{
+		Checks: []librarystore.LibraryRootCheck{r.Disk.Look(ctx, local).check(local)},
 	}, at)
 }
 
-// derive finds the local folder for an authority's folder: the same path when Loomarr can read it,
-// else the `library.path_map` translation, else the one mount that holds the folder's trailing
+// derive finds the local folder for an authority's folder: the `library.path_map` translation when
+// Loomarr can read it, else the same path, else the one mount that holds the folder's trailing
 // names. "" when nothing, or more than one folder, fits.
 //
 // A root is always absolute: a relative name would resolve against wherever Loomarr happens to run.
 func (r *Roots) derive(ctx context.Context, folder string, mounts []string) string {
-	if filepath.IsAbs(folder) && r.Disk.Readable(ctx, folder) {
-		return folder
-	}
+	// The path map first: the maintainer wrote it for this folder. In Docker the media server's
+	// own name (/data/tv) can also exist here as something else (Loomarr's data folder is /data).
 	if r.PathMap != nil {
-		if local, ok := r.PathMap().Apply(folder); ok && filepath.IsAbs(local) && r.Disk.Readable(ctx, filepath.Clean(local)) {
+		if local, ok := r.PathMap().Apply(folder); ok && filepath.IsAbs(local) && r.Disk.Look(ctx, filepath.Clean(local)).Readable {
 			return filepath.Clean(local)
 		}
+	}
+	if filepath.IsAbs(folder) && r.Disk.Look(ctx, folder).Readable {
+		return folder
 	}
 	names := strings.Split(strings.Trim(folder, "/"), "/")
 	// The longest matching tail is the most specific; a tie at that length is ambiguous.
@@ -256,7 +281,7 @@ func (r *Roots) derive(ctx context.Context, folder string, mounts []string) stri
 				candidates = append(candidates, mount)
 			}
 			for _, c := range candidates {
-				if c != folder && !slices.Contains(hits, c) && r.Disk.Readable(ctx, c) {
+				if c != folder && !slices.Contains(hits, c) && r.Disk.Look(ctx, c).Readable {
 					hits = append(hits, c)
 				}
 			}

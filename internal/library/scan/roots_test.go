@@ -3,24 +3,29 @@ package scan
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// fakeDisk answers readability from a fixed set of folders.
+// fakeDisk answers from a fixed set of folders: readable ones, and of those the empty ones.
 type fakeDisk struct {
 	readable map[string]bool
+	empty    map[string]bool
 	mounts   []string
 }
 
-func (d fakeDisk) Readable(_ context.Context, path string) bool { return d.readable[path] }
-func (d fakeDisk) Mounts() []string                             { return d.mounts }
+func (d fakeDisk) Look(_ context.Context, path string) Folder {
+	return Folder{Readable: d.readable[path], Empty: d.empty[path]}
+}
+func (d fakeDisk) Mounts() []string { return d.mounts }
 
 func folders(list ...string) func(context.Context) ([]string, error) {
 	return func(context.Context) ([]string, error) { return list, nil }
@@ -42,13 +47,13 @@ func newRoots(t *testing.T, disk fakeDisk, pathMap string, sources ...Source) *R
 	return &Roots{
 		Store:   openStore(t),
 		Sources: func() []Source { return sources },
-		PathMap: func() library.PathMap { return library.ParsePathMap(pathMap) },
+		PathMap: func() mediaserver.PathMap { return mediaserver.ParsePathMap(pathMap) },
 		Disk:    disk,
 		Now:     func() time.Time { return time.UnixMilli(1_800_000_000_000) },
 	}
 }
 
-func rootFor(all store.LibraryRoots, authority, folder string) string {
+func rootFor(all librarystore.LibraryRoots, authority, folder string) string {
 	for _, p := range all.Paths {
 		if p.Authority == authority && p.AuthorityPath == folder {
 			return p.RootPath
@@ -57,18 +62,21 @@ func rootFor(all store.LibraryRoots, authority, folder string) string {
 	return "<absent>"
 }
 
-// Each authority's folder maps to a local folder: as named, through the path map, or by the one
+// Each authority's folder maps to a local folder: through the path map, as named, or by the one
 // mount holding its trailing names. Ambiguous and missing folders stay unmapped.
 func TestDiscoverDerivesLocalFolders(t *testing.T) {
 	disk := fakeDisk{
 		readable: map[string]bool{
 			"/media/tv": true, "/mnt/nas/movies": true, "/srv/anime": true, "media/tv": true,
 			"/mnt/a/kids": true, "/mnt/b/kids": true, "/mnt/music": true,
+			// The media server's own name for shows also exists here, empty: Loomarr's data folder
+			// is mounted at /data too. The path map says where the shows really are.
+			"/data/shows": true, "/mnt/nas/shows": true,
 		},
 		mounts: []string{"/mnt/nas", "/mnt/a", "/mnt/b", "/srv/anime"},
 	}
 	r := newRoots(t, disk, "/data=>/mnt/nas",
-		Source{Authority: "emby", Folders: folders("/media/tv", "/data/movies/", "/data/kids", "/data/gone", "media/tv")},
+		Source{Authority: "emby", Folders: folders("/media/tv", "/data/movies/", "/data/kids", "/data/gone", "media/tv", "/data/shows")},
 		Source{Authority: "sonarr", Folders: folders("/tv-anime/anime")},
 		Source{Authority: "radarr", Folders: func(context.Context) ([]string, error) { return nil, ErrSkipped }},
 	)
@@ -81,7 +89,8 @@ func TestDiscoverDerivesLocalFolders(t *testing.T) {
 		{"emby", "/data/movies", "/mnt/nas/movies"},
 		{"emby", "/data/kids", ""}, // the path map misses, and two mounts hold a "kids"
 		{"emby", "/data/gone", ""},
-		{"emby", "media/tv", ""}, // relative: readable from here, but never a root
+		{"emby", "media/tv", ""},                  // relative: readable from here, but never a root
+		{"emby", "/data/shows", "/mnt/nas/shows"}, // the path map wins over a same-named folder
 
 		{"sonarr", "/tv-anime/anime", "/srv/anime"},
 	} {
@@ -89,7 +98,7 @@ func TestDiscoverDerivesLocalFolders(t *testing.T) {
 			t.Errorf("%s %s → %q, want %q", c.authority, c.folder, got, c.want)
 		}
 	}
-	if len(all.Roots) != 3 {
+	if len(all.Roots) != 4 {
 		t.Fatalf("roots %+v", all.Roots)
 	}
 	for _, root := range all.Roots {
@@ -139,6 +148,79 @@ func TestDiscoverKeepsFailedSourceAndMarksOffline(t *testing.T) {
 	}
 	if results[0].State != "failed" || !strings.Contains(results[0].Error, "refused") {
 		t.Fatalf("results %+v", results)
+	}
+}
+
+// Using a folder, or typing one in, asks for a pass at once; releasing one does not.
+func TestUsingAFolderAsksForAPass(t *testing.T) {
+	disk := fakeDisk{readable: map[string]bool{"/media/tv": true, "/mnt/extra": true}}
+	h := newHarness(t)
+	roots := newRoots(t, disk, "", Source{Authority: "sonarr", Folders: folders("/media/tv")})
+	lib := &Library{Roots: roots, Scanner: NewScanner(h.im, time.Hour)}
+	ctx := context.Background()
+	if _, _, err := roots.Discover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	asked := func() bool {
+		select {
+		case <-lib.Scanner.trigger:
+			return true
+		default:
+			return false
+		}
+	}
+
+	if err := lib.SetInUse(ctx, "/media/tv", true); err != nil {
+		t.Fatal(err)
+	}
+	if !asked() {
+		t.Fatal("Use this folder did not ask for a pass")
+	}
+	if err := lib.SetInUse(ctx, "/media/tv", false); err != nil {
+		t.Fatal(err)
+	}
+	if asked() {
+		t.Fatal("releasing a folder asked for a pass")
+	}
+	if err := lib.Add(ctx, "/mnt/extra"); err != nil {
+		t.Fatal(err)
+	}
+	if !asked() {
+		t.Fatal("a folder typed in did not ask for a pass")
+	}
+	if err := lib.SetInUse(ctx, "/nowhere", true); err == nil || asked() {
+		t.Fatalf("an unknown folder: err %v, asked %v", err, asked())
+	}
+}
+
+// An empty folder is usually a share that isn't mounted: it is added, but the library isn't
+// called healthy while it stays empty, and is again once something is in it.
+func TestAnEmptyFolderIsAddedButNotHealthy(t *testing.T) {
+	disk := fakeDisk{
+		readable: map[string]bool{"/mnt/movies": true, "/mnt/tv": true},
+		empty:    map[string]bool{"/mnt/tv": true},
+	}
+	r := newRoots(t, disk, "")
+	ctx := context.Background()
+	for _, path := range []string{"/mnt/movies", "/mnt/tv"} {
+		if err := r.Add(ctx, path); err != nil {
+			t.Fatalf("add %s: %v", path, err)
+		}
+	}
+	all, err := r.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := StatusOf(all); got.Health != HealthFolderEmpty || got.InUse != 2 || got.Empty != 1 {
+		t.Fatalf("with tv empty: %+v, want folder_empty with 2 in use, 1 empty", got)
+	}
+
+	delete(disk.empty, "/mnt/tv") // the share is mounted again
+	if all, _, err = r.Discover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := StatusOf(all); got.Health != HealthOK || got.Empty != 0 {
+		t.Fatalf("with tv mounted: %+v, want ok and nothing empty", got)
 	}
 }
 
@@ -197,13 +279,19 @@ func TestParseMountInfo(t *testing.T) {
 	}
 }
 
-func TestOSDiskReadable(t *testing.T) {
+func TestOSDiskLook(t *testing.T) {
 	dir := t.TempDir()
 	var d OSDisk
-	if !d.Readable(context.Background(), dir) {
-		t.Fatal("an empty directory is readable")
+	if got := d.Look(context.Background(), dir); got != (Folder{Readable: true, Empty: true}) {
+		t.Fatalf("an empty directory: %+v, want readable and empty", got)
 	}
-	if d.Readable(context.Background(), filepath.Join(dir, "missing")) {
-		t.Fatal("a missing directory is not readable")
+	if err := os.Mkdir(filepath.Join(dir, "Films"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Look(context.Background(), dir); got != (Folder{Readable: true}) {
+		t.Fatalf("a directory with a folder in it: %+v, want readable and not empty", got)
+	}
+	if got := d.Look(context.Background(), filepath.Join(dir, "missing")); got.Readable || got.Empty {
+		t.Fatalf("a missing directory: %+v, want neither readable nor empty", got)
 	}
 }

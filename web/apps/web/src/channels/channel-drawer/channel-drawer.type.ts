@@ -13,7 +13,7 @@ interface DrawerChannel {
   id: string;
   number: number;
   name: string;
-  // What is on now ("Series — “Episode”", or the film), when something is.
+  // What is on now ("Series · Episode", or the film), when something is.
   now?: string;
   minutesLeft?: number;
   // A channel with nothing to tune says why instead of what's on.

@@ -1,28 +1,42 @@
 import { Action, BrandMark, type Density, playerChrome, Text } from "@loomarr/design-system";
 import { View } from "react-native";
 
-import { webOnly } from "../glass";
-
 // The full-picture states (§9 mock "error" and "off-air"): nothing to play, so the message takes the
 // picture's place, with the way on — Retry for a stream that stopped — and the way out.
 
 interface PlayerCoverProps {
-  channelLabel: string;
+  /** `CH 7 · Name`; omitted when no channel is tuned (the channels themselves did not load). */
+  channelLabel?: string;
   density: Density;
   kind: "error" | "off-air";
   /** The error's own words, when the player has them; the off-air sentence otherwise. */
   message?: string;
-  onLeave: () => void;
+  /** The way out; omitted on a television, where Back leaves. */
+  onLeave?: () => void;
+  /** The way out's words: "Leave", or where it goes ("Change server"). */
+  leaveLabel?: string;
   onRetry?: () => void;
+  /** Retry's words: "Retry channel", or "Try again" when the channels themselves did not load. */
+  retryLabel?: string;
   title: string;
 }
 
-const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, title }: PlayerCoverProps) => (
+const PlayerCover = ({
+  channelLabel,
+  density,
+  kind,
+  leaveLabel = "Leave",
+  message,
+  onLeave,
+  onRetry,
+  retryLabel = "Retry channel",
+  title,
+}: PlayerCoverProps) => (
   <View
     role={kind === "error" ? "alert" : "status"}
     style={{
       alignItems: "center",
-      backgroundColor: kind === "error" ? "rgba(11, 12, 14, 0.8)" : playerChrome.discInk,
+      backgroundColor: kind === "error" ? playerChrome.surface : playerChrome.discInk,
       bottom: 0,
       gap: 8,
       justifyContent: "center",
@@ -32,7 +46,6 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
       right: 0,
       top: 0,
       zIndex: 35,
-      ...webOnly(kind === "error" ? { backdropFilter: "blur(4px)" } : {}),
     }}
   >
     <BrandMark contained={false} decorative size={4} />
@@ -44,18 +57,24 @@ const PlayerCover = ({ channelLabel, density, kind, message, onLeave, onRetry, t
         {message}
       </Text>
     ) : null}
-    <Text density={density} textRole="guideMeta" tone="muted">
-      {channelLabel}
-    </Text>
+    {channelLabel ? (
+      <Text density={density} textRole="mono" tone="muted">
+        {channelLabel}
+      </Text>
+    ) : null}
     <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
       {onRetry ? (
-        <Action density={density} onPress={onRetry}>
-          Retry channel
+        // A remote's focus has nowhere else to be on a cover, so Retry claims it and OK retries. It is
+        // white, as the play key is: inside the player amber is focus only (§9.6).
+        <Action density={density} hasTVPreferredFocus={density === "tv"} onPress={onRetry} variant="disc">
+          {retryLabel}
         </Action>
       ) : null}
-      <Action density={density} onPress={onLeave} variant="outline">
-        Leave
-      </Action>
+      {onLeave ? (
+        <Action density={density} onPress={onLeave} variant="outline">
+          {leaveLabel}
+        </Action>
+      ) : null}
     </View>
   </View>
 );

@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/httpcore"
 	"github.com/loomarr/loomarr/internal/library/scan"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
 // Library → Items (#2151 step 10, decisions 22 and 25): the movies and series Loomarr found in its
@@ -121,7 +122,7 @@ type libraryMatchDTO struct {
 	Page string `json:"page,omitempty" format:"uri" doc:"The title's page in that app, when by is app and it has one"`
 }
 
-func libraryMatchOf(m store.LibraryMatch) libraryMatchDTO {
+func libraryMatchOf(m librarystore.LibraryMatch) libraryMatchDTO {
 	by := scan.DecidedBy(m)
 	if by == scan.DecidedByApp {
 		return libraryMatchDTO{By: string(by), App: m.App, Page: m.Page}
@@ -140,13 +141,13 @@ type libraryItemDTO struct {
 	Poster *httpcore.ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
 	// A title with either count above zero needs a look (#2151 decision 24).
 	Unplayable  int `json:"unplayable" doc:"Files that can't be played: their details couldn't be read"`
-	ExtraCopies int `json:"extraCopies" doc:"A movie's files beyond the one that plays"`
+	ExtraCopies int `json:"extraCopies" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does"`
 }
 
-func libraryItemOf(it store.LibraryItemSummary, posters map[string]*httpcore.ImageDTO) libraryItemDTO {
+func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpcore.ImageDTO) libraryItemDTO {
 	extra := 0
-	if it.Kind == "movie" && it.Files > 1 {
-		extra = it.Files - 1
+	if it.Kind == "movie" {
+		extra = it.ExtraCopies
 	}
 	return libraryItemDTO{
 		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0,
@@ -157,7 +158,7 @@ func libraryItemOf(it store.LibraryItemSummary, posters map[string]*httpcore.Ima
 
 // libraryPosters renders the items' posters, by hash. An image whose bytes have not arrived is
 // left out, so the grid shows the title's name rather than a broken image.
-func (s *Handlers) libraryPosters(ctx context.Context, items []store.LibraryItemSummary) map[string]*httpcore.ImageDTO {
+func (s *Handlers) libraryPosters(ctx context.Context, items []librarystore.LibraryItemSummary) map[string]*httpcore.ImageDTO {
 	out := map[string]*httpcore.ImageDTO{}
 	if s.libraryImageFn == nil {
 		return out
@@ -195,7 +196,7 @@ func (s *Handlers) listLibraryItems(ctx context.Context, in *listLibraryItemsInp
 	if err != nil {
 		return nil, err
 	}
-	page, err := svc.Items(ctx, store.LibraryItemQuery{
+	page, err := svc.Items(ctx, librarystore.LibraryItemQuery{
 		Kind: in.Kind, Search: in.Search, Ready: in.Ready, Recent: in.Sort == "recent",
 		Limit: min(in.Limit, libraryItemsPageMax), Offset: in.Offset,
 	})
@@ -222,6 +223,7 @@ type libraryItemFileDTO struct {
 	AudioChannels int                  `json:"audioChannels,omitempty" doc:"The channels of the sound that plays: its default audio stream, else its first"`
 	Subtitles     []librarySubtitleDTO `json:"subtitles" doc:"Its subtitle streams in order; empty for none or while unread"`
 	Extra         bool                 `json:"extra" doc:"A copy that never plays, because another of the title's files does"`
+	Part          int                  `json:"part,omitempty" doc:"Which part of a movie split over several files it is, from 1; absent for a whole file. Every part plays, in order"`
 }
 
 type libraryPictureDTO struct {
@@ -243,8 +245,8 @@ type libraryDetailsFromDTO struct {
 // libraryFileOf is f with what its header says.
 func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
 	out := libraryItemFileDTO{
-		Path: f.Path, Size: f.Size, Ready: f.Header != store.LibraryHeaderPending,
-		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra,
+		Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending,
+		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra, Part: f.Part,
 		Subtitles: make([]librarySubtitleDTO, 0, len(f.Subtitles)),
 	}
 	if f.Picture != nil {
@@ -316,7 +318,7 @@ func (s *Handlers) getLibraryItem(ctx context.Context, in *getLibraryItemInput) 
 	if err != nil {
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't read this title", "Try again in a moment.", err)
 	}
-	posters := s.libraryPosters(ctx, []store.LibraryItemSummary{d.LibraryItemSummary})
+	posters := s.libraryPosters(ctx, []librarystore.LibraryItemSummary{d.LibraryItemSummary})
 	body := libraryItemDetailOf(d, posters)
 	body.LogoImage, body.BackdropImage = s.libraryImage(ctx, d.Logo), s.libraryImage(ctx, d.Backdrop)
 	return &getLibraryItemOutput{Body: body}, nil

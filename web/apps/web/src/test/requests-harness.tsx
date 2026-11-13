@@ -6,6 +6,7 @@ import { HttpResponse, http } from "msw";
 import { routeTree } from "@/routeTree.gen";
 import { appHandlers } from "@/test/msw/handlers";
 import { server } from "@/test/msw/server";
+import { settleOnTeardown } from "@/test/settle-router";
 
 // Shared by the Requests specs (#1405): the real route tree, driven the way the Dashboard cards,
 // the tab bar, the nav badge and a member's browser reach it. Each colocated spec owns its own
@@ -129,12 +130,16 @@ const stub = ({ me, journeys = [], proposals = [], pulls = [], titles = {} }: Fi
 };
 
 const renderAt = (path: string) => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createRouter({
-    routeTree,
-    context: { queryClient },
-    history: createMemoryHistory({ initialEntries: [path] }),
-  });
+  // staleTime as the app sets it (lib/query-client): a page opened by a route's loader reads what
+  // the loader fetched instead of asking again on mount.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } });
+  const router = settleOnTeardown(
+    createRouter({
+      routeTree,
+      context: { queryClient },
+      history: createMemoryHistory({ initialEntries: [path] }),
+    }),
+  );
   // LoomarrProvider as main.tsx mounts it: Needs you renders @loomarr/ui components.
   render(
     <LoomarrProvider theme="dark">

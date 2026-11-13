@@ -15,14 +15,18 @@ import (
 	"github.com/loomarr/loomarr/internal/api/people"
 	setupapi "github.com/loomarr/loomarr/internal/api/setup"
 	"github.com/loomarr/loomarr/internal/api/system"
+	"github.com/loomarr/loomarr/internal/app/nownext"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
-	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
 	"github.com/loomarr/loomarr/internal/people/access"
+	"github.com/loomarr/loomarr/internal/people/accountdelivery"
 	"github.com/loomarr/loomarr/internal/people/auth"
 	"github.com/loomarr/loomarr/internal/people/notifications"
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
+	"github.com/loomarr/loomarr/internal/platform/backup"
 	"github.com/loomarr/loomarr/internal/platform/config"
+	"github.com/loomarr/loomarr/internal/platform/databasemigration"
 	"github.com/loomarr/loomarr/internal/platform/events"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/jobs"
@@ -50,9 +54,12 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 	if st == nil {
 		return nil
 	}
-	return newDatabaseService(st, func() string { return settings.BackupDir.Get(set) }, eventBus).
+	service := databasemigration.New(
+		store.DialectOf(st), store.BackupWriter(st),
+		func() string { return settings.BackupDir.Get(set) }, databaseEvents{bus: eventBus}).
 		WithMigrationRequest(overrides.DatabaseMigration).
 		WithLastError(overrides.DatabaseMigrationError)
+	return databaseAPI{service: service}
 }
 
 type residentLLMBuild struct {
@@ -88,7 +95,7 @@ func buildOperations(
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
 	refreshSecretRedactor func(),
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	eventBus *events.Bus,
 	emitter *eventEmitter,
@@ -135,10 +142,16 @@ func buildOperations(
 		providerAdapters = append(providerAdapters, webPushAdapter)
 		providerValidators = append(providerValidators, webPushAdapter)
 	}
-	accountDelivery := buildAccountDelivery(
-		st, destinationRepository, providerAdapters, set, invitationService, recoveryService, registry, log,
-	)
-	providerValidators = append(accountDelivery.validators, providerValidators...)
+	var accountDelivery accountdelivery.Delivery
+	if st != nil && set.svc != nil {
+		accountDelivery = accountdelivery.Build(accountdelivery.Config{
+			Store: st, Repository: destinationRepository, ProviderAdapters: providerAdapters,
+			PublicURL:   func() string { return settings.AccessPublicURL.Get(set) },
+			Invitations: invitationService, Recovery: recoveryService,
+			Registry: registry, Log: log, NewID: newID,
+		})
+	}
+	providerValidators = append(accountDelivery.Validators, providerValidators...)
 	scheduler, err := buildScheduler(rootCtx, st, set, registry, emitter, owner, log, metricRecorder)
 	if err != nil {
 		return operationsBuild{}, err
@@ -164,11 +177,11 @@ func buildOperations(
 			refreshSecretRedactor, readGeneratedSecret, triggerHealth, emitter.SettingsChanged, log,
 		),
 		notificationDestinations: buildNotificationDestinations(
-			destinationRepository, providerValidators, accountDelivery.service,
+			destinationRepository, providerValidators, accountDelivery.Service,
 		),
-		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.product, source: st, log: log},
-		invitationDelivery:   accountDelivery.invitations,
-		passwordRecovery:     accountDelivery.recovery,
+		productNotifications: &productNotificationCoordinator{publisher: accountDelivery.Product, source: st, log: log},
+		invitationDelivery:   accountDelivery.Invitations,
+		passwordRecovery:     accountDelivery.Recovery,
 		jobs:                 jobService,
 		scheduler:            scheduler,
 		database:             buildDatabase(st, set, overrides, eventBus),
@@ -269,16 +282,17 @@ func buildResidentLLM(set resolved, log *slog.Logger) residentLLMBuild {
 
 func buildBackups(st store.Store, set resolved, registry *jobs.Registry, log *slog.Logger) system.BackupsService {
 	if writer := store.BackupWriter(st); writer != nil {
-		service := &backupsService{
-			w: writer, dir: func() string { return settings.BackupDir.Get(set) },
-			retain: func() int { return settings.BackupRetain.Get(set) },
-			sched:  func() string { return settings.BackupSchedule.Get(set) },
-		}
+		service := backup.New(backup.Config{
+			Writer:   writer,
+			Dir:      func() string { return settings.BackupDir.Get(set) },
+			Retain:   func() int { return settings.BackupRetain.Get(set) },
+			Schedule: func() string { return settings.BackupSchedule.Get(set) },
+		})
 		registry.Add(service.Job(log))
-		return service
+		return backupsAPI{service: service}
 	}
 	if st != nil {
-		registry.Add(unavailableBackupJob(
+		registry.Add(backup.UnavailableJob(
 			"Loomarr does not back up PostgreSQL itself — use pg_dump on your usual schedule."))
 	}
 	return nil
@@ -307,7 +321,7 @@ func buildAuth(
 	set resolved,
 	secrets *settings.Secrets,
 	readGeneratedSecret func(context.Context, settings.GeneratedSecret) (string, error),
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	log *slog.Logger,
 ) authBuild {
 	var result authBuild
@@ -325,8 +339,7 @@ func buildAuth(
 	}
 
 	manager := auth.NewManager(st, settings.SessionTTL.Get(set), time.Now)
-	loginLimiter := auth.NewRateLimiter(0.2, 5)
-	result.login = auth.NewLoginService(libraryClient, st, manager, loginLimiter, time.Now)
+	result.login = auth.NewLoginService(libraryClient, st, manager, auth.NewLoginLimiter(), time.Now)
 	result.userSync = auth.NewUserSync(libraryClient, st, time.Now)
 	result.provision = auth.NewProvisioner(st, libraryClient, newID, time.Now)
 	result.sso = auth.NewSSOService(func() auth.SSOConfig {
@@ -376,16 +389,16 @@ func buildGuide(
 	if st == nil {
 		return nil
 	}
-	var internalGuide broadcastReader
+	var internalGuide nownext.BroadcastReader
 	if playoutResolver != nil {
 		internalGuide = playoutResolver
 	}
-	return nowNextRouter{
-		tunarr: guideAdapter{
+	return guideReader{router: nownext.New(nownext.Config{
+		Tunarr: guideAdapter{
 			tunarr: tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder), window: 2 * time.Hour,
 		},
-		internal: internalGuide, channels: st, appliedBackend: appliedBackend, window: 2 * time.Hour,
-	}
+		Internal: internalGuide, Channels: st, AppliedBackend: appliedBackend, Window: 2 * time.Hour,
+	})}
 }
 
 func buildSettings(
@@ -393,7 +406,7 @@ func buildSettings(
 	set resolved,
 	desiredSet resolved,
 	secrets *settings.Secrets,
-	libraryClient *library.Client,
+	libraryClient *mediaserver.Client,
 	tmdbClient *tmdb.Client,
 	refreshRedactor func(),
 	readSecret func(context.Context, settings.GeneratedSecret) (string, error),

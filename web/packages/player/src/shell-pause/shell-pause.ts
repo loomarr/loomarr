@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import type { PlayerController } from "../player-controller";
 
@@ -57,5 +57,25 @@ const useShellPause = (controller: ShellPauseController, watching: boolean): She
   return shellPause.forget;
 };
 
+/**
+ * `useShellPause`, plus the one way the shell sends the viewer to a channel from outside Watching (a
+ * Guide pick, a finished request's Open channel): it drops the shell's pause for any other channel
+ * before tuning, because another channel replaces the paused stream and resuming it would only blip
+ * its audio.
+ */
+const useShellTune = (
+  controller: ShellPauseController & Pick<PlayerController, "tuneChannel">,
+  watching: boolean,
+): ((channelId: string) => void) => {
+  const forget = useShellPause(controller, watching);
+  return useCallback(
+    (channelId) => {
+      forget(channelId);
+      void controller.tuneChannel(channelId);
+    },
+    [controller, forget],
+  );
+};
+
 export type { ShellPause, ShellPauseController };
-export { createShellPause, useShellPause };
+export { createShellPause, useShellPause, useShellTune };

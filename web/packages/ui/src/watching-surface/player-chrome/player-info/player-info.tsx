@@ -62,14 +62,14 @@ const PlayerInfo = ({ density, formatTime, info }: PlayerInfoProps) => (
     {info.upNext ? (
       <View
         style={{
-          borderTopColor: playerChrome.glassRing,
+          borderTopColor: playerChrome.hairline,
           borderTopWidth: 1,
           gap: 2,
           marginTop: 20,
           paddingTop: 16,
         }}
       >
-        <Text density={density} shout textRole="guideMeta" tone="info" tracking={0.16}>
+        <Text density={density} shout textRole="mono" tone="info" tracking={0.16}>
           Up next
         </Text>
         <Text density={density} strong style={{ marginTop: 4 }} textRole="label" tone="primary">

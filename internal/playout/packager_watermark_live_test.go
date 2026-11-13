@@ -35,6 +35,9 @@ type livePackager struct {
 	facts    MediaFormat
 }
 
+// writeCheckBug writes the test bug, a white square at the check alpha (straight).
+func writeCheckBug(dir string) (*Watermark, error) { return writeCheckBugOf(dir, checkWhite) }
+
 // newLivePackager skips where NVENC cannot encode.
 func newLivePackager(t *testing.T) *livePackager {
 	bin := ffmpegBin(t)

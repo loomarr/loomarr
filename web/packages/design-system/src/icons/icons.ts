@@ -1,11 +1,15 @@
 import Activity from "lucide-react-native/icons/activity";
+import Airplay from "lucide-react-native/icons/airplay";
 import Archive from "lucide-react-native/icons/archive";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
+import ArrowLeftRight from "lucide-react-native/icons/arrow-left-right";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
 import ArrowUpRight from "lucide-react-native/icons/arrow-up-right";
+import AudioLines from "lucide-react-native/icons/audio-lines";
 import Bell from "lucide-react-native/icons/bell";
 import BookOpen from "lucide-react-native/icons/book-open";
 import CalendarClock from "lucide-react-native/icons/calendar-clock";
+import Captions from "lucide-react-native/icons/captions";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -51,6 +55,7 @@ import PanelRightClose from "lucide-react-native/icons/panel-right-close";
 import PanelRightOpen from "lucide-react-native/icons/panel-right-open";
 import Pause from "lucide-react-native/icons/pause";
 import Pencil from "lucide-react-native/icons/pencil";
+import PictureInPicture2 from "lucide-react-native/icons/picture-in-picture-2";
 import Play from "lucide-react-native/icons/play";
 import Plus from "lucide-react-native/icons/plus";
 import Radio from "lucide-react-native/icons/radio";
@@ -86,12 +91,18 @@ const icons = {
   account: CircleUserRound,
   // Diagnostics' live activity pulse.
   activity: Activity,
+  // An iPhone player's AirPlay utility (§9.3).
+  airplay: Airplay,
   // A caution the reader should act on or know about, drawn as a triangle: `warning` is the round
   // mark of a status, this is the banner's.
   alert: TriangleAlert,
   // A stored bundle of files (a filler source kept as an archive).
   archive: Archive,
+  // The player's Audio key (§9.3).
+  audio: AudioLines,
   back: ChevronLeft,
+  // The player's Subtitles key (§9.3).
+  captions: Captions,
   channelDown: ChevronDown,
   channelUp: ChevronUp,
   channels: Tv,
@@ -168,6 +179,8 @@ const icons = {
   person: UserRound,
   pending: Circle,
   people: Users,
+  // The player's picture-in-picture utility (§9.3).
+  pictureInPicture: PictureInPicture2,
   // A table row's disclosure: closed points at the row's details, open points down into them.
   rowCollapse: ChevronDown,
   rowExpand: ChevronRight,
@@ -209,6 +222,8 @@ const icons = {
   startOver: StepBack,
   stop: Square,
   success: Check,
+  // The player's Last channel key: back and forth between two channels (§9.3).
+  swap: ArrowLeftRight,
   // Asking the model for something: the AI action, never a plain primary (§2.1).
   suggest: Sparkles,
   time: Clock3,
