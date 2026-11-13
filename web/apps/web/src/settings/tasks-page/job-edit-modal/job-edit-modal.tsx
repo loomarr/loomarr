@@ -58,13 +58,14 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <form
-          className="flex flex-col gap-4"
+        <Stack
+          gap="4"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
+          render="form"
         >
           <DialogHeader>
             <DialogTitle>Modify {job.title}</DialogTitle>
@@ -109,7 +110,7 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
               {patch.isPending ? "Saving…" : "Save"}
             </Action>
           </DialogFooter>
-        </form>
+        </Stack>
       </DialogContent>
     </Dialog>
   );

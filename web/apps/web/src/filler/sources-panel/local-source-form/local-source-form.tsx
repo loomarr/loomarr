@@ -50,13 +50,17 @@ const LocalSourceForm = () => {
       <Text as="p" textRole="cardLabel">
         Add a folder or library
       </Text>
-      <form
-        className="flex flex-wrap items-center gap-2"
+      <Stack
+        align="center"
+        direction="row"
+        gap="2"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
+        wrap
       >
         <form.Field name="kind">
           {(field) => (
@@ -96,7 +100,7 @@ const LocalSourceForm = () => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
       {addSource.error != null && <ErrorState error={addSource.error} />}
       <Text as="span" textRole="mono">
         Uses your location. Every clip is checked before it can play.

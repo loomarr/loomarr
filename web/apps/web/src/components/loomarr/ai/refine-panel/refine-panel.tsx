@@ -134,12 +134,14 @@ const RefinePanel = ({
               )}
             </Stack>
           )}
-          <form
-            className="flex gap-2"
+          <Stack
+            direction="row"
+            gap="2"
             onSubmit={(e) => {
               e.preventDefault();
               void form.handleSubmit();
             }}
+            render="form"
           >
             <form.Field name="change">
               {(field) => (
@@ -164,7 +166,7 @@ const RefinePanel = ({
                 </>
               )}
             </form.Field>
-          </form>
+          </Stack>
           {refine.error != null && <ErrorState error={refine.error} />}
         </Stack>
       )}

@@ -200,13 +200,14 @@ const PersonDetail = ({
         )}
 
         {contactOpen ? (
-          <form
-            className="flex flex-col gap-3"
+          <Stack
+            gap="3"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
               void contactForm.handleSubmit();
             }}
+            render="form"
           >
             <contactForm.AppField name="email">
               {(field) => <field.TextField autoComplete="off" label="Contact email" type="email" />}
@@ -234,7 +235,7 @@ const PersonDetail = ({
                 Cancel
               </Action>
             </Stack>
-          </form>
+          </Stack>
         ) : (
           <Stack direction="row" gap="inline" wrap>
             <Action disabled={contactSaving} onPress={openContact} variant="outline">
@@ -386,13 +387,14 @@ const PersonDetail = ({
         {user.local &&
           onResetPassword &&
           (resetOpen ? (
-            <form
-              className="flex flex-col gap-3"
+            <Stack
+              gap="3"
               noValidate
               onSubmit={(event) => {
                 event.preventDefault();
                 void resetForm.handleSubmit();
               }}
+              render="form"
             >
               <resetForm.AppField name="next">
                 {(field) => (
@@ -419,7 +421,7 @@ const PersonDetail = ({
                   Cancel
                 </Action>
               </Stack>
-            </form>
+            </Stack>
           ) : (
             <Action onPress={() => setResetOpen(true)} style={{ alignSelf: "flex-start" }} variant="outline">
               Reset password

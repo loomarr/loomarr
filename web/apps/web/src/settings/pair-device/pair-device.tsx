@@ -114,13 +114,15 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
       </Text>
 
-      <form
-        className="mt-8 space-y-4"
+      <Stack
+        gap="4"
+        marginTop={32}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
       >
         <form.Field name="userCode">
           {(field) => (
@@ -161,7 +163,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
 
       {approve.isError
         ? (() => {

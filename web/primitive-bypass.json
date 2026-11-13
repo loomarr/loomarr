@@ -9,18 +9,12 @@
       "flexStack": 2
     },
     "apps/web/src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/refine-review/refine-review.tsx": {
@@ -78,15 +72,6 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
-      "flexStack": 2
-    },
-    "apps/web/src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/people/invitation-join/invitation-join.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
@@ -94,9 +79,6 @@
     },
     "apps/web/src/components/loomarr/people/people-roster/people-roster.tsx": {
       "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/people/person-detail/person-detail.tsx": {
-      "flexStack": 2
     },
     "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
       "flexStack": 1
@@ -112,12 +94,6 @@
     },
     "apps/web/src/components/loomarr/setup/connection-block/connection-block.tsx": {
       "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/setup/login-form/login-form.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
-      "flexStack": 2
     },
     "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
       "flexStack": 1
@@ -176,9 +152,6 @@
     "apps/web/src/filler/incoming/incoming.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/filler/sources-panel/local-source-form/local-source-form.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/sources-panel/provider-source-finder/provider-source-finder.tsx": {
       "flexStack": 1
     },
@@ -207,7 +180,7 @@
       "flexStack": 1
     },
     "apps/web/src/routes/_authed/account.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
       "flexStack": 3
@@ -218,16 +191,10 @@
     "apps/web/src/routes/_authed/settings/system/index.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/settings/paired-devices/paired-devices.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
       "flexStack": 2
     },
     "apps/web/src/settings/settings-page/settings-page.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/settings/tasks-page/job-edit-modal/job-edit-modal.tsx": {
       "flexStack": 1
     },
     "apps/web/src/settings/tasks-page/tasks-page.tsx": {
@@ -235,9 +202,6 @@
     },
     "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "flexStack": 3
-    },
-    "apps/web/src/wizard/bootstrap-step/bootstrap-step.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {
       "flexStack": 1

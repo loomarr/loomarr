@@ -117,12 +117,16 @@ const SourceSearch = ({
     <Stack className={className} gap="control">
       {/* A real form, so Enter submits — this is a search box, and needing the mouse to run it
           is the kind of papercut that makes a surface feel broken. */}
-      <form
-        className="flex flex-wrap items-end gap-2"
+      <Stack
+        align="end"
+        direction="row"
+        gap="2"
         onSubmit={(e) => {
           e.preventDefault();
           onSearch();
         }}
+        render="form"
+        wrap
       >
         <Surface backgroundColor="transparent" borderWidth={0} flexGrow={1} flexShrink={1} minWidth={0}>
           {/* The visible label lives in the tab heading above, so the control carries its own
@@ -138,7 +142,7 @@ const SourceSearch = ({
         <Action disabled={searching || query.trim().length < 2} icon="search" submit>
           {searching ? "Searching…" : "Search"}
         </Action>
-      </form>
+      </Stack>
 
       {error && (
         <Text as="p" textRole="compact" tone="danger">

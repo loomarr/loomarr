@@ -213,13 +213,15 @@ const ApprovalQueueItem = ({
           requiring one would turn every decline into a chore — but offering it is what
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
-        <form
-          className="border-border flex flex-col gap-2 border-t pt-2"
+        <Stack
+          className="border-border border-t pt-2"
+          gap="2"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
+          render="form"
         >
           <form.AppField name="reason">
             {(field) => (
@@ -247,7 +249,7 @@ const ApprovalQueueItem = ({
               Deny
             </Action>
           </Stack>
-        </form>
+        </Stack>
       )}
 
       {/* ⚠ OUTSIDE the picks disclosure, and above it. What a reviewer is approving changed:

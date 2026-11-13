@@ -172,12 +172,14 @@ const ProposalReview = ({
       </Stack>
 
       {editingBrief ? (
-        <form
-          className="border-suggest/40 bg-suggest/5 flex flex-col gap-3 rounded-lg border p-4"
+        <Stack
+          className="border-suggest/40 bg-suggest/5 rounded-lg border p-4"
+          gap="3"
           onSubmit={(event) => {
             event.preventDefault();
             void briefForm.handleSubmit();
           }}
+          render="form"
         >
           <briefForm.Field name="brief">
             {(field) => (
@@ -226,7 +228,7 @@ const ProposalReview = ({
               )}
             </briefForm.Subscribe>
           </Stack>
-        </form>
+        </Stack>
       ) : (
         <Stack
           align="start"
