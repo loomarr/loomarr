@@ -186,6 +186,27 @@ describe("PlayerChrome", () => {
     ).toEqual(expect.arrayContaining(["Audio", "Fullscreen", "Pause", "More"]));
   });
 
+  // iOS opens AirPlay's picker only from its own button, so the key draws and the picker takes the tap.
+  it("gives an iPhone AirPlay, with the system's picker over the key, and picture in picture", () => {
+    const onPictureInPicture = vi.fn();
+    const host = mount(
+      chrome({
+        utilities: utilities({
+          airPlayPicker: <span data-testid="route-picker" />,
+          density: "touch",
+          onPictureInPicture,
+          pointer: false,
+        }),
+      }),
+    );
+
+    expect(host.querySelector('[data-testid="player-cluster"] [data-testid="route-picker"]')).not.toBeNull();
+    // The picker is the AirPlay control; the key under it is drawing only, not a second button.
+    expect(button(host, "AirPlay")?.getAttribute("aria-hidden")).toBe("true");
+    act(() => button(host, "Picture in picture")?.click());
+    expect(onPictureInPicture).toHaveBeenCalledOnce();
+  });
+
   it("sets the programme's rating beside Leave, and leaves", () => {
     const onLeave = vi.fn();
     const host = mount(chrome({ band: { ...band, rating: "TV-PG" }, onLeave }));

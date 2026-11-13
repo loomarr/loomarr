@@ -43,6 +43,7 @@
       "../../scripts/with-memory-safe-android-build.cjs",
       "../../scripts/with-loomarr-fonts.cjs",
       "expo-secure-store",
+      ["expo-video", { "supportsPictureInPicture": true }],
       ["expo-screen-orientation", { "initialOrientation": "PORTRAIT_UP" }]
     ],
     "experiments": {

@@ -247,8 +247,11 @@ interface PlayerUtilitiesProps {
   /** Fullscreen; omitted where the platform has none (a phone's app is already full screen). */
   fullscreen?: boolean;
   onFullscreen?: () => void;
-  /** AirPlay (iPhone): the system's route picker. */
-  onAirPlay?: () => void;
+  /**
+   * AirPlay (iPhone): the system's route picker. iOS opens the picker only from its own button, so
+   * the app passes that button and the key lays it, clear, over its face.
+   */
+  airPlayPicker?: ReactNode;
   /** Picture in picture, where the player is a phone app that has a key for it. */
   onPictureInPicture?: () => void;
 }
