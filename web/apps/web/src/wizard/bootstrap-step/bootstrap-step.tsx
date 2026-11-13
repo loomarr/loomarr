@@ -99,13 +99,14 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
   }
 
   return (
-    <form
+    <Stack
+      gap="4"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
         form.handleSubmit();
       }}
-      className="flex flex-col gap-4"
+      render="form"
     >
       {blockingError != null && <ErrorState error={blockingError} />}
 
@@ -138,7 +139,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
       <Action disabled={busy} style={{ alignSelf: "flex-start" }} submit>
         {busy ? "Creating…" : "Create admin"}
       </Action>
-    </form>
+    </Stack>
   );
 };
 

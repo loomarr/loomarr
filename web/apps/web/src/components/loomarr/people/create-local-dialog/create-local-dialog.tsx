@@ -8,6 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Stack,
 } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -60,13 +61,14 @@ const CreateLocalDialog = ({
       </Action>
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent portalContainer={portalContainer}>
-          <form
-            className="flex flex-col gap-4"
+          <Stack
+            gap="4"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
               void form.handleSubmit();
             }}
+            render="form"
           >
             <DialogHeader>
               <DialogTitle>Add local account</DialogTitle>
@@ -98,7 +100,7 @@ const CreateLocalDialog = ({
                 {creating ? "Creating…" : "Create account"}
               </Action>
             </DialogFooter>
-          </form>
+          </Stack>
         </DialogContent>
       </Dialog>
     </>

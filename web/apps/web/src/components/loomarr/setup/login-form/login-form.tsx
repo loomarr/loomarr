@@ -2,7 +2,6 @@ import { loginSchema } from "@loomarr/core/schemas";
 import { Action, Stack, Text } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import type { LoginFormProps } from "./login-form.type";
 
 // LoginForm — the sign-in surface (§11). Local or imported media-server credentials
@@ -49,13 +48,16 @@ const LoginForm = ({
   });
 
   return (
-    <form
+    <Stack
+      className={className}
+      gap="5"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
         form.handleSubmit();
       }}
-      className={cn("flex w-full flex-col gap-5", className)}
+      render="form"
+      width="100%"
     >
       {error != null && <ErrorState error={error} />}
 
@@ -119,7 +121,7 @@ const LoginForm = ({
           </Text>
         </Stack>
       )}
-    </form>
+    </Stack>
   );
 };
 

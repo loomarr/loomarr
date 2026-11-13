@@ -87,13 +87,18 @@ const ApproveDevice = () => {
         Your TV will point at <span className="font-mono">/pair</span> — that page does the same thing and is
         easier to reach from a phone.
       </Text>
-      <form
-        className="mt-3 flex flex-wrap items-start gap-2"
+      <Stack
+        align="start"
+        direction="row"
+        gap="2"
+        marginTop={12}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
+        wrap
       >
         <form.Field name="userCode">
           {(field) => (
@@ -119,7 +124,7 @@ const ApproveDevice = () => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
       {approve.isError ? (
         <Text as="p" className="mt-2" textRole="compact" tone="danger">
           That code is wrong or has expired. Codes last ten minutes — check the device and try again.

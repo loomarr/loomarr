@@ -187,7 +187,7 @@ const InvitationDialog = ({
           </DialogHeader>
 
           {!invitation ? (
-            <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
+            <Stack gap="4" noValidate onSubmit={submit} render="form">
               <form.Field name="kind">
                 {(field) => (
                   <ChoiceGroup
@@ -309,7 +309,7 @@ const InvitationDialog = ({
                   {busy ? "Creating…" : "Create invitation"}
                 </Action>
               </DialogFooter>
-            </form>
+            </Stack>
           ) : terminal ? (
             <Stack gap="4">
               <Card gap={4} padding={20}>

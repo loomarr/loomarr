@@ -58,13 +58,15 @@ const InvitationJoin = ({
   );
 
   return (
-    <form
-      className="flex w-full flex-col gap-5"
+    <Stack
+      gap="5"
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
+      render="form"
+      width="100%"
     >
       <div className="space-y-2 text-center">
         <Text as="h1" strong textRole="display">
@@ -153,7 +155,7 @@ const InvitationJoin = ({
       <Action disabled={isRedeeming} submit>
         {isRedeeming ? "Activating…" : "Activate account"}
       </Action>
-    </form>
+    </Stack>
   );
 };
 

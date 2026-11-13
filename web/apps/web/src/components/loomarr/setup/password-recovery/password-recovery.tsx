@@ -42,13 +42,15 @@ const PasswordRecoveryRequest = ({
   }
 
   return (
-    <form
-      className="flex w-full flex-col gap-5"
+    <Stack
+      gap="5"
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
+      render="form"
+      width="100%"
     >
       <div className="space-y-2 text-center">
         <Stack className="mx-auto w-fit" direction="row" render="span">
@@ -80,7 +82,7 @@ const PasswordRecoveryRequest = ({
         </Text>
         <SignInLink />
       </div>
-    </form>
+    </Stack>
   );
 };
 
@@ -151,13 +153,15 @@ const PasswordRecoveryReset = ({
     new Date(expiresAt),
   );
   return (
-    <form
-      className="flex w-full flex-col gap-5"
+    <Stack
+      gap="5"
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit();
       }}
+      render="form"
+      width="100%"
     >
       <div className="space-y-2 text-center">
         <Stack className="mx-auto w-fit" direction="row" render="span">
@@ -197,7 +201,7 @@ const PasswordRecoveryReset = ({
       <Action disabled={isRedeeming} submit>
         {isRedeeming ? "Resetting…" : "Reset password"}
       </Action>
-    </form>
+    </Stack>
   );
 };
 

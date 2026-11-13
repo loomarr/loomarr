@@ -125,13 +125,14 @@ const AccountScreen = () => {
             Password
           </Text>
           {isLocal ? (
-            <form
-              className="flex flex-col gap-3"
+            <Stack
+              gap="3"
               noValidate
               onSubmit={(e) => {
                 e.preventDefault();
                 void form.handleSubmit();
               }}
+              render="form"
             >
               <Text as="p" textRole="compact" tone="secondary">
                 This is a local Loomarr account, so Loomarr stores the password and you can change it here.
@@ -157,7 +158,7 @@ const AccountScreen = () => {
                   changing it signs you out everywhere, including here
                 </Text>
               </Stack>
-            </form>
+            </Stack>
           ) : (
             <Text as="p" textRole="compact" tone="secondary">
               Your media server owns this password. Loomarr stores only a non-reversible verifier after a
