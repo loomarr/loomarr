@@ -1,8 +1,9 @@
-import { Field, type SelectOption, Stack, Surface } from "@loomarr/design-system";
+import { Field, type SelectOption, Surface } from "@loomarr/design-system";
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
 import type { ComponentProps } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { FieldError } from "@/components/loomarr/feedback/field-error";
+import { cn } from "@/lib/utils";
 
 // useAppForm — every web form's TanStack Form, with its field components bound once (§14). A form
 // names a field and says what is particular to it; the label, the input's wiring and the validation
@@ -52,7 +53,7 @@ const TextField = ({
   const field = useFieldContext<string>();
   const { errors } = field.state.meta;
   return (
-    <Stack className={className} gap="2">
+    <div className={cn("flex flex-col gap-2", className)}>
       {/* React Native Web defaults an input to sentence-capitalised and autocorrected; the forms
           take usernames, passwords, emails and short constraints, none of which want either. */}
       <Field
@@ -72,7 +73,7 @@ const TextField = ({
         value={field.state.value}
       />
       <FieldError errors={errors} />
-    </Stack>
+    </div>
   );
 };
 
