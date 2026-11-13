@@ -60,7 +60,6 @@ const OverlayWorkshop = ({
           description="Your tuned channel will stop playing on this device."
           eyebrow="LEAVE LOOMARR"
           onDismiss={() => setVisible(false)}
-          reducedMotion={reducedMotion}
           title="Return to the device home screen?"
           visible={visible}
         />
@@ -96,18 +95,8 @@ const TouchTransient: Story = { args: { density: "touch" } };
 const TvTransient: Story = { args: { density: "tv" } };
 const LightTransient: Story = { globals: { theme: "light" } };
 const Confirmation: Story = { args: { kind: "modal" }, tags: ["portal"] };
-const LightConfirmation: Story = {
-  args: { kind: "modal" },
-  globals: { theme: "light" },
-  tags: ["portal"],
-};
-const TvConfirmation: Story = { args: { density: "tv", kind: "modal" }, tags: ["portal"] };
-const ReducedMotionConfirmation: Story = {
-  args: { kind: "modal", reducedMotion: true },
-  tags: ["portal"],
-};
 const InteractiveConfirmation: Story = {
-  args: { initialVisible: false, kind: "modal", reducedMotion: true },
+  args: { initialVisible: false, kind: "modal" },
   tags: ["motion-only", "portal"],
 };
 const AutoDismiss: Story = {
@@ -120,12 +109,9 @@ export {
   AutoDismiss,
   Confirmation,
   InteractiveConfirmation,
-  LightConfirmation,
   LightTransient,
-  ReducedMotionConfirmation,
   TouchTransient,
   TransientBottom,
   TransientTop,
-  TvConfirmation,
   TvTransient,
 };

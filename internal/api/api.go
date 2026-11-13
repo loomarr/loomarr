@@ -66,9 +66,9 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	humaAPI := humago.New(mux, cfg)
 	srv := &Server{
 		auth: opts.Auth, log: log,
-		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustProxy: opts.TrustProxy},
-		channels: opts.Channels,
-		viewing:  opts.Viewing,
+		origin:   httpcore.Origin{CookieSecure: opts.CookieSecure, TrustedProxies: opts.TrustedProxies},
+		channels: opts.Channels.Service,
+		viewing:  opts.Playout.Viewing,
 	}
 	if srv.viewing == nil {
 		srv.viewing = viewing.New()
@@ -76,20 +76,22 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerMiddleware(humaAPI)
 	setupRoutes := setupapi.New(setupapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Settings: opts.Settings,
-		NotificationDestinations: opts.NotificationDestinations, WebPushPublicKey: opts.WebPushPublicKey,
-		BackendTransition: opts.BackendTransition, LiveTV: opts.LiveTV, TunarrConnect: opts.TunarrConnect,
-		ArrDiscovery: opts.ArrDiscovery, LibraryConfigured: opts.LibraryConfigured,
+		NotificationDestinations: opts.Setup.NotificationDestinations, WebPushPublicKey: opts.Setup.WebPushPublicKey,
+		BackendTransition: opts.Setup.BackendTransition, LiveTV: opts.Setup.LiveTV, TunarrConnect: opts.Setup.TunarrConnect,
+		ArrDiscovery: opts.Setup.ArrDiscovery, LibraryConfigured: opts.Library.Configured,
 	})
 	catalogapi.New(catalogapi.Deps{
-		Store: opts.Store, LiveSettings: opts.LiveSettings, Search: opts.Search, Now: opts.Now,
+		Store: opts.Store, LiveSettings: opts.LiveSettings, Search: opts.Library.Search, Now: opts.Now,
 	}).Register(humaAPI)
 	people.New(people.Deps{
 		Store: opts.Store, Log: log, Metrics: recorder, Origin: srv.origin,
-		Login: opts.Login, Sessions: opts.Sessions, Passwords: opts.Passwords, UserSync: opts.UserSync,
-		Invitations: opts.Invitations, InvitationDelivery: opts.InvitationDelivery,
-		InvitationRedemption: opts.InvitationRedemption, PasswordRecovery: opts.PasswordRecovery,
-		AccessPublicURL: opts.AccessPublicURL, Devices: opts.Devices, DeviceLimiter: opts.DeviceLimiter,
-		DevLogin: opts.DevLogin, SSO: opts.SSO, Provision: opts.Provision, Demo: opts.Demo,
+		Login: opts.People.Login, Sessions: opts.People.Sessions, Passwords: opts.People.Passwords,
+		UserSync: opts.People.UserSync, Invitations: opts.People.Invitations,
+		InvitationDelivery:   opts.People.InvitationDelivery,
+		InvitationRedemption: opts.People.InvitationRedemption, PasswordRecovery: opts.People.PasswordRecovery,
+		AccessPublicURL: opts.People.AccessPublicURL, Devices: opts.People.Devices,
+		DeviceLimiter: opts.People.DeviceLimiter, DevLogin: opts.People.DevLogin, SSO: opts.People.SSO,
+		Provision: opts.People.Provision, Demo: opts.People.Demo,
 		ConfigInt: setupRoutes.ConfigInt, LibraryUnconfigured: setupRoutes.LibraryUnconfigured,
 	}, false).Register(humaAPI)
 	system.New(system.Deps{
@@ -99,18 +101,18 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		StartedAt: startedAt(opts.Now), Ready: ready,
 		StoreFacts:   storeFacts(opts.Store),
 		Operations:   opts.Store,
-		BackupSQLite: opts.BackupSQLite,
-		Backups:      opts.Backups, Database: opts.Database, Encryption: opts.Encryption, Jobs: opts.Jobs,
-		SystemLLM: opts.SystemLLM, Restart: opts.Restart, RestartDrift: opts.RestartDrift,
-		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: setupRoutes.ConnectionChecks,
+		BackupSQLite: opts.System.BackupSQLite,
+		Backups:      opts.System.Backups, Database: opts.System.Database, Encryption: opts.System.Encryption, Jobs: opts.System.Jobs,
+		SystemLLM: opts.System.LLM, Restart: opts.System.Restart, RestartDrift: opts.System.RestartDrift,
+		PlayoutObserver: opts.Playout.Observer, ConnectionChecks: setupRoutes.ConnectionChecks,
 	}, false).Register(humaAPI)
 	imageRoutes := imagesapi.New(imagesapi.Deps{Log: log, Images: opts.Images})
 	channelDeps := channelsapi.Deps{
-		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, BackendCheckpoint: opts.BackendCheckpoint,
-		Settings: opts.Settings, Suggest: opts.Suggest, Channels: opts.Channels, Binder: opts.Binder,
-		TunerRescanner: opts.TunerRescanner, Icons: opts.Icons, Playout: opts.Playout, Activity: opts.Activity,
-		Images: opts.Images, WatermarkPreview: opts.WatermarkPreview, Now: opts.Now,
-		IdeaLibrary: opts.IdeaLibrary, Approver: opts.Approver, Viewing: srv.viewing,
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, BackendCheckpoint: opts.Setup.BackendCheckpoint,
+		Settings: opts.Settings, Suggest: opts.Proposals.Suggest, Channels: opts.Channels.Service, Binder: opts.Channels.Binder,
+		TunerRescanner: opts.Channels.TunerRescanner, Icons: opts.Channels.Icons, Playout: opts.Playout.Service, Activity: opts.Activity,
+		Images: opts.Images, WatermarkPreview: opts.Channels.WatermarkPreview, Now: opts.Now,
+		IdeaLibrary: opts.Channels.IdeaLibrary, Approver: opts.Proposals.Approver, Viewing: srv.viewing,
 		Calendar: func() schedule.Calendar { return srv.holidayCalendar() },
 	}
 	if opts.Images != nil {
@@ -120,15 +122,15 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	// §9.1 streaming routes (V47), the play-url op and the status projection: Huma-mounted, shared auth.
 	playoutapi.New(playoutapi.Deps{
 		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings,
-		BackendCheckpoint: opts.BackendCheckpoint,
-		Playout:           opts.Playout, PlayoutObserver: opts.PlayoutObserver, PlayoutGuide: opts.PlayoutGuide,
-		PlayoutResolver: opts.PlayoutResolver, PlayoutCapability: opts.PlayoutCapability,
-		PlayoutSecret: opts.PlayoutSecret, PlayoutSecretCurrent: opts.PlayoutSecretCurrent,
-		Viewing: srv.viewing, Now: opts.Now, GPU: systemGPU(opts.SystemLLM), ResidentLLMVRAM: opts.ResidentLLMVRAM,
+		BackendCheckpoint: opts.Setup.BackendCheckpoint,
+		Playout:           opts.Playout.Service, PlayoutObserver: opts.Playout.Observer, PlayoutGuide: opts.Playout.Guide,
+		PlayoutResolver: opts.Playout.Resolver, PlayoutCapability: opts.Playout.Capability,
+		PlayoutSecret: opts.Playout.Secret, PlayoutSecretCurrent: opts.Playout.SecretCurrent,
+		Viewing: srv.viewing, Now: opts.Now, GPU: systemGPU(opts.System.LLM), ResidentLLMVRAM: opts.Playout.ResidentLLMVRAM,
 	}, false).Register(humaAPI)
 	guideDeps := guideapi.Deps{
-		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Now: opts.Now, Channels: opts.Channels,
-		Pods: opts.Pods, Guide: opts.Guide, PlayoutGuide: opts.PlayoutGuide, TimelineThumbs: opts.TimelineThumbs,
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Now: opts.Now, Channels: opts.Channels.Service,
+		Pods: opts.Guide.Pods, Guide: opts.Guide.Reader, PlayoutGuide: opts.Playout.Guide, TimelineThumbs: opts.Guide.TimelineThumbs,
 	}
 	if opts.Images != nil {
 		guideDeps.Images = opts.Images
@@ -137,14 +139,14 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	guideapi.New(guideDeps).Register(humaAPI)
 	proposalsapi.New(proposalsapi.Deps{
-		Store: opts.Store, Suggest: opts.Suggest, Approver: opts.Approver, ProposalOutlook: opts.ProposalOutlook,
-		ProposalWorkflow: opts.ProposalWorkflow, ProposalProgress: opts.ProposalProgress, Settings: opts.Settings,
-		Activity: opts.Activity, DecisionQuality: opts.DecisionQuality, ProposalNotifications: opts.ProposalNotifications,
+		Store: opts.Store, Suggest: opts.Proposals.Suggest, Approver: opts.Proposals.Approver, ProposalOutlook: opts.Proposals.Outlook,
+		ProposalWorkflow: opts.Proposals.Workflow, ProposalProgress: opts.Proposals.Progress, Settings: opts.Settings,
+		Activity: opts.Activity, DecisionQuality: opts.Proposals.DecisionQuality, ProposalNotifications: opts.Proposals.Notifications,
 		Holidays: func() holidayvocab.Vocabulary { return srv.holidayCalendar().Vocab() },
 	}).Register(humaAPI)
 	libraryDeps := libraryapi.Deps{
-		Store: opts.Store, LiveSettings: opts.LiveSettings, LibraryRoots: opts.LibraryRoots,
-		LibraryHooks: opts.LibraryHooks, Collections: opts.Collections, MovieCollections: opts.MovieCollections,
+		Store: opts.Store, LiveSettings: opts.LiveSettings, LibraryRoots: opts.Library.Roots,
+		LibraryHooks: opts.Library.Hooks, Collections: opts.Library.Collections, MovieCollections: opts.Library.MovieCollections,
 	}
 	if opts.Images != nil {
 		libraryDeps.LibraryImage = imageRoutes.LibraryImage
@@ -152,11 +154,11 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	}
 	libraryapi.New(libraryDeps).Register(humaAPI)
 	fillerDeps := fillerapi.Deps{
-		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Settings: opts.Settings, Filler: opts.Filler,
-		FillerLayout: opts.FillerLayout, FillerResearch: opts.FillerResearch, FillerDefects: opts.FillerDefects,
-		Channels: opts.Channels, Pods: opts.Pods, IntakeLanguages: opts.IntakeLanguages,
-		SourceProviders: opts.SourceProviders, PlaysCounted: opts.PlayoutResolver != nil, Now: opts.Now,
-		Taxonomy: opts.Taxonomy, Origin: srv.origin,
+		Log: log, Store: opts.Store, LiveSettings: opts.LiveSettings, Settings: opts.Settings, Filler: opts.Filler.Service,
+		FillerLayout: opts.Filler.Layout, FillerResearch: opts.Filler.Research, FillerDefects: opts.Filler.Defects,
+		Channels: opts.Channels.Service, Pods: opts.Guide.Pods, IntakeLanguages: opts.Filler.IntakeLanguages,
+		SourceProviders: opts.Filler.SourceProviders, PlaysCounted: opts.Playout.Resolver != nil, Now: opts.Now,
+		Taxonomy: opts.Filler.Taxonomy, Origin: srv.origin,
 	}
 	if opts.Images != nil {
 		fillerDeps.ImageRecords = imageRoutes.ImageDTOsByHash
@@ -174,15 +176,15 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	fillerapi.New(fillerDeps).Register(humaAPI)
 	imageRoutes.Register(humaAPI)
 	opsDeps := opsapi.Deps{
-		Log: log, Store: opts.Store, Ready: ready, Metrics: recorder, MetricsToken: opts.MetricsToken,
-		Pprof: opts.Pprof, Events: opts.Events, Shutdown: opts.Shutdown, StartupReports: opts.StartupReports,
-		DiagnosticEvents: opts.DiagnosticEvents, DiagnosticProcesses: opts.DiagnosticProcesses,
-		DiagnosticBundles: opts.DiagnosticBundles, DiagnosticCapture: opts.DiagnosticCapture,
-		ClientDiagnostics: opts.ClientDiagnostics, ClientCrashes: opts.ClientCrashes,
-		PlayoutObserver: opts.PlayoutObserver, ConnectionChecks: setupRoutes.ConnectionChecks, StoreFacts: storeFacts(opts.Store),
+		Log: log, Store: opts.Store, Ready: ready, Metrics: recorder, MetricsToken: opts.Ops.MetricsToken,
+		Pprof: opts.Ops.Pprof, Events: opts.Ops.Events, Shutdown: opts.Shutdown, StartupReports: opts.Ops.StartupReports,
+		DiagnosticEvents: opts.Ops.DiagnosticEvents, DiagnosticProcesses: opts.Ops.DiagnosticProcesses,
+		DiagnosticBundles: opts.Ops.DiagnosticBundles, DiagnosticCapture: opts.Ops.DiagnosticCapture,
+		ClientDiagnostics: opts.Ops.ClientDiagnostics, ClientCrashes: opts.Ops.ClientCrashes,
+		PlayoutObserver: opts.Playout.Observer, ConnectionChecks: setupRoutes.ConnectionChecks, StoreFacts: storeFacts(opts.Store),
 	}
-	if opts.Devices != nil {
-		opsDeps.Devices = opts.Devices // a typed nil must stay a nil interface
+	if opts.People.Devices != nil {
+		opsDeps.Devices = opts.People.Devices // a typed nil must stay a nil interface
 	}
 	opsapi.New(opsDeps, false).Register(humaAPI)
 	setupRoutes.Register(humaAPI)

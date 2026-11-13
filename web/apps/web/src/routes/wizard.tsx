@@ -6,15 +6,17 @@ import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenan
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { LoadingStrip } from "@loomarr/design-system";
+import { LoadingStrip, Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { meQueryOptions } from "@/auth/me-query";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback";
 import { InstallationLocation } from "@/components/loomarr/settings/installation-location";
 import { WizardShell } from "@/components/loomarr/setup/wizard-shell";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { BootstrapStep } from "@/wizard/bootstrap-step";
 import { ChecklistStep } from "@/wizard/checklist-step";
 import { FirstChannelStep } from "@/wizard/first-channel-step";
@@ -94,13 +96,13 @@ const COPY: Record<string, { title: string; description: string }> = {
 // A step the operator may pass on. Skipped reads neutral, never red (§6).
 //
 // The blocking set is "the shortest honest path to a live channel" (§13, config-design §6),
-// which since §9.1 depends on the playout backend (see requiredChecks). A step that gates on
+// which depends on the playout backend (§9.1, see requiredChecks). A step that gates on
 // a check the operator cannot satisfy is a dead end, because the wizard offers only
 // Back/Continue and the rail goes back, never ahead: they'd be stranded on that screen for good.
-// It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling slots
-// with no programme, and hardest of all on `tunarr`, which an internal-playout install can
-// never turn green. (Live TV is no longer a step, it auto-wires on the Tunarr save, so it
-// can't strand anyone here either.)
+// That matters most for `library`, whose entire purpose (§6) is to stop channels scheduling slots
+// with no programme, and most of all for `tunarr`, which an internal-playout install can
+// never turn green. (Live TV is not a step: it auto-wires on the Tunarr save, so it can't
+// strand anyone here either.)
 const SKIPPABLE = new Set(["media", "library", "users"]);
 
 // Skippable steps whose Continue still waits for their own work, as the mock draws it: Skip is
@@ -132,7 +134,11 @@ const WizardScreen = () => {
   );
   const persisted = (key: SettingKey) => locationEntries.find((entry) => entry.key === key)?.value;
   const persistedCountry = persisted(SettingKey.FillerHomeCountry) ?? "";
-  const [locationEdits, setLocationEdits] = useState<Partial<Record<SettingKey, string>>>({});
+  const {
+    edits: locationEdits,
+    setEdit: setLocationEdit,
+    resetEdits: resetLocationEdits,
+  } = useSettingsDraft();
   const liveCountry = locationEdits[SettingKey.FillerHomeCountry] ?? persistedCountry;
   const livePlace = locationEdits[SettingKey.FillerHomePlace] ?? persisted(SettingKey.FillerHomePlace) ?? "";
   const liveRadius =
@@ -187,9 +193,16 @@ const WizardScreen = () => {
   // and then yank the operator forward — hold the paint instead of flashing.
   if (authLoading || (isAuthenticated && (status.isLoading || settings.isLoading))) {
     return (
-      <main className="bg-background flex min-h-screen items-center justify-center" aria-busy="true">
+      <Stack
+        align="center"
+        className="bg-background min-h-screen"
+        direction="row"
+        justify="center"
+        render="main"
+        aria-busy
+      >
         <LoadingStrip accessibilityLabel="Checking your setup" />
-      </main>
+      </Stack>
     );
   }
 
@@ -199,9 +212,15 @@ const WizardScreen = () => {
   // retry local to this idempotent read instead.
   if (isAuthenticated && settings.error) {
     return (
-      <main className="bg-background flex min-h-screen items-center justify-center p-6">
+      <Stack
+        align="center"
+        className="bg-background min-h-screen p-6"
+        direction="row"
+        justify="center"
+        render="main"
+      >
         <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />
-      </main>
+      </Stack>
     );
   }
 
@@ -242,7 +261,7 @@ const WizardScreen = () => {
               [SettingKey.FillerLocalRadiusKm]: liveRadius,
               [SettingKey.FillerLanguage]: liveLanguage,
             }}
-            onChange={(key, value) => setLocationEdits((previous) => ({ ...previous, [key]: value }))}
+            onChange={setLocationEdit}
             results={unwrap(locationPatch.data, (body) => body.results) ?? undefined}
             error={locationPatch.error?.detail}
             showHeading={false}
@@ -287,7 +306,7 @@ const WizardScreen = () => {
       ) {
         return;
       }
-      setLocationEdits({});
+      resetLocationEdits();
     }
     goTo("checklist");
   };
@@ -351,6 +370,19 @@ const Route = createFileRoute("/wizard")({
       step: known(search.step) ? (search.step as string) : undefined,
       conn: knownConn(search.conn as string | undefined) ? (search.conn as string) : undefined,
     };
+  },
+  // The server truth the resume point is derived from, so the wizard opens on the right step rather
+  // than holding the paint. Not signed in yet (the bootstrap step) there is nothing to read, and the
+  // reads are the signed-in operator's: a member would only be refused. Each answers for itself
+  // when it fails (the page's own retry), so they are warmed, not awaited to success.
+  loader: async ({ context: { queryClient } }) => {
+    const me = await queryClient.ensureQueryData(meQueryOptions()).catch(() => undefined);
+    if (me?.status !== 200 || me.data.role !== "admin") return;
+    await Promise.all([
+      queryClient.prefetchQuery(setupApi.getSetupStatusQueryOptions({ query: { retry: false } })),
+      queryClient.prefetchQuery(settingsApi.getSettingsListQueryOptions({ query: { retry: false } })),
+      queryClient.prefetchQuery(libraryApi.getLibraryStatusQueryOptions({ query: { retry: false } })),
+    ]);
   },
   component: WizardScreen,
 });

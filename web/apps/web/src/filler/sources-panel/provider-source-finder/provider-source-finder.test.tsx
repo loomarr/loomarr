@@ -199,12 +199,15 @@ describe("ProviderSourceFinder", () => {
     render(<ProviderSourceFinder provider={archiveProvider} enabled />, { wrapper });
     const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
     await userEvent.type(input, "https://archive.org/details/classic_tv");
-    await screen.findByRole("button", { name: "Searching…" });
+    // While the suggestion list is open the rest of the page is hidden from assistive tech (Base UI's
+    // doing), so the form's button is read from the DOM, not found by role.
+    const submit = () => document.querySelector('form button[type="submit"]');
+    await waitFor(() => expect(submit()).toHaveTextContent("Searching…"));
     await userEvent.clear(input);
     await userEvent.type(input, "new collection");
     releaseSearch?.();
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Searching…" })).not.toBeInTheDocument());
+    await waitFor(() => expect(submit()).not.toHaveTextContent("Searching…"));
     expect(input).toHaveValue("new collection");
     expect(screen.queryByRole("button", { name: "Add collection" })).not.toBeInTheDocument();
   });

@@ -180,6 +180,10 @@ services:
     devices:
       - ${PLAYOUT_RENDER_DEVICE:-/dev/null}:${PLAYOUT_RENDER_DEVICE:-/dev/null}
     restart: unless-stopped
+    # A stop drains HTTP, unwinds workers and closes the store, which takes up to 51s when
+    # something is slow (docs/design/deployment.md). Docker's 10s default would SIGKILL it
+    # mid-teardown; a test holds this at or above the app's own budget.
+    stop_grace_period: 60s
     networks: [default, edge]
     labels:
       media.loomarr.edge: "true"

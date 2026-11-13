@@ -1,6 +1,6 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
@@ -35,16 +35,24 @@ const Stat = ({
   note: string;
   tone?: "warn";
 }) => (
-  <div className="flex min-w-0 flex-col gap-0.5">
+  <Stack className="min-w-0" gap="0.5">
     <Text as="span" textRole="metadata">
       {label}
     </Text>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
-    <span className={cn("text-lg font-semibold tabular-nums", tone === "warn" && "text-caution")}>
+    <Text
+      as="span"
+      className="tabular-nums"
+      strong
+      textRole="headline"
+      tone={tone === "warn" ? "warning" : "primary"}
+    >
       {value}
-    </span>
-    <span className="text-muted-foreground text-xs">{note}</span>
-  </div>
+    </Text>
+    <Text as="span" textRole="hint" tone="secondary">
+      {note}
+    </Text>
+  </Stack>
 );
 
 const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
@@ -65,18 +73,22 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
 
   if (folded && !expanded) {
     return (
-      <section
+      <Stack
+        align="center"
         aria-label="Catalog health"
-        className={cn("border-border flex items-center gap-2 rounded-lg border px-3 py-2.5", className)}
+        className={cn("border-border rounded-lg border px-3 py-2.5", className)}
+        direction="row"
+        gap="inline"
+        render="section"
       >
-        <p className="min-w-0 flex-1 text-sm">
+        <Text as="p" className="min-w-0 flex-1" textRole="compact" tone="primary">
           {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
           {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
-        </p>
+        </Text>
         <Action aria-expanded={false} onPress={() => setExpanded(true)} variant="outline">
           Details
         </Action>
-      </section>
+      </Stack>
     );
   }
 

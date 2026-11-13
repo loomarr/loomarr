@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure } from "@loomarr/design-system";
+import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 
 interface CompositeCatalogGroupProps {
@@ -24,7 +24,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
   const total = unwrap(children.data, (body) => body.total) ?? 0;
 
   return (
-    <div className="flex flex-col gap-2">
+    <Stack gap="inline">
       {/* Keep the ordinary clip surface as the parent. A compilation still needs the same
           inspection entry point and confirmed split action; replacing it with a
           bespoke group heading made those established actions disappear. The disclosure below
@@ -38,23 +38,29 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
         onExpandedChange={setOpen}
       >
         {children.isFetching ? (
-          <span className="text-muted-foreground text-xs">Loading segments…</span>
+          <Text as="span" textRole="hint" tone="secondary">
+            Loading segments…
+          </Text>
         ) : (
-          <div className="flex">
+          <Stack direction="row">
             <Action onPress={onManage} variant="outline">
               {`Manage ${pluralize(total, "segment")}`}
             </Action>
-          </div>
+          </Stack>
         )}
         {children.error ? (
-          <p className="text-onair-300 text-sm">Segments could not be loaded.</p>
+          <Text as="p" textRole="compact" tone="danger">
+            Segments could not be loaded.
+          </Text>
         ) : rows.length > 0 ? (
           <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
         ) : children.isFetching ? null : (
-          <p className="text-muted-foreground text-sm">No filed segments remain under this compilation.</p>
+          <Text as="p" textRole="compact" tone="secondary">
+            No filed segments remain under this compilation.
+          </Text>
         )}
       </Disclosure>
-    </div>
+    </Stack>
   );
 };
 

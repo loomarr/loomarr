@@ -8,6 +8,8 @@ vi.mock("@/diagnostics/client-reporter", () => ({
   installGlobalClientDiagnostics: vi.fn(),
 }));
 vi.mock("@/routeTree.gen", () => ({ routeTree: {} }));
+// The entry watches the stand-in query client for a session that ends; that is session-expiry's test.
+vi.mock("@/auth/session-expiry", () => ({ watchSessionExpiry: vi.fn() }));
 vi.mock("@/components/loomarr/feedback/route-error", () => ({ RouteError: () => null }));
 vi.mock("@/components/loomarr/feedback/route-pending", () => ({ RoutePending: () => null }));
 vi.mock("@/components/loomarr/feedback/app-toaster", () => ({ AppToaster: mocks.toaster }));

@@ -2,6 +2,7 @@ name: Go maintenance
 
 # Weekly, never on pull requests: a newly published advisory would otherwise turn every Go PR red
 # until someone bumps the dependency, whatever the PR was about. A failure here is the prompt to bump.
+# The library scan at household size runs here too: about a minute, too long for every PR.
 on:
   schedule:
     - cron: "41 6 * * 1"
@@ -30,3 +31,16 @@ jobs:
           cache: false
       - name: Scan the code that ships
         run: make vuln
+
+  library-scale:
+    name: Library scan at household size
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Scan a 33k-file library
+        run: make scan-scale

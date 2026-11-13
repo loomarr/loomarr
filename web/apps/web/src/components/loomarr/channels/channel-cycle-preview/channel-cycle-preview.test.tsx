@@ -19,8 +19,13 @@ vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
     ...actual,
     usePreviewChannelCycle: (...args: unknown[]) => mockUsePreviewChannelCycle(...args),
     usePreviewChannelProgramming: (...args: unknown[]) => mockUsePreviewChannelProgramming(...args),
+    useHousehold: () => mockUseHousehold(),
   };
 });
+
+// The household's timezone, which the picker and quick picks read in. Auckland is far enough from
+// any CI zone that a device-clock reading cannot pass by accident.
+const mockUseHousehold = vi.fn(() => ({ data: { status: 200, data: { timeZone: "Pacific/Auckland" } } }));
 
 afterEach(() => {
   mockUsePreviewChannelCycle.mockReset();
@@ -261,7 +266,10 @@ describe("ChannelCyclePreview", () => {
     const lastCall = mockUsePreviewChannelCycle.mock.calls.at(-1);
     expect(lastCall?.[0]).toBe("ch-1");
     expect(lastCall?.[1]).toEqual(expect.objectContaining({ at: expect.any(String) }));
-    expect(String(lastCall?.[1]?.at)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Christmas 9 AM on the household's clock (Auckland, UTC+13), whatever zone the device is in,
+    // and the field reads it back as 9 AM there.
+    expect(String(lastCall?.[1]?.at)).toMatch(/^\d{4}-12-24T20:00:00\.000Z$/);
+    expect((screen.getByLabelText("At") as HTMLInputElement).value).toMatch(/^\d{4}-12-25T09:00$/);
   });
 
   it("shows a loading state", () => {

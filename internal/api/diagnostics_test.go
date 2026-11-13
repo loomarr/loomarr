@@ -92,7 +92,7 @@ func TestStartupReportsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 	current := diagnostics.StartupReport{ID: "startup-current", Generation: 2, Version: "v1.2.3", State: diagnostics.StartupDegraded}
 	service := startupReportService{current: current, items: []diagnostics.StartupReport{current}}
 	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, StartupReports: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{StartupReports: service}})
 
 	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/startup-reports", nil)
 	member.Header.Set("Authorization", "Bearer "+memberToken)
@@ -134,7 +134,7 @@ func TestSupportBundlePreviewAndDownloadAreAdminOnlyAndUseSameSelection(t *testi
 		},
 	}
 	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticBundles: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticBundles: service}})
 	body := `{"from":1,"to":2,"events":true,"processes":true,"processOutput":false,"channelId":"channel-1"}`
 	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/support-bundle/preview", strings.NewReader(body))
 	member.Header.Set("Authorization", "Bearer "+memberToken)
@@ -178,7 +178,7 @@ func TestCurrentHealthIsAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 	service := startupReportService{health: want}
 	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, StartupReports: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{StartupReports: service}})
 
 	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/health", nil)
 	member.Header.Set("Authorization", "Bearer "+memberToken)
@@ -189,7 +189,7 @@ func TestCurrentHealthIsAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 
 	agentHandler := api.Router(log, api.Options{
-		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, StartupReports: service,
+		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, Ops: api.OpsOptions{StartupReports: service},
 	})
 	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/health", nil)
 	request.Header.Set("Authorization", "Bearer agent-token")
@@ -222,7 +222,7 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 		return wantPage, nil
 	})
 	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticEvents: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticEvents: service}})
 
 	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/events", nil)
 	member.Header.Set("Authorization", "Bearer "+memberToken)
@@ -277,7 +277,7 @@ func TestDiagnosticEventsAreAdminOnlyAndBearerQueryable(t *testing.T) {
 		t.Fatalf("NDJSON event = %+v, want JSON item %+v", ndjsonEvent, wantPage.Items[0])
 	}
 	agentHandler := api.Router(log, api.Options{
-		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, DiagnosticEvents: service,
+		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, Ops: api.OpsOptions{DiagnosticEvents: service},
 	})
 	agent := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/events", nil)
 	agent.Header.Set("Authorization", "Bearer agent-token")
@@ -333,7 +333,7 @@ func TestDiagnosticProcessesAreAdminOnlyAndExposeBoundedOutput(t *testing.T) {
 		},
 	}
 	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticProcesses: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticProcesses: service}})
 
 	member := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/processes", nil)
 	member.Header.Set("Authorization", "Bearer "+memberToken)
@@ -398,7 +398,7 @@ func TestClientDiagnosticsAcceptMemberAndDeriveActor(t *testing.T) {
 	})
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: diagnosticUserAuthorizer{}, Log: log, ClientDiagnostics: service,
+		Auth: diagnosticUserAuthorizer{}, Log: log, Ops: api.OpsOptions{ClientDiagnostics: service},
 	})
 
 	anonymous := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
@@ -442,7 +442,7 @@ func TestClientDiagnosticsDeriveAPITokenIdentityAndMapModuleErrors(t *testing.T)
 	})
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, ClientDiagnostics: service,
+		Auth: httpcore.NewTokenAuthorizer("agent-token"), Log: log, Ops: api.OpsOptions{ClientDiagnostics: service},
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
 		"source":"android_tv","clientVersion":"0.1.0","platform":"shield_tv",
@@ -469,7 +469,7 @@ func TestClientDiagnosticsRejectUnknownJSONBeforeModule(t *testing.T) {
 	})
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: diagnosticUserAuthorizer{}, Log: log, ClientDiagnostics: service,
+		Auth: diagnosticUserAuthorizer{}, Log: log, Ops: api.OpsOptions{ClientDiagnostics: service},
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/client-events", strings.NewReader(`{
 		"source":"web","clientVersion":"dev","platform":"chromium",
@@ -495,7 +495,7 @@ func TestHumaValidationProblemRetainsRequestCorrelation(t *testing.T) {
 	service := diagnosticEventServiceFunc(func(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error) {
 		return diagnostics.EventPage{}, nil
 	})
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticEvents: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticEvents: service}})
 	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/events?limit=201", nil)
 	request.Header.Set("Authorization", "Bearer "+adminToken)
 	request.Header.Set("X-Request-Id", "req-validation")
@@ -534,7 +534,7 @@ func TestDiagnosticEventFiltersFailBeforeUnboundedRead(t *testing.T) {
 		return diagnostics.EventPage{}, nil
 	})
 	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticEvents: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticEvents: service}})
 	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/events?limit=201", nil)
 	request.Header.Set("Authorization", "Bearer "+adminToken)
 	response := httptest.NewRecorder()
@@ -552,7 +552,7 @@ func TestVerboseCaptureIsAdminOnlyBoundedAndStoppable(t *testing.T) {
 	defer func() { _ = recorder.Close(t.Context()) }()
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
-		Auth: testAuthorizer{}, Log: log, DiagnosticCapture: recorder,
+		Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticCapture: recorder},
 	})
 
 	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/verbose-capture", strings.NewReader(`{"durationMinutes":5}`))
@@ -608,7 +608,7 @@ func TestAPIProblemRetainsRequestAndRFC7807InstanceCorrelation(t *testing.T) {
 	service := diagnosticEventServiceFunc(func(context.Context, diagnostics.EventQuery) (diagnostics.EventPage, error) {
 		return diagnostics.EventPage{}, errors.New("database offline")
 	})
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, DiagnosticEvents: service})
+	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, Ops: api.OpsOptions{DiagnosticEvents: service}})
 	request := httptest.NewRequest(http.MethodGet, "/v1/diagnostics/events", nil)
 	request.Header.Set("Authorization", "Bearer "+adminToken)
 	request.Header.Set("X-Request-Id", "req-correlation")

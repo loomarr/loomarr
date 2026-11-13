@@ -136,10 +136,11 @@ func newRig(t *testing.T, llmMock *testkit.LLM) *rig {
 		Store:    st,
 		Auth:     httpcore.NewTokenAuthorizer(adminToken),
 		Log:      log,
-		Channels: engine,
-		Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
-		Approver: approver,
-		Binder:   chBinder,
+		Channels: api.ChannelsOptions{Service: engine, Binder: chBinder},
+		Proposals: api.ProposalsOptions{
+			Suggest:  svc, // *suggest.Service satisfies api.SuggestService directly
+			Approver: approver,
+		},
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)

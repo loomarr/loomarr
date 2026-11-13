@@ -4,13 +4,15 @@ import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { ConnectionBlock } from "@/components/loomarr/setup/connection-block";
 import { blockTitle } from "@/settings/provider-title";
+import { everyEditSaved } from "@/settings/saved-edits";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { PLAYOUT_INTERNAL, requiredChecks } from "../steps";
 import { WizardAiBlock } from "../wizard-ai-block";
@@ -72,17 +74,19 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
   const entries = useSettingsEntries();
   const status = setupApi.useSetupStatus();
 
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const { edits, setEdit, dropSaved, resetEdits } = useSettingsDraft();
   const [testing, setTesting] = useState<string | undefined>();
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; hint?: string }>>({});
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, { data }) => {
         // Field values AND the server checklist (a saved key can flip a check) refetch together.
         await invalidateSettings(queryClient);
-        setEdits({}); // saved values are the new baseline
+        // Saved values are the new baseline. A 200 answers per key, so a rejected or pinned value
+        // stays in the form, editable, beside the message the results give for it.
+        dropSaved(response, data.edits);
       },
     },
   });
@@ -120,11 +124,13 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
   // (here: empty) values, which reads as "set a media server flavor" right after you
   // picked one. Save first when dirty, so Test always checks what's on screen. `edits`
   // captured before the save clears it; onError leaves the edits for the operator to retry.
+  // If the server rejected any value, the test is skipped: it would only judge the old settings.
   const test = async (check: string) => {
     setTesting(check);
     try {
       if (Object.keys(edits).length > 0) {
-        await patch.mutateAsync({ data: { edits } });
+        const saved = await patch.mutateAsync({ data: { edits } });
+        if (!everyEditSaved(saved, edits)) return;
       }
       const res = await runTest.mutateAsync({ data: { check } });
       if (res.status === 200)
@@ -139,7 +145,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
   const dirty = Object.keys(edits).length > 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       {blocksFor(only).map((block) => {
         const custom = "custom" in block && block.custom;
         // "group" in block narrows the union so TS knows block.group exists (the AI block is
@@ -193,7 +199,7 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
                 <SettingsFields
                   entries={blockEntries}
                   values={edits}
-                  onChange={(key, value) => setEdits((p) => ({ ...p, [key]: value }))}
+                  onChange={setEdit}
                   results={patchResults}
                   onEnvOverride={(key, enabled) => envOverride.mutate({ key, data: { enabled } })}
                 />
@@ -205,15 +211,15 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
 
       {/* Names the blocks that actually gate THIS install. Reading the derived set rather
           than a hardcoded pair is what keeps the sentence honest on the internal path, where
-          it would otherwise promise the operator a Tunarr requirement that no longer exists. */}
+          it would otherwise promise the operator a Tunarr requirement that does not exist there. */}
       {only === undefined && (
-        <p className="text-muted-foreground mt-1 text-xs">
+        <Text as="p" className="mt-1" textRole="hint" tone="secondary">
           {requiredChecks(backend)
             .map((c) => BLOCKS.find((b) => b.id === c)?.title ?? c)
             .join(" and ")}{" "}
           must pass to continue. The rest add features you can wire up later, and Settings re-runs these
           checks for the life of the install.
-        </p>
+        </Text>
       )}
 
       {patch.error != null && <ErrorState error={patch.error} />}
@@ -221,16 +227,16 @@ const ChecklistStep = ({ openId, onToggle, backend = PLAYOUT_INTERNAL, only }: C
       {/* One save for the step's edits (§6: the wizard saves per step). Only changed keys
           are sent — a stored secret reads back empty and an empty PATCH would clear it. */}
       {dirty && (
-        <div className="flex items-center gap-3">
+        <Stack align="center" direction="row" gap="control">
           <Action disabled={patch.isPending} onPress={save}>
             {patch.isPending ? "Saving…" : "Save changes"}
           </Action>
-          <Action disabled={patch.isPending} onPress={() => setEdits({})} variant="ghost">
+          <Action disabled={patch.isPending} onPress={resetEdits} variant="ghost">
             Discard
           </Action>
-        </div>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

@@ -15,7 +15,8 @@ import {
   PlayerMore,
   PlayerOptions,
   PlayerSheet,
-  type PlayerTopRowProps,
+  type PlayerUtilitiesProps,
+  PlayerVolume,
 } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -72,21 +73,18 @@ const row = (host: Host, name: string) =>
 const keys = (overrides: Partial<PlayerKeysProps> = {}): PlayerKeysProps => ({
   density: "pointer",
   moreOpen: false,
-  muted: false,
   onChannelDown: vi.fn(),
   onChannelUp: vi.fn(),
   onMore: vi.fn(),
-  onToggleMute: vi.fn(),
   onTogglePlay: vi.fn(),
   playing: true,
   pointer: true,
-  volume: 1,
+  volume: { muted: false, onPress: vi.fn(), open: false },
   ...overrides,
 });
 
-const top = (overrides: Partial<PlayerTopRowProps> = {}): PlayerTopRowProps => ({
+const utilities = (overrides: Partial<PlayerUtilitiesProps> = {}): PlayerUtilitiesProps => ({
   density: "pointer",
-  onLeave: vi.fn(),
   pointer: true,
   ...overrides,
 });
@@ -111,20 +109,49 @@ const chrome = (overrides: Partial<PlayerChromeProps> = {}) => (
     keys={keys()}
     live={{ lagSeconds: 0, mode: "live" }}
     onGoLive={vi.fn()}
-    top={top()}
+    onLeave={vi.fn()}
+    utilities={utilities()}
     visible
     {...overrides}
   />
 );
 
+// A schedule for the film strip: the programme on air, a break, and the next programme.
+const schedule = {
+  playheadMs: 30 * 60_000,
+  segments: [
+    {
+      chips: ["S2 E4", "TV-PG"],
+      id: "a",
+      kind: "programme" as const,
+      name: "An ensemble comedy",
+      startMs: 0,
+      stopMs: 40 * 60_000,
+    },
+    { id: "b", kind: "break" as const, spots: [], startMs: 40 * 60_000, stopMs: 43 * 60_000 },
+    {
+      chips: [],
+      id: "c",
+      kind: "programme" as const,
+      name: "A detective film",
+      startMs: 43 * 60_000,
+      stopMs: 150 * 60_000,
+    },
+  ],
+  window: { endMs: 150 * 60_000, nowMs: 30 * 60_000, startMs: 15 * 60_000 },
+};
+
 describe("PlayerChrome", () => {
-  it("names the channel once, and carries NOW, the progress clocks and NEXT", () => {
+  it("names the channel once, and carries Now, the progress clocks and Next", () => {
     const host = mount(chrome());
 
     // The band names the channel once; the block beside it carries only the number.
     expect(host.textContent?.match(/Coast 90s/g)).toHaveLength(1);
-    for (const text of ["NOW", "An ensemble comedy", "S2 E4 “Opening Night”", "t0", "t10", "NEXT", "t4"])
+    for (const text of ["Now", "An ensemble comedy", "S2 E4 “Opening Night”", "t0", "t10", "Next", "t4"])
       expect(host.textContent, text).toContain(text);
+    // Now and Next are plain labels in a gutter, not shouted chips (§9.6).
+    expect(host.textContent).not.toContain("NOW");
+    expect(host.textContent).not.toContain("NEXT");
     expect(host.textContent).toContain("A detective film");
     // Live reads Live with the clock; there is no Go live to offer.
     expect(host.textContent).toContain("Live");
@@ -132,14 +159,16 @@ describe("PlayerChrome", () => {
     expect(button(host, "Go live")).toBeUndefined();
   });
 
-  it("draws the keys and the top row, each named", () => {
-    const host = mount(chrome({ top: top({ fullscreen: false, onAudio: vi.fn(), onFullscreen: vi.fn() }) }));
+  it("draws the keys, the utilities over them and Leave, each named", () => {
+    const host = mount(
+      chrome({ utilities: utilities({ fullscreen: false, onAudio: vi.fn(), onFullscreen: vi.fn() }) }),
+    );
 
     for (const name of [
       "Channel up",
       "Channel down",
       "Pause",
-      "Mute",
+      "Volume",
       "More",
       "Audio",
       "Fullscreen",
@@ -149,6 +178,72 @@ describe("PlayerChrome", () => {
     // No channel to return to yet: Last is not drawn. Subtitles are not drawn until the player has any.
     expect(host.textContent).not.toContain("Last");
     expect(button(host, "Subtitles")).toBeUndefined();
+    // The utilities sit in the control cluster with the keys, not in a row of their own up top.
+    expect(
+      Array.from(host.querySelectorAll('[data-testid="player-cluster"] [role="button"]')).map((el) =>
+        el.getAttribute("aria-label"),
+      ),
+    ).toEqual(expect.arrayContaining(["Audio", "Fullscreen", "Pause", "More"]));
+  });
+
+  // iOS opens AirPlay's picker only from its own button, so the key draws and the picker takes the tap.
+  it("gives an iPhone AirPlay, with the system's picker over the key, and picture in picture", () => {
+    const onPictureInPicture = vi.fn();
+    const host = mount(
+      chrome({
+        utilities: utilities({
+          airPlayPicker: <span data-testid="route-picker" />,
+          density: "touch",
+          onPictureInPicture,
+          pointer: false,
+        }),
+      }),
+    );
+
+    expect(host.querySelector('[data-testid="player-cluster"] [data-testid="route-picker"]')).not.toBeNull();
+    // The picker is the AirPlay control; the key under it is drawing only, not a second button.
+    expect(button(host, "AirPlay")?.getAttribute("aria-hidden")).toBe("true");
+    act(() => button(host, "Picture in picture")?.click());
+    expect(onPictureInPicture).toHaveBeenCalledOnce();
+  });
+
+  it("sets the programme's rating beside Leave, and leaves", () => {
+    const onLeave = vi.fn();
+    const host = mount(chrome({ band: { ...band, rating: "TV-PG" }, onLeave }));
+    expect(host.querySelector('[data-testid="player-rating"]')?.textContent).toBe("TV-PG");
+    act(() => button(host, "Leave")?.click());
+    expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("runs the film strip as the band's foot on a pointer device, in place of the progress line and Next", () => {
+    const host = mount(chrome({ band: { ...band, clockMs: 30 * 60_000, stopMs: 40 * 60_000 }, schedule }));
+    expect(host.querySelector('[role="group"][aria-label="Schedule"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="band-progress"]')).toBeNull();
+    expect(host.textContent).not.toContain("Next");
+    expect(host.textContent).toContain("10 min left");
+    // jsdom lays nothing out, so the strip draws no blocks here; the white playhead is always drawn.
+    expect(host.querySelector('[data-testid="strip-playhead"]')).not.toBeNull();
+  });
+
+  it("says Nothing scheduled, with no Now or Next, when the channel has nothing on", () => {
+    const host = mount(chrome({ band: { channelName: "Coast 90s", channelNumber: "7", clockMs: 1 } }));
+    expect(host.textContent).toContain("Nothing scheduled");
+    expect(host.textContent).not.toContain("Now");
+    expect(host.textContent).not.toContain("Next");
+  });
+
+  it("gives a television four keys, no utilities row and no Leave: Back leaves", () => {
+    const host = mount(
+      chrome({
+        density: "tv",
+        keys: keys({ density: "tv", pointer: false }),
+        layout: "tv",
+        utilities: utilities({ density: "tv", onAudio: vi.fn(), onSubtitles: vi.fn(), pointer: false }),
+      }),
+    );
+    for (const name of ["Subtitles", "Audio", "More"]) expect(button(host, name), name).toBeDefined();
+    for (const name of ["Leave", "Channel up", "Pause", "Mute", "Fullscreen"])
+      expect(button(host, name), name).toBeUndefined();
   });
 
   it("offers Last with the channel's number once there is one to return to", () => {
@@ -158,24 +253,47 @@ describe("PlayerChrome", () => {
     expect(onPress).toHaveBeenCalledOnce();
   });
 
-  it("flips channels, plays and mutes from the keys", () => {
+  it("flips channels, plays and opens the volume level from the keys", () => {
     const k = keys();
     const host = mount(chrome({ keys: k }));
     act(() => button(host, "Channel up")?.click());
     act(() => button(host, "Channel down")?.click());
     act(() => button(host, "Pause")?.click());
-    act(() => button(host, "Mute")?.click());
+    act(() => button(host, "Volume")?.click());
     expect(k.onChannelUp).toHaveBeenCalledOnce();
     expect(k.onChannelDown).toHaveBeenCalledOnce();
     expect(k.onTogglePlay).toHaveBeenCalledOnce();
-    expect(k.onToggleMute).toHaveBeenCalledOnce();
+    expect(k.volume?.onPress).toHaveBeenCalledOnce();
   });
 
-  it("leaves out the rocker where the player cannot tune, and Volume on touch", () => {
+  it("draws the volume level in the menu's place: Off when muted", () => {
+    const host = mount(
+      chrome({
+        keys: keys({ volume: { muted: true, onPress: vi.fn(), open: true } }),
+        menu: <PlayerVolume muted onVolume={vi.fn()} volume={0.4} />,
+      }),
+    );
+    // What a key opens says so to a screen reader; a key that opens nothing says nothing about it.
+    expect(button(host, "Volume")?.getAttribute("aria-expanded")).toBe("true");
+    expect(button(host, "More")?.getAttribute("aria-expanded")).toBe("false");
+    expect(button(host, "Pause")?.getAttribute("aria-expanded")).toBeNull();
+    expect(host.querySelector('[data-testid="player-volume"]')?.textContent).toContain("Off");
+    expect(
+      host.querySelector('[data-testid="player-volume"] [role="slider"]')?.getAttribute("aria-label"),
+    ).toBe("Volume");
+  });
+
+  it("leaves out the rocker where the player cannot tune, and Volume where the device has its own", () => {
     const host = mount(
       chrome({
         density: "touch",
-        keys: keys({ density: "touch", onChannelDown: undefined, onChannelUp: undefined, pointer: false }),
+        keys: keys({
+          density: "touch",
+          onChannelDown: undefined,
+          onChannelUp: undefined,
+          pointer: false,
+          volume: undefined,
+        }),
       }),
     );
     expect(button(host, "Channel up")).toBeUndefined();
@@ -199,14 +317,11 @@ describe("PlayerChrome", () => {
     expect(onGoLive).toHaveBeenCalledOnce();
   });
 
-  it("sets the title as the logo's accessible name when there is a logo, and as text when there is none", () => {
+  it("always types the title: a title's logo never stands in for it in the band (§9.2)", () => {
     const logo = { height: 100, src: "data:image/png;base64,AAAA", srcSetWebp: "", width: 600 };
-    const withLogo = mount(chrome({ band: { ...band, logo } }));
-    expect(withLogo.querySelector('[role="img"][aria-label="An ensemble comedy"]')).not.toBeNull();
-    expect(withLogo.textContent).not.toContain("An ensemble comedy");
-    const without = mount(chrome());
-    expect(without.querySelector('[role="img"]')).toBeNull();
-    expect(without.textContent).toContain("An ensemble comedy");
+    const host = mount(chrome({ band: { ...band, logo } }));
+    expect(host.querySelector('[role="img"]')).toBeNull();
+    expect(host.querySelector('[data-testid="band-title"]')?.textContent).toBe("An ensemble comedy");
   });
 
   it("reads a break as the programme's title with Back in n min, and no badge", () => {
@@ -378,12 +493,13 @@ describe("PlayerMore", () => {
         formatTime={String}
         goLive={{ detail: "8:44 PM", onPress: vi.fn() }}
         info={{ onPress: vi.fn() }}
-        last={{ number: "3", onPress: vi.fn() }}
         picture={{ detail: "Auto · 1080p", onPress: vi.fn() }}
         startOver={{ detail: "Opening Night", onPress: onStartOver }}
       />,
     );
-    for (const name of ["Start over", "Go live", "Last channel", "Picture", "Channels", "Info"])
+    // Last channel is a key on every device, so More has no row for it (§9.7).
+    expect(row(host, "Last channel")).toBeUndefined();
+    for (const name of ["Start over", "Go live", "Picture", "Channels", "Info"])
       expect(row(host, name), name).toBeDefined();
     // A detail joins the name; a row without one keeps its label.
     expect(row(host, "Start over")?.getAttribute("aria-label")).toBeNull();
@@ -446,6 +562,25 @@ describe("PlayerCover", () => {
     act(() => button(host, "Leave")?.click());
     expect(onRetry).toHaveBeenCalledOnce();
     expect(onLeave).toHaveBeenCalledOnce();
+  });
+
+  it("draws Retry as the white disc, never amber, since amber means live (§9.6)", () => {
+    const g = globalThis as unknown as { getComputedStyle(n: Node): { backgroundColor: string } };
+    const rgb = (hex: string) =>
+      `rgb(${[1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+    const host = mount(
+      <PlayerCover
+        channelLabel="CH 7 · Coast 90s"
+        density="touch"
+        kind="error"
+        onLeave={vi.fn()}
+        onRetry={vi.fn()}
+        title="The stream stopped."
+      />,
+    );
+
+    const retry = button(host, "Retry channel") as Node;
+    expect(g.getComputedStyle(retry).backgroundColor).toBe(rgb(playerChrome.disc));
   });
 
   it("is a status for an off-air channel, with only the way out", () => {

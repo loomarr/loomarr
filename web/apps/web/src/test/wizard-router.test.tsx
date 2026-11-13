@@ -225,7 +225,9 @@ const stubWizard = (opts: {
 };
 
 const renderAt = (initialPath: string) => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // staleTime as the app sets it (lib/query-client): a page opened by a route's loader reads what
+  // the loader fetched instead of asking again on mount.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } });
   const router = createRouter({
     routeTree,
     context: { queryClient },
@@ -283,12 +285,19 @@ describe("wizard", () => {
     await userEvent.click(next);
 
     await vi.waitFor(() => expect(seq).toContain("patch"));
-    expect(patches.join()).toMatch(/filler\.home_country/);
-    expect(patches.join()).toMatch(/filler\.home_place/);
-    expect(patches.join()).toMatch(/filler\.language/);
+    // One write carrying exactly the three edited keys, and nothing the operator left alone.
+    expect(patches).toHaveLength(1);
+    expect(Object.keys(JSON.parse(patches[0] ?? "{}").edits).sort()).toEqual([
+      "filler.home_country",
+      "filler.home_place",
+      "filler.language",
+    ]);
+    expect(JSON.parse(patches[0] ?? "{}").edits["filler.language"]).toBe("es");
     expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
   });
 
+  // The route's loader waits for the settings registry, so a signed-in operator's wizard opens on
+  // the derived step without ever painting a step it then moves off.
   it("waits for the settings registry before deriving the wizard path", async () => {
     stubWizard({
       authed: true,
@@ -299,10 +308,10 @@ describe("wizard", () => {
     });
     renderAt("/wizard");
 
-    expect(await screen.findByLabelText("Checking your setup")).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: /how should loomarr play your channels/i }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /create your admin account/i })).not.toBeInTheDocument();
   });
 
   it("surfaces a settings-list failure with an idempotent retry instead of stranding the wizard", async () => {
@@ -311,7 +320,9 @@ describe("wizard", () => {
       setupCompleted: false,
       backend: "internal",
       publicUrl: "",
-      settingsFailures: 1,
+      // The loader's read fails, and so does the page's own on mount (a failed query is not fresh);
+      // "Try again" is the third and answers.
+      settingsFailures: 2,
     });
     renderAt("/wizard");
 

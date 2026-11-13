@@ -17,7 +17,10 @@ interface CatalogRefresher {
   /** Cancels the in-flight request and any queued trailing refresh. */
   abort: () => void;
   getState: () => CatalogRefreshState;
-  /** Resolves when this call's data is reconciled; concurrent calls share one request. */
+  /**
+   * Resolves when a request that started after this call is reconciled. Calls made while one is in
+   * flight share a single follow-up request, which runs whether the in-flight one succeeds or fails.
+   */
   refresh: () => Promise<void>;
   subscribe: (listener: () => void) => () => void;
 }
@@ -30,7 +33,8 @@ const createCatalogRefresher = ({ controller, list }: CatalogRefresherOptions): 
   let state: CatalogRefreshState = { loading: false };
   let inflight: Promise<void> | undefined;
   let request: AbortController | undefined;
-  let trailing = false;
+  // The one refresh waiting for the in-flight request; every caller that arrives meanwhile shares it.
+  let queued: { cancel: () => void; promise: Promise<void>; start: () => void } | undefined;
   const listeners = new Set<() => void>();
 
   const setState = (next: CatalogRefreshState) => {
@@ -61,29 +65,38 @@ const createCatalogRefresher = ({ controller, list }: CatalogRefresherOptions): 
     }
   };
 
-  const drain = async () => {
-    do {
-      trailing = false;
-      await once();
-    } while (trailing);
+  // Runs one request; once it settles, success or failure, the queued trailing refresh starts.
+  const start = (): Promise<void> => {
+    const run = once().finally(() => {
+      inflight = undefined;
+      const next = queued;
+      queued = undefined;
+      next?.start();
+    });
+    inflight = run;
+    return run;
   };
 
   return {
     abort: () => {
-      trailing = false;
+      const dropped = queued;
+      queued = undefined;
       request?.abort();
+      dropped?.cancel();
     },
     getState: () => state,
     refresh: () => {
-      if (inflight) {
-        trailing = true;
-        return inflight;
+      if (!inflight) return start();
+      if (!queued) {
+        let begin!: () => void;
+        let cancel!: () => void;
+        const promise = new Promise<void>((resolve, reject) => {
+          begin = () => start().then(resolve, reject);
+          cancel = () => reject(new DOMException("The catalog refresh was aborted.", "AbortError"));
+        });
+        queued = { cancel, promise, start: begin };
       }
-      const run = drain().finally(() => {
-        if (inflight === run) inflight = undefined;
-      });
-      inflight = run;
-      return run;
+      return queued.promise;
     },
     subscribe: (listener) => {
       listeners.add(listener);

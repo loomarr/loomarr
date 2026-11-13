@@ -60,10 +60,10 @@ func newSystemLLMHarness(t *testing.T, svc system.SystemLLMService) *apiHarness 
 	t.Helper()
 	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store:     defaults.Store,
-			Auth:      defaults.Auth,
-			Log:       defaults.Log,
-			SystemLLM: svc,
+			Store:  defaults.Store,
+			Auth:   defaults.Auth,
+			Log:    defaults.Log,
+			System: api.SystemOptions{LLM: svc},
 		})
 	})
 }

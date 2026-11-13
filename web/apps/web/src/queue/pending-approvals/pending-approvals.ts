@@ -4,8 +4,8 @@ import { unwrap } from "@loomarr/api/unwrap";
 
 // What is waiting on an admin's yes: submitted channel proposals AND pending filler pulls. Both
 // are decisions the Approval tab lists, so the tab count, the Dashboard's "Needs you" card and
-// the Approval list all read THIS — counting proposals alone made a pending pull invisible
-// everywhere but a list that was hidden whenever there were no proposals (#1404).
+// the Approval list all read THIS — counting proposals alone would make a pending pull invisible
+// everywhere but a list hidden whenever there are no proposals (#1404).
 //
 // Gated by `enabled` (the caller's isAdmin): approving is admin-only (§11), so a member's page
 // load must not fire queries that can only 403.

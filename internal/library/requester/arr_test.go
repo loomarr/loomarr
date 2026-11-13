@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,17 +24,34 @@ type arrStub struct {
 	addResponse string         // body to return from the add (default {"id":90000042})
 	lookupID    int            // the arr's internal id returned by lookup (for queue matching)
 	deletedID   int            // the queue id DELETEd by Cancel, if any
-	queueForID  int            // a queue record's movieId/seriesId to expose
-	queueRecID  int            // that queue record's own id
-	queueSize   float64        // queue record size / sizeleft → progress
-	queueLeft   float64        //
-	queueStatus string         // queue record status ("downloading"/"warning"/…)
-	queueTime   string         // queue record timeleft
-	profileName string         // name of the single quality profile (id 90000007)
-	lookupTerm  string         // the last lookup ?term= (proves tmdb/tvdb routing)
+	deletedIDs  []int          // every queue id DELETEd, in order
+	// queueRecords, when set, is the whole queue (replacing the single record below);
+	// queueHTTPStatus, when set, is the status the queue answers with instead of 200.
+	queueRecords    []map[string]any
+	queueHTTPStatus int
+	queueForID      int     // a queue record's movieId/seriesId to expose
+	queueRecID      int     // that queue record's own id
+	queueSize       float64 // queue record size / sizeleft → progress
+	queueLeft       float64 //
+	queueStatus     string  // queue record status ("downloading"/"warning"/…)
+	queueTime       string  // queue record timeleft
+	profileName     string  // name of the single quality profile (id 90000007)
+	lookupTerm      string  // the last lookup ?term= (proves tmdb/tvdb routing)
 	// seriesStats is GET /api/v3/series/{id}'s statistics by series id (Sonarr only); a
 	// missing id answers 404.
 	seriesStats map[int]map[string]any
+	// refused names the read ("qualityprofile" or "rootfolder") that answers 401 with a JSON body.
+	refused string
+}
+
+// refuse answers 401 with the JSON body an arr sends for a bad key, when the stub refuses read.
+func (s *arrStub) refuse(w http.ResponseWriter, read string) bool {
+	if s.refused != read {
+		return false
+	}
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"message":"Unauthorized"}`))
+	return true
 }
 
 func newArrStub(t *testing.T, kind string) *arrStub {
@@ -47,9 +65,15 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"title": "Marigold Protocol", "id": s.lookupID}})
 	})
 	mux.HandleFunc("/api/v3/qualityprofile", func(w http.ResponseWriter, r *http.Request) {
+		if s.refuse(w, "qualityprofile") {
+			return
+		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 90000007, "name": s.profileName}})
 	})
 	mux.HandleFunc("/api/v3/rootfolder", func(w http.ResponseWriter, r *http.Request) {
+		if s.refuse(w, "rootfolder") {
+			return
+		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"path": "/data/media"}})
 	})
 	mux.HandleFunc("/api/v3/"+kind, func(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +103,15 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 		if kind == "series" {
 			field = "seriesId"
 		}
+		if s.queueHTTPStatus != 0 {
+			w.WriteHeader(s.queueHTTPStatus)
+			_, _ = w.Write([]byte(`{"message":"Unauthorized"}`))
+			return
+		}
+		if s.queueRecords != nil {
+			_ = json.NewEncoder(w).Encode(map[string]any{"records": s.queueRecords})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"records": []map[string]any{{
 				"id": s.queueRecID, field: s.queueForID,
@@ -92,6 +125,7 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 			// path is /api/v3/queue/<id> (strip any ?query first)
 			idStr := strings.TrimPrefix(r.URL.Path, "/api/v3/queue/")
 			s.deletedID, _ = strconv.Atoi(idStr)
+			s.deletedIDs = append(s.deletedIDs, s.deletedID)
 			w.WriteHeader(http.StatusOK)
 		}
 	})
@@ -266,6 +300,27 @@ func TestArr_Cancel_DeletesQueueRecord(t *testing.T) {
 	}
 }
 
+// Sonarr lists one queue record per episode download, so cancelling a series removes every
+// record of that series and leaves other series' downloads alone.
+func TestArr_Cancel_Series_DeletesEveryEpisodeRecord(t *testing.T) {
+	stub := newArrStub(t, "series")
+	stub.lookupID = 90000007
+	stub.queueRecords = []map[string]any{
+		{"id": 90000101, "seriesId": 90000007},
+		{"id": 90000102, "seriesId": 90000007},
+		{"id": 90000200, "seriesId": 90000008},
+		{"id": 90000103, "seriesId": 90000007},
+	}
+	a := arrFor("series", stub.server.URL, "", "")
+
+	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Series, TVDBID: 90081189, Name: "S"}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []int{90000101, 90000102, 90000103}; !slices.Equal(stub.deletedIDs, want) {
+		t.Errorf("deleted queue ids = %v, want %v", stub.deletedIDs, want)
+	}
+}
+
 func TestArr_Cancel_NoQueueRecordIsNoop(t *testing.T) {
 	stub := newArrStub(t, "movie")
 	stub.lookupID = 90000042
@@ -320,6 +375,23 @@ func TestArr_RequestMovie_LookupFailureIsAStatusError(t *testing.T) {
 	}
 	if got := httpx.Classify(err); got != httpx.ClassTransient {
 		t.Errorf("Classify = %v, want transient", got)
+	}
+}
+
+// A refused profile or folder read is the arr's status, not a decode error about its body.
+func TestArr_RequestMovie_RefusedSetupReadIsAStatusError(t *testing.T) {
+	for _, read := range []string{"qualityprofile", "rootfolder"} {
+		stub := newArrStub(t, "movie")
+		stub.refused = read
+		a := arrFor("movie", stub.server.URL, "", "")
+		err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000605, Name: "M"})
+		var status *httpx.StatusError
+		if !errors.As(err, &status) || status.Status != http.StatusUnauthorized {
+			t.Errorf("%s refused: err = %v, want *httpx.StatusError 401", read, err)
+		}
+		if stub.addBody != nil {
+			t.Errorf("%s refused: the title was still added", read)
+		}
 	}
 }
 

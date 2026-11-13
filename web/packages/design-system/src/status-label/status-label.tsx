@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
-import { StatusDot, type StatusTone, Text } from "../primitives";
+import { StatusDot, type StatusTone } from "../primitives";
+import { Text } from "../text";
 
 type StatusLabelProps = {
   /** The sentence-case word: "Enabled", "Admin", "Set via environment". */

@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { OnAirIndicatorProps, OnAirState } from "./on-air-indicator.type";
 
@@ -19,7 +20,7 @@ const SR: Record<OnAirState, string> = {
 
 const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorProps) => (
   <span className={cn("inline-flex items-center gap-1.5", className)}>
-    <span className="relative flex size-2.5">
+    <Stack className="relative size-2.5" direction="row" render="span">
       {state === "live" && (
         <span
           className="bg-onair absolute inline-flex size-full rounded-full opacity-60 motion-safe:animate-ping"
@@ -27,7 +28,7 @@ const OnAirIndicator = ({ state, showLabel = false, className }: OnAirIndicatorP
         />
       )}
       <span className={cn("relative inline-flex size-2.5 rounded-full", DOT[state])} aria-hidden />
-    </span>
+    </Stack>
     {showLabel && (
       <span className={cn("text-2xs", state === "live" ? "text-onair-300" : "text-static-400")}>
         {SR[state]}

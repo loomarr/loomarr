@@ -54,6 +54,7 @@ const RequestsJourney = ({
   headerAction,
   nowMs,
   onOpenChannel,
+  timeZone,
 }: RequestsJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [route, setRoute] = useState<Route>({ view: "list" });
@@ -192,6 +193,7 @@ const RequestsJourney = ({
         onBack={() => goList()}
         onFix={(entry) => setRoute({ initialIntent: entry.journey.intent, view: "request" })}
         onOpenChannel={onOpenChannel}
+        timeZone={timeZone}
         titles={snapshot.titles}
       />
     );
@@ -250,6 +252,7 @@ const RequestsJourney = ({
           review={review}
           snapshot={snapshot}
           tab={tab}
+          timeZone={timeZone}
         />
       </ScrollFrame>
     );

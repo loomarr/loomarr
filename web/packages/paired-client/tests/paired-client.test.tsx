@@ -21,22 +21,25 @@ const fakes = vi.hoisted(() => {
   const emptySnapshot = {};
   return {
     batchSenders: [] as unknown[],
+    catalogFails: false,
     catalogHeld: false,
     catalogLists: [] as AbortSignal[],
     emptySnapshot,
     guide: {
-      dispose: vi.fn(),
+      dispose: vi.fn(() => void fakes.lifetimes.push("guide:dispose")),
       getSnapshot: () => emptySnapshot,
-      refresh: vi.fn(async () => undefined),
+      refresh: vi.fn(async () => void fakes.lifetimes.push("guide:use")),
       subscribe: () => () => undefined,
     },
+    // The order the guide and my-channels controllers are made, used and disposed in.
+    lifetimes: [] as string[],
     guideOptions: [] as { resolveWindow?: (at: Date) => unknown }[],
     guideWindow: vi.fn((window: unknown) => window),
     myChannels: {
-      dispose: () => undefined,
+      dispose: () => void fakes.lifetimes.push("myChannels:dispose"),
       getSnapshot: () => emptySnapshot,
       recordTune: undefined as unknown as (channelId: string) => Promise<void>,
-      refresh: async () => undefined,
+      refresh: async () => void fakes.lifetimes.push("myChannels:use"),
       subscribe: () => () => undefined,
     },
     playback: {
@@ -50,10 +53,18 @@ const fakes = vi.hoisted(() => {
     reporterDisposed: vi.fn(),
     requests: [] as unknown[],
     streamOptions: [] as { headers: Record<string, string>; onUnauthorized: () => unknown }[],
-    streams: [] as { closed: boolean; handlers: { onChannel: () => void }; url: string }[],
+    streams: [] as {
+      closed: boolean;
+      handlers: { onChannel: () => void };
+      onOpen?: () => void;
+      url: string;
+    }[],
     transport: undefined as unknown as PlayerTransport & {
       emit: (event: PlayerTransportEvent) => void;
+      inPictureInPicture: () => boolean;
       resume: ReturnType<typeof vi.fn>;
+      setPictureInPicture: (active: boolean) => void;
+      subscribePictureInPicture: (listener: (active: boolean) => void) => () => void;
       suspend: ReturnType<typeof vi.fn>;
     },
   };
@@ -62,24 +73,34 @@ const fakes = vi.hoisted(() => {
 vi.mock("expo-crypto", () => ({ randomUUID: () => "11111111-2222-4333-8444-555555555555" }));
 vi.mock("expo-video", () => ({ createVideoPlayer: vi.fn(), VideoView: vi.fn() }));
 vi.mock("@loomarr/core/events", () => ({
-  openEventStream: (handlers: { onChannel: () => void }, url: string) => {
-    const stream = { closed: false, handlers, url };
+  openEventStream: (
+    handlers: { onChannel: () => void },
+    url: string,
+    _createStream: unknown,
+    onOpen?: () => void,
+  ) => {
+    const stream = { closed: false, handlers, onOpen, url };
     fakes.streams.push(stream);
     return () => {
       stream.closed = true;
     };
   },
 }));
-vi.mock("@loomarr/core/guide", () => ({
+vi.mock("@loomarr/core/guide", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@loomarr/core/guide")>()),
   createGuideController: (options: { resolveWindow?: (at: Date) => unknown }) => {
     fakes.guideOptions.push(options);
+    fakes.lifetimes.push("guide:create");
     return fakes.guide;
   },
   createGuideSourcePort: () => ({}),
   guideWindow: fakes.guideWindow,
 }));
 vi.mock("@loomarr/core/my-channels", () => ({
-  createMyChannelsController: () => fakes.myChannels,
+  createMyChannelsController: () => {
+    fakes.lifetimes.push("myChannels:create");
+    return fakes.myChannels;
+  },
   createMyChannelsPort: () => ({}),
 }));
 vi.mock("@loomarr/core/client-diagnostics", () => ({
@@ -115,6 +136,7 @@ vi.mock("@loomarr/player/server", () => ({
       list: (signal: AbortSignal) => {
         fakes.catalogLists.push(signal);
         // A held load stays pending until it is cancelled, as a request on a dead connection does.
+        if (fakes.catalogFails) return Promise.reject(new Error("catalog down"));
         return fakes.catalogHeld
           ? new Promise<never>((_, reject) =>
               signal.addEventListener("abort", () => reject(new Error("cancelled"))),
@@ -129,6 +151,7 @@ vi.mock("@loomarr/player/server", () => ({
 }));
 
 const { phoneClientOptions, retryPairedClient, usePairedClient } = await import("@loomarr/paired-client");
+const { defaultGuideWindow } = await import("@loomarr/core/guide");
 type PairedClient = ReturnType<typeof usePairedClient>;
 
 const credential = { deviceName: "Test", serverUrl: "https://loomarr.test", token: "t" } as PairingCredential;
@@ -148,16 +171,27 @@ const mountClient = async (
   extra: Partial<Parameters<typeof usePairedClient>[0]> = {},
 ) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
+  const pictureInPictureListeners = new Set<(active: boolean) => void>();
+  let pictureInPicture = false;
   fakes.transport = {
     dispose: vi.fn(),
     emit: (event) => {
       for (const listener of listeners) listener(event);
     },
     goLive: vi.fn(),
+    inPictureInPicture: () => pictureInPicture,
     pause: vi.fn(),
     play: vi.fn(),
     replace: vi.fn().mockResolvedValue(undefined),
     resume: vi.fn(),
+    setPictureInPicture: (active) => {
+      pictureInPicture = active;
+      for (const listener of pictureInPictureListeners) listener(active);
+    },
+    subscribePictureInPicture: (listener) => {
+      pictureInPictureListeners.add(listener);
+      return () => pictureInPictureListeners.delete(listener);
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -167,6 +201,7 @@ const mountClient = async (
   const recordTune = vi.fn().mockResolvedValue(undefined);
   fakes.myChannels.recordTune = recordTune;
   let client!: PairedClient;
+  let options = extra;
   const Probe = () => {
     client = usePairedClient({
       credential,
@@ -174,7 +209,7 @@ const mountClient = async (
       initialTune: "first",
       lastChannel,
       session,
-      ...extra,
+      ...options,
     });
     return null;
   };
@@ -190,7 +225,12 @@ const mountClient = async (
         type: event,
       } as PlayerTransportEvent);
     });
-  return { client: () => client, recordTune, root, settle };
+  // The host passes new options (a new last-channel store, say) without the credential changing.
+  const rerender = (next: Partial<Parameters<typeof usePairedClient>[0]>) => {
+    options = { ...options, ...next };
+    return act(async () => root.render(createElement(Probe)));
+  };
+  return { client: () => client, recordTune, rerender, root, settle };
 };
 
 beforeEach(() => {
@@ -208,9 +248,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
   appListeners.clear();
   fakes.batchSenders.length = 0;
+  fakes.catalogFails = false;
   fakes.catalogHeld = false;
   fakes.catalogLists.length = 0;
   fakes.guideOptions.length = 0;
+  fakes.lifetimes.length = 0;
   fakes.playbackSessionIds.length = 0;
   fakes.playbackTransports.length = 0;
   fakes.requests.length = 0;
@@ -336,6 +378,25 @@ describe("paired client", () => {
       await act(async () => root.unmount());
     });
 
+    // Frames sent while the stream was down (a server restarting for an update) are gone, so a
+    // reconnect reloads what they would have changed. The first open needs none: the app's own
+    // launch and return to the foreground load the catalog and the guide (see "the app's foreground
+    // and background"), so the stream's first open would only ask twice.
+    it("reloads the catalog and the guide when the stream comes back, not when it first opens", async () => {
+      const { root } = await mountClient();
+      expect(fakes.catalogLists).toHaveLength(1);
+      fakes.guide.refresh.mockClear();
+
+      await act(async () => fakes.streams[0]?.onOpen?.());
+      expect(fakes.catalogLists).toHaveLength(1);
+      expect(fakes.guide.refresh).not.toHaveBeenCalled();
+
+      await act(async () => fakes.streams[0]?.onOpen?.());
+      expect(fakes.catalogLists).toHaveLength(2);
+      expect(fakes.guide.refresh).toHaveBeenCalledWith();
+      await act(async () => root.unmount());
+    });
+
     it("stays open only while the app is in the foreground, and never opens twice", async () => {
       const { root } = await mountClient();
       expect(fakes.streams.map(({ closed }) => closed)).toEqual([false]);
@@ -350,6 +411,75 @@ describe("paired client", () => {
       await act(async () => root.unmount());
       expect(fakes.streams.map(({ closed }) => closed)).toEqual([true, true]);
       expect(appListeners.size).toBe(0);
+    });
+  });
+
+  describe("the guide's freshness", () => {
+    // A phone or TV left overnight shows yesterday's window until something reads the guide again.
+    it("reads the guide again on every return to the foreground, and not while in the background", async () => {
+      const { root } = await mountClient();
+      fakes.guide.refresh.mockClear();
+
+      await sendAppState("background");
+      expect(fakes.guide.refresh).not.toHaveBeenCalled();
+
+      await sendAppState("active");
+      expect(fakes.guide.refresh).toHaveBeenCalledTimes(1);
+
+      await sendAppState("background");
+      await sendAppState("active");
+      expect(fakes.guide.refresh).toHaveBeenCalledTimes(2);
+      await act(async () => root.unmount());
+    });
+
+    it("reads the guide once on return, even when the catalog fails to load", async () => {
+      fakes.catalogFails = true;
+      const { root } = await mountClient();
+      fakes.guide.refresh.mockClear();
+
+      await sendAppState("background");
+      await sendAppState("active");
+
+      expect(fakes.guide.refresh).toHaveBeenCalledTimes(1);
+      await act(async () => root.unmount());
+    });
+
+    describe("with the clock", () => {
+      const MINUTE = 60_000;
+      beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.UTC(2026, 10, 2, 20, 0, 0));
+      });
+      afterEach(() => vi.useRealTimers());
+
+      // The guide controller reads the live window when asked; left alone on a screen, it would keep
+      // the window it read at launch after that window had run out of schedule.
+      it("reads the guide again as the window nears its end, and keeps to the one read until then", async () => {
+        const { root } = await mountClient();
+        fakes.guide.refresh.mockClear();
+
+        await act(async () => void vi.advanceTimersByTime(90 * MINUTE));
+        expect(fakes.guide.refresh).not.toHaveBeenCalled();
+
+        await act(async () => void vi.advanceTimersByTime(4 * 60 * MINUTE));
+        expect(fakes.guide.refresh).toHaveBeenCalled();
+        const reads = fakes.guide.refresh.mock.calls.length;
+
+        // Having read again, the new window is fresh for another long while.
+        await act(async () => void vi.advanceTimersByTime(30 * MINUTE));
+        expect(fakes.guide.refresh).toHaveBeenCalledTimes(reads);
+        await act(async () => root.unmount());
+      });
+
+      it("stops reading when the client is unmounted", async () => {
+        const { root } = await mountClient();
+        await act(async () => root.unmount());
+        fakes.guide.refresh.mockClear();
+
+        await act(async () => void vi.advanceTimersByTime(12 * 60 * MINUTE));
+
+        expect(fakes.guide.refresh).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -372,6 +502,48 @@ describe("paired client", () => {
       await act(async () => root.unmount());
     });
 
+    // An iPhone's picture in picture (§9.7) is the stream playing outside the app.
+    it("keeps a picture-in-picture stream in the background, and releases it when the picture closes there", async () => {
+      const { root } = await mountClient();
+      act(() => fakes.transport.setPictureInPicture(true));
+
+      await sendAppState("background");
+      expect(fakes.transport.suspend).not.toHaveBeenCalled();
+
+      vi.spyOn(AppState, "currentState", "get").mockReturnValue("background");
+      act(() => fakes.transport.setPictureInPicture(false));
+      expect(fakes.transport.suspend).toHaveBeenCalledTimes(1);
+      await act(async () => root.unmount());
+    });
+
+    it("loads the server's version and my channels even when the catalog fails to load", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 })),
+      );
+      fakes.catalogFails = true;
+      const { client, root } = await mountClient();
+
+      expect(client().catalogState.error).toBe("catalog down");
+      expect(fakes.lifetimes).toContain("myChannels:use");
+      expect(client().serverVersion).toBe("1.2.3");
+      await act(async () => root.unmount());
+    });
+
+    it("loads all three at once, so a slow catalog does not hold the others back", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ dirty: false, version: "1.2.3" }), { status: 200 })),
+      );
+      fakes.catalogHeld = true;
+      const { client, root } = await mountClient();
+
+      expect(fakes.catalogLists).toHaveLength(1);
+      expect(fakes.lifetimes).toContain("myChannels:use");
+      expect(client().serverVersion).toBe("1.2.3");
+      await act(async () => root.unmount());
+    });
+
     it("stops listening, and disposes what it built, when the shell goes away", async () => {
       const { root } = await mountClient();
       expect(appListeners.size).toBeGreaterThan(0);
@@ -381,6 +553,61 @@ describe("paired client", () => {
       expect(appListeners.size).toBe(0);
       expect(fakes.guide.dispose).toHaveBeenCalledTimes(1);
       expect(fakes.transport.dispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("when the host changes an option but not the credential", () => {
+    // Replays the controllers' lifetimes: any use of one after it was disposed (and before a new one
+    // was made) is a disposed controller still being handed out.
+    const usesAfterDispose = (name: string) => {
+      let live = false;
+      const dead: number[] = [];
+      fakes.lifetimes.forEach((entry, index) => {
+        if (!entry.startsWith(`${name}:`)) return;
+        const step = entry.slice(name.length + 1);
+        if (step === "create") live = true;
+        else if (step === "dispose") live = false;
+        else if (!live) dead.push(index);
+      });
+      return dead;
+    };
+
+    it("keeps handing out a guide and my channels that are still alive", async () => {
+      const { client, rerender, root } = await mountClient(undefined, {
+        load: () => Promise.resolve(undefined),
+        save: () => Promise.resolve(),
+      });
+
+      // A new store rebuilds the player; the guide and my channels read only the paired request.
+      await rerender({
+        lastChannel: { load: () => Promise.resolve(undefined), save: () => Promise.resolve() },
+      });
+      await act(async () => fakes.streams.at(-1)?.handlers.onChannel());
+      await act(async () => {
+        await client().guide.refresh();
+        await client().myChannels.refresh();
+      });
+
+      expect(usesAfterDispose("guide")).toEqual([]);
+      expect(usesAfterDispose("myChannels")).toEqual([]);
+      await act(async () => root.unmount());
+    });
+  });
+
+  describe("when the transport is rebuilt under a live diagnostics reporter", () => {
+    it("keeps the reporter and subscribes it to the new transport", async () => {
+      const { rerender, root } = await mountClient({ platform: "ios" });
+      const previous = fakes.transport;
+
+      // New marks build a new transport; the reporter reads only the paired request.
+      fakes.transport = { ...previous, subscribe: vi.fn(() => () => undefined) } as typeof previous;
+      await rerender({ marks: { enabled: true } as never });
+
+      expect(fakes.reporterDisposed).not.toHaveBeenCalled();
+      expect(fakes.playback.dispose).not.toHaveBeenCalled();
+      expect(fakes.transport.subscribe).toHaveBeenCalledWith(fakes.playback.transportEvent);
+      await act(async () => root.unmount());
+      expect(fakes.reporterDisposed).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -455,7 +682,7 @@ describe("paired client", () => {
       await act(async () => phone.root.unmount());
 
       const tv = await mountClient();
-      expect(fakes.guideOptions[1]?.resolveWindow).toBeUndefined();
+      expect(fakes.guideOptions[1]?.resolveWindow).toBe(defaultGuideWindow);
       await act(async () => tv.root.unmount());
     });
   });

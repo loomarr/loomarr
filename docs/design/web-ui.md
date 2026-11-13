@@ -58,7 +58,8 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
   escape hatch. **Help** renders the embedded help pages offline.
 - Global search (⌘K, or Ctrl K; the rail names the one the viewer's platform uses) is a
-  hand-rolled combobox over `/v1/search`, channels and help.
+  design-system inline `Combobox` (an always-open grouped list in a dialog) over `/v1/search`,
+  channels and help.
 
 ## Cross-view rules
 

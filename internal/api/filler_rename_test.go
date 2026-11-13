@@ -36,7 +36,7 @@ func renameFixture(t *testing.T) (*apiHarness, string) {
 	}
 	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
 		return api.Router(defaults.Log, api.Options{
-			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, FillerLayout: layout,
+			Store: defaults.Store, Auth: defaults.Auth, Log: defaults.Log, Filler: api.FillerOptions{Layout: layout},
 		})
 	})
 	seedFilenameNamedClip(t, h.Store)
