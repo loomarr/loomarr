@@ -20,7 +20,7 @@ func TestCrashDeviceMigration(t *testing.T) {
 	testCrashDeviceMigration(t, db, DialectSQLite, "migrations/sqlite")
 }
 
-// testCrashDeviceMigration proves the migration keeps a paired device, turns '' and a device
+// testCrashDeviceMigration proves the migration keeps a paired device, turns an empty one and a device
 // already unpaired into NULL, and that afterwards the device is enforced and unpairing it clears
 // it from the reports it sent, which stay.
 func testCrashDeviceMigration(t *testing.T, db *sql.DB, dialect Dialect, dir string) {
