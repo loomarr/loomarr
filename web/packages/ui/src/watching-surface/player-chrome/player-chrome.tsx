@@ -9,6 +9,7 @@ import { IdentBackdrop } from "./ident-backdrop";
 import { PlayerCaption } from "./player-caption";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
+import { menuWidth } from "./player-menu";
 import { PlayerReadout } from "./player-readout";
 import { sheetWidth } from "./player-sheet";
 import { PlayerLeave, PlayerUtilities, UTILITY_SIZE } from "./player-utilities";
@@ -261,12 +262,13 @@ const ChromeBody = memo(
         ) : null}
         {readout ? <PlayerReadout density={density} top={readoutAt} {...readout} /> : null}
         {/* The subtitle: lifted clear of the band while it is up, at the picture's foot while it is
-            down. A side sheet keeps the line in what shows of the picture, at its foot. */}
+            down. A side sheet keeps the line in what shows of the picture, at its foot; an open menu
+            keeps it centred left of the menu, which rises over the keys beside it (#3905). */}
         <PlayerCaption
           bottom={shown && !sheet ? bottomBase + bandLift + bandHeight + 16 : bottomBase + 12}
           density={density}
           lines={captions}
-          right={sheet ? sheetWidth(density) + insets.right : 0}
+          right={sheet ? sheetWidth(density) + insets.right : shown && menu ? side + menuWidth(density) : 0}
           where={tv ? "tv" : touch ? "landscape" : "pointer"}
         />
         {panel}

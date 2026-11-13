@@ -22,6 +22,9 @@ interface PlayerMenuProps {
 
 const MENU_WIDTH = { pointer: 280, touch: 320, tv: 360 } as const;
 
+/** How much of the picture's right an open menu covers, so a subtitle can stay clear of it. */
+const menuWidth = (density: Density) => MENU_WIDTH[density];
+
 /**
  * One row of what the keys open, in a menu or a sheet alike (variant J): 44 high on a pointer, the
  * density's target elsewhere, no fill until hovered, and the amber ring drawn inside the row so a
@@ -100,4 +103,4 @@ const PlayerMenu = ({ children, density, heading = true, onBack, title }: Player
 );
 
 export type { PlayerMenuProps };
-export { PlayerMenu, playerRow, rowRole };
+export { menuWidth, PlayerMenu, playerRow, rowRole };
