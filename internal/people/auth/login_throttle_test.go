@@ -88,11 +88,11 @@ func TestLoginChargesTheAccountBucketOnlyForRefusedCredentials(t *testing.T) {
 		account string
 		charged bool
 	}{
-		"wrong password":                {attempt{"admin", "nope"}, "admin", true},
-		"wrong password, respelled":     {attempt{" Admin ", "nope"}, "admin", true},
-		"unknown user":                  {attempt{"nobody", "x"}, "nobody", true},
-		"disabled account, right pass":  {attempt{"gone", "owner-pass"}, "gone", true},
-		"right password":                {attempt{"admin", "owner-pass"}, "admin", false},
+		"wrong password":               {attempt{"admin", "nope"}, "admin", true},
+		"wrong password, respelled":    {attempt{" Admin ", "nope"}, "admin", true},
+		"unknown user":                 {attempt{"nobody", "x"}, "nobody", true},
+		"disabled account, right pass": {attempt{"gone", "owner-pass"}, "gone", true},
+		"right password":               {attempt{"admin", "owner-pass"}, "admin", false},
 	} {
 		for family, source := range map[string]func(i int) string{
 			"IPv4": func(i int) string { return "192.0.2." + strconv.Itoa(i) },
