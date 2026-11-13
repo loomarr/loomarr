@@ -59,7 +59,8 @@ const STACK_TAGS = {
 };
 // Attributes a converted element may carry: the Stack passes them to its View unchanged.
 const FORM_ATTRIBUTES = new Set(["action", "method", "noValidate", "onSubmit"]);
-const PLAIN_ATTRIBUTES = new Set(["className", "id", "key", "ref", "role", "style"]);
+// `ref` is not here: a Stack's ref is typed as a Tamagui element, not the DOM element a div's is.
+const PLAIN_ATTRIBUTES = new Set(["className", "id", "key", "role", "style"]);
 const TEXT_TAGS = new Set(["p", "span", "h1", "h2", "h3", "h4", "h5", "h6", "dt", "dd"]);
 
 const SPACE_STEPS = new Set(["0.5", "1", "1.5", "1.75", "2", "2.5", "3", "4", "5", "6", "7", "8"]);
