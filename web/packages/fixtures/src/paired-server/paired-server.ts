@@ -51,6 +51,7 @@ const createPairedServer = () => {
   const connections: PairedServerEventRequest[] = [];
   const requests: string[] = [];
   let guideHeld: Promise<void> | undefined;
+  let guideFails = false;
   const catalog = [...guideChannels]
     .sort((first, second) => first.number - second.number)
     .map(({ channelId, name, number }) => ({ id: channelId, inAppPlayable: true, name, number }));
@@ -61,6 +62,7 @@ const createPairedServer = () => {
     if (pathname === "/v1/channels") return json({ channels: catalog });
     if (pathname === "/v1/guide") {
       await guideHeld;
+      if (guideFails) return new Response(null, { status: 503 });
       return json({ channels: guideChannels, fromMs: guideFrom, timezone: "UTC", toMs: guideTo });
     }
     if (pathname === "/v1/me/channels") return json({ favourites: [], recent: [] });
@@ -85,6 +87,13 @@ const createPairedServer = () => {
     },
     /** The channels the server lists, lowest number first. */
     catalog,
+    /** From now until the returned restore is called, the guide answers 503 (after any hold). */
+    failGuide: () => {
+      guideFails = true;
+      return () => {
+        guideFails = false;
+      };
+    },
     fetch,
     /** Counts the guide loads so far. */
     guideLoads: () => requests.filter((request) => request === "GET /v1/guide").length,
