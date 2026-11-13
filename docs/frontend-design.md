@@ -212,6 +212,17 @@ Colour is the role's default unless the classes name another: `text-muted-foregr
 `uppercase tracking-wide` is `shout`. Classes that are not typography (`mt-2`, `truncate`, widths)
 stay on `className` until their own sweep.
 
+`web/scripts/codemods/tailwind-to-ds.mjs` makes these moves for the cases that need no judgement:
+`node scripts/codemods/tailwind-to-ds.mjs [--write] '<glob>'` from `web/` (a dry run without `--write`),
+then `biome check --write` over the changed files. It rewrites a `flex` container (`div`, `section`,
+`li`…) as a `Stack` with `direction`, `align`, `justify`, `gap`, padding, margin, `minWidth`,
+`minHeight`, `width`, `height` and the flex-item props; moves padding and margin classes off an
+existing `Stack`; and turns a plain text element with an exact row of the table above into a `Text`.
+It leaves a class with a state variant, an arbitrary value, `grid`, a `cn(…)` className, or an element
+with a handler. A `Stack`'s own props beat Tailwind (the base rule is unlayered), so an element is
+converted only when every class for `display`, direction, alignment, gap, `min-*` and flex-basis/shrink
+maps to a prop.
+
 ### Signature components (the vocabulary of the app)
 
 | Component | Purpose | States to register |
