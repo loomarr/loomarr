@@ -147,7 +147,7 @@ func videosIn(dir string) []string {
 	}
 	var videos []string
 	for _, e := range entries {
-		if lower := strings.ToLower(e.Name()); !e.IsDir() && videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) {
+		if lower := strings.ToLower(e.Name()); !e.IsDir() && videoExtensions[filepath.Ext(lower)] && !extraIn(e.Name(), filepath.Base(dir)) {
 			videos = append(videos, e.Name())
 		}
 	}

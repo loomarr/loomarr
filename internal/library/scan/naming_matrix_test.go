@@ -1231,12 +1231,46 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
+	// A recording's guest or title between its show and its day is no part of the show; a fansub's
+	// "[06]" is its episode; a film's folder names a scene file shortened past knowing; a kids'
+	// show's "Show Christmas" beside its episodes is one; "Hex 10x10" on a films' shelf is a film;
+	// a franchise's "Ashby Movies/" holds films; a hidden file is no copy; "- Ending Theme" and
+	// "Extras - Disc 2/" are extras; "24.03.19" in a daily's folder is its day; a film named
+	// "Sample" in its own folder is listed.
+	{id: "W146", files: map[string]string{
+		"Recorded TV/The Late Lark - Guest Name - 2023-11-02.ts":  "episode The Late Lark 2023-11-02",
+		"Recorded TV/Night Owlet - The Long Road - 2023-11-02.ts": "episode Night Owlet 2023-11-02",
+		"Recorded TV/Night Owlet - Low Tide - 2023-11-09.ts":      "episode Night Owlet 2023-11-09",
+		"DVR/Ferry Hourglass - 2023-11-02 - Guest One.ts":         "episode Ferry Hourglass 2023-11-02",
+		"DVR/Ferry Hourglass - 2023-11-09 - Guest Two.ts":         "episode Ferry Hourglass 2023-11-09",
+		"Anime/[Grp] Kirin Sora [05] [1080p].mkv":                 "episode Kirin Sora S?E?",
+		"Anime/[Grp] Kirin Sora [06] [1080p].mkv":                 "episode Kirin Sora S?E?",
+		"Anime/[Grp]Tsuru Kaze[13][720p].mp4":                     "episode Tsuru Kaze S?E?",
+		"Movies/Corwick Dene/CD.1080p.mkv":                        "movie Corwick Dene -",
+		"Movies/Ashtree Combe/atc.mkv":                            "movie Ashtree Combe -",
+		"Kids/Bramble Hops/Bramble Hops 01.mp4":                   "episode Bramble Hops S?E?",
+		"Kids/Bramble Hops/Bramble Hops 02.mp4":                   "episode Bramble Hops S?E?",
+		"Kids/Bramble Hops/Bramble Hops Christmas.mp4":            "episode Bramble Hops S?E?",
+		"Movies/Hexlet 10x10.mkv":                                 "movie Hexlet 10x10 -",
+		"Movies/Gridwell 12x12/Gridwell 12x12.mkv":                "movie Gridwell 12x12 -",
+		"TV/Ashwell Movies/Ashwell (2010).mkv":                    "movie Ashwell 2010",
+		"TV/Ashwell Movies/Ashwell 2 (2012).mkv":                  "movie Ashwell 2 2012",
+		"Movies/Fenwick Garth (2003)/Fenwick Garth (2003).mkv":    "movie Fenwick Garth 2003",
+		"Movies/Fenwick Garth (2003)/.Fenwick Garth (2003).mkv":   "skip",
+		"Anime/[Grp] Usagi Tani - Ending Theme [1080p].mkv":       "skip",
+		"Anime/[Grp] Usagi Tani - 01 [1080p].mkv":                 "episode Usagi Tani S?E?",
+		"Movies/Pewter Combe (2007)/Pewter Combe (2007).mkv":      "movie Pewter Combe 2007",
+		"Movies/Pewter Combe (2007)/Extras - Disc 2/Doc.mkv":      "skip",
+		"TV/Breakfast Bellow/Breakfast.Bellow.24.03.19.mkv":       "episode Breakfast Bellow 2024-03-19",
+		"TV/Breakfast Bellow/Breakfast.Bellow.24.03.20.mkv":       "episode Breakfast Bellow 2024-03-20",
+		"Movies/Sample/Sample.mkv":                                "movie Sample -",
+	}},
 	// A box set's folder names its show before "Box Set"; MakeMKV's further titles beside a film
 	// are no second copy of it; a show's dashed name loose in a shows' shelf is an episode; a film
 	// in its own dated folder on a shows' shelf is a film; a show's misspelt folder joins the show
 	// its files spell; a season folder's "[01] Pilot", "(03) Found" and "#04 Home" are numbered,
-	// as is a fansub's "- 01" in "Season 1"; a home video's year is no film's; "Pass-2005" gives
-	// its year; "News Hour 2024 03 14" is a day's episode.
+	// as is a fansub's "- 01" in "Season 1"; "Pass-2005" gives its year; "News Hour 2024 03 14" is
+	// a day's episode.
 	{id: "W145", files: map[string]string{
 		"TV/Copper Coast Box Set/Disc 1/Copper Coast 1x01.mkv":            "episode Copper Coast S1E1",
 		"TV/Copper Coast Box Set/Disc 2/Copper Coast 1x03.mkv":            "episode Copper Coast S1E3",

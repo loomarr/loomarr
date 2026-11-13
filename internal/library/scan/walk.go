@@ -87,6 +87,14 @@ func extrasFolder(name, parent string) bool {
 	if packMaterial[normName(name)] && parent != "." && !shelfAt(parent) {
 		return true
 	}
+	// Its kind first, then its disc's label: "Extras - Disc 2", "Bonus Features Disc 3".
+	if words := strings.Fields(normName(name)); parent != "." {
+		for n := 1; n <= 2 && n < len(words); n++ {
+			if partFolder.MatchString(strings.Join(words[len(words)-n:], " ")) && extrasName(strings.Join(words[:len(words)-n], " ")) {
+				return true
+			}
+		}
+	}
 	head := extrasAfter(name)
 	if len(head) == 0 || parent == "." {
 		return false
@@ -163,7 +171,7 @@ func holdsTitle(rel string, entries []fs.DirEntry) bool {
 		switch {
 		case e.IsDir() && (discDirs[lower] || isSeasonFolder(path.Join(rel, e.Name()))):
 			return true
-		case !e.IsDir() && (videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) || filepath.Ext(lower) == ".iso"):
+		case !e.IsDir() && (videoExtensions[filepath.Ext(lower)] && !extraIn(e.Name(), path.Base(rel)) || filepath.Ext(lower) == ".iso"):
 			return true
 		}
 	}
@@ -410,7 +418,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		if e.IsDir() {
 			continue
 		}
-		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) {
+		if lower := strings.ToLower(e.Name()); videoExtensions[filepath.Ext(lower)] && !extraIn(e.Name(), filepath.Base(dir)) {
 			videoNames = append(videoNames, e.Name())
 		}
 		switch {
@@ -553,7 +561,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		case filepath.Ext(lower) == ".iso" || filepath.Ext(lower) == ".img":
 			st, _ := w.stat(path, e)
 			w.problem(path, st, ProblemDiscImage)
-		case videoExtensions[filepath.Ext(lower)] && !extraFile(e.Name()) && !extras[e.Name()]:
+		case videoExtensions[filepath.Ext(lower)] && !extraIn(e.Name(), filepath.Base(dir)) && !extras[e.Name()]:
 			st, ok := w.stat(path, e)
 			if !ok {
 				w.unread(path)
@@ -899,6 +907,12 @@ func extraFile(name string) bool {
 	return extraName(strings.ToLower(name)) && !titledSample.MatchString(stem(name))
 }
 
+// extraIn is extraFile for a file in its folder, named folder: a video named as its own folder is
+// that folder's title whatever word it is, "Movies/Sample/Sample.mkv".
+func extraIn(name, folder string) bool {
+	return extraFile(name) && (folder == "" || !strings.EqualFold(stem(name), folder))
+}
+
 // titledSample matches an episode's mark, then its title "Sample", capitalised, after a dash set
 // apart: "S01E07 - Sample", "S01E07.-.Sample".
 var titledSample = regexp.MustCompile(`(?i:s\d{1,4}[ ._]?e\d{1,4})[ ._]-[ ._]Sample$`)
@@ -1095,6 +1109,14 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 			out[name] = true
 			continue
 		}
+		// A hidden copy of a video beside it, ".Fenwick Garth (2003).mkv", is a shadow a copy or a
+		// sync left, never a second copy; ".45 Calibre Kings" alone is a title.
+		if strings.HasPrefix(name, ".") && slices.ContainsFunc(names, func(other string) bool {
+			return other != name && strings.EqualFold(plainStem(other), plainStem(name[1:]))
+		}) {
+			out[name] = true
+			continue
+		}
 		// Beside that film, "<film> - <anything else>" is its extra, whatever the household called
 		// it ("- Animatic", "- Press Conference"), unless what follows says which copy of the film
 		// it is: "- 1080p", "- Directors Cut", "- Part 2".
@@ -1235,6 +1257,7 @@ var (
 	creditless = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])nc(?:op|ed)\d*(?:v\d+)?(?:[^a-z0-9]|$)`)
 	// animeOpening matches a release's extra in its episode's place, " - OP", " - ED2", " -
 	// Creditless OP", " - Clean ED", " - Menu 01", " - Preview 03", " - Picture Drama 01", " -
-	// Trailer": an extra, when a release group's tag says the name is a release's.
-	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:(?:creditless|clean|textless|non[ ._-]?credit)[ ._]+)?(?:op|ed|opening|ending|pv|cm|menu|preview|trailer|teaser|spot|picture[ ._]+drama)(?:[ ._]*\d+)?(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
+	// Trailer", " - Ending Theme", " - Opening Movie 2": an extra, when a release group's tag says
+	// the name is a release's.
+	animeOpening = regexp.MustCompile(`(?i)[ ._]-[ ._]+(?:(?:creditless|clean|textless|non[ ._-]?credit)[ ._]+)?(?:op|ed|opening|ending|pv|cm|menu|preview|trailer|teaser|spot|picture[ ._]+drama)(?:[ ._]+(?:theme|song|movie|animation))?(?:[ ._]*\d+)?(?:v\d+)?(?:[ ._]*[\[(.]|$)`)
 )

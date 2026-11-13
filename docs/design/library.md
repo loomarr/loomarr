@@ -962,6 +962,13 @@ header is kept, so no file is opened again. Each version and what it changed:
   fansub's number in the first season's folder, or below its season's, is that season's episode;
   a folder inside a show's that only groups its episodes ("DVD0/", "DVD 0 /") never stands for the
   show, whatever its name sounds like (`showFolderAbove` stops at a shelf, not a shelf's word).
+- **73:** a recording's guest or title between its show and its day, "The Late Lark - Guest -
+  2023-11-02", is no part of the show, and "DVR/" is a shows' shelf; a fansub's "[Grp] Show [06]"
+  is its episode; a code a release shortened past knowing, "Corwick Dene/CD.1080p.mkv", takes its
+  folder's name (`abbreviates`); "Hexlet 10x10" among films, or named as its own folder, is a film
+  (`crossTitle`); "TV/Ashwell Movies/" holds films (`franchiseFilms`); a hidden copy beside a video
+  is skipped; "- Ending Theme" and "Extras - Disc 2/" are extras; a daily's "24.03.19" is its
+  day (`shortDay`); a video named as its own folder, "Sample/Sample.mkv", is listed (`extraIn`).
 
 ## Search
 
