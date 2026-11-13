@@ -1709,7 +1709,6 @@ One row per model call made about a filler clip, written before the call (as a s
 | `id` | Identifies the call. Spoken-safety events and the structure call journal point here. | `TEXT` · key |
 | `cache_key` | SHA-256 of every input that could change the answer (clip, role, model, media sizes and all the version columns), so identical retries can be recognised. Run, times and cost are not part of it. | `TEXT` |
 | `clip_hash` | The filler clip the call was about (clips.hash). For a long-reel structure check it is the SHA-256 of the reel's source file. | `TEXT` |
-| `run_id` | The batch run the call belonged to, used for the per-run spend ceiling. Empty when the call was not part of a run. | `TEXT` |
 | `role` | Which check made the call, for example defect_judge or complete_timeline_structure. | `TEXT` |
 | `rung` | The step within that check, for example defects or window_video. Empty when the check has no steps. | `TEXT` |
 | `state` | Where the call stands. reserved means spend is set aside and the call is under way; completed means it answered; failed means it did not; held_budget means a spend ceiling (per clip, per day or per run) stopped it, or the provider charged more than was reserved. | `TEXT` |
@@ -2076,7 +2075,6 @@ Progress of one long action someone started in the app (downloading an AI model,
 | `percent` | How far along it is, 0 to 100. For a model download, -1 means the size isn't known yet. | `INTEGER` |
 | `completed` | For a model download, bytes downloaded so far of the current layer. 0 otherwise. | `BIGINT` |
 | `total` | For a model download, total bytes of the current layer. 0 otherwise. | `BIGINT` |
-| `result_id` | For filler_split, the id of the split proposal it produced. Empty otherwise. | `TEXT` |
 | `error` | Why it failed, or empty. | `TEXT` |
 | `started_at` | When it was started, in Unix seconds. | `BIGINT` |
 | `completed_at` | When it finished, in Unix seconds. 0 while it is still queued or running. | `BIGINT` |

@@ -1619,7 +1619,6 @@ func testInteractiveOperations(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	split.Status = InteractiveOperationSuccess
-	split.ResultID = "sp-1"
 	split.CompletedAt, split.UpdatedAt = now.Add(time.Minute), now.Add(time.Minute)
 	if err := s.UpsertInteractiveOperation(ctx, split); err != nil {
 		t.Fatal(err)
@@ -5236,11 +5235,11 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 	}
 	reserve := func(id, clip string, nano int64) InferenceEvaluation {
 		e, err := s.ReserveInferenceEvaluation(ctx, InferenceEvaluation{
-			ID: id, ClipHash: clip, RunID: "cert-1", Role: "filler_frames", Rung: "frames",
+			ID: id, ClipHash: clip, Role: "filler_frames", Rung: "frames",
 			RequestedProvider: "openrouter", RequestedModel: "openai/gpt-5-mini",
 			Modalities: []string{"text", "image"}, DerivativeBytes: 4096, DerivativePixels: 2_073_600,
 			ReservedNanoUSD: nano, Versions: versions, CreatedAt: at,
-		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000, PerRunNanoUSD: 1000})
+		}, InferenceBudget{PerClipNanoUSD: 100, PerDayNanoUSD: 1000})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -5287,9 +5286,9 @@ func testFillerInferenceAccountingAndBudgets(t *testing.T, newStore NewStoreFunc
 
 	dayDenied := reserve("eval-4", "clip-b", 906)
 	if dayDenied.State != InferenceHeldBudget {
-		t.Fatalf("daily/run ceiling did not hold request: %+v", dayDenied)
+		t.Fatalf("daily ceiling did not hold request: %+v", dayDenied)
 	}
-	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{RunID: "cert-1", Limit: 10})
+	rows, err := s.ListInferenceEvaluations(ctx, InferenceEvaluationFilter{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

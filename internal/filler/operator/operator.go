@@ -557,7 +557,6 @@ func (a *Operator) Split(ctx context.Context, clipID string) (string, error) {
 			return
 		}
 		operation.Status = store.InteractiveOperationSuccess
-		operation.ResultID = proposal.ID
 		a.persistInteractiveOperation(completionCtx, operation)
 		a.publishSplit(jobID, clipID, "success", proposal.ID, len(proposal.Segments), "")
 	})
