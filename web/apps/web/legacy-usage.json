@@ -583,7 +583,19 @@
       "tailwindClasses": 14
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 50
+      "tailwindClasses": 17
+    },
+    "src/settings/notification-destinations-panel/provider-field-input/provider-field-input.tsx": {
+      "tailwindClasses": 2
+    },
+    "src/settings/notification-destinations-panel/provider-form/provider-form.tsx": {
+      "tailwindClasses": 9
+    },
+    "src/settings/notification-destinations-panel/provider-row/provider-row.tsx": {
+      "tailwindClasses": 16
+    },
+    "src/settings/notification-destinations-panel/web-push-form/web-push-form.tsx": {
+      "tailwindClasses": 6
     },
     "src/settings/pair-device/pair-device.tsx": {
       "tailwindClasses": 34,
