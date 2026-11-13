@@ -37,9 +37,17 @@ func TestPartsOf(t *testing.T) {
 			map[string]int{"Ashgrove - cd1.mkv": 1, "Ashgrove - cd2.mkv": 2}},
 		{"a title's own part, alone", []string{"Kettle Part 2 (2011).mkv"}, nil},
 		{"two titles' own parts", []string{"Kettle Part 1 (2010).mkv", "Kettle Part 2 (2011).mkv"}, nil},
-		// "Part" straight after a title word is the title's: sequels, not a movie in parts.
+		// "Part" straight after a title word is the title's: sequels, not a movie in parts. A title
+		// never writes "pt", and a year or a release's mark before "Part" ends the title.
 		{"two titles' own parts, no year", []string{"Harbor Saga Part 1.mkv", "Harbor Saga Part 2.mkv"}, nil},
-		{"two titles' own pts, no year", []string{"Harbor Saga pt 1.mkv", "Harbor Saga pt 2.mkv"}, nil},
+		{"pts after a title word", []string{"Harbor Saga pt 1.mkv", "Harbor Saga pt 2.mkv"},
+			map[string]int{"Harbor Saga pt 1.mkv": 1, "Harbor Saga pt 2.mkv": 2}},
+		{"pt joined", []string{"Ashgrove pt1.mkv", "Ashgrove pt2.mkv"},
+			map[string]int{"Ashgrove pt1.mkv": 1, "Ashgrove pt2.mkv": 2}},
+		{"part after a bare year", []string{"Ashgrove 2015 Part 1.mkv", "Ashgrove 2015 Part 2.mkv"},
+			map[string]int{"Ashgrove 2015 Part 1.mkv": 1, "Ashgrove 2015 Part 2.mkv": 2}},
+		{"part after a release mark", []string{"Ashgrove 1080p Part 1.mkv", "Ashgrove 1080p Part 2.mkv"},
+			map[string]int{"Ashgrove 1080p Part 1.mkv": 1, "Ashgrove 1080p Part 2.mkv": 2}},
 		{"part after a separator", []string{"Harbor Saga - Part 1.mkv", "Harbor Saga - Part 2.mkv"},
 			map[string]int{"Harbor Saga - Part 1.mkv": 1, "Harbor Saga - Part 2.mkv": 2}},
 		{"part after the year", []string{"Ashgrove (2015) Part 1.mkv", "Ashgrove (2015) Part 2.mkv"},

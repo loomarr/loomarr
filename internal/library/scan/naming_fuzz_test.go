@@ -134,7 +134,8 @@ func checkEpisode(t *testing.T, rel string, rec mp.Record, seriesDir string) {
 	ownFolder := dir == seriesDir || path.Dir(dir) == seriesDir
 	if ownFolder && dir != seriesDir {
 		below, _, _ := strings.Cut(strings.TrimPrefix(dir, seriesDir+"/"), "/")
-		ownFolder = !seasonOf(path.Join(seriesDir, below))
+		// A shelf inside it ("Sd/A/") holds titles loose, read on their own names.
+		ownFolder = !seasonOf(path.Join(seriesDir, below)) && !shelfAt(path.Join(seriesDir, below))
 	}
 	// A films' shelf's folders are its films' ("Movies/Gorse Vale (2008)/Volume 1/"), and a folder
 	// the file names as its show is the show's whatever its name ("24/24 1x02.mkv").
