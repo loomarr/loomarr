@@ -39,6 +39,7 @@ const InstallationLocation = ({
   return (
     <Stack
       className={cn(card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6")}
+      flexShrink={0}
       gap="4"
       render="section"
     >
