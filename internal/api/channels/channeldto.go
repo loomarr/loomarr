@@ -82,7 +82,7 @@ type LineupEntryDTO struct {
 	// key so the "not here yet" badge survives a reload (§7). Only the single-channel GET
 	// populates it (the list omits it to avoid an N-query fan-out); "" ⇒ not resolved.
 	State  string   `json:"state,omitempty" enum:"available,acquiring,pending,unavailable" doc:"available = in the library, plays now; acquiring = wanted/requested/downloading; pending = added but nothing has requested it yet; unavailable = acquisition gave up."`
-	Genres []string `json:"genres,omitempty"`
+	Genres []string `json:"genres,omitempty" maxItems:"16"` // TMDB gives a title a handful; 16 is far past that
 	// SeasonMin/SeasonMax surface a series entry's airing season window (§8/§9) so the
 	// UI can show and edit "seasons 1–10". 0 = unbounded on that end (all seasons).
 	SeasonMin int `json:"seasonMin,omitempty" doc:"series airing window: first season (0 = unbounded)"`

@@ -35,12 +35,14 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	Applied []AppliedRelaxation `json:"applied,omitempty"`
+	// The ladder descends at most maxLadderSteps (8) steps, so a channel never records more.
+	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
 	// revert it (§8.2). Bookkeeping only; rides policy_json, so it needs no migration.
-	OperatorSet []string `json:"operatorSet,omitempty"`
+	// There are five pinnable fields (scope, audience, separation, ordering, seasonal).
+	OperatorSet []string `json:"operatorSet,omitempty" maxItems:"5"`
 }
 
 // ProposalPolicy is the suggester-extracted half of ChannelPolicy (embedded, flattened).
@@ -56,7 +58,8 @@ type ProposalPolicy struct {
 	// seeds llm rules, the editor authors operator rules, and MergeFromProposal replaces
 	// only the llm rules — so refine-authored and hand-authored rules COMPOSE (§8.2).
 	// Every rule VALUE is grounded/clamped, evaluation is deterministic.
-	Rules []SchedulingRule `json:"rules,omitempty"`
+	// A household has a handful of rules (a weekend, a holiday, a daypart); 32 is far past that.
+	Rules []SchedulingRule `json:"rules,omitempty" maxItems:"32"`
 }
 
 // OperatorPolicy is the channel-page-edited half of ChannelPolicy (embedded, flattened).
@@ -248,14 +251,14 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range           `json:"era,omitempty"`                // year window; nil = inherit Scope.Dates at derivation.
-	EraWindows []Range          `json:"eraWindows,omitempty"`         // explicit union; mutually exclusive with Era
-	Audience   string           `json:"audience,omitempty"`           // "" = any; else kids|family|general|late_night
-	Categories []string         `json:"categories,omitempty"`         // empty = any; else a subset of the closed category set
-	Roles      []string         `json:"roles,omitempty" maxItems:"8"` // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
-	Pinned     []string         `json:"pinned,omitempty"`             // clip hashes always included (a top-priority pool)
-	Excluded   []string         `json:"excluded,omitempty"`           // clip hashes never used (wins over Pinned)
-	Geography  *FillerGeography `json:"geography,omitempty"`          // nil = inherit Installation geography
+	Era        *Range           `json:"era,omitempty"`                       // year window; nil = inherit Scope.Dates at derivation.
+	EraWindows []Range          `json:"eraWindows,omitempty" maxItems:"8"`   // explicit union; mutually exclusive with Era; validate rejects more than 8
+	Audience   string           `json:"audience,omitempty"`                  // "" = any; else kids|family|general|late_night
+	Categories []string         `json:"categories,omitempty" maxItems:"128"` // empty = any; taxonomy slugs, seeded with 60 and operator-extensible
+	Roles      []string         `json:"roles,omitempty" maxItems:"8"`        // empty = the default roles (all but political and news); else a subset of fillerRoles, so at most its 8
+	Pinned     []string         `json:"pinned,omitempty" maxItems:"1000"`    // clip hashes always included (a top-priority pool); 1000 is the most one channel pins
+	Excluded   []string         `json:"excluded,omitempty" maxItems:"1000"`  // clip hashes never used (wins over Pinned); same ceiling as Pinned
+	Geography  *FillerGeography `json:"geography,omitempty"`                 // nil = inherit Installation geography
 	// Language is the channel's commercial language (#2030 decision 12): "" = the household's
 	// `filler.language`. Any ISO 639 form; it is independent of Playout.AudioLanguage, so an anime
 	// channel with Japanese audio keeps English commercials.
@@ -406,12 +409,12 @@ func sameRanges(a, b []Range) bool {
 // Dates is the only date scope. The retired `era` field is still read as an alias on
 // decode (see UnmarshalJSON in datescope.go) and is never written.
 type ScopePolicy struct {
-	Series      []provision.Key `json:"series,omitempty"`      // restrict to these series (resolved ids)
-	Collections []string        `json:"collections,omitempty"` // media-server collections
-	Seasons     *Range          `json:"seasons,omitempty"`     // per-series season window
-	Dates       *DateScope      `json:"dates,omitempty"`       // separate movie, premiere, and episode-airing windows
-	Genres      GenreFilter     `json:"genres,omitempty"`      // include/exclude by genre name
-	RuntimeMax  int             `json:"runtimeMax,omitempty"`  // seconds; 0 = unbounded ("nothing over an hour")
+	Series      []provision.Key `json:"series,omitempty" maxItems:"1000"`     // restrict to these series (resolved ids); no larger than a lineup (1000)
+	Collections []string        `json:"collections,omitempty" maxItems:"100"` // media-server collections; a library has dozens
+	Seasons     *Range          `json:"seasons,omitempty"`                    // per-series season window
+	Dates       *DateScope      `json:"dates,omitempty"`                      // separate movie, premiere, and episode-airing windows
+	Genres      GenreFilter     `json:"genres,omitempty"`                     // include/exclude by genre name
+	RuntimeMax  int             `json:"runtimeMax,omitempty"`                 // seconds; 0 = unbounded ("nothing over an hour")
 
 	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
 	// policy decodes to their intersection; a request with both is ambiguous and the API
@@ -422,9 +425,10 @@ type ScopePolicy struct {
 // DateScope keeps date meanings separate: title metadata supplies movie release and
 // series premiere; resolved episodes supply series airing. Each list is a union.
 type DateScope struct {
-	MovieRelease   []Range `json:"movieRelease,omitempty"`
-	SeriesPremiere []Range `json:"seriesPremiere,omitempty"`
-	SeriesAiring   []Range `json:"seriesAiring,omitempty"`
+	// Each union holds at most 16 year ranges, twice a filler selection's eraWindows.
+	MovieRelease   []Range `json:"movieRelease,omitempty" maxItems:"16"`
+	SeriesPremiere []Range `json:"seriesPremiere,omitempty" maxItems:"16"`
+	SeriesAiring   []Range `json:"seriesAiring,omitempty" maxItems:"16"`
 }
 
 func (d *DateScope) empty() bool {
@@ -541,8 +545,9 @@ func upperBound(r Range) int {
 // GenreFilter is an include/exclude pair over genre names (§2). Include empty =
 // any genre allowed; Exclude always subtracts.
 type GenreFilter struct {
-	Include []string `json:"include,omitempty"`
-	Exclude []string `json:"exclude,omitempty"`
+	// TMDB names about forty genres across movies and series; 50 is every one of them.
+	Include []string `json:"include,omitempty" maxItems:"50"`
+	Exclude []string `json:"exclude,omitempty" maxItems:"50"`
 }
 
 // Range is an inclusive [From, To] window; 0 means unbounded on that end (§2).
@@ -585,9 +590,9 @@ type SeparationPolicy struct {
 
 // SeasonalPolicy controls holiday-aware programming (§6).
 type SeasonalPolicy struct {
-	Mode      SeasonalMode `json:"mode,omitempty"`      // off | auto | exclusive; "" = auto
-	Holidays  []string     `json:"holidays,omitempty"`  // subset of the built-in calendar ids
-	OffSeason OffSeason    `json:"offSeason,omitempty"` // exclusive-mode fallback; "" = loop
+	Mode      SeasonalMode `json:"mode,omitempty"`                   // off | auto | exclusive; "" = auto
+	Holidays  []string     `json:"holidays,omitempty" maxItems:"32"` // subset of the built-in calendar ids (15 ship; 32 leaves room for a custom calendar)
+	OffSeason OffSeason    `json:"offSeason,omitempty"`              // exclusive-mode fallback; "" = loop
 	// Strength and Placement shape the auto-mode feature of holiday EPISODES inside an
 	// ordinary series (§6 "Holiday episodes"). Both are "" = default enums, never a zero value
 	// that means something different from unset.
