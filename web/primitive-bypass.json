@@ -18,7 +18,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "flexStack": 2
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "flexStack": 1

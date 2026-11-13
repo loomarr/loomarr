@@ -2,7 +2,6 @@ import { provisionKey } from "@loomarr/core/provision";
 import { Action, Badge, type BadgeTone, Field, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import {
   MAX_SUGGESTION_OPTIONS,
   selectedLineupContext,
@@ -139,15 +138,23 @@ const ProposalReview = ({
   }, [findingMore, revising]);
 
   return (
-    <section className={cn("mx-auto flex w-full max-w-3xl flex-col gap-5 py-2", className)}>
+    <Stack
+      className={className}
+      gap="5"
+      marginHorizontal="auto"
+      maxWidth={768}
+      paddingVertical={8}
+      render="section"
+      width="100%"
+    >
       <Stack align="start" direction="row" gap="control" justify="between" render="header" wrap>
-        <div className="min-w-0">
+        <Stack gap="1" minWidth={0}>
           {showWorkflowHeading ? (
             <>
               <Text as="h2" strong textRole="headline">
                 Review your channel
               </Text>
-              <Text as="p" className="mt-1" textRole="cardLabel">
+              <Text as="p" textRole="cardLabel">
                 {proposal.channelName || "Your new channel"}
               </Text>
             </>
@@ -156,7 +163,7 @@ const ProposalReview = ({
               {proposal.channelName || "Your new channel"}
             </Text>
           )}
-        </div>
+        </Stack>
         {statusDisplay && (
           <Badge shape="square" tone={statusDisplay.tone}>
             {statusDisplay.label}
@@ -223,17 +230,22 @@ const ProposalReview = ({
       ) : (
         <Stack
           align="start"
-          className="border-border border-y py-3"
+          borderBottomWidth={1}
+          borderColor="borderDecorative"
+          borderTopWidth={1}
           direction="row"
           gap="control"
           justify="between"
+          paddingVertical={12}
           wrap
         >
-          <Text as="p" className="min-w-0 flex-1" textRole="compact" tone="secondary">
-            “{proposal.intent.description}”
-          </Text>
+          <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
+            <Text as="p" textRole="compact" tone="secondary">
+              “{proposal.intent.description}”
+            </Text>
+          </Stack>
           {actionable && onRevise && (
-            <div className="-my-1 shrink-0">
+            <Stack flexShrink={0} marginVertical={-4}>
               <Action
                 disabled={controlsDisabled}
                 onPress={() => {
@@ -244,7 +256,7 @@ const ProposalReview = ({
               >
                 Edit brief
               </Action>
-            </div>
+            </Stack>
           )}
         </Stack>
       )}
@@ -378,96 +390,116 @@ const ProposalReview = ({
         </Stack>
       )}
 
-      <details className="border-border border-t pt-3 text-sm">
+      <details className="border-border border-t pt-3">
         <summary className="cursor-pointer">
           <Text as="span" textRole="cardLabel" tone="secondary">
             How these suggestions were chosen
           </Text>
         </summary>
-        <Stack className="text-muted-foreground mt-4" gap="5">
+        <Stack gap="5" marginTop={16}>
           <Stack aria-label="Why these titles" gap="inline" render="section">
             <Text as="h3" textRole="cardLabel">
               Why these titles
             </Text>
             {status === "partially-edited" ? (
-              <p>You changed the title list. Check any titles you added against your brief.</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                You changed the title list. Check any titles you added against your brief.
+              </Text>
             ) : proposal.manual ? (
-              <p>You picked every title in this channel yourself — there's nothing to check.</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                You picked every title in this channel yourself — there's nothing to check.
+              </Text>
             ) : proposal.scores?.version !== 1 ? (
-              <p>Loomarr couldn't check this saved draft. Review each title before creating the channel.</p>
+              <Text as="p" textRole="compact" tone="secondary">
+                Loomarr couldn't check this saved draft. Review each title before creating the channel.
+              </Text>
             ) : (
               <>
-                <p>
+                <Text as="p" textRole="compact" tone="secondary">
                   {proposal.scores.theme.basis === "named_membership"
                     ? "These suggestions are listed as part of the lineup you asked for."
                     : proposal.scores.theme.basis === "none"
                       ? "Review the titles to decide whether this is the channel you want."
                       : "We compared the titles with your description. Remove anything that doesn't fit."}
-                </p>
+                </Text>
                 {proposal.scores.theme.basis === "qualifiers" && (
                   <ul className="list-inside list-disc">
                     {(proposal.scores.theme.qualifiers ?? []).map((qualifier) => (
-                      <li key={qualifier.term}>
+                      <Text as="li" key={qualifier.term} textRole="compact" tone="secondary">
                         “{qualifier.term}” fits {qualifier.supportedItems} of{" "}
                         {proposal.scores.theme.assessedItems} titles Loomarr could check
-                      </li>
+                      </Text>
                     ))}
                   </ul>
                 )}
                 {proposal.scores.era.status !== "not_requested" && (
-                  <p>
+                  <Text as="p" textRole="compact" tone="secondary">
                     {proposal.scores.era.status === "unassessed"
                       ? "Loomarr could not check the date range because some release or air dates were missing."
                       : `${proposal.scores.era.matchingItems} of ${proposal.scores.era.assessedItems} titles with known dates matched your requested range.`}
-                  </p>
+                  </Text>
                 )}
               </>
             )}
           </Stack>
 
           {assessmentPending ? (
-            <p role="status">Updating what's ready to play…</p>
+            <div role="status">
+              <Text as="p" textRole="compact" tone="secondary">
+                Updating what's ready to play…
+              </Text>
+            </div>
           ) : assessment ? (
             <ProposalOutlookDetails assessment={assessment} showDiagnostics={false} />
           ) : null}
 
           {(proposal.rationale || assessment || proposal.trace?.candidates?.length) && (
             <details className="border-border border-t pt-3">
-              <summary className="w-fit cursor-pointer">Troubleshooting details</summary>
-              <Stack className="mt-3" gap="4">
+              <summary className="w-fit cursor-pointer">
+                <Text as="span" textRole="compact" tone="secondary">
+                  Troubleshooting details
+                </Text>
+              </summary>
+              <Stack gap="4" marginTop={12}>
                 <Text as="p" textRole="hint" tone="secondary">
                   This shows how Loomarr handled the original suggestions, before any changes you made.
                 </Text>
                 {proposal.rationale && (
-                  <section>
-                    <Text as="h3" className="mb-1" textRole="cardLabel">
+                  <Stack gap="1" render="section">
+                    <Text as="h3" textRole="cardLabel">
                       Suggestion summary
                     </Text>
-                    <p>{friendlyProposalRationale(proposal.rationale)}</p>
-                  </section>
+                    <Text as="p" textRole="compact" tone="secondary">
+                      {friendlyProposalRationale(proposal.rationale)}
+                    </Text>
+                  </Stack>
                 )}
                 {assessment && !assessmentPending && (
                   <ProposalOutlookDiagnostics assessment={assessment} timeZone={assessmentTimeZone} />
                 )}
                 {proposal.trace?.candidates?.length ? (
-                  <section aria-label="Titles considered">
-                    <Text as="h3" className="mb-2" textRole="cardLabel">
-                      Titles considered
-                    </Text>
-                    <Stack className="divide-border divide-y" render="ul">
-                      {proposal.trace.candidates.map((candidate) => (
-                        <li
-                          key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
-                          className="py-2"
-                        >
-                          <Text as="p" textRole="cardLabel">
-                            {friendlyCandidateName(candidate.name)}
-                          </Text>
-                          <p>{catalogDecision(candidate.disposition, candidate.reason)}</p>
-                        </li>
-                      ))}
+                  <Stack aria-label="Titles considered" gap="3" render="section">
+                    <Stack gap="2">
+                      <Text as="h3" textRole="cardLabel">
+                        Titles considered
+                      </Text>
+                      <Stack className="divide-border divide-y" render="ul">
+                        {proposal.trace.candidates.map((candidate) => (
+                          <li
+                            key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
+                            className="py-2"
+                          >
+                            <Text as="p" textRole="cardLabel">
+                              {friendlyCandidateName(candidate.name)}
+                            </Text>
+                            <Text as="p" textRole="compact" tone="secondary">
+                              {catalogDecision(candidate.disposition, candidate.reason)}
+                            </Text>
+                          </li>
+                        ))}
+                      </Stack>
                     </Stack>
-                    <details className="mt-3">
+                    <details>
                       <summary className="w-fit cursor-pointer">
                         <Text as="span" textRole="hint">
                           Raw search data
@@ -479,14 +511,14 @@ const ProposalReview = ({
                         </Text>
                       </pre>
                     </details>
-                  </section>
+                  </Stack>
                 ) : null}
               </Stack>
             </details>
           )}
         </Stack>
       </details>
-    </section>
+    </Stack>
   );
 };
 
