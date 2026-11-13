@@ -288,7 +288,9 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	// Acquire the listener synchronously. For the first PostgreSQL generation this is the
 	// final cutover check: a bind failure must restore SQLite rather than clear fallback
 	// before ListenAndServe reports the error asynchronously.
-	listener, err := net.Listen("tcp", cfg.ListenAddr)
+	listener, err := acquireListener(cfg.ListenAddr, func() error {
+		return stopGeneration(cancelRoot, generationDrainBudget, nil, application)
+	})
 	if err != nil {
 		startup.Complete(diagnostics.StartupCheckHTTP, diagnostics.StartupFailed,
 			"listener could not start", "/settings/system/diagnostics", "")
@@ -347,6 +349,11 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	var databaseMigrationDSN string
 	select {
 	case err := <-serverErr:
+		// The accept loop died under a running generation: end its workers and run its stops
+		// rather than leave them to a process exit that closes the store beneath them.
+		if stopErr := stopGeneration(cancelRoot, generationDrainBudget, srv.Shutdown, application); stopErr != nil {
+			log.Warn("generation did not stop cleanly after a serve error", "err", stopErr)
+		}
 		return false, err
 	case request := <-lifecycle.requests:
 		restart = true
@@ -365,13 +372,9 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 	// swallow the Ctrl-C an operator uses on the new one.
 	stop()
 
-	// Graceful drain.
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	// End generation-owned work and long-lived SSE streams before draining HTTP. Request
-	// contexts are independent, so the accepted migration response can still finish.
-	cancelRoot()
-	drainErr := drainGeneration(shutdownCtx, generationFinalizeBudget, srv.Shutdown, application.Quiesce, application.Shutdown)
+	// Graceful drain. End generation-owned work and long-lived SSE streams before draining HTTP.
+	// Request contexts are independent, so the accepted migration response can still finish.
+	drainErr := stopGeneration(cancelRoot, generationDrainBudget, srv.Shutdown, application)
 	if drainErr != nil {
 		// A drain that timed out is worth reporting, but on a restart it must not abort
 		// the loop: the generation is finished either way, and refusing to come back up
@@ -416,6 +419,44 @@ func runOnce(log *slog.Logger, level *slog.LevelVar, generation int, databaseMig
 // generationFinalizeBudget is how long a generation's workers have to unwind before its resources
 // are stopped regardless (Application.Shutdown).
 const generationFinalizeBudget = 15 * time.Second
+
+// generationDrainBudget is how long quiescing and the HTTP drain share before finalize starts its own.
+const generationDrainBudget = 15 * time.Second
+
+// builtGeneration is the part of app.Application that ends a generation.
+type builtGeneration interface {
+	Quiesce(context.Context) error
+	Shutdown(context.Context) error
+}
+
+// stopGeneration ends a generation Build has started: it cancels the generation's root context,
+// then quiesces, drains HTTP (nil when no server was started) and finalizes on a live budget of its
+// own. It is the one teardown for the operator's stop and restart, a listener that could not be
+// acquired, and a serve error, so no exit leaves a built generation's workers running or its
+// registered stops unrun under a store that is about to close.
+func stopGeneration(cancelRoot func(), drainBudget time.Duration, drainHTTP func(context.Context) error, generation builtGeneration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), drainBudget)
+	defer cancel()
+	cancelRoot()
+	if drainHTTP == nil {
+		drainHTTP = func(context.Context) error { return nil }
+	}
+	return drainGeneration(ctx, generationFinalizeBudget, drainHTTP, generation.Quiesce, generation.Shutdown)
+}
+
+// acquireListener binds addr. When it cannot, the generation Build already started is shut down
+// through abandon before the failure is returned, so a failed bind does not strand workers; a
+// failure of the shutdown itself is reported beside the bind error, which stays first.
+func acquireListener(addr string, abandon func() error) (net.Listener, error) {
+	listener, err := net.Listen("tcp", addr)
+	if err == nil {
+		return listener, nil
+	}
+	if abandonErr := abandon(); abandonErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("shut down the unserved generation: %w", abandonErr))
+	}
+	return nil, err
+}
 
 // drainGeneration quiesces the generation and drains HTTP within ctx, then finalizes it on a budget
 // of its own: a client holding a response open to the drain deadline must not leave the workers no
