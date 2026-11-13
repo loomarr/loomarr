@@ -104,6 +104,8 @@ export { Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "./src/men
 export type { ModalLayerProps } from "./src/modal-layer";
 export { ModalLayer } from "./src/modal-layer";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
+export type { NonModalDialogProps } from "./src/non-modal-dialog";
+export { NonModalDialog } from "./src/non-modal-dialog";
 export type { NoticeAction, NoticeProps, NoticeTone } from "./src/notice";
 export { Notice } from "./src/notice";
 export type { PressableRowProps } from "./src/pressable-row";
