@@ -58,8 +58,9 @@ func introspectSQLite(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable, e
 		t := schemadoc.LiveTable{Name: name}
 		// A partial index can't serve every lookup of a parent's children, so it doesn't count, unless
 		// it only leaves out NULLs of its first column: an equality lookup never matches a NULL, so
-		// SQLite uses such an index for every lookup by that column.
-		if t.Indexes, err = groupedColumns(ctx, db, `SELECT il.name, ii.name FROM pragma_index_list(?1) il
+		// SQLite uses such an index for every lookup by that column. An expression in an index has no
+		// column name, so it reads as (expression), as postgresKeys reads it.
+		if t.Indexes, err = groupedColumns(ctx, db, `SELECT il.name, coalesce(ii.name, '(expression)') FROM pragma_index_list(?1) il
 			JOIN pragma_index_info(il.name) ii
 			JOIN sqlite_master m ON m.type = 'index' AND m.name = il.name
 			WHERE il.partial = 0 OR replace(replace(replace(lower(m.sql), char(10), ' '), '  ', ' '), '  ', ' ')
@@ -241,7 +242,7 @@ func introspectPostgres(ctx context.Context, db *sql.DB) ([]schemadoc.LiveTable,
 
 // postgresKeys fills one table's primary key, foreign keys, references, indexes and CHECKed
 // columns. An index counts as introspectSQLite counts it: whole, or partial only on "first column
-// IS NOT NULL".
+// IS NOT NULL". An expression in an index (attnum 0) reads as (expression).
 func postgresKeys(ctx context.Context, db *sql.DB, t *schemadoc.LiveTable) error {
 	byName := map[string]*schemadoc.LiveColumn{}
 	for i := range t.Columns {
@@ -249,11 +250,12 @@ func postgresKeys(ctx context.Context, db *sql.DB, t *schemadoc.LiveTable) error
 	}
 	rel := quoteIdent(t.Name)
 	rows, err := db.QueryContext(ctx, `
-SELECT ci.relname, k.ord, a.attname, i.indisprimary, coalesce(pg_get_expr(i.indpred, i.indrelid), '')
+SELECT ci.relname, k.ord, coalesce(a.attname, '(expression)'), i.indisprimary,
+       coalesce(pg_get_expr(i.indpred, i.indrelid), '')
   FROM pg_index i
   JOIN pg_class ci ON ci.oid = i.indexrelid
   CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
-  JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+  LEFT JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
  WHERE i.indrelid = $1::regclass
  ORDER BY ci.relname, k.ord`, rel)
 	if err != nil {

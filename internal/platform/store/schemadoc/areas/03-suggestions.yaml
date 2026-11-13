@@ -155,7 +155,9 @@ tables:
       day: The UTC day, as YYYY-MM-DD.
       stage: The pipeline step, with the same values as quality_receipts.stage.
       outcome: How the steps went, with the same values as quality_receipts.outcome.
-      run_snapshot_id: The evaluation run (quality_run_snapshots.id), or empty for ordinary use.
+      run_snapshot_id: >
+        The evaluation run (quality_run_snapshots.id), or NULL for ordinary use. A row is unique by day,
+        stage, outcome and this run, with ordinary use counted as one run.
       observation_count: How many receipts were rolled into the row.
       duration_ms: Total time of those steps, in milliseconds.
       tool_calls: Total tool calls.
