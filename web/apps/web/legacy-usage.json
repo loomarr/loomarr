@@ -357,8 +357,7 @@
       "tailwindClasses": 31
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 66,
-      "rawTypeSize": 1
+      "tailwindClasses": 33
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 3,
