@@ -195,7 +195,11 @@ const SettingsPage = ({
         <PageHeader title={title} description={description} />
       )}
 
-      <div className={cn("flex flex-col gap-8", embedded ? "mt-6" : "flex-1 overflow-auto p-6")}>
+      <Stack
+        className={embedded ? "mt-6" : "overflow-auto p-6"}
+        gap="8"
+        {...(embedded ? {} : { flexBasis: "0%", flexGrow: 1 })}
+      >
         {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 
         {/* Preserve the declared information hierarchy. A prior two-pass renderer moved every
@@ -295,7 +299,7 @@ const SettingsPage = ({
         {typeof footer === "function" ? footer({ liveValue, setEdit }) : footer}
 
         {patch.error != null && <ErrorState error={patch.error} />}
-      </div>
+      </Stack>
 
       {/* The save bar lives in the layout, not here: Advanced settings is a destination that is
           not a SettingsPage, and an edit staged there had no Save button on screen. One bar
