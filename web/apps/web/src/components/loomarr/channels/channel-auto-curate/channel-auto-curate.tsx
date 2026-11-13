@@ -69,7 +69,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           aria-describedby="policy-auto-curate-hint"
           onCheckedChange={toggle}
         />
-        <Stack gap="1">
+        <Stack flexShrink={1} gap="1">
           <Stack align="center" direction="row" gap="1.5" wrap>
             <Text as="label" htmlFor="policy-auto-curate" textRole="label" tone="primary">
               {OPT_IN_LABEL}

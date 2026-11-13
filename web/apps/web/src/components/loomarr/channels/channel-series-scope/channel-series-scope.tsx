@@ -72,6 +72,7 @@ const ChannelSeriesScope = ({ policy, onChange, className }: ChannelSeriesScopeP
               align="center"
               className="border-border bg-muted/40 rounded-md border px-2 py-1"
               direction="row"
+              flexShrink={1}
               gap="1.5"
               render="li"
             >

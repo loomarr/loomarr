@@ -57,7 +57,7 @@ const KeepingUp = ({
         {waiting ? (
           <Line alignItems="flex-start" flexWrap="nowrap" gap="inline">
             <StatusDot label="Waiting" size="compact" tone="warn" />
-            <Stack gap="inline">
+            <Stack flexShrink={1} gap="inline">
               <Text textRole="body">{waiting.title}</Text>
               <Text textRole="body" tone="secondary">
                 {waiting.reason}

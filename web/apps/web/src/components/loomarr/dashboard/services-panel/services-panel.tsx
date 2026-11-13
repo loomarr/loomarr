@@ -49,7 +49,7 @@ const ServicesPanel = ({ view, onFix, onDiagnose, refreshing, className }: Servi
         <Text as="h2" textRole="cardLabel">
           Services
         </Text>
-        <Stack align="center" className="ml-auto" direction="row" gap="1.5" render="span">
+        <Stack align="center" className="ml-auto" direction="row" flexShrink={1} gap="1.5" render="span">
           {refreshing ? <ActivityIndicator decorative size="compact" tone="secondary" /> : null}
           <Text as="span" textRole="mono">
             checked every 30s · the same checks Settings runs

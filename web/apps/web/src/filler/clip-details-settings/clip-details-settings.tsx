@@ -328,7 +328,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           justify={{ base: "start", sm: "between" }}
           padding={16}
         >
-          <Stack gap="1">
+          <Stack flexShrink={1} gap="1">
             <Text as="p" textRole="cardLabel">
               Web search is optional
             </Text>
@@ -379,7 +379,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     checked={provider === "brave"}
                     onChange={() => form.setFieldValue("provider", "brave")}
                   />
-                  <Stack gap="1" render="span">
+                  <Stack flexShrink={1} gap="1" render="span">
                     <Text as="span" textRole="cardLabel">
                       Brave Search
                     </Text>
@@ -407,7 +407,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                       checked={provider === "searxng"}
                       onChange={() => form.setFieldValue("provider", "searxng")}
                     />
-                    <Stack gap="1" render="span">
+                    <Stack flexShrink={1} gap="1" render="span">
                       <Text as="span" textRole="cardLabel">
                         SearXNG
                       </Text>

@@ -300,7 +300,7 @@ const ChannelDetailLayout = () => {
               </Text>
             </Stack>
           </div>
-          <Stack align="center" className="ml-auto" direction="row" gap="inline">
+          <Stack align="center" className="ml-auto" direction="row" flexShrink={1} gap="inline">
             <Text as="span" shout textRole="data">
               Ch
             </Text>

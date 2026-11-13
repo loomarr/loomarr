@@ -287,7 +287,7 @@ const SplitReviewEditor = ({
         <Action onPress={onBack} variant="outline">
           Back
         </Action>
-        <Stack align="center" direction="row" gap="control">
+        <Stack align="center" direction="row" flexShrink={1} gap="control">
           <Text as="span" className="tabular-nums" textRole="mono">
             {pluralize(draft.length, "clip")}
           </Text>
@@ -547,7 +547,7 @@ const SegmentInspector = ({
             })()}
           </Stack>
         </Stack>
-        <Stack direction="row" gap="1" justify="end" wrap>
+        <Stack direction="row" flexShrink={1} gap="1" justify="end" wrap>
           {!last && (
             <Tooltip content="Join this clip and the next">
               <Action onPress={onMergeWithNext} variant="ghost">

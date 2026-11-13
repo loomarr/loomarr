@@ -37,7 +37,7 @@ const NotificationDestinationsPanel = () => {
   return (
     <section className="grid gap-4" aria-labelledby="notification-providers-title">
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
-        <Stack direction="row" gap="control">
+        <Stack direction="row" flexShrink={1} gap="control">
           <Stack
             align="center"
             className="bg-signal/10 text-signal size-9 rounded-lg"

@@ -139,7 +139,7 @@ const EventDetail = ({
   return (
     <Stack className="bg-muted/20" gap="4" padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
-        <Stack gap="2">
+        <Stack flexShrink={1} gap="2">
           <Text as="span" textRole="hint" tone="secondary">
             <Stack align="center" direction="row" gap="2" render="span">
               <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
@@ -403,7 +403,7 @@ const ApplicationDiagnostics = ({
             first.
           </Text>
         </div>
-        <Stack direction="row" gap="inline" wrap>
+        <Stack direction="row" flexShrink={1} gap="inline" wrap>
           <Action
             disabled={downloadState === "working"}
             icon="download"

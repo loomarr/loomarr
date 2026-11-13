@@ -118,7 +118,7 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
             ) : null}
           </div>
           {!confirmingDelete ? (
-            <Stack direction="row" gap="inline" wrap>
+            <Stack direction="row" flexShrink={1} gap="inline" wrap>
               <Action onPress={() => setEditing(true)} variant="outline">
                 Edit
               </Action>
@@ -172,7 +172,7 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
                 )}
               </deleteForm.Field>
             </div>
-            <Stack direction="row" gap="inline" wrap>
+            <Stack direction="row" flexShrink={1} gap="inline" wrap>
               <deleteForm.Subscribe selector={(state) => state.values.confirmation}>
                 {(confirmation) => (
                   <Action

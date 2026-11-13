@@ -502,7 +502,7 @@ const GuidePage = () => {
       {channels.length > 0 && !nowNextView && (
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
-            <Stack align="center" direction="row" gap="1.75">
+            <Stack align="center" direction="row" flexShrink={1} gap="1.75">
               <div>
                 <CompactSelect
                   label="Day"
@@ -526,7 +526,7 @@ const GuidePage = () => {
 
             {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
                 window without changing the day. */}
-            <Stack align="center" direction="row" gap="1">
+            <Stack align="center" direction="row" flexShrink={1} gap="1">
               <Action
                 icon="earlier"
                 layout="icon"
@@ -553,11 +553,11 @@ const GuidePage = () => {
 
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
-            <Stack align="center" className="sm:ml-auto" direction="row" gap="1.75">
+            <Stack align="center" className="sm:ml-auto" direction="row" flexShrink={1} gap="1.75">
               <Text as="span" textRole="metadata">
                 Span
               </Text>
-              <Stack direction="row" gap="1">
+              <Stack direction="row" flexShrink={1} gap="1">
                 {WINDOW_CHOICES.map((w) => {
                   const active = windowMinutes === Number(w.value);
                   return (
@@ -603,7 +603,7 @@ const GuidePage = () => {
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
-              <Stack align="center" direction="row" gap="1.75">
+              <Stack align="center" direction="row" flexShrink={1} gap="1.75">
                 <Text as="span" textRole="metadata">
                   Start at
                 </Text>

@@ -107,7 +107,7 @@ const InvitationRoster = ({ invitations, sendingId, onSendEmail, onShare }: Invi
                 </div>
 
                 {pending && (
-                  <Stack direction="row" gap="inline" wrap>
+                  <Stack direction="row" flexShrink={1} gap="inline" wrap>
                     {canSend && (
                       <Action
                         accessibilityLabel={`${action} to ${name}`}

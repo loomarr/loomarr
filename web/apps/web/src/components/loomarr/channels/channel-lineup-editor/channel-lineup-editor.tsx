@@ -173,7 +173,7 @@ const SortableLineupRow = ({
               Seasons
             </Text>
             {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
-            <Stack align="center" direction="row" gap="1.5" render="span">
+            <Stack align="center" direction="row" flexShrink={1} gap="1.5" render="span">
               {seasonInput("seasonMin", entry.seasonMin, "1")}
               <Text aria-hidden as="span" textRole="hint" tone="secondary">
                 –

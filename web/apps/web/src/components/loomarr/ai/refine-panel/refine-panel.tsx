@@ -116,7 +116,7 @@ const RefinePanel = ({
                 <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
               </Stack>
               {failureCopy ? (
-                <Stack gap="0.5" render="span">
+                <Stack flexShrink={1} gap="0.5" render="span">
                   <Text as="span" textRole="cardLabel" tone="danger">
                     {failureCopy.title}
                   </Text>

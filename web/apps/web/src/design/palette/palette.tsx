@@ -76,7 +76,7 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // make this page fail the a11y gate for a violation it was only demonstrating. The
           // measured ratio is still printed for every step, so the scope of the rule stays
           // visible without being enacted.
-          <Stack className="min-w-24" gap="1" key={step}>
+          <Stack className="min-w-24" flexShrink={1} gap="1" key={step}>
             <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
             <Stack
               align="center"

@@ -80,6 +80,7 @@ const ConnectionBlock = ({
                   verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400",
                 )}
                 direction="row"
+                flexShrink={1}
                 gap="1.5"
                 render="p"
                 role="status"

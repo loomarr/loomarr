@@ -95,7 +95,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
             >
               Edit first
             </Action>
-            <Stack marginLeft="auto">
+            <Stack flexShrink={1} marginLeft="auto">
               <Tooltip content="Not for me">
                 <Action disabled={busy} icon="close" layout="icon" onPress={onHide} variant="ghost">
                   {`Not for me: ${idea.name}`}

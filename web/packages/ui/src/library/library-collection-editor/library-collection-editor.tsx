@@ -176,7 +176,7 @@ const Footer = ({
       />
       <Line alignItems="flex-start" justifyContent="space-between" rowGap="control">
         {saved ? (
-          <Stack gap={4}>
+          <Stack flexShrink={1} gap={4}>
             <Line>
               <Action disabled={used || busy} onPress={() => setAsking(true)} tone="danger" variant="outline">
                 Delete collection

@@ -30,7 +30,7 @@ const DiagnosticsPager = ({
         Newer
       </Action>
     </Tooltip>
-    <Stack align="center" render="span">
+    <Stack align="center" flexShrink={1} render="span">
       <Text as="strong" textRole="label" tone="primary">
         Page {page}
       </Text>

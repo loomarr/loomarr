@@ -109,7 +109,7 @@ const DatabaseMigration = ({
           <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.locked} size="compact" tone="success" />
           </Stack>
-          <Stack gap="1">
+          <Stack flexShrink={1} gap="1">
             <Text as="p" textRole="compact">
               DATABASE_URL is pinned by the environment.
             </Text>
@@ -138,7 +138,7 @@ const DatabaseMigration = ({
               const done = at > i;
               const current = at === i;
               return (
-                <Stack align="center" direction="row" gap="inline" key={s.key} render="li">
+                <Stack align="center" direction="row" flexShrink={1} gap="inline" key={s.key} render="li">
                   <Stack
                     align="center"
                     className={cn(

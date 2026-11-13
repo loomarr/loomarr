@@ -212,7 +212,7 @@ const SupportBundle = ({
           <Stack gap="4">
             <Card aria-label="Report scope" gap={16} padding={16} render="section">
               <Stack align="start" direction="row" gap="control" justify="between" wrap>
-                <Stack gap="1">
+                <Stack flexShrink={1} gap="1">
                   <Text as="h3" textRole="heading">
                     Recent diagnostic evidence
                   </Text>
