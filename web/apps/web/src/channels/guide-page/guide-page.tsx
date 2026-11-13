@@ -297,10 +297,14 @@ const GuidePage = () => {
   const [lastAnswered, setLastAnswered] = useState(answered);
   if (answered && answered !== lastAnswered) setLastAnswered(answered);
   const body = answered ?? lastAnswered;
+  // The notice, once a window has failed, holds through its retry (the query is pending again, with
+  // no error) until a window answers, so it stays mounted under the focus on its button.
+  const [noticeUp, setNoticeUp] = useState(false);
+  if (guide.error && !noticeUp) setNoticeUp(true);
+  if (noticeUp && guide.isSuccess && !guide.isPlaceholderData) setNoticeUp(false);
   // The window on screen is the last good one, not the one that failed.
-  // It holds through a retry too (the query is pending again, with no error), so the notice and the
-  // focus on its button stay.
-  const showingEarlierWindow = answered === undefined && body !== undefined;
+  const showingEarlierWindow =
+    noticeUp && body !== undefined && (answered === undefined || guide.isPlaceholderData);
   // A cold page with nothing cached reads the device's zone until the first answer names the
   // household's.
   useEffect(() => {
@@ -414,7 +418,7 @@ const GuidePage = () => {
         }
       />
 
-      {guide.error || showingEarlierWindow ? (
+      {guide.error || noticeUp ? (
         // The same inset the TV and phone Guide give it (GuideJourney).
         <Surface backgroundColor="transparent" borderWidth={0} padding="control">
           <Notice
