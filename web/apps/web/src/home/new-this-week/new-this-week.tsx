@@ -72,28 +72,36 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
         >
           <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
-          <div className="min-w-0 flex-1">
-            <Text as="span" className="block" textRole="hint" tone="secondary">
+          <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
+            <Text as="span" textRole="hint" tone="secondary">
               New channel
             </Text>
-            <span className="mt-0.5 block text-[15px] font-semibold break-words">
+            <Text as="span" className="break-words" textRole="cardTitle" tone="primary">
               <Text as="span" textRole="mono" tone="primary">
                 {lead.number}
               </Text>{" "}
               {lead.name}
-            </span>
-            <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
+            </Text>
+            <Text as="span" textRole="hint" tone="secondary">
               {addedLine(lead, viewerName, timeZone)}
             </Text>
-          </div>
-          <Text
-            as="span"
-            className="border-static-500 inline-flex h-7 shrink-0 items-center self-start rounded-md border px-2.5"
-            textRole="label"
-            tone="primary"
+          </Stack>
+          <Stack
+            align="center"
+            alignSelf="flex-start"
+            borderColor="borderControl"
+            borderRadius={8}
+            borderWidth={1}
+            flexShrink={0}
+            height={28}
+            justify="center"
+            paddingHorizontal={10}
+            render="span"
           >
-            Watch
-          </Text>
+            <Text as="span" textRole="label" tone="primary">
+              Watch
+            </Text>
+          </Stack>
         </Link>
       ))}
       {titles.length > 0 && (
@@ -101,10 +109,16 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         // as a container query so it holds whatever chrome shares the viewport.
         <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5 @max-[284px]:grid-cols-1">
           {titles.slice(0, POSTERS).map((t) => (
-            <Stack className="min-w-0" gap="1.5" key={t.key}>
-              <div
+            <Stack gap="1.5" key={t.key} minWidth={0}>
+              <Stack
+                aspectRatio={2 / 3}
+                borderColor="borderDecorative"
+                borderRadius={8}
+                borderWidth={1}
                 data-home-poster-art=""
-                className="border-static-700 aspect-[2/3] w-full overflow-hidden rounded-md border"
+                flexShrink={0}
+                overflow="hidden"
+                width="100%"
               >
                 <ArtworkFallback
                   channel={
@@ -113,7 +127,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   label={t.name ?? t.key}
                   seed={seedOf(t.key)}
                 />
-              </div>
+              </Stack>
               <Text as="span" className="break-words" textRole="cardLabel">
                 {t.name ?? t.key}
               </Text>

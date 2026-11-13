@@ -492,9 +492,7 @@
       "tailwindClasses": 15
     },
     "src/home/new-this-week/new-this-week.tsx": {
-      "tailwindClasses": 50,
-      "rawTypeSize": 1,
-      "rawTypeWeight": 1
+      "tailwindClasses": 25
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
