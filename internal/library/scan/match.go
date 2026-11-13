@@ -657,6 +657,10 @@ func searchQuery(name string, known int) (title string, year int, whole string) 
 		}
 		words = append(words, dottedWords(w)...)
 	}
+	// A release's mark first, "720p.Copse.Ridge.2014", says nothing of the title after it.
+	for len(words) > 1 && releaseMark.MatchString(words[0]) {
+		words = words[1:]
+	}
 	cut := releaseCut(words, dotted)
 	// A year among the release words, "Ashgrove 1080p 2015", is the year when the title gives none.
 	after := 0

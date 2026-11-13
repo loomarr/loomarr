@@ -969,6 +969,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   (`crossTitle`); "TV/Ashwell Movies/" holds films (`franchiseFilms`); a hidden copy beside a video
   is skipped; "- Ending Theme" and "Extras - Disc 2/" are extras; a daily's "24.03.19" is its
   day (`shortDay`); a video named as its own folder, "Sample/Sample.mkv", is listed (`extraIn`).
+- **74:** a film's own dated folder holds the film and its unlabelled bonus videos ("Cast Q and
+  A.mkv"), never a second copy (`bonusBeside`); "Wexcombe Part 1" and "Part 2" in "Wexcombe
+  (2008)/" are its parts; a films' shelf's "Trailers/" and "Samples/" hold extras; a fansub's
+  "[Batch]" folder is its show's; "2019 - Season 6" is season 6's folder; a tagged pack's "-
+  Menu" is its extra; a leading "720p." is no part of a title.
 
 ## Search
 

@@ -68,7 +68,7 @@ func TestPartsOf(t *testing.T) {
 		{"other names", []string{"Ashgrove - cd1.mkv", "Brindle - cd2.mkv"}, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if got := partsOf(c.names); !maps.Equal(got, c.want) {
+			if got := partsOf("", c.names); !maps.Equal(got, c.want) {
 				t.Errorf("partsOf(%q) = %v, want %v", c.names, got, c.want)
 			}
 		})

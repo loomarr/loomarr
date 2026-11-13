@@ -151,10 +151,16 @@ func skippedDir(parent, name string, titled bool) bool {
 	// A film's own "Specials" ("Movies/Ashwood (2015)/Specials/") are its extras, where a show's
 	// are its season 0; and a subtitles' folder holds no title, whatever a release put in it.
 	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !shelfAt(parent)
-	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] ||
+	// A films' shelf's "Trailers/" or "Samples/" holds its films' trailers and samples, named as
+	// the films are; a film called so names its folder with its year, "Trailers (2019)/".
+	shelfTrailers := shelfExtras[lower] && parent != "." && amongFilms(parent)
+	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] || shelfTrailers ||
 		(parent != "." && extrasFolder(name, parent) && titled && !shelfAt(parent)) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
 }
+
+// shelfExtras are the folders a films' shelf keeps its films' trailers and samples in.
+var shelfExtras = map[string]bool{"trailers": true, "teasers": true, "samples": true}
 
 // holdsTitle says whether a folder, rel to the root with its entries, is a title's own: a season
 // folder, one named as a title is with its year ("Ashgrove (2015)"), or one holding a video, a
@@ -445,7 +451,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		extras[name] = true
 	}
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
-	notes, parts := notesOf(videoNames), partsOf(videoNames)
+	notes, parts := notesOf(videoNames), partsOf(folder, videoNames)
 	if shows || showLabelled(folder) {
 		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder), as
 		// are a folder's labelled a show's on any shelf, "Movies/The Long Watch Miniseries/".
@@ -1109,6 +1115,16 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 			out[name] = true
 			continue
 		}
+		// In a release's pack, its group's tag on the folder, "[Grp] Tora Michi [01-24]/Tora Michi -
+		// Menu.mkv" is the release's extra as a tagged name's is (extraName).
+		if leadingTags.MatchString(folder) && animeOpening.MatchString(stem(name)) {
+			out[name] = true
+			continue
+		}
+		if film && !shows && !episodes && bonusBeside(folder, name) {
+			out[name] = true
+			continue
+		}
 		// A hidden copy of a video beside it, ".Fenwick Garth (2003).mkv", is a shadow a copy or a
 		// sync left, never a second copy; ".45 Calibre Kings" alone is a title.
 		if strings.HasPrefix(name, ".") && slices.ContainsFunc(names, func(other string) bool {
@@ -1180,6 +1196,28 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 		}
 	}
 	return out
+}
+
+// bonusBeside says whether a video in a film's own dated folder, beside the film's own video, is
+// one of the disc's unlabelled bonus features: "Gale Spit (2004)/Cast Q and A.mkv", "…/The Look of
+// Gale Spit.mkv". Each is named as no film is: with no year of its own, not as the film, not
+// running on from its title as a sequel does ("Brook (2010)/Brook 2.mkv"), not the film's name cut
+// short ("asg-1080p", "movie.mkv"), and with no part's, episode's or day's mark.
+func bonusBeside(folder, name string) bool {
+	plain := plainStem(name)
+	title, _, _ := searchQuery(folder, 0)
+	own, _, _ := searchQuery(name, 0)
+	if title == "" || own == "" || yearAnywhere.MatchString(plain) || markIn(name) != nil || airDateIn(plain) != "" ||
+		makeMKVTitle.MatchString(plain) || genericStem.MatchString(plain) {
+		return false
+	}
+	if _, _, ok := partIn(name); ok {
+		return false
+	}
+	if sameWords(own, title) || runsOn(own, title) || abbreviates(own, title) || strings.EqualFold(own, initials(title)) {
+		return false
+	}
+	return true
 }
 
 // filmVersion says whether what follows a film's name and a dash, after, says which copy of the

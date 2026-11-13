@@ -57,6 +57,10 @@ func seasonIn(name string) (season int, ok bool) {
 	}
 	// "Christmas_Specials" and "시즌.1" are spelled with their words apart as "Christmas Specials" is.
 	name = strings.Join(strings.Fields(strings.NewReplacer("_", " ", ".", " ").Replace(name)), " ")
+	// The year it aired first, "2019 - Season 6", as "S03 - 2012" gives it last.
+	if m := yearThenSeason.FindStringSubmatch(name); m != nil {
+		return seasonIn(m[1])
+	}
 	switch strings.ToLower(name) {
 	case "specials", "special", "season specials", "season 00 specials", "extras specials", "ova", "ovas", "oad", "oads":
 		return 0, true
@@ -90,6 +94,10 @@ func seasonIn(name string) (season int, ok bool) {
 	}
 	return seasonNumberWord(m[1])
 }
+
+// yearThenSeason matches a season's folder named by its year, a dash, then the season: "2019 -
+// Season 6", "2020-S01".
+var yearThenSeason = regexp.MustCompile(`^(?:19|20)\d{2} ?- ?(\S.*)$`)
 
 // seasonTypo says whether a word is "season" misspelled by one letter: two swapped ("Sesaon"),
 // one missing ("Seson"), one extra ("Seasoon") or one wrong ("Seasin"). It starts with the "s" a

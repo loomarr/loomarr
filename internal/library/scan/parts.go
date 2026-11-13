@@ -23,15 +23,24 @@ var partCount = regexp.MustCompile(`(?i)^[ ._-]*of[ ._-]*\d`)
 // from 1. A file is a part only beside the rest of its set: two or more videos whose names are
 // the same but for a part mark, numbered 1, 2, … (or A, B, …) with none missing. A name alone
 // never says it, so "Kettle Part 2 (2011)", alone in its folder, is a movie of its own.
-func partsOf(names []string) map[string]int {
+//
+// folder is the folder's name, "" for none. In a film's own dated folder, "Wexcombe (2008)/", its
+// title then "Part 1" is the film's part: a sequel would give its own year, and this one has the
+// folder's.
+func partsOf(folder string, names []string) map[string]int {
 	type part struct {
 		name   string
 		number int
 	}
+	title, year, _ := searchQuery(folder, 0)
 	sets := map[string][]part{}
 	for _, name := range names {
 		// A TV capture's parts are a broadcast's episodes (capturedEpisode).
 		set, number, ok := partIn(name)
+		if m := titledPartWord.FindStringSubmatch(plainStem(name)); !ok && m != nil && year != 0 && title != "" &&
+			sameWords(m[1], title) && !yearAnywhere.MatchString(plainStem(name)) {
+			set, number, ok = partIn(m[1] + " - Part " + m[2] + filepath.Ext(name))
+		}
 		if ok && !tvCapture.MatchString(name) {
 			sets[set] = append(sets[set], part{name: name, number: number})
 		}
@@ -63,6 +72,9 @@ func partsOf(names []string) map[string]int {
 	return out
 }
 
+// titledPartWord matches a title then "Part" and its number set apart by a space: "Wexcombe Part 1".
+var titledPartWord = regexp.MustCompile(`(?i)^(.*\S)[ ]+part[ ]*(\d{1,2})$`)
+
 // partFolder matches a folder named by a part mark alone: "CD1", "Disc 2", "dvd-b".
 var partFolder = regexp.MustCompile(`(?i)^(?:cd|dvd|part|pt|disc|disk)[ ._-]*([0-9]{1,2}|[a-d])$`)
 
@@ -93,7 +105,7 @@ func partFolderOf(dir string) int {
 		}
 		names = append(names, e.Name())
 	}
-	return partsOf(names)[filepath.Base(dir)]
+	return partsOf("", names)[filepath.Base(dir)]
 }
 
 // oneTitlesPart says whether a part folder's video can be one part of the title the set's first

@@ -1231,6 +1231,33 @@ var namingMatrix = []namingRow{
 	// A show's home settles the folders in it: one no rule knows is the show's when nothing says it
 	// is a show of its own; a spin-off there numbers its own first season and keeps its name. A
 	// name only its words read as a shelf is one only among shelves.
+	// A film's own dated folder holds the film and its unlabelled bonus videos, never a second copy;
+	// "Name Part 1" and "Part 2" there are its parts; "Movies/Trailers/" and "Movies/Samples/" hold
+	// extras; a fansub's batch folder is its show's; "2019 - Season 6" is a season's folder; a
+	// pack's "- Menu" is no episode; "- Copy", "(copy 2)", "(Full Screen)" and a leading "720p."
+	// say nothing of a film's title.
+	{id: "W147", files: map[string]string{
+		"Movies/Brackmere (1990)/Brackmere (1990).mkv":                                               "movie Brackmere 1990",
+		"Movies/Brackmere (1990)/Pell Tamsin on Brackmere.mkv":                                       "skip",
+		"Movies/Brackmere (1990)/Cast Q and A.mkv":                                                   "skip",
+		"Movies/Brackmere (1990)/Shooting the Storm.mkv":                                             "skip",
+		"Movies/Wexcombe (2008)/Wexcombe Part 1.mkv":                                                 "movie Wexcombe 2008",
+		"Movies/Wexcombe (2008)/Wexcombe Part 2.mkv":                                                 "movie Wexcombe 2008",
+		"Movies/Gale Spit (2004)/Gale Spit (2004).mkv":                                               "movie Gale Spit 2004",
+		"Movies/Trailers/Gale Spit (2004).mkv":                                                       "skip",
+		"Movies/Samples/Rook Fell (2009).mkv":                                                        "skip",
+		"Movies/Rook Fell (2009)/Rook Fell (2009).mkv":                                               "movie Rook Fell 2009",
+		"Anime/Hoshi Kettei/[SubGrp] Hoshi Kettei - 01 [1080p].mkv":                                  "episode Hoshi Kettei S?E?",
+		"Anime/[SubGrp] Hoshi Kettei (01-12) [1080p] [Batch]/[SubGrp] Hoshi Kettei - 04 [1080p].mkv": "episode Hoshi Kettei S?E?",
+		"TV/Fen Courier/2019 - Season 6/ep01.mkv":                                                    "episode Fen Courier S6E1",
+		"TV/Fen Courier/2019 - Season 6/ep02.mkv":                                                    "episode Fen Courier S6E2",
+		"Anime/[Grp] Tora Michi [01-24] [BD 1080p]/[Grp] Tora Michi - 01 [BD 1080p].mkv":             "episode Tora Michi S?E?",
+		"Anime/[Grp] Tora Michi [01-24] [BD 1080p]/Tora Michi - Menu.mkv":                            "skip",
+		"Movies/Copse Hollow (2011) - Copy.mkv":                                                      "movie Copse Hollow 2011",
+		"Movies/Copse Wood (2012) (copy 2).mkv":                                                      "movie Copse Wood 2012",
+		"Movies/Copse Lane (2013) (Full Screen).mkv":                                                 "movie Copse Lane 2013",
+		"Movies/720p.Copse.Ridge.2014.mkv":                                                           "movie Copse Ridge 2014",
+	}},
 	// A recording's guest or title between its show and its day is no part of the show; a fansub's
 	// "[06]" is its episode; a film's folder names a scene file shortened past knowing; a kids'
 	// show's "Show Christmas" beside its episodes is one; "Hex 10x10" on a films' shelf is a film;

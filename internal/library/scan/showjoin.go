@@ -250,7 +250,7 @@ func showIdentity(base string) (string, int) {
 	// "Tin Cup" and "Tin Cup (Animated)".
 	s = bracketGroup.ReplaceAllStringFunc(s, func(g string) string {
 		inner := strings.TrimSpace(g[1 : len(g)-1])
-		if bracketYear.MatchString(g) || episodeRange.MatchString(g) || releaseNotes.MatchString(g) ||
+		if bracketYear.MatchString(g) || episodeRange.MatchString(g) || releaseNotes.MatchString(g) || batchNote.MatchString(inner) ||
 			trailingSeason.MatchString(" "+inner) || digits(strings.ReplaceAll(inner, "-", "")) {
 			return " "
 		}
@@ -265,6 +265,8 @@ func showIdentity(base string) (string, int) {
 }
 
 var (
+	// batchNote matches a release's note that it holds a run whole: "[Batch]", "(Complete)", "[Fin]".
+	batchNote = regexp.MustCompile(`(?i)^(?:batch|complete|fin|final|end)$`)
 	// bracketGroup matches a bracketed group anywhere in a folder's name.
 	bracketGroup = regexp.MustCompile(`[(\[][^)\]]*[)\]]`)
 	// trailingSeason matches a season's mark at a folder's name's end: "S2", "Season 2", "- S02".
