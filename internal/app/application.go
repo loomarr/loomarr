@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
@@ -19,6 +20,11 @@ import (
 var ErrApplicationQuiescing = errors.New("application generation is quiescing")
 
 const interactiveOperationCompletionTimeout = 5 * time.Second
+
+// generationStopBudget is how long each registered stop (River's Stop, the store close, the
+// recorder flush) gets to finish. It is the stop's own: a join that used up the shutdown context
+// would otherwise hand every stop a dead one, and they degrade to forced when given one.
+const generationStopBudget = 10 * time.Second
 
 type interactiveOperationLauncher func(
 	time.Duration,
@@ -114,18 +120,22 @@ type generationLifecycle struct {
 	quiescers   []func(context.Context) error
 	stops       []func(context.Context) error
 	wg          sync.WaitGroup
+	running     atomic.Int64 // workers between track and untrack
 	quiesceOnce sync.Once
 	quiesced    chan struct{}
 	quiesceErr  error
 	stopOnce    sync.Once
 	done        chan struct{}
 	err         error
+	// stopBudget is the time each registered stop gets, whatever became of the shutdown context.
+	stopBudget time.Duration
 }
 
 func newGenerationLifecycle(parent context.Context) *generationLifecycle {
 	ctx, cancel := context.WithCancel(parent)
 	return &generationLifecycle{
 		ctx: ctx, cancel: cancel, quiesced: make(chan struct{}), done: make(chan struct{}),
+		stopBudget: generationStopBudget,
 	}
 }
 
@@ -164,10 +174,10 @@ func (l *generationLifecycle) goRun(run func(context.Context)) {
 		l.mu.Unlock()
 		panic("app: start generation worker after shutdown")
 	}
-	l.wg.Add(1)
+	l.track()
 	l.mu.Unlock()
 	go func() {
-		defer l.wg.Done()
+		defer l.untrack()
 		run(l.ctx)
 	}()
 }
@@ -182,10 +192,10 @@ func (l *generationLifecycle) goOnDemand(run func(context.Context)) bool {
 		l.mu.Unlock()
 		return false
 	}
-	l.wg.Add(1)
+	l.track()
 	l.mu.Unlock()
 	go func() {
-		defer l.wg.Done()
+		defer l.untrack()
 		run(l.ctx)
 	}()
 	return true
@@ -207,10 +217,10 @@ func (l *generationLifecycle) startInteractiveOperation(
 		l.mu.Unlock()
 		return ErrApplicationQuiescing
 	}
-	l.wg.Add(1)
+	l.track()
 	l.mu.Unlock()
 	go func() {
-		defer l.wg.Done()
+		defer l.untrack()
 		ctx := l.ctx
 		if timeout > 0 {
 			var cancel context.CancelFunc
@@ -263,12 +273,10 @@ func (l *generationLifecycle) quiesce(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	l.startQuiesce(ctx)
-	select {
-	case <-l.quiesced:
+	if settled(ctx, l.quiesced) {
 		return l.quiesceErr
-	case <-ctx.Done():
-		return ctx.Err()
 	}
+	return ctx.Err()
 }
 
 func (l *generationLifecycle) startQuiesce(ctx context.Context) {
@@ -305,45 +313,78 @@ func (l *generationLifecycle) shutdown(ctx context.Context) error {
 		go l.finish(ctx, stops)
 	})
 
-	select {
-	case <-l.done:
+	if settled(ctx, l.done) {
 		return l.err
-	case <-ctx.Done():
-		return ctx.Err()
 	}
+	return ctx.Err()
 }
 
 func (l *generationLifecycle) finish(ctx context.Context, stops []func(context.Context) error) {
 	var errs []error
-	select {
-	case <-l.quiesced:
+	if settled(ctx, l.quiesced) {
 		errs = append(errs, l.quiesceErr)
-	case <-ctx.Done():
+	} else {
 		errs = append(errs, fmt.Errorf("quiesce unfinished at the shutdown deadline: %w", ctx.Err()))
 	}
 	// Every worker runs on the generation's context, cancelled at quiesce, so each is unwinding now.
 	// Its last writes go to the resources below, so they are stopped once it has returned, or at the
 	// deadline: a restart brings up its successor then, and this one's resources must not outlive it.
 	errs = append(errs, l.waitWorkers(ctx))
+	// The stops do not inherit what is left of ctx, which the join may have spent entirely: each
+	// gets a budget of its own, so the last of them is not handed a dead context because the
+	// first was slow, and River's Stop and the store close are not forced by one.
 	for _, stop := range slices.Backward(stops) {
-		errs = append(errs, stop(ctx))
+		errs = append(errs, l.runStop(ctx, stop))
 	}
 	l.err = errors.Join(errs...)
 	close(l.done)
 }
 
+func (l *generationLifecycle) runStop(ctx context.Context, stop func(context.Context) error) error {
+	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), l.stopBudget)
+	defer cancel()
+	return stop(stopCtx)
+}
+
 // waitWorkers waits for the generation's workers until ctx ends. A worker still running then is
-// reported, not waited for.
+// reported, not waited for; workers that have returned are never reported, whatever became of ctx.
 func (l *generationLifecycle) waitWorkers(ctx context.Context) error {
 	returned := make(chan struct{})
 	go func() {
 		l.wg.Wait()
 		close(returned)
 	}()
-	select {
-	case <-returned:
+	if settled(ctx, returned) || l.running.Load() == 0 {
 		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("generation workers still running at the shutdown deadline: %w", ctx.Err())
 	}
+	return fmt.Errorf("generation workers still running at the shutdown deadline: %w", ctx.Err())
+}
+
+// settled reports whether done is closed, waiting for it only until ctx ends. When both are ready
+// it is done that wins: a deadline that passed as the work finished is not a failure, and a select
+// over the two would pick one at random.
+func settled(ctx context.Context, done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+	}
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
+// track and untrack bracket one worker's life. The WaitGroup is what the join waits on; the count
+// lets the join tell, without waiting, that no worker is left when its deadline has already passed.
+func (l *generationLifecycle) track() {
+	l.wg.Add(1)
+	l.running.Add(1)
+}
+
+func (l *generationLifecycle) untrack() {
+	l.running.Add(-1)
+	l.wg.Done()
 }
