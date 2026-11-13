@@ -8,7 +8,7 @@
       "rawTypeWeight": 2
     },
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
-      "tailwindClasses": 10,
+      "tailwindClasses": 6,
       "rawTypeSize": 1
     },
     "src/channels/channel-row-menu/channel-row-menu.tsx": {
@@ -186,7 +186,7 @@
       "rawTypeSize": 3
     },
     "src/components/loomarr/filler/source-search/source-search.tsx": {
-      "tailwindClasses": 35,
+      "tailwindClasses": 29,
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
@@ -252,7 +252,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 77,
+      "tailwindClasses": 67,
       "rawButton": 2,
       "rawTypeSize": 1
     },
@@ -275,7 +275,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/login-shell/login-shell.tsx": {
-      "tailwindClasses": 7
+      "tailwindClasses": 6
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
       "tailwindClasses": 39,
@@ -470,7 +470,7 @@
       "rawTypeSize": 1
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 103
+      "tailwindClasses": 97
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 35,
@@ -614,7 +614,7 @@
       "rawTypeWeight": 1
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 23
+      "tailwindClasses": 17
     },
     "src/suggest/intent-form/intent-form.tsx": {
       "tailwindClasses": 5

@@ -217,24 +217,18 @@ const SourceSearch = ({
                       </Action>
                     )}
                     {acquisition === "queued" || acquisition === "running" ? (
-                      <Text
-                        as="span"
-                        className="flex shrink-0 items-center gap-1"
-                        textRole="compact"
-                        tone="signal"
-                      >
-                        <ActivityIndicator decorative size="compact" tone="inherit" />
-                        Downloading…
+                      <Text as="span" className="shrink-0" textRole="compact" tone="signal">
+                        <Stack align="center" direction="row" gap="1" render="span">
+                          <ActivityIndicator decorative size="compact" tone="inherit" />
+                          Downloading…
+                        </Stack>
                       </Text>
                     ) : acquisition === "success" ? (
-                      <Text
-                        as="span"
-                        className="flex shrink-0 items-center gap-1"
-                        textRole="compact"
-                        tone="signal"
-                      >
-                        <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
-                        Added · being checked
+                      <Text as="span" className="shrink-0" textRole="compact" tone="signal">
+                        <Stack align="center" direction="row" gap="1" render="span">
+                          <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                          Added · being checked
+                        </Stack>
                       </Text>
                     ) : acquisition === "error" ? (
                       <Stack align="center" direction="row" flexShrink={0} gap="inline">
