@@ -233,6 +233,12 @@ func mergeLineupEdit(current []schedule.LineupEntry, edit []LineupEntryDTO) ([]s
 // from the current entry by ApplyLineup's PreserveByKey, §7). Shared by the PATCH merge and
 // the programming/preview draft so a preview lowers the edit exactly as the save would.
 func LineupEntriesFromDTOs(edit []LineupEntryDTO) ([]schedule.LineupEntry, error) {
+	// The schema's maxItems says the same (struct tags cannot spell the constant; a test holds
+	// them together), so this is the check for a caller that did not come through the schema.
+	if len(edit) > schedule.MaxLineupEntries {
+		return nil, fmt.Errorf("lineup has %d entries, but a channel's lineup holds at most %d",
+			len(edit), schedule.MaxLineupEntries)
+	}
 	incoming := make([]schedule.LineupEntry, 0, len(edit))
 	seen := make(map[provision.Key]struct{}, len(edit))
 	for i, dto := range edit {
