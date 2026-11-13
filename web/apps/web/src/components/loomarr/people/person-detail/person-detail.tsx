@@ -12,8 +12,9 @@ import {
   Text,
   Toggle,
 } from "@loomarr/design-system";
+import { useCommittedDraft } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { SessionList } from "@/components/loomarr/people/session-list";
 import { useAppForm } from "@/lib/app-form";
@@ -42,7 +43,8 @@ const PersonDetail = ({
   onCancelContactReplacement,
 }: PersonDetailProps) => {
   const autoId = useId();
-  const quotaDraft = useRef<string>(undefined);
+  // The quota box saves on leaving it; undefined is untouched, with nothing to save.
+  const { draft: quotaDraft, editDraft: setQuotaDraft } = useCommittedDraft<string | undefined>(undefined);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetError, setResetError] = useState("");
   const [contactOpen, setContactOpen] = useState(false);
@@ -303,14 +305,12 @@ const PersonDetail = ({
             keyboardType="numeric"
             label="Quota"
             placeholder={String(user.effectiveQuota)}
-            onChangeText={(text) => {
-              quotaDraft.current = text;
-            }}
+            onChangeText={setQuotaDraft}
             onBlur={() => {
               // Saved on leaving the box, not per keystroke; untouched, there is nothing to save.
-              if (quotaDraft.current === undefined) return;
-              const next = Number(quotaDraft.current);
-              quotaDraft.current = undefined;
+              if (quotaDraft === undefined) return;
+              const next = Number(quotaDraft);
+              setQuotaDraft(undefined);
               if (Number.isInteger(next) && next >= 0 && next !== user.quota) onQuotaChange?.(next);
             }}
           />

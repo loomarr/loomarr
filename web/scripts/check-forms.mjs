@@ -11,7 +11,10 @@
 // also holds a TanStack form is not excused, since a field's `handleChange` is never a `useState`
 // setter and so never counts. A search box or filter
 // (a setter named `setQuery`, `setSearch`, `setFilter`, …) is not a form, unless it sits inside a
-// `<form>` or in a component that holds a submit: there the name excuses nothing. Neither is a flag
+// `<form>` or in a component that holds a submit (an `onSubmit`, a `type="submit"`, or an `Action` or
+// `Pressable` whose `onPress` reads two or more of the component's drafts, which is how the design
+// system submits): there the name excuses nothing. A `useReducer` dispatch handed what was typed is
+// a draft like a setter, and so is a `useRef` object an input writes inside a submitted form. Neither is a flag
 // a handler raises (`setOpen(true)`). Tests and stories are not production code and are not counted.
 // Two buffers are sanctioned that are not a TanStack form: a settings draft (`useSettingsDraft`) and
 // a single input's draft-until-commit (`useCommittedDraft`, once per component: a second in the same
@@ -105,7 +108,62 @@ const isSubmitAttribute = (attribute) =>
   (attribute.name.name === "onSubmit" ||
     (attribute.name.name === "type" && attribute.value?.value === "submit"));
 
-const submittedElements = (program) => {
+// The design system submits through a press, not a `<form>`: an `Action` or a `Pressable` whose
+// `onPress` reads two or more drafts of the component it sits in saves them together, so it is a
+// submit too. That includes a press that names a function of the file which reads them.
+const PRESS_ELEMENTS = new Set(["Action", "Pressable"]);
+
+// declaredDrafts lists the `useState` and `useReducer` values each function declares, with the
+// function that owns them: a press reads the drafts of the component it is in, not a prop of
+// another that happens to share a name.
+const declaredDrafts = (program) => {
+  const drafts = [];
+  const visit = (node, owner) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, owner);
+      return;
+    }
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id.type === "ArrayPattern" &&
+      node.id.elements[0]?.type === "Identifier" &&
+      node.init?.type === "CallExpression" &&
+      node.init.callee.type === "Identifier" &&
+      (node.init.callee.name === "useState" || node.init.callee.name === "useReducer")
+    ) {
+      drafts.push({ name: node.id.elements[0].name, owner });
+    }
+    const next = FUNCTION_NODES.has(node.type) ? node : owner;
+    for (const [key, child] of Object.entries(node)) {
+      if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object") visit(child, next);
+    }
+  };
+  visit(program, undefined);
+  return drafts;
+};
+
+// pressReadsDrafts: the press handler reads at least two of the drafts owned by `owners`, looking
+// into the functions of the file it names.
+const pressReadsDrafts = (handler, owners, drafts, functions) => {
+  const names = new Set(drafts.filter((draft) => owners.includes(draft.owner)).map((draft) => draft.name));
+  const read = new Set();
+  const seen = new Set();
+  const look = (root) =>
+    walk(root, (inner) => {
+      if (inner.type !== "Identifier") return;
+      if (names.has(inner.name)) read.add(inner.name);
+      if (functions.has(inner.name) && !seen.has(inner.name)) {
+        seen.add(inner.name);
+        look(functions.get(inner.name).body);
+      }
+    });
+  look(handler);
+  return read.size >= 2;
+};
+
+const submittedElements = (program, functions) => {
+  const drafts = declaredDrafts(program);
   const found = [];
   const submitting = new Set();
   const visit = (node, inForm, owners) => {
@@ -123,6 +181,17 @@ const submittedElements = (program) => {
     if (node.type === "JSXOpeningElement") {
       found.push({ element: node, inForm, owners });
       if (node.attributes.some(isSubmitAttribute)) for (const owner of owners) submitting.add(owner);
+      if (node.name.type === "JSXIdentifier" && PRESS_ELEMENTS.has(node.name.name)) {
+        const press = node.attributes.find(
+          (attribute) =>
+            attribute.type === "JSXAttribute" &&
+            attribute.name.type === "JSXIdentifier" &&
+            attribute.name.name === "onPress",
+        );
+        if (press?.value && pressReadsDrafts(press.value, owners, drafts, functions)) {
+          for (const owner of owners) submitting.add(owner);
+        }
+      }
     }
     for (const [key, child] of Object.entries(node)) {
       if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object")
@@ -184,6 +253,24 @@ const sanctionedHookNames = (program, groups = SANCTIONED_DRAFT_HOOKS.map((entry
       for (const specifier of node.specifiers) {
         if (specifier.type === "ImportSpecifier" && entry.hooks.has(specifier.imported.name)) {
           names.add(specifier.local.name);
+        }
+      }
+    }
+  }
+  // `const useName = useCommittedDraft` is the same hook under another name.
+  for (let grown = names.size > 0; grown; ) {
+    grown = false;
+    for (const node of program.body) {
+      if (node.type !== "VariableDeclaration") continue;
+      for (const declarator of node.declarations) {
+        if (
+          declarator.id.type === "Identifier" &&
+          declarator.init?.type === "Identifier" &&
+          names.has(declarator.init.name) &&
+          !names.has(declarator.id.name)
+        ) {
+          names.add(declarator.id.name);
+          grown = true;
         }
       }
     }
@@ -400,6 +487,63 @@ const textSetters = (program) => {
   return setters;
 };
 
+// hookBindings names what `const <pattern> = hook(…)` binds: the element of the pair at `index`
+// (the dispatch of a `useReducer` is the second), or the whole value when there is no index (the
+// object a `useRef` returns).
+const hookBindings = (program, hook, index) => {
+  const names = new Set();
+  walk(program, (node) => {
+    if (
+      node.type !== "VariableDeclarator" ||
+      node.init?.type !== "CallExpression" ||
+      node.init.callee.type !== "Identifier" ||
+      node.init.callee.name !== hook
+    ) {
+      return;
+    }
+    const target = index === undefined ? node.id : node.id.type === "ArrayPattern" && node.id.elements[index];
+    if (target?.type === "Identifier") names.add(target.name);
+  });
+  return names;
+};
+
+// writesRefDraft: `root` assigns into the object of a `useRef` (`draft.current.name = value`,
+// `draft.current[key] = value`, `draft.current = value`), looking into the functions of the file it
+// names. A flag (`ref.current = true`) carries nothing typed.
+const writesRefDraft = (root, refs, functions, seen = new Set()) => {
+  let writes = false;
+  const rootedInRef = (target) => {
+    let current = target;
+    while (current?.type === "MemberExpression") {
+      if (
+        current.object.type === "Identifier" &&
+        refs.has(current.object.name) &&
+        current.property.type === "Identifier" &&
+        current.property.name === "current"
+      ) {
+        return true;
+      }
+      current = current.object;
+    }
+    return false;
+  };
+  walk(root, (inner) => {
+    if (writes) return;
+    if (
+      inner.type === "AssignmentExpression" &&
+      rootedInRef(inner.left) &&
+      inner.right.type !== "BooleanLiteral" &&
+      inner.right.type !== "NullLiteral"
+    ) {
+      writes = true;
+    } else if (inner.type === "Identifier" && functions.has(inner.name) && !seen.has(inner.name)) {
+      seen.add(inner.name);
+      writes = writesRefDraft(functions.get(inner.name).body, refs, functions, seen);
+    }
+  });
+  return writes;
+};
+
 // isHandRolledForm: a state setter is reachable from an input's change handler, whether the
 // handler is the setter, calls it, or names a function in this file that does; or a text state's
 // setter is handed to a change prop for another component to write from its own input.
@@ -412,10 +556,14 @@ const isHandRolledForm = (source) => {
   // a submitted form writes is a draft whatever the setter is called.
   const draftSetters = new Set([...state.draft, ...unsanctioned.draft]);
   const submittedSetters = new Set([...draftSetters, ...state.filter, ...unsanctioned.filter]);
-  if (submittedSetters.size === 0) return false;
+  // A `useReducer`'s dispatch is a draft setter when an input hands it what was typed; a ref's
+  // object is one when an input writes into it inside a submitted form.
+  const dispatchers = hookBindings(program, "useReducer", 1);
+  const refs = hookBindings(program, "useRef");
+  if (submittedSetters.size === 0 && dispatchers.size === 0 && refs.size === 0) return false;
   const functions = localFunctions(program);
   const text = textSetters(program);
-  const submitted = submittedElements(program);
+  const submitted = submittedElements(program, functions);
 
   // storesThrough: a function an input's handler names stores what it is handed, directly or
   // through another function in the file.
@@ -462,6 +610,19 @@ const isHandRolledForm = (source) => {
     return writes;
   };
 
+  // dispatchesTyped: the handler calls a dispatch with something derived from what it was handed.
+  // `dispatch({ type: "toggle" })` raises a flag, as `setOpen(true)` does.
+  const dispatchesTyped = (value, follow) => {
+    const handler = value?.type === "JSXExpressionContainer" ? value.expression : value;
+    if (!handler) return false;
+    if (handler.type === "Identifier") {
+      if (dispatchers.has(handler.name)) return true;
+      const fn = follow && functions.get(handler.name);
+      return Boolean(fn) && storesThrough(fn, new Set([handler.name]), dispatchers);
+    }
+    return FUNCTION_NODES.has(handler.type) && storesThrough(handler, new Set(), dispatchers);
+  };
+
   let found = false;
   walk(program, (element) => {
     if (found || element.type !== "JSXOpeningElement") return;
@@ -474,7 +635,10 @@ const isHandRolledForm = (source) => {
       if (node.type !== "JSXAttribute" || node.name.type !== "JSXIdentifier") continue;
       const name = node.name.name;
       if (INPUT_HANDLERS.has(name)) {
-        found ||= writesSetter(node.value, name === "onChangeText" || intrinsic, setters);
+        const follow = name === "onChangeText" || intrinsic;
+        found ||= writesSetter(node.value, follow, setters);
+        found ||= dispatchers.size > 0 && dispatchesTyped(node.value, follow);
+        found ||= refs.size > 0 && submitted.has(element) && writesRefDraft(node.value, refs, functions);
       } else if (
         CHANGE_PROP.test(name) &&
         !VIEW_CHANGE_PROPS.has(name) &&
