@@ -120,7 +120,7 @@ func (s *Handlers) previewChannelProgramming(ctx context.Context, in *previewPro
 	if err != nil {
 		return nil, err
 	}
-	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), in.Body.Lineup, in.Body.Policy)
+	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), s.storedPolicy(ctx, in.ID), in.Body.Lineup, in.Body.Policy)
 	if err != nil {
 		return nil, err
 	}
@@ -192,10 +192,28 @@ func parsePreviewInstant(name, raw string) (time.Time, error) {
 	return t, nil
 }
 
+// storedPolicy is the channel's saved policy, or the empty one when it cannot be read: the engine
+// call that follows reports a missing channel, and an empty baseline only means the draft is held to
+// every check.
+func (s *Handlers) storedPolicy(ctx context.Context, channelID string) schedule.ChannelPolicy {
+	if s.store == nil {
+		return schedule.ChannelPolicy{}
+	}
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return schedule.ChannelPolicy{}
+	}
+	return ch.Policy
+}
+
 // lowerProgrammingDraft validates and lowers a {lineup?, policy?} draft exactly as a save would.
 // Shared by both draft previews so the change list cannot accept a draft the single-point
 // preview refuses, or lower it differently.
-func lowerProgrammingDraft(holidays holidayvocab.Vocabulary, lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
+//
+// stored is the policy the channel holds now. A rule the draft leaves exactly as stored is not
+// checked, as in the save (see ChannelPolicy.ValidateEditOf): a draft of an unrelated edit must not
+// be refused for a rule the save would let stand.
+func lowerProgrammingDraft(holidays holidayvocab.Vocabulary, stored schedule.ChannelPolicy, lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
 	// Draft lineup: validate + convert the lossy DTOs; the engine lowers them by key like a
 	// PATCH (ApplyLineup PreserveByKey). Nil ⇒ the saved lineup.
 	var draftLineup []schedule.LineupEntry
@@ -212,9 +230,8 @@ func lowerProgrammingDraft(holidays holidayvocab.Vocabulary, lineup []channelsap
 		if err := policy.DateAliasConflict(); err != nil {
 			return nil, nil, httpcore.AmbiguousDatesError(err)
 		}
-		if err := policy.ValidateWithHolidays(holidays); err != nil {
-			return nil, nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
-				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", err)
+		if err := policy.ValidateEditOf(stored, holidays); err != nil {
+			return nil, nil, channelsapi.InvalidPolicyProblem(err)
 		}
 	}
 	return draftLineup, policy, nil
@@ -279,7 +296,7 @@ func (s *Handlers) previewChannelProgrammingChanges(ctx context.Context, in *pre
 	if err != nil {
 		return nil, err
 	}
-	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), in.Body.Lineup, in.Body.Policy)
+	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), s.storedPolicy(ctx, in.ID), in.Body.Lineup, in.Body.Policy)
 	if err != nil {
 		return nil, err
 	}
