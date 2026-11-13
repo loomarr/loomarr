@@ -1,5 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Text } from "@loomarr/design-system";
+import { MediaTile, Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
@@ -43,18 +43,19 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     {/* ⚠ Fixed 54×30 box whether or not a frame exists, unlike the card. In a LIST the
         thumbnail is a column: omitting the element for clips without one would ragged the
         name column against its neighbours. An empty box is the honest "no frame" here. */}
-    <button
-      type="button"
+    <MediaTile
+      bordered={false}
       disabled={!onOpen}
-      onClick={onOpen}
-      aria-label={`Preview ${clip.name}`}
-      className="bg-static-800 focus-visible:ring-ring h-[30px] w-[54px] overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:outline-none"
+      height={30}
+      label={`Preview ${clip.name}`}
+      onPress={onOpen}
+      width={54}
     >
       {/* ⚠ ONE path (V52 phase 8): the artwork is an image-service image, with no thumbnail-route
           fallback. A clip whose artwork the adoption job has not reached yet renders the empty
           box above, which is the same honest "no frame" state as a clip that never had one. */}
       {clip.thumbImage && <ServedImage image={clip.thumbImage} alt="" sizes="54px" />}
-    </button>
+    </MediaTile>
 
     {/* ⚠ `min-w-0` is what makes the truncate work. A grid item's default `min-width:auto`
         refuses to shrink below its content, so a long clip name pushes the tag columns off

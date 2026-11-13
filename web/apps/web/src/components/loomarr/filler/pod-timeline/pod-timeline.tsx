@@ -2,7 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Badge, MediaTile, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -96,17 +96,25 @@ const PodTimeline = ({
             className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.role])}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
-              <button
-                type="button"
-                aria-label={`Preview ${clipName(entry)}`}
-                className="focus-visible:ring-ring flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-inset"
-                onClick={() => onPreview(entry)}
+              // The segment's fill is the list item's own, so the tile draws none; its ring is drawn
+              // inside the bar, which clips anything outside it.
+              <MediaTile
+                bordered={false}
+                fill={false}
+                focusInset
+                height="100%"
+                label={`Preview ${clipName(entry)}`}
+                onPress={() => onPreview(entry)}
+                radius="none"
+                width="100%"
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
-                  {segmentLabel(entry)}
-                </Text>
-              </button>
+                <Stack className="min-w-0 px-1" render="span">
+                  <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+                    {segmentLabel(entry)}
+                  </Text>
+                </Stack>
+              </MediaTile>
             ) : (
               <Stack
                 align="center"

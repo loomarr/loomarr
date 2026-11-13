@@ -1,5 +1,5 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Card, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Card, MediaTile, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -136,18 +136,20 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     </Stack>
                   }
                 >
-                  <button
-                    type="button"
-                    aria-describedby={tooltipId}
+                  <MediaTile
                     aria-current={activeKey === item.key ? "true" : undefined}
-                    onClick={(event) => onSelect?.(item.key, event.currentTarget)}
-                    className={cn(
-                      "group border-border bg-static-900 relative size-full overflow-hidden rounded-md border text-left",
-                      "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
-                      // The current block is neutral (#1909); the amber outline above is focus.
-                      activeKey === item.key && "ring-foreground ring-2",
-                      item.unsplittable && "border-caution/70",
-                    )}
+                    aria-describedby={tooltipId}
+                    // The current block is neutral (#1909); the amber outline is focus. The reel
+                    // scrolls, so its ring is drawn inside the tile rather than clipped outside it.
+                    current={activeKey === item.key}
+                    focusInset
+                    height="100%"
+                    onPress={(event) =>
+                      onSelect?.(item.key, event.currentTarget as unknown as HTMLButtonElement)
+                    }
+                    radius="medium"
+                    tone={item.unsplittable ? "warning" : "neutral"}
+                    width="100%"
                   >
                     {/* The name comes from the content, so it holds every visible word (WCAG 2.5.3);
                         the start time is the part the tile shows only to assistive tech. */}
@@ -174,7 +176,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         {formatClipDuration(item.durationMs)}
                       </span>
                     </span>
-                  </button>
+                  </MediaTile>
                 </Tooltip>
               </li>
             );
