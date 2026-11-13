@@ -344,6 +344,20 @@ const SubtitlesMenu: Story = {
     utilities: { ...subtitlesOn, subtitlesOpen: true },
   },
 };
+// The same on a television (#3905): the menu rises over the keys, so the line centres on the picture
+// left of it rather than running under its heading.
+const TelevisionSubtitlesMenu: Story = {
+  ...TelevisionSubtitles,
+  args: {
+    ...TelevisionSubtitles.args,
+    menu: (
+      <PlayerMenu density="tv" title="Subtitles">
+        <PlayerOptions density="tv" label="Subtitles" onSelect={fn()} options={subtitleOptions} />
+      </PlayerMenu>
+    ),
+    utilities: { ...TelevisionSubtitles.args?.utilities, subtitlesOpen: true },
+  } as Story["args"],
+};
 // With the controls down, the line drops to the picture's foot.
 const SubtitlesIdle: Story = { args: { captions: subtitleLine, utilities: subtitlesOn, visible: false } };
 
@@ -855,6 +869,7 @@ export {
   Television,
   TelevisionMore,
   TelevisionSubtitles,
+  TelevisionSubtitlesMenu,
   TelevisionSurfing,
   Touch,
   TypingChannel,
