@@ -320,8 +320,7 @@
       "rawTypeWeight": 1
     },
     "src/design/spacing/spacing.tsx": {
-      "tailwindClasses": 100,
-      "rawTypeSize": 10
+      "tailwindClasses": 1
     },
     "src/design/tokens/tokens.tsx": {
       "tailwindClasses": 12,
