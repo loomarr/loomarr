@@ -2,10 +2,26 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
 )
+
+// sameJSON reports whether two documents decode to the same value: Postgres's jsonb hands a record
+// back respelled.
+func sameJSON(t *testing.T, a, b string) bool {
+	t.Helper()
+	var va, vb any
+	if err := json.Unmarshal([]byte(a), &va); err != nil {
+		t.Fatalf("decode %q: %v", a, err)
+	}
+	if err := json.Unmarshal([]byte(b), &vb); err != nil {
+		t.Fatalf("decode %q: %v", b, err)
+	}
+	return reflect.DeepEqual(va, vb)
+}
 
 // The catalog cache holds what the walk asked for, hands the enricher new titles before stale
 // ones, skips a key whose failed fetch is held back, reports whether a fetch changed anything, and
@@ -35,7 +51,7 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	if err := st.WantLibraryCatalog(ctx, []LibraryCatalogKey{old}); err != nil {
 		t.Fatal(err)
 	}
-	if rec, fetched, err := st.LibraryCatalogRecord(ctx, old); err != nil || !fetched || rec != `{"Kind":"movie"}` {
+	if rec, fetched, err := st.LibraryCatalogRecord(ctx, old); err != nil || !fetched || !sameJSON(t, rec, `{"Kind":"movie"}`) {
 		t.Fatalf("old = %q, %v, %v", rec, fetched, err)
 	}
 	if _, fetched, err := st.LibraryCatalogRecord(ctx, movie); err != nil || fetched {
@@ -70,6 +86,14 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	}
 	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{"Kind":"movie","IDs":[]}`, 0, "en-US", at.Add(time.Minute)); err != nil || changed {
 		t.Fatalf("same record changed = %v, %v", changed, err)
+	}
+	// The same record spelled differently is the same record: Postgres's jsonb keeps neither key
+	// order nor spacing, so a byte comparison would rewrite every title on every fetch.
+	if changed, err := st.SaveLibraryCatalog(ctx, movie, `{ "IDs": [], "Kind": "movie" }`, 0, "en-US", at.Add(time.Minute)); err != nil || changed {
+		t.Fatalf("same record respelled changed = %v, %v", changed, err)
+	}
+	if raw, fetched, err := st.LibraryCatalogRecord(ctx, movie); err != nil || !fetched || !json.Valid([]byte(raw)) {
+		t.Fatalf("record = %q, fetched %v, %v; want the JSON saved", raw, fetched, err)
 	}
 
 	// A movie read in a newer shape: the fresh movie record saved in the old one is due with the
@@ -210,6 +234,17 @@ func testLibraryCatalog(t *testing.T, newStore NewStoreFunc) {
 	}
 	if n, err := st.CountDueLibraryCatalog(ctx, moviesV1); err != nil || n != 2 {
 		t.Fatalf("due as new = %d, %v; want the two records still refreshing", n, err)
+	}
+
+	// A title the catalog does not know is fetched with no record, and saving that again is no change.
+	unknown := LibraryCatalogKey{Provider: "tmdb", Kind: "movie", ExternalID: "90000999"}
+	for i := range 2 {
+		if changed, err := st.SaveLibraryCatalog(ctx, unknown, "", 1, "fr-US", at.Add(time.Duration(i)*time.Minute)); err != nil || changed {
+			t.Fatalf("save %d of no record changed = %v, %v; want unchanged", i+1, changed, err)
+		}
+	}
+	if raw, fetched, err := st.LibraryCatalogRecord(ctx, unknown); err != nil || !fetched || raw != "" {
+		t.Fatalf("unknown title record = %q, fetched %v, %v; want fetched with no record", raw, fetched, err)
 	}
 }
 
