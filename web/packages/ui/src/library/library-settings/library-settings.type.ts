@@ -86,6 +86,13 @@ interface LibraryHeldRemoval {
   titleCount: number;
 }
 
+/** One reason the scan skips files, how many it skips for it, and the first few by path. */
+interface LibrarySkipped {
+  reason: "broken_link" | "link_outside" | "disc_image" | "identity_conflict" | "invalid_facts";
+  total: number;
+  paths: readonly string[];
+}
+
 /** Whether an arr tells Loomarr about new downloads. */
 interface LibraryHook {
   app: "sonarr" | "radarr";
@@ -102,6 +109,8 @@ interface LibrarySettingsProps {
   held: readonly LibraryHeldRemoval[];
   /** Files the scan can't keep because their names can't be read, by path: to rename. */
   unreadable?: readonly string[];
+  /** The files the scan skips, by why: each reason's count and its first few paths. */
+  skipped?: readonly LibrarySkipped[];
   hooks: readonly LibraryHook[];
   /** How the titles' details are getting on; absent reads as nothing waiting. */
   details?: LibraryDetails;
@@ -153,5 +162,6 @@ export type {
   LibraryReadyTitle,
   LibraryScan,
   LibrarySettingsProps,
+  LibrarySkipped,
   LibraryWizardStepProps,
 };

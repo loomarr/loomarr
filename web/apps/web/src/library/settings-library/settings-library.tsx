@@ -35,6 +35,7 @@ const SettingsLibrary = () => {
         health={health}
         held={current.held}
         unreadable={current.unreadable}
+        skipped={current.skipped}
         hooks={current.hooks}
         details={current.details}
         scan={current.scan}

@@ -446,6 +446,46 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
+  it("says which files it skips and what fixes each kind", () => {
+    const { host, props, button, cleanup } = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      skipped: [
+        {
+          reason: "broken_link",
+          total: 5,
+          paths: [
+            "/media/movies/Gone (2003).mkv",
+            "/media/movies/Old Reel.mkv",
+            "/media/tv/a.mkv",
+            "/media/tv/b.mkv",
+          ],
+        },
+        { reason: "link_outside", total: 1, paths: ["/media/movies/Away (2002).mkv"] },
+        { reason: "disc_image", total: 2, paths: ["/media/movies/Tarn.iso", "/media/movies/Wick.iso"] },
+        { reason: "identity_conflict", total: 1, paths: ["/media/tv/x.mkv"] },
+        { reason: "invalid_facts", total: 1, paths: ["/media/tv/y.mkv"] },
+      ],
+    });
+    expect(host.textContent).toContain("5 shortcuts point to files that are gone");
+    expect(host.textContent).toContain(
+      "Gone (2003).mkv, Old Reel.mkv, a.mkv and 2 more. Point them at the files again or delete them, then check again.",
+    );
+    expect(host.textContent).toContain("1 shortcut leads outside your media folders");
+    expect(host.textContent).toContain(
+      "Loomarr only reads inside your media folders. Move Away (2002).mkv into one, or add its folder.",
+    );
+    expect(host.textContent).toContain("2 disc images Loomarr can't play");
+    expect(host.textContent).toContain("Rip Tarn.iso and Wick.iso to video files, then check again.");
+    // Two reasons Loomarr refuses a file are said as one: they're Loomarr's to fix.
+    expect(host.textContent).toContain("2 files Loomarr couldn't add");
+    expect(host.textContent).toContain("Loomarr couldn't make sense of x.mkv and y.mkv.");
+    expect(host.textContent).not.toContain("All caught up");
+    act(() => button("Check again").click());
+    expect(props.onRescan).toHaveBeenCalled();
+    cleanup();
+  });
+
   it("says what the folder watch and an arr are waiting for", () => {
     const { host, cleanup } = render({
       health: "folder_offline",

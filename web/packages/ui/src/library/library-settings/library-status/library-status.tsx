@@ -5,6 +5,7 @@ import {
   folderName,
   heldNames,
   heldTitle,
+  skippedCallouts,
   unreadableNames,
   unreadableTitle,
 } from "../../library-words";
@@ -22,6 +23,7 @@ const LibraryStatus = ({
   readySoFar,
   held,
   unreadable = [],
+  skipped = [],
   hooks,
   details,
   checking,
@@ -38,6 +40,7 @@ const LibraryStatus = ({
   | "readySoFar"
   | "held"
   | "unreadable"
+  | "skipped"
   | "hooks"
   | "details"
   | "checking"
@@ -52,7 +55,12 @@ const LibraryStatus = ({
   // What needs the maintainer leads. An import still running for the other folders keeps its bar,
   // step, file and time left below it; "All caught up" is never said beside something that isn't.
   // An empty folder is said on its own card; here it only keeps "All caught up" from being said.
-  const alerted = (health !== "ok" && health !== "folder_empty") || held.length > 0 || unreadable.length > 0;
+  const skippedKinds = skippedCallouts(skipped);
+  const alerted =
+    (health !== "ok" && health !== "folder_empty") ||
+    held.length > 0 ||
+    unreadable.length > 0 ||
+    skippedKinds.length > 0;
   const importing = health !== "needs_folders" && scan.step !== "idle";
   // Titles stuck waiting for details are said under Keeping up to date, and keep "All caught up"
   // from being said too.
@@ -98,6 +106,19 @@ const LibraryStatus = ({
           {unreadableNames(unreadable)}
         </Callout>
       ) : null}
+      {skippedKinds.map((kind) => (
+        <Callout
+          actions={
+            <Action onPress={onRescan} tone="primary">
+              Check again
+            </Action>
+          }
+          key={kind.key}
+          title={kind.title}
+        >
+          {kind.body}
+        </Callout>
+      ))}
       {health === "folder_offline"
         ? offline.map((folder) => (
             <Callout
