@@ -1070,8 +1070,8 @@ func kindEnds(words []string) bool {
 // extrasBeside is which of a folder's videos are extras of the episodes or the season beside them,
 // read whole by the folder:
 //   - An episode's name titled by a kind of extra alone after its mark, "S01E02 - Sample",
-//     "S01E01 - Commentary", is that episode's extra when another video beside it numbers the same
-//     episode. Alone, it is the episode, titled so.
+//     "S01E01 - Commentary", "S01E01 Trailer", "S01E02.Recap", is that episode's extra when
+//     another video beside it numbers the same episode. Alone, it is the episode, titled so.
 //   - A show's season and a kind of extra with no episode's mark, "Fernhollow.S01.Bloopers",
 //     "Gullhaven - Season 1 Promo", is the season's extra, as a folder so named is
 //     (seasonExtrasFolder).
@@ -1083,13 +1083,15 @@ func extrasBeside(names []string) map[string]bool {
 		}
 		out[name] = true
 	}
+	// What follows its last mark, set apart any way: "S01E02 - Sample", "S01E01 Trailer",
+	// "S01E02.Preview".
 	titledExtra := func(name string) bool {
-		_, after, ok := strings.Cut(stem(name), " - ")
-		for ok && episodeMark.MatchString(after) {
-			_, after, ok = strings.Cut(after, " - ")
+		marks := episodeMark.FindAllStringIndex(stem(name), -1)
+		if len(marks) == 0 {
+			return false
 		}
-		words := extraWords(after)
-		return ok && len(words) > 0 && extraKindAt(words) == 0 && kindEnds(words)
+		words := extraWords(stem(name)[marks[len(marks)-1][1]:])
+		return len(words) > 0 && extraKindAt(words) == 0 && kindEnds(words)
 	}
 	for _, name := range names {
 		mark, marked := numberingIn(name)
@@ -1292,9 +1294,12 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 		// mark does. In a film's own folder, "… - Interview with Cast" is its extra.
 		// Beside a show's marked episodes, a word an episode is as often titled by, "Hilltop -
 		// Credits", "… - Recap", is its title: only a kind only an extra is named by is an extra.
-		if at < 0 || episodeMark.MatchString(name) || slices.ContainsFunc(words[at:], releaseYear) ||
-			at > 0 && !kindEnds(words[at:]) && (!titled || episodes) || airDateIn(stem(name)) != "" ||
-			episodes && at > 0 && slices.Contains(titleKinds, words[at]) {
+		noKind := at < 0
+		numbered := episodeMark.MatchString(name) || airDateIn(stem(name)) != ""
+		yearAfterKind := !noKind && slices.ContainsFunc(words[at:], releaseYear)
+		titledByKind := !noKind && at > 0 && !kindEnds(words[at:]) && (!titled || episodes)
+		episodeTitleWord := !noKind && at > 0 && episodes && slices.Contains(titleKinds, words[at])
+		if noKind || numbered || yearAfterKind || titledByKind || episodeTitleWord {
 			titles[key(words)] = true
 			// An episode's show is a title its extras name: "Cold Coast - Making Of" beside
 			// "Cold Coast S01E01".

@@ -1005,6 +1005,10 @@ header is kept, so no file is opened again. Each version and what it changed:
   (`otherKind`); a Mac's "._" shadow in a film's folder is skipped (`namedAsFolder`); a tagged
   release's folder holding one episode, "[Grp] Show - 07 [1080p] [ABCD1234]/", is its show's
   (`showIdentity`, `releaseCRC`); "3D" before a film's year is its copy's (`editionWords`).
+- **80:** an episode's extra named by its kind after its mark, set apart any way, "S01E02
+  Trailer", "S01E02.Preview", beside the episode itself is its extra (`extrasBeside`); a release's
+  mark first is no part of a title only when it carries a digit, "720p.Copse.Ridge", so "HDR.Kids"
+  and "HDTV Heroes" keep their first word (`searchQuery`).
 
 ## Search
 
