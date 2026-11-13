@@ -48,7 +48,7 @@ func (s *Store) clipWithTags(ctx context.Context, c Clip) (Clip, error) {
 // GetClipByPath looks a clip up by its location under FILLER_DIR.
 //
 // ⚠ **Needed because a clip's PATH and its IDENTITY stopped being the same string in V38c.**
-// Identity is now the content hash (`14365f2b…`), while the path is the sharded location
+// Identity is the content hash (`14365f2b…`), while the path is the sharded location
 // (`14/36/14365f2b….mp4`). `GetClip` queries `WHERE hash = ?`, so handing it a path matches
 // nothing — silently, as an ordinary not-found.
 //
