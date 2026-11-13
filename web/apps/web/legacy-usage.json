@@ -50,8 +50,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 86,
-      "rawTypeSize": 1
+      "tailwindClasses": 63
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "tailwindClasses": 16
