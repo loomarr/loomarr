@@ -16,6 +16,15 @@ ends the current iteration so the next constructs a fresh store, handler, schedu
   diagnostics, workers and scratch roots are **finalized** in reverse construction order, and only
   then does the store close. Quiescers are a separate, idempotent registry that rejects new admission
   before taking its snapshot.
+- **Teardown is bounded, and the container waits for it.** `Shutdown` returns only after its stops
+  finish, and a stop never begins beside a worker or a quiescer that is still running. The worst case
+  from the stop signal to the last stop is 51 s: 15 s of quiesce and HTTP drain, 15 s for workers to
+  unwind, one 10 s late wait for a worker or quiescer that outlived that (one budget for all of them),
+  then the stop phase, whose single hard stop is its 10 s budget plus a 1 s grace however many stops
+  ignore their context. The arithmetic lives in one place, `teardownBudget` in `cmd/loomarr/main.go`.
+  `docker/compose.yaml` and the demo stack set `stop_grace_period: 60s`, and a test holds every Compose
+  file that sets one at or above that budget, because Docker's 10 s default would SIGKILL a slow
+  teardown beside the store it is closing.
 - **Storage topology is per generation.** Saving `filler.dir` or `filler.watch_dir` records the desired
   layout at once, but the running generation keeps one immutable applied pair; the restart-cost
   endpoint names the pending keys until the next generation applies them.
