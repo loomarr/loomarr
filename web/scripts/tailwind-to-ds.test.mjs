@@ -142,10 +142,10 @@ describe("a class on an existing Stack", () => {
     );
   });
 
-  it("moves the three classes the Stack already agrees with", () => {
+  it("moves the two classes the Stack already agrees with, and keeps a dead shrink-0", () => {
     expectChange(
       `import { Stack } from "@loomarr/design-system";\nconst A = () => <Stack className="min-w-0 min-h-0 shrink-0">x</Stack>;\n`,
-      `import { Stack } from "@loomarr/design-system";\nconst A = () => <Stack flexShrink={0} minHeight={0} minWidth={0}>x</Stack>;\n`,
+      `import { Stack } from "@loomarr/design-system";\nconst A = () => <Stack className="shrink-0" minHeight={0} minWidth={0}>x</Stack>;\n`,
     );
   });
 

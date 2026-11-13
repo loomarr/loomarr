@@ -29,8 +29,10 @@
 //     justify-content, flex-wrap, gap, min-width, min-height, flex-basis and flex-shrink. Every one
 //     of those classes on an element must therefore become a prop, or the element is not converted.
 //   - A Stack is a column; a former `flex` row needs direction="row".
-//   - A Stack does not shrink unless asked (#4059). A converted element that shrank (flex-1, shrink,
-//     min-w-0, min-h-0, overflow) takes flexShrink={1}; `flex-1` is flexBasis="0%" flexGrow={1}.
+//   - A Stack's default shrink follows the Stack above it (#4059: 0 in a column, 1 in a row), where a
+//     div always shrank. So the codemod never relies on the default: a converted element that shrank
+//     (flex-1, shrink, min-w-0, min-h-0, overflow) takes an explicit flexShrink={1}, shrink-0 an
+//     explicit flexShrink={0}, and `flex-1` is flexBasis="0%" flexGrow={1} flexShrink={1}.
 //   - `Text as="…"` renders a plain element, so no layout prop is ever put on a Text.
 //   - `grid` is not a Stack, so an element with it is left alone.
 //   - A Stack that already has a class for a hard property keeps it: the class is dead today, and
@@ -370,9 +372,10 @@ const CONVERTERS = {
   wrap: convertWrap,
 };
 
-// Classes on an existing Stack that name what its base rule already does: min-width and min-height 0,
-// and no shrinking (the default since #4059). Moving them to props changes nothing on screen.
-const STACK_AGREES = new Set(["min-w-0", "min-h-0", "shrink-0"]);
+// Classes on an existing Stack that name what its base rule already does: min-width and min-height 0.
+// Moving them to props changes nothing on screen. `shrink-0` is not one of them: the Stack's own
+// flexShrink beats it, so it is dead, and the prop would start to hold in a row.
+const STACK_AGREES = new Set(["min-w-0", "min-h-0"]);
 
 // layoutPlan decides what a className becomes on a Stack. `isNew` is a div being turned into one: it
 // must be a plain `flex` container and every hard family must convert. An existing Stack converts only
