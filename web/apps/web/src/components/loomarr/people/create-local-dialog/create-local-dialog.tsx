@@ -62,6 +62,7 @@ const CreateLocalDialog = ({
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent portalContainer={portalContainer}>
           <Stack
+            flexShrink={0}
             gap="4"
             noValidate
             onSubmit={(event) => {

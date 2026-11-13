@@ -59,6 +59,7 @@ const JobEditModal = ({ job, presets, open, onOpenChange }: JobEditModalProps) =
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <Stack
+          flexShrink={0}
           gap="4"
           noValidate
           onSubmit={(event) => {
