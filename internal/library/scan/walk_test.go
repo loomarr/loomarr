@@ -25,7 +25,7 @@ func touch(t *testing.T, root, rel string) {
 }
 
 // A walk lists media and disc images, skips by-products, extras and ignored folders, and follows a
-// symlink only inside the root.
+// symlink only inside the root, listing one out of it or gone as a problem.
 func TestWalkRoot(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	touch(t, root, "India/India.mkv")
@@ -55,6 +55,9 @@ func TestWalkRoot(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "November"), filepath.Join(root, "Oscar")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink(filepath.Join(root, "Gone", "Tango.mkv"), filepath.Join(root, "Tango.mkv")); err != nil {
+		t.Fatal(err)
+	}
 
 	w, err := walkRoot(context.Background(), root, nil, nil)
 	if err != nil || !w.Complete {
@@ -65,7 +68,8 @@ func TestWalkRoot(t *testing.T) {
 		got[f.Rel] = f
 	}
 	want := []string{
-		"India/India.mkv", "Kilo/VIDEO_TS", "Lima/Lima.iso", "November/November.mkv", "Shorts/Season 01/Shorts S01E01.mkv",
+		"India/India.mkv", "Kilo/VIDEO_TS", "Lima/Lima.iso", "Mike", "November/November.mkv",
+		"Shorts/Season 01/Shorts S01E01.mkv", "Tango.mkv",
 	}
 	var rels []string
 	for rel := range got {
@@ -83,6 +87,10 @@ func TestWalkRoot(t *testing.T) {
 	}
 	if got["Kilo/VIDEO_TS"].Problem != ProblemDiscImage || got["Lima/Lima.iso"].Problem != ProblemDiscImage {
 		t.Error("disc images not listed as problems")
+	}
+	// A link the walk can't follow is listed, not passed over: one out of the root, one gone.
+	if got["Mike"].Problem != ProblemLinkOutside || got["Tango.mkv"].Problem != ProblemBrokenLink {
+		t.Errorf("links not listed as problems: Mike %q, Tango %q", got["Mike"].Problem, got["Tango.mkv"].Problem)
 	}
 	if _, ok := got["India/India.mkv"].Sidecars[filepath.Join(root, "India", "India.nfo")]; !ok {
 		t.Errorf("sidecars = %v", got["India/India.mkv"].Sidecars)

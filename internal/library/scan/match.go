@@ -436,6 +436,16 @@ var (
 	releaseWord = regexp.MustCompile(`(?i)^(dv|sdr|bd|web|dvd|remux|avc|proper|extended|unrated|uncut|remastered|imax|internal|limited|cam|screener|multi|subbed|dubbed|hd|german|french|ita|spanish|dutch|hindi|tamil|telugu|malayalam|kannada|bengali|punjabi|marathi|eng|dual|amzn|nf|dsnp|hmax|atvp|pcok|hulu|3d|hsbs|hou|sbs|mkv|mp4|avi|criterion)$`)
 )
 
+// titleLikeRelease are the release's words (releaseWord) a title is named with too: "The Web",
+// "Proper Cam", "The German", "Limited". In a name written in one case nothing tells the two
+// apart, so before a mark, "THE WEB 1080p", it is the title's.
+var titleLikeRelease = map[string]bool{
+	"web": true, "dvd": true, "proper": true, "extended": true, "unrated": true, "uncut": true,
+	"remastered": true, "imax": true, "internal": true, "limited": true, "cam": true, "screener": true,
+	"hd": true, "german": true, "french": true, "spanish": true, "dutch": true, "hindi": true,
+	"tamil": true, "telugu": true, "bengali": true, "punjabi": true, "criterion": true, "3d": true,
+}
+
 // releaseToken says whether a word is a release's: a releaseMark, or a releaseWord.
 func releaseToken(w string) bool { return releaseMark.MatchString(w) || releaseWord.MatchString(w) }
 
@@ -470,8 +480,13 @@ func releaseCut(words []string, dotted bool) int {
 			return i
 		case !releaseWord.MatchString(w):
 			continue
+		// In a name written in one case, "THE WEB 1080p" or "the web 1080p", a release's word reads
+		// as a title's: it ends the title before another release's word ("GERMAN DL"), and a mark
+		// after it ("1080p") ends the title there itself.
+		// A word only a release carries, "MULTi", "AMZN", ends it before a mark as ever.
 		case releaseYear(first(words[i-1])),
-			i+1 < len(words) && releaseToken(first(words[i+1])),
+			i+1 < len(words) && (mixed || !titleLikeRelease[strings.ToLower(w)]) && releaseToken(first(words[i+1])),
+			i+1 < len(words) && (releaseWord.MatchString(first(words[i+1])) || strings.EqualFold(first(words[i+1]), "dl")),
 			i+1 == len(words) && dotted:
 			return i
 		}

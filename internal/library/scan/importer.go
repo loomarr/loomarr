@@ -657,7 +657,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	// below takes only what is gone from the folders it walked.
 	var others []identity
 	for _, r := range rows {
-		if inScope(r.Path) || !r.MissingAt.IsZero() || r.Problem == ProblemDiscImage {
+		if inScope(r.Path) || !r.MissingAt.IsZero() || walkProblem(r.Problem) {
 			continue
 		}
 		if rel, err := filepath.Rel(root, r.Path); err == nil {
