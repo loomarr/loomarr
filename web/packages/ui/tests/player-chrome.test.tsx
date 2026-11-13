@@ -200,11 +200,10 @@ describe("PlayerChrome", () => {
       }),
     );
 
-    const cluster = host.querySelector('[data-testid="player-cluster"]');
-    expect(cluster?.querySelector('[data-testid="route-picker"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="player-cluster"] [data-testid="route-picker"]')).not.toBeNull();
     // The picker is the AirPlay control; the key under it is drawing only, not a second button.
     expect(button(host, "AirPlay")?.getAttribute("aria-hidden")).toBe("true");
-    act(() => (button(host, "Picture in picture") as HTMLElement | undefined)?.click());
+    act(() => button(host, "Picture in picture")?.click());
     expect(onPictureInPicture).toHaveBeenCalledOnce();
   });
 
