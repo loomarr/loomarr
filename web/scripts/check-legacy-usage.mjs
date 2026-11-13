@@ -1,8 +1,9 @@
 // The Web legacy-usage ledger (#970 step 5). It counts, per production file under apps/web/src,
 // the legacy presentation stack that the Web migration retires: Tailwind utility classes,
 // class-name helpers (tailwind-merge, clsx), CVA, Base UI, the copied shadcn components in
-// src/components/ui, direct lucide-react imports (the design system's Icon is the icon), and raw
-// <button> elements (its Action is the button). Tests, stories and test helpers are not production code and are not counted.
+// src/components/ui, direct lucide-react imports (the design system's Icon is the icon), raw
+// <button> elements (its Action is the button), and raw type utilities (text sizes; font weights,
+// tracking and leading; its Text role is the typography). Tests, stories and test helpers are not production code and are not counted.
 //
 // The committed ledger (apps/web/legacy-usage.json) is a ratchet:
 //   - the check fails when any count rises or a file with legacy usage is not in the ledger;
@@ -30,6 +31,8 @@ const MEASURES = [
   "legacyUi",
   "lucideReact",
   "rawButton",
+  "rawTypeSize",
+  "rawTypeWeight",
 ];
 
 // Copied components the design system has replaced (#2147), each with its Base UI primitive and the
@@ -95,7 +98,15 @@ const NON_CHILD_KEYS = new Set([
   "innerComments",
 ]);
 
-const classTokens = (text) => text.split(/\s+/).filter(Boolean).length;
+const classTokens = (text) => text.split(/\s+/).filter(Boolean);
+
+// The design system's Text owns size, weight, leading and tracking (#2147). A utility that sets one
+// by hand in a class name is a raw type utility. `md:text-lg`, `dark:font-bold` and `!text-sm` are
+// the same utility under a variant or an important flag, so those are stripped first.
+const RAW_TYPE_SIZE = /^text-(?:2xs|xs|sm|base|md|lg|xl|[2-9]xl|\[\d*\.?\d+(?:px|rem)\])$/;
+const RAW_TYPE_WEIGHT =
+  /^(?:font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)|tracking-.+|leading-.+)$/;
+const utilityOf = (token) => token.slice(token.lastIndexOf(":") + 1).replace(/^[!-]/, "");
 
 const keyName = (key) => {
   if (!key) return undefined;
@@ -111,50 +122,52 @@ const isClassKey = (key) => keyName(key) === "className" || keyName(key) === "cl
 // twMerge, cva). Object keys, comparison operands, conditions, cva's defaultVariants and the
 // selectors of its compoundVariants are not classes. The arguments of any other call inside a
 // class name (buttonVariants({ variant: "ghost" })) are variant choices, not classes.
-const countClasses = (node, inClass = false) => {
-  if (!node || typeof node !== "object") return 0;
-  if (Array.isArray(node)) return node.reduce((sum, child) => sum + countClasses(child, inClass), 0);
+const collectClasses = (node, inClass = false) => {
+  if (!node || typeof node !== "object") return [];
+  if (Array.isArray(node)) return node.flatMap((child) => collectClasses(child, inClass));
   switch (node.type) {
     case "StringLiteral":
-      return inClass ? classTokens(node.value) : 0;
+      return inClass ? classTokens(node.value) : [];
     case "TemplateLiteral":
-      return (
-        (inClass ? node.quasis.reduce((sum, quasi) => sum + classTokens(quasi.value.cooked ?? ""), 0) : 0) +
-        countClasses(node.expressions, inClass)
-      );
+      return [
+        ...(inClass ? node.quasis.flatMap((quasi) => classTokens(quasi.value.cooked ?? "")) : []),
+        ...collectClasses(node.expressions, inClass),
+      ];
     case "JSXAttribute":
-      return countClasses(node.value, inClass || isClassKey(node.name));
+      return collectClasses(node.value, inClass || isClassKey(node.name));
     case "ObjectProperty": {
-      if (isClassKey(node.key)) return countClasses(node.value, true);
+      if (isClassKey(node.key)) return collectClasses(node.value, true);
       const name = keyName(node.key);
-      if (inClass && name === "defaultVariants") return 0;
-      return countClasses(node.value, inClass && name !== "compoundVariants");
+      if (inClass && name === "defaultVariants") return [];
+      return collectClasses(node.value, inClass && name !== "compoundVariants");
     }
     case "CallExpression":
       if (node.callee.type === "Identifier" && CLASS_HELPERS.has(node.callee.name)) {
-        return countClasses(node.arguments, true);
+        return collectClasses(node.arguments, true);
       }
-      return countClasses(node.callee) + countClasses(node.arguments);
+      return [...collectClasses(node.callee), ...collectClasses(node.arguments)];
     case "BinaryExpression":
-      return countClasses(node.left) + countClasses(node.right);
+      return [...collectClasses(node.left), ...collectClasses(node.right)];
     case "ConditionalExpression":
-      return (
-        countClasses(node.test) +
-        countClasses(node.consequent, inClass) +
-        countClasses(node.alternate, inClass)
-      );
+      return [
+        ...collectClasses(node.test),
+        ...collectClasses(node.consequent, inClass),
+        ...collectClasses(node.alternate, inClass),
+      ];
     default: {
       // Type positions never hold classes: `"primary" | "ghost"` is a variant name.
       const childInClass = inClass && !/^TS.*(?:Type|Keyword)/.test(node.type);
-      let sum = 0;
+      const found = [];
       for (const [key, child] of Object.entries(node)) {
         if (!NON_CHILD_KEYS.has(key) && child && typeof child === "object")
-          sum += countClasses(child, childInClass);
+          found.push(...collectClasses(child, childInClass));
       }
-      return sum;
+      return found;
     }
   }
 };
+
+const countClasses = (node) => collectClasses(node).length;
 
 // countRawButtons counts the native <button> elements a source renders. The design system's Action
 // is the button; a <button> in app code is a hand-styled control that skips its focus, press and
@@ -218,7 +231,10 @@ const measureSource = (source, file) => {
     sourceType: "module",
     plugins: file.endsWith(".tsx") ? ["typescript", "jsx"] : ["typescript"],
   }).program;
-  counts.tailwindClasses = countClasses(program);
+  const classes = collectClasses(program);
+  counts.tailwindClasses = classes.length;
+  counts.rawTypeSize = classes.filter((token) => RAW_TYPE_SIZE.test(utilityOf(token))).length;
+  counts.rawTypeWeight = classes.filter((token) => RAW_TYPE_WEIGHT.test(utilityOf(token))).length;
   counts.rawButton = countRawButtons(program);
   for (const specifier of importSpecifiers(program)) {
     const category = importCategory(specifier, file);

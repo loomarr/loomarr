@@ -220,7 +220,7 @@ func candLess(a, b cand) bool {
 // at 34%: it fully sorted every remaining candidate at every position. Instrumenting the
 // search showed why that is waste — on every SOLVABLE deck the first candidate wins at every
 // position (tried == positions, zero backtracks), so it sorted n candidates n times to consume
-// exactly one of them each time. The first `next()` is now an O(n) scan for the minimum; the
+// exactly one of them each time. The first `next()` is an O(n) scan for the minimum; the
 // sort happens only if the caller comes back, which the measurements say it does not on the
 // path that matters.
 //

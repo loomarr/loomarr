@@ -42,8 +42,13 @@ const Heading = ({ children }: { children: string }) => (
 );
 
 // "3" or, for a file holding two, "3–4".
-const episodeNumber = (number: number, end?: number) =>
-  end && end > number ? `${number}–${end}` : `${number}`;
+// An episode with no number (a special its show's catalog doesn't number) shows none.
+const episodeNumber = (number: number, end?: number) => {
+  if (number <= 0) {
+    return "";
+  }
+  return end && end > number ? `${number}–${end}` : `${number}`;
+};
 
 const Season = ({ season }: { season: LibraryTitleSeason }) => {
   const [open, setOpen] = useState(false);

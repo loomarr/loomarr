@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { TunerLoader } from "./tuner-loader";
 
 // The wash is the dark layer between whatever picture sits under the loader and the snow (#1620 B4).

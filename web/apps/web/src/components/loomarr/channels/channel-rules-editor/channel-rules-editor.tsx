@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, CompactSelect, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, CompactSelect, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
@@ -139,9 +139,15 @@ const RuleRow = ({
   onChange: (next: RuleDraft) => void;
   onRemove: () => void;
 }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: draft.id,
-  });
+  const {
+    // The Action is already a focusable button, so dnd-kit's own role and tabIndex are left behind.
+    attributes: { role: _role, tabIndex: _tabIndex, ...attributes },
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: draft.id });
   const rowId = useId();
 
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -170,18 +176,22 @@ const RuleRow = ({
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
+      <Stack align="center" direction="row" gap="inline">
+        <Action
           {...attributes}
           {...listeners}
+          compact
           disabled={disabled}
-          aria-label={`Reorder ${label}`}
-          className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+          icon="dragHandle"
+          layout="icon"
+          style={{ flexShrink: 0 }}
+          variant="ghost"
         >
-          <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
-        </button>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
+          {`Reorder ${label}`}
+        </Action>
+        <Text as="span" className="min-w-0 flex-1 truncate" textRole="cardLabel" tone="primary">
+          {label}
+        </Text>
         <Tooltip content="Remove this rule">
           <Action
             disabled={disabled}
@@ -194,7 +204,7 @@ const RuleRow = ({
             {`Remove ${label}`}
           </Action>
         </Tooltip>
-      </div>
+      </Stack>
 
       <div className="grid grid-cols-1 gap-2 pl-9 sm:grid-cols-3">
         <CompactSelect
@@ -285,31 +295,33 @@ const ChannelRulesEditor = ({
   };
 
   return (
-    <section className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control" render="section">
       <div>
-        <h3 className="text-base font-semibold">Wall-clock rules</h3>
-        <p className="text-muted-foreground text-sm">
+        <Text as="h3" textRole="heading">
+          Wall-clock rules
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
           Play different things at different times: weekend marathons, holiday programming, day-parts. The top
           rule wins when more than one matches a moment; drag to reprioritize.
-        </p>
+        </Text>
       </div>
 
       {drafts.length === 0 ? (
         <div className="border-border rounded-md border border-dashed px-3 py-6 text-center">
-          <p className="text-muted-foreground text-sm">
+          <Text as="p" textRole="compact" tone="secondary">
             No rules yet. This channel always follows its base policy above.
-          </p>
-          <div className="mt-3 flex justify-center">
+          </Text>
+          <Stack className="mt-3" direction="row" justify="center">
             <Action icon="plus" onPress={addRule} variant="outline">
               Add rule
             </Action>
-          </div>
+          </Stack>
         </div>
       ) : (
         <>
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
             <SortableContext items={drafts.map((d) => d.id)} strategy={verticalListSortingStrategy}>
-              <ul className="flex flex-col gap-2">
+              <Stack gap="inline" render="ul">
                 {drafts.map((draft) => (
                   <RuleRow
                     key={draft.id}
@@ -321,7 +333,7 @@ const ChannelRulesEditor = ({
                     onRemove={() => commit(drafts.filter((d) => d.id !== draft.id))}
                   />
                 ))}
-              </ul>
+              </Stack>
             </SortableContext>
           </DndContext>
           <Action icon="plus" onPress={addRule} style={{ alignSelf: "flex-start" }} variant="outline">
@@ -329,7 +341,7 @@ const ChannelRulesEditor = ({
           </Action>
         </>
       )}
-    </section>
+    </Stack>
   );
 };
 

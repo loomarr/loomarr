@@ -1,4 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Stack, Text } from "@loomarr/design-system";
 import { SettingField } from "@/components/loomarr/settings/setting-field";
 import { cn } from "@/lib/utils";
 import type { InstallationLocationProps } from "./installation-location.type";
@@ -36,18 +37,20 @@ const InstallationLocation = ({
   const radiusResult = results?.find((result) => result.key === RADIUS_KEY && result.status !== "saved");
 
   return (
-    <section
-      className={cn(
-        "flex flex-col gap-4",
-        card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
-      )}
+    <Stack
+      className={cn(card && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6")}
+      flexShrink={0}
+      gap="4"
+      render="section"
     >
       {showHeading && (
         <div>
-          <h2 className="text-lg font-semibold">Your area and language</h2>
-          <p className="text-muted-foreground mt-1 max-w-xl text-sm">
+          <Text as="h2" strong textRole="headline">
+            Your area and language
+          </Text>
+          <Text as="p" className="mt-1 max-w-xl" textRole="compact" tone="secondary">
             Loomarr uses these to find commercials that fit your home.
-          </p>
+          </Text>
         </div>
       )}
 
@@ -81,7 +84,7 @@ const InstallationLocation = ({
           lockedLabel="set via environment"
         />
       )}
-    </section>
+    </Stack>
   );
 };
 

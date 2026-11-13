@@ -16,7 +16,7 @@ interface ClippedContent {
 // A scroll container is not a clip: what it hides is reachable by scrolling, so once the walk up
 // passes a scroller on an axis, that axis stops counting. Text an ellipsis truncates is shown as
 // truncated, so it passes too. Visually hidden content (a box of a pixel
-// or less, aria-hidden, inert, inside a closed <details>) is skipped.
+// or less, aria-hidden, inert, under a `hidden` attribute, inside a closed <details>) is skipped.
 //
 // Runs in the browser, so it is self-contained: no imports, no closures over this module.
 const findClippedContent = (page: Page): Promise<ClippedContent[]> =>
@@ -38,7 +38,11 @@ const findClippedContent = (page: Page): Promise<ClippedContent[]> =>
     for (const field of document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
       "input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]),textarea",
     )) {
-      if (!field.value || field === document.activeElement || field.closest("[aria-hidden=true],[inert]"))
+      if (
+        !field.value ||
+        field === document.activeElement ||
+        field.closest("[aria-hidden=true],[inert],[hidden]")
+      )
         continue;
       const px = field.scrollWidth - field.clientWidth;
       if (px > 1 && !(field instanceof HTMLTextAreaElement)) {
@@ -66,7 +70,9 @@ const findClippedContent = (page: Page): Promise<ClippedContent[]> =>
     for (const element of candidates) {
       const style = getComputedStyle(element);
       if (style.visibility === "hidden" || style.display === "none") continue;
-      if (element.closest("[aria-hidden=true],[inert]") || insideClosedDetails(element)) continue;
+      // `[hidden]` covers the DS Disclosure's collapsed body: `hidden="until-found"` is hidden the
+      // same way as a closed <details>, so its fields lay out (and overhang) while nobody sees them.
+      if (element.closest("[aria-hidden=true],[inert],[hidden]") || insideClosedDetails(element)) continue;
       const box = element.getBoundingClientRect();
       if (box.width <= 1 || box.height <= 1) continue;
 

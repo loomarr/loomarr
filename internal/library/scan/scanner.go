@@ -37,9 +37,23 @@ type Scanner struct {
 	MaxWait  time.Duration
 	trigger  chan struct{}
 
+	// AfterFolders hears the end of each round of folder passes; nil hears nothing. It must not
+	// block.
+	AfterFolders func()
+
 	mu      sync.Mutex
 	folders map[string]map[string]folderWait // root → changed folders
+	// passing is whether a round of folder passes is running. Guarded by mu.
+	passing bool
 	changed chan struct{}
+}
+
+// FoldersSettled reports whether no folder waits for a pass and none is being passed over: every
+// pass asked for so far has written what it found.
+func (s *Scanner) FoldersSettled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.folders) == 0 && !s.passing
 }
 
 // folderWait is when a folder's waiting changes began, and its latest.
@@ -125,6 +139,14 @@ func (s *Scanner) passFolders(ctx context.Context) {
 				s.Importer.log().Warn("library scan: a folder pass failed", "root", root, "err", err)
 			}
 		}
+		if len(due) > 0 {
+			s.mu.Lock()
+			s.passing = false
+			s.mu.Unlock()
+			if s.AfterFolders != nil {
+				s.AfterFolders()
+			}
+		}
 		wake = nil
 		if next > 0 {
 			wake = time.After(next)
@@ -163,6 +185,8 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 	for root := range due {
 		slices.Sort(due[root])
 	}
+	// The folders taken are passed over next, so they count as unsettled until that round ends.
+	s.passing = len(due) > 0
 	return due, next
 }
 
@@ -239,6 +263,37 @@ func (l *Library) Importing() ProgressSnapshot {
 	return l.Scanner.Importer.Tracker.Snapshot(l.now())
 }
 
+// Details is how the titles' details are getting on: how many movies and series still wait for
+// theirs, whether they can be looked up now, and when the next try is.
+type Details struct {
+	Waiting int
+	Lookups
+}
+
+// Details reads how the titles' details are getting on; the zero wait when there is no catalog.
+// RetryAt is the Enricher's next try after a failed lookup while that is still ahead; past it, a
+// tick that found every waiting title held back tried nothing, so it is when the first of those is
+// tried again. Zero when nothing waits, or when there is no key.
+func (l *Library) Details(ctx context.Context) (Details, error) {
+	if l.Enricher == nil {
+		return Details{Lookups: Lookups{State: LookupsOK}}, nil
+	}
+	now := l.now()
+	waiting, err := l.Enricher.Store.LibraryCatalogWaiting(ctx, now)
+	if err != nil {
+		return Details{}, err
+	}
+	d := Details{Waiting: waiting.Titles, Lookups: l.Enricher.Lookups()}
+	switch {
+	case d.Waiting == 0, d.State == LookupsNoKey:
+		// Nothing waits, or nothing is tried again until a key is added.
+		d.RetryAt = time.Time{}
+	case !d.RetryAt.After(now):
+		d.RetryAt = waiting.NextRetry
+	}
+	return d, nil
+}
+
 // Enabled reports whether the kill switch lets the scanner run.
 func (l *Library) Enabled() bool {
 	if l.Scanner == nil {
@@ -254,6 +309,18 @@ func (l *Library) Counts(ctx context.Context) (librarystore.LibraryFileCounts, e
 		return librarystore.LibraryFileCounts{}, nil
 	}
 	return l.Scanner.Importer.Store.LibraryFileCounts(ctx)
+}
+
+// heldNamed is how many of a held removal's titles the maintainer is shown by name.
+const heldNamed = 3
+
+// HeldTitles names a few of the titles a root's held removal would take, by name, and counts them
+// all: the maintainer sees what "They're gone, remove them" lets go before saying it.
+func (l *Library) HeldTitles(ctx context.Context, root string) ([]string, int, error) {
+	if l.Scanner == nil {
+		return []string{}, 0, nil
+	}
+	return l.Scanner.Importer.Store.LibraryHeldTitles(ctx, root, heldNamed)
 }
 
 // ErrScannerOff is a request the scanner cannot serve because it is not running.

@@ -243,6 +243,9 @@ type Pipeline struct {
 	// markers make the data self-healing across restarts; this bool merely avoids re-reading a
 	// settled queue every pass.
 	splitReviewsResumed bool
+	// nextDedupRecheck is when reviews holding an unchecked duplicate comparison are next offered
+	// back to the split stage (see dedupRecheckEvery).
+	nextDedupRecheck time.Time
 	// headroom lets media-heavy rungs yield to live playback; nil never waits.
 	headroom PlaybackHeadroom
 	yield    PlaybackYield
@@ -340,6 +343,19 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 			}
 		} else {
 			p.splitReviewsResumed = true
+			p.nextDedupRecheck = p.now().Add(dedupRecheckEvery)
+		}
+	} else if !p.now().Before(p.nextDedupRecheck) {
+		// Reviews held back because their duplicate check could not run are offered to the split
+		// stage again on a slow cadence, so a segment is released once the tooling is back rather
+		// than waiting for the next restart. The interval bounds the cost while it stays down.
+		p.nextDedupRecheck = p.now().Add(dedupRecheckEvery)
+		n, recheckErr := p.requeueSplitReviews(ctx, func(s *SplitStage) (map[string]struct{}, error) {
+			return s.uncheckedReviewHashes(ctx)
+		})
+		res.Requeued = n
+		if recheckErr != nil && p.log != nil {
+			p.log.Warn("filler pipeline: split dedup re-check requeue failed", "err", recheckErr)
 		}
 	}
 
@@ -432,11 +448,21 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 // version-selected: once curated/classified, those markers disappear or become checked, so a restart
 // does not loop a genuinely ambiguous proposal back through the machine.
 func (p *Pipeline) requeueResumableSplitReviews(ctx context.Context) (int, error) {
+	return p.requeueSplitReviews(ctx, func(s *SplitStage) (map[string]struct{}, error) {
+		return s.resumableReviewHashes(ctx)
+	})
+}
+
+// dedupRecheckEvery is how often reviews held for an unchecked duplicate comparison are offered to
+// the split stage again.
+const dedupRecheckEvery = 30 * time.Minute
+
+func (p *Pipeline) requeueSplitReviews(ctx context.Context, pick func(*SplitStage) (map[string]struct{}, error)) (int, error) {
 	stage, ok := p.stages[pipelinestate.StageSplit].(*SplitStage)
 	if !ok || stage == nil {
 		return 0, nil
 	}
-	hashes, err := stage.resumableReviewHashes(ctx)
+	hashes, err := pick(stage)
 	if err != nil || len(hashes) == 0 {
 		return 0, err
 	}

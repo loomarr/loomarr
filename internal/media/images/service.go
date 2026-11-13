@@ -377,6 +377,16 @@ func (s *Service) Adopt(ctx context.Context, srcURL string, req IngestRequest) (
 	return rec, nil
 }
 
+// Lookup finds the image Adopt made of srcURL, fetched or still pending, without writing:
+// ErrNotFound when it was never adopted, or is gone. A page that lists many remote images reads
+// them with it and adopts only the ones it misses.
+func (s *Service) Lookup(ctx context.Context, srcURL string) (Image, error) {
+	if existing, err := s.store.GetFetchedBySourceURL(ctx, srcURL); !errors.Is(err, ErrNotFound) {
+		return existing, err
+	}
+	return s.store.GetImage(ctx, hashOfURL(srcURL))
+}
+
 // Get returns a record.
 func (s *Service) Get(ctx context.Context, hash string) (Image, error) {
 	if !validHash(hash) {

@@ -1,3 +1,4 @@
+import { Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { TvStatic } from "../tv-static";
 import type { TunerLoaderProps } from "./tuner-loader.type";
@@ -75,7 +76,12 @@ const TunerLoader = ({
         motion. On a switch it thickens in over the draining frame. */}
     <TvStatic variant="wash" className={cn(heldFrame && "motion-safe:animate-wash-thicken")} />
 
-    <div className="relative z-[1] flex size-full flex-col items-center justify-center gap-3 px-4 text-center">
+    <Stack
+      align="center"
+      className="relative z-[1] size-full px-4 text-center"
+      gap="control"
+      justify="center"
+    >
       {/* Phosphor bars. Fixed-height rail so the jittering bar heights have room; items-end so they
           grow from a common baseline like a level meter. `h-*` is animated by signal-lock, so the
           static (reduced-motion) height comes from the keyframe's locked frame. */}
@@ -112,7 +118,7 @@ const TunerLoader = ({
         <span>{label}</span>
         <span className="motion-safe:animate-[onair-pulse_1s_steps(2,end)_infinite]">_</span>
       </p>
-    </div>
+    </Stack>
   </div>
 );
 

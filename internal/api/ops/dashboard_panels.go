@@ -32,19 +32,23 @@ type ServiceRow struct {
 	// SettingsGroup is where "Fix →" sends the operator. A red dot that does not say where to
 	// go is a puzzle, not a diagnosis (§12).
 	SettingsGroup string `json:"settingsGroup,omitempty" doc:"Settings group owning this connection"`
+	// NotSetUp is the connection checklist's own verdict (#2781), passed through so Health and
+	// Connections agree: not OK only because none of the service's settings are set yet.
+	NotSetUp bool `json:"notSetUp,omitempty" doc:"True when not OK only because none of this service's connection settings are set yet"`
 }
 
 // fixLocation maps a probe to the settings group that owns its connection. Derived from the
 // registry's own grouping rather than invented here, so a probe cannot route somewhere its
 // settings do not live.
 var fixLocation = map[string]string{
-	"media_server": "media_server",
-	"requester":    "requester",
-	"sonarr":       "sonarr",
-	"radarr":       "radarr",
-	"tunarr":       "tunarr",
-	"llm":          "ai",
-	"filler":       "filler",
+	"media_server":   "media_server",
+	"requester":      "requester",
+	"sonarr":         "sonarr",
+	"radarr":         "radarr",
+	"tunarr":         "tunarr",
+	"tunarr_library": "tunarr",
+	"llm":            "ai",
+	"filler":         "filler",
 }
 
 // ServicesView is the whole panel.
@@ -104,7 +108,7 @@ func (s *Handlers) systemServices(ctx context.Context, _ *struct{}) (*systemServ
 	for _, c := range checks {
 		out.Body.Rows = append(out.Body.Rows, ServiceRow{
 			Name: c.Name, Target: c.Target, OK: c.OK, Hint: c.Hint, DocHref: c.DocHref,
-			SettingsGroup: fixLocation[c.Name],
+			SettingsGroup: fixLocation[c.Name], NotSetUp: c.NotSetUp,
 		})
 	}
 	return out, nil

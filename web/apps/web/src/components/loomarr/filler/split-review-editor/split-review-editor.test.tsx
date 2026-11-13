@@ -160,6 +160,40 @@ describe("SplitReviewEditor", () => {
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
   });
 
+  it("says so when a clip could not be checked against the library, and not when it was", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({ index: 0, name: "Unchecked ad", dedupUnchecked: true }),
+            seg({ index: 1, startMs: 30000, endMs: 60000, name: "Checked ad" }),
+            seg({
+              index: 2,
+              startMs: 60000,
+              endMs: 90000,
+              name: "Known copy",
+              dupOf: "clip-gloopers.mp4",
+              dedupUnchecked: true,
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    const first = openClip(1);
+    expect(within(first).getByText(/couldn’t check this clip against your library/i)).toBeInTheDocument();
+    fireEvent.click(within(first).getByRole("button", { name: "Next clip" }));
+    const second = screen.getByRole("dialog");
+    expect(within(second).queryByText(/couldn’t check this clip/i)).not.toBeInTheDocument();
+    fireEvent.click(within(second).getByRole("button", { name: "Next clip" }));
+    const third = screen.getByRole("dialog");
+    // A finding outranks the missing check: a known copy says what it copies, nothing more.
+    expect(within(third).getByText(/already in your library: clip-gloopers\.mp4/i)).toBeInTheDocument();
+    expect(within(third).queryByText(/couldn’t check this clip/i)).not.toBeInTheDocument();
+  });
+
   it("keeps automatic naming evidence quietly under Details", () => {
     render(
       <SplitReviewEditor

@@ -2,11 +2,13 @@ import type { SettingEntry, SystemLLMStatus } from "@loomarr/api";
 import { SettingEntryApply } from "@loomarr/api/models/settingEntryApply";
 import {
   getSettingsListMockHandler,
+  getSettingsPatchMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
 import { render } from "@/test/render";
@@ -103,6 +105,36 @@ describe("WizardAiBlock", () => {
     // provider=ollama → the openai-only URL + key fields are not shown.
     expect(screen.queryByText(/LLM url/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/LLM api key/i)).not.toBeInTheDocument();
+  });
+
+  it("saves the provider's own fields in one PATCH", async () => {
+    const sent: unknown[] = [];
+    stubAi({ reachable: true, model: "" });
+    server.use(
+      getSettingsListMockHandler({
+        settings: AI_ENTRIES.map((candidate) =>
+          candidate.key === "llm.provider"
+            ? { ...candidate, value: "openai" }
+            : candidate.key === "llm.url"
+              ? { ...candidate, label: "Hosted URL" }
+              : candidate,
+        ),
+        features: {},
+      }),
+      getSettingsPatchMockHandler(async ({ request }) => {
+        sent.push(await request.json());
+        return { results: [{ key: "llm.url", status: "saved" }] };
+      }),
+    );
+    renderBlock();
+
+    await userEvent.type(await screen.findByLabelText("Hosted URL"), "https://ai.invalid/v1");
+    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
+
+    await waitFor(() => expect(sent).toEqual([{ edits: { "llm.url": "https://ai.invalid/v1" } }]));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Save provider" })).not.toBeInTheDocument(),
+    );
   });
 
   // #2735: the checklist block's own check is the one AI test; the hosted picker adds none.

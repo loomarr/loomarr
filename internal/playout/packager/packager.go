@@ -99,6 +99,9 @@ type Config struct {
 	FirstItemWait time.Duration
 	// SlateRetry is how much slate fills a failed schedule lookup (default 10 s).
 	SlateRetry time.Duration
+	// InitLookAhead is how far past a tune-in card the packager looks for the first item, whose init
+	// the stream needs before its first manifest (default 5 min, longer than any break; #3960).
+	InitLookAhead time.Duration
 	// StartDeadline bounds the first manifest's wait from Run's start: past it, AwaitPlaylist fails
 	// the start with ErrNoStart (default FirstItemWait + SlateRetry + FirstManifest: a tune-in item
 	// that fails once still rejoins after its slate). An airing that never produces (a source that
@@ -131,6 +134,7 @@ func (c *Config) defaults() error {
 	def(&c.SlateLead, 2*time.Second)
 	def(&c.FirstItemWait, 10*time.Second)
 	def(&c.SlateRetry, 10*time.Second)
+	def(&c.InitLookAhead, 5*time.Minute)
 	def(&c.StartDeadline, c.FirstItemWait+c.SlateRetry+c.FirstManifest)
 	if c.Log == nil {
 		c.Log = slog.New(slog.DiscardHandler)
@@ -209,6 +213,7 @@ func (p *Packager) Run(ctx context.Context) error {
 func (p *Packager) run(ctx context.Context) error {
 	var lookAt time.Time // set when the last lookup's airing had no whole frame left
 	tuneIn := true       // until the first slot airs: an item then gets FirstItemWait, not a lead
+	probed := false      // probeInit runs at most once
 	for ctx.Err() == nil {
 		airAt := p.airAt(p.v)
 		at := airAt
@@ -246,6 +251,10 @@ func (p *Packager) run(ctx context.Context) error {
 			// Nothing playable (an empty lineup, a card slot) slates for that slot's length, at most
 			// SlateRetry, so the schedule is asked again at most that late.
 			tuneIn = false
+			if !probed && p.encoderInit() == nil {
+				probed = true
+				p.probeInit(ctx, at.Add(item.Duration))
+			}
 			if err := p.fillSlate(ctx, p.slotFor(airAt, min(item.Duration, p.cfg.SlateRetry))); err != nil {
 				return err
 			}
@@ -270,6 +279,45 @@ func (p *Packager) run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// probeInit reads the channel init from the first item after a tune-in card, starting its encoder
+// only until its first fragment (#3960). The first manifest needs a real item's init and the slate
+// never defines it, while the card's slate may lead the clock by only RunAhead: a card with more left
+// than RunAhead + StartDeadline failed the start. With the init read here, the card's slate makes the
+// first manifest and airs as the card. The item opens again when it airs, and its init is checked
+// like any item's. Further cards are passed over up to InitLookAhead; a probe that finds no item or
+// gets no fragment by FirstItemWait leaves the start as it was.
+func (p *Packager) probeInit(ctx context.Context, at time.Time) {
+	for end := at.Add(p.cfg.InitLookAhead); at.Before(end); {
+		item, err := p.schedule(ctx, at)
+		if err != nil || item.Duration <= 0 || ctx.Err() != nil {
+			return
+		}
+		if item.Open == nil {
+			at = at.Add(item.Duration)
+			continue
+		}
+		pctx, cancel := context.WithTimeout(ctx, p.cfg.FirstItemWait)
+		started := p.cfg.Now()
+		rc, err := item.Open(pctx, p.slotFor(at, item.Duration))
+		if err != nil {
+			cancel()
+			return
+		}
+		stream := readStream(pctx.Done(), rc)
+		select {
+		case _, ok := <-stream.frags:
+			if ok && p.acceptInit(stream.init) {
+				p.cfg.Log.Info("packager: init read from the item after a tune-in card", "item", item.Label,
+					"airs_in_ms", at.Sub(started).Milliseconds(), "probe_ms", p.cfg.Now().Sub(started).Milliseconds())
+			}
+		case <-pctx.Done():
+		}
+		cancel() // before Close: the encoder was ended by the packager, not a failure
+		_ = rc.Close()
+		return
+	}
 }
 
 func (p *Packager) airAt(v int64) time.Time {

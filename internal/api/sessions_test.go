@@ -61,7 +61,7 @@ func newSessionsHarness(t *testing.T, configs ...sessionsHarnessConfig) *session
 			Store:        defaults.Store,
 			Auth:         defaults.Auth,
 			Log:          defaults.Log,
-			Sessions:     fs,
+			People:       api.PeopleOptions{Sessions: fs},
 			LiveSettings: mapSettings{"suggest.max_acquisitions": config.DefaultQuota},
 		})
 	})

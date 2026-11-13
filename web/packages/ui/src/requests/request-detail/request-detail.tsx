@@ -2,7 +2,7 @@ import { pickCount, progressLine, requestAcquisitions, requestFixLabel } from "@
 import { Action, Badge, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 
 import { StatePanel } from "../../state-panel";
-import { requestBadgeTone, requestedOn } from "../request-card";
+import { calendarDay, requestBadgeTone, requestedOn } from "../request-card";
 import { RequestsBack } from "../requests-back";
 import type { RequestDetailProps } from "./request-detail.type";
 
@@ -13,9 +13,6 @@ const titleState = {
   unavailable: { label: "Couldn't get", tone: "danger" },
   wanted: { label: "Waiting", tone: "info" },
 } as const;
-
-const decidedOn = (iso?: string) =>
-  iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short" }) : undefined;
 
 const Section = ({ children, title }: { children: React.ReactNode; title: string }) => (
   <Surface backgroundColor="transparent" borderWidth={0} gap="inline" role="group">
@@ -29,7 +26,7 @@ const Section = ({ children, title }: { children: React.ReactNode; title: string
 // One request end to end, in Web's order: status, the live stage while generating, why it failed,
 // who decided and when, the lineup that was proposed, and the titles still on their way. A title that
 // has landed is part of the channel, so only what is outstanding is listed.
-const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestDetailProps) => {
+const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, timeZone, titles }: RequestDetailProps) => {
   const back = <RequestsBack onPress={onBack} />;
   if (!entry)
     return (
@@ -51,7 +48,7 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
   const asked = requestAcquisitions(journey, [...titles]);
   const outstanding = asked.filter(({ title }) => title?.state !== "available");
   const lineup = proposal?.proposal.lineup ?? [];
-  const approvedOn = decidedOn(proposal?.approvedAt);
+  const approvedOn = proposal?.approvedAt ? calendarDay(proposal.approvedAt, timeZone) : undefined;
 
   return (
     <Surface backgroundColor="transparent" borderWidth={0} flex={1} gap="control">
@@ -61,7 +58,7 @@ const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestD
           {journey.intent.description}
         </Text>
         <Text density="touch" textRole="caption" tone="secondary">
-          {requestedOn(journey.createdAt)}
+          {requestedOn(journey.createdAt, Date.now(), timeZone)}
         </Text>
         <Badge density="touch" tone={requestBadgeTone(status.tone)}>
           {status.line}

@@ -1,9 +1,11 @@
+import { Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
-// WatchLine — the web mock's `watchLine` (#1659): a plain mono line under the Filler page's
-// description, with a 7px status dot. It was a bordered pill at the header's top right (§10
-// V38c); the web mock draws it unboxed under the description, so it is a line now.
+// WatchLine — the web mock's `watchLine` (#1659): a plain line under the Filler page's
+// description, with a 7px status dot. The mock set it in mono; it is a sentence, and mono is for
+// channel numbers and clocks (#2778), so it is in the body face (#3412). It is a line, not a bordered pill at the header's top
+// right (§10 V38c): the web mock draws it unboxed under the description.
 //
 // ⚠ **The dot's colour follows the server's health verdict.** The web mock does the same (green and
 // pulsing when healthy, caution and still when not). Before it did, a static mock drew the dot
@@ -29,7 +31,7 @@ const SR: Record<WatchHealth, string> = {
 };
 
 const WatchLine = ({ status, health, className }: WatchLineProps) => (
-  <p className={cn("mt-2 flex min-w-0 items-center gap-2", className)}>
+  <Stack align="center" className={cn("mt-2", className)} direction="row" gap="inline" render="p">
     <span
       className={cn(
         "size-1.75 shrink-0 rounded-full",
@@ -38,12 +40,14 @@ const WatchLine = ({ status, health, className }: WatchLineProps) => (
       )}
       aria-hidden
     />
-    <span className="text-muted-foreground min-w-0 font-mono text-xs">{status}</span>
+    <Text as="span" className="min-w-0" textRole="hint" tone="secondary">
+      {status}
+    </Text>
     {/* ⚠ The dot is `aria-hidden`, so its meaning has to be said in words or it is invisible to a
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}
     <span className="sr-only">{SR[health]}</span>
-  </p>
+  </Stack>
 );
 
 export { WatchLine };

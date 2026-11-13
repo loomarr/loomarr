@@ -20,9 +20,9 @@ interface RefineReviewProps {
   current?: CurrentLineupItem[];
   // The channel's current policy + the refined proposal's policy, for the programming-
   // delta chips (§8.2): a refine can change scope/audience/ordering/seasonal, and those
-  // changes used to apply invisibly. Showing them — and marking a field the operator
-  // pinned as "kept" (operator-dirty stickiness) — is the visible half of that fix. Both
-  // optional so the component stays storyable without them.
+  // changes would otherwise apply invisibly. Showing them — and marking a field the operator
+  // pinned as "kept" (operator-dirty stickiness) — is the visible half of that stickiness.
+  // Both optional so the component stays storyable without them.
   currentPolicy?: ChannelPolicy;
   proposedPolicy?: ChannelPolicy;
   onApply: () => void;

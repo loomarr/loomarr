@@ -81,6 +81,28 @@ describe("ProposalReview", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
+  it("turns a request down with the admin's reason, trimmed, or with none when left blank", async () => {
+    const onDeny = vi.fn();
+    const { unmount } = renderReview(
+      <ProposalReview proposal={proposal} status="submitted" onApprove={vi.fn()} onDeny={onDeny} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await userEvent.type(
+      screen.getByLabelText("Why not? Optional: the requester sees this."),
+      "  Too many new titles ",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await waitFor(() => expect(onDeny).toHaveBeenCalledWith("Too many new titles"));
+    unmount();
+
+    renderReview(
+      <ProposalReview proposal={proposal} status="submitted" onApprove={vi.fn()} onDeny={onDeny} />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await userEvent.click(screen.getByRole("button", { name: "Not approved" }));
+    await waitFor(() => expect(onDeny).toHaveBeenLastCalledWith(undefined));
+  });
+
   it("opens a compact brief editor without hiding the lineup", async () => {
     const onRevise = vi.fn();
     renderReview(<ProposalReview proposal={proposal} selfService onRevise={onRevise} />);
@@ -182,10 +204,9 @@ describe("ProposalReview", () => {
 
     expect(screen.getByRole("button", { name: "Finding more suggestions…" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit brief" })).toBeDisabled();
-    expect(screen.getByText("Finding more suggestions… Your selected titles won’t change.")).toHaveAttribute(
-      "role",
-      "status",
-    );
+    expect(
+      screen.getByText("Finding more suggestions… Your selected titles won’t change.").parentElement,
+    ).toHaveAttribute("role", "status");
 
     expect(onRevise).toHaveBeenCalledWith({
       description: "90s action movies",
@@ -454,6 +475,37 @@ describe("ProposalReview", () => {
     expect(screen.getByText(/series:tmdb:90003921/)).not.toBeVisible();
     await userEvent.click(screen.getByText("Raw search data"));
     expect(screen.getByText(/series:tmdb:90003921/)).toBeVisible();
+  });
+
+  it("says in plain words why a pick was ruled out by its own reason or the requested mood (#3365)", async () => {
+    renderReview(
+      <ProposalReview
+        proposal={{
+          ...proposal,
+          trace: {
+            ...proposal.trace!,
+            candidates: [
+              {
+                ...proposal.trace!.candidates[0]!,
+                name: "Sleigh Ride Slasher",
+                disposition: "validation_dropped",
+                reason: "rationale_rejects",
+              },
+              {
+                ...proposal.trace!.candidates[0]!,
+                name: "Krampus Night",
+                disposition: "validation_dropped",
+                reason: "tone_mismatch",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
+    await userEvent.click(screen.getByText("Troubleshooting details"));
+    expect(screen.getByText("Considered, but its own reason ruled it out")).toBeVisible();
+    expect(screen.getByText("Doesn't match the mood you asked for")).toBeVisible();
   });
 
   it("hides stale availability details during an edited-lineup assessment", async () => {

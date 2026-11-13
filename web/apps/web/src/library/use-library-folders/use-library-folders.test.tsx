@@ -36,7 +36,9 @@ describe("useLibraryFolders", () => {
   it("says why a folder was refused", async () => {
     server.use(
       getListLibraryRootsMockHandler({
-        roots: [{ path: "/media/tv", inUse: true, readable: true, addedByHand: false, foundIn: [] }],
+        roots: [
+          { path: "/media/tv", inUse: true, readable: true, empty: false, addedByHand: false, foundIn: [] },
+        ],
         pathMap: [],
       }),
       getLibraryStatusMockHandler(libraryStatus()),

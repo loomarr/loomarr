@@ -1,5 +1,4 @@
-import { Action, Badge } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Action, Badge, Stack } from "@loomarr/design-system";
 import type { PolicyFieldSourceProps } from "./policy-field-source.type";
 
 // PolicyFieldSource — where a Programming field's value comes from (#1817 item 4): a channel
@@ -13,7 +12,7 @@ const PolicyFieldSource = ({
   defaultLabel = "Default",
   className,
 }: PolicyFieldSourceProps) => (
-  <div className={cn("flex flex-wrap items-center gap-2", className)}>
+  <Stack align="center" className={className} direction="row" gap="inline" wrap>
     {/* An override is neutral with a foreground label and a control hairline (#1909 Q5): the word
         carries the meaning, and amber stays for focus and the primary action. The `override` tone
         draws the hairline without making this badge taller than the Default one. */}
@@ -33,7 +32,7 @@ const PolicyFieldSource = ({
         Reset to default
       </Action>
     ) : null}
-  </div>
+  </Stack>
 );
 
 export { PolicyFieldSource };

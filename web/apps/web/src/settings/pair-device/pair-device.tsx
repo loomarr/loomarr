@@ -2,7 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { devicePairApproveSchema } from "@loomarr/core/schemas";
-import { Action, Field } from "@loomarr/design-system";
+import { Action, Field, Stack, Text } from "@loomarr/design-system";
 import { useForm } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -28,12 +28,14 @@ const SignInFirst = ({ code }: { code: string }) => {
   const here = `/pair${code ? `?code=${encodeURIComponent(code)}` : ""}`;
   return (
     <div className="max-w-focused mx-auto px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold">Add a device</h1>
-      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
+      <Text as="h1" strong textRole="display">
+        Add a device
+      </Text>
+      <Text as="p" className="mt-3" textRole="reading" tone="secondary">
         Sign in first, then we'll bring you straight back here to finish adding your device.
-      </p>
+      </Text>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
-      <div className="mt-8 flex justify-center">
+      <Stack className="mt-8" direction="row" justify="center">
         <Action
           accessibilityRole="link"
           density="touch"
@@ -41,7 +43,7 @@ const SignInFirst = ({ code }: { code: string }) => {
         >
           Sign in
         </Action>
-      </div>
+      </Stack>
     </div>
   );
 };
@@ -105,18 +107,22 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
 
   return (
     <div className="max-w-focused mx-auto px-6 py-16">
-      <h1 className="text-2xl font-semibold">Add a device</h1>
-      <p className="text-md text-muted-foreground mt-3 leading-relaxed">
+      <Text as="h1" strong textRole="display">
+        Add a device
+      </Text>
+      <Text as="p" className="mt-3" textRole="reading" tone="secondary">
         Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
-      </p>
+      </Text>
 
-      <form
-        className="mt-8 space-y-4"
+      <Stack
+        gap="4"
+        marginTop={32}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void form.handleSubmit();
         }}
+        render="form"
       >
         <form.Field name="userCode">
           {(field) => (
@@ -157,33 +163,33 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             </Action>
           )}
         </form.Subscribe>
-      </form>
+      </Stack>
 
       {approve.isError
         ? (() => {
             const failure = classifyApproveFailure(approve.error);
             if (failure === "invalid-code")
               return (
-                <p className="text-destructive text-md mt-4 text-center">
+                <Text as="p" className="mt-4 text-center" textRole="reading" tone="danger">
                   That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
-                </p>
+                </Text>
               );
             if (failure === "rate-limited")
               return (
-                <p className="text-caution text-md mt-4 text-center">
+                <Text as="p" className="mt-4 text-center" textRole="reading" tone="warning">
                   Too many pairing codes tried. Wait a moment and try again.
-                </p>
+                </Text>
               );
             return (
               <div className="mt-4 text-center">
-                <p className="text-caution text-md">
+                <Text as="p" textRole="reading" tone="warning">
                   Couldn't reach Loomarr. Check your connection and try again.
-                </p>
-                <div className="mt-3 flex justify-center">
+                </Text>
+                <Stack className="mt-3" direction="row" justify="center">
                   <Action onPress={retry} variant="outline">
                     Try again
                   </Action>
-                </div>
+                </Stack>
               </div>
             );
           })()
@@ -191,19 +197,21 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
 
       {approved ? (
         <div className="border-border mt-8 rounded-lg border p-5 text-center">
-          <p className="text-md font-medium">{approved} is ready</p>
-          <p className="text-muted-foreground mt-1 leading-relaxed">
+          <Text as="p" textRole="heading">
+            {approved} is ready
+          </Text>
+          <Text as="p" className="mt-1" textRole="body" tone="secondary">
             It should start playing in a few seconds. You can remove it any time from Settings → Access and
             devices.
-          </p>
+          </Text>
         </div>
       ) : null}
 
       {/* A paired device acts as the person who approved it, with their real role (ADR 0043), so an
           admin's TV is an admin. */}
-      <p className="text-muted-foreground mt-10 text-center text-sm leading-relaxed">
+      <Text as="p" className="mt-10 text-center" textRole="compact" tone="secondary">
         The device acts with your access and role. Removing it later signs out only that device.
-      </p>
+      </Text>
     </div>
   );
 };

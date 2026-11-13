@@ -76,12 +76,9 @@ const KNOWN_GAPS = new Set([
   "settings/settings-page/settings-page.tsx",
   "settings/use-settings-entries/use-settings-entries.ts",
   "wizard/bootstrap-step/bootstrap-step.tsx",
-  "wizard/checklist-step/checklist-step.tsx",
-  "wizard/playout-step/playout-step.tsx",
   "wizard/tunarr-library-step/tunarr-library-step.tsx",
   "wizard/use-complete-setup/use-complete-setup.ts",
   "wizard/setup-completed/setup-completed.ts",
-  "lib/use-copied/use-copied.ts",
   "settings/settings-edits/settings-edits.tsx",
   "suggest/round/round.ts",
 ]);
@@ -114,7 +111,7 @@ describe("colocated test coverage", () => {
   it("has modules to check", () => {
     // Guards against the walk silently matching nothing — a gate that checks zero files passes
     // forever and says nothing, which is worse than not having it.
-    expect(missing.length + KNOWN_GAPS.size).toBeGreaterThan(50);
+    expect(missing.length + KNOWN_GAPS.size).toBeGreaterThan(40);
   });
 
   it("every module outside the debt register ships a test", () => {
