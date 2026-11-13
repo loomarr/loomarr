@@ -168,7 +168,7 @@ const ImportDialog = ({
                 {candidateError != null ? (
                   <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
                 ) : candidates === undefined ? (
-                  <Stack aria-label="Loading media-server accounts" gap="2" role="status">
+                  <Stack aria-label="Loading media-server accounts" flexShrink={0} gap="2" role="status">
                     {[0, 1, 2].map((item) => (
                       <Card className="animate-pulse" flexShrink={0} height={64} key={item} />
                     ))}
