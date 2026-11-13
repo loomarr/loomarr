@@ -235,20 +235,21 @@ type LineupEntry struct {
 	// assignFranchiseGroups groups only CollectionID > 0. Healed at reconcile like
 	// OfficialRating, so the scheduler reads it with no I/O.
 	CollectionID int
-	// BoxSetIDs are the MEDIA-SERVER collections (Emby/Jellyfin BoxSets) this title belongs
-	// to, backing scope.collections (programming-design §2.2). Stamped by the reconcile heal
-	// like OfficialRating and CollectionID above, so enforcement stays a pure entry-set
-	// filter with no per-reconcile library I/O.
+	// BoxSetIDs are the household collections (library_collections ids) this title is in,
+	// backing scope.collections (programming-design §2.2). A copy, re-stamped by every
+	// reconcile from the collections themselves, so enforcement stays a pure entry-set filter
+	// and the schedulers that read a stored lineup (preview, playout timeline) need no library
+	// I/O. Only ids a channel's scope names are ever compared, and those are kept by the
+	// collections they name, so a stale id here never matches anything.
 	//
 	// ⚠ Distinct from CollectionID one field up, which is the TMDB FRANCHISE id. Same English
-	// word, different namespaces: a franchise is an integer from TMDB, a BoxSet is an opaque
-	// server-local string naming a shelf an operator made. Never compare the two.
+	// word, different namespaces: a franchise is an integer from TMDB, a household collection
+	// is an opaque id naming a shelf someone made. Never compare the two.
 	BoxSetIDs []string
-	// BoxSetsResolved records that the heal has ANSWERED for this entry, which nil/empty
-	// BoxSetIDs cannot: "not looked up yet" and "looked up, belongs to no collection" are both
-	// empty. Without it the common case (a title in no collection) re-fetches every reconcile
-	// forever — the N+1 the stamping exists to avoid. CollectionID's -1 trick does not
-	// transfer to a slice, and nil-vs-empty does not survive a JSON round trip.
+	// BoxSetsResolved records that a lookup has ANSWERED for this entry, which nil/empty
+	// BoxSetIDs cannot: "not looked up yet" and "in no collection" are both empty, and
+	// nil-vs-empty does not survive a JSON round trip. An unanswered entry passes a collection
+	// scope (boxSetOK fails open), so a channel is never emptied before the first lookup.
 	BoxSetsResolved bool
 	// Fit is how well this title serves the channel's intent, in (0, 1]: the confidence of the
 	// suggest or re-curation pick that added or last re-scored it. 0 means unscored (a manual
