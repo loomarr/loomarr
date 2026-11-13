@@ -96,6 +96,11 @@ type Segment struct {
 	// (dHash, measured 25× separation). Propose records the detection fact; the automated split
 	// stage then discards it before classification because it cannot add a new catalog clip.
 	DupOf string `json:"dupOf,omitempty"`
+	// DedupUnchecked means the comparison against the catalog could not be made for this segment (its
+	// fingerprint could not be read, or the catalog could not be listed). It is not a finding: an
+	// empty DupOf then reads as "not checked", not as "checked and new", and the review says so. A
+	// proposal stored before this field existed reads as checked.
+	DedupUnchecked bool `json:"dedupUnchecked,omitempty"`
 	// Unsplittable means the segment is over-long AND the rescue could not run or
 	// found nothing (no whisper, whisper/LLM failure). The review must say so —
 	// the alternative is guessing, which is exactly what the era rule forbids in

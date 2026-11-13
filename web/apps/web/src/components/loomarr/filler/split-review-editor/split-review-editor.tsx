@@ -207,6 +207,7 @@ const SplitReviewEditor = ({
       audience: a.audience || b.audience || undefined,
       category: a.category || b.category || undefined,
       dupOf: a.dupOf || b.dupOf || undefined,
+      dedupUnchecked: a.dedupUnchecked || b.dedupUnchecked || undefined,
       unsplittable: a.unsplittable || b.unsplittable || undefined,
       transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
       artwork: undefined,
@@ -483,6 +484,7 @@ const SegmentInspector = ({
     namingMessage ||
       (!segment.language && languageMessage) ||
       segment.dupOf ||
+      segment.dedupUnchecked ||
       segment.boundaryConfidence ||
       segment.transcript,
   );
@@ -663,6 +665,11 @@ const SegmentInspector = ({
             {segment.dupOf ? (
               <Text as="p" textRole="compact" tone="secondary">
                 {`Looks like a clip already in your library: ${segment.dupOf}`}
+              </Text>
+            ) : null}
+            {segment.dedupUnchecked && !segment.dupOf ? (
+              <Text as="p" textRole="compact" tone="secondary">
+                Couldn’t check this clip against your library, so it may already be there.
               </Text>
             ) : null}
             {segment.boundaryConfidence ? (
