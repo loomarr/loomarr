@@ -8,7 +8,7 @@ import (
 )
 
 // crashDeviceMigration makes a crash report's device a foreign key to device_tokens (#2793).
-const crashDeviceMigration = 227
+const crashDeviceMigration = 239
 
 func TestCrashDeviceMigration(t *testing.T) {
 	// Foreign keys on, as production opens SQLite.
