@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { SchedulingRule } from "@loomarr/api/models/schedulingRule";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
-import { Action, CompactSelect, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, CompactSelect, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelRulesEditorProps } from "./channel-rules-editor.type";
@@ -139,9 +139,15 @@ const RuleRow = ({
   onChange: (next: RuleDraft) => void;
   onRemove: () => void;
 }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: draft.id,
-  });
+  const {
+    // The Action is already a focusable button, so dnd-kit's own role and tabIndex are left behind.
+    attributes: { role: _role, tabIndex: _tabIndex, ...attributes },
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: draft.id });
   const rowId = useId();
 
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -171,16 +177,18 @@ const RuleRow = ({
       )}
     >
       <Stack align="center" direction="row" gap="inline">
-        <button
-          type="button"
+        <Action
           {...attributes}
           {...listeners}
+          compact
           disabled={disabled}
-          aria-label={`Reorder ${label}`}
-          className="text-static-400 hover:text-foreground focus-visible:ring-ring flex size-7 shrink-0 cursor-grab items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+          icon="dragHandle"
+          layout="icon"
+          style={{ flexShrink: 0 }}
+          variant="ghost"
         >
-          <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
-        </button>
+          {`Reorder ${label}`}
+        </Action>
         <Text as="span" className="min-w-0 flex-1 truncate" textRole="cardLabel" tone="primary">
           {label}
         </Text>

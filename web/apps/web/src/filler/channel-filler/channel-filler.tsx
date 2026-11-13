@@ -16,8 +16,6 @@ import {
   DialogTitle,
   Disclosure,
   Field,
-  Icon,
-  icons,
   Stack,
   Surface,
   Text,
@@ -353,15 +351,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             home (#1817, decided on #1908). The Settings index's "← Manage" link is the pattern. */}
         {from === "filler" ? (
           <Stack align="start" marginBottom={12}>
-            <Link
-              to="/filler"
-              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
-            >
-              <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-              <Text as="span" style={{ color: "inherit" }} textRole="body">
-                Filler overview
-              </Text>
-            </Link>
+            <Action accessibilityRole="link" icon="goBack" render={<Link to="/filler" />} variant="ghost">
+              Filler overview
+            </Action>
           </Stack>
         ) : null}
         <Text as="h2" textRole="headline" strong>

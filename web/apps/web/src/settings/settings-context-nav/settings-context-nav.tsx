@@ -1,4 +1,4 @@
-import { Icon, icons, Stack } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 
 interface SettingsContextNavProps {
@@ -20,13 +20,9 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
     <nav aria-label="Settings location" className="min-w-0">
       <Stack align="center" className="min-w-0 text-sm" direction="row" gap="inline" render="ol">
         <li>
-          <Link
-            to="/settings"
-            className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
+          <Action accessibilityRole="link" icon="goBack" render={<Link to="/settings" />} variant="ghost">
             Settings
-          </Link>
+          </Action>
         </li>
         {section ? (
           <>

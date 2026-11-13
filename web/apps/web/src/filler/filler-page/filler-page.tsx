@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
-import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -144,13 +144,15 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {/* Manage's children say where they return to, as the Settings index already did: the lit
             Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
         {tab === "incoming" || tab === "sources" || tab === "taxonomy" || tab === "quality" ? (
-          <Link
-            to="/filler/manage"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 self-start text-sm"
+          <Action
+            accessibilityRole="link"
+            icon="goBack"
+            render={<Link to="/filler/manage" />}
+            style={{ alignSelf: "flex-start" }}
+            variant="ghost"
           >
-            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
             Manage
-          </Link>
+          </Action>
         ) : null}
 
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
