@@ -20,7 +20,7 @@ describe("Stack", () => {
     expect(markup).toContain("flex-direction:column");
     expect(markup).toContain("align-items:stretch");
     expect(markup).toContain("flex-wrap:nowrap");
-    // It gives way as a flex item, as the <div> it replaces does.
+    // With no Stack above it, it gives way as a flex item, as the <div> it replaces does.
     expect(markup).toContain("flex-shrink:1");
     expect(markup).toContain("<span>one</span><span>two</span>");
   });

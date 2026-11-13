@@ -11,7 +11,7 @@ const Placeholder = ({ title, hint }: PlaceholderProps) => (
         {title}
       </Text>
     </header>
-    <Stack align="center" className="p-6" flexBasis="0%" flexGrow={1} justify="center">
+    <Stack align="center" className="p-6" flexBasis="0%" flexGrow={1} flexShrink={1} justify="center">
       <StatePanel description={hint} kind="empty" title="Nothing here" />
     </Stack>
   </Stack>

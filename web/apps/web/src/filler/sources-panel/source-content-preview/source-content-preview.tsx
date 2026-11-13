@@ -71,6 +71,7 @@ const SourceContentPreview = ({
                     align="center"
                     className="min-w-0"
                     direction="row"
+                    flexShrink={1}
                     gap="inline"
                     key={item.url}
                     render="li"

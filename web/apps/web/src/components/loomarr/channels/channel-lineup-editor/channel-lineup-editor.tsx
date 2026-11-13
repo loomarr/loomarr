@@ -156,7 +156,7 @@ const SortableLineupRow = ({
       </Action>
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
-        <Stack align="center" className="min-w-0" direction="row" gap="inline" wrap>
+        <Stack align="center" className="min-w-0" direction="row" flexShrink={1} gap="inline" wrap>
           <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
             {entry.name}
           </Text>

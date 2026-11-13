@@ -16,7 +16,7 @@ const ReadySoFar = ({ titles }: { titles: readonly LibraryReadyTitle[] }) => (
         <Stack key={t.id} width={64}>
           <LibraryPoster art={t.poster} name="" />
           {/* A clipped, min-width-0 box is what lets the design system truncate. */}
-          <Stack marginTop={6} minWidth={0} overflow="hidden" width={64}>
+          <Stack flexShrink={1} marginTop={6} minWidth={0} overflow="hidden" width={64}>
             <Text numberOfLines={1} textRole="label" tone="secondary">
               {t.name}
             </Text>

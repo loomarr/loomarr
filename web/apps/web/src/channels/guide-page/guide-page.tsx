@@ -415,7 +415,7 @@ const GuidePage = () => {
     // toolbar and grid are separated by RULES, not whitespace, and whose grid owns the only
     // scroll container. Padding here is what produced a page that scrolled horizontally
     // underneath a grid that had room.
-    <Stack className="min-h-0" flexBasis="0%" flexGrow={1}>
+    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} flexShrink={1}>
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
         title="Guide"
@@ -502,7 +502,7 @@ const GuidePage = () => {
       {channels.length > 0 && !nowNextView && (
         <>
           <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
-            <Stack align="center" direction="row" gap="1.75">
+            <Stack align="center" direction="row" flexShrink={1} gap="1.75">
               <div>
                 <CompactSelect
                   label="Day"
@@ -526,7 +526,7 @@ const GuidePage = () => {
 
             {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
                 window without changing the day. */}
-            <Stack align="center" direction="row" gap="1">
+            <Stack align="center" direction="row" flexShrink={1} gap="1">
               <Action
                 icon="earlier"
                 layout="icon"
@@ -553,7 +553,7 @@ const GuidePage = () => {
 
             {/* Span stays in the primary row: it changes the question the guide answers, and
                 four compact choices are faster to scan than a select. */}
-            <Stack align="center" className="sm:ml-auto" direction="row" gap="1.75">
+            <Stack align="center" className="sm:ml-auto" direction="row" flexShrink={1} gap="1.75">
               <Text as="span" textRole="metadata">
                 Span
               </Text>
@@ -593,7 +593,6 @@ const GuidePage = () => {
               className="border-border/60 bg-card/40 border-b"
               columnGap="6"
               direction="row"
-              flexShrink={0}
               id="guide-view-options"
               justify={{ base: "start", sm: "end" }}
               paddingHorizontal={28}
@@ -635,7 +634,7 @@ const GuidePage = () => {
         // scaled up and brightened, at which point it dominates a surface whose whole job is to
         // stay calm and point at one button. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
-        <Stack align="center" className="p-10" flexBasis="0%" flexGrow={1} justify="center">
+        <Stack align="center" className="p-10" flexBasis="0%" flexGrow={1} flexShrink={1} justify="center">
           <EmptyState
             // The state family's own static colour bars lead the panel (#2783): a test card is
             // what a set showed when nothing was broadcasting. Still, like the page around it.
@@ -649,7 +648,7 @@ const GuidePage = () => {
         </Stack>
       ) : (
         // Desktop browsing uses the full available width with contextual previews.
-        <Stack className="relative min-h-0" direction="row" flexBasis="0%" flexGrow={1}>
+        <Stack className="relative min-h-0" direction="row" flexBasis="0%" flexGrow={1} flexShrink={1}>
           {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
           {guide.isPlaceholderData && (

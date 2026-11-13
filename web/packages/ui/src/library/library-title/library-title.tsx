@@ -76,7 +76,7 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
                 {episodeNumber(episode.number, episode.end)}
               </Text>
             </Stack>
-            <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
               <Text textRole="body">{episode.name || `Episode ${episode.number}`}</Text>
               {episode.fromFile ? (
                 <Text textRole="hint" tone="muted">

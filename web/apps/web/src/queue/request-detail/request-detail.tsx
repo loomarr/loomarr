@@ -126,7 +126,13 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           </>
         }
       />
-      <Stack className="max-w-reading mx-auto w-full overflow-auto p-6" flexBasis="0%" flexGrow={1} gap="6">
+      <Stack
+        className="max-w-reading mx-auto w-full overflow-auto p-6"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+      >
         <Stack align="center" direction="row" gap="inline" wrap>
           <Badge shape="square" tone={status.tone}>
             {status.line}

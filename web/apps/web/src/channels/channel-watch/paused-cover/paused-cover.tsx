@@ -16,7 +16,7 @@ const PausedCover = ({
   isAdmin: boolean;
   onLeave: () => void;
 }) => (
-  <Stack className="relative min-h-0" flexBasis="0%" flexGrow={1} render="section">
+  <Stack className="relative min-h-0" flexBasis="0%" flexGrow={1} flexShrink={1} render="section">
     <ThemeScope theme="dark">
       <PlayerCover
         channelLabel={channelLabel}

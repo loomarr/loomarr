@@ -71,7 +71,7 @@ const PickTitle = ({
           <Stack flexShrink={0} width={28}>
             <LibraryPoster art={c.poster} name={c.poster ? c.name : ""} />
           </Stack>
-          <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+          <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
             <Text textRole="body">{nameYear(c)}</Text>
           </Stack>
           <Action accessibilityLabel={`Use ${nameYear(c)}`} onPress={() => onPick(c)} variant="outline">

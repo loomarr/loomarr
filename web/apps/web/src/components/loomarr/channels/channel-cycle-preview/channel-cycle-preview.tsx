@@ -110,9 +110,6 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
         pending ? "border-dashed bg-transparent" : "bg-card",
       )}
       direction="row"
-      // The list caps its height and scrolls; a shrinkable row (Stack's default) with View's
-      // min-height 0 would squeeze below its own padding instead of scrolling.
-      flexShrink={0}
       gap="control"
       render="li"
     >

@@ -256,7 +256,6 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   <Stack
                     align="center"
                     direction="row"
-                    flexShrink={0}
                     gap="4"
                     justify="between"
                     key={entry.key}
@@ -323,12 +322,11 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           align={{ base: "stretch", sm: "center" }}
           className="bg-muted/40 rounded-lg"
           direction={{ base: "column", sm: "row" }}
-          flexShrink={0}
           gap="3"
           justify={{ base: "start", sm: "between" }}
           padding={16}
         >
-          <Stack gap="1">
+          <Stack flexShrink={1} gap="1">
             <Text as="p" textRole="cardLabel">
               Web search is optional
             </Text>

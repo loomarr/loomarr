@@ -40,7 +40,7 @@ const Spacing = () => (
       </Text>
       <Stack gap="2">
         {steps.map(([step, px]) => (
-          <Stack align="center" direction="row" flexShrink={0} gap="4" key={step}>
+          <Stack align="center" direction="row" gap="4" key={step}>
             <Column width={32}>{step}</Column>
             <Column width={48}>{`${px}px`}</Column>
             <Stack
@@ -101,7 +101,7 @@ const Spacing = () => (
       </Text>
       <Stack gap="2">
         {Object.entries(webMotion.duration).map(([name, value]) => (
-          <Stack align="center" direction="row" flexShrink={0} gap="4" key={name}>
+          <Stack align="center" direction="row" gap="4" key={name}>
             <Column width={56}>{name}</Column>
             <Column width={64}>{value}</Column>
             <Text textRole="compact" tone="secondary">
@@ -109,7 +109,7 @@ const Spacing = () => (
             </Text>
           </Stack>
         ))}
-        <Stack align="center" direction="row" flexShrink={0} gap="4">
+        <Stack align="center" direction="row" gap="4">
           <Column width={56}>ease</Column>
           <Column>{webMotion.ease}</Column>
         </Stack>

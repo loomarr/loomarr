@@ -123,7 +123,14 @@ const ImportDialog = ({
           </DialogHeader>
 
           {!available ? (
-            <Stack align="start" className="overflow-auto" gap="4" paddingBottom={24} paddingHorizontal={24}>
+            <Stack
+              align="start"
+              className="overflow-auto"
+              flexShrink={1}
+              gap="4"
+              paddingBottom={24}
+              paddingHorizontal={24}
+            >
               <Card flexShrink={0} gap={4} padding={16}>
                 <Text as="p" textRole="cardLabel">
                   Connect a media server first
@@ -143,6 +150,7 @@ const ImportDialog = ({
                 className="overflow-auto"
                 flexBasis="0%"
                 flexGrow={1}
+                flexShrink={1}
                 gap="4"
                 minHeight={0}
                 paddingHorizontal={24}
@@ -168,7 +176,7 @@ const ImportDialog = ({
                 {candidateError != null ? (
                   <ErrorState error={candidateError} onRetry={onRetry} className="p-4" />
                 ) : candidates === undefined ? (
-                  <Stack aria-label="Loading media-server accounts" flexShrink={0} gap="2" role="status">
+                  <Stack aria-label="Loading media-server accounts" gap="2" role="status">
                     {[0, 1, 2].map((item) => (
                       <Card className="animate-pulse" flexShrink={0} height={64} key={item} />
                     ))}

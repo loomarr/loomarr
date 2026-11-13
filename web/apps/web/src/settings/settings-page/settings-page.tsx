@@ -198,7 +198,7 @@ const SettingsPage = ({
       <Stack
         className={embedded ? "mt-6" : "overflow-auto p-6"}
         gap="8"
-        {...(embedded ? {} : { flexBasis: "0%", flexGrow: 1 })}
+        {...(embedded ? {} : { flexBasis: "0%", flexGrow: 1, flexShrink: 1 })}
       >
         {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 

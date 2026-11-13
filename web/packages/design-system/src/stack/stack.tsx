@@ -1,6 +1,6 @@
 import { isWeb, View } from "@tamagui/core";
 import type { ComponentProps, FormHTMLAttributes, ReactNode } from "react";
-import { useSyncExternalStore } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 import { Dimensions } from "react-native";
 
 import { breakpoints, type semanticSpace, type spaceSteps } from "../tokens";
@@ -90,6 +90,9 @@ type StackOwnProps = Omit<
   /** Let a row break onto further lines instead of overflowing. The gap also separates the lines. */
   wrap?: boolean;
 };
+
+/** The direction of the nearest Stack above, which sets whether a Stack shrinks by default. */
+const StackDirection = createContext<"column" | "row" | undefined>(undefined);
 
 type Active = "base" | StackBreakpoint;
 const breakpointNames = Object.keys(breakpoints) as StackBreakpoint[];
@@ -181,6 +184,17 @@ type StackProps = StackOwnProps &
  * own (no colour, border or padding), so a call site keeps what it is for in its own element and
  * hands the arrangement here. Web and native share one implementation (Tamagui's View maps to a
  * flex <div> on web and a View on native), so a row reads the same on both.
+ *
+ * Whether a Stack shrinks as a flex item follows the Stack around it. In a column it does not
+ * (`flexShrink` 0, as in React Native): a Stack that shrank there collapsed below its content in a
+ * height-capped column. In a row it does (1), so a text cell wraps or truncates beside its
+ * neighbours. A Stack with no Stack above it shrinks (1), as a `<div>` does. A `flexShrink` prop
+ * always wins, so a flex-1 child of a column that must give way sets `flexShrink={1}`.
+ *
+ * "Around it" is the nearest Stack above it in the tree, however many elements sit between: the
+ * direction travels through a React context, which a `<div>`, `Card` or `Surface` does not reset.
+ * A Stack inside a flex container that is not a Stack, under a Stack of the other direction, sets
+ * `flexShrink` itself. A responsive `direction` counts as the one in force at the current width.
  */
 const Stack = ({
   align = "stretch",
@@ -208,18 +222,21 @@ const Stack = ({
           columnGap: space(resolvedColumnGap ?? resolvedGap),
           rowGap: space(resolvedRowGap ?? resolvedGap),
         };
+  const parentDirection = useContext(StackDirection);
+  const resolvedDirection = resolve(direction, active);
   return (
-    // Tamagui's View never shrinks as a flex item (flex-shrink 0), unlike the <div> a call site moves
-    // from, so a Stack in a flex row would overflow rather than give way. A caller can still set it.
-    <View
-      flexShrink={1}
-      {...props}
-      alignItems={alignItems[resolve(align, active)]}
-      flexDirection={resolve(direction, active)}
-      flexWrap={wrap ? "wrap" : "nowrap"}
-      justifyContent={justifyContent[resolve(justify, active)]}
-      {...spacing}
-    />
+    <StackDirection.Provider value={resolvedDirection}>
+      {/* In a column a Stack keeps its height (flex-shrink 0); anywhere else it gives way. */}
+      <View
+        flexShrink={parentDirection === "column" ? 0 : 1}
+        {...props}
+        alignItems={alignItems[resolve(align, active)]}
+        flexDirection={resolvedDirection}
+        flexWrap={wrap ? "wrap" : "nowrap"}
+        justifyContent={justifyContent[resolve(justify, active)]}
+        {...spacing}
+      />
+    </StackDirection.Provider>
   );
 };
 

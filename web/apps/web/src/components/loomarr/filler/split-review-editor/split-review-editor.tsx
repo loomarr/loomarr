@@ -410,7 +410,15 @@ const SegmentSummaryRow = ({
             )}
           </span>
           {/* A button centres its text; the old row said text-left. */}
-          <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0} render="span" style={{ textAlign: "left" }}>
+          <Stack
+            flexBasis="0%"
+            flexGrow={1}
+            flexShrink={1}
+            gap="1"
+            minWidth={0}
+            render="span"
+            style={{ textAlign: "left" }}
+          >
             <Stack align="center" direction="row" gap="inline" render="span">
               <Text as="span" className="tabular-nums" textRole="mono">
                 #{n}
