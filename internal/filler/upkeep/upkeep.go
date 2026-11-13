@@ -125,7 +125,7 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 	}
 	now := j.now().UTC()
 	rejectedBy := now.Add(-RejectRest)
-	var referenced map[string]int
+	var referenced *identity.AssetRefs
 	for _, row := range rows {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -152,7 +152,7 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 			if err != nil {
 				return err
 			}
-			referenced = identity.ReferencedAssets(j.clipDir, paths)
+			referenced = identity.ReferencedAssets(j.clipDir, paths, j.log)
 		}
 		if j.quarantine(ctx, row.ClipHash, referenced) {
 			j.disposed[row.ClipHash] = true
@@ -165,7 +165,7 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 // quarantine moves a retired clip's own files aside and reports whether all of them went. The
 // sidecar goes last: it names the master and evidence copy, so while any of those is left the
 // next pass can still find them.
-func (j *Job) quarantine(ctx context.Context, hash string, referenced map[string]int) bool {
+func (j *Job) quarantine(ctx context.Context, hash string, referenced *identity.AssetRefs) bool {
 	clip, found, err := j.store.GetClip(ctx, hash)
 	if err != nil {
 		j.warn("upkeep: a rejected clip could not be read; the next pass tries again", "clip", hash, "err", err)

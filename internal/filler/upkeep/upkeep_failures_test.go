@@ -125,8 +125,11 @@ func TestUpkeepSaysWhyARejectedClipStaysPut(t *testing.T) {
 					t.Fatalf("an ordinary clip warned: %s", out)
 				}
 			} else {
-				if got := strings.Count(out, "level=WARN"); got != 1 {
-					t.Fatalf("want one WARN, got %d: %s", got, out)
+				// A damaged sidecar is also in the catalog-wide count of who names each asset, which warns
+				// once that shared assets are held. The clip's own reason is the one other WARN.
+				held := strings.Count(out, "are kept until it can")
+				if got := strings.Count(out, "level=WARN") - held; got != 1 || held > 1 {
+					t.Fatalf("want one WARN for the clip, got %d (and %d count WARNs): %s", got, held, out)
 				}
 				for _, want := range tc.warn {
 					if !strings.Contains(out, want) {
@@ -141,6 +144,49 @@ func TestUpkeepSaysWhyARejectedClipStaysPut(t *testing.T) {
 				t.Fatal("a clip that could not be judged had its media moved: the master would be orphaned")
 			}
 		})
+	}
+}
+
+// Another clip's unreadable sidecar might name the master of the clip being set aside. That clip
+// stays where it is, with its master, until the count of who names the master is complete; a clip
+// that names no master is not held up by it.
+func TestAnotherClipsUnreadableSidecarHoldsTheMaster(t *testing.T) {
+	f := newFixture(t)
+	master := filepath.ToSlash(filepath.Join(split.MediaAssetRootName, "masters", "aa", "bb", "m.mkv"))
+	old := f.reject(t, hashOf("old"), "run-1", master, t0.Add(-RejectRest-1))
+	plain := f.reject(t, hashOf("plain"), "run-1", "", t0.Add(-RejectRest-1))
+	neighbour := f.reject(t, hashOf("neighbour"), "run-1", "", t0) // too recent to be set aside
+	neighbourSide := tools.SidecarPathFor(neighbour)
+	if err := os.WriteFile(neighbourSide, []byte("{truncated"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := func() time.Time { return t0 }
+	bin := quarantine.New(f.dir, now)
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+
+	first, err := New(f.store, bin, nil, f.dir, now, log).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Quarantined != 1 || exists(plain) || !exists(old) || !exists(tools.SidecarPathFor(old)) || !exists(filepath.Join(f.dir, master)) {
+		t.Fatalf("first pass = %+v; want the clip without a master set aside and the one naming a master left whole", first)
+	}
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), filepath.Base(neighbourSide)) {
+		t.Errorf("log = %s; want a warning naming the unreadable sidecar", logs.String())
+	}
+
+	if err := os.Remove(neighbourSide); err != nil {
+		t.Fatal(err)
+	}
+	second, err := New(f.store, bin, nil, f.dir, now, nil).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Quarantined also counts the plain clip, whose row is retired but whose disposal this fresh job
+	// has not recorded.
+	if second.Quarantined != 2 || exists(old) || exists(filepath.Join(f.dir, master)) {
+		t.Fatalf("second pass = %+v; want the clip and its master set aside once the sidecar is readable", second)
 	}
 }
 

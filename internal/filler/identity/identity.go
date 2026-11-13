@@ -7,6 +7,7 @@ package identity
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -172,7 +173,7 @@ func (ci *Job) Run(ctx context.Context) (Result, error) {
 	for i, c := range all {
 		paths[i] = c.Path
 	}
-	referenced := ReferencedAssets(ci.clipDir, paths)
+	referenced := ReferencedAssets(ci.clipDir, paths, ci.log)
 	survivorOf := make([]int, len(measured))
 	for i := range survivorOf {
 		survivorOf[i] = i
@@ -230,7 +231,7 @@ func (ci *Job) Run(ctx context.Context) (Result, error) {
 // the old copy's place in rotation, and the ad leaves the wanted list. Every source's arrivals meet
 // this check once they are published and fingerprinted, here.
 func (ci *Job) upgradeWanted(ctx context.Context, cached map[string]creative.Fingerprint,
-	measured []IdentityClip, fps map[string]creative.Fingerprint, survivorOf []int, referenced map[string]int,
+	measured []IdentityClip, fps map[string]creative.Fingerprint, survivorOf []int, referenced *AssetRefs,
 	res *Result) error {
 	wanted, err := ci.store.ListWantedCopies(ctx)
 	if err != nil {
@@ -341,7 +342,7 @@ func qualityRank(q string) int {
 // merge folds loser into survivor durably, then deletes the loser's own files. The order is the
 // correctness story, as in SplitSweeper.retire: once the merge commits, Sync never catalogues the
 // loser again, so a failed unlink leaves only bytes, never a second copy on air.
-func (ci *Job) merge(ctx context.Context, loser, survivor IdentityClip, referenced map[string]int) error {
+func (ci *Job) merge(ctx context.Context, loser, survivor IdentityClip, referenced *AssetRefs) error {
 	full, err := cliplibrary.ClipPath(ci.clipDir, loser.Path, filepath.Ext(loser.Path))
 	if err != nil {
 		return fmt.Errorf("loser path: %w", err)
@@ -366,11 +367,20 @@ func (ci *Job) merge(ctx context.Context, loser, survivor IdentityClip, referenc
 // removeOwnFiles deletes a clip that is already off the catalog from disk: its playback file, its
 // sidecar, and the source master and evidence copy its sidecar names, unless another clip's sidecar
 // names them too. It reports each file it could not remove.
-func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
+func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced *AssetRefs) map[string]error {
 	failed := map[string]error{}
 	for _, f := range ownFiles(clipDir, full, tags, referenced) {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
 			failed[f] = err
+		}
+	}
+	// An incomplete count keeps the assets this clip names; each is reported, since it is left behind.
+	if hold := referenced.holdError(); hold != nil && tags.MediaAssets != nil {
+		m := tags.MediaAssets
+		for _, p := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence)} {
+			if p != "" {
+				failed[filepath.Join(clipDir, filepath.FromSlash(p))] = hold
+			}
 		}
 	}
 	return failed
@@ -379,19 +389,19 @@ func removeOwnFiles(clipDir, full string, tags asset.SidecarTags, referenced map
 // ownFiles is the files of a clip off the catalog: its playback file, its sidecar, and the source
 // master and evidence copy its sidecar names unless another clip's sidecar names them too. It
 // claims those assets by decrementing referenced.
-func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced map[string]int) []string {
+func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced *AssetRefs) []string {
 	files := []string{full, tools.SidecarPathFor(full)}
 	if m := tags.MediaAssets; m != nil {
-		// An asset another clip's sidecar also names is shared; it stays. The count drops either
-		// way, so the last of two copies removed in one pass takes it.
+		// An asset another clip's sidecar also names is shared; it stays, and so does every asset
+		// while a sidecar is unreadable. The count drops either way, so the last of two copies
+		// removed in one pass takes it.
 		for _, asset := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence)} {
 			if asset == "" {
 				continue
 			}
-			if referenced[asset] == 1 {
+			if referenced.Claim(asset) {
 				files = append(files, filepath.Join(clipDir, filepath.FromSlash(asset)))
 			}
-			referenced[asset]--
 		}
 	}
 	return files
@@ -402,11 +412,18 @@ func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced map[strin
 // caller has already taken off the catalog. clipRef resolves through ClipPath, so the playback file
 // and sidecar are inside clipDir; the master and evidence paths come from the sidecar, so the caller
 // still checks where they point before disposing of them. referenced comes from ReferencedAssets
-// and is decremented as assets are claimed.
-func OwnFiles(clipDir, clipRef string, tags asset.SidecarTags, referenced map[string]int) ([]string, error) {
+// and is decremented as assets are claimed. When referenced is incomplete and the sidecar names a
+// master or evidence copy, it returns ErrReferencesUnknown and no files: the caller retires nothing
+// it cannot fully account for.
+func OwnFiles(clipDir, clipRef string, tags asset.SidecarTags, referenced *AssetRefs) ([]string, error) {
 	full, err := cliplibrary.ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
 	if err != nil {
 		return nil, err
+	}
+	if m := tags.MediaAssets; m != nil && (m.SourceMaster.Path != "" || asset.DerivativePath(m.Evidence) != "") {
+		if hold := referenced.holdError(); hold != nil {
+			return nil, hold
+		}
 	}
 	return ownFiles(clipDir, full, tags, referenced), nil
 }
@@ -416,9 +433,10 @@ func OwnFiles(clipDir, clipRef string, tags asset.SidecarTags, referenced map[st
 // already taken off the catalog. clipRef resolves through ClipPath, so the playback file and
 // sidecar it deletes are always inside clipDir's shard layout; the media assets named by tags are
 // deleted only when referenced (from ReferencedAssets) shows this is their last clip. The count
-// is decremented as assets are claimed. It reports each file it could not remove, and an
-// unresolvable clipRef as a single failure with nothing deleted.
-func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenced map[string]int) map[string]error {
+// is decremented as assets are claimed. It reports each file it could not remove, an asset it kept
+// because referenced is incomplete (ErrReferencesUnknown), and an unresolvable clipRef as a single
+// failure with nothing deleted.
+func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenced *AssetRefs) map[string]error {
 	full, err := cliplibrary.ClipPath(clipDir, clipRef, filepath.Ext(clipRef))
 	if err != nil {
 		return map[string]error{clipRef: err}
@@ -426,26 +444,82 @@ func RemoveRetiredCopy(clipDir, clipRef string, tags asset.SidecarTags, referenc
 	return removeOwnFiles(clipDir, full, tags, referenced)
 }
 
+// ErrReferencesUnknown means a media asset was not disposed of because a clip's sidecar could not
+// be read: that sidecar might name the asset, so the count of clips using it is not known.
+var ErrReferencesUnknown = errors.New("a clip's sidecar could not be read, so the clips sharing this asset are not known")
+
+// AssetRefs is how many clips' sidecars name each media asset across the catalog, and which
+// sidecars could not be read. An unreadable sidecar can name any asset, so while there is one no
+// asset counts as unshared: disposal keeps every master and evidence copy rather than guess. The
+// nil value counts nothing and deletes nothing.
+type AssetRefs struct {
+	counts     map[string]int
+	unreadable []string
+}
+
+// Unreadable is the sidecars, or catalog paths with no resolvable sidecar, that ReferencedAssets
+// could not read. A clip with no sidecar at all is not listed: it names nothing.
+func (r *AssetRefs) Unreadable() []string {
+	if r == nil {
+		return nil
+	}
+	return r.unreadable
+}
+
+// holdError is nil when the count is complete, otherwise ErrReferencesUnknown naming the sidecars.
+func (r *AssetRefs) holdError() error {
+	if u := r.Unreadable(); len(u) > 0 {
+		return fmt.Errorf("%w: %s", ErrReferencesUnknown, strings.Join(u, ", "))
+	}
+	return nil
+}
+
+// Claim reports whether the caller holds the last reference to assetPath, and counts the caller's
+// reference as released either way, so the last of two copies removed in one pass takes it. It is
+// false for every asset while a sidecar is unreadable.
+func (r *AssetRefs) Claim(assetPath string) bool {
+	if r == nil {
+		return false
+	}
+	last := r.counts[assetPath] == 1 && len(r.unreadable) == 0
+	r.counts[assetPath]--
+	return last
+}
+
 // ReferencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.
 // paths are catalog clip paths, removed clips included; the result is the "referenced" argument of
-// RemoveRetiredCopy. It only reads.
-func ReferencedAssets(clipDir string, paths []string) map[string]int {
-	out := map[string]int{}
+// RemoveRetiredCopy. It only reads. A sidecar that exists but cannot be read (corrupt, malformed,
+// or its directory cannot be listed), and a path that resolves to no sidecar location, make the
+// count incomplete: each is recorded in Unreadable and logged to log, which may be nil.
+func ReferencedAssets(clipDir string, paths []string, log *slog.Logger) *AssetRefs {
+	out := &AssetRefs{counts: map[string]int{}}
 	for _, path := range paths {
 		full, err := cliplibrary.ClipPath(clipDir, path, filepath.Ext(path))
 		if err != nil {
+			out.unreadable = append(out.unreadable, path)
 			continue
 		}
-		tags, ok := asset.ReadSidecarTags(full)
-		if !ok || tags.MediaAssets == nil {
+		tags, state := asset.ReadSidecarTagsState(full)
+		switch state {
+		case asset.SidecarInvalid:
+			out.unreadable = append(out.unreadable, tools.SidecarPathFor(full))
+			continue
+		case asset.SidecarAbsent:
+			continue
+		}
+		if tags.MediaAssets == nil {
 			continue
 		}
 		m := tags.MediaAssets
 		for _, p := range []string{m.SourceMaster.Path, asset.DerivativePath(m.Evidence), asset.DerivativePath(m.Playback)} {
 			if p != "" {
-				out[p]++
+				out.counts[p]++
 			}
 		}
+	}
+	if len(out.unreadable) > 0 && log != nil {
+		log.Warn("filler: a clip's sidecar could not be read, so shared source masters and evidence copies are kept until it can",
+			"unreadable", len(out.unreadable), "sidecars", out.unreadable)
 	}
 	return out
 }
