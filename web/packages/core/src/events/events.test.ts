@@ -103,6 +103,22 @@ describe("settings invalidation", () => {
     expect(qc.getQueryState(["/v1/channels"])?.isInvalidated).toBe(false);
   });
 
+  // The Guide's timezone is a setting, and the household read carries the same zone for every time
+  // outside the Guide, so a saved setting must refetch it on a frame AND on the writer's own save.
+  it.each([
+    ["the settings frame", (qc: QueryClient) => invalidateForFrame(qc, "settings", {})],
+    ["the writer's own save", (qc: QueryClient) => invalidateSettings(qc)],
+  ])("refetches the household's zone on %s", async (_name, invalidate) => {
+    const qc = new QueryClient();
+    await qc.prefetchQuery({ queryKey: ["/v1/household"], queryFn: () => "h" });
+    await qc.prefetchQuery({ queryKey: ["/v1/channels"], queryFn: () => "c" });
+
+    await invalidate(qc);
+
+    expect(qc.getQueryState(["/v1/household"])?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(["/v1/channels"])?.isInvalidated).toBe(false);
+  });
+
   it("gives the save paths the same mapping through invalidateSettings", async () => {
     const qc = new QueryClient();
     await qc.prefetchQuery({ queryKey: ["/v1/system/llm"], queryFn: () => "x" });

@@ -142,9 +142,11 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // A committed settings write, from any tab or writer. Every read a setting can change
   // refetches here, so no save path lists queries itself: `/v1/setup` is the checklist and wizard
   // state, `/v1/system/llm` the AI provider status, catalog and pull progress, and
-  // `/v1/filler/readiness` the storage summary derived from the filler allowances.
+  // `/v1/filler/readiness` the storage summary derived from the filler allowances, and
+  // `/v1/household` the household's timezone (`guide.timezone`), which every time outside the
+  // Guide is told in.
   settings: {
-    prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness"],
+    prefixes: ["/v1/settings", "/v1/setup", "/v1/system/llm", "/v1/filler/readiness", "/v1/household"],
     fed: [listAndDetail("/v1/settings"), /^\/v1\/setup$/],
   },
   // How far a library import is, whole and latest-wins: the screens showing it write each frame
