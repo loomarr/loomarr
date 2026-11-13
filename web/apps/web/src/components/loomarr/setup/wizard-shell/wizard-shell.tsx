@@ -187,7 +187,7 @@ const WizardShell = ({
               Back
             </Action>
           )}
-          <Stack align="center" className="ml-auto" direction="row" flexShrink={1} gap="inline">
+          <Stack align="center" className="ml-auto" direction="row" gap="inline">
             {onSkip && (
               <Action disabled={busy} onPress={onSkip} variant="outline">
                 Skip for now

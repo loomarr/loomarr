@@ -34,7 +34,7 @@ const ChannelCard = ({
   return (
     <Card gap={12} padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
-        <Stack align="baseline" direction="row" flexShrink={1} gap="control">
+        <Stack align="baseline" direction="row" gap="control">
           <Text as="span" className="tabular-nums" textRole="channelNumber" tone="primary">
             {channelNumber(number)}
           </Text>

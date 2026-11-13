@@ -196,7 +196,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                 <Icon decorative glyph={icons.search} size="default" tone="muted" />
               </Stack>
             )}
-            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="1" minWidth={0}>
+            <Stack flexBasis="0%" flexGrow={1} gap="1" minWidth={0}>
               <Text as="p" textRole="cardLabel">
                 {statusQuery.isError
                   ? "Web search status is unavailable"
@@ -256,7 +256,6 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   <Stack
                     align="center"
                     direction="row"
-                    flexShrink={0}
                     gap="4"
                     justify="between"
                     key={entry.key}
@@ -323,7 +322,6 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           align={{ base: "stretch", sm: "center" }}
           className="bg-muted/40 rounded-lg"
           direction={{ base: "column", sm: "row" }}
-          flexShrink={0}
           gap="3"
           justify={{ base: "start", sm: "between" }}
           padding={16}
@@ -379,7 +377,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                     checked={provider === "brave"}
                     onChange={() => form.setFieldValue("provider", "brave")}
                   />
-                  <Stack flexShrink={1} gap="1" render="span">
+                  <Stack gap="1" render="span">
                     <Text as="span" textRole="cardLabel">
                       Brave Search
                     </Text>
@@ -407,7 +405,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                       checked={provider === "searxng"}
                       onChange={() => form.setFieldValue("provider", "searxng")}
                     />
-                    <Stack flexShrink={1} gap="1" render="span">
+                    <Stack gap="1" render="span">
                       <Text as="span" textRole="cardLabel">
                         SearXNG
                       </Text>

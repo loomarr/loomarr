@@ -287,7 +287,7 @@ const SplitReviewEditor = ({
         <Action onPress={onBack} variant="outline">
           Back
         </Action>
-        <Stack align="center" direction="row" flexShrink={1} gap="control">
+        <Stack align="center" direction="row" gap="control">
           <Text as="span" className="tabular-nums" textRole="mono">
             {pluralize(draft.length, "clip")}
           </Text>
@@ -514,7 +514,7 @@ const SegmentInspector = ({
       />
 
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
-        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="2" minWidth={0}>
+        <Stack flexBasis="0%" flexGrow={1} gap="2" minWidth={0}>
           <p title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}>
             <Text as="span" className="tabular-nums" textRole="mono" tone={valid ? "secondary" : "danger"}>
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
@@ -547,7 +547,7 @@ const SegmentInspector = ({
             })()}
           </Stack>
         </Stack>
-        <Stack direction="row" flexShrink={1} gap="1" justify="end" wrap>
+        <Stack direction="row" gap="1" justify="end" wrap>
           {!last && (
             <Tooltip content="Join this clip and the next">
               <Action onPress={onMergeWithNext} variant="ghost">

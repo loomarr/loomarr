@@ -112,7 +112,7 @@ const TaxonTree = ({
                 <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
               </Stack>
             ) : null}
-            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
               <Action
                 disabled={!isAdmin}
                 layout="text"
@@ -694,7 +694,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                     gap="control"
                     padding={16}
                   >
-                    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+                    <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
                       <Text as="h3" textRole="heading">
                         {AXIS_COPY[axis].label}
                       </Text>

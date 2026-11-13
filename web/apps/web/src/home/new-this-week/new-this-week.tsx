@@ -92,7 +92,6 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
             borderColor="borderControl"
             borderRadius={8}
             borderWidth={1}
-            flexShrink={0}
             height={28}
             justify="center"
             paddingHorizontal={10}
@@ -116,7 +115,6 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                 borderRadius={8}
                 borderWidth={1}
                 data-home-poster-art=""
-                flexShrink={0}
                 overflow="hidden"
                 width="100%"
               >

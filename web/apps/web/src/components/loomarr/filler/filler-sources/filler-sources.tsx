@@ -255,7 +255,6 @@ const FillerSources = ({
           align="center"
           className="border-caution/30 bg-caution/5 rounded-lg border px-4 py-3"
           direction="row"
-          flexShrink={0}
           gap="control"
           justify="between"
           wrap
@@ -328,7 +327,7 @@ const FillerSources = ({
                     : descriptions.find((description) => description.id === provider.kind)?.blurb}
                 </Text>
               </div>
-              <Stack align="center" direction="row" flexShrink={0} gap="3" marginLeft="auto">
+              <Stack align="center" direction="row" gap="3" marginLeft="auto">
                 <Text as="span" textRole="hint" tone="secondary">
                   {sourceSummary(children)}
                 </Text>

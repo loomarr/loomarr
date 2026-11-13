@@ -22,7 +22,7 @@ const Row = ({ label, value }: AboutDetail) => (
         {label}
       </Text>
     </Stack>
-    <Stack flexBasis={240} flexGrow={1} flexShrink={1} minWidth={0}>
+    <Stack flexBasis={240} flexGrow={1} minWidth={0}>
       <Text textRole="data">{value}</Text>
     </Stack>
   </Stack>

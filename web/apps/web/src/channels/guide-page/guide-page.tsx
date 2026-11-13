@@ -557,7 +557,7 @@ const GuidePage = () => {
               <Text as="span" textRole="metadata">
                 Span
               </Text>
-              <Stack direction="row" flexShrink={1} gap="1">
+              <Stack direction="row" gap="1">
                 {WINDOW_CHOICES.map((w) => {
                   const active = windowMinutes === Number(w.value);
                   return (
@@ -593,7 +593,6 @@ const GuidePage = () => {
               className="border-border/60 bg-card/40 border-b"
               columnGap="6"
               direction="row"
-              flexShrink={0}
               id="guide-view-options"
               justify={{ base: "start", sm: "end" }}
               paddingHorizontal={28}
@@ -603,7 +602,7 @@ const GuidePage = () => {
             >
               {/* Pin the window to a specific part of the chosen day without stepping there
                   one hour at a time. */}
-              <Stack align="center" direction="row" flexShrink={1} gap="1.75">
+              <Stack align="center" direction="row" gap="1.75">
                 <Text as="span" textRole="metadata">
                   Start at
                 </Text>

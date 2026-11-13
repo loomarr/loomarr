@@ -185,7 +185,6 @@ const AccountScreen = () => {
           <Stack
             borderBottomWidth={1}
             borderColor="borderDecorative"
-            flexShrink={0}
             paddingHorizontal={16}
             paddingVertical={14}
           >
@@ -231,7 +230,7 @@ const AccountScreen = () => {
                   />
                 ) : (
                   <>
-                    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
+                    <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0}>
                       <Text as="p" textRole="cardLabel">
                         {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
                       </Text>

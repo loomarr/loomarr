@@ -20,20 +20,9 @@ describe("Stack", () => {
     expect(markup).toContain("flex-direction:column");
     expect(markup).toContain("align-items:stretch");
     expect(markup).toContain("flex-wrap:nowrap");
-    // It does not give way as a flex item unless asked, as in React Native.
-    expect(markup).toContain("flex-shrink:0");
-    expect(markup).not.toContain("flex-shrink:1");
-    expect(markup).toContain("<span>one</span><span>two</span>");
-  });
-
-  it("shrinks only when the caller sets flexShrink", () => {
-    const markup = render(
-      <Stack flexShrink={1} minWidth={0}>
-        <span>one</span>
-      </Stack>,
-    );
-
+    // With no Stack above it, it gives way as a flex item, as the <div> it replaces does.
     expect(markup).toContain("flex-shrink:1");
+    expect(markup).toContain("<span>one</span><span>two</span>");
   });
 
   it("lays out a wrapping row from the spacing tokens", () => {

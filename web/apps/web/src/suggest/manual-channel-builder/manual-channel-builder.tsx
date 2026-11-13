@@ -351,7 +351,7 @@ const ManualChannelBuilder = ({
         <Text as="span" textRole="compact" tone="secondary">
           {summary}
         </Text>
-        <Stack direction="row" flexShrink={1} gap="inline">
+        <Stack direction="row" gap="inline">
           <Action onPress={onCancel} variant="ghost">
             Cancel
           </Action>

@@ -63,7 +63,7 @@ const PullCard = ({
       {...(flat ? { backgroundColor: "transparent", borderWidth: 0 } : { padding: 16 })}
     >
       <Stack align="start" direction="row" gap="control" wrap>
-        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="1">
+        <Stack flexBasis="0%" flexGrow={1} gap="1">
           <Stack align="center" direction="row" gap="inline" wrap>
             <StatusLabel tone="ok">Filler pull</StatusLabel>
             <Text as="span" id={titleId} strong textRole="cardLabel" tone="primary">

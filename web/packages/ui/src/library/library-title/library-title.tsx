@@ -349,7 +349,7 @@ const LibraryTitle = ({ onBack, ...actions }: LibraryTitleProps) => {
         <Stack alignSelf="center" width={wide ? 208 : 176}>
           <LibraryPoster art={title.poster} big name={title.name} />
         </Stack>
-        <Stack flexBasis={wide ? 0 : undefined} flexGrow={1} flexShrink={1} gap="control" minWidth={0}>
+        <Stack flexBasis={wide ? 0 : undefined} flexGrow={1} gap="control" minWidth={0}>
           {/* A name no one has fixed yet can be a file name with no spaces; it breaks mid-word. */}
           <Text as="h1" style={{ overflowWrap: "anywhere" }} textRole="display">
             {title.name}

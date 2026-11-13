@@ -118,7 +118,7 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
             ) : null}
           </div>
           {!confirmingDelete ? (
-            <Stack direction="row" flexShrink={1} gap="inline" wrap>
+            <Stack direction="row" gap="inline" wrap>
               <Action onPress={() => setEditing(true)} variant="outline">
                 Edit
               </Action>

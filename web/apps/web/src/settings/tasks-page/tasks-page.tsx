@@ -169,7 +169,6 @@ const ExecutionHistory = ({ name }: { name: string }) => {
             const failed = run.result === "error";
             return (
               <Stack
-                flexShrink={0}
                 key={`${run.startedAt}-${run.trigger}`}
                 paddingHorizontal={12}
                 paddingVertical={8}

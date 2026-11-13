@@ -139,7 +139,7 @@ const EventDetail = ({
   return (
     <Stack className="bg-muted/20" gap="4" padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
-        <Stack flexShrink={1} gap="2">
+        <Stack gap="2">
           <Text as="span" textRole="hint" tone="secondary">
             <Stack align="center" direction="row" gap="2" render="span">
               <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
@@ -250,7 +250,7 @@ const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => 
   return (
     <Card aria-labelledby="verbose-capture-title" gap={8} padding={12} render="section">
       <Stack align="center" direction="row" gap="control" wrap>
-        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={256}>
+        <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
           <Text as="h3" id="verbose-capture-title" textRole="cardLabel">
             Verbose capture
           </Text>
@@ -403,7 +403,7 @@ const ApplicationDiagnostics = ({
             first.
           </Text>
         </div>
-        <Stack direction="row" flexShrink={1} gap="inline" wrap>
+        <Stack direction="row" gap="inline" wrap>
           <Action
             disabled={downloadState === "working"}
             icon="download"

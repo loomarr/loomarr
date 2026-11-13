@@ -78,7 +78,7 @@ const ChannelDangerZone = ({
         {!confirming ? (
           <Stack gap="4">
             <Stack align="center" direction="row" gap="control" justify="between">
-              <Stack flexShrink={1} gap="1">
+              <Stack gap="1">
                 <Text as="p" textRole="compact" tone="primary">
                   Stop Loomarr from updating this channel.
                 </Text>
@@ -94,7 +94,7 @@ const ChannelDangerZone = ({
             </Stack>
 
             <Stack align="center" direction="row" gap="control" justify="between">
-              <Stack flexShrink={1} gap="1">
+              <Stack gap="1">
                 <Text as="p" textRole="compact" tone="primary">
                   Delete this channel from Loomarr, and from Tunarr if it's there.
                 </Text>

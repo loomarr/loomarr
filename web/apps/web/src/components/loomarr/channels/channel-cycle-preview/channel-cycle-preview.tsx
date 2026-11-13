@@ -384,7 +384,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           value={toDatetimeLocalValue(at, timeZone)}
           width={224}
         />
-        <Stack className="pb-0.5" direction="row" flexShrink={1} gap="1.5" wrap>
+        <Stack className="pb-0.5" direction="row" gap="1.5" wrap>
           {TIME_PRESETS.map((preset) => (
             <Action key={preset.label} onPress={() => setAt(preset.at(timeZone))} variant="outline">
               {preset.label}
