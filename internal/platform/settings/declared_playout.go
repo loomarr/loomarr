@@ -175,7 +175,7 @@ func declaredPlayout() []Setting {
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationTimezone, Presets: timezonePresets(), Default: "", Validate: ianaZone,
 			Doc:    "The timezone the TV guide shows times in and each channel's day starts in.",
-			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone. A name that is not an IANA zone, and \"Local\", are refused.",
+			Detail: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone. Only the zones in the list are accepted: a name that is not one of them, \"Local\", and the old aliases such as US/Eastern or EST5EDT are refused, so a name means the same on every server.",
 		},
 		{
 			// How far back the guide will look (§12, V13b gap 8).
