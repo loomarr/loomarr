@@ -204,7 +204,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "tailwindClasses": 62
+      "tailwindClasses": 15
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
       "tailwindClasses": 43
