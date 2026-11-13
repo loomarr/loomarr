@@ -486,6 +486,9 @@
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 10
     },
+    "src/lib/app-form/app-form.tsx": {
+      "tailwindClasses": 3
+    },
     "src/lib/utils/utils.ts": {
       "tailwindMerge": 1,
       "clsx": 1
