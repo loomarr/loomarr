@@ -223,7 +223,7 @@ const SettingsPage = ({
                 ? (block.dirtyCheckLabel ?? "Save & test connection")
                 : (block.checkLabel ?? "Test connection");
             return (
-              <Stack gap="control" key={block.title}>
+              <Stack flexShrink={0} gap="control" key={block.title}>
                 <ConnectionBlock
                   title={block.title}
                   optional={block.optional}
@@ -269,6 +269,7 @@ const SettingsPage = ({
               className={cn(
                 block.surface === "card" && "border-border bg-card rounded-xl border p-5 shadow-sm sm:p-6",
               )}
+              flexShrink={0}
               gap="4"
               render="section"
             >
