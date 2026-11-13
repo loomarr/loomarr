@@ -135,8 +135,12 @@ const GuideJourney = ({
     );
   }
 
-  // A failed background refresh keeps the layout on screen; say so, so a stale grid doesn't read as current.
-  const stale = snapshot.error !== undefined && snapshot.status === "ready" && snapshot.layout !== undefined;
+  // A failed background refresh keeps the layout on screen, an empty one included; say so, so a stale
+  // grid (or a stale "No channels on air") doesn't read as current.
+  const stale =
+    snapshot.error !== undefined &&
+    (snapshot.status === "ready" || snapshot.status === "empty") &&
+    snapshot.layout !== undefined;
 
   // A retry that works takes the notice (or the error panel) away, and the focus on its button with
   // it. The Guide's home, the selected programme, is where a remote goes instead of nowhere.

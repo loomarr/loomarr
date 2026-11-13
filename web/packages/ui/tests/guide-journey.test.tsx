@@ -189,6 +189,31 @@ describe("GuideJourney", () => {
     expect(controller.getSnapshot().error).toBeUndefined();
   });
 
+  it("says so when a refresh fails over an empty Guide too", async () => {
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce({ ...sourceGuide, channels: [] })
+      .mockRejectedValue(new Error("offline"));
+    const controller = createGuideController({ now: () => 900_000, source: { load } });
+    await controller.refresh();
+    expect(controller.getSnapshot().status).toBe("empty");
+
+    const container = doc.createElement("div");
+    doc.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <LoomarrProvider>
+          <GuideJourney controller={controller} onTune={vi.fn()} preferredChannelId="cartoons" />
+        </LoomarrProvider>,
+      );
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({ error: "offline", status: "empty" });
+    expect(doc.body.querySelector('[role="status"]')?.textContent).toContain("Couldn't refresh the Guide");
+    expect(doc.body.textContent).toContain("No channels on air");
+  });
+
   // The notice's button is where the viewer's focus (a TV remote's) sits when they press it. If the
   // retry unmounted the notice, focus fell to the page and a remote lost its place; a retry that
   // fails brought the notice back with nothing focused.

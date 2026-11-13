@@ -192,6 +192,71 @@ describe("Guide controller", () => {
     expect(source.load).toHaveBeenLastCalledWith({ from: 13_000, to: 17_000 }, expect.any(AbortSignal));
   });
 
+  // The Notice's Try again is a refresh. A page that failed left the old window on screen, but the
+  // window the viewer asked for is the one to read again, not the one they paged away from.
+  describe("retrying a page that failed", () => {
+    const pagedFailure = async () => {
+      const resolveWindow = vi.fn().mockReturnValue({ from: 1_000, to: 5_000 });
+      const source = {
+        load: vi.fn((window: { from: number; to: number }) =>
+          Promise.resolve({ ...guide(`w${window.from}`), fromMs: window.from, toMs: window.to }),
+        ),
+      };
+      const controller = createGuideController({ now: () => 2_000, resolveWindow, source });
+      await controller.refresh();
+      source.load.mockRejectedValueOnce(new Error("Couldn't load the Guide (503)."));
+      await controller.page("later");
+      return { controller, source };
+    };
+
+    it("re-reads the window that was asked for, not the one still shown", async () => {
+      const { controller, source } = await pagedFailure();
+      expect(controller.getSnapshot()).toMatchObject({
+        error: "Couldn't load the Guide (503).",
+        layout: { fromMs: 1_000, toMs: 5_000 },
+        status: "ready",
+      });
+
+      await controller.refresh();
+
+      expect(source.load).toHaveBeenLastCalledWith({ from: 5_000, to: 9_000 }, expect.any(AbortSignal));
+      expect(controller.getSnapshot()).toMatchObject({ layout: { fromMs: 5_000, toMs: 9_000 } });
+      expect(controller.getSnapshot().error).toBeUndefined();
+    });
+
+    it("keeps asking for it while it keeps failing, and forgets it once it loads", async () => {
+      const { controller, source } = await pagedFailure();
+      source.load.mockRejectedValueOnce(new Error("Still down."));
+      await controller.refresh();
+      expect(source.load).toHaveBeenLastCalledWith({ from: 5_000, to: 9_000 }, expect.any(AbortSignal));
+      expect(controller.getSnapshot().error).toBe("Still down.");
+
+      await controller.refresh();
+      expect(source.load).toHaveBeenLastCalledWith({ from: 5_000, to: 9_000 }, expect.any(AbortSignal));
+      expect(controller.getSnapshot().error).toBeUndefined();
+
+      // Loaded: the next refresh reads the page the viewer is on, which is now that one.
+      await controller.refresh();
+      expect(source.load).toHaveBeenLastCalledWith({ from: 5_000, to: 9_000 }, expect.any(AbortSignal));
+    });
+
+    it("drops the failed window when the viewer pages somewhere else", async () => {
+      const { controller, source } = await pagedFailure();
+      await controller.refresh();
+      expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 5_000, toMs: 9_000 });
+      source.load.mockRejectedValueOnce(new Error("Couldn't load the Guide (503)."));
+      await controller.page("later");
+      expect(controller.getSnapshot().error).toBeDefined();
+
+      await controller.page("earlier");
+      expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 1_000, toMs: 5_000 });
+      expect(controller.getSnapshot().error).toBeUndefined();
+      await controller.refresh();
+
+      expect(source.load).toHaveBeenLastCalledWith({ from: 1_000, to: 5_000 }, expect.any(AbortSignal));
+    });
+  });
+
   it("falls back deterministically and reports an empty authoritative Guide", async () => {
     const source = { load: vi.fn().mockResolvedValue(guide("available")) };
     const controller = createGuideController({ now: () => 2_000, source });
