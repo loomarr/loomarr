@@ -831,8 +831,10 @@ const Info: Story = {
   args: { schedule: { ...chromeArgs(live).schedule, info: true } },
 };
 
-// The full-picture states take the chrome's place.
+// The full-picture states take the chrome's place. A cover has no overlay layout to keep, so it is
+// drawn at the viewport's own width (the portrait frame): at 48rem a phone saw half of it.
 const StreamStopped: Story = {
+  args: { layout: "portrait" },
   render: () => (
     <ThemeScope theme="dark">
       <PlayerCover
@@ -848,6 +850,7 @@ const StreamStopped: Story = {
 };
 
 const OffAir: Story = {
+  args: { layout: "portrait" },
   render: () => (
     <ThemeScope theme="dark">
       <PlayerCover
