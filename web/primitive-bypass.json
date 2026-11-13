@@ -80,9 +80,6 @@
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/components/loomarr/people/create-local-dialog/create-local-dialog.tsx": {
       "flexStack": 1
     },

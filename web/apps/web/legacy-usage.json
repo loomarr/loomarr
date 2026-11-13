@@ -190,9 +190,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 86,
-      "rawButton": 1,
-      "rawTypeSize": 1
+      "tailwindClasses": 46
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 7
