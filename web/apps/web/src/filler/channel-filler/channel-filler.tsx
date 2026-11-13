@@ -7,6 +7,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { goDurationMinutes, pluralize } from "@loomarr/core/format";
 import {
   Action,
+  Card,
   CompactSelect,
   Dialog,
   DialogContent,
@@ -148,7 +149,7 @@ const DurationChoiceField = ({
   };
 
   return (
-    <div className="grid gap-2 sm:max-w-md">
+    <Stack gap="2" maxWidth={448}>
       <Text as="label" htmlFor={choice.id} textRole="label">
         {choice.label}
       </Text>
@@ -178,7 +179,7 @@ const DurationChoiceField = ({
       <Text as="p" textRole="compact" tone="secondary">
         {choice.help}
       </Text>
-    </div>
+    </Stack>
   );
 };
 
@@ -243,7 +244,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
   };
 
   return (
-    <div className="grid gap-2 sm:max-w-md">
+    <Stack gap="2" maxWidth={448}>
       <Text as="label" htmlFor="channel-break-frequency" textRole="label">
         Break frequency
       </Text>
@@ -277,7 +278,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
         </Link>
         .
       </Text>
-    </div>
+    </Stack>
   );
 };
 
@@ -351,13 +352,17 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             area; the header's back arrow goes to the channel list, so the detour gets its own way
             home (#1817, decided on #1908). The Settings index's "← Manage" link is the pattern. */}
         {from === "filler" ? (
-          <Link
-            to="/filler"
-            className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
-          >
-            <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-            Filler overview
-          </Link>
+          <Stack align="start" marginBottom={12}>
+            <Link
+              to="/filler"
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
+            >
+              <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
+              <Text as="span" style={{ color: "inherit" }} textRole="body">
+                Filler overview
+              </Text>
+            </Link>
+          </Stack>
         ) : null}
         <Text as="h2" textRole="headline" strong>
           Filler
@@ -372,7 +377,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           works before meeting the controls that can make its pool narrower. This is intentionally
           not collapsed: coverage is the primary answer, not advanced diagnosis. The headings and
           sentences on this page are the web mock's. */}
-      <Stack className="border-border bg-card rounded-lg border p-5" gap="control" render="section">
+      <Card gap={12} padding={20} render="section">
         <div>
           <Text as="h3" textRole="heading">
             What this channel can play
@@ -396,9 +401,9 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
             Coverage becomes available after filler is configured for this install.
           </Text>
         )}
-      </Stack>
+      </Card>
 
-      <Stack className="border-border bg-card rounded-lg border p-5" gap="5" render="section">
+      <Card gap={20} padding={20} render="section">
         <div>
           <Text as="h3" textRole="heading">
             Choose what fits
@@ -446,7 +451,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           installationGeography={{ country: homeCountry, place: homePlace }}
           defaultRoles={coverage?.defaultRoles}
         />
-      </Stack>
+      </Card>
 
       <Disclosure
         label="Specific clips (advanced)"
@@ -481,7 +486,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
       </Disclosure>
 
       {/* The live break — the ground-truth preview of the current draft. */}
-      <Stack className="border-border bg-card rounded-lg border p-5" gap="inline" render="section">
+      <Card gap={8} padding={20} render="section">
         <Text as="h3" textRole="heading">
           Preview break
         </Text>
@@ -507,21 +512,27 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
         ) : (
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
-            <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-              {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
-            </Text>
+            <Stack marginTop={8}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
+              </Text>
+            </Stack>
           </div>
         )}
-      </Stack>
+      </Card>
 
       {/* Apply / Discard — only offered when the draft differs from what's saved. Apply is
           the seamless commit; Discard throws the draft away. */}
       {isDirty && (
         <Stack
           align="center"
-          className="border-border bg-background/95 sticky bottom-0 rounded-lg border p-3 shadow-lg backdrop-blur"
+          borderColor="borderDecorative"
+          borderRadius={12}
+          borderWidth={1}
+          className="bg-background/95 sticky bottom-0 shadow-lg backdrop-blur"
           direction="row"
           gap="inline"
+          padding={12}
         >
           <Action disabled={isApplying} onPress={apply} tone="suggest">
             {isApplying ? "Applying…" : "Apply filler"}
@@ -529,7 +540,7 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           <Action disabled={isApplying} onPress={discard} variant="ghost">
             Discard
           </Action>
-          <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
+          <Text marginLeft="auto" textRole="hint" tone="secondary">
             Unsaved changes
           </Text>
         </Stack>
@@ -542,11 +553,11 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
               <DialogTitle>{previewingClip.name}</DialogTitle>
               <DialogDescription>Preview from this assembled break</DialogDescription>
             </DialogHeader>
-            <div className="p-6">
-              <div className="border-border overflow-hidden rounded-lg border">
+            <Stack padding={24}>
+              <Card overflow="hidden">
                 <ClipPreview clip={{ hash: previewingClip.hash, name: previewingClip.name }} />
-              </div>
-            </div>
+              </Card>
+            </Stack>
           </DialogContent>
         ) : null}
       </Dialog>
