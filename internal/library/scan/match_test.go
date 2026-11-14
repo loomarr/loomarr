@@ -67,6 +67,10 @@ func TestSearchQueryReadsTheTitleAndYearFromAName(t *testing.T) {
 		{"Mystery Film (2002)", 0, "Mystery Film", 2002},
 		{"Mystery Film (2002) [1080p]", 0, "Mystery Film", 2002},
 		{"Harbor Lights 2049 (2017)", 0, "Harbor Lights 2049", 2017},
+		// A year written twice is one; a title's own year, bracketed once after it, stays.
+		{"Copper Moon (1999) (1999)", 0, "Copper Moon", 1999},
+		{"Copper Moon (1999) (1999) [Bluray-1080p]", 0, "Copper Moon", 1999},
+		{"Class of 1999 (1999)", 0, "Class of 1999", 1999},
 		{"1999 A Quiet Winter 1968", 0, "1999 A Quiet Winter", 1968},
 		{"1947", 0, "1947", 0},
 		{"Kite-Kid.Over.The.Kite-Line.2018.2160p.WEB-DL", 0, "Kite-Kid Over The Kite-Line", 2018},
