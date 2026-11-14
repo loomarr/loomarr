@@ -78,7 +78,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "tailwindClasses": 52
+      "tailwindClasses": 43
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
       "tailwindClasses": 16
@@ -93,7 +93,7 @@
       "rawTypeWeight": 2
     },
     "src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "tailwindClasses": 56,
+      "tailwindClasses": 54,
       "rawTypeSize": 1
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
@@ -149,12 +149,11 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 41,
-      "rawButton": 1,
+      "tailwindClasses": 35,
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "tailwindClasses": 41,
+      "tailwindClasses": 36,
       "rawButton": 1,
       "rawTypeSize": 1
     },
@@ -179,7 +178,7 @@
       "rawTypeWeight": 1
     },
     "src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
-      "tailwindClasses": 29,
+      "tailwindClasses": 28,
       "rawTypeSize": 3
     },
     "src/components/loomarr/filler/source-search/source-search.tsx": {
@@ -187,7 +186,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 46
+      "tailwindClasses": 39
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 7
@@ -217,7 +216,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
-      "tailwindClasses": 55,
+      "tailwindClasses": 47,
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
@@ -274,13 +273,10 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "tailwindClasses": 57,
-      "rawButton": 2,
-      "rawTypeSize": 1,
-      "rawTypeWeight": 1
+      "tailwindClasses": 34
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 95,
+      "tailwindClasses": 93,
       "rawButton": 1
     },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
@@ -355,13 +351,13 @@
       "tailwindClasses": 12
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 35
+      "tailwindClasses": 23
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 19
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 28
+      "tailwindClasses": 27
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 6
@@ -447,7 +443,7 @@
       "tailwindClasses": 23
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 49
+      "tailwindClasses": 42
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 14

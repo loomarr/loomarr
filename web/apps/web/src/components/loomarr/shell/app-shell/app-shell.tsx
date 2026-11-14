@@ -127,14 +127,16 @@ const AppShell = ({
   const { pathname } = useLocation();
   const highlight = channelNavHighlight(pathname);
   const accountInitials = userName.slice(0, 2).toUpperCase();
+  const versionTextStyle = { color: "inherit" } as const;
   // The footer's version line, inside a link to About for an admin and plain text for a member.
   const versionLabel = (
     <>
       <Icon decorative glyph={icons.info} size="compact" tone="inherit" />
-      <span className="truncate">{isAdmin ? serverVersion : `Loomarr ${serverVersion}`}</span>
+      <Text as="span" numberOfLines={1} style={versionTextStyle} textRole="mono">
+        {isAdmin ? serverVersion : `Loomarr ${serverVersion}`}
+      </Text>
     </>
   );
-  const versionTextStyle = { color: "inherit" } as const;
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -316,7 +318,7 @@ const AppShell = ({
                 {accountInitials}{" "}
               </Text>
             </Stack>
-            <Text as="span" className="truncate" textRole="compact" tone="secondary">
+            <Text as="span" numberOfLines={1} textRole="compact" tone="secondary">
               {userName}
             </Text>
           </Link>

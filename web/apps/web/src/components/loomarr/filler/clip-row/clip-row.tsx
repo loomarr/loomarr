@@ -76,18 +76,18 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
           {clip.name}
         </button>
       ) : (
-        <p className="truncate" title={clip.name}>
-          <Text as="span" textRole="compact" tone="primary">
+        <div title={clip.name}>
+          <Text as="p" numberOfLines={1} textRole="compact" tone="primary">
             {clip.name}
           </Text>
-        </p>
+        </div>
       )}
       {clip.brand ? (
-        <p className="truncate" title={`Brand: ${clip.brand}`}>
-          <Text as="span" textRole="hint" tone="secondary">
+        <div title={`Brand: ${clip.brand}`}>
+          <Text as="p" numberOfLines={1} textRole="hint" tone="secondary">
             {clip.brand}
           </Text>
-        </p>
+        </div>
       ) : null}
       {/* Phone only, as the mock draws it: below `md` the tag columns are gone, so the row has no
           other way to say this commercial is missing one. */}
@@ -101,24 +101,24 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     <Text as="span" className="hidden md:inline" textRole="mono">
       {clip.role === "unclassified" ? "" : ROLE_LABEL[clip.role]}
     </Text>
-    <Text as="span" className="hidden tabular-nums md:inline" textRole="mono">
+    <Text as="span" className="hidden md:inline" fontVariant={["tabular-nums"]} textRole="mono">
       {clip.era ? (clip.era % 10 === 0 ? `${clip.era}s` : String(clip.era)) : "—"}
     </Text>
     <Text as="span" className="hidden lg:inline" textRole="mono">
       {(clip.audience && AUDIENCE_LABEL[clip.audience]) || "—"}
     </Text>
 
-    <Text as="span" className="tabular-nums" textRole="mono">
+    <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
       {formatClipDuration(clip.durationMs)}
     </Text>
 
     {/* The same three-branch rule the card renders — shared, because the `playsCounted:false`
         branch is a claim about what this install can OBSERVE, and two copies drift. */}
-    <span className="hidden truncate lg:inline" title={playsLine(clip)}>
-      <Text as="span" textRole="mono" tone="secondary">
+    <div className="hidden lg:block" title={playsLine(clip)}>
+      <Text as="div" numberOfLines={1} textRole="mono" tone="secondary">
         {playsLine(clip)}
       </Text>
-    </span>
+    </div>
   </div>
 );
 
