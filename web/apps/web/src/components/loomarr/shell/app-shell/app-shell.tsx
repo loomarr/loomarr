@@ -1,4 +1,5 @@
 import { Action, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { SearchButton } from "@loomarr/ui";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
@@ -162,23 +163,17 @@ const AppShell = ({
             <BrandLockup variant="compact" />
           </div>
 
-          <button
-            type="button"
-            onClick={onOpenCommand}
-            aria-keyshortcuts={commandShortcutAria()}
-            className={cn(
-              "border-input text-muted-foreground hover:bg-accent mb-2 flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 transition-colors",
-              FOCUS_RING,
-            )}
-          >
-            <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
-            <Text as="span" textRole="compact" tone="secondary">
-              Search…
-            </Text>
-            <Text as="kbd" className="ml-auto" textRole="mono" tone="secondary">
-              {commandShortcutLabel()}
-            </Text>
-          </button>
+          {/* The shell's search is the SearchField's press-only form (maintainer: field look, as a
+              button): a press opens the command search, and the shortcut hint says how to reach it
+              from the keyboard. */}
+          <div className="mb-2">
+            <SearchButton
+              hint={commandShortcutLabel()}
+              keyShortcuts={commandShortcutAria()}
+              onPress={() => onOpenCommand?.()}
+              placeholder="Search…"
+            />
+          </div>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
             const { label, icon } = item;
