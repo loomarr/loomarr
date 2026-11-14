@@ -308,11 +308,6 @@
     "src/components/loomarr/shell/tv-static/tv-static.tsx": {
       "tailwindClasses": 24
     },
-    "src/design/palette/palette.tsx": {
-      "tailwindClasses": 56,
-      "rawTypeSize": 12,
-      "rawTypeWeight": 1
-    },
     "src/design/spacing/spacing.tsx": {
       "tailwindClasses": 1
     },
@@ -322,14 +317,13 @@
       "rawTypeWeight": 1
     },
     "src/design/typography/typography.tsx": {
-      "tailwindClasses": 49,
-      "rawTypeSize": 7
+      "tailwindClasses": 2
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 29
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
-      "tailwindClasses": 33,
+      "tailwindClasses": 23,
       "rawButton": 1,
       "rawTypeSize": 1,
       "rawTypeWeight": 1
@@ -350,7 +344,7 @@
       "tailwindClasses": 24
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 3
+      "tailwindClasses": 9
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 3,
@@ -461,11 +455,10 @@
       "tailwindClasses": 49
     },
     "src/help/doc-view/doc-view.tsx": {
-      "tailwindClasses": 28,
-      "rawTypeWeight": 1
+      "tailwindClasses": 14
     },
     "src/help/help-page/help-page.tsx": {
-      "tailwindClasses": 24,
+      "tailwindClasses": 19,
       "rawTypeSize": 2
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
