@@ -13,7 +13,10 @@ type StatusLabelProps = {
    * hands the key back). It reads as a button, takes a focus stop and draws the one amber outline.
    */
   onPress?: () => void;
-  /** Names the button when the visible word alone is not the action ("Hand Port back to …"). Needs `onPress`. */
+  /**
+   * Names the button when the visible word alone is not the action. It must start with the visible
+   * word (WCAG 2.5.3, axe `label-content-name-mismatch`): "Overriding LOOMARR_PORT: hand Port back".
+   */
   "aria-label"?: string;
   tone?: StatusTone;
 };

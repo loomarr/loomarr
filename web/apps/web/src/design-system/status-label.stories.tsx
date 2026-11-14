@@ -17,7 +17,7 @@ const Default: Story = {};
 
 const Pressable: Story = {
   args: {
-    "aria-label": "Hand Port back to LOOMARR_PORT, your saved value is kept",
+    "aria-label": "Overriding LOOMARR_PORT: hand Port back, your saved value is kept",
     children: "Overriding LOOMARR_PORT",
     onPress: () => undefined,
     tone: "warn",
