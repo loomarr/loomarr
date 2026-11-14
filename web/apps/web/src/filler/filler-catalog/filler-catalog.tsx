@@ -199,19 +199,23 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       {parentHash ? (
         <Stack
           align="center"
-          className="border-border bg-card rounded-lg border p-3"
+          backgroundColor="surfaceRaised"
+          borderColor="borderDecorative"
+          borderRadius="cardCompact"
+          borderWidth={1}
           direction="row"
           gap="control"
+          padding={12}
           wrap
         >
-          <div className="min-w-0 flex-1">
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
             <Text as="p" textRole="cardLabel">
               {parentName || "Compilation segments"}
             </Text>
             <Text as="p" textRole="hint" tone="secondary">
               Airable clips filed from this compilation.
             </Text>
-          </div>
+          </Stack>
           <Action onPress={() => setFilters({ parent: undefined })} variant="outline">
             Back to top-level catalog
           </Action>
@@ -221,18 +225,22 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       {taxon || unclassified || withoutAxis ? (
         <Stack
           align="center"
-          className="border-signal/30 bg-signal/5 rounded-lg border p-3"
+          borderRadius="cardCompact"
+          className="border-signal/30 bg-signal/5 border"
           direction="row"
           gap="control"
+          padding={12}
           wrap
         >
-          <Text as="p" className="min-w-0 flex-1" textRole="compact">
-            {unclassified
-              ? "Showing clips with no directly assigned taxonomy tags"
-              : withoutAxis
-                ? `Showing clips without a directly assigned ${withoutAxis} tag`
-                : `Showing clips matching “${taxon}”, including descendants`}
-          </Text>
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text as="p" textRole="compact">
+              {unclassified
+                ? "Showing clips with no directly assigned taxonomy tags"
+                : withoutAxis
+                  ? `Showing clips without a directly assigned ${withoutAxis} tag`
+                  : `Showing clips matching “${taxon}”, including descendants`}
+            </Text>
+          </Stack>
           <Action
             onPress={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
             variant="ghost"
@@ -371,10 +379,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             <Stack
               align="center"
               aria-label="Catalog pages"
-              className="pt-1"
               direction="row"
               gap="control"
               justify="between"
+              paddingTop={4}
               render="nav"
             >
               <Action disabled={page <= 1} onPress={() => goToPage(page - 1)} variant="outline">

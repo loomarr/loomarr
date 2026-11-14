@@ -65,17 +65,22 @@ const MovieCollectionChoices = ({
   return (
     <Stack
       aria-label="Movie collections"
-      className="border-border rounded-md border p-3"
+      borderColor="borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
       gap="inline"
+      padding={12}
       render="section"
     >
       <div>
         <Text as="h3" textRole="cardLabel">
           Complete a collection
         </Text>
-        <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-          Keep the films together, or choose just the ones you want.
-        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="hint" tone="secondary">
+            Keep the films together, or choose just the ones you want.
+          </Text>
+        </Stack>
       </div>
 
       {incomplete && (
@@ -94,7 +99,7 @@ const MovieCollectionChoices = ({
         return (
           <div key={collection.tmdbId} className="bg-static-900/50 rounded-md px-3 py-2.5">
             <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-              <div className="min-w-0">
+              <Stack flexShrink={1} minWidth={0}>
                 <Text as="p" className="truncate" textRole="cardLabel">
                   {collection.name}
                 </Text>
@@ -109,7 +114,7 @@ const MovieCollectionChoices = ({
                     {libraryCount} in your library
                   </Text>
                 </Stack>
-              </div>
+              </Stack>
               {editable && (
                 <Action
                   accessibilityLabel={`Add all films from ${collection.name}`}
@@ -131,22 +136,24 @@ const MovieCollectionChoices = ({
                   return (
                     <Stack
                       align="center"
-                      className="py-2.5"
                       direction="row"
                       gap="control"
                       key={key}
+                      paddingVertical={10}
                       render="li"
                     >
-                      <div className="min-w-0 flex-1">
+                      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                         <Text as="p" className="truncate" textRole="compact">
                           {member.name}
                         </Text>
-                        <Text as="p" className="mt-0.5" textRole="hint" tone="secondary">
-                          {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Text>
-                      </div>
+                        <Stack marginTop={2}>
+                          <Text as="p" textRole="hint" tone="secondary">
+                            {[member.year, member.inLibrary ? "In your library" : "Not in your library"]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </Text>
+                        </Stack>
+                      </Stack>
                       {selected ? (
                         <Text
                           as="span"
