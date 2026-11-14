@@ -78,7 +78,7 @@ describe("PodTimeline", () => {
         onPreview={onPreview}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Preview Fizzbolt" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Preview Fizzbolt, .*Commercial, 30s$/ }));
     expect(onPreview).toHaveBeenCalledWith(ad);
     expect(screen.queryByRole("button", { name: /Preview We'll be right back/i })).not.toBeInTheDocument();
   });

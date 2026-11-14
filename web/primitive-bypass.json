@@ -38,22 +38,13 @@
     "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {

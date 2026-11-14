@@ -8,6 +8,7 @@ import {
   Field,
   Icon,
   icons,
+  MediaTile,
   Stack,
   Surface,
   Text,
@@ -237,12 +238,12 @@ const ChannelIconField = ({
                 <ul className="grid grid-cols-5 gap-2 sm:grid-cols-8">
                   {suggestionList.map((s) => (
                     <li key={s.url}>
-                      <button
-                        type="button"
-                        aria-label={`Use ${s.title}'s poster as the channel icon`}
+                      <MediaTile
+                        aspectRatio={1}
+                        label={`Use ${s.title}'s poster as the channel icon`}
                         title={s.title}
-                        onClick={() => void pickSuggestion(s.url)}
-                        className="border-border hover:border-static-500 focus-visible:ring-ring block aspect-square w-full cursor-pointer overflow-hidden rounded-sm border transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                        onPress={() => void pickSuggestion(s.url)}
+                        width="100%"
                       >
                         {/*
                           ⚠ These were <img src={tmdbUrl}> until V52 phase 7 — a dozen third-party
@@ -266,7 +267,7 @@ const ChannelIconField = ({
                         ) : (
                           <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
                         )}
-                      </button>
+                      </MediaTile>
                     </li>
                   ))}
                 </ul>

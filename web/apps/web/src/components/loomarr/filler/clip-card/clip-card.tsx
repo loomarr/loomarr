@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
+import { Icon, icons, MediaTile, Stack, Tooltip } from "@loomarr/design-system";
 import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -199,34 +199,28 @@ const ClipFrame = ({
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
           never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
       {onPlay && thumbImage && (
-        <Stack
-          align="center"
-          className="pointer-events-none absolute inset-0"
-          direction="row"
-          justify="center"
-        >
-          {/* A plain <button>, not a DS Action: the target is the whole preview frame with no
-              control box of its own, which no Action layout draws. So the pointer cursor (which
-              Tailwind v4's Preflight stopped giving <button>) and the focus ring are set here.
-              Only the disc is visible. */}
-          <button
-            type="button"
-            onClick={onPlay}
+        <div className="absolute inset-0">
+          {/* The target is the whole preview frame, drawn as a MediaTile with no fill of its own so
+              the still shows through; only the disc is visible. Its focus ring is drawn inside the
+              frame, which clips anything outside it. */}
+          <MediaTile
+            bordered={false}
+            fill={false}
+            focusInset
+            height="100%"
             // The name says WHICH clip: a grid of buttons all called "Play" is unusable by voice
             // control and meaningless in a screen reader's element list.
-            aria-label={`Preview ${clip.name}`}
-            className={cn(
-              "text-static-950 pointer-events-auto flex h-full w-full cursor-pointer items-center justify-center",
-              // Visible focus ring against arbitrary video underneath.
-              "focus-visible:ring-static-100 outline-none focus-visible:ring-2 focus-visible:ring-inset",
-            )}
+            label={`Preview ${clip.name}`}
+            onPress={onPlay}
+            radius="none"
+            width="100%"
           >
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
             <Stack
               align="center"
-              className="bg-signal/90 size-11 rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+              className="bg-signal/90 text-static-950 size-11 rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
               direction="row"
               justify="center"
               render="span"
@@ -235,8 +229,8 @@ const ClipFrame = ({
                 <Icon decorative glyph={icons.play} size="default" tone="inherit" />
               </Stack>
             </Stack>
-          </button>
-        </Stack>
+          </MediaTile>
+        </div>
       )}
     </div>
   );

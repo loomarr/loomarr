@@ -1,6 +1,6 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
-import { Stack, Text } from "@loomarr/design-system";
+import { MediaTile, Stack, Text } from "@loomarr/design-system";
 import { useRef, useState } from "react";
 import { VideoPlayer } from "@/components/loomarr/player/video-player";
 import { ServedImage } from "@/components/loomarr/served-image";
@@ -97,9 +97,8 @@ const SegmentPreview = ({
         if (panelRef.current?.contains(document.activeElement)) buttonRef.current?.focus();
       }}
     >
-      <button
+      <MediaTile
         ref={buttonRef}
-        type="button"
         // The mock's tooltip, verbatim (`loomarr-prototype-desktop-v2.dc.html:2209`).
         title="Preview this segment"
         // ⚠ The name is composed from a fixed verb plus the VISIBLE "#N" marker, never from the
@@ -114,20 +113,15 @@ const SegmentPreview = ({
           .join(" ")}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => {
+        // Open is a pressed state, so it is neutral (#1909); the amber outline is focus.
+        current={open}
+        height={64}
+        onPress={() => {
           if (!open) setFailedSource(undefined);
           onOpenChange(!open);
         }}
-        className={cn(
-          "border-border relative h-16 w-28 shrink-0 cursor-pointer overflow-hidden rounded-md border p-0",
-          "flex items-center justify-center",
-          // ⚠ A visible focus ring the mock does not have — the same gap the filmstrip's blocks
-          // already record fixing. Keyboard users would otherwise have no idea which tile they are on.
-          "focus-visible:outline-signal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1",
-          "bg-static-900",
-          // Open is a pressed state, so it is neutral (#1909); the amber outline above is focus.
-          open && "ring-foreground ring-1",
-        )}
+        radius="medium"
+        width={112}
       >
         <span id={verbId} className="sr-only">
           Preview segment
@@ -162,7 +156,7 @@ const SegmentPreview = ({
             {formatMmSs(span)}
           </span>
         )}
-      </button>
+      </MediaTile>
 
       {open && (
         <div
