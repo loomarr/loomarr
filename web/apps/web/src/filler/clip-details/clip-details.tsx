@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -117,15 +117,9 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
               {suggestion.sources.length ? (
                 <Stack columnGap="3" direction="row" rowGap="1" wrap>
                   {suggestion.sources.map((source) => (
-                    <a
-                      key={source.url}
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
-                    >
-                      {source.title} <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
-                    </a>
+                    <TextLink external href={source.url} key={source.url}>
+                      {source.title}
+                    </TextLink>
                   ))}
                 </Stack>
               ) : null}
@@ -144,14 +138,9 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             >
               {sourceLabel ? <span>{sourceLabel}</span> : null}
               {sourceURL ? (
-                <a
-                  href={sourceURL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-signal inline-flex items-center gap-1 underline underline-offset-4"
-                >
-                  View original <Icon decorative glyph={icons.external} size="compact" tone="inherit" />
-                </a>
+                <TextLink external href={sourceURL}>
+                  View original
+                </TextLink>
               ) : null}
             </Text>
           </>

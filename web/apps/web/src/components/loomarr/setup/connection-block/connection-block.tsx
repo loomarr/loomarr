@@ -1,5 +1,5 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { Disclosure, Icon, icons, Stack, type StatusTone } from "@loomarr/design-system";
+import { Disclosure, Icon, icons, Stack, type StatusTone, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
@@ -91,13 +91,9 @@ const ConnectionBlock = ({
                 {failing && docHref && (
                   // Route into the Help center via parseDocHref — a raw href would
                   // resolve relative to /settings and 404 (mirrors ChecklistItem).
-                  <Link
-                    to="/help"
-                    search={parseDocHref(docHref)}
-                    className="hover:text-onair-200 inline-flex shrink-0 items-center gap-0.5 underline underline-offset-2"
-                  >
-                    Fix <Icon decorative glyph={icons.goTo} size="compact" tone="inherit" />
-                  </Link>
+                  <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+                    Fix
+                  </TextLink>
                 )}
               </Stack>
             )}

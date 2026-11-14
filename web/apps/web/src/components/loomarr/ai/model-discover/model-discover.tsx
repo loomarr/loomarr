@@ -1,6 +1,6 @@
 import type { DiscoverModelView } from "@loomarr/api/models/discoverModelView";
 import { formatGiB, formatPercentPoints } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
+import { Action, ActivityIndicator, Badge, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 import type { ModelDiscoverProps } from "./model-discover.type";
 
@@ -55,14 +55,9 @@ const ModelDiscover = ({
       {sourceError && (
         <Text as="p" textRole="hint" tone="secondary">
           Couldn't reach the model catalog.{" "}
-          <a
-            href="https://huggingface.co/models?library=gguf&sort=downloads"
-            target="_blank"
-            rel="noreferrer"
-            className="text-signal underline underline-offset-2"
-          >
-            Browse on huggingface.co ↗
-          </a>
+          <TextLink external href="https://huggingface.co/models?library=gguf&sort=downloads">
+            Browse on huggingface.co
+          </TextLink>
         </Text>
       )}
 
