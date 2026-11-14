@@ -329,6 +329,8 @@ One row per channel. A channel is created by approving a channel request or by h
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 | `from_request` | Whether the channel was made from a member's request rather than by hand. Refine and auto-curate re-run that request; it outlives the job intent_ref names. | `BOOLEAN` |
 | `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from, while that job is kept; null once the job is purged, and for a channel made by hand. No two channels share one. | `TEXT` · may be empty · → `proposal_jobs.id` |
+| `dealt_from` | Two fingerprints, joined by a dot: what an operator had decided when the current cycle was dealt (the lineup, the channel's rules, break and window settings), and the deal itself. While the first is unchanged, a change in the library does not move the window on air; a change to it re-deals the schedule after the programme on air. Empty until the channel is next scheduled. | `TEXT` |
+| `playout_anchor_ms` | The milliseconds past `playout_anchor`'s second, 0 to 999. A cycle that starts at the programme on air rarely starts on a whole second, and the schedule is laid out from the exact moment. | `INTEGER` |
 
 ### channel_lineup
 
