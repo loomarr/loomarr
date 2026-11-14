@@ -127,7 +127,7 @@
       "tailwindClasses": 20
     },
     "src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "tailwindClasses": 31
+      "tailwindClasses": 27
     },
     "src/components/loomarr/dashboard/service-control/service-control.tsx": {
       "tailwindClasses": 21
@@ -164,7 +164,7 @@
       "tailwindClasses": 25
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "tailwindClasses": 45
+      "tailwindClasses": 41
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "tailwindClasses": 30,
@@ -276,7 +276,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
-      "tailwindClasses": 31,
+      "tailwindClasses": 27,
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
@@ -339,7 +339,7 @@
       "tailwindClasses": 6
     },
     "src/diagnostics/diagnostics-split-pane/diagnostics-split-pane.tsx": {
-      "tailwindClasses": 36
+      "tailwindClasses": 31
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
       "tailwindClasses": 55
@@ -497,7 +497,7 @@
       "rawButton": 1
     },
     "src/people/users-page/users-page.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 1
     },
     "src/queue/request-detail/request-detail.tsx": {
       "tailwindClasses": 17
@@ -506,7 +506,7 @@
       "tailwindClasses": 11
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 5
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 6
@@ -565,7 +565,7 @@
       "tailwindClasses": 5
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 9
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
       "tailwindClasses": 14
@@ -609,13 +609,13 @@
       "rawButton": 1
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 13
     },
     "src/suggest/intent-form/intent-form.tsx": {
       "tailwindClasses": 5
     },
     "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 19
+      "tailwindClasses": 15
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 26

@@ -1,4 +1,4 @@
-import { StatusWord } from "@loomarr/design-system";
+import { Stack, StatusWord } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 // StatusWord — the one vocabulary for "how is this doing" across Settings. Five states, one word
@@ -16,11 +16,11 @@ const Default: Story = {};
 
 const AllStates: Story = {
   render: () => (
-    <div className="flex flex-col items-start gap-3">
+    <Stack align="start" gap="3">
       {(["ok", "attention", "notSetUp", "overdue", "expired"] as const).map((kind) => (
         <StatusWord key={kind} kind={kind} />
       ))}
-    </div>
+    </Stack>
   ),
 };
 

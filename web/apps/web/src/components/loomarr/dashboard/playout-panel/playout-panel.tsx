@@ -55,10 +55,12 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
   return (
     <Stack
       align="center"
-      className="border-border bg-static-900/40 border-b px-4 py-2.5"
+      className="border-border bg-static-900/40 border-b"
       direction="row"
       gap="control"
       justify="between"
+      paddingHorizontal={16}
+      paddingVertical={10}
     >
       <div className="min-w-0">
         <Text as="p" textRole="hint" tone="secondary">
@@ -168,10 +170,12 @@ const PlayoutPanel = ({ status, loading, title = "Playout" }: PlayoutPanelProps)
     <Card flexShrink={0} overflow="hidden">
       <Stack
         align="center"
-        className="border-border border-b px-4 py-3"
+        className="border-border border-b"
         direction="row"
         gap="control"
         justify="between"
+        paddingHorizontal={16}
+        paddingVertical={12}
       >
         <Text as="h2" textRole="heading">
           {title}
