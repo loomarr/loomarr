@@ -1,6 +1,15 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Icon, InlineAction, icons, MediaTile, Stack, Tooltip } from "@loomarr/design-system";
+import {
+  Icon,
+  InlineAction,
+  icons,
+  MediaTile,
+  Stack,
+  Text,
+  Tooltip,
+  typography,
+} from "@loomarr/design-system";
 import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -171,11 +180,19 @@ const ClipFrame = ({
         // as letter-spaced shouting, which is the whole reason the label exists.
         <span
           role="img"
-          className="bg-static-900/80 text-2xs text-static-100 absolute top-1.5 right-1.5 rounded px-1.5 py-0.5 font-mono"
+          className="bg-static-900/80 absolute top-1.5 right-1.5 rounded px-1.5 py-0.5"
           title="Resolution, from the clip's video height"
           aria-label={`Resolution ${clip.quality}`}
         >
-          {clip.quality}
+          {/* The plate is fixed dark over a thumbnail in either theme, so the ink is the static light
+              stop rather than a theme tone, and it keeps the mono face the role does not carry. */}
+          <Text
+            as="span"
+            style={{ color: "var(--color-static-100)", fontFamily: typography.family.data.web }}
+            textRole="guideCell"
+          >
+            {clip.quality}
+          </Text>
         </span>
       )}
       {onToggleSelect && (

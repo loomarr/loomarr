@@ -18,7 +18,7 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Chip, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Badge, Chip, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -115,7 +115,8 @@ const SortableLineupRow = ({
       defaultValue={value || ""}
       placeholder={placeholder}
       aria-label={`${entry.name} ${bound === "seasonMin" ? "first" : "last"} season`}
-      className="border-border bg-background focus-visible:ring-ring w-16 rounded border px-2 py-1 text-xs focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+      className="border-border bg-background focus-visible:ring-ring w-16 rounded border px-2 py-1 focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+      style={{ fontSize: typography.pointer.hint.size, fontWeight: typography.pointer.hint.weight }}
       onBlur={(e) => {
         const next = e.target.value === "" ? undefined : Number(e.target.value);
         if (next === (value || undefined)) return;

@@ -91,8 +91,10 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
         <Text as="p" textRole="compact">
           This Loomarr already has an owner account, so you can sign in instead.
         </Text>
-        <Link to="/login" className="text-tune w-fit text-sm underline-offset-4 hover:underline">
-          Sign in instead
+        <Link to="/login" className="text-tune w-fit underline-offset-4 hover:underline">
+          <Text as="span" textRole="compact" tone="info">
+            Sign in instead
+          </Text>
         </Link>
       </Stack>
     );

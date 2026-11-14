@@ -283,12 +283,14 @@ const FillerOverview = () => {
                   coverage={channel}
                   title={
                     <Link
-                      className="font-medium hover:underline"
+                      className="hover:underline"
                       to="/channels/$id/filler"
                       params={{ id: channel.channelId }}
                       search={{ from: "filler" }}
                     >
-                      {channel.number} · {channel.name}
+                      <Text as="span" textRole="cardLabel" tone="primary">
+                        {channel.number} · {channel.name}
+                      </Text>
                     </Link>
                   }
                 />

@@ -145,8 +145,10 @@ const ApproveDevice = () => {
       {approved ? (
         <Stack marginTop={8}>
           <Text as="p" textRole="compact">
-            <span className="font-medium">{approved}</span> is approved. It should start playing in a few
-            seconds.
+            <Text as="span" textRole="cardLabel">
+              {approved}
+            </Text>{" "}
+            is approved. It should start playing in a few seconds.
           </Text>
         </Stack>
       ) : null}

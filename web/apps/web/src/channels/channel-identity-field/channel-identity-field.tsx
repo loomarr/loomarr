@@ -1,4 +1,4 @@
-import { Action, Field, Stack, typography } from "@loomarr/design-system";
+import { Action, Field, Stack, Text, typography } from "@loomarr/design-system";
 import { useId, useState } from "react";
 import { useBelowSm } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
@@ -135,9 +135,11 @@ const ChannelIdentityField = ({
         )}
       </Stack>
       {error && (
-        <p className="text-onair-300 text-xs" role="alert">
-          {error}
-        </p>
+        <div role="alert">
+          <Text as="p" textRole="hint" tone="danger">
+            {error}
+          </Text>
+        </div>
       )}
     </Stack>
   );

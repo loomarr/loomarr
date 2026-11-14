@@ -1,4 +1,4 @@
-import { Stack } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { TvStatic } from "../tv-static";
 import type { TunerLoaderProps } from "./tuner-loader.type";
@@ -111,13 +111,10 @@ const TunerLoader = ({
       )}
 
       {/* The readout — mono, tracked-out amber with the blinking cursor as the one extra sign of life. */}
-      <p
-        className="text-signal font-mono text-[clamp(11px,1.3vw,13px)] font-medium tracking-[0.24em]"
-        style={{ textShadow: READOUT_HALO }}
-      >
+      <Text as="p" style={{ textShadow: READOUT_HALO }} textRole="metadata" tone="signal" tracking={0.24}>
         <span>{label}</span>
         <span className="motion-safe:animate-[onair-pulse_1s_steps(2,end)_infinite]">_</span>
-      </p>
+      </Text>
     </Stack>
   </div>
 );
