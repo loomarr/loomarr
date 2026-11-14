@@ -26,8 +26,9 @@ const headerBatch = 50
 const headerStall = 2 * time.Minute
 
 // headerFaultLimit is how many files in a row the share may fail to give back before the stage
-// stops. One file gone between the walk and its read, or one unreadable sector, is that file's
-// problem; a run of them with no read between is the share's.
+// stops reading its folder. One unreadable sector is that file's problem; a run of them with no
+// read between is the share's. A file gone between the walk and its read, from a folder still
+// there, is neither: an arr renamed it, and the next walk finds it by its new name.
 const headerFaultLimit = 2 * headerConcurrency
 
 // readHeaders reads the header of each queued file, wanted items first, headerConcurrency at a
@@ -38,9 +39,14 @@ const headerFaultLimit = 2 * headerConcurrency
 // pass waits for a viewer: a pass that finds a stage taking files hands its files to it and
 // returns, and one that finds none becomes the stage. Each read's write takes the pass lock and is
 // dropped when a later import wrote the file after the read was queued.
-func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
+//
+// A share fault stops reading one folder, never the stage: a read given up on sets its folder's
+// files aside, and the other folders read on. Once nothing else is left, the stage waits up to
+// the stall for the folder's read to return, then takes them up again. complete reports that the
+// stage read every file it was given, or handed them to the stage reading.
+func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete bool, err error) {
 	if len(queue) == 0 || im.Header == nil {
-		return nil
+		return true, nil
 	}
 	im.mu.Lock()
 	if im.reading {
@@ -59,7 +65,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		// Counted under the pass lock, so the stage's Begin is never after a hand-off's Grow.
 		im.Tracker.Grow(StepReading, kept)
 		im.mu.Unlock()
-		return nil
+		return true, nil
 	}
 	im.reading = true
 	im.staged = make(map[string]bool, len(queue))
@@ -89,25 +95,6 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 	}()
 	im.prioritize(ctx, queue)
 
-	next := func() (pending, bool) {
-		for len(queue) == 0 {
-			im.mu.Lock()
-			more := im.handoff
-			im.handoff = nil
-			if len(more) == 0 {
-				im.reading, im.staged, released = false, nil, true
-				im.mu.Unlock()
-				return pending{}, false
-			}
-			im.mu.Unlock()
-			queue = append(queue, more...)
-			im.prioritize(ctx, queue)
-		}
-		job := queue[0]
-		queue = queue[1:]
-		return job, true
-	}
-
 	work := make(chan pending)
 	var (
 		mu    sync.Mutex
@@ -115,7 +102,65 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		first error
 		// faults counts the files in a row the share could not give back.
 		faults int
+		// faulted are the folders whose share gave back headerFaultLimit files in a row with no
+		// read between: the stage reads no more of them.
+		faulted = map[string]bool{}
+		// aside are files set aside under a folder with a read given up on, and retried the ones
+		// given up on themselves once already: a second time, they are left.
+		aside   []pending
+		retried = map[string]bool{}
+		// left counts the files the stage leaves pending in a folder it stopped reading, for the
+		// next walk to queue again. One file the share could not give back is that file's own.
+		left int
+		// inflight counts the files handed to readers and not done; idle signals one done.
+		inflight int
+		rounds   int
 	)
+	idle := sync.NewCond(&mu)
+	next := func() (pending, bool) {
+		for len(queue) == 0 {
+			im.mu.Lock()
+			more := im.handoff
+			im.handoff = nil
+			im.mu.Unlock()
+			if len(more) > 0 {
+				queue = append(queue, more...)
+				im.prioritize(ctx, queue)
+				continue
+			}
+			// A reader still holding a file can yet set it aside.
+			mu.Lock()
+			for inflight > 0 {
+				idle.Wait()
+			}
+			set := aside
+			aside = nil
+			mu.Unlock()
+			if len(set) > 0 && rounds < headerRounds && im.awaitRoots(ctx, set) {
+				rounds++
+				queue = set
+				im.Tracker.Grow(StepReading, len(set))
+				continue
+			}
+			im.mu.Lock()
+			if len(im.handoff) > 0 {
+				im.mu.Unlock()
+				mu.Lock()
+				aside = append(aside, set...)
+				mu.Unlock()
+				continue
+			}
+			im.reading, im.staged, released = false, nil, true
+			im.mu.Unlock()
+			mu.Lock()
+			left += len(set)
+			mu.Unlock()
+			return pending{}, false
+		}
+		job := queue[0]
+		queue = queue[1:]
+		return job, true
+	}
 	flush := func(force bool) {
 		if len(batch) == 0 || (!force && len(batch) < headerBatch) {
 			return
@@ -135,11 +180,23 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 				row, err := im.readOne(ctx, job)
 				mu.Lock()
 				switch {
+				case errors.Is(err, errFileGone):
+					// Renamed or deleted since the walk: the next walk says which.
+				case errors.Is(err, errShareFault):
+					// Given up on: its folder's files wait until the read returns.
+					if retried[job.file.Path] {
+						left++
+					} else {
+						retried[job.file.Path] = true
+						aside = append(aside, job)
+					}
 				case errors.Is(err, errFileFault):
 					// The file stays pending, and the stage goes on to the next.
 					faults++
-					if faults >= headerFaultLimit && first == nil {
-						first = fmt.Errorf("%w: %d files in a row, the last: %w", errShareFault, faults, err)
+					if faults >= headerFaultLimit && !faulted[job.root()] {
+						faulted[job.root()] = true
+						im.log().Warn("library scan: header reads stopped for a folder", "root", job.root(),
+							"err", fmt.Errorf("%w: %d files in a row, the last: %w", errShareFault, faults, err))
 					}
 				case err != nil:
 					if first == nil {
@@ -151,6 +208,8 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 					batch = append(batch, job)
 					flush(false)
 				}
+				inflight--
+				idle.Broadcast()
 				mu.Unlock()
 				im.Tracker.Advance(StepReading, 1)
 			}
@@ -172,35 +231,68 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		if (im.Enabled != nil && !im.Enabled()) || failed() {
 			break
 		}
-		if im.stalled(job.root()) {
-			// A read under this root was given up on and has still not returned: the file stays
-			// pending rather than blocking another reader on the same mount.
+		mu.Lock()
+		switch {
+		case faulted[job.root()]:
+			left++
 			im.Tracker.Grow(StepReading, -1)
+		case im.stalled(job.root()):
+			// A read under this root was given up on and has still not returned: the file waits
+			// rather than blocking another reader on the same mount.
+			aside = append(aside, job)
+			im.Tracker.Grow(StepReading, -1)
+		default:
+			inflight++
+			mu.Unlock()
+			work <- job
 			continue
 		}
-		work <- job
+		mu.Unlock()
 	}
 	close(work)
 	wg.Wait()
 	mu.Lock()
 	defer mu.Unlock()
 	flush(true)
-	if errors.Is(first, errShareFault) {
-		// The files read so far are saved; the rest stay pending for the next pass.
-		im.log().Warn("library scan: header reads stopped", "err", first)
-		return ctx.Err()
-	}
 	if first != nil {
-		return first
+		return false, first
 	}
-	return ctx.Err()
+	return released && left == 0 && len(aside) == 0 && ctx.Err() == nil, ctx.Err()
+}
+
+// headerRounds is how many times a stage takes up again the files it set aside under a folder
+// whose read was given up on.
+const headerRounds = 3
+
+// awaitRoots waits, up to the stall, for every read given up on under the folders of jobs to
+// return. It reports false when one is still out, or ctx ends first.
+func (im *Importer) awaitRoots(ctx context.Context, jobs []pending) bool {
+	timer := time.NewTimer(orDuration(im.HeaderStall, headerStall))
+	defer timer.Stop()
+	for _, job := range jobs {
+		im.mu.Lock()
+		done, ok := im.stalledWalks[job.root()]
+		im.mu.Unlock()
+		if !ok {
+			continue
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return false
+		case <-timer.C:
+			return false
+		}
+	}
+	return true
 }
 
 // readOne reads one file's header and writes the file's item with it. A file whose header does not
 // parse is recorded as failed and not tried again until its bytes change. A file the share could
-// not give back (gone, an I/O error, a timeout) stays pending for the next pass and returns
-// errFileFault: the stage goes on, and stops only after headerFaultLimit of them in a row. A read
-// that does not return within the stall returns errShareFault, which ends the stage.
+// not give back (an I/O error, a timeout, gone with its folder) stays pending for the next pass and
+// returns errFileFault: the stage goes on, and stops reading its folder only after
+// headerFaultLimit of them in a row. One gone from a folder still there returns errFileGone. A read
+// that does not return within the stall returns errShareFault, which sets its folder's files aside.
 func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.LibraryFile, error) {
 	row := job.row
 	if im.stale(job) {
@@ -213,6 +305,9 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 		}
 		if errors.Is(err, errShareFault) {
 			return row, err
+		}
+		if errors.Is(err, fs.ErrNotExist) && folderAnswers(filepath.Dir(job.file.Path)) {
+			return row, fmt.Errorf("%w: %w", errFileGone, err)
 		}
 		if shareFault(err) {
 			return row, fmt.Errorf("%w: %w", errFileFault, err)
@@ -311,6 +406,22 @@ var errShareFault = errors.New("library scan: the share stopped answering")
 
 // errFileFault is one file the share could not give back. The file stays pending.
 var errFileFault = errors.New("library scan: the share could not give the file back")
+
+// errFileGone is a file gone from a folder the share still lists: an arr renamed or deleted it
+// since the walk. It says nothing of the share.
+var errFileGone = errors.New("library scan: the file is gone from its folder")
+
+// folderAnswers reports whether the share lists dir with something in it. A share that went away
+// lists its folders empty, or not at all.
+func folderAnswers(dir string) bool {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	names, err := f.Readdirnames(1)
+	return err == nil && len(names) > 0
+}
 
 // readHeader reads job's header, giving up once the read has taken the stall. A read blocked on a
 // dead mount cannot be cancelled, so one given up on is left to end on its own, and its root reads

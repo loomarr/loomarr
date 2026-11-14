@@ -395,11 +395,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
   minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
   blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
-  A header read gets the same 2 minutes: one that does not return ends the header stage and stalls
-  its root the same way, so no further reader is sent into the mount. One file the share cannot
-  give back (gone since the walk, an I/O error) stays pending for the next pass and the stage reads
-  on; eight such files in a row with no read between are the share's fault, and end the stage with
-  the rest still pending.
+  A header read gets the same 2 minutes: one that does not return stalls its root the same way, so
+  no further reader is sent into the mount, and the root's other files are set aside while the
+  other roots read on. Once nothing else is left, the stage waits up to 2 minutes more for the read
+  to return, then takes the set-aside files up again, the slow one with them (three times at
+  most). One file the share cannot give back (an I/O error) stays pending for the next pass and the
+  stage reads on; eight such files in a row with no read between are the share's fault, and the
+  stage reads no more of that root. A file gone from a folder the share still lists was renamed or
+  deleted by an arr since the walk, which says nothing of the share. A pass that left a root's
+  files unread does not count as a completed scan.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
