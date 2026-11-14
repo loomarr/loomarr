@@ -154,7 +154,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                   ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
             </Text>
-            <Stack align="center" className="mt-2" direction="row" gap="inline" wrap>
+            <Stack align="center" direction="row" gap="inline" marginTop={8} wrap>
               {isAdmin &&
                 (groundingUnconfigured ? (
                   <Action
@@ -200,7 +200,10 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
       {run.failed && !proposal && (
         <Stack
           role="alert"
-          className="max-w-form border-border bg-muted/35 mx-auto w-full rounded-lg border p-4"
+          marginHorizontal="auto"
+          padding={16}
+          width="100%"
+          className="max-w-form border-border bg-muted/35 rounded-lg border"
           gap="control"
         >
           <div>

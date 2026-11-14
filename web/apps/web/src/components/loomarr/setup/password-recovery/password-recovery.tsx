@@ -25,7 +25,7 @@ const PasswordRecoveryRequest = ({
   if (sent) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <Stack className="mx-auto w-fit" direction="row" render="span">
+        <Stack className="w-fit" direction="row" marginHorizontal="auto" render="span">
           <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
         </Stack>
         <div className="space-y-2">
@@ -53,7 +53,7 @@ const PasswordRecoveryRequest = ({
       width="100%"
     >
       <div className="space-y-2 text-center">
-        <Stack className="mx-auto w-fit" direction="row" render="span">
+        <Stack className="w-fit" direction="row" marginHorizontal="auto" render="span">
           <Icon decorative glyph={icons.mail} size="touch" tone="primary" />
         </Stack>
         <Text as="h1" strong textRole="display">
@@ -118,7 +118,7 @@ const PasswordRecoveryReset = ({
   if (succeeded) {
     return (
       <div className="space-y-5 text-center" role="status">
-        <Stack className="mx-auto w-fit" direction="row" render="span">
+        <Stack className="w-fit" direction="row" marginHorizontal="auto" render="span">
           <Icon decorative glyph={icons.passed} size="tv" tone="primary" />
         </Stack>
         <div className="space-y-2">
@@ -164,7 +164,7 @@ const PasswordRecoveryReset = ({
       width="100%"
     >
       <div className="space-y-2 text-center">
-        <Stack className="mx-auto w-fit" direction="row" render="span">
+        <Stack className="w-fit" direction="row" marginHorizontal="auto" render="span">
           <Icon decorative glyph={icons.key} size="touch" tone="primary" />
         </Stack>
         <Text as="h1" strong textRole="display">

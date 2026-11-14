@@ -135,7 +135,7 @@ const UsersPage = () => {
   const selected = rows?.find((user) => user.id === selectedId);
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="People"
         description="Who can sign in, and what they can ask for."
@@ -186,7 +186,15 @@ const UsersPage = () => {
         }
       />
 
-      <Stack className="min-h-0 overflow-auto p-6" flexBasis="0%" flexGrow={1} flexShrink={1} gap="6">
+      <Stack
+        className="overflow-auto"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        minHeight={0}
+        padding={24}
+      >
         {patch.error != null && <ErrorState error={patch.error} />}
         {revoke.error != null && <ErrorState error={revoke.error} />}
         {invitations.error != null && (

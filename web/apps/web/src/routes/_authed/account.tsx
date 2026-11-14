@@ -93,11 +93,13 @@ const AccountScreen = () => {
       />
 
       <Stack
-        className="max-w-form mx-auto overflow-auto p-6"
+        className="max-w-form overflow-auto"
         flexBasis="0%"
         flexGrow={1}
         flexShrink={1}
         gap="4"
+        marginHorizontal="auto"
+        padding={24}
         width="100%"
       >
         <Card alignItems="center" flexDirection="row" gap={12} padding={20}>
@@ -210,10 +212,12 @@ const AccountScreen = () => {
             {sessionRows.map((s) => (
               <Stack
                 align="center"
-                className="border-border border-b px-4 py-3 last:border-b-0"
+                className="border-border border-b last:border-b-0"
                 direction="row"
                 gap="control"
                 key={s.id}
+                paddingHorizontal={16}
+                paddingVertical={12}
                 render="li"
               >
                 {/* The confirm takes the row's place, as Delete channel's replaces its choices. */}

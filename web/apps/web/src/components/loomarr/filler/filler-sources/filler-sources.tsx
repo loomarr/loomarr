@@ -87,7 +87,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
       )}
 
       {remaining > 0 && (
-        <Stack className="mt-2" direction="row">
+        <Stack direction="row" marginTop={8}>
           <Action
             accessibilityLabel={`Show ${remaining} more under ${sectionLabel}`}
             onPress={() => setExpanded(true)}
@@ -98,7 +98,7 @@ const SourceList = ({ sources, sectionLabel, renderRow, className }: SourceListP
         </Stack>
       )}
       {scalable && expanded && !normalizedFilter && (
-        <Stack className="mt-2" direction="row">
+        <Stack direction="row" marginTop={8}>
           <Action
             accessibilityLabel={`Show fewer under ${sectionLabel}`}
             onPress={() => setExpanded(false)}
@@ -253,10 +253,12 @@ const FillerSources = ({
       {needsLocation && (
         <Stack
           align="center"
-          className="border-caution/30 bg-caution/5 rounded-lg border px-4 py-3"
+          className="border-caution/30 bg-caution/5 rounded-lg border"
           direction="row"
           gap="control"
           justify="between"
+          paddingHorizontal={16}
+          paddingVertical={12}
           wrap
         >
           <div>
