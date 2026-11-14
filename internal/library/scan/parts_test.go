@@ -268,6 +268,15 @@ func TestPartFoldersAreAWholeSetOfOneVideoEach(t *testing.T) {
 func TestAnEpisodeIsNamedByWhatFollowsItsShowAndMark(t *testing.T) {
 	for _, c := range []struct{ rel, want string }{
 		{"Kettle Bay/Season 01/Kettle Bay - S01E03 - The Long Tide [WEBDL-1080p].mkv", "The Long Tide"},
+		// Sonarr's standard name, the show's year after its name.
+		{"Hollin Reach (2005)/Season 08/Hollin Reach (2005) - S08E01 - The Pit [HDTV-720p].mkv", "The Pit"},
+		{"Hollin Reach/Season 08/Hollin.Reach.2005.S08E02.Low.Ground.1080p.WEB.h264-GRP.mkv", "Low Ground"},
+		{"Hollin Reach (2005)/Season 08/Hollin Reach (2005) - S08E03 [HDTV-720p].mkv", "Hollin Reach S08E03"},
+		{"Hollin Reach (2005)/Season 08/Hollin Reach (2005) - S08E04-E05 - Two Parts [WEBDL-1080p].mkv", "Two Parts"},
+		// The folder and the file write the show's name apart, or the name holds a dash of its own.
+		{"Gale Spit The Return/Season 07/Gale Spit - The Return (1987) - S07E10 - Inheritance [Bluray-1080p Remux].mkv", "Inheritance"},
+		{"Kettle Bay - The Series (1987)/Season 01/Kettle Bay - The Series (1987) - S01E24 - Pipe Dream [DVD].mkv", "Pipe Dream"},
+		{"Kettle Bay/Season 01/S01E06.mkv", "S01E06"},
 		{"Kettle Bay/Specials/Kettle Bay - Holiday Special [1080p].mkv", "Holiday Special"},
 		{"Kettle Bay/Season 02/Kettle Bay - Lost Pilot (2019) {tvdb-123}.mkv", "Lost Pilot"},
 		{"Kettle Bay/Season 01/S01E04 - Undertow.mkv", "Undertow"},
