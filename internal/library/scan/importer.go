@@ -118,6 +118,9 @@ type Importer struct {
 	// TitlesChanged hears each write that changes the Library's titles: an item written, a file's
 	// header read, files marked gone. It must not block; nil hears nothing.
 	TitlesChanged func()
+	// AfterReading hears the end of each header stage, once it takes no more files. It must not
+	// block; nil hears nothing.
+	AfterReading func()
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int

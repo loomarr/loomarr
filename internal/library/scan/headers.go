@@ -82,6 +82,9 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) error {
 		im.mu.Unlock()
 		if ended {
 			im.Tracker.End(StepReading)
+			if im.AfterReading != nil {
+				im.AfterReading()
+			}
 		}
 	}()
 	im.prioritize(ctx, queue)
@@ -289,6 +292,13 @@ func (im *Importer) touch(rows []librarystore.LibraryFile, gen int64) {
 }
 
 // stale reports whether an import later than the one that queued job wrote its file.
+// Reading reports whether a header stage is taking files.
+func (im *Importer) Reading() bool {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	return im.reading
+}
+
 func (im *Importer) stale(job pending) bool {
 	im.mu.Lock()
 	defer im.mu.Unlock()
