@@ -118,6 +118,25 @@ describe("Stack with responsive values", () => {
     expect(gaps()).toEqual(["var(--t-space-6)", "var(--t-space-3)"]);
   });
 
+  it("shows and hides a Stack by width, as `hidden md:flex` and `flex md:hidden` do", () => {
+    resizeTo(breakpoints.md - 1);
+    render(
+      <LoomarrProvider theme="dark">
+        <Stack aria-label="sidebar" hidden={{ base: true, md: false }} role="group" />
+        <Stack aria-label="menu" hidden={{ base: false, md: true }} role="group" />
+        <Stack aria-label="always" hidden={false} role="group" />
+      </LoomarrProvider>,
+    );
+    const shown = (name: string) => screen.queryByRole("group", { name }) !== null;
+    expect([shown("sidebar"), shown("menu"), shown("always")]).toEqual([false, true, true]);
+
+    resizeTo(breakpoints.md);
+    expect([shown("sidebar"), shown("menu"), shown("always")]).toEqual([true, false, true]);
+
+    resizeTo(breakpoints.md - 1);
+    expect([shown("sidebar"), shown("menu")]).toEqual([false, true]);
+  });
+
   it("keeps a plain value the same at every width", () => {
     resizeTo(breakpoints.sm - 1);
     render(
