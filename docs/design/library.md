@@ -1030,6 +1030,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   was saved; the pass then saved an identity that said the file was final, and every later pass,
   a full scan included, left its episodes named by their files. The new version writes every
   file once more, so a library caught that way takes its catalog names.
+- **83:** a film's disc as MakeMKV left it, every title named "title_tNN", is read by size: the
+  largest is the film, a title under half its size the disc's bonus, never a second copy
+  (`rippedExtras`). An episode's name titled by a kind only an extra is named by, "S01E01 - Behind
+  the Episode", beside that episode titled otherwise is its extra (`extrasBeside`). A films'
+  shelf's "Sample/" holds samples, but a film named as the folder (`shelfSamples`).
 
 ## Search
 

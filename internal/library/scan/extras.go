@@ -187,7 +187,9 @@ func kindEnds(words []string) bool {
 // read whole by the folder:
 //   - An episode's name titled by a kind of extra alone after its mark, "S01E02 - Sample",
 //     "S01E01 - Commentary", "S01E01 Trailer", "S01E02.Recap", is that episode's extra when
-//     another video beside it numbers the same episode. Alone, it is the episode, titled so.
+//     another video beside it numbers the same episode. Alone, it is the episode, titled so. So is
+//     one titled by a kind only an extra is named by, "S01E01 - Behind the Episode", beside that
+//     episode titled otherwise.
 //   - A show's season and a kind of extra with no episode's mark, "Fernhollow.S01.Bloopers",
 //     "Gullhaven - Season 1 Promo", is the season's extra, as a folder so named is
 //     (seasonExtrasFolder).
@@ -201,14 +203,21 @@ func extrasBeside(names []string) map[string]bool {
 	}
 	// What follows its last mark, set apart any way: "S01E02 - Sample", "S01E01 Trailer",
 	// "S01E02.Preview".
-	titledExtra := func(name string) bool {
+	afterMark := func(name string) []string {
 		marks := episodeMark.FindAllStringIndex(stem(name), -1)
 		if len(marks) == 0 {
-			return false
+			return nil
 		}
-		words := extraWords(stem(name)[marks[len(marks)-1][1]:])
+		return extraWords(stem(name)[marks[len(marks)-1][1]:])
+	}
+	titledExtra := func(name string) bool {
+		words := afterMark(name)
 		return len(words) > 0 && extraKindAt(words) == 0 && kindEnds(words)
 	}
+	// A title a kind only an extra is named by starts, "S01E01 - Behind the Episode", "S01E01 -
+	// Making the Pilot": beside a copy of the episode titled otherwise it is the episode's extra.
+	// Alone, or beside a copy titled as it is, "S01E01 - Behind Enemy Lines" is the episode.
+	kindTitled := func(name string) bool { return strongExtraKind(afterMark(name)) }
 	for _, name := range names {
 		mark, marked := numberingIn(name)
 		if !marked {
@@ -217,12 +226,14 @@ func extrasBeside(names []string) map[string]bool {
 			}
 			continue
 		}
-		if !titledExtra(name) {
+		titled, kinded := titledExtra(name), kindTitled(name)
+		if !titled && !kinded {
 			continue
 		}
 		if slices.ContainsFunc(names, func(other string) bool {
 			n, ok := numberingIn(other)
-			return other != name && ok && !titledExtra(other) && n.Season == mark.Season && n.Episode == mark.Episode
+			return other != name && ok && !titledExtra(other) && (titled || !kindTitled(other)) &&
+				n.Season == mark.Season && n.Episode == mark.Episode
 		}) {
 			add(name)
 		}
@@ -446,6 +457,33 @@ func siblingExtras(folder string, names []string, shows bool) map[string]bool {
 		if titles[key(k.words[:k.at])] || slices.ContainsFunc(k.words[:k.at], releaseYear) && strongExtraKind(k.words[k.at:]) ||
 			titled && strongExtraKind(k.words[k.at:]) && !titles[key(k.words)] {
 			out[k.name] = true
+		}
+	}
+	return out
+}
+
+// rippedExtras is which of a film's disc titles, as MakeMKV left them, are its extras: no name says
+// which title is the feature, so its size does. A title under half the largest's size is the
+// disc's bonus ("title_t01" beside the feature, "title_t00"); titles near the largest's size are
+// the film's own copies, as a disc's cuts are. names are the folder's videos left once siblingExtras
+// has read it; sizeOf is a video's size, 0 when unknown. A season's disc ("KETTLE_BAY_S1_D1") holds
+// episodes, and its play-all title is the largest, so a show's folder is never read this way.
+func rippedExtras(folder string, names []string, sizeOf func(name string) int64) map[string]bool {
+	if len(names) < 2 || seasonDisc.MatchString(folder) || slices.ContainsFunc(names, func(name string) bool {
+		return !makeMKVTitle.MatchString(plainStem(name))
+	}) {
+		return nil
+	}
+	sizes := make(map[string]int64, len(names))
+	var largest int64
+	for _, name := range names {
+		sizes[name] = sizeOf(name)
+		largest = max(largest, sizes[name])
+	}
+	out := map[string]bool{}
+	for name, size := range sizes {
+		if size > 0 && size < largest/2 {
+			out[name] = true
 		}
 	}
 	return out
