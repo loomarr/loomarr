@@ -97,6 +97,22 @@ func shelfBonusExtras(dir string, names []string) map[string]bool {
 	return out
 }
 
+// shelfSamples is which videos in a films' shelf's "Sample/" are its films' samples, as its
+// "Samples/" holds (shelfExtras): every one but a film named as the folder, "Movies/Sample/Sample.mkv".
+// dir is the folder, relative to the root.
+func shelfSamples(dir string, names []string) map[string]bool {
+	if dir == "." || path.Dir(dir) == "." || normName(path.Base(dir)) != "sample" || !amongFilms(path.Dir(dir)) {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, name := range names {
+		if !namedAsFolder(name, path.Base(dir)) {
+			out[name] = true
+		}
+	}
+	return out
+}
+
 // shelfBonus are the folders a films' shelf keeps its films' bonus videos in, by normName.
 var shelfBonus = map[string]bool{
 	"extras": true, "bonus": true, "bonus features": true, "special features": true, "featurettes": true,

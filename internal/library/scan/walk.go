@@ -387,7 +387,23 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	for name := range shelfBonusExtras(w.rel(dir), videoNames) {
 		extras[name] = true
 	}
+	for name := range shelfSamples(path.Join(w.shelf, w.rel(dir)), videoNames) {
+		extras[name] = true
+	}
 	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
+	if !shows && seasonDirOf(w.rel(dir)) == "" {
+		ripped := rippedExtras(folder, videoNames, func(name string) int64 {
+			i := slices.IndexFunc(entries, func(e fs.DirEntry) bool { return e.Name() == name })
+			if st, ok := w.stat(filepath.Join(dir, name), entries[i]); ok {
+				return st.Size
+			}
+			return 0
+		})
+		videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return ripped[name] })
+		for name := range ripped {
+			extras[name] = true
+		}
+	}
 	notes, parts := notesOf(videoNames), partsOf(folder, videoNames)
 	if shows || showLabelled(folder) {
 		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder), as
