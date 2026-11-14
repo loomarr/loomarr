@@ -295,8 +295,8 @@ step 5). Nothing reads the scanner's origins until the cutover.
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
   maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
-- **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used or
-  added, when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
+- **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
+  added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
   the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
   Jellyfin). A pass is *asked* when Scan now, Refresh everything, using or adding a folder or
   setting a mapping started it, or

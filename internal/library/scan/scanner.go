@@ -348,13 +348,14 @@ func (l *Library) Rescan() error {
 	return nil
 }
 
-// SetInUse confirms or releases a root. Confirming one ("Use this folder") asks for a pass, so
-// its media starts arriving now rather than at the next hourly pass.
+// SetInUse confirms or releases a root, and asks for a pass either way, so the change shows now
+// rather than at the next hourly pass: a root confirmed ("Use this folder") starts its media
+// arriving, and one released ("Stop using") has its files forgotten, which a pass does first.
 func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
 	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
 		return err
 	}
-	if inUse && l.Enabled() {
+	if l.Enabled() {
 		l.Scanner.Trigger()
 	}
 	return nil
