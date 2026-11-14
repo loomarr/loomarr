@@ -1,4 +1,4 @@
-import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -76,10 +76,6 @@ const WizardShell = ({
           const status = statusById[step.id] ?? "pending";
           const isCurrent = step.id === currentId;
           const subItems = isCurrent ? step.subItems : undefined;
-          const row = cn(
-            "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5",
-            isCurrent && "bg-static-800",
-          );
           // A reached step is a way back to it. One not yet reached stays text: clicking ahead
           // would land on the frontier anyway (resolveStep), which reads as a broken link.
           const canGo = !isCurrent && onStep !== undefined && reachable?.has(step.id) === true;
@@ -116,15 +112,18 @@ const WizardShell = ({
           return (
             <li key={step.id} aria-current={isCurrent ? "step" : undefined}>
               {canGo ? (
-                <button
-                  type="button"
-                  onClick={() => onStep?.(step.id)}
-                  className={cn(row, "w-[calc(100%+1rem)] cursor-pointer text-left")}
+                <PressableRow onPress={() => onStep?.(step.id)}>{content}</PressableRow>
+              ) : (
+                <Stack
+                  align="center"
+                  backgroundColor={isCurrent ? "surfaceElevated" : undefined}
+                  direction="row"
+                  gap="control"
+                  paddingHorizontal={12}
+                  paddingVertical={10}
                 >
                   {content}
-                </button>
-              ) : (
-                <div className={row}>{content}</div>
+                </Stack>
               )}
 
               {subItems && subItems.length > 0 && (
@@ -140,19 +139,20 @@ const WizardShell = ({
                     const active = sub.id === activeSubItem;
                     return (
                       <li key={sub.id}>
-                        <button
-                          type="button"
-                          onClick={() => onSubItem?.(sub.id)}
+                        <PressableRow
                           aria-current={active ? "true" : undefined}
-                          className={cn(
-                            "w-full cursor-pointer rounded px-2 py-1 text-left text-sm transition-colors",
-                            active
-                              ? "text-foreground font-semibold"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
+                          onPress={() => onSubItem?.(sub.id)}
+                          selected={active}
                         >
-                          {sub.label}
-                        </button>
+                          <Text
+                            as="span"
+                            strong={active}
+                            textRole="compact"
+                            tone={active ? "primary" : "secondary"}
+                          >
+                            {sub.label}
+                          </Text>
+                        </PressableRow>
                       </li>
                     );
                   })}

@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
-import { Icon, icons, MediaTile, Stack, Tooltip } from "@loomarr/design-system";
+import { Icon, InlineAction, icons, MediaTile, Stack, Tooltip } from "@loomarr/design-system";
 import { CardAction, CardStatus, ClipSelect, PictureCard } from "@loomarr/ui";
 import { useState } from "react";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
@@ -288,14 +288,9 @@ const ClipCard = ({ clip, onOpen, onSplit, splitPending, selected, onToggleSelec
         ratio="1/1"
         title={
           nameOpens ? (
-            <button
-              type="button"
-              onClick={onOpen}
-              aria-label={`View details for ${clip.name}`}
-              className="hover:text-signal focus-visible:ring-ring rounded-sm text-left focus-visible:ring-2 focus-visible:outline-none"
-            >
+            <InlineAction aria-label={`View details for ${clip.name}`} onPress={() => onOpen?.()}>
               {clip.name}
-            </button>
+            </InlineAction>
           ) : (
             clip.name
           )
