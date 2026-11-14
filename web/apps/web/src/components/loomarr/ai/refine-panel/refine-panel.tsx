@@ -107,12 +107,14 @@ const RefinePanel = ({
           {generationFailed && (
             <Stack
               align="start"
-              className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 rounded-lg border px-3 py-2"
+              className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 rounded-lg border"
               direction="row"
               gap="inline"
+              paddingHorizontal={12}
+              paddingVertical={8}
               role="alert"
             >
-              <Stack className="mt-0.5" direction="row" render="span">
+              <Stack direction="row" marginTop={2} render="span">
                 <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
               </Stack>
               {failureCopy ? (

@@ -79,7 +79,7 @@ const InvitationJoin = ({
 
       <div className="border-border bg-muted/25 space-y-3 rounded-lg border p-4">
         <Stack align="start" direction="row" gap="control">
-          <Stack className="mt-0.5" direction="row" render="span">
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.person} size="default" tone="primary" />
           </Stack>
           <div className="min-w-0 flex-1">
@@ -96,7 +96,7 @@ const InvitationJoin = ({
         </Stack>
         {preview.role === "admin" ? (
           <Stack className="text-onair-300" direction="row" gap="inline" render="p">
-            <Stack className="mt-0.5" direction="row" render="span">
+            <Stack direction="row" marginTop={2} render="span">
               <Icon decorative glyph={icons.verified} size="compact" tone="inherit" />
             </Stack>
             <Text as="span" textRole="compact" tone="danger">
@@ -105,7 +105,7 @@ const InvitationJoin = ({
           </Stack>
         ) : null}
         <Stack className="text-muted-foreground" direction="row" gap="inline" render="p">
-          <Stack className="mt-0.5" direction="row" render="span">
+          <Stack direction="row" marginTop={2} render="span">
             <Icon decorative glyph={icons.schedule} size="compact" tone="inherit" />
           </Stack>
           <Text as="span" textRole="compact" tone="secondary">

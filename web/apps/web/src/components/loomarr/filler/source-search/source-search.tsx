@@ -166,7 +166,9 @@ const SourceSearch = ({
                 <Stack
                   align="center"
                   key={clip.id}
-                  className="border-border rounded-lg border px-3 py-2"
+                  paddingHorizontal={12}
+                  paddingVertical={8}
+                  className="border-border rounded-lg border"
                   data-clip-id={clip.id}
                   direction="row"
                   gap="control"
@@ -209,7 +211,7 @@ const SourceSearch = ({
                     )}
                   </div>
 
-                  <Stack align="center" className="ml-auto" direction="row" flexShrink={0} gap="1">
+                  <Stack align="center" direction="row" flexShrink={0} gap="1" marginLeft="auto">
                     {onPreview && (
                       <Action
                         accessibilityLabel={`Preview: ${clip.title || clip.id}`}

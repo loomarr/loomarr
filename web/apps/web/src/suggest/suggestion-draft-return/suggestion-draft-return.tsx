@@ -9,10 +9,12 @@ const SuggestionDraftReturn = () => {
   return (
     <Stack
       align="center"
-      className="border-border bg-muted/40 rounded-lg border px-4 py-3"
+      className="border-border bg-muted/40 rounded-lg border"
       direction="row"
       gap="control"
       justify="between"
+      paddingHorizontal={16}
+      paddingVertical={12}
       render="aside"
       wrap
     >

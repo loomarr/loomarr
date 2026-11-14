@@ -101,7 +101,7 @@ const DatabasePage = () => {
     view.error ?? migrate.error?.detail ?? backup.error?.detail ?? preflight.error?.detail ?? null;
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Database"
         description="Which database Loomarr stores everything in, and how to move to another one."

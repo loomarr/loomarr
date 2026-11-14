@@ -1,4 +1,4 @@
-import { Field } from "@loomarr/design-system";
+import { Field, Stack } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { FieldError } from "./field-error";
@@ -30,10 +30,10 @@ const PasswordField = () => {
 // In context: the line under a field that failed validation on submit.
 const UnderAField: Story = {
   render: (args) => (
-    <div className="flex max-w-sm flex-col gap-2">
+    <Stack className="max-w-sm" gap="2">
       <PasswordField />
       <FieldError {...args} />
-    </div>
+    </Stack>
   ),
   args: { errors: [{ message: "Use at least 8 characters." }] },
 };
