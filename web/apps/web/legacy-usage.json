@@ -339,7 +339,7 @@
       "tailwindClasses": 24
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 3
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 3,
