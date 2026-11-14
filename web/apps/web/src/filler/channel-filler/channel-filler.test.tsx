@@ -222,7 +222,8 @@ describe("ChannelFiller", () => {
     stubChannelFiller();
     renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Preview Toy Ad" }));
+    // The pod segment's name holds its visible caption after the clip: "Preview Toy Ad, <caption>".
+    await userEvent.click(await screen.findByRole("button", { name: /^Preview Toy Ad, / }));
     expect(await screen.findByRole("dialog", { name: "Toy Ad" })).toBeInTheDocument();
     expect(document.querySelector('video[src="/v1/filler/media/a1-hash"]')).toBeInTheDocument();
   });

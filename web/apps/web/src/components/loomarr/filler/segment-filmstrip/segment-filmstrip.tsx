@@ -3,7 +3,6 @@ import { Card, MediaTile, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
-import { cn } from "@/lib/utils";
 import type { FilmstripSegment, SegmentFilmstripProps } from "./segment-filmstrip.type";
 
 type TimelineItem =
