@@ -9,6 +9,8 @@ const rows = [
   { meta: "1:00 · from Local", name: "Station ident", status: "Ready" },
 ] as const;
 
+const links = ["Guide", "Channels", "Library"] as const;
+
 const List = () => {
   const [open, setOpen] = useState<string>(rows[1].name);
   return (
@@ -40,6 +42,26 @@ const PressableRowWorkshop = () => (
     <Surface gap="control" padding="section">
       <Text textRole="title">Rows that open an item</Text>
       <List />
+    </Surface>
+    <Surface gap="control" padding="section">
+      <Text textRole="title">Rows that are links</Text>
+      <Surface
+        backgroundColor="transparent"
+        borderColor="$borderDecorative"
+        borderWidth={1}
+        borderRadius={12}
+      >
+        {links.map((link, index) => (
+          <PressableRow
+            divided={index < links.length - 1}
+            key={link}
+            render={<a href={`#${link.toLowerCase()}`} />}
+            selected={index === 1}
+          >
+            <Text textRole="label">{link}</Text>
+          </PressableRow>
+        ))}
+      </Surface>
     </Surface>
     <Surface gap="control" padding="section">
       <Text textRole="title">Disabled</Text>
