@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -447,20 +448,22 @@ func (b *builder) wantOrders(ctx context.Context, s *seriesSeen, series librarys
 func (b *builder) season(ctx context.Context, s *seriesSeen, key librarystore.LibraryCatalogKey) (rec mp.Record, ok, waiting bool) {
 	s.seasonsMu.Lock()
 	defer s.seasonsMu.Unlock()
-	if got, ok := s.seasons[key.ExternalID]; ok {
+	if got, ok := s.seasons[key.ExternalID]; ok && !b.lookedAgain(got.waiting, got.at) {
 		return got.record, got.ok, got.waiting
 	}
 	rec, ok, waiting = b.im.catalogRecord(ctx, key)
 	if s.seasons == nil {
 		s.seasons = map[string]cachedSeason{}
 	}
-	s.seasons[key.ExternalID] = cachedSeason{record: rec, ok: ok, waiting: waiting}
+	s.seasons[key.ExternalID] = cachedSeason{record: rec, ok: ok, waiting: waiting, at: b.im.now()}
 	return rec, ok, waiting
 }
 
 type cachedSeason struct {
 	record      mp.Record
 	ok, waiting bool
+	// at is when it was read; one still waiting is read again after recheckWaiting.
+	at time.Time
 }
 
 // numberedLikeDisk reports whether a series' catalog numbers its episodes as last, the highest
