@@ -14,6 +14,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Grid,
   Icon,
   icons,
   LoadingStrip,
@@ -235,11 +236,10 @@ const SupportBundle = ({
                   )}
                 </form.Field>
               </Stack>
-              <Stack
-                align="start"
-                borderRadius={8}
-                className="border-success/30 bg-success/5 border"
-                direction="row"
+              <Card
+                alignItems="flex-start"
+                borderColor="stateSuccess"
+                flexDirection="row"
                 gap="inline"
                 padding={12}
               >
@@ -249,7 +249,7 @@ const SupportBundle = ({
                 <Text as="p" textRole="hint" tone="secondary">
                   Secrets, URL credentials, and local paths are redacted again while the report is built.
                 </Text>
-              </Stack>
+              </Card>
             </Card>
 
             {busy === "preview" && (
@@ -269,46 +269,46 @@ const SupportBundle = ({
                   </Text>
                   <Text textRole="data">About {formatBytes(preview.estimatedBytes)}</Text>
                 </Stack>
-                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div>
+                <Grid columns={{ base: 2, sm: 4 }} gap="3" render="dl">
+                  <Stack>
                     <Text as="dt" textRole="compact" tone="secondary">
                       Logs
                     </Text>
                     <Text as="dd" textRole="cardLabel">
                       {counts?.events ?? 0}
                     </Text>
-                  </div>
-                  <div>
+                  </Stack>
+                  <Stack>
                     <Text as="dt" textRole="compact" tone="secondary">
                       Processes
                     </Text>
                     <Text as="dd" textRole="cardLabel">
                       {counts?.processes ?? 0}
                     </Text>
-                  </div>
-                  <div>
+                  </Stack>
+                  <Stack>
                     <Text as="dt" textRole="compact" tone="secondary">
                       Outputs
                     </Text>
                     <Text as="dd" textRole="cardLabel">
                       {counts?.processOutputs ?? 0}
                     </Text>
-                  </div>
-                  <div>
+                  </Stack>
+                  <Stack>
                     <Text as="dt" textRole="compact" tone="secondary">
                       Redactions
                     </Text>
                     <Text as="dd" textRole="cardLabel">
                       {counts?.redactions ?? 0}
                     </Text>
-                  </div>
-                </dl>
+                  </Stack>
+                </Grid>
                 {warnings.length > 0 ? (
-                  <Stack borderRadius={8} className="border-caution/30 bg-caution/5 border" padding={12}>
+                  <Card borderColor="stateWarning" padding={12}>
                     <Text as="p" textRole="compact">
                       Some evidence is limited: {warnings.join(", ")}.
                     </Text>
-                  </Stack>
+                  </Card>
                 ) : (
                   <Text as="p" textRole="hint" tone="secondary">
                     No evidence limits were reached in this review.
@@ -317,77 +317,80 @@ const SupportBundle = ({
               </Card>
             )}
 
-            <details className="border-border rounded-lg border p-4">
-              <Text as="summary" className="cursor-pointer" textRole="cardLabel">
-                <span className="mr-2 inline-flex align-middle">
-                  <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
-                </span>{" "}
-                Customize report
-              </Text>
-              <Stack gap="4" marginTop={16}>
-                <fieldset>
-                  <Text as="legend" className="mb-2" textRole="cardLabel">
-                    Evidence types
-                  </Text>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {EVIDENCE_TYPES.map(([label, kind]) => (
-                      <Stack
-                        borderColor="borderDecorative"
-                        borderRadius={8}
-                        borderWidth={1}
-                        key={kind}
-                        paddingHorizontal={12}
-                      >
-                        <Toggle
-                          label={label}
-                          checked={values[kind]}
-                          onCheckedChange={(next) => updateCategory(kind, next)}
-                        />
+            <Card padding={16}>
+              <details>
+                <Text as="summary" cursor="pointer" textRole="cardLabel">
+                  <span className="mr-2 inline-flex align-middle">
+                    <Icon decorative glyph={icons.settingsAdjust} size="compact" tone="inherit" />
+                  </span>{" "}
+                  Customize report
+                </Text>
+                <Stack gap="4" paddingTop={16}>
+                  <fieldset>
+                    <Text as="legend" textRole="cardLabel">
+                      Evidence types
+                    </Text>
+                    <Stack paddingTop={8}>
+                      <Grid columns={{ base: 1, sm: 3 }} gap="2">
+                        {EVIDENCE_TYPES.map(([label, kind]) => (
+                          <Stack
+                            borderColor="borderDecorative"
+                            borderRadius={8}
+                            borderWidth={1}
+                            key={kind}
+                            paddingHorizontal={12}
+                          >
+                            <Toggle
+                              label={label}
+                              checked={values[kind]}
+                              onCheckedChange={(next) => updateCategory(kind, next)}
+                            />
+                          </Stack>
+                        ))}
+                      </Grid>
+                    </Stack>
+                  </fieldset>
+                  <Stack gap="2">
+                    <Text as="h4" textRole="cardLabel">
+                      Exact identifiers
+                    </Text>
+                    <Grid columns={{ base: 1, sm: 2 }} gap="3">
+                      {CORRELATION_FIELDS.map(([label, key]) => (
+                        <form.AppField key={key} name={key}>
+                          {(field) => <field.TextField label={label} maxLength={128} />}
+                        </form.AppField>
+                      ))}
+                    </Grid>
+                  </Stack>
+                  {preview && (
+                    <details>
+                      <Text as="summary" cursor="pointer" textRole="compact" tone="secondary">
+                        Files included
+                      </Text>
+                      <Stack paddingTop={8}>
+                        <Grid columns={{ base: 1, sm: 2 }} gap="1" render="ul">
+                          {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
+                            (name) => (
+                              <Text as="li" key={name} textRole="mono" tone="primary">
+                                {name}
+                              </Text>
+                            ),
+                          )}
+                        </Grid>
                       </Stack>
-                    ))}
-                  </div>
-                </fieldset>
-                <Stack gap="2">
-                  <Text as="h4" textRole="cardLabel">
-                    Exact identifiers
-                  </Text>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {CORRELATION_FIELDS.map(([label, key]) => (
-                      <form.AppField key={key} name={key}>
-                        {(field) => <field.TextField label={label} maxLength={128} />}
-                      </form.AppField>
-                    ))}
-                  </div>
+                    </details>
+                  )}
                 </Stack>
-                {preview && (
-                  <details>
-                    <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
-                      Files included
-                    </Text>
-                    <Text as="ul" className="mt-2 grid gap-1 sm:grid-cols-2" textRole="mono" tone="primary">
-                      {["manifest.json", ...preview.manifest.entries.map((entry) => entry.name)].map(
-                        (name) => (
-                          <li key={name}>{name}</li>
-                        ),
-                      )}
-                    </Text>
-                  </details>
-                )}
-              </Stack>
-            </details>
+              </details>
+            </Card>
           </Stack>
 
           {error && (
-            <Stack
-              borderRadius={8}
-              className="border-destructive/40 bg-destructive/10 border"
-              padding={12}
-              role="alert"
-            >
+            <Card borderColor="stateDanger" padding={12} role="alert">
               <Text as="p" textRole="compact" tone="danger">
                 {error}
               </Text>
-            </Stack>
+            </Card>
           )}
 
           <DialogFooter>

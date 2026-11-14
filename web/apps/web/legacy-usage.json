@@ -326,7 +326,7 @@
       "rawTypeSize": 7
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 48
+      "tailwindClasses": 29
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 33,
@@ -341,7 +341,7 @@
       "tailwindClasses": 31
     },
     "src/diagnostics/playout-diagnostics/playout-diagnostics.tsx": {
-      "tailwindClasses": 55
+      "tailwindClasses": 20
     },
     "src/diagnostics/server-status/server-status.tsx": {
       "tailwindClasses": 2
@@ -350,7 +350,7 @@
       "tailwindClasses": 24
     },
     "src/diagnostics/support-bundle/support-bundle.tsx": {
-      "tailwindClasses": 33
+      "tailwindClasses": 3
     },
     "src/discovery-feedback/discovery-feedback.tsx": {
       "tailwindClasses": 3,

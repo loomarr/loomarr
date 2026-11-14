@@ -10,6 +10,7 @@ import {
   Chip,
   CompactSelect,
   Field,
+  Grid,
   Icon,
   icons,
   PressableRow,
@@ -186,7 +187,7 @@ const EventDetail = ({
         )}
       </Stack>
       <Card padding={12} render="details">
-        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+        <Text as="summary" cursor="pointer" textRole="cardLabel">
           Technical details
         </Text>
         <Stack gap="3" marginTop={12}>
@@ -462,7 +463,7 @@ const ApplicationDiagnostics = ({
               Use these when you already know the affected source or identifier.
             </Text>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <Grid columns={{ base: 1, sm: 2 }} gap="3">
             <CompactSelect<EventSource>
               label="Source"
               onValueChange={(source) => updateFilters({ ...filters, source })}
@@ -480,27 +481,29 @@ const ApplicationDiagnostics = ({
               placeholder="Subsystem"
               value={filters.subsystem}
             />
-          </div>
+          </Grid>
           <details>
-            <Text as="summary" className="cursor-pointer" textRole="cardLabel" tone="secondary">
+            <Text as="summary" cursor="pointer" textRole="cardLabel" tone="secondary">
               IDs and correlations
             </Text>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {correlationFilters.map(([label, key]) => (
-                <Field
-                  accessibilityLabel={label}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  key={key}
-                  onChangeText={(text) => updateFilters({ ...filters, [key]: text || undefined })}
-                  placeholder={label}
-                  value={filters[key] ?? ""}
-                />
-              ))}
-            </div>
+            <Stack paddingTop={12}>
+              <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="3">
+                {correlationFilters.map(([label, key]) => (
+                  <Field
+                    accessibilityLabel={label}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    key={key}
+                    onChangeText={(text) => updateFilters({ ...filters, [key]: text || undefined })}
+                    placeholder={label}
+                    value={filters[key] ?? ""}
+                  />
+                ))}
+              </Grid>
+            </Stack>
           </details>
           <details>
-            <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+            <Text as="summary" cursor="pointer" textRole="cardLabel">
               Verbose capture
             </Text>
             <Stack marginTop={12}>
@@ -579,13 +582,13 @@ const ApplicationDiagnostics = ({
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
         <Card paddingHorizontal={16} paddingVertical={32}>
-          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             Loading retained diagnostics…
           </Text>
         </Card>
       ) : events.length === 0 ? (
         <Card paddingHorizontal={16} paddingVertical={32}>
-          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             No logs match these filters. Try a longer time range or clear More filters.
           </Text>
         </Card>
@@ -611,8 +614,14 @@ const ApplicationDiagnostics = ({
                       key={event.id}
                       ref={virtualizer.measureElement}
                       data-index={virtualRow.index}
-                      className="border-border absolute top-0 left-0 w-full border-b"
-                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                      style={{
+                        borderBottom: "1px solid var(--borderDecorative)",
+                        left: 0,
+                        position: "absolute",
+                        top: 0,
+                        transform: `translateY(${virtualRow.start}px)`,
+                        width: "100%",
+                      }}
                     >
                       <PressableRow
                         aria-expanded={open}
