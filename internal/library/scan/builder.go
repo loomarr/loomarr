@@ -393,7 +393,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		// An episode's NFO that numbers it as another episode than its name's mark does is that
 		// episode's, copied beside the wrong file: the name's number stands (precedence), and the
 		// NFO's title, overview and ids, another episode's, are set aside with its number.
-		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok && !(id.kind == mp.KindEpisode && numbersAnother(rec.Numbering, id.embedded.Numbering)) {
+		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok && (id.kind != mp.KindEpisode || !numbersAnother(rec.Numbering, id.embedded.Numbering)) {
 			records = append(records, rec)
 			if id.kind == mp.KindEpisode {
 				further = append(further, rec.More...)
