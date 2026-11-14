@@ -107,6 +107,56 @@ describe("Grid on the web", () => {
     expect(screen.getByTestId("wide").style.gridColumn).toBe("span 2 / span 2");
   });
 
+  it("draws a list of tracks as written, and changes it with the window", () => {
+    resizeTo(breakpoints.md - 1);
+    render(
+      <LoomarrProvider theme="dark">
+        <Grid
+          aria-label="grid"
+          columns={{ base: 1, md: ["17rem", "1fr"], lg: ["auto", "54px", "minmax(12rem,1fr)", "1.5fr"] }}
+          role="group"
+        />
+      </LoomarrProvider>,
+    );
+    expect(getComputedStyle(grid()).gridTemplateColumns).toBe("repeat(1, minmax(0, 1fr))");
+
+    resizeTo(breakpoints.md);
+    expect(getComputedStyle(grid()).gridTemplateColumns).toBe("17rem 1fr");
+
+    resizeTo(breakpoints.lg);
+    expect(getComputedStyle(grid()).gridTemplateColumns).toBe("auto 54px minmax(12rem,1fr) 1.5fr");
+  });
+
+  it("clamps a span to the tracks in a list", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Grid columns={["auto", "1fr"]}>
+          <GridItem data-testid="wide" span="full">
+            x
+          </GridItem>
+        </Grid>
+      </LoomarrProvider>,
+    );
+    expect(screen.getByTestId("wide").style.gridColumn).toBe("span 2 / span 2");
+  });
+
+  it("starts an item in a named column and runs it to the end with `full`", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Grid columns={["auto", "1fr", "auto"]}>
+          <GridItem data-testid="rest" from={2} span="full">
+            rest
+          </GridItem>
+          <GridItem data-testid="two" from={2} span={2}>
+            two
+          </GridItem>
+        </Grid>
+      </LoomarrProvider>,
+    );
+    expect(screen.getByTestId("rest").style.gridColumn).toBe("2 / -1");
+    expect(screen.getByTestId("two").style.gridColumn).toBe("2 / span 2");
+  });
+
   it("never spans past the columns that exist", () => {
     render(
       <LoomarrProvider theme="dark">

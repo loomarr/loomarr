@@ -38,6 +38,38 @@ const Workshop = ({ width = 720 }: { width?: number }) => (
     </Stack>
     <Stack gap="inline">
       <Text textRole="metadata" tone="secondary">
+        columns {'{ base: 1, sm: ["8rem", "1fr", "6rem"] }'}, a label, a flexible cell and a fixed one
+      </Text>
+      <Grid columnGap="4" columns={{ base: 1, sm: ["8rem", "1fr", "6rem"] }} rowGap="2">
+        <Cell>Label</Cell>
+        <Cell>Takes what is left</Cell>
+        <Cell>Fixed</Cell>
+        <GridItem from={2} span="full">
+          <Cell>From the second column to the end</Cell>
+        </GridItem>
+      </Grid>
+    </Stack>
+    <Stack gap="inline">
+      <Text textRole="metadata" tone="secondary">
+        columns ["auto", "1fr"], a definition list
+      </Text>
+      <Grid columnGap="4" columns={["auto", "1fr"]} render="dl" rowGap="1">
+        <Text as="dt" textRole="label" tone="secondary">
+          Quality
+        </Text>
+        <Text as="dd" textRole="compact">
+          1080p
+        </Text>
+        <Text as="dt" textRole="label" tone="secondary">
+          Source
+        </Text>
+        <Text as="dd" textRole="compact">
+          A long value that wraps within its own column
+        </Text>
+      </Grid>
+    </Stack>
+    <Stack gap="inline">
+      <Text textRole="metadata" tone="secondary">
         render="ul", items aligned to the start
       </Text>
       <Grid
