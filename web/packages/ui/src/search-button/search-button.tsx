@@ -39,7 +39,7 @@ const SearchButton = ({ hint, keyShortcuts, onPress, placeholder }: SearchButton
         paddingHorizontal={semanticSpace.control}
       >
         <Icon decorative glyph={icons.search} size="compact" tone="muted" />
-        <Text style={{ flexGrow: 1, flexShrink: 1, textAlign: "left" }} textRole="body" tone="muted">
+        <Text flexGrow={1} flexShrink={1} textAlign="left" textRole="body" tone="muted">
           {placeholder}
         </Text>
         {hint ? (
