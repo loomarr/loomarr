@@ -99,7 +99,7 @@
       "flexStack": 1
     },
     "apps/web/src/filler/filler-settings/filler-settings.tsx": {
-      "flexStack": 4
+      "flexStack": 1
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 2

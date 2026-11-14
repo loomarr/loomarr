@@ -85,7 +85,7 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
-      "tailwindClasses": 59,
+      "tailwindClasses": 36,
       "rawButton": 1,
       "rawTypeSize": 2,
       "rawTypeWeight": 1
@@ -164,7 +164,7 @@
       "tailwindClasses": 25
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "tailwindClasses": 41
+      "tailwindClasses": 22
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "tailwindClasses": 30,
@@ -177,7 +177,7 @@
       "tailwindClasses": 23
     },
     "src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
-      "tailwindClasses": 73,
+      "tailwindClasses": 55,
       "rawButton": 1,
       "rawTypeSize": 3,
       "rawTypeWeight": 1
@@ -409,8 +409,7 @@
       "tailwindClasses": 22
     },
     "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 80,
-      "rawTypeSize": 2
+      "tailwindClasses": 44
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
       "tailwindClasses": 8

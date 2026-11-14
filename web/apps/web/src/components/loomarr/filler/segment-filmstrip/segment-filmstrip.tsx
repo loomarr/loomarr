@@ -1,5 +1,5 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Card, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -51,13 +51,16 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
     .join(" ");
 
   return (
-    <section
-      className={cn(
-        "border-border bg-muted/15 max-w-full min-w-0 overflow-hidden rounded-lg border p-3",
-        className,
-      )}
+    <Card
+      className={className}
+      gap={12}
+      maxWidth="100%"
+      minWidth={0}
+      overflow="hidden"
+      padding={12}
+      render="section"
     >
-      <Stack align="end" className="mb-3" direction="row" gap="inline" justify="between" wrap>
+      <Stack align="end" direction="row" gap="inline" justify="between" wrap>
         <div>
           <Text as="h2" textRole="cardLabel" tone="primary">
             Clips Loomarr found
@@ -105,24 +108,32 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   align="start"
                   width={256}
                   content={
-                    <>
-                      <Text as="p" className="truncate" textRole="cardLabel" tone="primary">
-                        {name}
-                      </Text>
-                      <Text as="p" className="mt-0.5 tabular-nums" textRole="mono" tone="secondary">
-                        {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
-                        {formatClipDuration(item.durationMs)}
-                      </Text>
+                    <Stack gap="2">
+                      <Stack gap="0.5">
+                        <Text as="p" className="truncate" textRole="cardLabel" tone="primary">
+                          {name}
+                        </Text>
+                        <Text as="p" className="tabular-nums" textRole="mono" tone="secondary">
+                          {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
+                          {formatClipDuration(item.durationMs)}
+                        </Text>
+                      </Stack>
                       {tags.length > 0 || item.language ? (
-                        <p className="text-muted-foreground mt-2">
+                        <Text as="p" textRole="hint" tone="secondary">
                           {[...tags, item.language ? languageName(item.language) : ""]
                             .filter(Boolean)
                             .join(" · ")}
-                        </p>
+                        </Text>
                       ) : null}
-                      {item.attention ? <p className="text-caution mt-2">{item.attention}</p> : null}
-                      <p className="text-static-300 mt-2">Click to play this exact clip.</p>
-                    </>
+                      {item.attention ? (
+                        <Text as="p" textRole="hint" tone="warning">
+                          {item.attention}
+                        </Text>
+                      ) : null}
+                      <Text as="p" textRole="hint" tone="secondary">
+                        Click to play this exact clip.
+                      </Text>
+                    </Stack>
                   }
                 >
                   <button
@@ -146,9 +157,12 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     ) : (
                       <Stack
                         align="center"
-                        className="text-muted-foreground size-full px-2 text-center text-[10px]"
+                        className="text-muted-foreground text-center text-[10px]"
                         direction="row"
+                        height="100%"
                         justify="center"
+                        paddingHorizontal={8}
+                        width="100%"
                         render="span"
                       >
                         Preview unavailable
@@ -167,7 +181,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
           })}
         </ul>
       </section>
-    </section>
+    </Card>
   );
 };
 
