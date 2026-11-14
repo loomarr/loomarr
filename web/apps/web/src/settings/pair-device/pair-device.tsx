@@ -35,7 +35,7 @@ const SignInFirst = ({ code }: { code: string }) => {
         Sign in first, then we'll bring you straight back here to finish adding your device.
       </Text>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
-      <Stack className="mt-8" direction="row" justify="center">
+      <Stack direction="row" justify="center" marginTop={32}>
         <Action
           accessibilityRole="link"
           density="touch"
@@ -185,7 +185,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
                 <Text as="p" textRole="reading" tone="warning">
                   Couldn't reach Loomarr. Check your connection and try again.
                 </Text>
-                <Stack className="mt-3" direction="row" justify="center">
+                <Stack direction="row" justify="center" marginTop={12}>
                   <Action onPress={retry} variant="outline">
                     Try again
                   </Action>

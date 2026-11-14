@@ -1,4 +1,4 @@
-import { Text } from "@loomarr/design-system";
+import { Stack, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { FieldHelp } from "./field-help";
 
@@ -15,10 +15,10 @@ type Story = StoryObj<typeof meta>;
 // In context: a field label with its help icon beside it — the pattern across the settings forms.
 const InALabelRow: Story = {
   render: (args) => (
-    <div className="flex items-center gap-2">
+    <Stack align="center" direction="row" gap="2">
       <Text textRole="label">Ordering</Text>
       <FieldHelp {...args} />
-    </div>
+    </Stack>
   ),
   args: { label: "Ordering", children: "How programs are sequenced on this channel." },
 };

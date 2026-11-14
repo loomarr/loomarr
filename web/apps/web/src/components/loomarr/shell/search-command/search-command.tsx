@@ -1,4 +1,4 @@
-import { Action, Badge, Combobox, type ComboboxGroup, Icon, icons } from "@loomarr/design-system";
+import { Action, Badge, Combobox, type ComboboxGroup, Icon, icons, Text } from "@loomarr/design-system";
 import type { PaletteScope, SearchCommandProps, SearchResult } from "./search-command.type";
 
 // SearchCommand — the ⌘K palette (§3, §7.2) over library/TMDB/clips + channels + help.
@@ -54,7 +54,11 @@ const SearchCommand = ({
         trailing:
           result.meta || result.inLibrary ? (
             <>
-              {result.meta && <span className="text-static-400 font-mono text-xs">{result.meta}</span>}
+              {result.meta && (
+                <Text as="span" textRole="mono">
+                  {result.meta}
+                </Text>
+              )}
               {result.inLibrary && (
                 <Badge shape="square" tone="lock">
                   In library

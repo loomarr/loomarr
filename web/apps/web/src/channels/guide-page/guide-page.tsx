@@ -415,7 +415,7 @@ const GuidePage = () => {
     // toolbar and grid are separated by RULES, not whitespace, and whose grid owns the only
     // scroll container. Padding here is what produced a page that scrolled horizontally
     // underneath a grid that had room.
-    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} flexShrink={1}>
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
       {/* Row 1 — title + the one origination door, far right (mock: its own row). */}
       <PageHeader
         title="Guide"
@@ -634,7 +634,7 @@ const GuidePage = () => {
         // scaled up and brightened, at which point it dominates a surface whose whole job is to
         // stay calm and point at one button. A sweep is an attention-grabber, and "Dead air" is a
         // RESTING state.
-        <Stack align="center" className="p-10" flexBasis="0%" flexGrow={1} flexShrink={1} justify="center">
+        <Stack align="center" flexBasis="0%" flexGrow={1} flexShrink={1} justify="center" padding={40}>
           <EmptyState
             // The state family's own static colour bars lead the panel (#2783): a test card is
             // what a set showed when nothing was broadcasting. Still, like the page around it.
@@ -648,7 +648,7 @@ const GuidePage = () => {
         </Stack>
       ) : (
         // Desktop browsing uses the full available width with contextual previews.
-        <Stack className="relative min-h-0" direction="row" flexBasis="0%" flexGrow={1} flexShrink={1}>
+        <Stack className="relative" direction="row" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
           {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
           {guide.isPlaceholderData && (
