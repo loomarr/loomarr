@@ -12,6 +12,27 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
+// A pass the watch wakes the scanner for, having lost track of what changed, is nobody's ask: it
+// is quiet unless it finds work, as the hourly one is. Scan now is asked for.
+func TestAPassTheWatchWakesForIsNotAskedFor(t *testing.T) {
+	tracker := &Tracker{}
+	sc := NewScanner(&Importer{Tracker: tracker}, time.Hour)
+	pending := func() bool {
+		tracker.mu.Lock()
+		defer tracker.mu.Unlock()
+		return tracker.pending
+	}
+	sc.PassSoon()
+	if len(sc.trigger) != 1 || pending() {
+		t.Fatalf("PassSoon: woken %v, asked %v; want woken, not asked", len(sc.trigger) == 1, pending())
+	}
+	<-sc.trigger
+	sc.Trigger()
+	if len(sc.trigger) != 1 || !pending() {
+		t.Fatalf("Trigger: woken %v, asked %v; want both", len(sc.trigger) == 1, pending())
+	}
+}
+
 // Each folder waits on its own: a quiet one is due while a busy one keeps waiting, and the busy one
 // is due anyway once it has waited MaxWait.
 func TestDueFoldersWaitEachOnTheirOwn(t *testing.T) {
