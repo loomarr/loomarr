@@ -64,10 +64,19 @@ const HelpPage = () => {
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />;
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
+      <Stack
+        className="overflow-auto"
+        direction={{ base: "column", md: "row" }}
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        minHeight={0}
+        padding={24}
+      >
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card gap={12} padding={12}>
             <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
@@ -115,7 +124,7 @@ const HelpPage = () => {
             />
           )}
         </div>
-      </div>
+      </Stack>
     </Stack>
   );
 };

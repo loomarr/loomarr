@@ -80,8 +80,9 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
             <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
             <Stack
               align="center"
-              className="border-border h-8 rounded-md border px-2"
+              className="border-border h-8 rounded-md border"
               direction="row"
+              paddingHorizontal={8}
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
@@ -108,7 +109,7 @@ const Palette = () => {
   const accentRows = Object.entries(accents);
 
   return (
-    <Stack className="p-6" gap="screen">
+    <Stack gap="screen" padding={24}>
       <Stack gap="1" render="header">
         <Text as="h1" textRole="title">
           Palette

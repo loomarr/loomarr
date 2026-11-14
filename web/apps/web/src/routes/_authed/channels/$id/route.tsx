@@ -244,7 +244,7 @@ const ChannelDetailLayout = () => {
   const saveLogo = (logo: string) => channelSave.save({ logo });
 
   return (
-    <Stack className="h-full">
+    <Stack height="100%">
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
@@ -300,7 +300,7 @@ const ChannelDetailLayout = () => {
               </Text>
             </Stack>
           </div>
-          <Stack align="center" className="ml-auto" direction="row" gap="inline">
+          <Stack align="center" direction="row" gap="inline" marginLeft="auto">
             <Text as="span" shout textRole="data">
               Ch
             </Text>
@@ -387,7 +387,7 @@ const ChannelDetailLayout = () => {
         ref={sectionScroller}
         style={{ position: "relative" }}
       >
-        <Stack className="max-w-detail mx-auto w-full p-6" gap="4">
+        <Stack className="max-w-detail" gap="4" marginHorizontal="auto" padding={24} width="100%">
           <ChannelDetailProvider
             value={{
               id,

@@ -83,9 +83,9 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       <Stack
         align="center"
         aria-label="Commercial break"
-        className="py-1.5"
         direction="row"
         gap="inline"
+        paddingVertical={6}
         render="li"
       >
         <div className="bg-border h-px flex-1" />
@@ -218,7 +218,8 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             // (it holds the SxxEyy), and the index closes the remaining gap.
             // biome-ignore lint/suspicious/noArrayIndexKey: disambiguator, not the sole key
             key={`${item.key}-${item.title}-${i}`}
-            className="px-3 py-2"
+            paddingHorizontal={12}
+            paddingVertical={8}
             gap="0.5"
             render="li"
           >
@@ -290,7 +291,8 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
             // Repeated airings legitimately share key/title/reason; position + index keep rows distinct.
             // biome-ignore lint/suspicious/noArrayIndexKey: index disambiguates repeated trace facts
             key={`${fact.stage}-${fact.key ?? "gap"}-${fact.reason}-${fact.cyclePosition ?? "x"}-${i}`}
-            className="px-3 py-2"
+            paddingHorizontal={12}
+            paddingVertical={8}
             gap="0.5"
             render="li"
           >
@@ -384,7 +386,7 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
           value={toDatetimeLocalValue(at, timeZone)}
           width={224}
         />
-        <Stack className="pb-0.5" direction="row" gap="1.5" wrap>
+        <Stack direction="row" gap="1.5" paddingBottom={2} wrap>
           {TIME_PRESETS.map((preset) => (
             <Action key={preset.label} onPress={() => setAt(preset.at(timeZone))} variant="outline">
               {preset.label}
@@ -417,9 +419,11 @@ const ChannelCyclePreview = ({ channelId, lineupKeys, draftPolicy, className }: 
         <Stack gap="control">
           <Stack
             align="center"
-            className="border-border bg-card rounded-md border px-3 py-2.5"
+            className="border-border bg-card rounded-md border"
             direction="row"
             gap="inline"
+            paddingHorizontal={12}
+            paddingVertical={10}
             wrap
           >
             <Icon decorative glyph={icons.filler} size="compact" tone="muted" />

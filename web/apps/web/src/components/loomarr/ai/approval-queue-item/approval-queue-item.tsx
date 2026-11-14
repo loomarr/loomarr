@@ -67,9 +67,11 @@ const PickRow = ({
   return (
     <Stack
       align="center"
-      className="border-border bg-card rounded-md border px-2.5 py-1.5"
+      className="border-border bg-card rounded-md border"
       direction="row"
       gap="inline"
+      paddingHorizontal={10}
+      paddingVertical={6}
       render="li"
       wrap
     >
@@ -218,13 +220,14 @@ const ApprovalQueueItem = ({
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
         <Stack
-          className="border-border border-t pt-2"
+          className="border-border border-t"
           gap="2"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void form.handleSubmit();
           }}
+          paddingTop={8}
           render="form"
         >
           <form.AppField name="reason">
@@ -263,7 +266,12 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <Stack className="border-caution-tint-40 bg-caution-tint-8 rounded-md border px-3 py-2" gap="1.5">
+        <Stack
+          className="border-caution-tint-40 bg-caution-tint-8 rounded-md border"
+          gap="1.5"
+          paddingHorizontal={12}
+          paddingVertical={8}
+        >
           <Stack align="center" direction="row" gap="1.5" render="p">
             <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
             <Text as="span" textRole="cardLabel">
@@ -361,7 +369,7 @@ const ApprovalQueueItem = ({
                 renderFeedback={renderFeedback}
               />
             ) : (
-              <Stack className="mt-2" gap="1.5" render="ul">
+              <Stack gap="1.5" marginTop={8} render="ul">
                 {lineup?.map((it) => (
                   <PickRow key={`lib-${it.name}`} item={it} kind="lineup" renderFeedback={renderFeedback} />
                 ))}
