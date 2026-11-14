@@ -245,25 +245,39 @@ type episodeRow struct {
 	seriesDir string
 }
 
-// Run makes one pass. Imports never overlap: a second caller waits for the first. Header reads
-// follow the import, in the one header stage (readHeaders).
+// Run makes one pass: Walk, then its header reads.
 func (im *Importer) Run(ctx context.Context) error {
+	read, err := im.Walk(ctx)
+	if err != nil {
+		return err
+	}
+	return read()
+}
+
+// Walk walks and imports every in-use root, and returns the pass's header reads, in the one header
+// stage (readHeaders). Imports never overlap: a second caller waits for the first. A pass whose
+// reads find the stage reading hands its files to it, so a caller running read in the background
+// can walk again at once: a folder added, or a Scan now, is not held behind a first import's
+// reading (Scanner.Run).
+func (im *Importer) Walk(ctx context.Context) (read func() error, err error) {
 	if im.Enabled != nil && !im.Enabled() {
-		return nil
+		return func() error { return nil }, nil
 	}
 	queue, err := im.importAll(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	complete, err := im.readHeaders(ctx, queue)
-	if err != nil {
-		return err
-	}
-	// A pass that left a folder's files unread, its share not answering, has not scanned it.
-	if complete {
-		im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
-	}
-	return nil
+	return func() error {
+		complete, err := im.readHeaders(ctx, queue)
+		if err != nil {
+			return err
+		}
+		// A pass that left a folder's files unread, its share not answering, has not scanned it.
+		if complete {
+			im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
+		}
+		return nil
+	}, nil
 }
 
 // importAll walks and imports every in-use root, and returns the files waiting for their header.
