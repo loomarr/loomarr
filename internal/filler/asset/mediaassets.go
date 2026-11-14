@@ -44,7 +44,8 @@ type Identity struct {
 func (i Identity) Released() bool { return i.Role == RoleSourceMaster && i.Path == "" }
 
 // ErrSourceMasterReleased refuses work that needs the acquired bytes of a clip whose master was
-// released. The clip airs on its playback copy; reprocessing it means fetching it again.
+// released. The clip airs on its playback copy; a rewind that would need the original retires
+// the clip for a replacement instead (decision 0048).
 var ErrSourceMasterReleased = errors.New("the original download was released once the clip was ready")
 
 // DerivativePath is the catalog-relative path of a rendition, or "" when there is none.

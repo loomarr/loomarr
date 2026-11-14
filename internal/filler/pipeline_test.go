@@ -545,51 +545,68 @@ func TestPipeline_RewindRefusesAClipWhoseFilesWereDeleted(t *testing.T) {
 }
 
 // A Ready clip whose original was released (#3855) airs on its playback copy. The rungs up to
-// screening read the original or the evidence built from it, so a rewind there is refused; later
-// rungs read the playback copy and still rewind.
+// screening read the original or the evidence built from it, so a rewind there retires the clip
+// for a replacement (decision 0048); later rungs read the playback copy and still rewind.
 // The original is gone once upkeep released it, and also when upkeep moved it but had not yet
 // rewritten the sidecar (a crash, or a failed write the next pass finishes).
-func TestPipeline_RewindNeedingTheOriginalIsRefusedOnceItIsGone(t *testing.T) {
+func TestPipeline_RewindNeedingTheOriginalRetiresTheClipOnceItIsGone(t *testing.T) {
 	for name, masterPath := range map[string]string{
 		"released":            "",
 		"moved, sidecar left": filepath.ToSlash(filepath.Join(".loomarr-media", "masters", "cd", "cd", "gone.mkv")),
 	} {
-		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
-			hash := strings.Repeat("ab", 32)
-			rel := filepath.ToSlash(filepath.Join("ab", "ab", hash+".mp4"))
-			full := filepath.Join(dir, filepath.FromSlash(rel))
-			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(full, []byte("playback"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if err := asset.WriteSidecarTags(full, asset.SidecarTags{MediaAssets: &asset.Manifest{
-				Version: asset.ManifestVersion, SourceMaster: asset.Identity{Role: asset.RoleSourceMaster,
-					SHA256: strings.Repeat("cd", 32), Bytes: 10, ClipHash: strings.Repeat("ef", 32), Path: masterPath},
-			}}, false); err != nil {
-				t.Fatal(err)
-			}
-			st := newPipeMemStore()
-			seedEnrolled(st, hash)
-			c := st.clips[hash]
-			c.Path, c.Held = rel, false
-			st.clips[hash] = c
-			p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, dir)
-			for _, from := range []pipelinestate.StageID{pipelinestate.StageProbe, pipelinestate.StageSplit, pipelinestate.StageScreen} {
-				if err := p.Rewind(t.Context(), hash, from, true); !errors.Is(err, asset.ErrSourceMasterReleased) {
-					t.Errorf("Rewind(%s) = %v, want ErrSourceMasterReleased", from, err)
+		for _, from := range []pipelinestate.StageID{pipelinestate.StageProbe, pipelinestate.StageSplit, pipelinestate.StageScreen, pipelinestate.StageVision} {
+			t.Run(name+"/"+string(from), func(t *testing.T) {
+				st, p, hash := releasedClip(t, masterPath)
+				if err := p.Rewind(t.Context(), hash, from, false); err != nil {
+					t.Fatalf("Rewind(%s) = %v", from, err)
 				}
-			}
-			if st.clips[hash].Held {
-				t.Fatal("a refused rewind held the clip; it should stay on air")
-			}
-			if err := p.Rewind(t.Context(), hash, pipelinestate.StageVision, false); err != nil {
-				t.Errorf("Rewind(vision) = %v, want it allowed: vision reads the playback copy", err)
-			}
-		})
+				if !st.clips[hash].Held {
+					t.Fatal("the clip is still on air")
+				}
+				row := st.rows[hash]
+				if from == pipelinestate.StageVision {
+					if row.Disposition != pipelinestate.DispositionRunning || row.Stage != pipelinestate.StageVision {
+						t.Fatalf("vision reads the playback copy and re-runs; row = %s/%s", row.Disposition, row.Stage)
+					}
+					return
+				}
+				if row.Disposition != pipelinestate.DispositionRejected || row.RejectReason != pipelinestate.ReasonRetired {
+					t.Fatalf("row = %s/%s, want rejected/retired", row.Disposition, row.RejectReason)
+				}
+				if lc := row.Lifecycle(time.Now()); lc.Recovery != "" {
+					t.Fatalf("a retired clip offers %q; there is nothing to run again", lc.Recovery)
+				}
+			})
+		}
 	}
+}
+
+// releasedClip is a Ready, unheld clip on its playback copy whose sidecar names masterPath as its
+// original, released when masterPath is empty.
+func releasedClip(t *testing.T, masterPath string) (*pipeMemStore, *filler.Pipeline, string) {
+	t.Helper()
+	dir := t.TempDir()
+	hash := strings.Repeat("ab", 32)
+	rel := filepath.ToSlash(filepath.Join("ab", "ab", hash+".mp4"))
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("playback"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := asset.WriteSidecarTags(full, asset.SidecarTags{MediaAssets: &asset.Manifest{
+		Version: asset.ManifestVersion, SourceMaster: asset.Identity{Role: asset.RoleSourceMaster,
+			SHA256: strings.Repeat("cd", 32), Bytes: 10, ClipHash: strings.Repeat("ef", 32), Path: masterPath},
+	}}, false); err != nil {
+		t.Fatal(err)
+	}
+	st := newPipeMemStore()
+	seedEnrolled(st, hash)
+	c := st.clips[hash]
+	c.Path, c.Held = rel, false
+	st.clips[hash] = c
+	return st, newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, dir), hash
 }
 
 func TestPipeline_RewindTranscodeRequiresExplicitForce(t *testing.T) {

@@ -552,7 +552,8 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   has to move onto the current profile, until it has. So does a clip whose airing copy is missing
   or not the bytes its sidecar records, and one whose acquisition intake has not consumed (sync
   marks it in repair when a file stops matching); each pass looks again. Nothing is released until
-  encoder detection has settled, since before then every host reads as software. An original
+  encoder detection has settled, since before then every host reads as software, nor while it
+  settled on software on a host that measured a hardware encoder within the week. An original
   another clip still names stays until the last of them is released, and while any clip's sidecar
   cannot be read no original is released. The release, the defect floor's evidence release
   and a rewind's hold share one lock per sidecar, so none of them undoes another's change.
@@ -865,8 +866,9 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   check reads the playback file. A rewind to split or screening on such a clip starts at the
   transcode instead, which rebuilds the evidence copy from the master. Once a fetched clip's master
   is released ([Filler lets go on its own](#filler-lets-go-on-its-own)), a rewind to screening or
-  earlier is refused: "The original download is gone." Later rungs read the playback copy and
-  still rewind.
+  earlier retires it instead: it comes off air as a `retired` reject with no retry, upkeep deletes
+  its files when a reject's week is over, and the fetcher's top-up replaces it. Later rungs read
+  the playback copy and still rewind.
 - **Breaks hold up while the pool refills.** A purge shrinks the pool below its target, and the
   fetcher fetches toward the target again. Meanwhile pod assembly fills a break in this order:
   1. a rested ad;

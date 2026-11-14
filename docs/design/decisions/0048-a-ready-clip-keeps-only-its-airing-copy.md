@@ -23,9 +23,15 @@ not a collection to keep (#3838, decision 14, grilled 2026-11-12).
 - **An original another clip still names stays** until the last clip naming it is released.
 - **An original stays while it is the only way back to the clip:** while the file the clip airs is
   missing or not the bytes its sidecar records, or its acquisition is not consumed (in repair).
-- **A clip that needs reprocessing is fetched again, or retired and replaced.** Loomarr does not
-  re-run the transcode, split or screening of a clip whose original is released, and refuses a
-  rewind to those rungs. Later rungs read the playback copy and still run.
+- **A released clip stays on the encode it has** (maintainer, 2026-11-14). A change of encoder or
+  playback recipe never retires it; ads turn over within weeks, so the older encode leaves on its
+  own. Loomarr never re-runs the transcode, split or screening of a clip whose original is
+  released. A person who asks to re-run one of those rungs retires the clip instead: it comes off
+  air as a `retired` reject, its files go when a reject's rest is over, and the fetcher's top-up
+  replaces it. Later rungs read the playback copy and still run.
+- **No original is released while the GPU may only be late.** A boot whose encoder detection fell
+  back to software, on a host that measured a hardware encoder within the week, releases nothing
+  until hardware is back or the week is over.
 
 ## Consequences
 
