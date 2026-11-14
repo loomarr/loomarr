@@ -93,6 +93,8 @@ export {
 } from "./src/loading";
 export type { LogoSceneKind, LogoSceneProps } from "./src/logo-scene";
 export { LogoScene } from "./src/logo-scene";
+export type { MediaTileProps } from "./src/media-tile";
+export { MediaTile } from "./src/media-tile";
 export type {
   MenuActionProps,
   MenuContentProps,
