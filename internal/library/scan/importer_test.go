@@ -556,6 +556,32 @@ func TestImportAsksForANewlyConnectedArrsFolders(t *testing.T) {
 	}
 }
 
+// Two episodes whose NFOs carry one TVDB id, one of them copied beside the wrong file, are two
+// titles at their own numbers, not one with an extra copy to remove; a second copy of an episode
+// is still one title.
+func TestEpisodesSharingAnNFOsIDStayApart(t *testing.T) {
+	h := newHarness(t)
+	dir := "Iron Works/Season 02/"
+	for _, name := range []string{"Iron Works - S02E06 - Cathedrals", "Iron Works - S02E18 - Tunnels", "Iron Works - S02E06 - Cathedrals 720p"} {
+		h.file(dir+name+".mkv", 10)
+		episode := strings.TrimPrefix(name[len("Iron Works - S02E"):len("Iron Works - S02E06")], "0")
+		doc := `<episodedetails><title>Tunnels</title><season>2</season><episode>` + episode +
+			`</episode><uniqueid type="tvdb" default="true">90090906</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, filepath.FromSlash(dir+name+".nfo")), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	item := func(name string) inventory.Item { return h.item(fileOrigin(h.root, dir+name+".mkv")) }
+	sixth, eighteenth := item("Iron Works - S02E06 - Cathedrals"), item("Iron Works - S02E18 - Tunnels")
+	if sixth.ID == eighteenth.ID {
+		t.Fatal("the 6th and the 18th are one title")
+	}
+	if got := item("Iron Works - S02E06 - Cathedrals 720p").ID; got != sixth.ID {
+		t.Fatalf("the 6th's second copy is %q, want the 6th's title %q", got, sixth.ID)
+	}
+}
+
 // An NFO read in full gives the title its tags, audience score and people; an older scraper's
 // bare <id> grounds it (decision 59).
 func TestImportReadsTheWholeNFO(t *testing.T) {

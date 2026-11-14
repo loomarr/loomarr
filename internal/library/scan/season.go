@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -56,6 +57,36 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
 	}
 	return b.byEntry(ctx, s, in, res)
+}
+
+// ownNumberOver checks the catalog record an episode's own ids found (res.record, through its NFO's
+// or its name's TVDB id) against the file's own mark. An NFO copied beside the wrong file carries
+// another episode's id, and the catalog's TVDB mapping can point one along; both show the episode
+// as another. When the show's catalog numbers it as the disk does (byNumber), its entry at the
+// file's mark is what the file is: an entry that is not the id's record (they share no id) stands
+// over it, and the file is described, and keyed, as its mark says. An arr's record places its
+// file itself, and a show numbered otherwise keeps the id's record; so does an episode whose
+// season is not cached yet, which is written again once it is.
+func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey, id identity, in precedence.Input, res resolution) resolution {
+	own := id.embedded.Numbering
+	if len(id.managed.records) > 0 || own == nil || own.Episode <= 0 {
+		return res
+	}
+	bare := in
+	bare.Records = make([]mp.Record, 0, len(in.Records))
+	for _, r := range in.Records {
+		r.IDs = nil
+		bare.Records = append(bare.Records, r)
+	}
+	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, b.resolve(ctx, origin, bare))
+	if alt.entry == nil {
+		res.waiting = res.waiting || alt.waiting
+		return res
+	}
+	if slices.ContainsFunc(alt.entry.IDs, func(e mp.ExternalID) bool { return slices.Contains(res.record.IDs, e) }) {
+		return res
+	}
+	return alt
 }
 
 // byAbsolute places an episode its file numbers across the whole show ("Show - 013") by its series'
@@ -175,7 +206,7 @@ func (b *builder) byEntry(ctx context.Context, s *seriesSeen, in precedence.Inpu
 		entry.Numbering = nil
 		in.Records = append(append([]mp.Record(nil), in.Records...), entry)
 		res.resolved = b.im.Resolver.Resolve(in)
-		res.record = &rec
+		res.record, res.entry = &rec, &entry
 		return res
 	}
 	return res
