@@ -258,7 +258,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the media server's origin of the same title does; an id joins only items of its own kind, since
   TVDB numbers shows and episodes from one sequence. A series is an origin keyed by its folder. A
   multi-episode file is one item, its first episode numbered through its last, carrying every
-  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`).
+  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`). An episode's
+  copies, a 720p beside a 1080p or a "Season 1" beside a "Season 01", join one item with no ids
+  between them: each carries the scanner's own id of its series folder, its mark's numbers and the
+  title its name gives after the mark (`episodeCopyID`), never listed. Two files numbered alike but
+  titled apart stay two.
 - **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
   file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). An episode's NFO that numbers it

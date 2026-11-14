@@ -267,8 +267,9 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 		}
 	}
 	for _, id := range item.ExternalIDs {
-		// A movie in parts' own mark only holds its parts together; no catalog knows it.
-		if id.Namespace != partsNamespace {
+		// A movie in parts' own mark, and an episode's copies', only hold them together; no
+		// catalog knows them.
+		if id.Namespace != partsNamespace && id.Namespace != copiesNamespace {
 			it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
 		}
 	}
