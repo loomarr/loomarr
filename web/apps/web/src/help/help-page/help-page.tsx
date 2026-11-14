@@ -1,6 +1,6 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Card, Stack, Text } from "@loomarr/design-system";
+import { Card, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -81,22 +81,21 @@ const HelpPage = () => {
             <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
             <Stack gap="1" render="ul">
               {visible.map((d) => (
-                <li key={d.slug}>
+                // The row's own inset is 4px wider than the list's, so it hangs out by that much and
+                // the titles stay in line with the search field above.
+                <Stack key={d.slug} marginHorizontal={-4} render="li">
                   {/* A link, not a button: each page is a place with its own URL, so it opens in a new
                       tab and reads as navigation to assistive tech (#2751). */}
-                  <Link
-                    to="/help"
-                    search={{ page: d.slug }}
+                  <PressableRow
                     aria-current={d.slug === active ? "page" : undefined}
-                    className={
-                      d.slug === active
-                        ? "bg-static-800 block w-full rounded-md px-2 py-1.5 text-left text-sm"
-                        : "text-muted-foreground hover:bg-static-900 block w-full rounded-md px-2 py-1.5 text-left text-sm"
-                    }
+                    render={<Link to="/help" search={{ page: d.slug }} />}
+                    selected={d.slug === active}
                   >
-                    {d.title}
-                  </Link>
-                </li>
+                    <Text as="span" textRole="compact" tone={d.slug === active ? "primary" : "secondary"}>
+                      {d.title}
+                    </Text>
+                  </PressableRow>
+                </Stack>
               ))}
               {visible.length === 0 && (
                 <Stack paddingHorizontal={8} paddingVertical={6} render="li">

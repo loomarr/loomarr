@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, PressableRow, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
@@ -195,24 +195,28 @@ const AppShell = ({
                   : undefined;
             // "You are here" is neutral, as on the phone bar (#1909 Q1): elevated fill, foreground
             // text at 500 and a 2px foreground edge. Amber is focus only.
-            const linkClassName = cn(
-              "text-static-400 hover:bg-accent hover:text-foreground flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 transition-colors",
-              FOCUS_RING,
-              forcedActive === undefined
-                ? "data-[status=active]:bg-static-800 data-[status=active]:text-foreground data-[status=active]:shadow-[inset_2px_0_0_var(--color-static-100)]"
-                : forcedActive &&
-                    "bg-static-800 text-foreground shadow-[inset_2px_0_0_var(--color-static-100)]",
-            );
+            const isCurrent = ({ isActive }: { isActive: boolean }) => forcedActive ?? isActive;
             // The label is the compact role, at the role's strong weight while "you are here".
             const content = (current: boolean) => (
               <>
-                <Icon decorative glyph={icons[icon]} size="compact" tone="inherit" />
-                <Text
-                  as="span"
-                  strong={forcedActive ?? current}
-                  style={{ color: "inherit" }}
-                  textRole="compact"
-                >
+                {current && (
+                  <Stack
+                    aria-hidden
+                    backgroundColor="$contentPrimary"
+                    bottom={-2}
+                    left={-2}
+                    position="absolute"
+                    top={-2}
+                    width={2}
+                  />
+                )}
+                <Icon
+                  decorative
+                  glyph={icons[icon]}
+                  size="compact"
+                  tone={current ? "primary" : "secondary"}
+                />
+                <Text as="span" strong={current} textRole="compact" tone={current ? "primary" : "secondary"}>
                   {label}
                 </Text>
                 {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
@@ -232,18 +236,23 @@ const AppShell = ({
               </>
             );
             return item.to === "/watch/$id" ? (
-              <Link
+              <PressableRow
                 key={`watch-${item.channelId}`}
-                to="/watch/$id"
-                params={{ id: item.channelId }}
-                className={linkClassName}
+                aria-current={forcedActive ? "page" : undefined}
+                render={<Link to="/watch/$id" params={{ id: item.channelId }} />}
+                selected={isCurrent}
               >
-                {({ isActive }) => content(isActive)}
-              </Link>
+                {(state) => content(isCurrent(state))}
+              </PressableRow>
             ) : (
-              <Link key={item.to} to={item.to} className={linkClassName}>
-                {({ isActive }) => content(isActive)}
-              </Link>
+              <PressableRow
+                aria-current={forcedActive ? "page" : undefined}
+                key={item.to}
+                render={<Link to={item.to} />}
+                selected={isCurrent}
+              >
+                {(state) => content(isCurrent(state))}
+              </PressableRow>
             );
           })}
         </Stack>
