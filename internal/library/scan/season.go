@@ -2,8 +2,11 @@ package scan
 
 import (
 	"context"
+	"path"
+	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -65,11 +68,20 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 // as another. When the show's catalog numbers it as the disk does (byNumber), its entry at the
 // file's mark is what the file is: an entry that is not the id's record (they share no id) stands
 // over it, and the file is described, and keyed, as its mark says. An arr's record places its
-// file itself, and a show numbered otherwise keeps the id's record; so does an episode whose
-// season is not cached yet, which is written again once it is.
-func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey, id identity, in precedence.Input, res resolution) resolution {
+// file itself; so does an episode whose season is not cached yet, which is written again once it is.
+//
+// A show numbered otherwise has no entry at the mark to weigh the id against, so the file's own
+// title (toldTitle) does: an id whose record the title names stands, and one it doesn't gives way
+// to TMDB's own entry at the mark when the title names that, or else to the file's own details,
+// which byNumber then marks unnumbered for Needs you. A name with no title of its own keeps the
+// id's record.
+func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey, file File, id identity, in precedence.Input, res resolution) resolution {
 	own := id.embedded.Numbering
 	if len(id.managed.records) > 0 || own == nil || own.Episode <= 0 {
+		return res
+	}
+	told := toldTitle(file.Rel)
+	if told != "" && titled(res.record, told) {
 		return res
 	}
 	bare := in
@@ -78,16 +90,95 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 		r.IDs = nil
 		bare.Records = append(bare.Records, r)
 	}
-	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, b.resolve(ctx, origin, bare))
-	if alt.entry == nil {
+	plain := b.resolve(ctx, origin, bare)
+	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, plain)
+	if alt.entry != nil {
+		if slices.ContainsFunc(alt.entry.IDs, func(e mp.ExternalID) bool { return slices.Contains(res.record.IDs, e) }) {
+			return res
+		}
+		return alt
+	}
+	if told == "" || alt.waiting || res.record.Descriptive == nil || res.record.Descriptive.Title == "" {
 		res.waiting = res.waiting || alt.waiting
 		return res
 	}
-	if slices.ContainsFunc(alt.entry.IDs, func(e mp.ExternalID) bool { return slices.Contains(res.record.IDs, e) }) {
+	// A season not cached yet is asked for, the file described by its own details meanwhile, and
+	// written again once the Enricher has it.
+	if at := b.catalogEntryAt(ctx, b.series[id.seriesDir], bare, plain); titled(at.entry, told) || at.waiting {
+		return at
+	}
+	return plain
+}
+
+// catalogEntryAt is the entry of TMDB's own season at an episode's number, as byNumber finds it for
+// a show the catalog numbers as the disk does, whatever the rest of the show's seasons hold; res as
+// it was when the show or its season is not cached.
+func (b *builder) catalogEntryAt(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution) resolution {
+	n := res.resolved.Numbering
+	if s == nil || !n.Known() || n.Value.Episode <= 0 {
 		return res
 	}
-	return alt
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.catalog.String() == "" {
+		return res
+	}
+	res.catalog = librarystore.LibraryCatalogKey{
+		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
+		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
+	}
+	return b.byEntry(ctx, s, in, res)
 }
+
+// genericTitle is an episode title that names only its place: "Episode 4", "Part 2", "12".
+var genericTitle = regexp.MustCompile(`(?i)^(?:(?:episode|ep|part|chapter|show|program(?:me)?)\s*)?\d+$`)
+
+// toldTitle is the title an episode's file name gives after its mark (episodeName), "" for a name
+// with none, or one that names only its place.
+func toldTitle(rel string) string {
+	name := stem(path.Base(rel))
+	_, end, ok := markSpan(name)
+	if !ok {
+		return ""
+	}
+	title, ok := titleIn(name[end:])
+	if !ok || genericTitle.MatchString(strings.TrimSpace(title)) {
+		return ""
+	}
+	return title
+}
+
+// titled says whether a catalog record's title is the one a file's name gives: the same words,
+// small ones aside, or one's words all among the other's ("The Pit (1)" and "The Pit, Part 1").
+func titled(r *mp.Record, told string) bool {
+	if r == nil || r.Descriptive == nil || r.Descriptive.Title == "" {
+		return false
+	}
+	words := func(s string) map[string]bool {
+		set := map[string]bool{}
+		for _, w := range strings.Fields(normName(s)) {
+			if !smallWord[w] {
+				set[w] = true
+			}
+		}
+		return set
+	}
+	a, b := words(r.Descriptive.Title), words(told)
+	if len(a) == 0 || len(b) == 0 {
+		return normName(r.Descriptive.Title) == normName(told)
+	}
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	for w := range a {
+		if !b[w] {
+			return false
+		}
+	}
+	return true
+}
+
+// smallWord are words a title is written with or without: "The Pit" is "Pit".
+var smallWord = map[string]bool{"the": true, "a": true, "an": true, "and": true, "of": true, "part": true, "pt": true}
 
 // byAbsolute places an episode its file numbers across the whole show ("Show - 013") by its series'
 // catalog: the seasons, specials aside, in order, each as long as the catalog says, hold the
