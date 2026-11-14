@@ -314,10 +314,7 @@
       "tailwindClasses": 26
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
-      "tailwindClasses": 23,
-      "rawButton": 1,
-      "rawTypeSize": 1,
-      "rawTypeWeight": 1
+      "tailwindClasses": 4
     },
     "src/diagnostics/diagnostics-pager/diagnostics-pager.tsx": {
       "tailwindClasses": 6
