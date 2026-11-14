@@ -1084,10 +1084,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   20" counts across the show, placed by its catalog; a film's chapters give their years. "Show -
   101", the show's 101st, is season 1's first when its catalog is too short for a 101st and its
   first season holds a first (`byRunTogether`).
-- **86:** an episode no catalog names yet is named by what its file says after its show's name
-  and its own mark, its release's notes set aside: "Show - S01E03 - The Long Tide [WEBDL-1080p]"
-  is "The Long Tide", and a Specials' "Show - Holiday Special [1080p]" is "Holiday Special". A
-  name that is only its show's and its mark keeps both (`episodeName`).
+- **86:** an episode no catalog names yet is named by what its file says after its own mark, its
+  release's notes set aside: Sonarr's "Show (2005) - S01E03 - The Long Tide [WEBDL-1080p]" is "The
+  Long Tide", however the show's folder spells the show. A mark with no title after it, "Show
+  (2005) - S01E04 [HDTV-720p]", is the show and its mark, "Show S01E04"; a Specials' "Show -
+  Holiday Special [1080p]", with no mark, is what follows the show's name (`episodeName`).
 
 ## Search
 
