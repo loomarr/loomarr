@@ -164,7 +164,13 @@ type Importer struct {
 	stalledWalks map[string]<-chan struct{}
 	// confirmed are roots whose held removal the maintainer confirmed, applied by their next pass.
 	confirmed map[string]bool
+	// walking cancels each root's step 1 while the import walks and writes it, so a root released
+	// meanwhile stops at once (ForgetReleased). Guarded by mu.
+	walking map[string]context.CancelCauseFunc
 }
+
+// errReleased ends a root's step 1 when the root stops being used mid-walk.
+var errReleased = errors.New("library scan: the folder was released")
 
 // RootState is how one root's last pass ended.
 type RootState string
@@ -331,9 +337,32 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
-		result, waiting, err := im.scanRoot(ctx, root.Path, idx, nil, reports[root.Path])
+		walk, cancel := context.WithCancelCause(ctx)
+		im.mu.Lock()
+		if im.walking == nil {
+			im.walking = map[string]context.CancelCauseFunc{}
+		}
+		im.walking[root.Path] = cancel
+		im.mu.Unlock()
+		result, waiting, err := im.scanRoot(walk, root.Path, idx, nil, reports[root.Path])
+		im.mu.Lock()
+		delete(im.walking, root.Path)
+		im.mu.Unlock()
+		cancel(nil)
 		// However its walk ended, every one of the root's entries is finished with.
 		reports[root.Path].close()
+		if err != nil && ctx.Err() == nil && errors.Is(context.Cause(walk), errReleased) {
+			// Released while it was walked: what was written of it is forgotten now, and the
+			// other roots go on.
+			now, err := im.Store.LibraryRoots(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if err := im.forgetReleased(ctx, scannedRoots(now.Roots)); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", root.Path, err)
 		}
@@ -485,13 +514,27 @@ func within(root string, walked map[string]bool) (string, bool) {
 }
 
 // ForgetReleased forgets the files of every root no longer walked, now, outside a pass: "Stop
-// using" takes effect at once rather than after the running pass's reading. It waits for a walk
-// under way, which holds the import's lock.
+// using" takes effect at once rather than after the running pass's reading. A walk under way holds
+// the import's lock, so a released root it is walking is stopped instead, and the import forgets
+// its files itself before it goes on to the next root.
 func (im *Importer) ForgetReleased(ctx context.Context) error {
-	im.run.Lock()
-	defer im.run.Unlock()
 	all, err := im.Store.LibraryRoots(ctx)
 	if err != nil {
+		return err
+	}
+	// A released root the running import is walking stops now, rather than being walked and
+	// written in full before the import lets go of the lock below.
+	inUse := scannedRoots(all.Roots)
+	im.mu.Lock()
+	for root, cancel := range im.walking {
+		if !inUse[root] {
+			cancel(errReleased)
+		}
+	}
+	im.mu.Unlock()
+	im.run.Lock()
+	defer im.run.Unlock()
+	if all, err = im.Store.LibraryRoots(ctx); err != nil {
 		return err
 	}
 	return im.forgetReleased(ctx, scannedRoots(all.Roots))
@@ -677,6 +720,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	report.writing()
 	writingDir := ""
 	for i, file := range walk.Files {
+		// A root released mid-pass stops writing at the file it is on (ForgetReleased).
+		if err := ctx.Err(); err != nil {
+			return result, nil, err
+		}
 		// The entries before this file's are written, and the step names the folder it is on.
 		report.wrote(file.Top)
 		if dir := relDir(file.Rel); dir != writingDir {
