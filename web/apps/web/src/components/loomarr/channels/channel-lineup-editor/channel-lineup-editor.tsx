@@ -157,7 +157,7 @@ const SortableLineupRow = ({
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
         <Stack align="center" className="min-w-0" direction="row" flexShrink={1} gap="inline" wrap>
-          <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
+          <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
             {entry.name}
           </Text>
           {entry.year ? (
@@ -328,7 +328,8 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
       {entries.length === 0 ? (
         <Text
           as="p"
-          className="border-border rounded-md border border-dashed px-3 py-6 text-center"
+          className="border-border rounded-md border border-dashed px-3 py-6"
+          textAlign="center"
           textRole="compact"
           tone="secondary"
         >

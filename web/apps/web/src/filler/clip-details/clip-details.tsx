@@ -102,7 +102,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <Text as="dt" textRole="compact" tone="secondary">
               {label}
             </Text>
-            <Text as="dd" className="break-words" textRole="compact">
+            <Text as="dd" overflowWrap="break-word" textRole="compact">
               {value}
             </Text>
           </div>

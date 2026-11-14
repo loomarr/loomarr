@@ -401,6 +401,10 @@ func ownFiles(clipDir, full string, tags asset.SidecarTags, referenced *AssetRef
 			}
 			if referenced.Claim(asset) {
 				files = append(files, filepath.Join(clipDir, filepath.FromSlash(asset)))
+				if asset == m.SourceMaster.Path {
+					// The master keeps a copy of the download's provenance beside it.
+					files = append(files, tools.SidecarPathFor(files[len(files)-1]))
+				}
 			}
 		}
 	}
@@ -481,9 +485,15 @@ func (r *AssetRefs) Claim(assetPath string) bool {
 	if r == nil {
 		return false
 	}
-	last := r.counts[assetPath] == 1 && len(r.unreadable) == 0
+	last := r.Sole(assetPath)
 	r.counts[assetPath]--
 	return last
+}
+
+// Sole reports what Claim would, without counting a reference released: for a caller whose
+// disposal can still fail after it decides, and which calls Claim once it has succeeded.
+func (r *AssetRefs) Sole(assetPath string) bool {
+	return r != nil && r.counts[assetPath] == 1 && len(r.unreadable) == 0
 }
 
 // ReferencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.

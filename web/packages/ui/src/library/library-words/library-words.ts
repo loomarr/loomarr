@@ -83,6 +83,12 @@ const SKIPPED_KINDS = [
       `Loomarr plays video files, not whole discs. Rip ${names} to ${n === 1 ? "a video file" : "video files"}, then check again.`,
   },
   {
+    reasons: ["empty_file"],
+    title: (n: number) => count(n, "video file is empty", "video files are empty"),
+    body: (names: string, n: number) =>
+      `${names} ${n === 1 ? "has" : "have"} nothing in ${n === 1 ? "it" : "them"} — a copy that never finished. Copy ${n === 1 ? "it" : "them"} again or delete ${n === 1 ? "it" : "them"}, then check again.`,
+  },
+  {
     reasons: ["identity_conflict", "invalid_facts"],
     title: (n: number) => count(n, "file Loomarr couldn't add", "files Loomarr couldn't add"),
     body: (names: string, n: number) =>

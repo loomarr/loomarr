@@ -154,14 +154,13 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("says all is caught up and what keeps it so, leaving out an arr never connected", () => {
+  it("says all is caught up, and nothing about what keeps it so while all of it works", () => {
     const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
     expect(host.textContent).toContain("All caught up — every title's ready to air");
-    expect(host.textContent).toContain("Keeping up to date");
-    expect(host.textContent).toContain("Loomarr notices new and deleted files on its own");
-    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads");
-    expect(host.textContent).not.toContain("— waiting");
-    expect(host.textContent).not.toContain("Radarr");
+    // The folder watch and Sonarr's webhook both work: the section is left out.
+    expect(host.textContent).not.toContain("Keeping up to date");
+    expect(host.textContent).not.toContain("notices new and deleted files");
+    expect(host.textContent).not.toContain("tells Loomarr about new downloads");
     cleanup();
   });
 
@@ -270,7 +269,9 @@ describe("LibrarySettings", () => {
     expect(host.textContent).toContain("Step 1 of 3 · Looking through your folders · 112 of 533");
     expect(host.textContent).toContain("About 9 minutes left in this step");
     expect(host.textContent).toContain("TV / Night Ferry / Season 2");
-    expect(host.textContent).not.toContain("Titles appear as they're ready.");
+    // The titles' row is shown, not said: no words about it, its place kept from the start.
+    expect(host.textContent).not.toContain("Titles appear");
+    expect(host.textContent).not.toContain("so far");
     expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("21");
     expect(twirls(host)).toBe(1);
     cleanup();
@@ -285,7 +286,6 @@ describe("LibrarySettings", () => {
     expect(host.textContent).toContain("Step 2 of 3 · Reading each file · 25 of 100");
     expect(host.textContent).toContain("Working out how long this takes…");
     expect(host.textContent).toContain("Night Ferry S02E03.mkv");
-    expect(host.textContent).toContain("Titles appear as they're ready.");
     expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
     cleanup();
   });
@@ -350,20 +350,50 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("shows the first five titles ready so far while the import runs, and none while paused", () => {
+  it("shows the first five titles found so far while the import runs, paused or not", () => {
     const reading = READING;
     const readySoFar = ["Quiet Harbor", "Paper Kites", "Tidewater", "Harbour Lights", "Alpha", "Zulu"].map(
-      (name, i) => ({ id: `9000095${i}`, name }),
+      (name, i) => ({ id: `9000095${i}`, name, ready: true }),
     );
     const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar });
-    expect(adding.host.textContent).toContain("Ready so far");
     expect(adding.host.textContent).toContain("Alpha");
     expect(adding.host.textContent).not.toContain("Zulu");
     adding.cleanup();
 
     const none = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar: [] });
-    expect(none.host.textContent).not.toContain("Ready so far");
+    expect(none.host.textContent).not.toContain("Alpha");
     none.cleanup();
+
+    // A title still being prepared shows faded; once ready, in full.
+    const poster = (id: string) => <span data-poster={id} />;
+    const mixed = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: WALKING,
+      readySoFar: [
+        { id: "90000960", name: "Quiet Harbor", ready: false, poster: poster("90000960") },
+        { id: "90000961", name: "Paper Kites", ready: true, poster: poster("90000961") },
+      ],
+    });
+    expect(mixed.host.textContent).toContain("Quiet Harbor");
+    // The frame each poster sits in: faded below full opacity while the title is prepared.
+    // The package compiles without the DOM lib, so the jsdom side is typed structurally.
+    type Node = { parentElement: Node | null };
+    const { getComputedStyle } = globalThis as unknown as {
+      getComputedStyle(node: Node): { opacity: string };
+    };
+    const opacity = (id: string) => {
+      let at = (mixed.host.querySelector(`[data-poster="${id}"]`) as Node | null)?.parentElement ?? null;
+      while (at && at !== (mixed.host as unknown as Node)) {
+        const value = getComputedStyle(at).opacity;
+        if (value !== "" && value !== "1") return Number(value);
+        at = at.parentElement;
+      }
+      return 1;
+    };
+    expect(opacity("90000960")).toBeLessThan(1);
+    expect(opacity("90000961")).toBe(1);
+    mixed.cleanup();
 
     const paused = render({
       health: "ok",
@@ -371,8 +401,18 @@ describe("LibrarySettings", () => {
       scan: { ...reading, paused: true },
       readySoFar,
     });
-    expect(paused.host.textContent).not.toContain("Ready so far");
+    // Titles found stay while the scan waits, and a walk starting again keeps them too.
+    expect(paused.host.textContent).toContain("Alpha");
+    expect(paused.host.textContent).toContain("Picks up again when everyone's done watching.");
     paused.cleanup();
+    const walking = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...reading, step: "walking" },
+      readySoFar,
+    });
+    expect(walking.host.textContent).toContain("Alpha");
+    walking.cleanup();
   });
 
   it("scans now, and refreshes everything only once asked", () => {
@@ -470,10 +510,15 @@ describe("LibrarySettings", () => {
         },
         { reason: "link_outside", total: 1, paths: ["/media/movies/Away (2002).mkv"] },
         { reason: "disc_image", total: 2, paths: ["/media/movies/Tarn.iso", "/media/movies/Wick.iso"] },
+        { reason: "empty_file", total: 1, paths: ["/media/movies/Fallow (1971)/Fallow (1971).mkv"] },
         { reason: "identity_conflict", total: 1, paths: ["/media/tv/x.mkv"] },
         { reason: "invalid_facts", total: 1, paths: ["/media/tv/y.mkv"] },
       ],
     });
+    expect(host.textContent).toContain("1 video file is empty");
+    expect(host.textContent).toContain(
+      "Fallow (1971).mkv has nothing in it — a copy that never finished. Copy it again or delete it, then check again.",
+    );
     expect(host.textContent).toContain("5 shortcuts point to files that are gone");
     expect(host.textContent).toContain(
       "Gone (2003).mkv, Old Reel.mkv, a.mkv and 2 more. Point them at the files again or delete them, then check again.",

@@ -70,7 +70,7 @@ const AdvancedSettingsTable = ({
   return (
     <Stack className={className} gap="control">
       <Stack align="center" direction="row" gap="control" wrap>
-        <div className="relative min-w-64 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
           <SearchField
             label="Search settings"
             labelHidden
@@ -78,7 +78,7 @@ const AdvancedSettingsTable = ({
             placeholder="Search by key, group, or value…"
             value={query}
           />
-        </div>
+        </Stack>
         {/* The count is the feedback that a search DID something — without it, a query that
             matches nothing looks identical to a page that failed to load. */}
         <Text as="span" textRole="mono">
@@ -97,7 +97,7 @@ const AdvancedSettingsTable = ({
           </div>
 
           {rows.length === 0 && (
-            <Text as="p" className="px-4 py-6 text-center" textRole="compact" tone="secondary">
+            <Text as="p" className="px-4 py-6" textAlign="center" textRole="compact" tone="secondary">
               {`No setting matches “${query}”.`}
             </Text>
           )}
@@ -121,17 +121,11 @@ const AdvancedSettingsTable = ({
                 key={entry.key}
                 className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-b px-4 py-2 last:border-b-0"
               >
-                <Stack align="center" className="min-w-0" direction="row" flexShrink={1} gap="inline">
+                <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0}>
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
                     why it carries an id. A table row already shows the name; a <label> beside
                     the input would duplicate it on screen for no one's benefit. */}
-                  <Text
-                    as="span"
-                    className="truncate"
-                    id={`${entry.key}-label`}
-                    textRole="mono"
-                    tone="primary"
-                  >
+                  <Text as="span" id={`${entry.key}-label`} numberOfLines={1} textRole="mono" tone="primary">
                     {entry.key}
                   </Text>
                   {/* ADV marks a key that is hidden behind its home page's disclosure. It belongs
@@ -151,7 +145,7 @@ const AdvancedSettingsTable = ({
                 {/* The control, not a rendering of the value. A secret still never shows its
                   value (§4) — SettingField's compact mode keeps the masked-preview flow. */}
                 {pickerOwned ? (
-                  <Text as="span" className="truncate" textRole="mono">
+                  <Text as="span" numberOfLines={1} textRole="mono">
                     {(values[entry.key] ?? entry.value) || "Not selected"}
                   </Text>
                 ) : (
@@ -174,7 +168,7 @@ const AdvancedSettingsTable = ({
                 ) : (
                   // A key with no page but this one: say so in words, not the server's group id
                   // or a link to the page already open (#3411). The group stays searchable.
-                  <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                  <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
                     Only here
                   </Text>
                 )}

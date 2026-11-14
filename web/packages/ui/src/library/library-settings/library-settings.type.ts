@@ -70,6 +70,8 @@ interface LibraryDetails {
 interface LibraryReadyTitle {
   id: string;
   name: string;
+  /** Whether it is ready to watch; one still being prepared shows faded. */
+  ready: boolean;
   /** Its poster; absent draws a plain tile. */
   poster?: ReactNode;
 }
@@ -88,7 +90,13 @@ interface LibraryHeldRemoval {
 
 /** One reason the scan skips files, how many it skips for it, and the first few by path. */
 interface LibrarySkipped {
-  reason: "broken_link" | "link_outside" | "disc_image" | "identity_conflict" | "invalid_facts";
+  reason:
+    | "broken_link"
+    | "link_outside"
+    | "disc_image"
+    | "empty_file"
+    | "identity_conflict"
+    | "invalid_facts";
   total: number;
   paths: readonly string[];
 }

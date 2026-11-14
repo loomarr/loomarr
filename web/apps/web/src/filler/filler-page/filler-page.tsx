@@ -159,14 +159,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
         {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
-          <Card
-            alignItems="center"
-            className="border-caution/40! bg-caution/5!"
-            flexDirection="row"
-            flexWrap="wrap"
-            gap={12}
-            padding={16}
-          >
+          <Card alignItems="center" flexDirection="row" flexWrap="wrap" gap={12} padding={16} tone="caution">
             <div className="min-w-0 flex-1">
               <Text as="p" textRole="cardLabel">
                 Automatic fetching is paused

@@ -50,6 +50,31 @@ func TestPutMovesFilesAsideAndEmptyDeletesThemADayLater(t *testing.T) {
 	}
 }
 
+// Leftover download staging in the default watch folder (inside the clip folder) waits its day
+// like any other delete; a watch folder elsewhere can be another disk, so its staging goes at once.
+func TestDisposeQuarantinesStagingUnderTheRootAndDeletesItElsewhere(t *testing.T) {
+	root := t.TempDir()
+	bin := New(root, func() time.Time { return time.Unix(1_900_000_000, 0).UTC() })
+	inside := filepath.Join(root, "_watch", ".loomarr-acquisitions", "run-1", "000")
+	write(t, filepath.Join(inside, "download.mp4"))
+	outside := filepath.Join(t.TempDir(), ".loomarr-acquisitions", "run-2", "000")
+	write(t, filepath.Join(outside, "download.mp4"))
+
+	if err := bin.Dispose(inside); err != nil {
+		t.Fatal(err)
+	}
+	held := filepath.Join(root, DirName, "1900000000", "_watch", ".loomarr-acquisitions", "run-1", "000", "download.mp4")
+	if exists(inside) || !exists(held) {
+		t.Fatalf("inside the root: staging present=%v, held present=%v; want it moved to quarantine", exists(inside), exists(held))
+	}
+	if err := bin.Dispose(outside); err != nil {
+		t.Fatal(err)
+	}
+	if exists(outside) {
+		t.Fatal("staging outside the root is still there, want it deleted")
+	}
+}
+
 func TestPutRefusesAFileOutsideTheRoot(t *testing.T) {
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "elsewhere.mp4")

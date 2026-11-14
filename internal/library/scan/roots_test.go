@@ -151,8 +151,8 @@ func TestDiscoverKeepsFailedSourceAndMarksOffline(t *testing.T) {
 	}
 }
 
-// Using a folder, typing one in, or mapping one by hand asks for a pass at once; releasing a folder
-// or clearing a mapping does not.
+// Using a folder, releasing one, typing one in, or mapping one by hand asks for a pass at once;
+// clearing a mapping does not.
 func TestUsingAFolderAsksForAPass(t *testing.T) {
 	disk := fakeDisk{readable: map[string]bool{"/media/tv": true, "/mnt/extra": true, "/mnt/shows": true}}
 	h := newHarness(t)
@@ -180,8 +180,9 @@ func TestUsingAFolderAsksForAPass(t *testing.T) {
 	if err := lib.SetInUse(ctx, "/media/tv", false); err != nil {
 		t.Fatal(err)
 	}
-	if asked() {
-		t.Fatal("releasing a folder asked for a pass")
+	// Releasing a folder forgets its files at once (docs/design/library.md), which a pass does.
+	if !asked() {
+		t.Fatal("Stop using did not ask for a pass")
 	}
 	if err := lib.Add(ctx, "/mnt/extra"); err != nil {
 		t.Fatal(err)

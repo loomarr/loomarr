@@ -60,8 +60,8 @@ The maintainer raised these in order; they amend decisions 23–28 and 34 of #21
   `Disclosure`s; specials say where they air.
 - **Collections** (decision 28): Yours (editable, New collection) and Ready-made sets (TMDB,
   "you have 3 of 4", Make my own copy). Delete is disabled with the reason while a channel uses it.
-- **Settings → Library** (decision 29): Status, Ready so far while importing, Keeping up to date
-  (watch, Sonarr, Radarr), Media folders as cards with "Loomarr can open this folder", where it
+- **Settings → Library** (decision 29): Status, the titles found while importing (shown, not
+  said), Keeping up to date only when the watch, Sonarr or Radarr is waiting, Media folders as cards with "Loomarr can open this folder", where it
   was found, when it was checked, and Use this folder / Stop using. A held removal and an offline
   folder are calm warning callouts with one primary action.
 - **Wizard step** (decision 30): "Where's your media?", the same folder cards, Continue never

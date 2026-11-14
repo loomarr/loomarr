@@ -4,7 +4,7 @@ import type { TaxonomyImpactCommandDTO } from "@loomarr/api/models/taxonomyImpac
 import type { TaxonomyImpactDTO } from "@loomarr/api/models/taxonomyImpactDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Card, Field, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Card, Field, Grid, GridItem, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -292,7 +292,7 @@ const TaxonEditor = ({
           Slugs are what classifiers and saved clips use. Labels are what people see.
         </Text>
       </Stack>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <Grid columns={{ base: 1, sm: 2 }} gap="3">
         <form.Field name="label">
           {(field) => (
             <Field
@@ -374,19 +374,13 @@ const TaxonEditor = ({
             />
           )}
         </form.Field>
-      </div>
+      </Grid>
       <Text as="p" textRole="hint" tone="secondary">
         Synonyms help the classifier resolve ordinary wording. Retired slugs preserve old integrations; both
         must be unique across the whole vocabulary.
       </Text>
       {review ? (
-        <Card
-          aria-label="Change impact"
-          aria-live="polite"
-          className="border-signal/40! bg-signal/5!"
-          gap={12}
-          padding={16}
-        >
+        <Card aria-label="Change impact" aria-live="polite" gap={12} padding={16} tone="signal">
           <Stack gap="1">
             <Text as="h4" textRole="heading">
               Review the impact
@@ -528,7 +522,7 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
 
   return (
     <Stack gap="section">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <Grid columns={{ base: 1, sm: 3 }} gap="3">
         <Card gap={4} padding={16}>
           <Text as="p" textRole="hint" tone="secondary">
             Library coverage
@@ -553,39 +547,41 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
             </>
           )}
         </Card>
-        <Card className="sm:col-span-2" gap={4} padding={16}>
-          <Text as="p" textRole="heading">
-            What belongs here
-          </Text>
-          <Text as="p" textRole="compact" tone="secondary">
-            Classification describes what a clip contains. Kind is the closed playout role; format and
-            presentation are optional browsing details. Era, audience, and grounded brand remain separate
-            facts too.
-          </Text>
-          <Stack align="start" marginTop={4}>
-            {data.totalClips === 0 ? (
-              <Text as="p" textRole="compact" tone="secondary">
-                Nothing to classify yet.
-              </Text>
-            ) : data.unclassifiedClips > 0 ? (
-              <Link
-                to="/filler/library"
-                search={{ unclassified: true }}
-                className="inline-flex underline-offset-2 hover:underline"
-              >
-                <Text as="span" textRole="compact" tone="signal">
-                  Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
-                  {data.unclassifiedClips === 1 ? "clip" : "clips"}
+        <GridItem span={{ base: 1, sm: 2 }}>
+          <Card gap={4} padding={16}>
+            <Text as="p" textRole="heading">
+              What belongs here
+            </Text>
+            <Text as="p" textRole="compact" tone="secondary">
+              Classification describes what a clip contains. Kind is the closed playout role; format and
+              presentation are optional browsing details. Era, audience, and grounded brand remain separate
+              facts too.
+            </Text>
+            <Stack align="start" marginTop={4}>
+              {data.totalClips === 0 ? (
+                <Text as="p" textRole="compact" tone="secondary">
+                  Nothing to classify yet.
                 </Text>
-              </Link>
-            ) : (
-              <Text as="p" textRole="compact" tone="success">
-                Every playable clip has at least one taxonomy tag.
-              </Text>
-            )}
-          </Stack>
-        </Card>
-      </div>
+              ) : data.unclassifiedClips > 0 ? (
+                <Link
+                  to="/filler/library"
+                  search={{ unclassified: true }}
+                  className="inline-flex underline-offset-2 hover:underline"
+                >
+                  <Text as="span" textRole="compact" tone="signal">
+                    Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
+                    {data.unclassifiedClips === 1 ? "clip" : "clips"}
+                  </Text>
+                </Link>
+              ) : (
+                <Text as="p" textRole="compact" tone="success">
+                  Every playable clip has at least one taxonomy tag.
+                </Text>
+              )}
+            </Stack>
+          </Card>
+        </GridItem>
+      </Grid>
 
       {editor ? (
         <TaxonEditor

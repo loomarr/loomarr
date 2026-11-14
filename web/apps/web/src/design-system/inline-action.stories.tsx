@@ -27,5 +27,19 @@ const Light: Story = { globals: { theme: "light" } };
 const Wrapping: Story = { args: { width: 260 } };
 const Disabled: Story = { args: { disabled: true } };
 
+// Truncate: a name in a narrow column keeps one line and ends in an ellipsis; its tap area is its
+// own padding, so the clipping that makes the ellipsis does not clip the target.
+const Truncated: Story = {
+  render: () => (
+    <div style={{ padding: 24, width: 220 }}>
+      <Text as="div" textRole="compact" tone="primary">
+        <InlineAction onPress={() => undefined} title="Harbour Lights, the long way round" truncate>
+          Harbour Lights, the long way round
+        </InlineAction>
+      </Text>
+    </div>
+  ),
+};
+
 export default meta;
-export { Default, Disabled, Light, Wrapping };
+export { Default, Disabled, Light, Truncated, Wrapping };

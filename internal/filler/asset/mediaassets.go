@@ -37,6 +37,17 @@ type Identity struct {
 	Path     string `json:"path"`
 }
 
+// Released reports a source master whose file Loomarr deleted once its clip was Ready (#3855,
+// decision 14 of #3838). Its digest, size and sparse id stay as the record of what was acquired;
+// the empty path is the release. Paths are outside the manifest's authority, so releasing a
+// master changes no identity built from it.
+func (i Identity) Released() bool { return i.Role == RoleSourceMaster && i.Path == "" }
+
+// ErrSourceMasterReleased refuses work that needs the acquired bytes of a clip whose master was
+// released. The clip airs on its playback copy; a rewind that would need the original retires
+// the clip for a replacement instead (decision 0048).
+var ErrSourceMasterReleased = errors.New("the original download was released once the clip was ready")
+
 // DerivativePath is the catalog-relative path of a rendition, or "" when there is none.
 func DerivativePath(d *DerivativeLineage) string {
 	if d == nil {
@@ -201,6 +212,9 @@ func ValidateIdentity(asset Identity, role Role, tree string) error {
 	if asset.Role != role || !split.IsContentHash(asset.SHA256) || !split.IsContentHash(asset.ClipHash) || asset.Bytes <= 0 {
 		return fmt.Errorf("%s media asset identity is invalid", role)
 	}
+	if asset.Released() {
+		return nil // no file to place; the identity above is the whole record
+	}
 	clean := filepath.Clean(filepath.FromSlash(asset.Path))
 	if filepath.IsAbs(clean) || !split.IsRelativePath(clean) {
 		return fmt.Errorf("%s media asset path is outside the filler root", role)
@@ -319,6 +333,9 @@ func RetainedSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash str
 		return Identity{}, fmt.Errorf("resolve source master: %w", err)
 	}
 	master := tags.MediaAssets.SourceMaster
+	if master.Released() {
+		return Identity{}, fmt.Errorf("resolve source master: %w", ErrSourceMasterReleased)
+	}
 	masterPath := filepath.Join(clipDir, filepath.FromSlash(master.Path))
 	digest, size, err := FileSHA256(masterPath)
 	if err != nil || digest != master.SHA256 || size != master.Bytes {

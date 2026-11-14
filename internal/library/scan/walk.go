@@ -28,12 +28,17 @@ const (
 	// ProblemLinkOutside is a symlink to a file or folder outside the root, which a walk never
 	// follows: the root is all the library reads.
 	ProblemLinkOutside = "link_outside"
+	// ProblemEmptyFile is a video file with no bytes: a copy that never finished, or a placeholder.
+	// Nothing in it can be read or played, so it makes no title; a later walk that finds it filled
+	// adds it.
+	ProblemEmptyFile = "empty_file"
 )
 
 // walkProblem says whether a problem is one the walk finds, a path it never reads, rather than
 // one a file read was refused with.
 func walkProblem(problem string) bool {
-	return problem == ProblemDiscImage || problem == ProblemBrokenLink || problem == ProblemLinkOutside
+	return problem == ProblemDiscImage || problem == ProblemBrokenLink || problem == ProblemLinkOutside ||
+		problem == ProblemEmptyFile
 }
 
 // videoExtensions are the containers the scanner imports: every one ffmpeg reads that a library
@@ -534,6 +539,10 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			st, ok := w.stat(path, e)
 			if !ok {
 				w.unread(path)
+				continue
+			}
+			if st.Size == 0 {
+				w.problem(path, st, ProblemEmptyFile)
 				continue
 			}
 			part, set := parts[e.Name()], ""

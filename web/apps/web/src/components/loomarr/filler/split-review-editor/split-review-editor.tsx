@@ -288,7 +288,7 @@ const SplitReviewEditor = ({
           Back
         </Action>
         <Stack align="center" direction="row" gap="control">
-          <Text as="span" className="tabular-nums" textRole="mono">
+          <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
             {pluralize(draft.length, "clip")}
           </Text>
           <Action disabled={!confirmable || confirming} onPress={() => onConfirm(toWire(draft))}>
@@ -322,7 +322,7 @@ const SplitReviewEditor = ({
                 >
                   Previous
                 </Action>
-                <Text as="span" className="tabular-nums" textRole="mono">
+                <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
                   {selectedIndex + 1} / {draft.length}
                 </Text>
                 <Action
@@ -403,7 +403,7 @@ const SegmentSummaryRow = ({
                 render="span"
                 width="100%"
               >
-                <Text as="span" className="text-center" textRole="hint" tone="secondary">
+                <Text as="span" textAlign="center" textRole="hint" tone="secondary">
                   Preview unavailable
                 </Text>
               </Stack>
@@ -420,14 +420,19 @@ const SegmentSummaryRow = ({
             style={{ textAlign: "left" }}
           >
             <Stack align="center" direction="row" gap="inline" render="span">
-              <Text as="span" className="tabular-nums" textRole="mono">
+              <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
                 #{n}
               </Text>
-              <Text as="span" className="truncate" textRole="cardLabel" tone="primary">
+              <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
                 {segment.name || "Unnamed clip"}
               </Text>
             </Stack>
-            <Text as="span" className="tabular-nums" textRole="mono" tone={valid ? "secondary" : "danger"}>
+            <Text
+              as="span"
+              fontVariant={["tabular-nums"]}
+              textRole="mono"
+              tone={valid ? "secondary" : "danger"}
+            >
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
             </Text>
             <Stack align="center" direction="row" gap="1.5" marginTop={2} render="span" wrap>
@@ -516,7 +521,12 @@ const SegmentInspector = ({
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <Stack flexBasis="0%" flexGrow={1} gap="2" minWidth={0}>
           <p title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}>
-            <Text as="span" className="tabular-nums" textRole="mono" tone={valid ? "secondary" : "danger"}>
+            <Text
+              as="span"
+              fontVariant={["tabular-nums"]}
+              textRole="mono"
+              tone={valid ? "secondary" : "danger"}
+            >
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
             </Text>
           </p>

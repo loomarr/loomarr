@@ -4,7 +4,7 @@ import { ClipDTOGeographicScope } from "@loomarr/api/models/clipDTOGeographicSco
 import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { PatchClipInputBodyRole } from "@loomarr/api/models/patchClipInputBodyRole";
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Chip, DateField, Field, Stack, Text } from "@loomarr/design-system";
+import { Action, Chip, DateField, Field, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { useStore } from "@tanstack/react-form";
 import { useEffect, useRef } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
@@ -175,7 +175,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
 
       {patch.error != null && <ErrorState error={patch.error} />}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <Grid columns={{ base: 1, sm: 2 }} gap="3">
         <form.Field name="name">
           {(field) => (
             <Field
@@ -237,14 +237,14 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             />
           )}
         </form.Field>
-      </div>
+      </Grid>
 
       <details className="border-border rounded-lg border p-3">
         <Text as="summary" className="cursor-pointer" textRole="cardLabel">
           Location and broadcast details
         </Text>
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+        <Grid columns={{ base: 1, sm: 2 }} gap="3" marginTop={12}>
+          <GridItem span={{ base: 1, sm: 2 }}>
             <form.Field name="geoScope">
               {(field) => (
                 <BrowserSelectControl
@@ -256,8 +256,8 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                 />
               )}
             </form.Field>
-          </div>
-          <div className="sm:col-span-2">
+          </GridItem>
+          <GridItem span={{ base: 1, sm: 2 }}>
             <form.Field name="country">
               {(field) => (
                 <LocationPicker
@@ -271,7 +271,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
                 />
               )}
             </form.Field>
-          </div>
+          </GridItem>
           <form.Field name="network">
             {(field) => (
               <Field
@@ -310,11 +310,13 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
               />
             )}
           </form.Field>
-          <Text as="p" className="sm:col-span-2" textRole="hint" tone="secondary">
-            Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
-            are not sure.
-          </Text>
-        </div>
+          <GridItem span={{ base: 1, sm: 2 }}>
+            <Text as="p" textRole="hint" tone="secondary">
+              Use the area this clip was made for, not necessarily your home location. Leave it unknown if you
+              are not sure.
+            </Text>
+          </GridItem>
+        </Grid>
       </details>
 
       {/* Tags: the taxonomy vocabulary as toggleable chips, grouped by axis (§10 V45a). This

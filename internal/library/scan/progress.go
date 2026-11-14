@@ -23,11 +23,21 @@ const (
 var steps = [...]Step{StepWalking, StepReading, StepLookingUp}
 
 // An estimate of the time left in a step is given only once the step has run etaAfter since its
-// rate baseline and done at least etaShare of its total: before that the rate is noise.
+// rate baseline and done, since then, etaSamples or etaShare of its total, whichever comes first:
+// before that the rate is noise. The count is what makes a rate steady, so a large step (forty
+// thousand files read a few a second) tells its time left within a minute or two, not after its
+// first 2%; the share lets a small step, done before it reaches the count, tell it too.
 const (
-	etaAfter = 30 * time.Second
-	etaShare = 0.02
+	etaAfter   = 30 * time.Second
+	etaSamples = 20
+	etaShare   = 0.02
 )
+
+// etaWindow is how far back the rate is measured once a step has run a while: the baseline slides
+// up behind the step, staying between one and two windows old, so the time left follows the rate
+// the step goes at now. A first import's reading that crawls for its first minutes and then runs
+// would otherwise tell "50 hours left" long after it has sped up.
+const etaWindow = 2 * time.Minute
 
 // ProgressSnapshot is what the maintainer sees of an import at one moment: the earliest step still
 // running, how far it is, and the time it has left.
@@ -62,6 +72,11 @@ type Tracker struct {
 
 	mu    sync.Mutex
 	state [len(steps)]stepState
+	// rates are each step's last measured rate, done a second, kept when the step ends, begins
+	// again or pauses: a step that starts over (a second folder added, a new reading stage, going
+	// again after a pause) tells its time left by it until it has measured its own, instead of
+	// "working out" again. Rebase clears it, as the work ahead goes at another rate.
+	rates [len(steps)]float64
 	// asked is whether the running pass was asked for; pending is an ask the next pass takes.
 	asked, pending bool
 }
@@ -75,6 +90,28 @@ type stepState struct {
 	// since and sinceDone are the rate baseline: when it was taken and done then.
 	since     time.Time
 	sinceDone int
+	// markAt and markDone are the checkpoint the baseline slides up to: taken each etaWindow, the
+	// baseline moving to the one before.
+	markAt   time.Time
+	markDone int
+}
+
+// rebase takes the rate baseline, and the first checkpoint, at now.
+func (s *stepState) rebase(now time.Time) {
+	s.since, s.sinceDone = now, s.done
+	s.markAt, s.markDone = now, s.done
+}
+
+// slide takes a checkpoint each etaWindow, moving the baseline up to the one before, so the rate is
+// what the step has done over the last one to two windows.
+func (s *stepState) slide(now time.Time) {
+	if now.Sub(s.markAt) < etaWindow {
+		return
+	}
+	if s.markAt.After(s.since) {
+		s.since, s.sinceDone = s.markAt, s.markDone
+	}
+	s.markAt, s.markDone = now, s.done
 }
 
 // NewTracker returns a Tracker on the clock now (time.Now when nil) that tells onChange of each
@@ -96,7 +133,10 @@ func (t *Tracker) Begin(step Step, total int) {
 		if step == StepWalking {
 			t.asked, t.pending = t.pending, false
 		}
-		t.state[step.index()] = stepState{active: true, total: max(total, 0), since: t.now(), sinceDone: 0}
+		now := t.now()
+		t.keepRate(step, now)
+		t.state[step.index()] = stepState{active: true, total: max(total, 0)}
+		t.state[step.index()].rebase(now)
 	})
 }
 
@@ -123,6 +163,9 @@ func (t *Tracker) Advance(step Step, n int) {
 	t.update(false, func() {
 		if s := &t.state[step.index()]; s.active {
 			s.done += n
+			if !s.paused {
+				s.slide(t.now())
+			}
 		}
 	})
 }
@@ -133,9 +176,18 @@ func (t *Tracker) Advance(step Step, n int) {
 func (t *Tracker) Rebase(step Step) {
 	t.update(false, func() {
 		if s := &t.state[step.index()]; s.active {
-			s.since, s.sinceDone = t.now(), s.done
+			s.rebase(t.now())
+			t.rates[step.index()] = 0
 		}
 	})
+}
+
+// keepRate keeps step's measured rate (rates) before its baseline is lost; one not measured yet
+// leaves the last kept. Called under the lock.
+func (t *Tracker) keepRate(step Step, now time.Time) {
+	if r, ok := t.state[step.index()].rate(now); ok {
+		t.rates[step.index()] = r
+	}
 }
 
 // Current names what a running step is on now.
@@ -157,9 +209,12 @@ func (t *Tracker) Pause(step Step, paused bool) {
 	s := &t.state[step.index()]
 	changed := s.active && s.paused != paused
 	if changed {
+		if paused {
+			t.keepRate(step, t.now())
+		}
 		s.paused = paused
 		if !paused {
-			s.since, s.sinceDone = t.now(), s.done
+			s.rebase(t.now())
 		}
 	}
 	t.mu.Unlock()
@@ -171,6 +226,7 @@ func (t *Tracker) Pause(step Step, paused bool) {
 // End ends step. Ending the walk ends the pass's ask.
 func (t *Tracker) End(step Step) {
 	t.update(true, func() {
+		t.keepRate(step, t.now())
 		t.state[step.index()] = stepState{}
 		if step == StepWalking {
 			t.asked = false
@@ -205,8 +261,9 @@ func (t *Tracker) Snapshot(now time.Time) ProgressSnapshot {
 		}
 		if s.paused {
 			out.Current = ""
-		} else {
-			out.ETA, out.HasETA = s.eta(now)
+		} else if out.ETA, out.HasETA = s.eta(now); !out.HasETA && t.rates[i] > 0 && s.total > 0 {
+			// Not measured yet: the step's last rate tells it meanwhile.
+			out.ETA, out.HasETA = time.Duration(float64(max(s.total-s.done, 0))/t.rates[i]*float64(time.Second)), true
 		}
 		out.Quiet = steps[i] == StepWalking && !t.asked &&
 			!t.state[StepReading.index()].active && !t.state[StepLookingUp.index()].active
@@ -215,11 +272,22 @@ func (t *Tracker) Snapshot(now time.Time) ProgressSnapshot {
 	return ProgressSnapshot{}
 }
 
+// rate is what the step has done a second since its rate baseline, once it has run etaAfter and
+// done something.
+func (s stepState) rate(now time.Time) (float64, bool) {
+	elapsed, since := now.Sub(s.since), s.done-s.sinceDone
+	if !s.active || s.paused || elapsed < etaAfter || since <= 0 {
+		return 0, false
+	}
+	return float64(since) / elapsed.Seconds(), true
+}
+
 // eta is remaining × (elapsed ÷ done) since the rate baseline, once the step has run etaAfter
-// and done etaShare of its total.
+// and done etaSamples or etaShare of its total since then.
 func (s stepState) eta(now time.Time) (time.Duration, bool) {
 	elapsed, since := now.Sub(s.since), s.done-s.sinceDone
-	if elapsed < etaAfter || since <= 0 || s.total <= 0 || float64(s.done) < etaShare*float64(s.total) {
+	if elapsed < etaAfter || since <= 0 || s.total <= 0 ||
+		(since < etaSamples && float64(since) < etaShare*float64(s.total)) {
 		return 0, false
 	}
 	left := max(s.total-s.done, 0)
