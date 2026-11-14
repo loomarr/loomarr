@@ -245,6 +245,9 @@ components:
           maxLength: 4096
           minLength: 1
           type: string
+        replace:
+          description: Use it in place of the folders in use inside it
+          type: boolean
       required:
         - path
       type: object
@@ -639,6 +642,64 @@ components:
         - id
         - name
         - role
+      type: object
+    BrowseFolderDTO:
+      additionalProperties: false
+      properties:
+        holds:
+          description: The folders in use inside it
+          items:
+            type: string
+          type: array
+        inUse:
+          description: Loomarr reads it
+          type: boolean
+        name:
+          description: "What its row says: its own name, or its whole path at the top"
+          type: string
+        named:
+          description: An app names it
+          type: boolean
+        path:
+          description: The folder on this machine
+          type: string
+        summary:
+          $ref: "#/components/schemas/FolderSummary"
+          description: Absent until counted; a library_folder frame brings it
+        within:
+          description: The folder in use that holds it
+          type: string
+      required:
+        - path
+        - name
+        - named
+        - inUse
+        - holds
+      type: object
+    BrowseLibraryFoldersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/BrowseLibraryFoldersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        folders:
+          items:
+            $ref: "#/components/schemas/BrowseFolderDTO"
+          type: array
+        parent:
+          description: The folder above; empty when that is the top
+          type: string
+        path:
+          description: The folder listed; empty for the top
+          type: string
+      required:
+        - path
+        - parent
+        - folders
       type: object
     BudgetSnapshot:
       additionalProperties: false
@@ -5154,6 +5215,33 @@ components:
         - preparing
         - needsYou
       type: object
+    FolderSummary:
+      additionalProperties: false
+      properties:
+        folders:
+          description: The folders in it the scan would walk
+          format: int64
+          type: integer
+        path:
+          description: The folder on this machine
+          type: string
+        state:
+          description: "slow: it didn't answer in time; unreadable: Loomarr couldn't open it"
+          enum:
+            - counted
+            - slow
+            - unreadable
+          type: string
+        videos:
+          description: The videos directly in it
+          format: int64
+          type: integer
+      required:
+        - path
+        - folders
+        - videos
+        - state
+      type: object
     GenreFilter:
       additionalProperties: false
       properties:
@@ -6865,6 +6953,33 @@ components:
         - number
         - ready
         - fromFile
+      type: object
+    LibraryFolderEvent:
+      additionalProperties: false
+      properties:
+        folders:
+          description: The folders in it the scan would walk
+          format: int64
+          type: integer
+        path:
+          description: The folder on this machine
+          type: string
+        state:
+          description: "slow: it didn't answer in time; unreadable: Loomarr couldn't open it"
+          enum:
+            - counted
+            - slow
+            - unreadable
+          type: string
+        videos:
+          description: The videos directly in it
+          format: int64
+          type: integer
+      required:
+        - path
+        - folders
+        - videos
+        - state
       type: object
     LibraryFolderNameDTO:
       additionalProperties: false
@@ -16648,6 +16763,24 @@ paths:
                       type: object
                     - properties:
                         data:
+                          $ref: "#/components/schemas/LibraryFolderEvent"
+                        event:
+                          const: library_folder
+                          description: The event name.
+                          type: string
+                        id:
+                          description: The event ID.
+                          type: integer
+                        retry:
+                          description: The retry time in milliseconds.
+                          type: integer
+                      required:
+                        - data
+                        - event
+                      title: Event library_folder
+                      type: object
+                    - properties:
+                        data:
                           $ref: "#/components/schemas/LibraryRootsEvent"
                         event:
                           const: library_roots
@@ -18834,6 +18967,35 @@ paths:
       summary: Run a job now
       tags:
         - jobs
+  /v1/library/browse:
+    get:
+      description: With no path, the folders the apps name, then this machine's mounts. With a path under one of them, the folders in it, without what the scan never reads. Each folder's summary is counted afterwards and streamed as `library_folder` frames on /v1/events; one counted in the last few minutes comes with the list. 403 for a path outside every mount; 422 when it is not absolute or can't be opened.
+      operationId: browseLibraryFolders
+      parameters:
+        - description: The folder to list; empty lists the top
+          explode: false
+          in: query
+          name: path
+          schema:
+            description: The folder to list; empty lists the top
+            maxLength: 4096
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowseLibraryFoldersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the folders in a folder, to pick one
+      tags:
+        - library
   /v1/library/collections:
     get:
       operationId: listLibraryCollections
@@ -19281,7 +19443,7 @@ paths:
       tags:
         - library
     post:
-      description: Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.
+      description: Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it. 409 when it is inside a folder in use, or holds folders in use and replace is not set; with replace, it is used in their place.
       operationId: addLibraryRoot
       requestBody:
         content:

@@ -112,6 +112,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Disk:    scan.OSDisk{},
 		Now:     time.Now,
 	}
+	if deps.frames != nil {
+		roots.Summarized = deps.frames.LibraryFolderSummarized
+	}
 	inv := inventory.New(st)
 	resolver, err := precedence.New("US")
 	if err != nil {

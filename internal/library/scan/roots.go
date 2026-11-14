@@ -74,10 +74,19 @@ type Roots struct {
 	PathMap func() mediaserver.PathMap
 	Disk    Disk
 	Now     func() time.Time
+	// Summarized hears each folder the browser counted (Browse); nil hears nothing.
+	Summarized func(FolderSummary)
 
 	// mu serializes discovery with the maintainer's edits, so a pass never applies stale checks
 	// over an edit that landed while it ran.
 	mu sync.Mutex
+
+	// sumMu guards the browser's summaries: those counted, those being counted, and the slots
+	// that bound how many are counted at once.
+	sumMu    sync.Mutex
+	sums     map[string]summaryAt
+	counting map[string]bool
+	sumSlots chan struct{}
 }
 
 // Health is the library's one-line state for the status strip.
@@ -209,8 +218,21 @@ func (r *Roots) Discover(ctx context.Context) (librarystore.LibraryRoots, []Sour
 }
 
 // Add records a folder the maintainer typed, confirmed. It must be absolute and readable. An empty
-// one is added, and recorded as empty so its card asks whether the drive is connected.
+// one is added, and recorded as empty so its card asks whether the drive is connected. A folder
+// inside one in use, or holding some, is refused with a *RootOverlap: the scan would read it as
+// part of the outer one anyway, so the list would name a folder twice. Replace takes the outer one.
 func (r *Roots) Add(ctx context.Context, path string) error {
+	return r.add(ctx, path, false)
+}
+
+// Replace is Add for a folder holding folders in use: it is added, and they stop being used, in
+// one step. Their files are the outer folder's from the next pass. A folder inside one in use is
+// still refused.
+func (r *Roots) Replace(ctx context.Context, path string) error {
+	return r.add(ctx, path, true)
+}
+
+func (r *Roots) add(ctx context.Context, path string, replace bool) error {
 	path, err := absoluteFolder(path)
 	if err != nil {
 		return err
@@ -221,7 +243,29 @@ func (r *Roots) Add(ctx context.Context, path string) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.Store.AddLibraryRoot(ctx, look.check(path), r.Now())
+	all, err := r.Store.LibraryRoots(ctx)
+	if err != nil {
+		return err
+	}
+	var inUse []string
+	for _, root := range all.Roots {
+		if root.InUse {
+			inUse = append(inUse, root.Path)
+		}
+	}
+	within, holds := overlapOf(path, inUse)
+	if within != "" || len(holds) > 0 && !replace {
+		return &RootOverlap{Within: within, Holds: holds}
+	}
+	if err := r.Store.AddLibraryRoot(ctx, look.check(path), r.Now()); err != nil {
+		return err
+	}
+	for _, held := range holds {
+		if err := r.Store.SetLibraryRootInUse(ctx, held, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetInUse confirms or releases a root.

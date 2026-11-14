@@ -26,6 +26,8 @@ type LibraryRootService interface {
 	List(ctx context.Context) (librarystore.LibraryRoots, error)
 	Discover(ctx context.Context) (librarystore.LibraryRoots, []scan.SourceResult, error)
 	Add(ctx context.Context, path string) error
+	Replace(ctx context.Context, path string) error
+	Browse(ctx context.Context, path string) (scan.Browsed, error)
 	SetInUse(ctx context.Context, path string, inUse bool) error
 	SetMapping(ctx context.Context, authority, authorityPath, local string) error
 
@@ -82,10 +84,20 @@ func (s *Handlers) registerLibrary(api huma.API) {
 	}, httpcore.RoleAdmin), s.discoverLibraryRoots)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "addLibraryRoot", Method: http.MethodPost, Path: "/v1/library/roots",
-		Summary:     "Add a media folder by hand",
-		Description: "Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it.",
-		Tags:        []string{"library"},
+		Summary: "Add a media folder by hand",
+		Description: "Adds a folder by its path on this machine and starts using it. 422 when the path is not absolute or Loomarr cannot open it. " +
+			"409 when it is inside a folder in use, or holds folders in use and replace is not set; with replace, it is used in their place.",
+		Tags: []string{"library"},
 	}, httpcore.RoleAdmin), s.addLibraryRoot)
+	huma.Register(api, httpcore.WithRole(huma.Operation{
+		OperationID: "browseLibraryFolders", Method: http.MethodGet, Path: "/v1/library/browse",
+		Summary: "List the folders in a folder, to pick one",
+		Description: "With no path, the folders the apps name, then this machine's mounts. With a path under one of them, the folders in it, " +
+			"without what the scan never reads. Each folder's summary is counted afterwards and streamed as `library_folder` frames on " +
+			"/v1/events; one counted in the last few minutes comes with the list. 403 for a path outside every mount; 422 when it is " +
+			"not absolute or can't be opened.",
+		Tags: []string{"library"},
+	}, httpcore.RoleAdmin), s.browseLibraryFolders)
 	huma.Register(api, httpcore.WithRole(huma.Operation{
 		OperationID: "setLibraryRootInUse", Method: http.MethodPut, Path: "/v1/library/roots/in-use",
 		Summary:     "Use or stop using a media folder",
@@ -235,6 +247,8 @@ func (s *Handlers) discoverLibraryRoots(ctx context.Context, _ *struct{}) (*libr
 type addLibraryRootInput struct {
 	Body struct {
 		Path string `json:"path" minLength:"1" maxLength:"4096" doc:"The folder's absolute path on this machine"`
+		// Replace uses the folder in place of the folders in use inside it.
+		Replace bool `json:"replace,omitempty" doc:"Use it in place of the folders in use inside it"`
 	}
 }
 
@@ -243,15 +257,96 @@ func (s *Handlers) addLibraryRoot(ctx context.Context, in *addLibraryRootInput) 
 	if err != nil {
 		return nil, err
 	}
-	switch err := svc.Add(ctx, in.Body.Path); {
+	add := svc.Add
+	if in.Body.Replace {
+		add = svc.Replace
+	}
+	var overlap *scan.RootOverlap
+	switch err := add(ctx, in.Body.Path); {
 	case errors.Is(err, scan.ErrNotAbsolute):
 		return nil, httpcore.Unprocessable("That isn't a full path", "Type the folder's full path, starting with /.")
 	case errors.Is(err, scan.ErrUnreadable):
 		return nil, httpcore.Unprocessable("Loomarr can't open that folder", "Check the folder exists here and Loomarr is allowed to read it.")
+	case errors.As(err, &overlap) && overlap.Within != "":
+		return nil, httpcore.Conflict("Already part of "+path.Base(overlap.Within),
+			"Loomarr already reads this folder as part of "+overlap.Within+".")
+	case errors.As(err, &overlap):
+		return nil, httpcore.Conflict("This folder holds folders Loomarr already reads",
+			"Use it in their place, and Loomarr reads everything in it as one folder.")
 	case err != nil:
 		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't add the folder", "Try again in a moment.", err)
 	}
 	return s.listLibraryRoots(ctx, nil)
+}
+
+// FolderSummary is what one look inside a folder found, for the folder browser: the same shape in
+// GET /v1/library/browse and in each `library_folder` frame, which carries one whole.
+type FolderSummary struct {
+	Path    string `json:"path" doc:"The folder on this machine"`
+	Folders int    `json:"folders" doc:"The folders in it the scan would walk"`
+	Videos  int    `json:"videos" doc:"The videos directly in it"`
+	State   string `json:"state" enum:"counted,slow,unreadable" doc:"slow: it didn't answer in time; unreadable: Loomarr couldn't open it"`
+}
+
+// FolderSummaryOf is s on the wire.
+func FolderSummaryOf(s scan.FolderSummary) FolderSummary {
+	return FolderSummary{Path: s.Path, Folders: s.Folders, Videos: s.Videos, State: string(s.State)}
+}
+
+type browseFolderDTO struct {
+	Path   string   `json:"path" doc:"The folder on this machine"`
+	Name   string   `json:"name" doc:"What its row says: its own name, or its whole path at the top"`
+	Named  bool     `json:"named" doc:"An app names it"`
+	InUse  bool     `json:"inUse" doc:"Loomarr reads it"`
+	Within string   `json:"within,omitempty" doc:"The folder in use that holds it"`
+	Holds  []string `json:"holds" doc:"The folders in use inside it"`
+	// Summary is absent until it is counted; a library_folder frame brings it.
+	Summary *FolderSummary `json:"summary,omitempty" doc:"Absent until counted; a library_folder frame brings it"`
+}
+
+type browseLibraryFoldersInput struct {
+	Path string `query:"path" maxLength:"4096" doc:"The folder to list; empty lists the top"`
+}
+
+type browseLibraryFoldersOutput struct {
+	Body struct {
+		Path    string            `json:"path" doc:"The folder listed; empty for the top"`
+		Parent  string            `json:"parent" doc:"The folder above; empty when that is the top"`
+		Folders []browseFolderDTO `json:"folders"`
+	}
+}
+
+func (s *Handlers) browseLibraryFolders(ctx context.Context, in *browseLibraryFoldersInput) (*browseLibraryFoldersOutput, error) {
+	svc, err := s.libraryRootsService()
+	if err != nil {
+		return nil, err
+	}
+	b, err := svc.Browse(ctx, in.Path)
+	switch {
+	case errors.Is(err, scan.ErrNotAbsolute):
+		return nil, httpcore.Unprocessable("That isn't a full path", "A folder's full path starts with /.")
+	case errors.Is(err, scan.ErrNotBrowsable):
+		return nil, huma.Error403Forbidden("That folder is outside this machine's drives and shares")
+	case errors.Is(err, scan.ErrUnreadable):
+		return nil, httpcore.Unprocessable("Loomarr can't open that folder", "Check the drive or share is connected and Loomarr is allowed to read it.")
+	case err != nil:
+		return nil, httpcore.ProblemWithCause(http.StatusInternalServerError, "Couldn't list the folders", "Try again in a moment.", err)
+	}
+	out := &browseLibraryFoldersOutput{}
+	out.Body.Path, out.Body.Parent = b.Path, b.Parent
+	out.Body.Folders = make([]browseFolderDTO, 0, len(b.Folders))
+	for _, f := range b.Folders {
+		dto := browseFolderDTO{Path: f.Path, Name: f.Name, Named: f.Named, InUse: f.InUse, Within: f.Within, Holds: f.Holds}
+		if dto.Holds == nil {
+			dto.Holds = []string{}
+		}
+		if f.Summary != nil {
+			sum := FolderSummaryOf(*f.Summary)
+			dto.Summary = &sum
+		}
+		out.Body.Folders = append(out.Body.Folders, dto)
+	}
+	return out, nil
 }
 
 type setLibraryRootInUseInput struct {

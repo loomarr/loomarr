@@ -208,10 +208,21 @@ type LibraryTitlesEvent struct{}
 // truth. A folder changes state rarely, so it is published as it happens.
 type LibraryRootsEvent struct{}
 
+// LibraryFolderEvent is one folder the folder browser asked about, counted (#2151): a whole
+// summary, so any one frame fills its row, and a dropped frame leaves the row reading "…" until the
+// browser lists it again, which answers it from memory. Admin-only, like the browser: it names the
+// household's folders.
+type LibraryFolderEvent struct {
+	library.FolderSummary
+}
+
 // adminFrame reports whether a frame's payload is for admins only.
 func adminFrame(payload any) bool {
-	_, ok := payload.(LibraryScanEvent)
-	return ok
+	switch payload.(type) {
+	case LibraryScanEvent, LibraryFolderEvent:
+		return true
+	}
+	return false
 }
 
 // EventTypeMap binds each frame's SSE event NAME to its payload type. huma reads the name off
@@ -240,6 +251,7 @@ func EventTypeMap() map[string]any {
 		"library_scan":   LibraryScanEvent{},
 		"library_titles": LibraryTitlesEvent{},
 		"library_roots":  LibraryRootsEvent{},
+		"library_folder": LibraryFolderEvent{},
 	}
 }
 

@@ -175,6 +175,12 @@ func (e *eventEmitter) LibraryRootsChanged() {
 	e.bus.Publish(events.Event{Type: "library_roots", Payload: opsapi.LibraryRootsEvent{}})
 }
 
+// LibraryFolderSummarized publishes a `library_folder` frame: one folder the folder browser asked
+// about, counted. Each is published once, as it is counted. Satisfies libraryFrames.
+func (e *eventEmitter) LibraryFolderSummarized(s scan.FolderSummary) {
+	e.bus.Publish(events.Event{Type: "library_folder", Payload: opsapi.LibraryFolderEvent{FolderSummary: libraryapi.FolderSummaryOf(s)}})
+}
+
 // clipFrameMinGap / clipFrameMinPoints are the throttle for intra-stage filler progress.
 //
 // ⚠ **Throttled HERE rather than at the source, which is the call `PlayoutEvent` already

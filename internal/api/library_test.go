@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -278,6 +279,83 @@ func TestLibraryScan_StatusListsSkippedFiles(t *testing.T) {
 	}
 	if !slices.Equal(got["broken_link"], []string{broken}) || !slices.Equal(got["link_outside"], []string{away}) || len(got) != 2 {
 		t.Fatalf("skipped = %+v", st.Skipped)
+	}
+}
+
+// The folder browser lists from the folders the apps name, down, never outside them, for an
+// admin only; a folder overlapping one in use is refused with 409, and replace takes the outer one.
+func TestLibraryBrowse_ListsDownFromTheAppsFoldersAndRefusesOverlaps(t *testing.T) {
+	share := t.TempDir()
+	for _, dir := range []string{"Movies/Wrenfield (2004)", "TV", "@eaDir"} {
+		if err := os.MkdirAll(filepath.Join(share, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, _ := newScanHarness(t, share)
+	if resp := h.Do(http.MethodPost, "/v1/library/roots/discover", adminToken, ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("discover: %d", resp.StatusCode)
+	}
+	type listing struct {
+		Path    string `json:"path"`
+		Parent  string `json:"parent"`
+		Folders []struct {
+			Path   string   `json:"path"`
+			Name   string   `json:"name"`
+			Named  bool     `json:"named"`
+			InUse  bool     `json:"inUse"`
+			Within string   `json:"within"`
+			Holds  []string `json:"holds"`
+		} `json:"folders"`
+	}
+	browse := func(path string, want int) listing {
+		t.Helper()
+		resp := h.Do(http.MethodGet, "/v1/library/browse?path="+url.QueryEscape(path), adminToken, "")
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != want {
+			t.Fatalf("browse %q: %d, want %d", path, resp.StatusCode, want)
+		}
+		var l listing
+		if want == http.StatusOK {
+			if err := json.NewDecoder(resp.Body).Decode(&l); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return l
+	}
+
+	top := browse("", http.StatusOK)
+	if len(top.Folders) != 1 || top.Folders[0].Path != share || !top.Folders[0].Named || top.Folders[0].Holds == nil {
+		t.Fatalf("top = %+v, want Sonarr's folder alone", top.Folders)
+	}
+	in := browse(share, http.StatusOK)
+	if len(in.Folders) != 2 || in.Folders[0].Name != "Movies" || in.Folders[1].Name != "TV" || in.Parent != "" {
+		t.Fatalf("in the share = %+v, want Movies and TV under the top", in)
+	}
+	browse(filepath.Dir(share), http.StatusForbidden)
+	browse("relative", http.StatusUnprocessableEntity)
+	if resp := h.Do(http.MethodGet, "/v1/library/browse", memberToken, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("a member browsing: %d, want 403", resp.StatusCode)
+	}
+
+	movies := filepath.Join(share, "Movies")
+	add := func(body string, want int) {
+		t.Helper()
+		if resp := h.Do(http.MethodPost, "/v1/library/roots", adminToken, body); resp.StatusCode != want {
+			t.Fatalf("add %s: %d, want %d", body, resp.StatusCode, want)
+		}
+	}
+	add(`{"path":"`+movies+`"}`, http.StatusOK)
+	add(`{"path":"`+filepath.Join(movies, "Wrenfield (2004)")+`"}`, http.StatusConflict)
+	add(`{"path":"`+share+`"}`, http.StatusConflict)
+	if f := browse(movies, http.StatusOK).Folders; len(f) != 1 || f[0].Within != movies {
+		t.Fatalf("in Movies = %+v, want its film's folder within Movies", f)
+	}
+	add(`{"path":"`+share+`","replace":true}`, http.StatusOK)
+	roots := decodeLibraryRoots(t, h.Do(http.MethodGet, "/v1/library/roots", adminToken, ""))
+	for _, r := range roots.Roots {
+		if r.InUse != (r.Path == share) {
+			t.Errorf("%s in use = %v after replace", r.Path, r.InUse)
+		}
 	}
 }
 

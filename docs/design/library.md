@@ -232,6 +232,19 @@ the household's language wins over it, and a refresh after TMDB gains a translat
   status again.
 - `GET /v1/library/status` reports `needs_folders`, `folder_offline`, `folder_empty` or `ok`, with
   counts.
+- **Picked, not typed.** `GET /v1/library/browse` lists the folders to pick one from (admin-only):
+  with no path, the folders the apps name, then this machine's mounts; with a path under one of
+  them, its folders, never a file, never above a mount, never through a link that leads out of
+  every mount, and without what the scan never reads (`neverMedia`: a NAS's, an OS's or a
+  downloader's own folders, subtitles' folders). Each folder's summary, the folders and videos one
+  look inside finds within 3 s ("slow" past it), is counted after the list is answered and streamed
+  whole as an admin-only `library_folder` frame; one counted in the last five minutes comes with
+  the list. Typing a path stays.
+- **No folder inside another.** A folder inside one in use is refused (409, "Already part of
+  Movies"), and so is one holding folders in use, unless it is added with `replace`, which uses it
+  in their place in one step. The scan already reads a folder nested in another as part of the outer
+  one (`scannedRoots`), so the list would name it twice; the outer one's next pass keys their files
+  under it.
 
 ## Scanner
 
