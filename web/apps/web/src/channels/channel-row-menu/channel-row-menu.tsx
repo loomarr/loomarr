@@ -105,14 +105,8 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           if (!next) resetConfirm();
         }}
       >
-        <MenuTrigger>
-          <Action
-            icon="more"
-            layout="icon"
-            // The menu's trigger props land on a real button, which Base UI's trigger can drive.
-            render={<button onClick={swallow} type="button" />}
-            variant="ghost"
-          >
+        <MenuTrigger onClick={swallow}>
+          <Action icon="more" layout="icon" variant="ghost">
             {`Actions for ${channel.name}`}
           </Action>
         </MenuTrigger>

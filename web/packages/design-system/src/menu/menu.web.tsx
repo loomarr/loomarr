@@ -1,6 +1,8 @@
 /// <reference lib="dom" />
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
+import { cloneElement, type ReactElement } from "react";
 
+import { Action } from "../interaction";
 import { semanticRadius } from "../tokens";
 import type {
   MenuActionProps,
@@ -25,7 +27,22 @@ const Menu = ({ children, defaultOpen, onOpenChange }: MenuProps) => (
   </MenuPrimitive.Root>
 );
 
-const MenuTrigger = ({ children }: MenuTriggerProps) => <MenuPrimitive.Trigger render={children} />;
+// Base UI's trigger drives a real `<button>`, and an Action is a Pressable (a `div`) unless it is
+// handed a host. So an Action given as the trigger gets the button here, and a caller never names
+// `<button>` to open a menu. Any other element (or an Action with its own `render`) is used as given.
+const MenuTrigger = ({ children, onClick }: MenuTriggerProps) => {
+  const trigger = children as ReactElement<{ render?: ReactElement }>;
+  return (
+    <MenuPrimitive.Trigger
+      onClick={onClick}
+      render={
+        trigger.type === Action && trigger.props.render === undefined
+          ? cloneElement(trigger, { render: <button type="button" /> })
+          : trigger
+      }
+    />
+  );
+};
 
 const MenuContent = ({ align, children, portalContainer, side, width }: MenuContentProps) => (
   <MenuPrimitive.Portal container={portalContainer as HTMLElement | ShadowRoot | null | undefined}>

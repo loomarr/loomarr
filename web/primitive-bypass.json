@@ -116,9 +116,6 @@
     "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/settings/tasks-page/tasks-page.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "flexStack": 2
     },
