@@ -427,10 +427,15 @@ func TestClientDiagnosticsAcceptMemberAndDeriveActor(t *testing.T) {
 		t.Fatalf("derived submission = actor %q batch %+v", gotActor, gotBatch)
 	}
 	var body struct {
-		Accepted int `json:"accepted"`
+		Accepted   int `json:"accepted"`
+		Vocabulary int `json:"vocabulary"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil || body.Accepted != 1 {
 		t.Fatalf("response = %+v, err %v", body, err)
+	}
+	// A client newer than its server reads this to send only what the server accepts.
+	if body.Vocabulary != diagnostics.ClientVocabulary {
+		t.Fatalf("vocabulary = %d, want %d", body.Vocabulary, diagnostics.ClientVocabulary)
 	}
 }
 

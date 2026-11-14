@@ -2066,8 +2066,14 @@ components:
         accepted:
           format: int64
           type: integer
+        vocabulary:
+          description: The client-event vocabulary version this server accepts. A client sends only the events and fields that version defines; a server that omits this is version 0.
+          format: int64
+          minimum: 1
+          type: integer
       required:
         - accepted
+        - vocabulary
       type: object
     ClientObservation:
       additionalProperties: false

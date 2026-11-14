@@ -79,6 +79,16 @@ return `202` after enqueue. The limit is 120 observations a minute per actor wit
 Clients keep a 100-observation memory queue, send at most 20 every two seconds, drop routine events
 before errors, and never block playback or keep a second log.
 
+**Vocabulary versions.** Because one unknown event or field refuses the whole batch, and a paired
+app is often newer than its server, the vocabulary is versioned (#4134). Each accepted batch's
+`202` answer carries `vocabulary`, the version this server accepts (`diagnostics.ClientVocabulary`);
+a server that sends none is version 0. Version 0 is the fourteen events above; version 1 adds only
+the `vocabulary` answer. A client sends only what its server's version defines: until the first
+answer it sends version-0 observations only, and newer ones wait in the bounded queue, then are
+dropped if the server turns out too old to take them (`EVENT_SINCE` and `FIELD_SINCE` in
+`@loomarr/core/client-diagnostics`). Every event or field added later names the version that
+introduced it here, in the same change that raises `ClientVocabulary`.
+
 The batch's `platform` must belong to its `source`: `web` takes the browsers, `android_tv` takes
 `android_tv`, `shield_tv` and `unknown_android_tv`, and `apple_tv`, `ios` and `android` each take their
 own name. Both native apps derive their pair from the platform they run on (`createNativeApp`), and
