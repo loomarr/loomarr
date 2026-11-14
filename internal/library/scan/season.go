@@ -193,7 +193,12 @@ func toldTitle(rel string) string {
 // titled says whether a catalog record's title is the one a file's name gives: the same words,
 // small ones aside, or one's words all among the other's ("The Pit (1)" and "The Pit, Part 1").
 func titled(r *mp.Record, told string) bool {
-	if r == nil || r.Descriptive == nil || r.Descriptive.Title == "" {
+	return r != nil && r.Descriptive != nil && oneTitle(r.Descriptive.Title, told)
+}
+
+// oneTitle says whether two titles are one, as titled reads them; an empty one is none.
+func oneTitle(title, told string) bool {
+	if title == "" || told == "" {
 		return false
 	}
 	words := func(s string) map[string]bool {
@@ -205,9 +210,9 @@ func titled(r *mp.Record, told string) bool {
 		}
 		return set
 	}
-	a, b := words(r.Descriptive.Title), words(told)
+	a, b := words(title), words(told)
 	if len(a) == 0 || len(b) == 0 {
-		return normName(r.Descriptive.Title) == normName(told)
+		return normName(title) == normName(told)
 	}
 	if len(a) > len(b) {
 		a, b = b, a

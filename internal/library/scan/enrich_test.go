@@ -1377,3 +1377,66 @@ func TestEnricherWakeNeverBlocks(t *testing.T) {
 	var none *Enricher
 	none.Wake()
 }
+
+// An id a movie's name or NFO gives, or a show's folder, whose record is another title than the
+// files name (another title and more than a year off) grounds nothing: an NFO copied from another
+// film's folder, or an id typed wrong, puts the title in Needs you rather than naming it as the
+// other. A remake shares its title, and a title the catalog knows in another language its year:
+// both stand.
+func TestAnIDWhoseRecordIsAnotherTitleGroundsNothing(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	movie := func(id, title, original string, year int) mp.Record {
+		return mp.Record{Source: src, Kind: mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, OriginalTitle: original, Year: year}}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	typed := "Movies/Hollow Pines (2004) {tmdb-9100002}/Hollow Pines (2004) [Bluray-1080p].mkv"
+	copied := "Movies/Hollow Pines (2004)/Hollow Pines (2004).mkv"
+	remake := "Movies/Ferrow Lane (2019) {tmdb-9100003}/Ferrow Lane (2019).mkv"
+	foreign := "Movies/The Quiet Mill (1984) {tmdb-9100004}/The Quiet Mill (1984).mkv"
+	show := "TV/Brindle Cove (2019) {tmdb-90000951}/Season 01/Brindle Cove (2019) - S01E01 - Gulls.mkv"
+	for _, rel := range []string{typed, copied, remake, foreign, show} {
+		h.file(rel, 10)
+	}
+	if err := os.WriteFile(filepath.Join(h.root, "Movies/Hollow Pines (2004)/Hollow Pines (2004).nfo"),
+		[]byte(`<movie><title>Hollow Pines</title><year>2004</year><uniqueid type="tmdb" default="true">9100002</uniqueid></movie>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"9100002": movie("9100002", "Ferrow Lane", "", 2019),
+		"9100003": movie("9100003", "Ferrow Lane", "", 1962),
+		"9100004": movie("9100004", "Moulin Silencieux", "Le Moulin Silencieux", 1985),
+		"90000951": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000951"}},
+			Descriptive: &mp.Descriptive{Title: "Orrin Vale", Year: 1987, Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 1}}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		rel     string
+		matched bool
+	}{{typed, false}, {copied, false}, {remake, true}, {foreign, true}} {
+		o := fileOrigin(h.root, c.rel)
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", c.rel)
+		}
+		if matched := it.Match.Basis != ""; matched != c.matched || !c.matched && it.Name == "Ferrow Lane" {
+			t.Errorf("%s = %q %d matched %v, want matched %v", c.rel, it.Name, it.Year, matched, c.matched)
+		}
+	}
+	o := seriesOrigin(h.root, "TV/Brindle Cove (2019) {tmdb-90000951}")
+	if s, ok := ProjectLibraryItem(h.item(o)); !ok || s.Name == "Orrin Vale" || s.Match.Basis != "" {
+		t.Errorf("show = %q matched %q, want Brindle Cove in Needs you", s.Name, s.Match.Basis)
+	}
+}
