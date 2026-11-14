@@ -21,6 +21,8 @@ not a collection to keep (#3838, decision 14, grilled 2026-11-12).
 - **A clip added by hand keeps its original.** So does a clip the library re-encode still has to
   move onto the current profile; its original is released after.
 - **An original another clip still names stays** until the last clip naming it is released.
+- **An original stays while it is the only way back to the clip:** while the file the clip airs is
+  missing or not the bytes its sidecar records, or its acquisition is not consumed (in repair).
 - **A clip that needs reprocessing is fetched again, or retired and replaced.** Loomarr does not
   re-run the transcode, split or screening of a clip whose original is released, and refuses a
   rewind to those rungs. Later rungs read the playback copy and still run.

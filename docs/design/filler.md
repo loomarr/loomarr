@@ -533,18 +533,28 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   then the sidecar last, since the sidecar is what names the others. A crash between the commit and
   the move leaves only bytes, and the next pass finishes the move.
 - **Deleted files wait a day in quarantine** (`.loomarr-media/quarantine/<unix time>/`, keeping
-  their path under the clip folder) before the bytes go. A wrong delete can be put back by hand,
-  and the bytes count toward the budget until they are gone.
+  their path under the clip folder) before the bytes go, and the bytes count toward the budget
+  until they are gone. A wrong delete is put back by moving its files from the batch to the same
+  path under the clip folder. A released original also needs its path written back into the
+  clip's sidecar (`mediaAssets.sourceMaster.path`, the master's path under the clip folder), with
+  its provenance sidecar moved back beside it; while the clip stays Ready and fetched, the next
+  pass releases it again.
 - **Leftover download staging is cleaned every hour** by the same rules as the storage cleanup
-  route: a terminal run, no artifact depending on it, and 24 hours old.
+  route: a terminal run, no artifact depending on it, and 24 hours old. Upkeep sends it to the
+  quarantine when the watch folder is inside the clip folder (the default); a watch folder set
+  elsewhere can be another disk, so its staging is deleted at once. The storage cleanup route
+  deletes at once too, since the operator asked for the space now.
 - **A Ready clip Loomarr fetched lets go of its original download**
   ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)). The master goes to
   quarantine first, then the sidecar keeps the master's digest, length and sparse id with no path.
   A crash between the two leaves a sidecar naming a missing file, and the next pass finishes the
   release. A clip added by hand keeps its original, and so does a clip the library re-encode still
-  has to move onto the current profile, until it has; nothing is released until encoder detection
-  has settled, since before then every host reads as software. An original another clip still
-  names stays until the last of them is released. The release, the defect floor's evidence release
+  has to move onto the current profile, until it has. So does a clip whose airing copy is missing
+  or not the bytes its sidecar records, and one whose acquisition intake has not consumed (sync
+  marks it in repair when a file stops matching); each pass looks again. Nothing is released until
+  encoder detection has settled, since before then every host reads as software. An original
+  another clip still names stays until the last of them is released, and while any clip's sidecar
+  cannot be read no original is released. The release, the defect floor's evidence release
   and a rewind's hold share one lock per sidecar, so none of them undoes another's change.
 - The server projects one capacity snapshot with a state (`healthy`, `approaching`, `paused`,
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
