@@ -139,6 +139,30 @@ func TestTrackerETAOnALargeStep(t *testing.T) {
 	}
 }
 
+// The time left follows the rate the step goes at now: a reading that crawls for its first ten
+// minutes and then runs tells the fast rate within a few minutes, not an average weighed down by
+// the crawl.
+func TestTrackerETAFollowsTheRateNow(t *testing.T) {
+	tr, c := newClockTracker()
+	tr.Begin(StepReading, 40_000)
+	for range 10 { // 16 a minute for ten minutes
+		c.advance(time.Minute)
+		tr.Advance(StepReading, 16)
+	}
+	slow := tr.Snapshot(c.now())
+	if !slow.HasETA || slow.ETA < 24*time.Hour {
+		t.Fatalf("eta while crawling = %v %v, want over a day", slow.ETA, slow.HasETA)
+	}
+	for range 4 { // then 1,600 a minute
+		c.advance(time.Minute)
+		tr.Advance(StepReading, 1600)
+	}
+	// 33,440 left at 1,600 a minute is about 21 minutes; the whole step's average would say hours.
+	if got := tr.Snapshot(c.now()); !got.HasETA || got.ETA > 30*time.Minute {
+		t.Fatalf("eta four minutes after speeding up = %v %v, want about 21m from the rate now", got.ETA, got.HasETA)
+	}
+}
+
 // A pause for watching hides the ETA and what the step is on; going again restarts the rate
 // baseline, so the wait never counts against the rate, and tells the time left by the rate before
 // the pause until it has measured a new one.
