@@ -139,28 +139,29 @@ describe("the portrait band", () => {
     expect(host.querySelector('[aria-label="Last channel, 3"]')).not.toBeNull();
   });
 
-  it("lets the title take two lines, and the episode line one", () => {
-    const portrait = mount(chrome("portrait", "touch"));
-    const clamp = (el: El) => computed(el).webkitLineClamp;
-    expect(clamp(byId(portrait, "band-title"))).toBe("2");
-    // The landscape band keeps one line.
-    const landscape = mount(chrome("overlay", "touch"));
-    expect(clamp(byId(landscape, "band-title"))).not.toBe("2");
+  // #4132: the full band arriving on every tune overwhelmed a phone. Held either way, its band is one
+  // row: the title over the channel and the minutes left. The episode, the slot's times and Next are in
+  // Info.
+  it.each([
+    ["upright", "portrait"],
+    ["on its side", "overlay"],
+  ] as const)("says only the title, the channel and the minutes left on a phone held %s", (_, layout) => {
+    const host = mount(chrome(layout, "touch"));
+    expect(byId(host, "band-title").textContent).toBe("Moth & Moonbeam Adventures Club");
+    // The fixture's slot is 10 ms long; what is left of it rounds up to the one-minute floor.
+    expect(byId(host, "band-channel-name").textContent).toBe("Saturday Morning Cartoon Club · 1 min left");
+    for (const gone of ["band-line", "band-progress", "band-next-time"]) expect(byId(host, gone)).toBeNull();
+    expect(host.textContent).not.toContain("Live");
+    expect(host.textContent).not.toContain("Now");
+    expect(host.textContent).not.toContain("Next");
+    expect(computed(byId(host, "band-title")).webkitLineClamp).not.toBe("2");
   });
 
-  it("sets the progress line between its two clocks, as every band does (variant J)", () => {
-    const row = byId(mount(chrome("portrait", "touch")), "band-progress").parentElement as El;
-    expect(row.children).toHaveLength(3);
-    expect(row.children[0]?.textContent).toBe("t0");
-    expect(row.children[2]?.textContent).toBe("t10");
-  });
-
-  it("keeps the next time on one line and lets the title take the rest", () => {
-    const time = byId(mount(chrome("portrait", "touch")), "band-next-time");
-    expect(time.textContent).toBe("t4");
-    const style = computed(time);
-    expect(style.whiteSpace).toBe("nowrap");
-    expect(style.flexShrink).toBe("0");
+  it("keeps desktop's full band: the episode line, the progress line between its clocks, and Next", () => {
+    const host = mount(chrome("overlay", "pointer"));
+    expect(byId(host, "band-line")).not.toBeNull();
+    expect(byId(host, "band-next-time").textContent).toBe("t4");
+    expect(host.textContent).toContain("Live");
   });
 
   it("keeps the desktop band's progress line between its two clocks in one row, without a strip", () => {
