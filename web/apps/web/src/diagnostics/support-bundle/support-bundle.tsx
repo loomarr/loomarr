@@ -18,6 +18,7 @@ import {
   Icon,
   icons,
   LoadingStrip,
+  Notice,
   Stack,
   Text,
   Toggle,
@@ -236,10 +237,11 @@ const SupportBundle = ({
                   )}
                 </form.Field>
               </Stack>
-              <Card
-                alignItems="flex-start"
-                borderColor="stateSuccess"
-                flexDirection="row"
+              <Stack
+                align="start"
+                borderRadius={8}
+                className="border-success/30 bg-success/5 border"
+                direction="row"
                 gap="inline"
                 padding={12}
               >
@@ -249,7 +251,7 @@ const SupportBundle = ({
                 <Text as="p" textRole="hint" tone="secondary">
                   Secrets, URL credentials, and local paths are redacted again while the report is built.
                 </Text>
-              </Card>
+              </Stack>
             </Card>
 
             {busy === "preview" && (
@@ -304,11 +306,7 @@ const SupportBundle = ({
                   </Stack>
                 </Grid>
                 {warnings.length > 0 ? (
-                  <Card borderColor="stateWarning" padding={12}>
-                    <Text as="p" textRole="compact">
-                      Some evidence is limited: {warnings.join(", ")}.
-                    </Text>
-                  </Card>
+                  <Notice body={`${warnings.join(", ")}.`} title="Some evidence is limited" tone="warn" />
                 ) : (
                   <Text as="p" textRole="hint" tone="secondary">
                     No evidence limits were reached in this review.
@@ -386,11 +384,16 @@ const SupportBundle = ({
           </Stack>
 
           {error && (
-            <Card borderColor="stateDanger" padding={12} role="alert">
+            <Stack
+              borderRadius={8}
+              className="border-destructive/40 bg-destructive/10 border"
+              padding={12}
+              role="alert"
+            >
               <Text as="p" textRole="compact" tone="danger">
                 {error}
               </Text>
-            </Card>
+            </Stack>
           )}
 
           <DialogFooter>
