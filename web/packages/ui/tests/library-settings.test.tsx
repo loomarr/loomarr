@@ -513,10 +513,13 @@ describe("LibrarySettings", () => {
   });
 
   const SHARE = "/mnt/share";
-  const browser = (listing: LibraryBrowseListing): LibraryFolderBrowser => ({
+  const browser = (
+    listing: LibraryBrowseListing,
+    more: Partial<LibraryFolderBrowser> = {},
+  ): LibraryFolderBrowser => ({
     listing,
-    loading: false,
     onOpen: vi.fn(),
+    ...more,
   });
   const TOP: LibraryBrowseListing = {
     path: "",
@@ -601,6 +604,32 @@ describe("LibrarySettings", () => {
     expect(inside.onOpen).toHaveBeenCalledWith("/mnt/share/Movies");
     act(() => second.button("Type a path instead").click());
     expect(second.host.querySelector("input")).not.toBeNull();
+    second.cleanup();
+  });
+
+  it("names the folder opening on a slow share, holding Up and Use this folder until it is listed", async () => {
+    const SLOW = "/mnt/share/Ferrow (1999)";
+    const opening = browser(TOP, { opening: SLOW });
+    const first = render({ folderBrowser: opening });
+    act(() => first.button("Add a folder").click());
+    expect(first.host.textContent).toContain(SLOW);
+    expect(first.host.textContent).toContain("Opening…");
+    expect(first.host.textContent).not.toContain("drives and shares");
+    const opened = vi.mocked(opening.onOpen).mock.calls.length;
+    act(() => first.button("Up").click());
+    expect(opening.onOpen).toHaveBeenCalledTimes(opened);
+    await act(async () => first.button("Use this folder").click());
+    expect(first.props.onAddFolder).not.toHaveBeenCalled();
+    first.cleanup();
+
+    // One that can't be opened leaves Up to go back to the folder it was picked from.
+    const listed = { ...TOP, path: SHARE, parent: "" };
+    const refused = browser(listed, { opening: SLOW, error: "Loomarr can't open this folder." });
+    const second = render({ folderBrowser: refused });
+    act(() => second.button("Add a folder").click());
+    expect(second.host.textContent).toContain("Loomarr can't open this folder.");
+    act(() => second.button("Up").click());
+    expect(refused.onOpen).toHaveBeenLastCalledWith(SHARE);
     second.cleanup();
   });
 

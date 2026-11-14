@@ -39,7 +39,7 @@ const FolderRow = ({
       onPress={() => onOpen(folder.path)}
     >
       <Icon decorative glyph={icons.folder} size="compact" tone="muted" />
-      <Stack flexBasis={0} flexGrow={1} flexShrink={1} gap="inline">
+      <Stack alignItems="flex-start" flexBasis={0} flexGrow={1} flexShrink={1} gap="inline">
         <Text textRole="label">{folder.name}</Text>
         <Text textRole="hint" tone="muted">
           {folder.named ? `From your apps · ${folderSummary(folder.summary)}` : folderSummary(folder.summary)}
@@ -91,21 +91,32 @@ const FolderBrowser = ({
   onTypePath: () => void;
   onCancel: () => void;
 }) => {
-  const { listing, loading, error, onOpen } = browser;
-  const path = listing?.path ?? "";
-  const choice = choiceFor(listing);
+  const { listing, opening, error, onOpen } = browser;
+  // While a folder opens, the header names it and the last folder's rows wait under "Opening…";
+  // Up and "Use this folder" wait for it to be listed. One that can't be opened leaves Up to go
+  // back to the folder it was picked from.
+  const waiting = opening !== undefined;
+  const upTo = waiting && error ? (listing?.path ?? "") : (listing?.parent ?? "");
+  const path = opening ?? listing?.path ?? "";
+  const choice = waiting ? { disabled: true, label: "Use this folder", hint: undefined } : choiceFor(listing);
   const folders = listing?.folders ?? [];
   return (
     <Stack gap="control">
       <Line alignItems="center" flexWrap="nowrap" gap="control">
         {path !== "" ? (
-          <Action icon="goBack" onPress={() => onOpen(listing?.parent ?? "")} variant="ghost">
+          <Action disabled={waiting && !error} icon="goBack" onPress={() => onOpen(upTo)} variant="ghost">
             Up
           </Action>
         ) : null}
-        <Text flexShrink={1} textRole="data" tone="muted">
-          {path === "" ? "Your apps' folders and this machine's drives" : path}
-        </Text>
+        {path === "" ? (
+          <Text textRole="body" tone="secondary">
+            Your apps' folders and this machine's drives and shares
+          </Text>
+        ) : (
+          <Text flexShrink={1} textRole="data" tone="muted">
+            {path}
+          </Text>
+        )}
       </Line>
       <Surface
         backgroundColor="transparent"
@@ -113,13 +124,13 @@ const FolderBrowser = ({
         borderRadius={12}
         borderWidth={1}
       >
-        {loading && !listing ? (
-          <Text padding="section" textRole="body" tone="secondary">
-            Opening…
-          </Text>
-        ) : error ? (
+        {error ? (
           <Text padding="section" textRole="body" tone="warning">
             {error}
+          </Text>
+        ) : waiting || !listing ? (
+          <Text padding="section" textRole="body" tone="secondary">
+            Opening…
           </Text>
         ) : folders.length === 0 ? (
           <Text padding="section" textRole="body" tone="secondary">

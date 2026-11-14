@@ -2,6 +2,7 @@ import * as libraryApi from "@loomarr/api/endpoints/library";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import type { LibraryBrowseListing, LibraryFolderBrowser } from "@loomarr/ui";
+import { keepPreviousData } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { useLoomarrEventListener } from "@/events/events-provider";
@@ -22,7 +23,8 @@ const useFolderBrowser = (): LibraryFolderBrowser => {
   });
   const browse = libraryApi.useBrowseLibraryFolders(
     { path: path ?? "" },
-    { query: { enabled: path !== undefined } },
+    // The last folder stays listed while the next opens: a slow share never blanks the browser.
+    { query: { enabled: path !== undefined, placeholderData: keepPreviousData } },
   );
   const body = unwrap(browse.data);
   const listing: LibraryBrowseListing | undefined = body && {
@@ -32,7 +34,7 @@ const useFolderBrowser = (): LibraryFolderBrowser => {
   const problem = browse.error ? toProblem(browse.error) : undefined;
   return {
     listing,
-    loading: browse.isFetching,
+    opening: path !== undefined && body?.path !== path ? path : undefined,
     error: problem
       ? [problem.title, problem.detail].filter(Boolean).join(". ") || "Couldn't open that folder."
       : undefined,

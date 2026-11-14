@@ -139,8 +139,10 @@ interface LibraryBrowseListing {
 
 /** The folder browser's data, which the app reads: the folder open now, and how to open another. */
 interface LibraryFolderBrowser {
+  /** The folder listed last; it stays while the next one opens. */
   listing?: LibraryBrowseListing;
-  loading: boolean;
+  /** The folder being opened, until it is listed; "" is the top. */
+  opening?: string;
   /** Why the folder couldn't be listed. */
   error?: string;
   /** Opens a folder; "" opens the top. */
