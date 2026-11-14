@@ -29,10 +29,13 @@ import (
 type countingInventory struct {
 	inventory.Service
 	applied atomic.Int32
+	// slow, when set, is how long each write takes.
+	slow atomic.Int64
 }
 
 func (c *countingInventory) ApplySnapshot(ctx context.Context, s inventory.Snapshot) (inventory.ItemID, error) {
 	c.applied.Add(1)
+	time.Sleep(time.Duration(c.slow.Load()))
 	return c.Service.ApplySnapshot(ctx, s)
 }
 
@@ -1742,5 +1745,54 @@ func TestOneSharesFaultsCountOnlyAgainstItself(t *testing.T) {
 	h.run()
 	if n := read.Load(); n != 2*good {
 		t.Errorf("read %d of the shares' %d good files: a share was stopped by faults not its own", n, 2*good)
+	}
+}
+
+// A folder released while step 1 walks and writes it stops at once: the import writes no more of
+// it, forgets what it wrote, and goes on to the next folder, rather than walking and writing the
+// released one in full first.
+func TestAFolderReleasedMidWalkStopsAtOnce(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	other := t.TempDir()
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	const files = 200
+	for i := range files {
+		h.file(fmt.Sprintf("Film %03d (2001)/Film %03d.mkv", i, i), 10)
+	}
+	kept := filepath.Join(other, "Kilo (2010)", "Kilo (2010).mkv")
+	if err := os.MkdirAll(filepath.Dir(kept), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kept, make([]byte, 10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.inv.slow.Store(int64(5 * time.Millisecond))
+	released := make(chan error, 1)
+	go func() {
+		for h.inv.applied.Load() < 10 {
+			time.Sleep(time.Millisecond)
+		}
+		if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+			released <- err
+			return
+		}
+		released <- h.im.ForgetReleased(ctx)
+	}()
+	h.run()
+	if err := <-released; err != nil {
+		t.Fatal(err)
+	}
+	if n := h.inv.applied.Load(); n > files/2 {
+		t.Fatalf("wrote %d of the released folder's %d files", n, files)
+	}
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 0 {
+		t.Fatalf("%d of the released folder's rows kept, %v", len(rows), err)
+	}
+	if rows, err := h.st.LibraryFiles(ctx, other); err != nil || len(rows) != 1 {
+		t.Fatalf("the other folder has %d rows, %v; want its file", len(rows), err)
 	}
 }

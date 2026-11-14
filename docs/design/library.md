@@ -301,7 +301,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
-  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
+  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once;
+  one step 1 is walking or writing stops at the file it is on, and the pass goes on to the next
+  root.
 - **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
   added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
   the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
