@@ -123,7 +123,7 @@ const Typography = () => (
               flex={1}
               minWidth={0}
               numberOfLines={1}
-              style={{ fontSize: px, lineHeight: 1.15 }}
+              style={{ fontSize: px, lineHeight: "inherit" }}
               textRole="body"
             >
               Channels play what's ready
