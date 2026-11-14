@@ -238,6 +238,13 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 // in full however little it finds.
 func (s *Scanner) Trigger() {
 	s.Importer.Tracker.Ask()
+	s.PassSoon()
+}
+
+// PassSoon asks for a pass soon on nobody's behalf: like the hourly pass, it shows its progress only
+// when it finds something to read or look up. The watch asks so when it lost track of what changed.
+// It never blocks.
+func (s *Scanner) PassSoon() {
 	select {
 	case s.trigger <- struct{}{}:
 	default:
