@@ -511,10 +511,15 @@ describe("LibrarySettings", () => {
         },
         { reason: "link_outside", total: 1, paths: ["/media/movies/Away (2002).mkv"] },
         { reason: "disc_image", total: 2, paths: ["/media/movies/Tarn.iso", "/media/movies/Wick.iso"] },
+        { reason: "empty_file", total: 1, paths: ["/media/movies/Fallow (1971)/Fallow (1971).mkv"] },
         { reason: "identity_conflict", total: 1, paths: ["/media/tv/x.mkv"] },
         { reason: "invalid_facts", total: 1, paths: ["/media/tv/y.mkv"] },
       ],
     });
+    expect(host.textContent).toContain("1 video file is empty");
+    expect(host.textContent).toContain(
+      "Fallow (1971).mkv has nothing in it — a copy that never finished. Copy it again or delete it, then check again.",
+    );
     expect(host.textContent).toContain("5 shortcuts point to files that are gone");
     expect(host.textContent).toContain(
       "Gone (2003).mkv, Old Reel.mkv, a.mkv and 2 more. Point them at the files again or delete them, then check again.",

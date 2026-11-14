@@ -90,7 +90,13 @@ interface LibraryHeldRemoval {
 
 /** One reason the scan skips files, how many it skips for it, and the first few by path. */
 interface LibrarySkipped {
-  reason: "broken_link" | "link_outside" | "disc_image" | "identity_conflict" | "invalid_facts";
+  reason:
+    | "broken_link"
+    | "link_outside"
+    | "disc_image"
+    | "empty_file"
+    | "identity_conflict"
+    | "invalid_facts";
   total: number;
   paths: readonly string[];
 }

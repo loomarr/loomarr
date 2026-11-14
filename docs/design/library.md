@@ -314,7 +314,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   inside another in-use root is walked as part of it. Walks skip `trickplay/`,
   `extrafanart/`, `.actors/`, `@eaDir/`, recycle bins, extras folders below the top of a root (a
   show at the top named "Shorts" is still a show), names that are not UTF-8 and folders holding
-  an `.ignore` file, list disc images as problems, and follow a symlink only inside its root.
+  an `.ignore` file, list disc images and empty video files (`empty_file`: a copy that never
+  finished, which makes no title until it is filled) as problems, and follow a symlink only inside
+  its root.
   A file is recorded under one path: a folder reached through a link is listed under its real
   place in the root, whichever path a walk or a folder pass took to reach it. A video link to a
   file the walk records itself is skipped, unless its target lies in a folder walks skip (#3227).
