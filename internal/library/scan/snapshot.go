@@ -535,10 +535,9 @@ func markSpan(name string) (start, end int, ok bool) {
 	if m == nil {
 		return 0, 0, false
 	}
-	more, start, end := moreEpisodesS, m[4], m[5]
-	if m[2] >= 0 {
-		start = m[2] - 1 // the "S" or "T" before the season
-	} else {
+	// From the "S" or "T" before the season to the episode's number, or a "1x02" whole.
+	more, start, end := moreEpisodesS, m[2]-1, m[5]
+	if m[2] < 0 {
 		more, start, end = moreEpisodesX, m[6], m[9]
 	}
 	for {
