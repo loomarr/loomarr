@@ -252,6 +252,16 @@ describe("PlayerChrome", () => {
       expect(button(host, "Disconnect")?.getAttribute("aria-hidden")).toBe("true");
     });
 
+    // A face hidden from readers must not be a tab stop either (axe aria-hidden-focus): the keyboard
+    // would land on a control no reader can name. React Native for Web's Pressable sets tabindex 0
+    // whatever focusable says.
+    it("keeps the covered faces out of the tab order", () => {
+      const host = mount(chrome({ casting: { routePicker }, density: "touch", utilities: castingUtilities }));
+
+      expect(button(host, "Disconnect")?.getAttribute("tabindex")).toBe("-1");
+      expect(button(host, "AirPlay")?.getAttribute("tabindex")).toBe("-1");
+    });
+
     it("lights the AirPlay key amber, and leaves the band and keys working as the TV's remote", () => {
       const onTogglePlay = vi.fn();
       const host = mount(

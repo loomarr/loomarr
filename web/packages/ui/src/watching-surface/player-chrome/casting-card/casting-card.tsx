@@ -34,6 +34,8 @@ const Disconnect = ({ routePicker }: { routePicker: ReactNode }) => {
         // The picker is the control a screen reader finds; the face is not a second button.
         aria-hidden
         focusable={false}
+        // React Native for Web's Pressable ignores focusable; only tabIndex takes it out of the tab order.
+        tabIndex={-1}
         {...focusHandlers}
         onHoverIn={() => setHovered(true)}
         onHoverOut={() => setHovered(false)}

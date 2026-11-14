@@ -56,6 +56,9 @@ const UtilityKey = ({
         accessibilityLabel={label}
         aria-hidden={cover !== undefined}
         focusable={cover === undefined}
+        // React Native for Web's Pressable ignores focusable and sets tabindex 0 unless given one, so a
+        // covered face would stay a tab stop under aria-hidden (axe aria-hidden-focus).
+        tabIndex={cover === undefined ? undefined : -1}
         accessibilityRole="button"
         // aria-expanded, not accessibilityState: React Native for Web 0.21 drops the latter.
         aria-expanded={pressed}
