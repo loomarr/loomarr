@@ -522,6 +522,9 @@ var (
 	// "Reed Wood - Episode 1", "Ash Vale (2008) - Night 1". Its groups are the name and the number.
 	// An "E" stands apart from the name and touches its number: "Ironvale 2" is a sequel's.
 	spelledEpisode = regexp.MustCompile(`(?i)^(.*?[^ ._-])[ ._]+(?:-[ ._]+)?(?:(?:episode|ep\.?|night)[ ._]*|e)(\d{1,3})(?:[^0-9]|$)`)
+	// chapterEpisode matches a name, then "Chapter" and its number: "Brass Fen - Chapter 19 - The
+	// Gate". Its groups are the name and the number, as spelledEpisode's are.
+	chapterEpisode = regexp.MustCompile(`(?i)^(.*?[^ ._-])[ ._]+(?:-[ ._]+)?chapter[ ._]*(\d{1,3})(?:[^0-9]|$)`)
 	// seasonTwoDigits matches a two-digit number after a show's name, with or without a dash:
 	// "Kettle Bay - 03", "Kettle Bay 06".
 	seasonTwoDigits = regexp.MustCompile(`[ ._](?:-[ ._]*)?\d{2}(?:[ ._-]|$)`)

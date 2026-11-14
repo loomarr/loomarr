@@ -1275,6 +1275,20 @@ var namingMatrix = []namingRow{
 		"Downloads/[Grp] Dusk Lantern - 3 (2018).mkv": "movie Dusk Lantern - 3 2018",
 		"Movies/[Grp] Wick Harbour - 2 (2011).mkv":    "movie Wick Harbour - 2 2011",
 	}},
+	// A season's four digits in Season 10 and on; a day spelled with its month's name; a show's
+	// chapters, counted across it (placed by its catalog); a film's chapters give their years.
+	{id: "W157", files: map[string]string{
+		"TV/Calder Street/Season 10/1001 - The Return.mkv":   "episode Calder Street S10E1",
+		"TV/Calder Street/Season 10/1002 - The Rain.mkv":     "episode Calder Street S10E2",
+		"TV/Calder Street/Season 1/1984 - The Year.mkv":      "episode Calder Street S?E?",
+		"TV/Late Lamp/Late Lamp - March 14th 2023.mkv":       "episode Late Lamp 2023-03-14",
+		"TV/Late Lamp/Late Lamp - 15 March 2023.mkv":         "episode Late Lamp 2023-03-15",
+		"TV/Late Lamp/Late Lamp - Sept. 2, 2023.mkv":         "episode Late Lamp 2023-09-02",
+		"TV/Brass Fen/Brass Fen - Chapter 19 - The Gate.mkv": "episode Brass Fen S?E?",
+		"TV/Brass Fen/Brass Fen - Chapter 20 - The Wall.mkv": "episode Brass Fen S?E?",
+		"Movies/Gale Wick/Gale Wick - Chapter 3 (2019).mkv":  "movie Gale Wick - Chapter 3 2019",
+		"Movies/Gale Wick/Gale Wick - Chapter 4 (2023).mkv":  "movie Gale Wick - Chapter 4 2023",
+	}},
 	{id: "W150", files: map[string]string{
 		"Movies/Featurette (1999)/Featurette.mkv":                     "movie Featurette 1999",
 		"Movies/Deleted Scenes (2016)/Deleted Scenes.mkv":             "movie Deleted Scenes 2016",

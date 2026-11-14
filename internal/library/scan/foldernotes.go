@@ -357,6 +357,9 @@ func notesOf(names []string) folderNotes {
 		s, prefix := plainStem(name), ""
 		if m := spelledEpisode.FindStringSubmatch(s); m != nil {
 			prefix = m[1]
+		} else if m := chapterEpisode.FindStringSubmatch(s); m != nil && !yearAnywhere.MatchString(s) {
+			// A film's "Chapter 4 (2023)" gives its year; a show's chapters give none.
+			prefix = m[1]
 		} else if at := cjkEpisode.FindStringIndex(s); at != nil {
 			prefix = s[:at[0]]
 		} else {

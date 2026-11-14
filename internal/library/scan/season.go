@@ -75,7 +75,32 @@ func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.I
 	if !ok {
 		return res
 	}
-	at := mp.Numbering{Season: season, Episode: episode, Absolute: abs}
+	return b.placeAt(ctx, s, series, in, res, mp.Numbering{Season: season, Episode: episode, Absolute: abs})
+}
+
+// byRunTogether places an episode its name numbers across the show in three digits, "Orrin Vale -
+// 101", that its show's catalog can't hold so, by its season and episode run together: the 101st
+// of a show of 24 is season 1's first, when season 1 holds one (identity.runTogether).
+func (b *builder) byRunTogether(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, n int) resolution {
+	if s == nil {
+		return res
+	}
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.catalog.String() == "" || series.record.Descriptive == nil {
+		return res
+	}
+	seasons := series.record.Descriptive.Seasons
+	if _, _, ok := absoluteAt(seasons, n); ok || !slices.ContainsFunc(seasons, func(size mp.SeasonSize) bool {
+		return size.Number == n/100 && size.Episodes >= n%100
+	}) {
+		return b.byAbsolute(ctx, s, in, res, n)
+	}
+	return b.placeAt(ctx, s, series, in, res, mp.Numbering{Season: n / 100, Episode: n % 100})
+}
+
+// placeAt describes an episode by its series' catalog at, as a name's "S02E01" would: the file's
+// own record says at, and the season's entry describes it.
+func (b *builder) placeAt(ctx context.Context, s *seriesSeen, series resolution, in precedence.Input, res resolution, at mp.Numbering) resolution {
 	records := make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
 		if r.Source.Basis == mp.BasisEmbeddedID {
@@ -87,7 +112,7 @@ func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.I
 	res.resolved = b.im.Resolver.Resolve(in)
 	res.catalog = librarystore.LibraryCatalogKey{
 		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
-		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(season),
+		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(at.Season),
 	}
 	return b.byEntry(ctx, s, in, res)
 }

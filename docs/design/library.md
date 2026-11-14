@@ -1054,6 +1054,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   sequel. Kodi's "extrathumbs" folders are artwork and are not walked. Kodi's "Show - 214 -
   Title", read as season 2's 14th, is the show's 214th when its catalog's second season holds no
   14th and its seasons hold a 214th (`acrossOnly`).
+- **85:** "1001 - The Return" in Season 10 is its first: four digits, the season's run before the
+  episode's. A day spelled with its month's name, "March 14th 2023", "14 March 2023", "Sept. 2,
+  2023", is the day an episode aired (`spelledDayIn`). A show's "Chapter 19" beside its "Chapter
+  20" counts across the show, placed by its catalog; a film's chapters give their years. "Show -
+  101", the show's 101st, is season 1's first when its catalog is too short for a 101st and its
+  first season holds a first (`byRunTogether`).
 
 ## Search
 

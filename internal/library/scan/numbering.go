@@ -372,6 +372,14 @@ func catchAllRule(p folderPlace) (mp.Numbering, bool, bool) {
 // spelledEpisodeRule: "Rook Hall Mini E01" beside "… E02", and "Ash Vale - Night 1" beside "…
 // Night 2" (folderNotes.Spelled).
 func spelledEpisodeRule(p folderPlace) (mp.Numbering, bool, bool) {
+	// "Brass Fen - Chapter 19 - The Gate" beside "… Chapter 20" counts its chapters across the
+	// show: with no season folder to say otherwise, its catalog places the 19th (byAbsolute).
+	if m := chapterEpisode.FindStringSubmatch(p.name); m != nil && p.file.Notes.Spelled && atoi(m[2]) > 0 {
+		if p.inSeason {
+			return decide(p.episode(atoi(m[2])))
+		}
+		return decide(mp.Numbering{Absolute: atoi(m[2])}, true)
+	}
 	if m := spelledEpisode.FindStringSubmatch(p.name); m != nil && p.file.Notes.Spelled {
 		return decide(p.episode(atoi(m[2])))
 	}
@@ -443,6 +451,13 @@ func compositeRule(p folderPlace) (mp.Numbering, bool, bool) {
 // leadingNumberRule: a show's episodes numbered alone, first in their names, in a season's folder
 // or its own ("Ocean Halls/01 - The Deep.mkv", folderNotes.Leading).
 func leadingNumberRule(p folderPlace) (mp.Numbering, bool, bool) {
+	// "1001 - The Return" in Season 10 is its first: its season's number and its episode's run
+	// together in four digits, the season's the one its folder gives.
+	if m := leadingComposite.FindStringSubmatch(p.name); m != nil && len(m[1]) == 4 && p.inSeason && p.season >= 10 {
+		if n := atoi(m[1]); n/100 == p.season && n%100 > 0 {
+			return decide(p.episode(n % 100))
+		}
+	}
 	m := leadingNumber.FindStringSubmatch(p.name)
 	if m == nil || !p.inSeason && !p.namedFolder && !p.file.Notes.Leading {
 		return undecided()

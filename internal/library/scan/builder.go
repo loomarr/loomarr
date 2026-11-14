@@ -142,8 +142,23 @@ type identity struct {
 	// runOn is the number across its show a name read by Kodi's three digits also reads as: 214 of
 	// "Cutters Bay - 214 - Late", read as season 2's 14th. Its show's catalog says which it is
 	// (acrossOnly); 0 for any other name.
-	runOn  int
-	digest string
+	runOn int
+	// runTogether is a number across its show of three digits a name outside an anime's shelf and
+	// untagged by a release group gives, "Orrin Vale - 101", which may be season 1's first run
+	// together: its show's catalog says which (byRunTogether); 0 for any other name.
+	runTogether int
+	digest      string
+}
+
+// runTogetherOf is identity.runTogether for a file whose numbering is n.
+func runTogetherOf(file File, n *mp.Numbering) int {
+	if n == nil || n.Season != 0 || n.Episode != 0 || n.Absolute < 101 || n.Absolute > 999 || n.Absolute%100 == 0 {
+		return 0
+	}
+	if name := path.Base(file.Rel); leadingTags.MatchString(name) || inAnime(shelved(file, path.Dir(file.Rel))) {
+		return 0
+	}
+	return n.Absolute
 }
 
 // runOnOf is identity.runOn for a file whose numbering is n.
@@ -225,6 +240,7 @@ func (b *builder) identify(file File) identity {
 	} else if id.kind == mp.KindEpisode {
 		// An arr's record places its file itself; only the name's own reading is the catalog's to check.
 		id.runOn = runOnOf(file, embedded.Numbering)
+		id.runTogether = runTogetherOf(file, embedded.Numbering)
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
 	var seriesSidecars map[string]Stat
@@ -399,6 +415,8 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
 		if day := id.airDate(); day != "" {
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+		} else if id.runTogether > 0 && id.absolute() == id.runTogether {
+			res = b.byRunTogether(ctx, b.series[id.seriesDir], in, res, id.runTogether)
 		} else if abs := id.absolute(); abs > 0 {
 			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, abs)
 		} else if id.runOn > 0 && b.acrossOnly(ctx, b.series[id.seriesDir], *id.numbering(), id.runOn) {
