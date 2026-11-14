@@ -99,6 +99,54 @@ interface LibraryHook {
   state: "registered" | "not_configured" | "no_address" | "failed";
 }
 
+/** What one look inside a folder found; it arrives after the folder is listed. */
+interface LibraryFolderSummary {
+  /** The folders in it the scan would walk. */
+  folders: number;
+  /** The videos directly in it. */
+  videos: number;
+  /** slow: it didn't answer in time; unreadable: Loomarr couldn't open it. */
+  state: "counted" | "slow" | "unreadable";
+}
+
+/** One folder the folder browser lists. */
+interface LibraryBrowseFolder {
+  path: string;
+  /** Its own name, or its whole path at the top. */
+  name: string;
+  /** An app (Sonarr, Radarr, the media server) names it. */
+  named: boolean;
+  inUse: boolean;
+  /** The folder in use that holds it. */
+  within?: string;
+  /** The folders in use inside it. */
+  holds: readonly string[];
+  /** Absent until it is counted. */
+  summary?: LibraryFolderSummary;
+}
+
+/** The folders in one folder; path "" is the top: the apps' folders, then this machine's drives. */
+interface LibraryBrowseListing {
+  path: string;
+  /** The folder above; "" when that is the top. */
+  parent: string;
+  /** The folder listed is in use, inside one (within), or holds some (holds). */
+  inUse: boolean;
+  within?: string;
+  holds: readonly string[];
+  folders: readonly LibraryBrowseFolder[];
+}
+
+/** The folder browser's data, which the app reads: the folder open now, and how to open another. */
+interface LibraryFolderBrowser {
+  listing?: LibraryBrowseListing;
+  loading: boolean;
+  /** Why the folder couldn't be listed. */
+  error?: string;
+  /** Opens a folder; "" opens the top. */
+  onOpen: (path: string) => void;
+}
+
 interface LibrarySettingsProps {
   health: LibraryHealth;
   folders: readonly LibraryFolder[];
@@ -124,8 +172,13 @@ interface LibrarySettingsProps {
   /** The maintainer says the held files are gone. */
   onConfirmRemoval: (path: string) => void;
   onUseFolder: (path: string, inUse: boolean) => void;
-  /** Resolves to a sentence saying why the folder was refused, or undefined when it was added. */
-  onAddFolder: (path: string) => Promise<string | undefined>;
+  /**
+   * Resolves to a sentence saying why the folder was refused, or undefined when it was added. With
+   * replace, the folder is used in place of the folders in use inside it.
+   */
+  onAddFolder: (path: string, options?: { replace?: boolean }) => Promise<string | undefined>;
+  /** Picks a folder by opening folders; absent, a folder is typed. */
+  folderBrowser?: LibraryFolderBrowser;
   /** An empty localPath hands the row back to Loomarr. */
   onMapFolder: (mapping: { authority: LibraryAuthority; authorityPath: string; localPath: string }) => void;
   /** Injected for stories and tests; defaults to the current time. */
@@ -145,6 +198,7 @@ type LibraryWizardStepProps = Pick<
   | "onCheckAgain"
   | "onUseFolder"
   | "onAddFolder"
+  | "folderBrowser"
   | "now"
 > & {
   /** A Check again finished a moment ago. */
@@ -153,8 +207,12 @@ type LibraryWizardStepProps = Pick<
 
 export type {
   LibraryAuthority,
+  LibraryBrowseFolder,
+  LibraryBrowseListing,
   LibraryDetails,
   LibraryFolder,
+  LibraryFolderBrowser,
+  LibraryFolderSummary,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,

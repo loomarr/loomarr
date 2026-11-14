@@ -5,7 +5,14 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
-import { type LibraryFolder, type LibraryScan, LibrarySettings, type LibrarySettingsProps } from "../index";
+import {
+  type LibraryBrowseListing,
+  type LibraryFolder,
+  type LibraryFolderBrowser,
+  type LibraryScan,
+  LibrarySettings,
+  type LibrarySettingsProps,
+} from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -503,6 +510,98 @@ describe("LibrarySettings", () => {
       "Radarr tells Loomarr about new downloads — waiting for Loomarr's address",
     );
     cleanup();
+  });
+
+  const SHARE = "/mnt/share";
+  const browser = (listing: LibraryBrowseListing): LibraryFolderBrowser => ({
+    listing,
+    loading: false,
+    onOpen: vi.fn(),
+  });
+  const TOP: LibraryBrowseListing = {
+    path: "",
+    parent: "",
+    inUse: false,
+    holds: [],
+    folders: [
+      { path: "/mnt/share/TV", name: "/mnt/share/TV", named: true, inUse: false, holds: [] },
+      {
+        path: SHARE,
+        name: SHARE,
+        named: false,
+        inUse: false,
+        holds: [],
+        summary: { folders: 12, videos: 340, state: "counted" },
+      },
+    ],
+  };
+  const rowFor = (host: Host, name: string) => {
+    // A row reads its name, then what it holds: "/mnt/share12 folders · 340 videos", never "/mnt/share/TV…".
+    const hit = Array.from(host.querySelectorAll('[role="button"], button')).find(
+      (n) => n.textContent?.startsWith(name) && !n.textContent.startsWith(`${name}/`),
+    );
+    if (!hit) throw new Error(`missing row: ${name}`);
+    return hit;
+  };
+  it("picks a folder by opening folders, the apps' first, each saying what it holds once counted", async () => {
+    const folderBrowser = browser(TOP);
+    const { host, props, button, cleanup } = render({ folderBrowser });
+    act(() => button("Add a folder").click());
+    expect(folderBrowser.onOpen).toHaveBeenCalledWith("");
+    expect(host.textContent).toContain("From your apps · …");
+    expect(host.textContent).toContain("12 folders · 340 videos");
+    await act(async () => button("Use this folder").click());
+    expect(props.onAddFolder).not.toHaveBeenCalled();
+    act(() => rowFor(host, SHARE).click());
+    expect(folderBrowser.onOpen).toHaveBeenCalledWith(SHARE);
+    cleanup();
+  });
+
+  it("uses a folder holding folders in use in their place, and refuses one inside a folder in use", async () => {
+    const holding = browser({
+      path: SHARE,
+      parent: "",
+      inUse: false,
+      holds: ["/mnt/share/Movies"],
+      folders: [
+        { path: "/mnt/share/Movies", name: "Movies", named: false, inUse: true, holds: [] },
+        {
+          path: "/mnt/share/Empty",
+          name: "Empty",
+          named: false,
+          inUse: false,
+          holds: [],
+          summary: { folders: 0, videos: 0, state: "counted" },
+        },
+      ],
+    });
+    const added = vi.fn(async () => undefined);
+    const first = render({ folderBrowser: holding, onAddFolder: added });
+    act(() => first.button("Add a folder").click());
+    expect(first.host.textContent).toContain("In use");
+    expect(first.host.textContent).toContain("Empty");
+    await act(async () => first.button("Use this folder instead").click());
+    expect(added).toHaveBeenCalledWith(SHARE, { replace: true });
+    first.cleanup();
+
+    const inside = browser({
+      path: "/mnt/share/Movies/Gale Spit (2004)",
+      parent: "/mnt/share/Movies",
+      inUse: false,
+      within: "/mnt/share/Movies",
+      holds: [],
+      folders: [],
+    });
+    const second = render({ folderBrowser: inside });
+    act(() => second.button("Add a folder").click());
+    expect(second.host.textContent).toContain("Loomarr already reads this as part of Movies.");
+    await act(async () => second.button("Use this folder").click());
+    expect(second.props.onAddFolder).not.toHaveBeenCalled();
+    act(() => second.button("Up").click());
+    expect(inside.onOpen).toHaveBeenCalledWith("/mnt/share/Movies");
+    act(() => second.button("Type a path instead").click());
+    expect(second.host.querySelector("input")).not.toBeNull();
+    second.cleanup();
   });
 
   it("keeps a refused folder in the field with the reason", async () => {

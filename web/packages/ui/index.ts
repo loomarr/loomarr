@@ -75,6 +75,7 @@ export type {
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
 export type {
   LibraryAuthority,
+  LibraryBrowseListing,
   LibraryCollectionCard,
   LibraryCollectionChannel,
   LibraryCollectionEditorProps,
@@ -85,6 +86,7 @@ export type {
   LibraryExternalId,
   LibraryFilter,
   LibraryFolder,
+  LibraryFolderBrowser,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,

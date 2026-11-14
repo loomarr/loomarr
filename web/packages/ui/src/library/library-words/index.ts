@@ -1,6 +1,7 @@
 export {
   detailsWaiting,
   folderName,
+  folderSummary,
   heldNames,
   heldTitle,
   joinNames,
