@@ -39,13 +39,17 @@ const SearchButton = ({ hint, keyShortcuts, onPress, placeholder }: SearchButton
         paddingHorizontal={semanticSpace.control}
       >
         <Icon decorative glyph={icons.search} size="compact" tone="muted" />
-        <Text flexGrow={1} flexShrink={1} textAlign="left" textRole="body" tone="muted">
+        <Text textRole="body" tone="muted">
           {placeholder}
         </Text>
         {hint ? (
-          <Text as="kbd" textRole="mono" tone="secondary">
-            {hint}
-          </Text>
+          // `auto` start margin: the hint rides the trailing edge while the placeholder keeps its
+          // place beside the magnifier.
+          <Surface backgroundColor="transparent" borderWidth={0} marginLeft="auto">
+            <Text as="kbd" textRole="mono" tone="secondary">
+              {hint}
+            </Text>
+          </Surface>
         ) : null}
       </Surface>
     </Pressable>
