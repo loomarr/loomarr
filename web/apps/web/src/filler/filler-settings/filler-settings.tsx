@@ -4,7 +4,7 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Surface, Text, TextLink } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
@@ -109,53 +109,58 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
 const FillerSettingsTaskSwitcher = ({ section }: { section: FillerSettingsSection }) => {
   const navigate = useNavigate();
   return (
-    <div className="border-border bg-card flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <Link
-          to="/filler/settings"
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
-        >
-          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-          All filler settings
-        </Link>
-        <Text as="p" className="mt-2" textRole="hint" tone="secondary">
-          Jump straight to another task.
-        </Text>
-      </div>
-      <div className="w-full sm:w-64">
-        <BrowserSelectControl
-          appearance="field"
-          label="Filler settings task"
-          labelHidden
-          onValueChange={(next) =>
-            void navigate({ to: "/filler/settings/$section", params: { section: next } })
-          }
-          options={SETTINGS_SECTIONS.map((item) => ({ label: item.label, value: item.id }))}
-          value={section}
-        />
-      </div>
-    </div>
+    <Card padding={16}>
+      <Stack
+        align={{ base: "stretch", sm: "end" }}
+        direction={{ base: "column", sm: "row" }}
+        gap="3"
+        justify={{ base: "start", sm: "between" }}
+      >
+        <Stack align="start" gap="2">
+          <Action
+            accessibilityRole="link"
+            icon="goBack"
+            render={<Link to="/filler/settings" />}
+            variant="ghost"
+          >
+            All filler settings
+          </Action>
+          <Text as="p" textRole="hint" tone="secondary">
+            Jump straight to another task.
+          </Text>
+        </Stack>
+        <div className="w-full sm:w-64">
+          <BrowserSelectControl
+            appearance="field"
+            label="Filler settings task"
+            labelHidden
+            onValueChange={(next) =>
+              void navigate({ to: "/filler/settings/$section", params: { section: next } })
+            }
+            options={SETTINGS_SECTIONS.map((item) => ({ label: item.label, value: item.id }))}
+            value={section}
+          />
+        </div>
+      </Stack>
+    </Card>
   );
 };
 
 const FillerSettingsIndex = () => (
-  <div className="space-y-8">
-    <div>
-      <Link
-        to="/filler/manage"
-        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
-      >
-        <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
+  <Stack gap="8">
+    <Stack align="start" gap="3">
+      <Action accessibilityRole="link" icon="goBack" render={<Link to="/filler/manage" />} variant="ghost">
         Manage
-      </Link>
-      <Text as="h2" className="mt-3" textRole="title">
-        Filler settings
-      </Text>
-      <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-        Change how Loomarr finds, prepares, stores, and plays short clips.
-      </Text>
-    </div>
-
+      </Action>
+      <Stack gap="1">
+        <Text as="h2" textRole="title">
+          Filler settings
+        </Text>
+        <Text as="p" textRole="compact" tone="secondary">
+          Change how Loomarr finds, prepares, stores, and plays short clips.
+        </Text>
+      </Stack>
+    </Stack>
     {(
       [
         {
@@ -170,15 +175,15 @@ const FillerSettingsIndex = () => (
         },
       ] as const
     ).map((group) => (
-      <section key={group.id} aria-labelledby={`filler-settings-${group.id}`}>
-        <div className="mb-3">
+      <Stack key={group.id} aria-labelledby={`filler-settings-${group.id}`} gap="3" render="section">
+        <Stack gap="0.5">
           <Text as="h3" id={`filler-settings-${group.id}`} textRole="heading">
             {group.label}
           </Text>
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
+          <Text as="p" textRole="compact" tone="secondary">
             {group.description}
           </Text>
-        </div>
+        </Stack>
         <div className="grid gap-2 md:grid-cols-2">
           {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
             <Link
@@ -187,17 +192,18 @@ const FillerSettingsIndex = () => (
               params={{ section: item.id }}
               className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
             >
-              <span className="min-w-0 flex-1">
-                <Text as="span" className="block" textRole="cardLabel">
+              <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
+                <Text as="span" textRole="cardLabel">
                   {item.label}
                 </Text>
-                <Text as="span" className="mt-0.5 block" textRole="hint" tone="secondary">
+                <Text as="span" textRole="hint" tone="secondary">
                   {item.description}
                 </Text>
-              </span>
+              </Stack>
               <Stack
-                className="text-muted-foreground group-hover:text-foreground mt-0.5 transition-colors"
+                className="text-muted-foreground group-hover:text-foreground transition-colors"
                 direction="row"
+                marginTop={2}
                 render="span"
               >
                 <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
@@ -205,9 +211,9 @@ const FillerSettingsIndex = () => (
             </Link>
           ))}
         </div>
-      </section>
+      </Stack>
     ))}
-  </div>
+  </Stack>
 );
 
 const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSection }) => {
@@ -269,9 +275,9 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
         return (
           <Text as="p" className="bg-muted/50 rounded-lg px-4 py-3" textRole="compact" tone="secondary">
             {cadence} {round}{" "}
-            <Link to="/filler/settings/$section" params={{ section: "storage" }} className="underline">
+            <TextLink render={<Link to="/filler/settings/$section" params={{ section: "storage" }} />}>
               Storage limits
-            </Link>
+            </TextLink>
           </Text>
         );
       },
