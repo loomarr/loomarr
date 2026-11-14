@@ -49,27 +49,26 @@ func (im *Importer) releasedWithin(root string) []string {
 	return out
 }
 
-// headerWithin is the header a released folder inside the root read for file, at the same path
-// and with the same bytes: the file's own, read before the outer folder replaced the inner. A
-// file the root already knew, one whose bytes have changed since, or one no released folder read,
-// has none.
+// headerWithin is the header a released folder read for file, at the same path and with the same
+// bytes: the file's own, read before the folder was released and added again, or before the
+// outer folder replaced the inner. A file the root already knew, one whose bytes have changed
+// since, or one no released folder read, has none.
 func (im *Importer) headerWithin(ctx context.Context, released []string, file File, known bool) (*inventory.SourceFacts, int) {
 	if known {
 		return nil, 0
 	}
-	for _, inner := range released {
-		if !inside(file.Path, inner) {
+	for _, folder := range released {
+		if !inside(file.Path, folder) {
 			continue
 		}
-		rel, err := filepath.Rel(inner, file.Path)
+		rel, err := filepath.Rel(folder, file.Path)
 		if err != nil {
-			return nil, 0
+			continue
 		}
-		read, by := im.lastHeader(ctx, fileOrigin(inner, filepath.ToSlash(rel)))
-		if read == nil || read.SizeBytes != file.Stat.Size || read.ModifiedUnixNano != file.Stat.ModifiedNs {
-			return nil, 0
+		read, by := im.lastHeader(ctx, fileOrigin(folder, filepath.ToSlash(rel)))
+		if read != nil && read.SizeBytes == file.Stat.Size && read.ModifiedUnixNano == file.Stat.ModifiedNs {
+			return read, by
 		}
-		return read, by
 	}
 	return nil, 0
 }
