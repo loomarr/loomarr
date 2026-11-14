@@ -163,7 +163,29 @@ func matchingCapabilityEvidence(
 func loadCapabilityEvidence(
 	root, fingerprint string, now time.Time, warn func(msg string, args ...any),
 ) (capabilityEvidence, bool) {
-	if strings.TrimSpace(root) == "" || strings.TrimSpace(fingerprint) == "" {
+	if strings.TrimSpace(fingerprint) == "" {
+		return capabilityEvidence{}, false
+	}
+	evidence, ok := readCapabilityEvidence(root, now, warn)
+	if !ok || evidence.Fingerprint != fingerprint {
+		return capabilityEvidence{}, false
+	}
+	return evidence, true
+}
+
+// RecentHardwareEvidence reports whether this host measured a working hardware encoder within the
+// evidence's week, whatever its fingerprint is now. A host that settles on software while this
+// holds is one whose GPU did not come up this time; filler upkeep keeps originals until it does or
+// the week runs out (#3855).
+func RecentHardwareEvidence(root string, now time.Time) bool {
+	_, ok := readCapabilityEvidence(root, now, func(string, ...any) {})
+	return ok
+}
+
+// readCapabilityEvidence reads the stored hardware measurement and reports whether it is current:
+// this build's version, a supported hardware encoder, observed within the last week.
+func readCapabilityEvidence(root string, now time.Time, warn func(msg string, args ...any)) (capabilityEvidence, bool) {
+	if strings.TrimSpace(root) == "" {
 		return capabilityEvidence{}, false
 	}
 	path := filepath.Join(root, capabilityEvidenceName)
@@ -182,7 +204,7 @@ func loadCapabilityEvidence(
 		return capabilityEvidence{}, false
 	}
 	if evidence.Version != capabilityEvidenceVersion ||
-		evidence.Fingerprint != fingerprint || evidence.ObservedAt.IsZero() || now.Before(evidence.ObservedAt) ||
+		evidence.ObservedAt.IsZero() || now.Before(evidence.ObservedAt) ||
 		now.Sub(evidence.ObservedAt) > capabilityEvidenceMaxAge || evidence.MaxChannels <= 0 ||
 		encode.IsSoftware(evidence.Encoder) || !supportedHardwareEncoder(evidence.Encoder) {
 		return capabilityEvidence{}, false

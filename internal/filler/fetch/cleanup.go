@@ -44,6 +44,15 @@ func NewAcquisitionCleaner(watchDir string, store AcquisitionCleanupStore, now f
 	return &AcquisitionCleaner{watchDir: watchDir, store: store, now: now, remove: os.RemoveAll}
 }
 
+// WithDisposal hands each leftover tree to dispose instead of deleting it. Upkeep passes the
+// quarantine's Dispose, so staging it clears waits a day like every other delete of its own
+// (#3855); the storage cleanup route keeps deleting at once, since its operator asked for the
+// space now.
+func (c *AcquisitionCleaner) WithDisposal(dispose func(string) error) *AcquisitionCleaner {
+	c.remove = dispose
+	return c
+}
+
 func (c *AcquisitionCleaner) Preview(ctx context.Context) (acquisition.StorageCleanupPreview, error) {
 	candidates, err := c.candidates(ctx)
 	if err != nil {

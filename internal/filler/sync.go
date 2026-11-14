@@ -765,17 +765,23 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc cliplibrary.RawCli
 		// Verify the retained source on first normalization and while repairing the historical
 		// false-positive. Once media_path names the immutable master, ordinary scans keep their
 		// former one-full-file-hash cost; any later stage that reuses the master re-verifies it.
-		if artifact.State == acquisition.ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path {
+		//
+		// A released master (#3855) has no file left to verify: the digest and size compared above
+		// are the whole record, and the acquisition row keeps the last path it named.
+		released := assets.SourceMaster.Released()
+		if !released && (artifact.State == acquisition.ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path) {
 			if err := asset.ValidateFile(ctx, s.dir, assets.SourceMaster, asset.RoleSourceMaster, asset.MasterDirName); err != nil {
 				return fail("manifested source master does not match the portable media manifest")
 			}
 		}
-		normalizeConsumedManifest = artifact.State != acquisition.ArtifactConsumed ||
-			artifact.MediaPath != assets.SourceMaster.Path ||
-			artifact.SidecarPath != tools.SidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
+		normalizeConsumedManifest = artifact.State != acquisition.ArtifactConsumed || artifact.RepairReason != "" ||
+			!released && (artifact.MediaPath != assets.SourceMaster.Path ||
+				artifact.SidecarPath != tools.SidecarPathFor(assets.SourceMaster.Path))
 		artifact.State = acquisition.ArtifactConsumed
-		artifact.MediaPath = assets.SourceMaster.Path
-		artifact.SidecarPath = tools.SidecarPathFor(assets.SourceMaster.Path)
+		if !released {
+			artifact.MediaPath = assets.SourceMaster.Path
+			artifact.SidecarPath = tools.SidecarPathFor(assets.SourceMaster.Path)
+		}
 		artifact.RepairReason = ""
 	} else {
 		if artifact.State == acquisition.ArtifactRepair && artifact.RepairReason != acquisition.ArtifactMediaMissing {

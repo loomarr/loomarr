@@ -110,8 +110,10 @@ one deliberate exception to the rule against backfill.
 
 - **Which clips.** An airing top-level clip whose playback was encoded from its retained source
   master, under a profile other than the current one. A clip whose playback file is its own
-  download has no original to encode from again, and a split child is cut from its parent, so
-  neither is replaced. A host without a hardware encoder replaces nothing: the re-encode is what
+  download has no original to encode from again, a split child is cut from its parent, and a
+  clip whose master upkeep released has none left
+  ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)), so none of them is
+  replaced. Upkeep keeps a fetched clip's master until this re-encode has moved it. A host without a hardware encoder replaces nothing: the re-encode is what
   moves the library onto the GPU, and on the CPU it would spend the machine for no saving.
 - **Only idle capacity.** A pipeline pass that finds no due conveyor work re-encodes one clip, so
   a new arrival always goes first. It runs under the playout budget's background context, so a
@@ -121,7 +123,7 @@ one deliberate exception to the rule against backfill.
   floor measures the staged file and the judge rules on a borderline picture, as at admission.
   Only bytes the floor admits are published, and the switch is one transaction: the re-key, and
   the floor's record for the new bytes in place of the old one's. The old playback file and
-  evidence copy go after the commit; the master always stays.
+  evidence copy go after the commit; the master stays for upkeep to release.
 - **A failed replacement changes nothing.** An encode error, a QC or loudness refusal, a defect
   verdict, a judge that cannot rule, or a failed commit discards the replacement, and its bytes
   with it, so a scan cannot catalogue it as a second clip. The clip airs on as it was. The pass

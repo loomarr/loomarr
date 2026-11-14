@@ -40,6 +40,28 @@ func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing
 	}
 }
 
+func TestRecentHardwareEvidenceOutlivesAChangedHostForAWeek(t *testing.T) {
+	root := t.TempDir()
+	measured := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	if RecentHardwareEvidence(root, measured) {
+		t.Fatal("a host that never measured hardware reports recent hardware")
+	}
+	if err := storeCapabilityEvidence(root, capabilityEvidence{Version: capabilityEvidenceVersion,
+		Fingerprint: "host-with-gpu", Encoder: encode.EncoderNVENC, MaxChannels: 6, ObservedAt: measured}); err != nil {
+		t.Fatal(err)
+	}
+	// The GPU is gone this boot, so the fingerprint no longer matches; the measurement still counts.
+	if _, ok := loadCapabilityEvidence(root, "host-without-gpu", measured.Add(time.Hour), func(string, ...any) {}); ok {
+		t.Fatal("the evidence was reused on a host with another fingerprint")
+	}
+	if !RecentHardwareEvidence(root, measured.Add(6*24*time.Hour)) {
+		t.Fatal("hardware measured six days ago is not recent")
+	}
+	if RecentHardwareEvidence(root, measured.Add(8*24*time.Hour)) {
+		t.Fatal("hardware measured eight days ago still counts")
+	}
+}
+
 func TestMatchingCapabilityEvidenceDoesNotRunEncoderValidation(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
