@@ -74,7 +74,12 @@ const Notice = ({
           {title}
         </Text>
       ) : (
-        <Text density={density} style={{ flexShrink: 1 }} textRole="body" tone="secondary">
+        <Text
+          density={density}
+          style={{ flexShrink: 1 }}
+          textRole="body"
+          tone={tone === "danger" ? "danger" : "secondary"}
+        >
           {body}
         </Text>
       )}
