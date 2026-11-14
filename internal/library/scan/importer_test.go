@@ -1697,3 +1697,50 @@ func TestATitleWaitingForItsRecordIsNotWrittenAgainUntilItComes(t *testing.T) {
 		t.Fatalf("a pass after the reads wrote %d waiting titles again", again)
 	}
 }
+
+// Faults count per share, in a row within it: the faults one root's share ends on and the next
+// root's share begins with are not one run. Each share here fails its first and last
+// headerFaultLimit/2 files, under the limit, so neither stops, and every other file is read.
+func TestOneSharesFaultsCountOnlyAgainstItself(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	other := t.TempDir()
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	const half, good = headerFaultLimit / 2, 2 * headerFaultLimit
+	for _, root := range []string{h.root, other} {
+		var names []string
+		for i := range half {
+			names = append(names, fmt.Sprintf("A%02d (2001)", i), fmt.Sprintf("Z%02d (2001)", i))
+		}
+		for i := range good {
+			names = append(names, fmt.Sprintf("M%02d (2001)", i))
+		}
+		for _, n := range names {
+			p := filepath.Join(root, n, n+".mkv")
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var read atomic.Int64
+	h.im.Header = func(_ context.Context, path string) (header.Header, error) {
+		// A fault comes back at once and a read takes a while, so the faults at one share's end
+		// and the next's start come back between no reads.
+		if b := filepath.Base(path); b[0] == 'A' || b[0] == 'Z' {
+			return header.Header{}, &fs.PathError{Op: "read", Path: path, Err: syscall.EIO}
+		}
+		time.Sleep(20 * time.Millisecond)
+		read.Add(1)
+		return header.Header{Container: "matroska,webm", DurationMillis: 1_320_000}, nil
+	}
+	h.run()
+	if n := read.Load(); n != 2*good {
+		t.Errorf("read %d of the shares' %d good files: a share was stopped by faults not its own", n, 2*good)
+	}
+}
