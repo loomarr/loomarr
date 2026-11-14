@@ -219,8 +219,9 @@ func (r *Roots) Discover(ctx context.Context) (librarystore.LibraryRoots, []Sour
 
 // Add records a folder the maintainer typed, confirmed. It must be absolute and readable. An empty
 // one is added, and recorded as empty so its card asks whether the drive is connected. A folder
-// inside one in use, or holding some, is refused with a *RootOverlap: the scan would read it as
-// part of the outer one anyway, so the list would name a folder twice. Replace takes the outer one.
+// inside one in use, or holding some, is refused with a *RootOverlap: the scan reads a nested
+// folder once, as part of the outer one, so the list would name a folder it never walks. Replace
+// takes the outer one.
 func (r *Roots) Add(ctx context.Context, path string) error {
 	return r.add(ctx, path, false)
 }

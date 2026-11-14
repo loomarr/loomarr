@@ -242,9 +242,9 @@ the household's language wins over it, and a refresh after TMDB gains a translat
   the list. Typing a path stays.
 - **No folder inside another.** A folder inside one in use is refused (409, "Already part of
   Movies"), and so is one holding folders in use, unless it is added with `replace`, which uses it
-  in their place in one step. The scan already reads a folder nested in another as part of the outer
-  one (`scannedRoots`), so the list would name it twice; the outer one's next pass keys their files
-  under it.
+  in their place in one step. The scan already reads a folder nested in another once, as part of the
+  outer one (`scannedRoots`), so the list would name a folder the scan never walks; the outer one's
+  next pass keys their files under it.
 
 ## Scanner
 
