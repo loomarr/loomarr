@@ -412,6 +412,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
 	res := b.resolve(ctx, snapshot.Origin, in)
+	if id.kind == mp.KindEpisode && res.record != nil {
+		res = b.ownNumberOver(ctx, snapshot.Origin, id, in, res)
+	}
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
 		if day := id.airDate(); day != "" {
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
@@ -480,6 +483,8 @@ type resolution struct {
 	set librarystore.LibraryCatalogKey
 	// record is that row's cached record, nil until the Enricher fetches it.
 	record *mp.Record
+	// entry is the entry of a season or order record that describes an episode; nil for none.
+	entry *mp.Record
 	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
 	unnumbered bool
 	// waiting is a title written without a catalog record it asked for and the Enricher has not

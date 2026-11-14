@@ -33,6 +33,9 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	if err != nil {
 		return "", err
 	}
+	if err := s.keepSameEpisode(ctx, tx, clean, grounded); err != nil {
+		return "", err
+	}
 	var orphan inventory.ItemID
 	home := inventory.ItemID(stableInventoryID("item", string(clean.Origin.Authority), clean.Origin.ExternalItemID))
 	// joined is an origin that came to its item by its ids: the item is not the one it founded.
@@ -237,6 +240,46 @@ func (s *sqlStore) inventoryItemIDByOrigin(
 		return "", false, fmt.Errorf("find inventory item origin: %w", err)
 	}
 	return itemID, true, nil
+}
+
+// keepSameEpisode leaves out of grounded the items another of whose origins numbers a different
+// episode than the snapshot's. An episode id grounds only the same episode: a stale NFO copied
+// beside another episode's file carries its id, and the two files are not one title with an extra
+// copy. An origin with no number yet, either side, agrees with any.
+func (s *sqlStore) keepSameEpisode(ctx context.Context, tx *sql.Tx, snapshot inventory.Snapshot, grounded map[inventory.ItemID]bool) error {
+	own := snapshot.Observation.Facts
+	if snapshot.Kind != "episode" || own.EpisodeNumber <= 0 {
+		return nil
+	}
+	for item := range grounded {
+		rows, err := tx.QueryContext(ctx, s.ph(`SELECT observation_json FROM inventory_item_origins
+			WHERE item_id = ? AND NOT (authority_id = ? AND external_item_id = ?)`),
+			string(item), string(snapshot.Origin.Authority), snapshot.Origin.ExternalItemID)
+		if err != nil {
+			return fmt.Errorf("read grounded inventory episodes: %w", err)
+		}
+		for rows.Next() {
+			var raw string
+			var other inventory.Observation[inventory.ItemFacts]
+			if err := rows.Scan(&raw); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("scan grounded inventory episode: %w", err)
+			}
+			if json.Unmarshal([]byte(raw), &other) != nil {
+				continue
+			}
+			if n := other.Facts; n.EpisodeNumber > 0 && (n.SeasonNumber != own.SeasonNumber || n.EpisodeNumber != own.EpisodeNumber) {
+				delete(grounded, item)
+			}
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close grounded inventory episodes: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read grounded inventory episode rows: %w", err)
+		}
+	}
+	return nil
 }
 
 // inventoryItemIDsByExternalIDs finds the items of kind that carry any of externalIDs. An id grounds

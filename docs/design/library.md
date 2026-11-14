@@ -504,7 +504,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   The kill switch stops it too. An episode whose ids include its own TVDB id (from Sonarr or an
   NFO) is cached the same way, keyed `tvdb:episode:<id>` in its `library_items.catalog`: TMDB's
   view of that episode, found through TMDB's `/find`, never by its season and number when it has
-  that id (decision 53). An episode with no TVDB id takes TMDB's entry for its season and number,
+  that id (decision 53). An NFO's id can still be another episode's: a scraper copies an NFO
+  beside the wrong file, or TMDB's TVDB mapping points one along. So when the file's own mark
+  ("S02E22") places it, and TMDB numbers the show as the disk does (below), TMDB's season entry at
+  that mark is checked against the id's record. An entry that shares no id with it stands over
+  the id: the file is described and keyed by its own number (`ownNumberOver`). An episode id also
+  grounds only the same episode in the inventory: an episode file never joins a title another of
+  whose files is numbered otherwise, so two episodes sharing a stale id stay two titles, and
+  neither is offered as an extra copy. An episode with no TVDB id takes TMDB's entry for its season and number,
   keyed `tmdb:season:<series id>/<season>` (one record per season, every episode in it), but only
   when TMDB numbers the series the way the disk does: TMDB lists no other episode ordering for it
   (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
