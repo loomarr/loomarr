@@ -1,3 +1,4 @@
+import { icons } from "@loomarr/design-system";
 import { type LinkLike, NavTabs } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
@@ -109,5 +110,22 @@ const Underline: Story = {
   },
 };
 
+// Button mode, for views a page keeps in state rather than in the URL (Diagnostics' Logs / Health /
+// Processes): the same pill, but each tab is a button that reports its pick. From the `sm` width
+// up a tab draws its icon.
+const ButtonMode: Story = {
+  args: {
+    label: "Diagnostics views",
+    activeId: "health",
+    linkComponent: undefined,
+    onSelect: () => undefined,
+    tabs: [
+      { id: "logs", label: "Logs", icon: icons.activity },
+      { id: "health", label: "Current Health", icon: icons.health },
+      { id: "process", label: "Media processes", icon: icons.process },
+    ],
+  },
+};
+
 export default meta;
-export { ActiveWithoutCount, NoCounts, Overflowing, SingleTab, Underline, WithCounts };
+export { ActiveWithoutCount, ButtonMode, NoCounts, Overflowing, SingleTab, Underline, WithCounts };

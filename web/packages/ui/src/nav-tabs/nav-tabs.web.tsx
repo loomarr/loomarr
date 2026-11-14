@@ -1,7 +1,11 @@
-import { Text } from "@loomarr/design-system";
+import { Icon, Text } from "@loomarr/design-system";
 import { useLayoutEffect, useRef, useState } from "react";
+import { useWindowDimensions } from "react-native";
 
-import type { NavTab, NavTabsProps } from "./nav-tabs.type";
+import type { NavButtonTab, NavTab, NavTabsProps } from "./nav-tabs.type";
+
+// Tailwind's `sm`: from here up a tab draws its icon.
+const ICON_MIN_WIDTH = 640;
 
 // The slice of the DOM the scroll-into-view effect touches. This package has no DOM lib (it targets
 // React Native too), so the shape is spelled out here.
@@ -25,6 +29,11 @@ const suggestTint = "color-mix(in srgb, var(--accentSuggest) 15%, transparent)";
 // each tab is a destination: a link can be middle-clicked into a new tab, copied, and tells
 // assistive tech it goes somewhere rather than performing an action.
 //
+// ⚠ **The one exception is button mode (`onSelect` instead of `linkComponent`)**, for views a page
+// keeps in state rather than in the URL (Diagnostics' Logs / Health / Processes). It draws the same
+// pill and still marks the current tab with `aria-current="page"`; the tab is a button because there
+// is no destination to link to.
+//
 // ⚠ **`aria-current="page"`, not `role="tab"`.** The ARIA tab pattern describes panels swapped
 // inside one document with arrow-key roving focus. These are NAVIGATION: claiming `role="tab"`
 // would promise arrow-key behaviour navigation does not have, and axe flags a `tablist` whose tabs
@@ -36,8 +45,16 @@ const suggestTint = "color-mix(in srgb, var(--accentSuggest) 15%, transparent)";
 //
 // ⚠ **Two looks, one component.** `variant="underline"` is the v2 mock's Queue tab bar: transparent
 // tabs, a 2px underline in the primary colour on the active one, over a 1px rule under the bar.
-const NavTabs = ({ activeId, label, linkComponent: Link, tabs, variant = "pill" }: NavTabsProps) => {
+const NavTabs = ({
+  activeId,
+  label,
+  linkComponent: Link,
+  onSelect,
+  tabs,
+  variant = "pill",
+}: NavTabsProps) => {
   const underline = variant === "underline";
+  const showIcons = useWindowDimensions().width >= ICON_MIN_WIDTH;
   const [hovered, setHovered] = useState<string>();
   // One line at every width, scrolling sideways when the tabs don't fit (#1785). The active tab is
   // scrolled into view, sideways only: the page itself never moves. It is scrolled again when the
@@ -64,7 +81,7 @@ const NavTabs = ({ activeId, label, linkComponent: Link, tabs, variant = "pill" 
     return () => observer.disconnect();
   }, [activeId]);
 
-  const tabStyle = (tab: NavTab, active: boolean) => {
+  const tabStyle = (tab: NavTab | NavButtonTab, active: boolean) => {
     const lit = active || hovered === tab.id;
     const common = {
       alignItems: "center",
@@ -102,7 +119,7 @@ const NavTabs = ({ activeId, label, linkComponent: Link, tabs, variant = "pill" 
   // ⚠ The ACTIVE pill's count sits on the canvas, so it reads as a chip against the elevated pill.
   // A count tinted to match the fill behind it once failed axe `color-contrast`. Waiting work
   // outranks "you are here" (#1659 web mock): Needs you keeps its suggest count while selected.
-  const countStyle = (tab: NavTab, active: boolean) => {
+  const countStyle = (tab: NavTab | NavButtonTab, active: boolean) => {
     const attention = tab.attention && (tab.count ?? 0) > 0;
     return {
       backgroundColor: attention
@@ -132,32 +149,61 @@ const NavTabs = ({ activeId, label, linkComponent: Link, tabs, variant = "pill" 
         scrollbarWidth: "none",
       }}
     >
-      {tabs.map((tab) => {
+      {(tabs as readonly (NavTab | NavButtonTab)[]).map((tab) => {
         const active = tab.id === activeId;
-        return (
-          <Link
-            key={tab.id}
-            to={tab.to}
-            {...(tab.search ? { search: tab.search } : {})}
-            // The injected router link otherwise prefix-matches a parent destination such as
-            // `/filler` while the operator is on `/filler/incoming`, creating two current pages.
-            // Search params refine a destination; they never make its navigation entry inactive.
-            activeOptions={{ exact: true, includeSearch: false }}
-            id={`tab-${tab.id}`}
-            // ⚠ `aria-current` marks the active destination for a screen reader. Without it the
-            // fill is the ONLY signal, which is invisible to anyone not looking at it.
-            {...(active ? { "aria-current": "page" as const } : {})}
-            onMouseEnter={() => setHovered(tab.id)}
-            onMouseLeave={() => setHovered(undefined)}
-            style={tabStyle(tab, active)}
-          >
+        const content = (
+          <>
+            {showIcons && tab.icon && <Icon decorative glyph={tab.icon} size="compact" tone="inherit" />}
             {tab.label}
-            {/* ⚠ Omitted when a tab has no count, rather than rendered as "0" — see NavTab.count. */}
+            {/* ⚠ Omitted when a tab has no count, rather than rendered as "0" — see NavTabLook.count. */}
             {tab.count !== undefined && (
               <Text as="span" style={countStyle(tab, active)} textRole="mono">
                 {tab.count}
               </Text>
             )}
+          </>
+        );
+        // ⚠ `aria-current` marks the active destination for a screen reader. Without it the
+        // fill is the ONLY signal, which is invisible to anyone not looking at it.
+        const current = active ? { "aria-current": "page" as const } : {};
+        if (onSelect)
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              id={`tab-${tab.id}`}
+              {...current}
+              onClick={() => onSelect(tab.id)}
+              onMouseEnter={() => setHovered(tab.id)}
+              onMouseLeave={() => setHovered(undefined)}
+              // A button's own border, font and pointer are reset so it draws exactly the link's pill.
+              style={{
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                ...tabStyle(tab, active),
+              }}
+            >
+              {content}
+            </button>
+          );
+        if (!Link) return null;
+        return (
+          <Link
+            key={tab.id}
+            to={(tab as NavTab).to}
+            {...((tab as NavTab).search ? { search: (tab as NavTab).search } : {})}
+            // The injected router link otherwise prefix-matches a parent destination such as
+            // `/filler` while the operator is on `/filler/incoming`, creating two current pages.
+            // Search params refine a destination; they never make its navigation entry inactive.
+            activeOptions={{ exact: true, includeSearch: false }}
+            id={`tab-${tab.id}`}
+            {...current}
+            onMouseEnter={() => setHovered(tab.id)}
+            onMouseLeave={() => setHovered(undefined)}
+            style={tabStyle(tab, active)}
+          >
+            {content}
           </Link>
         );
       })}

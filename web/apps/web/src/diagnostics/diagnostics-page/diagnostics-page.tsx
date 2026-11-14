@@ -1,4 +1,5 @@
-import { Icon, icons, Stack } from "@loomarr/design-system";
+import { icons, Stack } from "@loomarr/design-system";
+import { NavTabs } from "@loomarr/ui";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { ApplicationDiagnostics } from "../application-diagnostics";
@@ -56,38 +57,19 @@ const DiagnosticsPage = ({
           />
         }
       />
-      <Stack
-        aria-label="Diagnostics views"
-        borderBottomWidth={1}
-        borderColor="borderDecorative"
-        className="px-4 sm:px-6"
-        direction="row"
-        gap="1"
-        overflowX="auto"
-        paddingVertical={8}
-        render="nav"
-      >
-        {tabs.map(({ id, label, icon }) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={search.view === id ? "page" : undefined}
-            className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors ${
-              // The current view is neutral, like a NavTabs pill (#1909 Q1).
-              search.view === id
-                ? "bg-static-800 text-foreground font-medium"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            }`}
-            onClick={() =>
-              onSearchChange({ ...search, view: id, ...(id === "process" ? {} : { processId: undefined }) })
-            }
-          >
-            <span className="hidden sm:flex">
-              <Icon decorative glyph={icon} size="compact" tone="inherit" />
-            </span>
-            {label}
-          </button>
-        ))}
+      <Stack className="px-4 sm:px-6" paddingTop={8}>
+        <NavTabs
+          activeId={search.view}
+          label="Diagnostics views"
+          onSelect={(id) =>
+            onSearchChange({
+              ...search,
+              view: id as DiagnosticsView,
+              ...(id === "process" ? {} : { processId: undefined }),
+            })
+          }
+          tabs={tabs}
+        />
       </Stack>
       {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
           positioned, and without a positioned scroller it stretches the document instead of

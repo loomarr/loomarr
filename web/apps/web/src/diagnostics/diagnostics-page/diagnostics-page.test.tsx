@@ -40,13 +40,13 @@ describe("DiagnosticsPage", () => {
     expect(screen.getByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
     expect(screen.getByText("Live Process evidence")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Back to Logs" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Logs" })).toHaveClass("cursor-pointer");
-    expect(screen.getByRole("button", { name: "Current Health" })).toHaveClass("cursor-pointer");
+    expect(screen.getByRole("navigation", { name: "Diagnostics views" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Logs" })).not.toHaveAttribute("aria-current");
     const processes = screen.getByRole("button", { name: "Media processes" });
-    // The current view is neutral (#1909 Q1): amber is focus or the primary action.
+    // The current view is NavTabs' neutral pill (#1909 Q1): amber is focus or the primary action.
     expect(processes).toHaveAttribute("aria-current", "page");
-    expect(processes).toHaveClass("cursor-pointer", "bg-static-800", "text-foreground");
-    expect(processes.className).not.toMatch(/signal/);
+    expect(processes.style.backgroundColor).toBe("var(--surfaceElevated)");
+    expect(screen.getByRole("button", { name: "Logs" }).style.backgroundColor).toBe("transparent");
 
     await userEvent.click(screen.getByRole("button", { name: "Logs" }));
     expect(onSearchChange).toHaveBeenCalledWith({ ...search, view: "logs", processId: undefined });
