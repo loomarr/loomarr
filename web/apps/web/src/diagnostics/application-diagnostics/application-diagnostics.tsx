@@ -654,13 +654,17 @@ const ApplicationDiagnostics = ({
                         </div>
                       </PressableRow>
                       {open && (
-                        <div className="border-border border-t lg:hidden">
+                        <Stack
+                          borderColor="borderDecorative"
+                          borderTopWidth={1}
+                          hidden={{ base: false, lg: true }}
+                        >
                           <EventDetail
                             event={event}
                             onOpenProcess={onOpenProcess}
                             onOpenRelated={onOpenRelated}
                           />
-                        </div>
+                        </Stack>
                       )}
                     </article>
                   );

@@ -316,7 +316,7 @@
       "tailwindClasses": 2
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 29
+      "tailwindClasses": 26
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 23,
@@ -581,7 +581,7 @@
       "rawTypeWeight": 1
     },
     "src/settings/settings-context-nav/settings-context-nav.tsx": {
-      "tailwindClasses": 25,
+      "tailwindClasses": 22,
       "rawTypeSize": 2
     },
     "src/settings/settings-page/settings-page.tsx": {

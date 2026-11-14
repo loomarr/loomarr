@@ -40,8 +40,12 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
       className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1.5 rounded-sm text-sm focus-visible:ring-2 focus-visible:outline-none"
     >
       <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
-      <span className="hidden sm:inline">Find another setting</span>
-      <span className="sm:hidden">Find</span>
+      <Stack hidden={{ base: true, sm: false }} render="span">
+        Find another setting
+      </Stack>
+      <Stack hidden={{ base: false, sm: true }} render="span">
+        Find
+      </Stack>
     </Link>
   </Stack>
 );

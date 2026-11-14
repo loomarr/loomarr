@@ -64,6 +64,7 @@ type StackOwnProps = Omit<
   | "flexDirection"
   | "flexWrap"
   | "gap"
+  | "hidden"
   | "justifyContent"
   | "render"
   | "rowGap"
@@ -85,6 +86,12 @@ type StackOwnProps = Omit<
    * (Tailwind's `gap-x-*`). Left out, the spacing is `gap`.
    */
   columnGap?: StackResponsive<StackGap>;
+  /**
+   * Take the Stack out of the layout (`display: none`, so it is out of the accessibility tree
+   * too). Responsive, so `hidden md:flex` is `hidden={{ base: true, md: false }}` and `flex
+   * md:hidden` is `hidden={{ base: false, md: true }}`. Left out, the Stack shows.
+   */
+  hidden?: StackResponsive<boolean>;
   /** Main-axis distribution. Left out, children pack at the start. */
   justify?: StackResponsive<StackJustify>;
   /** Let a row break onto further lines instead of overflowing. The gap also separates the lines. */
@@ -201,13 +208,14 @@ const Stack = ({
   direction = "column",
   columnGap,
   gap = "none",
+  hidden = false,
   justify = "start",
   rowGap,
   wrap = false,
   ...props
 }: StackProps) => {
   const active = useActiveBreakpoint(
-    [align, direction, gap, justify, rowGap, columnGap].some((value) => isResponsive<string>(value)),
+    [align, direction, gap, hidden, justify, rowGap, columnGap].some((value) => isResponsive<unknown>(value)),
   );
   const space = (value: StackGap) => (value === "none" ? 0 : value);
   const resolvedGap = resolve(gap, active);
@@ -234,6 +242,7 @@ const Stack = ({
         flexDirection={resolvedDirection}
         flexWrap={wrap ? "wrap" : "nowrap"}
         justifyContent={justifyContent[resolve(justify, active)]}
+        {...(resolve(hidden, active) ? { display: "none" as const } : undefined)}
         {...spacing}
       />
     </StackDirection.Provider>
