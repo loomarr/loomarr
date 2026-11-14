@@ -151,6 +151,36 @@ func TestDiscoverKeepsFailedSourceAndMarksOffline(t *testing.T) {
 	}
 }
 
+// Stop using a folder forgets its files at once, with no pass run: a pass would wait for the
+// running one's reading, which on a first import is most of it.
+func TestStopUsingForgetsAtOnce(t *testing.T) {
+	h := newHarness(t)
+	h.file("Lima (2011)/Lima (2011).mkv", 10)
+	h.run()
+	ctx := context.Background()
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 1 {
+		t.Fatalf("%d files before release, %v", len(rows), err)
+	}
+	lib := &Library{Roots: &Roots{Store: h.st, Now: time.Now}, Scanner: NewScanner(h.im, time.Hour)}
+	if err := lib.SetInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		rows, err := h.st.LibraryFiles(ctx, h.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d files still kept after Stop using, with no pass run", len(rows))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // Using a folder, releasing one, typing one in, or mapping one by hand asks for a pass at once;
 // clearing a mapping does not.
 func TestUsingAFolderAsksForAPass(t *testing.T) {

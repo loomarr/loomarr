@@ -556,6 +556,32 @@ func TestImportAsksForANewlyConnectedArrsFolders(t *testing.T) {
 	}
 }
 
+// Two episodes whose NFOs carry one TVDB id, one of them copied beside the wrong file, are two
+// titles at their own numbers, not one with an extra copy to remove; a second copy of an episode
+// is still one title.
+func TestEpisodesSharingAnNFOsIDStayApart(t *testing.T) {
+	h := newHarness(t)
+	dir := "Iron Works/Season 02/"
+	for _, name := range []string{"Iron Works - S02E06 - Cathedrals", "Iron Works - S02E18 - Tunnels", "Iron Works - S02E06 - Cathedrals 720p"} {
+		h.file(dir+name+".mkv", 10)
+		episode := strings.TrimPrefix(name[len("Iron Works - S02E"):len("Iron Works - S02E06")], "0")
+		doc := `<episodedetails><title>Tunnels</title><season>2</season><episode>` + episode +
+			`</episode><uniqueid type="tvdb" default="true">90090906</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, filepath.FromSlash(dir+name+".nfo")), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	item := func(name string) inventory.Item { return h.item(fileOrigin(h.root, dir+name+".mkv")) }
+	sixth, eighteenth := item("Iron Works - S02E06 - Cathedrals"), item("Iron Works - S02E18 - Tunnels")
+	if sixth.ID == eighteenth.ID {
+		t.Fatal("the 6th and the 18th are one title")
+	}
+	if got := item("Iron Works - S02E06 - Cathedrals 720p").ID; got != sixth.ID {
+		t.Fatalf("the 6th's second copy is %q, want the 6th's title %q", got, sixth.ID)
+	}
+}
+
 // An NFO read in full gives the title its tags, audience score and people; an older scraper's
 // bare <id> grounds it (decision 59).
 func TestImportReadsTheWholeNFO(t *testing.T) {
@@ -1150,6 +1176,104 @@ func TestHeaderStageReadsOnPastAFileItCannotOpen(t *testing.T) {
 	}
 }
 
+// A folder that replaces the folders in use inside it keeps the headers they read: its first pass
+// opens only a file whose bytes changed since, not the whole library again.
+func TestReplacingInnerFoldersKeepsTheirReads(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	inner := filepath.Join(h.root, "Films")
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, inner: true}}
+	if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: inner, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Films/Mike (2002)/Mike.mkv", 10)
+	changed := h.file("Films/November (2003)/November.mkv", 10)
+	h.run()
+	if got := h.reads.Load(); got != 2 {
+		t.Fatalf("the inner folder read %d headers, want 2", got)
+	}
+
+	// Replace: the outer folder is used, and the inner one stops being.
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.SetLibraryRootInUse(ctx, inner, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(changed, make([]byte, 20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.reads.Store(0)
+	h.run()
+	if got := h.reads.Load(); got != 1 {
+		t.Fatalf("the outer folder read %d headers, want only the changed file's", got)
+	}
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("outer rows = %d, %v; want 2", len(rows), err)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(row.Path), row.Header)
+		}
+	}
+}
+
+// A folder released while its files are read is forgotten for good: the stage reads no more of
+// them, and the reads already done are not saved back, so the files don't return to the Library.
+func TestReleasingAFolderStopsItsReads(t *testing.T) {
+	h := newHarness(t)
+	const files = 6 * headerConcurrency
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	var (
+		mu sync.Mutex
+		// after counts the reads begun once the folder was forgotten.
+		reads, after int
+		forgotten    bool
+	)
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		mu.Lock()
+		reads++
+		first := reads == 1
+		if forgotten {
+			after++
+		}
+		mu.Unlock()
+		if first {
+			// "Stop using" lands, and a pass forgets the folder, while the stage reads.
+			if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+				t.Error(err)
+			}
+			h.im.run.Lock()
+			err := h.im.forgetReleased(ctx, map[string]bool{})
+			h.im.run.Unlock()
+			if err != nil {
+				t.Error(err)
+			}
+			mu.Lock()
+			forgotten = true
+			mu.Unlock()
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("%d of the forgotten folder's files saved back, %v", len(rows), err)
+	}
+	// A reader already past its file's check when the folder was forgotten still reads it; no
+	// other read starts.
+	if after > headerConcurrency-1 {
+		t.Fatalf("%d reads began after the folder was forgotten, of %d files", after, files)
+	}
+}
+
 // A share that gives no file back stops the stage after headerFaultLimit files in a row, so a
 // share that went away is not asked for every file of a library. Every file stays pending.
 func TestHeaderStageStopsWhenTheShareGivesNothingBack(t *testing.T) {
@@ -1208,6 +1332,9 @@ func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
 	if !h.im.stalled(h.root) {
 		t.Fatal("the root does not read as stalled while the read is still out")
 	}
+	if !h.im.Progress().CompletedAt.IsZero() {
+		t.Fatal("a pass that left its folder unread says it completed")
+	}
 
 	close(release)
 	for deadline := time.Now().Add(5 * time.Second); h.im.stalled(h.root); time.Sleep(time.Millisecond) {
@@ -1218,6 +1345,71 @@ func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
 	h.run()
 	if got := h.fileRow(stuck).Header; got != librarystore.LibraryHeaderRead {
 		t.Fatalf("header = %q on the pass after, want read", got)
+	}
+}
+
+// One slow read, given up on, holds up its folder only until it returns: the folder's other files
+// wait, then are read in the same pass, the slow one again with them, and the pass completes.
+func TestASlowReadHoldsUpItsFolderOnlyUntilItReturns(t *testing.T) {
+	h := newHarness(t)
+	slow := h.file("Alpha (2001)/Alpha.mkv", 10)
+	const files = 20
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	h.im.HeaderStall = 50 * time.Millisecond
+	var once sync.Once
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if path == slow {
+			stuck := false
+			once.Do(func() { stuck = true })
+			if stuck {
+				time.Sleep(80 * time.Millisecond) // past the stall, then the share answers within another
+			}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != files+1 {
+		t.Fatalf("%d rows, %v; want %d", len(rows), err, files+1)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read in the same pass", filepath.Base(row.Path), row.Header)
+		}
+	}
+	if h.im.Progress().CompletedAt.IsZero() {
+		t.Fatal("the pass read every file, yet does not say it completed")
+	}
+}
+
+// Files an arr renamed between the walk and their reads are gone from a folder still there: a run
+// of them says nothing of the share, and the files after them are read.
+func TestFilesRenamedAwayDoNotStopTheReads(t *testing.T) {
+	h := newHarness(t)
+	const gone, kept = 3 * headerFaultLimit, 10
+	for i := range gone {
+		h.file(fmt.Sprintf("Show/Season 01/Show S01E%02d.mkv", i+1), 10)
+	}
+	// Named after the show, the films are read after the run of gone files.
+	for i := range kept {
+		h.file(fmt.Sprintf("Zulu %02d (2001)/Zulu %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if strings.Contains(path, "Season 01") {
+			return header.Header{}, &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	for i := range kept {
+		path := filepath.Join(h.root, fmt.Sprintf("Zulu %02d (2001)/Zulu %02d.mkv", i, i))
+		if got := h.fileRow(path).Header; got != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(path), got)
+		}
 	}
 }
 

@@ -40,6 +40,9 @@ func (f *fakeCatalog) Capabilities() mp.Capabilities {
 var fakeCatalogKeys = CatalogKeys{
 	{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 	{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceTVDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceIMDB},
+	{Kind: mp.KindMovie, Namespace: mp.NamespaceIMDB},
 	{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 	{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
 	{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
@@ -342,6 +345,62 @@ func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
 	}
 }
 
+// A show its tvshow.nfo knows only by a TVDB id is looked up by it, and once found is keyed by the
+// catalog's own id, so its episodes take their season's entries. One whose id the catalog doesn't
+// know is the household's to say: it is in Needs you, not matched in silence.
+func TestAShowItsNFOKnowsByAnotherIDIsLookedUpByIt(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for show, tvdb := range map[string]string{"Harbour Lights": "90000911", "Quay Street": "90000912"} {
+		h.file(show+"/Season 01/"+show+" S01E01.mkv", 10)
+		doc := `<tvshow><title>` + show + `</title><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></tvshow>`
+		if err := os.WriteFile(filepath.Join(h.root, show, "tvshow.nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000911": {Source: src, Kind: mp.KindSeries,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000901"}, {Namespace: mp.NamespaceTVDB, Value: "90000911"}},
+			Descriptive: &mp.Descriptive{Title: "Harbour Lights", Overview: "A lighthouse keeps its town.",
+				Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 1}}}},
+		"90000901/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000921"}},
+			Numbering: &mp.Numbering{Season: 1, Episode: 1}, Descriptive: &mp.Descriptive{Title: "Lamp Lit"},
+		}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Contains(catalog.fetched, "series:90000911") {
+		t.Fatalf("fetched %v, want the show by its NFO's TVDB id", catalog.fetched)
+	}
+	episode := fileOrigin(h.root, "Harbour Lights/Season 01/Harbour Lights S01E01.mkv")
+	if got := h.origin(h.item(episode), episode).Observation.Facts.Name; got != "Lamp Lit" {
+		t.Fatalf("the episode = %q, want its season's entry, Lamp Lit", got)
+	}
+	needs, err := h.st.LibraryNeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, n := range needs {
+		names = append(names, n.Name)
+	}
+	if !slices.Equal(names, []string{"Quay Street"}) {
+		t.Fatalf("Needs you = %v, want only the show the catalog doesn't know", names)
+	}
+}
+
 // An episode with no TVDB id takes TMDB's entry for its season and number, but only when TMDB
 // numbers the series as the disk does: no other ordering, and each season on disk ends at TMDB's
 // count for it (decision 53). Otherwise its season is never asked for, and it keeps its file's
@@ -418,6 +477,68 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 				t.Errorf("the season record was read %d times over two passes of three episodes, want once a pass", got)
 			}
 		})
+	}
+}
+
+// An NFO's episode id can be another episode's: a scraper copied it beside the wrong file, or the
+// catalog's TVDB mapping points one along. When the file's own mark places it, and its show's
+// catalog numbers the show as the disk does, the catalog's entry at that mark is what it is. The
+// id's record is another episode's, so the file is described by its own number, and it stays its
+// own title beside the episode the id names.
+func TestAnEpisodeIDThatNamesAnotherEpisodeGivesWayToTheFilesNumber(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000079" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	season := filepath.Join(h.root, "Golf Show {tmdb-90000701}", "Season 01")
+	nfo := func(name, title string, episode int, tvdb string) {
+		doc := `<episodedetails><title>` + title + `</title><season>1</season><episode>` + strconv.Itoa(episode) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(season, name+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.file("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E01 - Tee Off.mkv", 10)
+	h.file("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02 - The Back Nine.mkv", 10)
+	h.file("Golf Show {tmdb-90000701}/Season 01/Golf Show S01E03 - Sudden Death.mkv", 10)
+	nfo("Golf Show S01E02 - The Back Nine", "The Back Nine", 2, "90090903") // the 3rd's id
+	nfo("Golf Show S01E03 - Sudden Death", "Sudden Death", 3, "90090903")
+	h.run()
+	third := entry(3, "Sudden Death")
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000701": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000701"}},
+			Descriptive: &mp.Descriptive{Title: "Golf Show", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
+		"90000701/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{entry(1, "Tee Off"), entry(2, "The Back Nine"), third}},
+		"90090903": {Source: src, Kind: mp.KindEpisode, Descriptive: third.Descriptive,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090903"}, third.IDs[0]}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	second := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02 - The Back Nine.mkv")
+	thirdFile := fileOrigin(h.root, "Golf Show {tmdb-90000701}/Season 01/Golf Show S01E03 - Sudden Death.mkv")
+	facts := h.origin(h.item(second), second).Observation.Facts
+	if facts.Name != "The Back Nine" || facts.Overview != "The Back Nine." || facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
+		t.Fatalf("the 2nd = %q (%q) S%dE%d, want its own entry, The Back Nine S1E2", facts.Name, facts.Overview, facts.SeasonNumber, facts.EpisodeNumber)
+	}
+	if got := h.origin(h.item(thirdFile), thirdFile).Observation.Facts.Name; got != "Sudden Death" {
+		t.Fatalf("the 3rd = %q, want Sudden Death by its id", got)
+	}
+	if h.item(second).ID == h.item(thirdFile).ID {
+		t.Fatal("the 2nd and 3rd are one title")
 	}
 }
 

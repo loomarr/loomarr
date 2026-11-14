@@ -412,6 +412,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
 	res := b.resolve(ctx, snapshot.Origin, in)
+	if id.kind == mp.KindEpisode && res.record != nil {
+		res = b.ownNumberOver(ctx, snapshot.Origin, id, in, res)
+	}
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
 		if day := id.airDate(); day != "" {
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
@@ -480,6 +483,8 @@ type resolution struct {
 	set librarystore.LibraryCatalogKey
 	// record is that row's cached record, nil until the Enricher fetches it.
 	record *mp.Record
+	// entry is the entry of a season or order record that describes an episode; nil for none.
+	entry *mp.Record
 	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
 	unnumbered bool
 	// waiting is a title written without a catalog record it asked for and the Enricher has not
@@ -503,6 +508,22 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 	out.catalog = b.im.Keys.For(in.Kind, pickedIDs(out.resolved.IDs))
 	rec, ok, waiting := b.im.catalogRecord(ctx, out.catalog)
 	out.waiting = waiting
+	titled := in.Kind == mp.KindMovie || in.Kind == mp.KindSeries
+	if ok && titled {
+		// A title its NFO knows by another catalog's id is keyed by the catalog's own once found, as
+		// its seasons and orders are; the Enricher caches the record by both.
+		if own := b.im.Keys.For(in.Kind, rec.IDs); own.String() != "" && own != out.catalog {
+			if canon, cached, _ := b.im.catalogRecord(ctx, own); cached {
+				out.catalog, rec = own, canon
+			}
+		}
+	}
+	// An id only a name or an NFO gives, that the catalog was asked for and does not know, grounds
+	// nothing: the title is the household's to say (Needs you), not one matched in silence.
+	if !ok && !waiting && titled && (out.match.Basis == string(mp.BasisSidecar) || out.match.Basis == string(mp.BasisEmbeddedID)) &&
+		b.im.catalogMisses(ctx, out.catalog) {
+		out.match = librarystore.LibraryMatch{}
+	}
 	if ok {
 		out.record = &rec
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)

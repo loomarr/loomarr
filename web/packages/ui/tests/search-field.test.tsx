@@ -5,7 +5,7 @@ import { act, type ReactNode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SearchField } from "../index";
+import { SearchButton, SearchField } from "../index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -78,5 +78,25 @@ describe("SearchField", () => {
     expect(latest).toBe("");
     expect(doc.body.querySelector("input")?.value).toBe("");
     expect(doc.body.querySelector('[aria-label="Clear search"]')).toBeNull();
+  });
+});
+
+describe("SearchButton", () => {
+  it("is a button named by its placeholder, with the shortcut hint and aria-keyshortcuts, that presses", async () => {
+    let pressed = 0;
+    await mount(
+      <SearchButton hint="⌘K" keyShortcuts="Meta+K" onPress={() => (pressed += 1)} placeholder="Search…" />,
+    );
+
+    const button = doc.body.querySelector('[role="button"]') as unknown as
+      | (Clickable & { getAttribute(name: string): string | null; textContent: string | null })
+      | null;
+    expect(button).not.toBeNull();
+    expect(button?.textContent).toBe("Search…⌘K");
+    expect(button?.getAttribute("aria-keyshortcuts")).toBe("Meta+K");
+    // It draws a box and presses; it is not an input.
+    expect(doc.body.querySelector("input")).toBeNull();
+    await act(async () => button?.click());
+    expect(pressed).toBe(1);
   });
 });

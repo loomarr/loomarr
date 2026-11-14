@@ -143,13 +143,15 @@ func fillerIdentityJob(ci *identity.Job) jobs.Job {
 }
 
 // fillerUpkeepJob lets filler go of what it no longer needs (#3855): fetched rejects a week old,
-// leftover download staging, and quarantined files a day old. Hourly; its numbers are fixed
-// (decision 25 of #3838), so it has no schedule setting.
+// the original downloads of fetched clips on air, leftover download staging, and quarantined
+// files a day old. Hourly; its numbers are fixed (decision 25 of #3838), so it has no schedule
+// setting.
 func fillerUpkeepJob(u *upkeep.Job) jobs.Job {
 	return jobs.Job{
 		Timeout: jobs.LongJobTimeout,
-		Name:    "filler-upkeep", Group: jobs.GroupFiller, Title: "Let go of failed filler",
-		Description: "Deletes the files of ads Loomarr downloaded and turned down a week ago, and leftovers from finished downloads, keeping a note of why.",
+		Name:    "filler-upkeep", Group: jobs.GroupFiller, Title: "Free up filler space",
+		Description: "Deletes the files of ads Loomarr downloaded and turned down a week ago, keeping a note of why, " +
+			"the original downloads of ads already on air, and leftovers from finished downloads.",
 		DefaultCron: "0 40 * * * *",
 		Run:         func(ctx context.Context) error { _, err := u.Run(ctx); return err },
 	}

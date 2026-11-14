@@ -33,6 +33,12 @@ const (
 	etaShare   = 0.02
 )
 
+// etaWindow is how far back the rate is measured once a step has run a while: the baseline slides
+// up behind the step, staying between one and two windows old, so the time left follows the rate
+// the step goes at now. A first import's reading that crawls for its first minutes and then runs
+// would otherwise tell "50 hours left" long after it has sped up.
+const etaWindow = 2 * time.Minute
+
 // ProgressSnapshot is what the maintainer sees of an import at one moment: the earliest step still
 // running, how far it is, and the time it has left.
 type ProgressSnapshot struct {
@@ -84,6 +90,28 @@ type stepState struct {
 	// since and sinceDone are the rate baseline: when it was taken and done then.
 	since     time.Time
 	sinceDone int
+	// markAt and markDone are the checkpoint the baseline slides up to: taken each etaWindow, the
+	// baseline moving to the one before.
+	markAt   time.Time
+	markDone int
+}
+
+// rebase takes the rate baseline, and the first checkpoint, at now.
+func (s *stepState) rebase(now time.Time) {
+	s.since, s.sinceDone = now, s.done
+	s.markAt, s.markDone = now, s.done
+}
+
+// slide takes a checkpoint each etaWindow, moving the baseline up to the one before, so the rate is
+// what the step has done over the last one to two windows.
+func (s *stepState) slide(now time.Time) {
+	if now.Sub(s.markAt) < etaWindow {
+		return
+	}
+	if s.markAt.After(s.since) {
+		s.since, s.sinceDone = s.markAt, s.markDone
+	}
+	s.markAt, s.markDone = now, s.done
 }
 
 // NewTracker returns a Tracker on the clock now (time.Now when nil) that tells onChange of each
@@ -107,7 +135,8 @@ func (t *Tracker) Begin(step Step, total int) {
 		}
 		now := t.now()
 		t.keepRate(step, now)
-		t.state[step.index()] = stepState{active: true, total: max(total, 0), since: now, sinceDone: 0}
+		t.state[step.index()] = stepState{active: true, total: max(total, 0)}
+		t.state[step.index()].rebase(now)
 	})
 }
 
@@ -134,6 +163,9 @@ func (t *Tracker) Advance(step Step, n int) {
 	t.update(false, func() {
 		if s := &t.state[step.index()]; s.active {
 			s.done += n
+			if !s.paused {
+				s.slide(t.now())
+			}
 		}
 	})
 }
@@ -144,7 +176,7 @@ func (t *Tracker) Advance(step Step, n int) {
 func (t *Tracker) Rebase(step Step) {
 	t.update(false, func() {
 		if s := &t.state[step.index()]; s.active {
-			s.since, s.sinceDone = t.now(), s.done
+			s.rebase(t.now())
 			t.rates[step.index()] = 0
 		}
 	})
@@ -182,7 +214,7 @@ func (t *Tracker) Pause(step Step, paused bool) {
 		}
 		s.paused = paused
 		if !paused {
-			s.since, s.sinceDone = t.now(), s.done
+			s.rebase(t.now())
 		}
 	}
 	t.mu.Unlock()

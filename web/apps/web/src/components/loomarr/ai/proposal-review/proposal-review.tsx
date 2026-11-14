@@ -1,5 +1,5 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, type BadgeTone, Field, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Card, Field, Grid, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import {
@@ -172,63 +172,70 @@ const ProposalReview = ({
       </Stack>
 
       {editingBrief ? (
-        <Stack
-          className="border-suggest/40 bg-suggest/5 rounded-lg border p-4"
-          gap="3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void briefForm.handleSubmit();
-          }}
-          render="form"
-        >
-          <briefForm.Field name="brief">
-            {(field) => (
-              <Field
-                accessibilityLabel="Channel brief"
-                description="Loomarr will refresh its suggestions. Your title choices stay with the draft."
-                disabled={controlsDisabled}
-                label="Update your brief"
-                multiline
-                numberOfLines={3}
-                onChangeText={field.handleChange}
-                value={field.state.value}
-              />
-            )}
-          </briefForm.Field>
-          {requestDetails.length > 0 && (
-            <details>
-              <summary className="w-fit cursor-pointer">
-                <Text as="span" textRole="compact" tone="secondary">
-                  Other request details ({requestDetails.length})
-                </Text>
-              </summary>
-              <dl className="bg-background/60 mt-2 grid gap-x-4 gap-y-1.5 rounded-md p-3 sm:grid-cols-[auto_1fr]">
-                {requestDetails.map(([label, value]) => (
-                  <div key={label} className="contents">
-                    <Text as="dt" textRole="cardLabel" tone="secondary">
-                      {label}
-                    </Text>
-                    <Text as="dd" textRole="compact">
-                      {value}
-                    </Text>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          )}
-          <Stack direction="row" gap="inline" justify="end" wrap>
-            <Action onPress={() => setEditingBrief(false)} variant="ghost">
-              Cancel
-            </Action>
-            <briefForm.Subscribe selector={(state) => state.values.brief.trim() === ""}>
-              {(empty) => (
-                <Action disabled={controlsDisabled || empty} submit tone="suggest">
-                  Update suggestions
-                </Action>
+        <Card borderRadius={8} padding={16} tone="suggest">
+          <Stack
+            gap="3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void briefForm.handleSubmit();
+            }}
+            render="form"
+          >
+            <briefForm.Field name="brief">
+              {(field) => (
+                <Field
+                  accessibilityLabel="Channel brief"
+                  description="Loomarr will refresh its suggestions. Your title choices stay with the draft."
+                  disabled={controlsDisabled}
+                  label="Update your brief"
+                  multiline
+                  numberOfLines={3}
+                  onChangeText={field.handleChange}
+                  value={field.state.value}
+                />
               )}
-            </briefForm.Subscribe>
+            </briefForm.Field>
+            {requestDetails.length > 0 && (
+              <details>
+                <summary className="w-fit cursor-pointer">
+                  <Text as="span" textRole="compact" tone="secondary">
+                    Other request details ({requestDetails.length})
+                  </Text>
+                </summary>
+                <Grid
+                  className="bg-background/60 mt-2 rounded-md p-3"
+                  columnGap="4"
+                  columns={{ base: 1, sm: ["auto", "1fr"] }}
+                  render="dl"
+                  rowGap="1.5"
+                >
+                  {requestDetails.map(([label, value]) => (
+                    <div key={label} className="contents">
+                      <Text as="dt" textRole="cardLabel" tone="secondary">
+                        {label}
+                      </Text>
+                      <Text as="dd" textRole="compact">
+                        {value}
+                      </Text>
+                    </div>
+                  ))}
+                </Grid>
+              </details>
+            )}
+            <Stack direction="row" gap="inline" justify="end" wrap>
+              <Action onPress={() => setEditingBrief(false)} variant="ghost">
+                Cancel
+              </Action>
+              <briefForm.Subscribe selector={(state) => state.values.brief.trim() === ""}>
+                {(empty) => (
+                  <Action disabled={controlsDisabled || empty} submit tone="suggest">
+                    Update suggestions
+                  </Action>
+                )}
+              </briefForm.Subscribe>
+            </Stack>
           </Stack>
-        </Stack>
+        </Card>
       ) : (
         <Stack
           align="start"
@@ -281,11 +288,11 @@ const ProposalReview = ({
       )}
 
       {revisionError && !revising && !findingMore && (
-        <div role="alert" className="border-onair/40 bg-onair/5 rounded-md border px-3 py-2">
+        <Card borderRadius={6} paddingHorizontal={12} paddingVertical={8} role="alert" tone="onair">
           <Text as="p" textRole="compact">
             We couldn't update the suggestions. Your current lineup is unchanged.
           </Text>
-        </div>
+        </Card>
       )}
 
       {expansionAdded === 0 && !revising && !findingMore && !revisionError && (

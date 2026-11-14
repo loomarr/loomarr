@@ -517,7 +517,9 @@ describe("SettingField", () => {
         onEnvOverride={onEnvOverride}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /hand library url back to LIBRARY_URL/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^overriding LIBRARY_URL: hand library url back/i }),
+    );
     // false, not true: a toggle that always claimed would make the control one-way.
     expect(onEnvOverride).toHaveBeenCalledWith(false);
   });

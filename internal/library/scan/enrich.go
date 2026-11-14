@@ -429,8 +429,18 @@ func (e *Enricher) fetch(ctx context.Context, key librarystore.LibraryCatalogKey
 		language = e.language()
 	}
 	changed, err := e.Store.SaveLibraryCatalog(ctx, key, record, catalogVersions[key.Kind], language, now)
-	if err != nil || !changed {
+	if err != nil {
 		return fetchDone, err
+	}
+	// A title found by another catalog's id (an NFO's TVDB or IMDb id) is cached by the catalog's
+	// own too: its titles are keyed by that, as its seasons and orders are (builder.resolve).
+	if own := CatalogKeys(e.Provider.Capabilities().Resolves).For(rec.Kind, rec.IDs); fetchErr == nil && own.String() != "" && own != key {
+		if _, err := e.Store.SaveLibraryCatalog(ctx, own, record, catalogVersions[own.Kind], language, now); err != nil {
+			return fetchDone, err
+		}
+	}
+	if !changed {
+		return fetchDone, nil
 	}
 	files, err := e.Store.RewriteLibraryCatalogFiles(ctx, key)
 	if err != nil {

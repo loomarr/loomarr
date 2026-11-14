@@ -12,6 +12,15 @@ type InlineActionProps = {
   "aria-label"?: string;
   disabled?: boolean;
   onPress: () => void;
+  /**
+   * For a name in a narrow column (a clip's name in a list row): the label takes the column's width
+   * on one line and ends in an ellipsis rather than wrapping. `title` then shows the whole name.
+   * The 24 px touch target is the button's own padding (offset by a negative margin, so the line
+   * keeps its place), because the usual `::after` target is clipped by the overflow that truncates.
+   */
+  truncate?: boolean;
+  /** The browser tooltip, for a truncated label's full text. Web only. */
+  title?: string;
 };
 
 /**
@@ -29,6 +38,8 @@ const InlineAction = ({
   children,
   disabled = false,
   onPress,
+  title,
+  truncate = false,
 }: InlineActionProps) => {
   const theme = useTheme();
   const focus = useFocusLook();
@@ -46,6 +57,7 @@ const InlineAction = ({
         accessibilityState={{ disabled }}
         color="contentPrimary"
         disabled={disabled}
+        numberOfLines={truncate ? 1 : undefined}
         onPress={onPress}
         opacity={look.opacity}
         textDecorationLine="underline"
@@ -71,6 +83,20 @@ const InlineAction = ({
     padding: 0,
     textDecorationLine: "underline",
     textUnderlineOffset: 2,
+    ...(truncate
+      ? {
+          // One line the column's width, ending in an ellipsis. The 20 px line plus 2 px above and
+          // below is the 24 px target; the negative margin gives the padding back to the layout.
+          display: "block",
+          margin: "-2px 0",
+          overflow: "hidden",
+          padding: "2px 0",
+          textAlign: "left",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          width: "100%",
+        }
+      : {}),
     ...(focus.focused
       ? { outline: `2px solid ${theme.actionFocus.val}`, outlineOffset: 2 }
       : { outline: "none" }),
@@ -80,12 +106,14 @@ const InlineAction = ({
     "button",
     {
       "aria-label": ariaLabel,
-      "data-touch-target": true,
+      // A truncated label's target is its padding: `::after` would be clipped by the overflow.
+      ...(truncate ? {} : { "data-touch-target": true }),
       disabled,
       onBlur: focus.onBlur,
       onClick: onPress,
       onFocus: focus.onFocus,
       style,
+      title,
       type: "button",
     },
     children,

@@ -192,6 +192,8 @@ export type { RowCardProps } from "./src/row-card";
 export { RowCard } from "./src/row-card";
 export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
 export { ScreenHeader } from "./src/screen-header";
+export type { SearchButtonProps } from "./src/search-button";
+export { SearchButton } from "./src/search-button";
 export type { SearchFieldProps } from "./src/search-field";
 export { SearchField } from "./src/search-field";
 export type {

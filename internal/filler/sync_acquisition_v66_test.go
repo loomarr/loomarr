@@ -123,6 +123,33 @@ func TestAuthorizeAcquisitionAcceptsConsumedPlaybackBoundToExactSourceMaster(t *
 	}
 }
 
+// A Ready clip's master is released (#3855): the file is gone and the sidecar keeps its digest
+// with no path. The next scan must neither send the acquisition to repair nor lose the path the
+// acquisition last recorded.
+func TestAuthorizeAcquisitionAcceptsAReleasedSourceMaster(t *testing.T) {
+	fixture := newConsumedV66Fixture(t)
+	tags, ok := asset.ReadSidecarTags(fixture.playbackPath)
+	if !ok {
+		t.Fatal("fixture sidecar unreadable")
+	}
+	tags.MediaAssets.SourceMaster.Path = ""
+	if err := asset.WriteSidecarTags(fixture.playbackPath, tags, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(fixture.masterPath); err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.authority.artifact.MediaPath
+
+	artifact, found, err := fixture.syncer.authorizeAcquisition(t.Context(), fixture.clip)
+	if err != nil || !found || artifact.State != acquisition.ArtifactConsumed {
+		t.Fatalf("released-master acquisition = %+v, found=%v, error=%v", artifact, found, err)
+	}
+	if got := fixture.authority.artifact; got.State == acquisition.ArtifactRepair || got.MediaPath != before {
+		t.Fatalf("released-master acquisition record = %+v, want consumed with media path %q kept", got, before)
+	}
+}
+
 func TestAuthorizeAcquisitionDoesNotRecoverDriftedConsumedV66Assets(t *testing.T) {
 	tests := []struct {
 		name string

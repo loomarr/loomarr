@@ -244,7 +244,9 @@ the household's language wins over it, and a refresh after TMDB gains a translat
   Movies"), and so is one holding folders in use, unless it is added with `replace`, which uses it
   in their place in one step. The scan already reads a folder nested in another once, as part of the
   outer one (`scannedRoots`), so the list would name a folder the scan never walks; the outer one's
-  next pass keys their files under it.
+  next pass keys their files under it. Each keeps the header its inner folder read while its bytes
+  are the same (`headerWithin`), so a replace opens only the files that changed, not the whole
+  library again.
 
 ## Scanner
 
@@ -290,7 +292,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
   The wait never holds up a pass (decision 11): one header stage takes files at a time, outside
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
-  later pass wrote meanwhile is dropped.
+  later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
+  (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
+  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
@@ -395,11 +400,15 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
   minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
   blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
-  A header read gets the same 2 minutes: one that does not return ends the header stage and stalls
-  its root the same way, so no further reader is sent into the mount. One file the share cannot
-  give back (gone since the walk, an I/O error) stays pending for the next pass and the stage reads
-  on; eight such files in a row with no read between are the share's fault, and end the stage with
-  the rest still pending.
+  A header read gets the same 2 minutes: one that does not return stalls its root the same way, so
+  no further reader is sent into the mount, and the root's other files are set aside while the
+  other roots read on. Once nothing else is left, the stage waits up to 2 minutes more for the read
+  to return, then takes the set-aside files up again, the slow one with them (three times at
+  most). One file the share cannot give back (an I/O error) stays pending for the next pass and the
+  stage reads on; eight such files in a row with no read between are the share's fault, and the
+  stage reads no more of that root. A file gone from a folder the share still lists was renamed or
+  deleted by an arr since the walk, which says nothing of the share. A pass that left a root's
+  files unread does not count as a completed scan.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
@@ -504,7 +513,14 @@ step 5). Nothing reads the scanner's origins until the cutover.
   The kill switch stops it too. An episode whose ids include its own TVDB id (from Sonarr or an
   NFO) is cached the same way, keyed `tvdb:episode:<id>` in its `library_items.catalog`: TMDB's
   view of that episode, found through TMDB's `/find`, never by its season and number when it has
-  that id (decision 53). An episode with no TVDB id takes TMDB's entry for its season and number,
+  that id (decision 53). An NFO's id can still be another episode's: a scraper copies an NFO
+  beside the wrong file, or TMDB's TVDB mapping points one along. So when the file's own mark
+  ("S02E22") places it, and TMDB numbers the show as the disk does (below), TMDB's season entry at
+  that mark is checked against the id's record. An entry that shares no id with it stands over
+  the id: the file is described and keyed by its own number (`ownNumberOver`). An episode id also
+  grounds only the same episode in the inventory: an episode file never joins a title another of
+  whose files is numbered otherwise, so two episodes sharing a stale id stay two titles, and
+  neither is offered as an extra copy. An episode with no TVDB id takes TMDB's entry for its season and number,
   keyed `tmdb:season:<series id>/<season>` (one record per season, every episode in it), but only
   when TMDB numbers the series the way the disk does: TMDB lists no other episode ordering for it
   (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
@@ -523,7 +539,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
 - **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
-  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
+  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. A title
+  known only by another catalog's id (a `tvshow.nfo` with only its TVDB or IMDb id) is looked up by
+  it, through TMDB's `/find` (`tvdb:series:<id>`, `imdb:series:<id>`, `imdb:movie:<id>`). Once
+  found it is cached and keyed by TMDB's own id too, as its seasons and orders are. An id only a
+  name or an NFO gives, that the catalog was asked for and does not know, grounds nothing: the
+  title is in Needs you, not matched in silence. An arr's id always grounds. The first answer for a
+  catalog row, "no such title" included, writes its titles again. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
   answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the
@@ -1062,6 +1084,10 @@ header is kept, so no file is opened again. Each version and what it changed:
   20" counts across the show, placed by its catalog; a film's chapters give their years. "Show -
   101", the show's 101st, is season 1's first when its catalog is too short for a 101st and its
   first season holds a first (`byRunTogether`).
+- **86:** an episode no catalog names yet is named by what its file says after its show's name
+  and its own mark, its release's notes set aside: "Show - S01E03 - The Long Tide [WEBDL-1080p]"
+  is "The Long Tide", and a Specials' "Show - Holiday Special [1080p]" is "Holiday Special". A
+  name that is only its show's and its mark keeps both (`episodeName`).
 
 ## Search
 

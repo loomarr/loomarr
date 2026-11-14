@@ -201,7 +201,7 @@ const FillerOverview = () => {
           action colour, so a state where nothing needs doing doesn't wear it: the ready card is
           plain, with the same green dot as the healthy watch line above it. */}
       {action ? (
-        <Card className="border-caution/40! bg-caution/5!" padding={20}>
+        <Card padding={20} tone="caution">
           <Stack align="start" direction={{ base: "column", sm: "row" }} gap="4">
             <div className="min-w-0 flex-1">
               <StatusLabel tone="warn">Action recommended</StatusLabel>
