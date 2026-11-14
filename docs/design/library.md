@@ -290,7 +290,10 @@ step 5). Nothing reads the scanner's origins until the cutover.
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
   The wait never holds up a pass (decision 11): one header stage takes files at a time, outside
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
-  later pass wrote meanwhile is dropped.
+  later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
+  (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
+  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the

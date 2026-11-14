@@ -3,10 +3,12 @@ package scan
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/library/inventory"
+	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 )
 
@@ -108,6 +110,51 @@ func TestScannerHoldsRewritesWhileFilesAreRead(t *testing.T) {
 	if _, ok := sc.folders[h.root][lima]; !ok {
 		t.Fatalf("a rewrite with nothing read was held: %v", sc.folders)
 	}
+}
+
+// A pass asked for while a first import reads its headers walks at once: a folder added, or Scan
+// now, finds its new files then, not once every header is read. Its files go to the stage reading.
+func TestAScanAskedForWhileFilesAreReadWalksAtOnce(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	h.file("Lima (2011)/Lima (2011).mkv", 10)
+	read := h.im.Header
+	release := make(chan struct{})
+	reading := make(chan struct{}, 8)
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		reading <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return read(ctx, path)
+	}
+	sc := NewScanner(h.im, time.Hour)
+	done := make(chan struct{})
+	go func() { defer close(done); sc.Run(ctx) }()
+	defer func() {
+		cancel()
+		<-done
+	}()
+	select {
+	case <-reading:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first import never read a header")
+	}
+
+	juliet := h.file("Juliet (2009)/Juliet (2009).mkv", 10)
+	sc.Trigger()
+	waitFor(t, "the new file walked while the first reads wait", func() bool {
+		rows, err := h.st.LibraryFiles(ctx, h.root)
+		return err == nil && slices.ContainsFunc(rows, func(r librarystore.LibraryFile) bool { return r.Path == juliet })
+	})
+	close(release)
+	waitFor(t, "both files read", func() bool {
+		rows, err := h.st.LibraryFiles(ctx, h.root)
+		return err == nil && len(rows) == 2 && !slices.ContainsFunc(rows, func(r librarystore.LibraryFile) bool {
+			return r.Header != librarystore.LibraryHeaderRead
+		})
+	})
 }
 
 func TestScannerArrChangedPassesTheMappedFolder(t *testing.T) {
