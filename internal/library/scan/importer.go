@@ -712,8 +712,20 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			}
 			continue
 		}
-		b.markWritten(id)
 		snapshot, waiting := b.snapshot(ctx, file, id, now)
+		if waiting && sameBytes && old.MissingAt.IsZero() && old.ItemID != "" && old.Identity == waitingFor(id.digest) {
+			// Still waiting for the record the last pass wrote it without: it is as that pass wrote
+			// it, so it is left as it is, and its queued read stays its own. The pass the Enricher
+			// asks for once it has the record finds it no longer waiting, and writes it.
+			if prev[file.Path].Held {
+				save = append(save, old)
+			}
+			if old.Header == librarystore.LibraryHeaderPending && old.Problem == "" {
+				queue = append(queue, pending{row: old, file: file, id: id, b: b, gen: gen})
+			}
+			continue
+		}
+		b.markWritten(id)
 		var read *inventory.SourceFacts
 		var readBy int
 		if sameBytes && old.Header == librarystore.LibraryHeaderRead {
@@ -758,10 +770,11 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		if reread {
 			saved.Identity = old.Identity
 		}
-		// Written without a record still to come: the next pass over the folder writes it again,
-		// whenever the Enricher's fetch lands (#3565).
+		// Written without a record still to come: its identity says so, and the next pass over the
+		// folder writes it again once the record is cached, whenever the Enricher's fetch lands
+		// (#3565). Until then a pass leaves it as it is.
 		if waiting {
-			row.Identity, saved.Identity = "", ""
+			row.Identity, saved.Identity = waitingFor(id.digest), waitingFor(id.digest)
 		}
 		save = append(save, saved)
 		if row.Header == librarystore.LibraryHeaderPending || reread {
@@ -887,6 +900,11 @@ func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) 
 
 // reader is the header.Version this importer's header reads are recorded under.
 func (im *Importer) reader() int { return cmp.Or(im.readerVersion, header.Version) }
+
+// waitingFor is the identity a file's row keeps while its title waits for a catalog record: never
+// its own digest, so the pass after the record is cached writes it again (#3565), and never empty,
+// so a pass before then can tell it is still the same file waiting.
+func waitingFor(digest string) string { return "waiting:" + digest }
 
 func (im *Importer) now() time.Time {
 	if im.Now != nil {

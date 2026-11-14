@@ -1062,7 +1062,9 @@ header is kept, so no file is opened again. Each version and what it changed:
 - **81:** a shelf names no show: an episode named by its mark alone, "Downloads/S01E01.mkv",
   "TV/S01E07.mkv", is no show's, as one loose at the top is (`showFolderIn`, `noShowIn`).
 - **82:** a file written without a catalog record it asked for (its own, its season's, or its
-  series') is saved with no identity, so the next pass over its folder writes it again (#3565).
+  series') is saved with a waiting identity, never its own, so the next pass over its folder once
+  the record is cached writes it again (#3565). A pass before then finds the same file still
+  waiting and leaves it, and the header read queued for it stays its own (`waitingFor`).
   The Enricher could fetch the record while that pass was still writing, before the file's row
   was saved; the pass then saved an identity that said the file was final, and every later pass,
   a full scan included, left its episodes named by their files. The new version writes every
