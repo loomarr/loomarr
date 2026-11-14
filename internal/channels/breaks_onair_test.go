@@ -11,10 +11,10 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-// The hold never outlasts the operator's break length: lowering it is an edit, and every break,
-// aired or not, takes the shorter length at once (the stream may restart once). Only a catalog
-// re-size is held.
-func TestReconcile_ShorterBreakSettingIsNotHeld(t *testing.T) {
+// Lowering the break length is an edit (#4140 step 1): it applies at once from the programme after
+// the one on air, and the breaks that aired, and the one after the programme on air, keep the
+// length they aired with, so nothing on air moves.
+func TestReconcile_ShorterBreakSettingAppliesAfterTheProgrammeOnAir(t *testing.T) {
 	st := newStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
 	breakLen := 2 * time.Minute
@@ -41,18 +41,32 @@ func TestReconcile_ShorterBreakSettingIsNotHeld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, s := range got.Desired {
-		if s.Kind == schedule.SlotFiller && s.DurationMs > time.Minute.Milliseconds() {
-			t.Fatalf("break %d is %d ms after the break length was lowered to 1m", i, s.DurationMs)
+	onAir := playout.AiringAt(got.Desired, got.PlayoutAnchor, now)
+	onAirEnds := now.Add(onAir.Remaining)
+	shorter := 0
+	for _, b := range playout.BroadcastsBetween(got.Desired, got.PlayoutAnchor, got.PlayoutAnchor, now.Add(12*time.Hour)) {
+		if b.Kind != schedule.SlotFiller {
+			continue
 		}
+		switch {
+		case !b.Start.After(onAirEnds) && b.Duration() <= time.Minute:
+			t.Errorf("the break at %v aired or follows the programme on air, and was shortened to %v", b.Start, b.Duration())
+		case b.Start.After(onAirEnds) && b.Duration() > time.Minute:
+			t.Errorf("the break at %v is %v after the break length was lowered to 1m", b.Start, b.Duration())
+		case b.Start.After(onAirEnds):
+			shorter++
+		}
+	}
+	if shorter == 0 {
+		t.Fatal("no break after the programme on air took the shorter length")
 	}
 }
 
 // The household's 2026-10-24 evening, reduced: a channel on air for hours, whose breaks the next
 // reconcile sizes differently. Before the fix, every break on the channel took the new length,
 // the timeline walked from the anchor moved, and the stream was stopped: the viewer re-tuned into
-// the programme they had already seen, or into the same break again. Now the breaks that aired
-// keep their length, what is on air does not move, and the stream keeps playing.
+// the programme they had already seen, or into the same break again. Now what aired and what is on
+// air do not move, the new length applies after the programme on air, and the stream keeps playing.
 func TestReconcile_ReSizedBreaksNeverMoveWhatIsOnAir(t *testing.T) {
 	st := newStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
@@ -90,32 +104,33 @@ func TestReconcile_ReSizedBreaksNeverMoveWhatIsOnAir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !after.PlayoutAnchor.Equal(before.PlayoutAnchor) {
-		t.Fatalf("anchor moved from %v to %v", before.PlayoutAnchor, after.PlayoutAnchor)
-	}
+	// This channel's window never turns, so the catalog change re-deals after the programme on air:
+	// the third film and the break after it keep the times they air at, and the cycle starts again
+	// at the film, so the breaks that aired are behind the anchor and are never walked again.
 	was := playout.AiringAt(before.Desired, before.PlayoutAnchor, now)
 	is := playout.AiringAt(after.Desired, after.PlayoutAnchor, now)
 	if was != is {
 		t.Fatalf("on air moved: was %q at %v, now %q at %v", was.Title, was.Offset, is.Title, is.Offset)
 	}
+	if want := now.Add(-was.Offset); !after.PlayoutAnchor.Equal(want) {
+		t.Fatalf("anchor = %v, want the start of the film on air %v", after.PlayoutAnchor, want)
+	}
 	if got := len(stops.StoppedChannels()); got != stopsBefore {
 		t.Fatalf("re-sized breaks stopped the stream (%d stops)", got-stopsBefore)
 	}
-	var aired, resized int
+	var kept, resized int
 	for _, s := range after.Desired {
 		if s.Kind != schedule.SlotFiller {
 			continue
 		}
 		switch s.DurationMs {
 		case 113_366:
-			aired++
+			kept++
 		case 113_866:
 			resized++
 		}
 	}
-	// The breaks before the freeze horizon (now + 30 min) aired or are about to; those after it have
-	// not, and take the catalog's new length.
-	if aired != 2 || resized == 0 {
-		t.Fatalf("breaks kept/re-sized = %d/%d, want the two that aired kept and the rest re-sized", aired, resized)
+	if kept != 1 || resized == 0 {
+		t.Fatalf("breaks kept/re-sized = %d/%d, want the one after the film on air kept and the rest re-sized", kept, resized)
 	}
 }
