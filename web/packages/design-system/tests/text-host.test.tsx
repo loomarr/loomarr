@@ -80,6 +80,17 @@ describe("Text with an `as` host", () => {
     expect(host.hasAttribute("wordbreak")).toBe(false);
   });
 
+  it("draws the cursor as inline style", () => {
+    const host = hostOf(
+      <Text as="summary" cursor="pointer" data-testid="host" textRole="body">
+        Customize
+      </Text>,
+    );
+
+    expect(host.style.cursor).toBe("pointer");
+    expect(host.hasAttribute("cursor")).toBe(false);
+  });
+
   it("adds nothing when none of the props is set, and lets the caller's style win", () => {
     const host = hostOf(
       <Text as="p" data-testid="host" style={{ textAlign: "right" }} textAlign="center" textRole="body">

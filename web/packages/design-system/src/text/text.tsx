@@ -71,7 +71,13 @@ const SHOUT_TRACKING = 0.025;
 
 type HostTextStyleProps = Pick<
   TamaguiTextProps,
-  "fontVariant" | "numberOfLines" | "overflowWrap" | "textAlign" | "textDecorationLine" | "wordBreak"
+  | "cursor"
+  | "fontVariant"
+  | "numberOfLines"
+  | "overflowWrap"
+  | "textAlign"
+  | "textDecorationLine"
+  | "wordBreak"
 >;
 
 /**
@@ -82,6 +88,7 @@ type HostTextStyleProps = Pick<
  * more, as Tamagui draws it.
  */
 const hostTextStyle = ({
+  cursor,
   fontVariant,
   numberOfLines,
   overflowWrap,
@@ -92,6 +99,7 @@ const hostTextStyle = ({
   // Tamagui types each prop as a token, media object or CSS keyword too; a host takes the keyword.
   const lines = typeof numberOfLines === "number" ? numberOfLines : 0;
   return {
+    ...(cursor && { cursor: cursor as CSSProperties["cursor"] }),
     ...(textAlign && { textAlign: textAlign as CSSProperties["textAlign"] }),
     ...(textDecorationLine && {
       textDecorationLine: textDecorationLine as CSSProperties["textDecorationLine"],
@@ -224,12 +232,21 @@ const Text = ({
 
   if (isWeb && as) {
     const Tag = as;
-    const { fontVariant, numberOfLines, overflowWrap, textAlign, textDecorationLine, wordBreak, ...host } =
-      props;
+    const {
+      cursor,
+      fontVariant,
+      numberOfLines,
+      overflowWrap,
+      textAlign,
+      textDecorationLine,
+      wordBreak,
+      ...host
+    } = props;
     return createElement(Tag, {
       ...host,
       style: {
         ...hostTextStyle({
+          cursor,
           fontVariant,
           numberOfLines,
           overflowWrap,
