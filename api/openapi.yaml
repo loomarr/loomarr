@@ -690,15 +690,28 @@ components:
           items:
             $ref: "#/components/schemas/BrowseFolderDTO"
           type: array
+        holds:
+          description: The folders in use inside the folder listed
+          items:
+            type: string
+          type: array
+        inUse:
+          description: Loomarr reads the folder listed
+          type: boolean
         parent:
           description: The folder above; empty when that is the top
           type: string
         path:
           description: The folder listed; empty for the top
           type: string
+        within:
+          description: The folder in use that holds the folder listed
+          type: string
       required:
         - path
         - parent
+        - inUse
+        - holds
         - folders
       type: object
     BudgetSnapshot:

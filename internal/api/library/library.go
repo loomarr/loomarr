@@ -312,6 +312,9 @@ type browseLibraryFoldersOutput struct {
 	Body struct {
 		Path    string            `json:"path" doc:"The folder listed; empty for the top"`
 		Parent  string            `json:"parent" doc:"The folder above; empty when that is the top"`
+		InUse   bool              `json:"inUse" doc:"Loomarr reads the folder listed"`
+		Within  string            `json:"within,omitempty" doc:"The folder in use that holds the folder listed"`
+		Holds   []string          `json:"holds" doc:"The folders in use inside the folder listed"`
 		Folders []browseFolderDTO `json:"folders"`
 	}
 }
@@ -334,6 +337,10 @@ func (s *Handlers) browseLibraryFolders(ctx context.Context, in *browseLibraryFo
 	}
 	out := &browseLibraryFoldersOutput{}
 	out.Body.Path, out.Body.Parent = b.Path, b.Parent
+	out.Body.InUse, out.Body.Within, out.Body.Holds = b.InUse, b.Within, b.Holds
+	if out.Body.Holds == nil {
+		out.Body.Holds = []string{}
+	}
 	out.Body.Folders = make([]browseFolderDTO, 0, len(b.Folders))
 	for _, f := range b.Folders {
 		dto := browseFolderDTO{Path: f.Path, Name: f.Name, Named: f.Named, InUse: f.InUse, Within: f.Within, Holds: f.Holds}

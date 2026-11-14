@@ -55,7 +55,12 @@ type BrowseFolder struct {
 type Browsed struct {
 	Path string
 	// Parent is the folder above, "" when that is the top.
-	Parent  string
+	Parent string
+	// InUse, Within and Holds are Path's own, as a row of its parent says them: what "Use this
+	// folder" may do with it.
+	InUse   bool
+	Within  string
+	Holds   []string
 	Folders []BrowseFolder
 }
 
@@ -143,6 +148,10 @@ func (r *Roots) Browse(ctx context.Context, path string) (Browsed, error) {
 				out.Folders = append(out.Folders, BrowseFolder{Path: p, Name: name, Named: slices.Contains(named, p)})
 			}
 		}
+	}
+	if out.Path != "" {
+		out.InUse = slices.Contains(inUse, out.Path)
+		out.Within, out.Holds = overlapOf(out.Path, inUse)
 	}
 	paths := make([]string, len(out.Folders))
 	for i := range out.Folders {

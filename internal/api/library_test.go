@@ -296,8 +296,11 @@ func TestLibraryBrowse_ListsDownFromTheAppsFoldersAndRefusesOverlaps(t *testing.
 		t.Fatalf("discover: %d", resp.StatusCode)
 	}
 	type listing struct {
-		Path    string `json:"path"`
-		Parent  string `json:"parent"`
+		Path    string   `json:"path"`
+		Parent  string   `json:"parent"`
+		InUse   bool     `json:"inUse"`
+		Within  string   `json:"within"`
+		Holds   []string `json:"holds"`
 		Folders []struct {
 			Path   string   `json:"path"`
 			Name   string   `json:"name"`
@@ -347,8 +350,11 @@ func TestLibraryBrowse_ListsDownFromTheAppsFoldersAndRefusesOverlaps(t *testing.
 	add(`{"path":"`+movies+`"}`, http.StatusOK)
 	add(`{"path":"`+filepath.Join(movies, "Wrenfield (2004)")+`"}`, http.StatusConflict)
 	add(`{"path":"`+share+`"}`, http.StatusConflict)
-	if f := browse(movies, http.StatusOK).Folders; len(f) != 1 || f[0].Within != movies {
-		t.Fatalf("in Movies = %+v, want its film's folder within Movies", f)
+	if l := browse(movies, http.StatusOK); len(l.Folders) != 1 || l.Folders[0].Within != movies || !l.InUse {
+		t.Fatalf("in Movies = %+v, want Movies in use and its film's folder within it", l)
+	}
+	if l := browse(share, http.StatusOK); len(l.Holds) != 1 || l.Holds[0] != movies {
+		t.Fatalf("the share = %+v, want it holding Movies", l)
 	}
 	add(`{"path":"`+share+`","replace":true}`, http.StatusOK)
 	roots := decodeLibraryRoots(t, h.Do(http.MethodGet, "/v1/library/roots", adminToken, ""))

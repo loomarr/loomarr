@@ -178,6 +178,12 @@ func TestAFolderOverlappingOneInUseIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !in.InUse || in.Within != "" {
+		t.Fatalf("Movies listed: in use %v, within %q; want in use", in.InUse, in.Within)
+	}
+	if inShare, err := r.Browse(ctx, share); err != nil || !slices.Equal(inShare.Holds, []string{movies, tv}) {
+		t.Fatalf("the share listed: holds %v (%v), want Movies and TV", inShare.Holds, err)
+	}
 	for _, f := range in.Folders {
 		if f.Within != movies {
 			t.Errorf("%s: within %q, want Movies", f.Name, f.Within)
