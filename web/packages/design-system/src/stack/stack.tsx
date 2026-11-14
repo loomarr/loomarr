@@ -241,4 +241,5 @@ const Stack = ({
 };
 
 export type { StackAlign, StackBreakpoint, StackGap, StackJustify, StackProps, StackResponsive };
-export { Stack };
+// The responsive machinery, for the Grid beside it: one breakpoint listener and one resolution rule.
+export { alignItems, isResponsive, resolve, Stack, useActiveBreakpoint };
