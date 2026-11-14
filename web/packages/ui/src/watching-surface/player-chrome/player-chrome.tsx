@@ -158,11 +158,7 @@ const ChromeBody = memo(
           // The picture is on the receiver, so the whole screen says where it went. The card sits
           // under the keys (the scrim below draws no gradient over it), with its content lifted clear
           // of the band, and it stays when the controls hide.
-          <CastingCard
-            {...casting}
-            lift={CASTING_LIFT}
-            style={{ bottom: 0, left: 0, right: 0, top: 0, zIndex: 29 }}
-          />
+          <CastingCard {...casting} lift={CASTING_LIFT} top={0} zIndex={29} />
         ) : null}
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />

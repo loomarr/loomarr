@@ -1,6 +1,6 @@
 import { Icon, icons, playerChrome, Text, useFocusLook } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
-import { Pressable, View, type ViewStyle } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { nativeFocus, raised, webOnly } from "../flat";
 
@@ -69,13 +69,20 @@ interface CastingCardProps {
   castingTo?: string | undefined;
   /** The system's route picker, laid over the Disconnect button; choosing "iPhone" there brings the picture back. */
   routePicker: ReactNode;
-  /** Where the card sits: the caller places it over the picture area. */
-  style: ViewStyle;
+  // Where the card sits over the picture area. It always spans the full width. Plain numbers rather
+  // than a ViewStyle: Storybook's docgen follows a prop's React Native type into react-native's
+  // source and fails the build.
+  /** Its top edge. */
+  top: number;
+  /** Its height; without one it reaches the bottom of the screen. */
+  height?: number | undefined;
+  /** Its layer among the chrome's. */
+  zIndex?: number | undefined;
   /** Padding under the content, to lift it clear of the band when the card fills the screen. */
   lift?: number;
 }
 
-const CastingCard = ({ castingTo, lift = 0, routePicker, style }: CastingCardProps) => (
+const CastingCard = ({ castingTo, height, lift = 0, routePicker, top, zIndex }: CastingCardProps) => (
   <View
     // Touches outside the button reach the picture beneath, so a tap there still brings the chrome back.
     pointerEvents="box-none"
@@ -83,9 +90,13 @@ const CastingCard = ({ castingTo, lift = 0, routePicker, style }: CastingCardPro
       alignItems: "center",
       backgroundColor: playerChrome.surface,
       justifyContent: "center",
+      left: 0,
       paddingBottom: lift,
       position: "absolute",
-      ...style,
+      right: 0,
+      top,
+      ...(height === undefined ? { bottom: 0 } : { height }),
+      ...(zIndex === undefined ? null : { zIndex }),
     }}
     testID="player-casting-card"
   >

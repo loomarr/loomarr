@@ -63,12 +63,8 @@ const PortraitChrome = ({
         // The picture is on the receiver: the card is exactly the centred 16:9 strip, under the toolbar and keys.
         <CastingCard
           {...casting}
-          style={{
-            height: (frame.width * 9) / 16,
-            left: 0,
-            right: 0,
-            top: (frame.height - (frame.width * 9) / 16) / 2,
-          }}
+          height={(frame.width * 9) / 16}
+          top={(frame.height - (frame.width * 9) / 16) / 2}
         />
       ) : null}
       {surf ? null : (
