@@ -55,11 +55,12 @@ type GridItemProps = ComponentProps<typeof View> & {
   /** Columns this item covers, which can change with the window's width (`sm:col-span-2`). Left out, one. */
   span?: StackResponsive<GridSpan>;
   /**
-   * The column the item starts in, counting from 1 (`col-[2/-1]` is `from={2}` with `span="full"`,
-   * which then runs to the last column). Left out, the item takes the next free cell. Web only:
-   * native packs items in order and ignores it.
+   * The column the item starts in, counting from 1, which can change with the window's width
+   * (`col-[2/-1]` is `from={2}` with `span="full"`, which then runs to the last column; a grid with
+   * one column needs `from={{ base: 1, sm: 2 }}`, since column 2 does not exist there). Left out, the
+   * item takes the next free cell. Web only: native packs items in order and ignores it.
    */
-  from?: number;
+  from?: StackResponsive<number>;
 };
 
 // The column count in force, so an item can read `full` as "every column".
@@ -207,16 +208,17 @@ const packRows = (
 /** One item of a Grid, for the one that covers more than a column. */
 const GridItem = ({ from, span = 1, style, ...props }: GridItemProps) => {
   const columns = useContext(GridColumns);
-  const active = useActiveBreakpoint(isResponsive<GridSpan>(span));
+  const active = useActiveBreakpoint(isResponsive<GridSpan>(span) || isResponsive<number>(from));
   const resolved = resolve(span, active);
   const covered = clamp(resolved, columns);
+  const start = from === undefined ? undefined : resolve(from, active);
   // From a named column, `full` runs to the last one (`2 / -1`) and a count spans from it.
   const gridColumn =
-    from === undefined
+    start === undefined
       ? `span ${covered} / span ${covered}`
       : resolved === "full"
-        ? `${from} / -1`
-        : `${from} / span ${covered}`;
+        ? `${start} / -1`
+        : `${start} / span ${covered}`;
   return isWeb ? (
     <View {...props} style={{ gridColumn, ...(style as CSSProperties) }} />
   ) : (

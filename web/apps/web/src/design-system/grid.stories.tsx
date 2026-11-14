@@ -44,7 +44,7 @@ const Workshop = ({ width = 720 }: { width?: number }) => (
         <Cell>Label</Cell>
         <Cell>Takes what is left</Cell>
         <Cell>Fixed</Cell>
-        <GridItem from={2} span="full">
+        <GridItem from={{ base: 1, sm: 2 }} span="full">
           <Cell>From the second column to the end</Cell>
         </GridItem>
       </Grid>

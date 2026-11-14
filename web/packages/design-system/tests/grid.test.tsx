@@ -157,6 +157,23 @@ describe("Grid on the web", () => {
     expect(screen.getByTestId("two").style.gridColumn).toBe("2 / span 2");
   });
 
+  it("moves an item's start column with the window", () => {
+    resizeTo(breakpoints.sm - 1);
+    render(
+      <LoomarrProvider theme="dark">
+        <Grid columns={{ base: 1, sm: ["auto", "1fr"] }}>
+          <GridItem data-testid="rest" from={{ base: 1, sm: 2 }} span="full">
+            rest
+          </GridItem>
+        </Grid>
+      </LoomarrProvider>,
+    );
+    expect(screen.getByTestId("rest").style.gridColumn).toBe("1 / -1");
+
+    resizeTo(breakpoints.sm);
+    expect(screen.getByTestId("rest").style.gridColumn).toBe("2 / -1");
+  });
+
   it("never spans past the columns that exist", () => {
     render(
       <LoomarrProvider theme="dark">
