@@ -56,8 +56,13 @@ type seriesSeen struct {
 	// normName: "Unit S9 S01E01" gives "unit s9".
 	named map[string]int
 
-	once       sync.Once
+	// resolution is the series resolved from records, its own (its folder's sidecars, read once a
+	// pass) and its catalog's; resolvedAt is when, zero until it is. One still waiting for its
+	// catalog record is resolved again, at most every recheckWaiting (lookedAgain).
+	resolveMu  sync.Mutex
+	records    []mp.Record
 	resolution resolution
+	resolvedAt time.Time
 	// seasons are its season and episode-order records the pass read, by catalog id.
 	seasonsMu sync.Mutex
 	seasons   map[string]cachedSeason
@@ -656,10 +661,15 @@ func (b *builder) sidecar(ctx context.Context, p mp.Provider, kind mp.Kind, medi
 // catalog's seasons, and writeSeries writes it. Header reads resolve concurrently, so it is
 // guarded.
 func (b *builder) resolveSeries(ctx context.Context, s *seriesSeen) resolution {
-	s.once.Do(func() {
-		records := []mp.Record{{Source: mp.Source{Basis: mp.BasisEmbeddedID}, Kind: mp.KindSeries, IDs: s.ids}}
+	s.resolveMu.Lock()
+	defer s.resolveMu.Unlock()
+	if !s.resolvedAt.IsZero() && !b.lookedAgain(s.resolution.waiting, s.resolvedAt) {
+		return s.resolution
+	}
+	if s.resolvedAt.IsZero() {
+		s.records = []mp.Record{{Source: mp.Source{Basis: mp.BasisEmbeddedID}, Kind: mp.KindSeries, IDs: s.ids}}
 		if s.managed != nil {
-			records = append(records, *s.managed)
+			s.records = append(s.records, *s.managed)
 		}
 		if s.dir != "" {
 			dir := filepath.Join(b.root, filepath.FromSlash(s.dir))
@@ -669,13 +679,25 @@ func (b *builder) resolveSeries(ctx context.Context, s *seriesSeen) resolution {
 			}
 			for _, p := range providers {
 				if rec, ok := b.sidecar(ctx, p, mp.KindSeries, dir); ok {
-					records = append(records, rec)
+					s.records = append(s.records, rec)
 				}
 			}
 		}
-		s.resolution = b.resolveNamed(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: records}, saidBy(path.Base(s.dir)))
-	})
+	}
+	s.resolution = b.resolveNamed(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: s.records}, saidBy(path.Base(s.dir)))
+	s.resolvedAt = b.im.now()
 	return s.resolution
+}
+
+// recheckWaiting is how long a pass keeps a catalog record it found still to come before it looks
+// again. On a first import the Enricher fetches what the walk asked for while the headers are
+// read, so the reads that follow describe their episodes by what it has fetched, rather than
+// each episode being written waiting and then again once its pass is over.
+const recheckWaiting = 10 * time.Second
+
+// lookedAgain says whether a record read at `at` and still waiting then is due a second look.
+func (b *builder) lookedAgain(waiting bool, at time.Time) bool {
+	return waiting && b.im.now().Sub(at) >= recheckWaiting
 }
 
 // writeSeries writes each series one of whose episodes this pass wrote.

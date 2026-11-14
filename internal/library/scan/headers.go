@@ -347,6 +347,11 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 		row.ItemID, row.Identity = itemID, waitingFor(job.id.digest)
 	default:
 		row.ItemID = itemID
+		// The walk saved it waiting; the record it waited for is here now, so it is written
+		// with it and no later pass need write it again.
+		if row.Identity == waitingFor(job.id.digest) {
+			row.Identity = job.id.digest
+		}
 	}
 	row.Header = librarystore.LibraryHeaderRead
 	return row, nil
