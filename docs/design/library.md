@@ -339,7 +339,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
   fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
-  shows the earliest one running. Each step's time left is remaining × elapsed ÷ done since its
+  shows the earliest one running. A walk begun once reading has begun, a later pass's behind a
+  first import's reading, runs behind it: the status stays on step 2 until the reading ends,
+  never back to step 1. Each step's time left is remaining × elapsed ÷ done since its
   rate baseline, sent only once it has run 30 s and done 2%, never while paused, and the baseline
   restarts when a pause for watching ends. Folder passes show only the header reads they queue.
   `GET /v1/library/status` carries it as `scan` (`step`, `stepNumber`, `done`, `total`, `current`,
