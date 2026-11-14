@@ -154,14 +154,13 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("says all is caught up and what keeps it so, leaving out an arr never connected", () => {
+  it("says all is caught up, and nothing about what keeps it so while all of it works", () => {
     const { host, cleanup } = render({ health: "ok", folders: [TV_IN_USE] });
     expect(host.textContent).toContain("All caught up — every title's ready to air");
-    expect(host.textContent).toContain("Keeping up to date");
-    expect(host.textContent).toContain("Loomarr notices new and deleted files on its own");
-    expect(host.textContent).toContain("Sonarr tells Loomarr about new downloads");
-    expect(host.textContent).not.toContain("— waiting");
-    expect(host.textContent).not.toContain("Radarr");
+    // The folder watch and Sonarr's webhook both work: the section is left out.
+    expect(host.textContent).not.toContain("Keeping up to date");
+    expect(host.textContent).not.toContain("notices new and deleted files");
+    expect(host.textContent).not.toContain("tells Loomarr about new downloads");
     cleanup();
   });
 
