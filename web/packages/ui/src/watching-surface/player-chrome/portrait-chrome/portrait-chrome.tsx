@@ -118,14 +118,7 @@ const PortraitChrome = ({
         {surf ? (
           <ChannelCards density="touch" surf={surf} />
         ) : (
-          <ChannelBand
-            band={band}
-            density="touch"
-            formatTime={formatTime}
-            live={live}
-            onGoLive={onGoLive}
-            portrait
-          />
+          <ChannelBand band={band} density="touch" formatTime={formatTime} live={live} onGoLive={onGoLive} />
         )}
         <View style={{ alignItems: "center" }}>
           <PlayerKeys {...keys} />
