@@ -111,20 +111,24 @@ const WizardShell = ({
           );
           return (
             <li key={step.id} aria-current={isCurrent ? "step" : undefined}>
-              {canGo ? (
-                <PressableRow onPress={() => onStep?.(step.id)}>{content}</PressableRow>
-              ) : (
-                <Stack
-                  align="center"
-                  backgroundColor={isCurrent ? "surfaceElevated" : undefined}
-                  direction="row"
-                  gap="control"
-                  paddingHorizontal={12}
-                  paddingVertical={10}
-                >
-                  {content}
-                </Stack>
-              )}
+              {/* The row's own inset (its 2px border and 10px padding) bleeds outward, so the step
+                  markers line up with the heading above and only the fill reaches past it. */}
+              <Stack marginHorizontal={-12}>
+                {canGo ? (
+                  <PressableRow onPress={() => onStep?.(step.id)}>{content}</PressableRow>
+                ) : (
+                  <Stack
+                    align="center"
+                    backgroundColor={isCurrent ? "surfaceElevated" : undefined}
+                    direction="row"
+                    gap="control"
+                    paddingHorizontal={12}
+                    paddingVertical={10}
+                  >
+                    {content}
+                  </Stack>
+                )}
+              </Stack>
 
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current
