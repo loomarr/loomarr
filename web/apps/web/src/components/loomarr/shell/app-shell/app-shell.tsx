@@ -102,6 +102,9 @@ const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (Nav
 
 const MAIN_ID = "main-content";
 
+// The link is the row's frame: the current-page edge is positioned against its left side.
+const ROW_FRAME = { position: "relative" } as const;
+
 // The one focus style: the amber ring the design system's controls draw. Without it a rail
 // control gets the browser's white rectangular outline.
 const FOCUS_RING = "focus-visible:ring-signal focus-visible:ring-2 focus-visible:outline-none";
@@ -203,10 +206,10 @@ const AppShell = ({
                   <Stack
                     aria-hidden
                     backgroundColor="$contentPrimary"
-                    bottom={-2}
-                    left={-2}
+                    bottom={0}
+                    left={0}
                     position="absolute"
-                    top={-2}
+                    top={0}
                     width={2}
                   />
                 )}
@@ -214,7 +217,7 @@ const AppShell = ({
                   decorative
                   glyph={icons[icon]}
                   size="compact"
-                  tone={current ? "primary" : "secondary"}
+                  tone={current ? "content" : "secondary"}
                 />
                 <Text as="span" strong={current} textRole="compact" tone={current ? "primary" : "secondary"}>
                   {label}
@@ -239,7 +242,7 @@ const AppShell = ({
               <PressableRow
                 key={`watch-${item.channelId}`}
                 aria-current={forcedActive ? "page" : undefined}
-                render={<Link to="/watch/$id" params={{ id: item.channelId }} />}
+                render={<Link to="/watch/$id" params={{ id: item.channelId }} style={ROW_FRAME} />}
                 selected={isCurrent}
               >
                 {(state) => content(isCurrent(state))}
@@ -248,7 +251,7 @@ const AppShell = ({
               <PressableRow
                 aria-current={forcedActive ? "page" : undefined}
                 key={item.to}
-                render={<Link to={item.to} />}
+                render={<Link to={item.to} style={ROW_FRAME} />}
                 selected={isCurrent}
               >
                 {(state) => content(isCurrent(state))}
