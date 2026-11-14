@@ -1,5 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Grid, MediaTile, Text } from "@loomarr/design-system";
+import { Grid, InlineAction, MediaTile, Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
@@ -69,17 +69,18 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
         every assertion still passed while the name was being crushed. */}
     <div className="min-w-0">
       {onOpen ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label={`View details for ${clip.name}`}
-          // `-my-0.5 py-0.5`: a 24 px tap area for a 20 px line, drawn where it was (#1785). The
-          // shared `data-touch-target` box can't be used here: `truncate` clips it.
-          className="hover:text-signal focus-visible:ring-ring -my-0.5 block w-full truncate rounded-sm py-0.5 text-left text-sm focus-visible:ring-2 focus-visible:outline-none"
-          title={clip.name}
-        >
-          {clip.name}
-        </button>
+        // The name is the DS's truncating text action: its 24 px tap area is its own padding (#1785),
+        // since the usual `::after` target is clipped by the ellipsis.
+        <Text as="div" textRole="compact" tone="primary">
+          <InlineAction
+            aria-label={`View details for ${clip.name}`}
+            onPress={onOpen}
+            title={clip.name}
+            truncate
+          >
+            {clip.name}
+          </InlineAction>
+        </Text>
       ) : (
         <div title={clip.name}>
           <Text as="p" numberOfLines={1} textRole="compact" tone="primary">
