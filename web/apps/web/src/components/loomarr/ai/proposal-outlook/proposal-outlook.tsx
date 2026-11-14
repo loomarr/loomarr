@@ -1,5 +1,5 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
-import { Stack, Text } from "@loomarr/design-system";
+import { Grid, Stack, Text } from "@loomarr/design-system";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
@@ -36,7 +36,7 @@ const ProposalOutlookDiagnostics = ({
   timeZone?: string;
 }) => (
   <Stack className="text-muted-foreground" gap="inline">
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+    <Grid columnGap="4" columns={["auto", "1fr"]} render="dl" rowGap="1">
       {(
         [
           ["Requested or kept", value.mix.core],
@@ -54,7 +54,7 @@ const ProposalOutlookDiagnostics = ({
         ))}
       <dt>Seasons represented</dt>
       <dd>{value.seasons}</dd>
-    </dl>
+    </Grid>
     <p>
       This estimate reflects the current title list and schedule settings. Missing titles and breaks do not
       add playing time.
