@@ -85,8 +85,7 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
-      "tailwindClasses": 36,
-      "rawButton": 1,
+      "tailwindClasses": 23,
       "rawTypeSize": 2,
       "rawTypeWeight": 1
     },
@@ -151,13 +150,13 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 53,
-      "rawButton": 2,
+      "tailwindClasses": 41,
+      "rawButton": 1,
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "tailwindClasses": 49,
-      "rawButton": 2,
+      "tailwindClasses": 41,
+      "rawButton": 1,
       "rawTypeSize": 1
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
@@ -167,8 +166,7 @@
       "tailwindClasses": 22
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "tailwindClasses": 30,
-      "rawButton": 1
+      "tailwindClasses": 18
     },
     "src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "tailwindClasses": 19
@@ -177,14 +175,12 @@
       "tailwindClasses": 23
     },
     "src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.tsx": {
-      "tailwindClasses": 55,
-      "rawButton": 1,
+      "tailwindClasses": 39,
       "rawTypeSize": 3,
       "rawTypeWeight": 1
     },
     "src/components/loomarr/filler/segment-preview/segment-preview.tsx": {
-      "tailwindClasses": 49,
-      "rawButton": 1,
+      "tailwindClasses": 29,
       "rawTypeSize": 3
     },
     "src/components/loomarr/filler/source-search/source-search.tsx": {
