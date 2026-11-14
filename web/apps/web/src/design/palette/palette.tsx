@@ -77,17 +77,18 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // measured ratio is still printed for every step, so the scope of the rule stays
           // visible without being enacted.
           <Stack className="min-w-24" gap="1" key={step}>
-            <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
+            <Text as="span" textRole="mono">{`${step}%`}</Text>
             <Stack
               align="center"
-              className="border-border h-8 rounded-md border px-2"
+              className="border-border h-8 rounded-md border"
               direction="row"
+              paddingHorizontal={8}
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
-                <span className="text-2xs font-mono" style={{ color: textHex }}>
+                <Text as="span" style={{ color: textHex }} textRole="mono">
                   Badge
-                </span>
+                </Text>
               ) : (
                 <span className="text-2xs text-static-400/0 font-mono">fill</span>
               )}
@@ -108,7 +109,7 @@ const Palette = () => {
   const accentRows = Object.entries(accents);
 
   return (
-    <Stack className="p-6" gap="screen">
+    <Stack gap="screen" padding={24}>
       <Stack gap="1" render="header">
         <Text as="h1" textRole="title">
           Palette

@@ -55,8 +55,10 @@ const WizardShell = ({
     {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
     <Stack
-      className="border-border bg-card relative z-10 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0"
+      className="border-border bg-card relative z-10 border-b shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0"
       gap="section"
+      paddingHorizontal={24}
+      paddingVertical={32}
       render="aside"
     >
       <Stack gap="1">
@@ -128,7 +130,12 @@ const WizardShell = ({
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current
                 // step. The vertical guide line ties them to their parent.
-                <Stack className="border-border mt-1 ml-[1.6rem] border-l pl-3" gap="0.5" render="ul">
+                <Stack
+                  className="border-border mt-1 ml-[1.6rem] border-l"
+                  gap="0.5"
+                  paddingLeft={12}
+                  render="ul"
+                >
                   {subItems.map((sub) => {
                     const active = sub.id === activeSubItem;
                     return (
@@ -158,13 +165,15 @@ const WizardShell = ({
     </Stack>
 
     {/* Content column: the current step. Stacked above the static like the rail. */}
-    <Stack className="relative z-10 min-w-0" flexShrink={1}>
+    <Stack className="relative z-10" flexShrink={1} minWidth={0}>
       <Stack
-        className="mx-auto w-full max-w-2xl px-6 py-8 md:py-12"
+        className="max-w-2xl px-6 py-8 md:py-12"
         flexBasis="0%"
         flexGrow={1}
         flexShrink={1}
         gap="6"
+        marginHorizontal="auto"
+        width="100%"
       >
         <Stack gap="1">
           <Text as="h1" strong textRole="display">
@@ -187,7 +196,7 @@ const WizardShell = ({
               Back
             </Action>
           )}
-          <Stack align="center" className="ml-auto" direction="row" gap="inline">
+          <Stack align="center" direction="row" gap="inline" marginLeft="auto">
             {onSkip && (
               <Action disabled={busy} onPress={onSkip} variant="outline">
                 Skip for now

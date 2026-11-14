@@ -24,7 +24,7 @@ const SIZE_USE: Record<string, string> = {
 };
 
 const Typography = () => (
-  <Stack className="p-6" gap="screen">
+  <Stack gap="screen" padding={24}>
     <Stack gap="1" render="header">
       <Text as="h1" textRole="title">
         Typography
@@ -40,7 +40,7 @@ const Typography = () => (
         The two families
       </Text>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Stack className="border-border rounded-md border p-4" gap="inline">
+        <Stack className="border-border rounded-md border" gap="inline" padding={16}>
           <div className="text-static-400 font-mono text-[11px]">Sans</div>
           <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
             Saturday Morning Cartoons
@@ -49,7 +49,7 @@ const Typography = () => (
             Everything a person wrote or would say aloud: titles, descriptions, prose, buttons.
           </Text>
         </Stack>
-        <Stack className="border-border rounded-md border p-4" gap="inline">
+        <Stack className="border-border rounded-md border" gap="inline" padding={16}>
           <div className="text-static-400 font-mono text-[11px]">Mono</div>
           <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
             CH 42 · 21:30–22:00
@@ -97,7 +97,7 @@ const Typography = () => (
       </Text>
       <Stack className="divide-border divide-y">
         {Object.entries(webType.size).map(([name, px]) => (
-          <Stack align="baseline" className="py-3" direction="row" gap="4" key={name}>
+          <Stack align="baseline" direction="row" gap="4" key={name} paddingVertical={12}>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px]">{name}</span>
             <span className="text-static-400 w-12 shrink-0 font-mono text-[11px] tabular-nums">
               {`${px}px`}
@@ -105,7 +105,9 @@ const Typography = () => (
             <span style={{ fontSize: px }} className="min-w-0 flex-1 truncate">
               Channels play what's ready
             </span>
-            <span className="text-muted-foreground hidden shrink-0 text-xs sm:block">{SIZE_USE[name]}</span>
+            <Text as="span" className="hidden shrink-0 sm:block" textRole="hint" tone="secondary">
+              {SIZE_USE[name]}
+            </Text>
           </Stack>
         ))}
       </Stack>
@@ -122,12 +124,12 @@ const Typography = () => (
       </Text>
       <div className="grid gap-4 sm:grid-cols-2">
         {Object.entries(webType.leading).map(([name, value]) => (
-          <Stack className="border-border rounded-md border p-4" gap="inline" key={name}>
+          <Stack className="border-border rounded-md border" gap="inline" key={name} padding={16}>
             <div className="text-static-400 font-mono text-[11px]">{`${name} · ${value}`}</div>
-            <p style={{ lineHeight: value }} className="text-sm">
+            <Text style={{ lineHeight: value }} as="p" textRole="compact">
               A channel is a wall clock, not a playlist that starts when someone watches. Tune in forty
               minutes into an hour-long film and you land forty minutes in.
-            </p>
+            </Text>
           </Stack>
         ))}
       </div>

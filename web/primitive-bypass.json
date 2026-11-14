@@ -116,9 +116,6 @@
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/help/help-page/help-page.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
       "flexStack": 1
     },

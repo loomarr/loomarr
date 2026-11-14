@@ -31,7 +31,7 @@
       "tailwindClasses": 1
     },
     "src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "tailwindClasses": 26
+      "tailwindClasses": 20
     },
     "src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
       "tailwindClasses": 19
@@ -79,7 +79,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "tailwindClasses": 60
+      "tailwindClasses": 52
     },
     "src/components/loomarr/channels/channel-danger-zone/channel-danger-zone.tsx": {
       "tailwindClasses": 19
@@ -280,7 +280,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "tailwindClasses": 64,
+      "tailwindClasses": 57,
       "rawButton": 2,
       "rawTypeSize": 1,
       "rawTypeWeight": 1
@@ -310,8 +310,8 @@
       "tailwindClasses": 24
     },
     "src/design/palette/palette.tsx": {
-      "tailwindClasses": 58,
-      "rawTypeSize": 12,
+      "tailwindClasses": 51,
+      "rawTypeSize": 10,
       "rawTypeWeight": 1
     },
     "src/design/spacing/spacing.tsx": {
@@ -323,8 +323,8 @@
       "rawTypeWeight": 1
     },
     "src/design/typography/typography.tsx": {
-      "tailwindClasses": 57,
-      "rawTypeSize": 9
+      "tailwindClasses": 49,
+      "rawTypeSize": 7
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
       "tailwindClasses": 48
@@ -407,7 +407,7 @@
       "rawTypeWeight": 1
     },
     "src/filler/filler-page/filler-page.tsx": {
-      "tailwindClasses": 22
+      "tailwindClasses": 14
     },
     "src/filler/filler-settings/filler-settings.tsx": {
       "tailwindClasses": 80,
@@ -468,7 +468,7 @@
       "rawTypeWeight": 1
     },
     "src/help/help-page/help-page.tsx": {
-      "tailwindClasses": 33,
+      "tailwindClasses": 24,
       "rawTypeSize": 2
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
@@ -500,7 +500,7 @@
       "tailwindClasses": 5
     },
     "src/queue/request-detail/request-detail.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 11
     },
     "src/queue/request-lists/request-lists.tsx": {
       "tailwindClasses": 11
@@ -520,7 +520,7 @@
       "rawTypeWeight": 1
     },
     "src/routes/_authed/channels/$id/route.tsx": {
-      "tailwindClasses": 59
+      "tailwindClasses": 54
     },
     "src/routes/_authed/filler/settings/route.tsx": {
       "tailwindClasses": 4
