@@ -197,8 +197,12 @@ func (l *Library) now() time.Time {
 	return time.Now()
 }
 
-// rewriteFolders asks for a pass over the folders holding files, one call per root.
+// rewriteFolders asks for a pass over the folders holding files, one call per root. With no
+// rewrite, nothing is asked.
 func rewriteFolders(files []librarystore.LibraryFilePath, rewrite func(root string, dirs ...string)) {
+	if rewrite == nil {
+		return
+	}
 	dirs := map[string]map[string]bool{}
 	for _, f := range files {
 		if dirs[f.Root] == nil {
