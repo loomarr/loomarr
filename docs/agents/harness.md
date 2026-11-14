@@ -429,7 +429,7 @@ The audit requires an authenticated GitHub CLI because squash-merge evidence is 
 local branch ancestry. If GitHub or `origin/main` cannot be verified, the command exits without
 removing anything.
 
-Creating another worktree fails when the secondary-worktree count has reached 16. That is a backlog
+Creating another worktree fails when the secondary-worktree count has reached 24. That is a backlog
 tripwire, not a concurrency target: run the audit and resolve its findings first. A maintainer may
 set `ALLOW_WORKTREE_BACKLOG=1` for an intentional exception.
 
