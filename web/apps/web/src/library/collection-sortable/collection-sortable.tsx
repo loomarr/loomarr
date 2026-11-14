@@ -13,8 +13,10 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Action } from "@loomarr/design-system";
 import type { LibraryCollectionSortable } from "@loomarr/ui";
-import { createContext, type ReactNode, useContext } from "react";
+import { type ComponentRef, createContext, type Ref, useContext } from "react";
+import type { ViewStyle } from "react-native";
 
 // The collection editor's drag and drop (#2151 decision 28): a row moves by its grip, with a pointer
 // or with the keyboard (Space picks it up, the arrows move it, Space drops it). The editor draws the
@@ -64,25 +66,31 @@ const Row: LibraryCollectionSortable["Row"] = ({ id, children }) => {
   );
 };
 
-const Grip: LibraryCollectionSortable["Grip"] = ({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) => {
+// The grab cursor and `touch-action: none` (a touch drag must move the row, not scroll the page) are
+// react-native-web style properties that React Native's ViewStyle does not list.
+const GRIP_STYLE = { cursor: "grab", touchAction: "none" } as unknown as ViewStyle;
+
+// The grip is the DS's drag handle (a compact ghost icon Action), the same one the lineup and rules
+// editors use, so the `children` the editor passes (its native fallback's glyph) are not drawn here.
+const Grip: LibraryCollectionSortable["Grip"] = ({ label }) => {
   const handle = useContext(HandleContext);
+  // The Action is already a focusable button; dnd-kit's own role and tabIndex would only repeat it.
+  const { role: _role, tabIndex: _tabIndex, ...attributes } = handle?.attributes ?? {};
   return (
-    <button
-      {...handle?.attributes}
+    <Action
+      {...attributes}
       {...handle?.listeners}
-      aria-label={label}
-      ref={handle?.setActivatorNodeRef}
-      style={{ background: "none", border: 0, cursor: "grab", padding: 4, touchAction: "none" }}
-      type="button"
+      compact
+      icon="dragHandle"
+      layout="icon"
+      // dnd-kit hands out a DOM ref; Action's is typed as React Native's element, which on the web
+      // is that same DOM node.
+      ref={handle?.setActivatorNodeRef as unknown as Ref<ComponentRef<typeof Action>>}
+      style={GRIP_STYLE}
+      variant="ghost"
     >
-      {children}
-    </button>
+      {label}
+    </Action>
   );
 };
 

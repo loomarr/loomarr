@@ -314,12 +314,10 @@ const TasksPage = () => {
                           <Fragment key={job.name}>
                             <TableRow dimmed={Boolean(job.paused)}>
                               <TableCell rowHeader>
-                                <button
-                                  type="button"
-                                  className="flex items-center gap-2 text-left"
-                                  aria-expanded={jobOpen}
+                                <PressableRow
                                   aria-controls={`task-${job.name}`}
-                                  onClick={() => toggleJob(job.name)}
+                                  aria-expanded={jobOpen}
+                                  onPress={() => toggleJob(job.name)}
                                 >
                                   <span style={{ display: "flex", flexShrink: 0 }} title={dot.label}>
                                     <StatusDot tone={dot.tone} label={job.paused ? "" : dot.label} />
@@ -332,7 +330,7 @@ const TasksPage = () => {
                                       Paused
                                     </Badge>
                                   )}
-                                </button>
+                                </PressableRow>
                               </TableCell>
                               <TableCell>
                                 <span title={job.disabledReason ? undefined : job.schedule}>

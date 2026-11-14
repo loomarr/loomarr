@@ -12,8 +12,7 @@
       "rawTypeSize": 1
     },
     "src/channels/channel-row-menu/channel-row-menu.tsx": {
-      "tailwindClasses": 2,
-      "rawButton": 1
+      "tailwindClasses": 2
     },
     "src/channels/channel-watch/channel-watch.tsx": {
       "tailwindClasses": 9
@@ -479,9 +478,6 @@
       "tailwindMerge": 1,
       "clsx": 1
     },
-    "src/library/collection-sortable/collection-sortable.tsx": {
-      "rawButton": 1
-    },
     "src/people/users-page/users-page.tsx": {
       "tailwindClasses": 1
     },
@@ -591,8 +587,7 @@
       "tailwindClasses": 2
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 11,
-      "rawButton": 1
+      "tailwindClasses": 7
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
       "tailwindClasses": 13

@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LoomarrProvider, Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "../index";
+import { Action, LoomarrProvider, Menu, MenuAction, MenuContent, MenuGroup, MenuTrigger } from "../index";
 
 // The web Menu, on Base UI. It owes a browser user a real menu: the trigger opens it, the actions
 // are menuitems reachable by keyboard, picking one runs it and closes the menu, and an action that
@@ -124,6 +124,46 @@ describe("Menu (web)", () => {
     await waitFor(() => expect(screen.getByRole("menu").contains(document.activeElement)).toBe(true));
     await userEvent.keyboard("{ArrowDown}{Enter}");
     expect(onDelete).toHaveBeenCalledOnce();
+  });
+
+  // An Action as the trigger gets a real button host from the menu, and the trigger's own onClick
+  // runs, so a trigger inside a link can keep the click from following it.
+  it("opens from an Action trigger on a real button, by click and by keyboard, and runs its onClick", async () => {
+    const onClick = vi.fn();
+    const onLink = vi.fn();
+    renderMenu(
+      // biome-ignore lint/a11y/useValidAnchor: the link only stands in for a row's navigation
+      <a href="#row" onClick={onLink}>
+        <Menu>
+          <MenuTrigger
+            onClick={(event) => {
+              onClick();
+              event.stopPropagation();
+            }}
+          >
+            <Action icon="more" layout="icon" variant="ghost">
+              Actions for Bluey
+            </Action>
+          </MenuTrigger>
+          <MenuContent>
+            <MenuAction onSelect={vi.fn()}>Watch</MenuAction>
+          </MenuContent>
+        </Menu>
+      </a>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Actions for Bluey" });
+    expect(trigger.tagName).toBe("BUTTON");
+    await userEvent.click(trigger);
+    expect(await screen.findByRole("menu")).toBeTruthy();
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(onLink).not.toHaveBeenCalled();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByRole("menu")).toBeTruthy();
   });
 
   it("does not run a disabled action", async () => {
