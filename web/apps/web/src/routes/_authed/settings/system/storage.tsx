@@ -1,5 +1,5 @@
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Text } from "@loomarr/design-system";
+import { Card, Text } from "@loomarr/design-system";
 import { createFileRoute } from "@tanstack/react-router";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -22,7 +22,7 @@ const StorageSettings = () => (
       },
     ]}
     footer={
-      <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4">
+      <Card borderRadius={8} padding={16} render="aside" tone="caution">
         <Text as="h2" textRole="cardLabel">
           Back up the image volume separately
         </Text>
@@ -30,7 +30,7 @@ const StorageSettings = () => (
           Downloaded artwork can be rebuilt, but uploaded channel images cannot. Loomarr's database backup
           does not copy this directory.
         </Text>
-      </aside>
+      </Card>
     }
   />
 );

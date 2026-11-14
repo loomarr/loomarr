@@ -324,9 +324,16 @@ func buildFillerSubsystem(
 		}, time.Now, log,
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
+	bin := quarantine.New(layout.ClipDir(), time.Now)
 	registry.Add(fillerUpkeepJob(upkeep.New(storeadapter.NewUpkeep(st),
-		quarantine.New(layout.ClipDir(), time.Now), fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now),
-		layout.ClipDir(), time.Now, log)))
+		bin, fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now).WithDisposal(bin.Dispose),
+		layout.ClipDir(), time.Now, log).WithReencode(pipeline.NeedsReencode, func() bool {
+		// The library re-encode targets the operator's pinned encoder, else the detected one. A
+		// detection that fell back to software on a host that encoded in hardware this week is not
+		// settled: its GPU may only be late.
+		return settings.PlayoutEncoder.Get(set) != "" ||
+			playoutResolver != nil && playoutResolver.DetectReady() && !playoutResolver.HardwareMissing()
+	})))
 	autoFetch := acquisition.NewFetcher(
 		storeadapter.NewFetch(
 			st,

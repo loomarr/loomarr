@@ -158,7 +158,7 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
     fed: [/^\/v1\/library\/status$/],
   },
   // The Library's titles changed (written, ready, or gone). The frame is empty on purpose:
-  // the grid, a title's page, Ready so far and Needs you refetch, because a list assembled from
+  // the grid, a title's page, the import's strip of titles found and Needs you refetch, because a list assembled from
   // frames would lose rows this bus drops.
   library_titles: {
     prefixes: ["/v1/library/items", "/v1/library/needs"],

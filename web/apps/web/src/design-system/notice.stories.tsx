@@ -32,7 +32,36 @@ const NeutralWithAction: Story = {
     title: "You're working offline",
   },
 };
+const Success: Story = {
+  args: {
+    body: "Secrets, URL credentials, and local paths are redacted again.",
+    title: undefined,
+    tone: "success",
+  },
+};
+const Danger: Story = {
+  args: {
+    body: "The report could not be built. Try again in a moment.",
+    role: "alert",
+    title: undefined,
+    tone: "danger",
+  },
+};
+const DangerWithTitle: Story = {
+  args: { body: "Nothing was changed.", role: "alert", title: "Couldn't save", tone: "danger" },
+};
 const Light: Story = { ...WarnWithAction, globals: { theme: "light" } };
+const LightDanger: Story = { ...Danger, globals: { theme: "light" } };
 
 export default meta;
-export { Light, Neutral, NeutralWithAction, Warn, WarnWithAction };
+export {
+  Danger,
+  DangerWithTitle,
+  Light,
+  LightDanger,
+  Neutral,
+  NeutralWithAction,
+  Success,
+  Warn,
+  WarnWithAction,
+};

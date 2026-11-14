@@ -56,7 +56,7 @@ const SegmentPreview = ({
       justify="center"
       role="alert"
     >
-      <Text as="span" className="text-center" textRole="compact" tone="secondary">
+      <Text as="span" textAlign="center" textRole="compact" tone="secondary">
         This preview couldn’t be played. The original recording may be unavailable.
       </Text>
     </Stack>

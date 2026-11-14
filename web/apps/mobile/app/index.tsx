@@ -59,7 +59,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BackHandler, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { nativeApp } from "../src/native-app";
 
@@ -211,6 +211,13 @@ const WatchingScreen = ({
   const picture = useRef<NativePlayerViewHandle>(null);
   const iPhone = Platform.OS === "ios";
   const [pictureInPicture] = useState(() => iPhone && isPictureInPictureSupported());
+  // The picture playing on an AirPlay receiver (§9.7): the chrome's casting card and lit AirPlay key.
+  // Only an iPhone's player ever reports it.
+  const casting = useSyncExternalStore(
+    transport.subscribeExternalPlayback,
+    transport.externalPlaybackActive,
+    transport.externalPlaybackActive,
+  );
   const step = (direction: -1 | 1) => () => {
     haptic.selection();
     void controller.step(direction);
@@ -389,6 +396,7 @@ const WatchingScreen = ({
                   surf,
                 }
               : {})}
+            {...(casting ? { casting: { routePicker: <NativeAirPlayPicker /> } } : {})}
             sheet={sheet ? sheetFor(sheet) : undefined}
             utilities={{
               ...(iPhone ? { airPlayPicker: <NativeAirPlayPicker /> } : {}),

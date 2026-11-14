@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/split"
@@ -254,6 +255,22 @@ type ConditioningEvidence struct {
 	BeforeRewrite                  tools.ConditioningMeasurement    `json:"beforeRewrite"`
 	AfterRewrite                   tools.ConditioningMeasurement    `json:"afterRewrite"`
 	DerivedParentEdgesAfterRewrite tools.ConditioningCutMeasurement `json:"derivedParentEdgesAfterRewrite"`
+}
+
+// sidecarLocks serializes the read-change-write of one clip's sidecar between the jobs that let
+// go of its files (the defect floor's evidence release, upkeep's original release) and a rewind
+// that holds the clip. Without it the slower writer puts back what the other removed, and the
+// sidecar names a file that is already gone. Entries are never dropped: one small mutex per clip
+// is the whole cost.
+var sidecarLocks sync.Map // sidecar path → *sync.Mutex
+
+// LockSidecar takes mediaPath's sidecar lock and returns its release. A caller that reads the
+// sidecar, decides, and writes it back holds the lock across all three.
+func LockSidecar(mediaPath string) (unlock func()) {
+	m, _ := sidecarLocks.LoadOrStore(tools.SidecarPathFor(mediaPath), &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // WriteSidecarTags records Loomarr's metadata into the clip's info-JSON, preserving everything

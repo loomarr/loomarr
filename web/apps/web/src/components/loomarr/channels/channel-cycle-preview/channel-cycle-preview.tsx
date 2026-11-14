@@ -88,11 +88,11 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
         paddingVertical={6}
         render="li"
       >
-        <div className="bg-border h-px flex-1" />
+        <Stack backgroundColor="borderDecorative" flexBasis="0%" flexGrow={1} height={1} />
         <Text as="span" textRole="hint" tone="secondary">
           Commercial break
         </Text>
-        <div className="bg-border h-px flex-1" />
+        <Stack backgroundColor="borderDecorative" flexBasis="0%" flexGrow={1} height={1} />
       </Stack>
     );
   }
@@ -113,7 +113,7 @@ const SlotRow = ({ slot, index, showTitle }: { slot: CycleSlotDTO; index: number
       gap="control"
       render="li"
     >
-      <Text as="span" className="w-6 shrink-0 text-right" textRole="mono">
+      <Text as="span" className="w-6 shrink-0" textAlign="right" textRole="mono">
         {index + 1}
       </Text>
       {pending ? (
@@ -223,7 +223,7 @@ const ExcludedPanel = ({ excluded }: { excluded: ExcludedDTO }) => {
             gap="0.5"
             render="li"
           >
-            <Text as="span" className="truncate" textRole="compact" tone="primary">
+            <Text as="span" numberOfLines={1} textRole="compact" tone="primary">
               {item.title || item.key}
             </Text>
             <Text as="span" textRole="hint" tone={isSafetyReason(item.reason) ? "warning" : "secondary"}>
@@ -296,7 +296,7 @@ const ScheduleTracePanel = ({ trace }: { trace: ScheduleTraceDTO }) => {
             gap="0.5"
             render="li"
           >
-            <Text as="span" className="truncate" textRole="compact" tone="primary">
+            <Text as="span" numberOfLines={1} textRole="compact" tone="primary">
               {fact.title || fact.key || "Commercial gap"}
             </Text>
             <Text as="span" textRole="hint" tone="secondary">

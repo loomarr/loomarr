@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -223,31 +223,27 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       ) : null}
 
       {taxon || unclassified || withoutAxis ? (
-        <Stack
-          align="center"
-          borderRadius="cardCompact"
-          className="border-signal/30 bg-signal/5 border"
-          direction="row"
-          gap="control"
-          padding={12}
-          wrap
-        >
-          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
-            <Text as="p" textRole="compact">
-              {unclassified
-                ? "Showing clips with no directly assigned taxonomy tags"
-                : withoutAxis
-                  ? `Showing clips without a directly assigned ${withoutAxis} tag`
-                  : `Showing clips matching “${taxon}”, including descendants`}
-            </Text>
+        <Card padding={12} tone="signal">
+          <Stack align="center" direction="row" gap="control" wrap>
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+              <Text as="p" textRole="compact">
+                {unclassified
+                  ? "Showing clips with no directly assigned taxonomy tags"
+                  : withoutAxis
+                    ? `Showing clips without a directly assigned ${withoutAxis} tag`
+                    : `Showing clips matching “${taxon}”, including descendants`}
+              </Text>
+            </Stack>
+            <Action
+              onPress={() =>
+                setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })
+              }
+              variant="ghost"
+            >
+              Clear taxonomy filter
+            </Action>
           </Stack>
-          <Action
-            onPress={() => setFilters({ taxon: undefined, unclassified: undefined, withoutAxis: undefined })}
-            variant="ghost"
-          >
-            Clear taxonomy filter
-          </Action>
-        </Stack>
+        </Card>
       ) : null}
 
       {selection.selected.size > 0 && (

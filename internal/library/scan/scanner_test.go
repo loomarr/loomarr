@@ -67,6 +67,49 @@ func TestScannerSettlesOnceItsFolderPassesHaveRun(t *testing.T) {
 	}
 }
 
+// The Enricher's rewrites wait while a header stage reads: a file still to be read takes the
+// details when its read writes it, and a pass meanwhile would hold the reads up and make them stale.
+// The held folders keep step 3 unsettled, and go to their passes when the stage ends.
+func TestScannerHoldsRewritesWhileFilesAreRead(t *testing.T) {
+	h := newHarness(t)
+	sc := NewScanner(h.im, time.Hour)
+	lima := filepath.Join(h.root, "Lima (2011)")
+	// A header stage tells of its end, once it has read and saved its files.
+	ended := 0
+	h.im.AfterReading = func() { ended++ }
+	h.file("Lima (2011)/Lima (2011).mkv", 10)
+	h.run()
+	if ended != 1 || h.im.Reading() {
+		t.Fatalf("a header stage's end told %d times, still reading %v", ended, h.im.Reading())
+	}
+
+	h.im.mu.Lock()
+	h.im.reading = true
+	h.im.mu.Unlock()
+	sc.Rewrite(h.root, lima)
+	if len(sc.folders) != 0 {
+		t.Fatalf("a rewrite passed over while files were read: %v", sc.folders)
+	}
+	if sc.FoldersSettled() {
+		t.Fatal("settled with a rewrite held")
+	}
+
+	h.im.mu.Lock()
+	h.im.reading = false
+	h.im.mu.Unlock()
+	sc.ReleaseHeld()
+	if _, ok := sc.folders[h.root][lima]; !ok || len(sc.held) != 0 {
+		t.Fatalf("the held rewrite did not go to its pass: folders %v, held %v", sc.folders, sc.held)
+	}
+
+	// With nothing read, a rewrite goes straight to its pass.
+	delete(sc.folders, h.root)
+	sc.Rewrite(h.root, lima)
+	if _, ok := sc.folders[h.root][lima]; !ok {
+		t.Fatalf("a rewrite with nothing read was held: %v", sc.folders)
+	}
+}
+
 func TestScannerArrChangedPassesTheMappedFolder(t *testing.T) {
 	h := newHarness(t)
 	ctx, cancel := context.WithCancel(context.Background())

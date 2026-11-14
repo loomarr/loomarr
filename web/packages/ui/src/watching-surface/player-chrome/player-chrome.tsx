@@ -1,7 +1,7 @@
 import { playerChrome, ThemeScope, useViewportInsets } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
 import { type LayoutChangeEvent, Platform, View } from "react-native";
-
+import { CASTING_LIFT, CastingCard } from "./casting-card";
 import { ChannelBand } from "./channel-band";
 import { ChannelCards } from "./channel-cards";
 import { gradientOr, webOnly } from "./flat";
@@ -39,6 +39,7 @@ const ChromeBody = memo(
   ({
     band,
     captions = [],
+    casting,
     density,
     formatTime,
     ident = false,
@@ -54,10 +55,12 @@ const ChromeBody = memo(
     sheet,
     surf,
     unmute,
-    utilities,
+    utilities: utilitiesIn,
     visible,
     watermark,
   }: PlayerChromeProps) => {
+    // While casting, the AirPlay key lights (§9.7).
+    const utilities = casting ? { ...utilitiesIn, airPlayCasting: true } : utilitiesIn;
     const tv = layout === "tv";
     const touch = density === "touch";
     const pointer = keys.pointer;
@@ -111,6 +114,7 @@ const ChromeBody = memo(
           <PortraitChrome
             band={band}
             captions={captions}
+            casting={casting}
             formatTime={formatTime}
             insets={insets}
             keys={keys}
@@ -150,6 +154,12 @@ const ChromeBody = memo(
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
         <TuneDip tuneKey={band.channelNumber} />
+        {casting ? (
+          // The picture is on the receiver, so the whole screen says where it went. The card sits
+          // under the keys (the scrim below draws no gradient over it), with its content lifted clear
+          // of the band, and it stays when the controls hide.
+          <CastingCard {...casting} lift={CASTING_LIFT} top={0} zIndex={29} />
+        ) : null}
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
@@ -166,10 +176,13 @@ const ChromeBody = memo(
             position: "absolute",
             right: 0,
             zIndex: 30,
-            ...gradientOr(
-              `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
-              playerChrome.scrimMid,
-            ),
+            // The casting card is opaque, so the scrim would only dim it.
+            ...(casting
+              ? null
+              : gradientOr(
+                  `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
+                  playerChrome.scrimMid,
+                )),
             ...webOnly({ transition: "opacity 120ms ease" }),
           }}
         >

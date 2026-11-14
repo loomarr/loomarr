@@ -218,6 +218,31 @@ const spaceSteps = { ...spaceGrid, "0.5": 2, "1.5": 6, "1.75": 7, "2.5": 10 } as
 // minimum: a layout is the narrow one below `sm` and gains each rule as the window reaches it.
 const breakpoints = { sm: 640, md: 768, lg: 1024 } as const;
 
+// A tinted frame: a hairline at 40% of a brand hue over a 5% wash of it, drawn on whatever sits
+// behind. The hue is the brand chroma itself, the same in both themes, as the app's
+// `border-<hue>/40 bg-<hue>/5` utilities draw it (`--color-<hue>-tint-40` and `-tint-5`).
+const tintFrameAlpha = { border: 0.4, fill: 0.05 } as const;
+
+const rgba = (hex: string, alpha: number) => {
+  const n = Number.parseInt(hex.slice(1, 7), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+};
+
+const tintFrameHue = {
+  caution: brandChroma[1],
+  onair: brandChroma[5],
+  signal: brandChroma[0],
+  suggest: brandChroma[4],
+  tune: brandChroma[3],
+} as const;
+
+const tintFrame = Object.fromEntries(
+  Object.entries(tintFrameHue).map(([tone, hue]) => [
+    tone,
+    { borderColor: rgba(hue, tintFrameAlpha.border), backgroundColor: rgba(hue, tintFrameAlpha.fill) },
+  ]),
+) as { [Tone in keyof typeof tintFrameHue]: { backgroundColor: string; borderColor: string } };
+
 const semanticRadius = {
   control: 10,
   card: 16,
@@ -482,5 +507,6 @@ export {
   semanticThemes,
   spaceGrid,
   spaceSteps,
+  tintFrame,
   typography,
 };

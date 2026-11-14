@@ -237,21 +237,10 @@ const SupportBundle = ({
                   )}
                 </form.Field>
               </Stack>
-              <Stack
-                align="start"
-                borderRadius={8}
-                className="border-success/30 bg-success/5 border"
-                direction="row"
-                gap="inline"
-                padding={12}
-              >
-                <Stack direction="row" marginTop={2} render="span">
-                  <Icon decorative glyph={icons.verified} size="compact" tone="success" />
-                </Stack>
-                <Text as="p" textRole="hint" tone="secondary">
-                  Secrets, URL credentials, and local paths are redacted again while the report is built.
-                </Text>
-              </Stack>
+              <Notice
+                body="Secrets, URL credentials, and local paths are redacted again while the report is built."
+                tone="success"
+              />
             </Card>
 
             {busy === "preview" && (
@@ -387,18 +376,7 @@ const SupportBundle = ({
             </Card>
           </Stack>
 
-          {error && (
-            <Stack
-              borderRadius={8}
-              className="border-destructive/40 bg-destructive/10 border"
-              padding={12}
-              role="alert"
-            >
-              <Text as="p" textRole="compact" tone="danger">
-                {error}
-              </Text>
-            </Stack>
-          )}
+          {error && <Notice body={error} role="alert" tone="danger" />}
 
           <DialogFooter>
             <Action

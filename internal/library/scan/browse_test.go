@@ -54,7 +54,10 @@ func names(b Browsed) []string {
 func TestTheBrowserShowsFoldersUnderTheMountsOnly(t *testing.T) {
 	share, outside := browseTree(t)
 	tv := filepath.Join(share, "TV")
-	disk := fakeDisk{mounts: []string{share}, readable: map[string]bool{tv: true}}
+	// The share sits under /tmp, an OS's own tree: browsable, but not offered at the top, where a
+	// drive under /mnt is.
+	const drive = "/mnt/loomarr-fixture-drive"
+	disk := fakeDisk{mounts: []string{share, drive}, readable: map[string]bool{tv: true}}
 	r := newRoots(t, disk, "", Source{Authority: "sonarr", Folders: folders(tv)})
 	ctx := context.Background()
 	if _, _, err := r.Discover(ctx); err != nil {
@@ -65,8 +68,8 @@ func TestTheBrowserShowsFoldersUnderTheMountsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := names(top); !slices.Equal(got, []string{tv, share}) || !top.Folders[0].Named || top.Folders[1].Named {
-		t.Fatalf("top = %v (%+v), want Sonarr's folder first, then the mount", got, top.Folders)
+	if got := names(top); !slices.Equal(got, []string{tv, drive}) || !top.Folders[0].Named || top.Folders[1].Named {
+		t.Fatalf("top = %v (%+v), want Sonarr's folder first, then the drive", got, top.Folders)
 	}
 
 	in, err := r.Browse(ctx, share)
@@ -94,6 +97,21 @@ func TestTheBrowserShowsFoldersUnderTheMountsOnly(t *testing.T) {
 	}
 	if _, err := r.Browse(ctx, "relative"); !errors.Is(err, ErrNotAbsolute) {
 		t.Errorf("a relative path: %v, want ErrNotAbsolute", err)
+	}
+}
+
+// A desktop's or a NAS's own mounts are never offered: its home, temp, var, and hidden trees. A
+// share, a drive under /mnt or /media, /srv, and a container's own volumes are.
+func TestTheBrowserOffersMediaMountsOnly(t *testing.T) {
+	for mount, want := range map[string]bool{
+		"/mnt/loomarr-smb/movies": true, "/media/usb": true, "/srv/media": true, "/data": true, "/tv": true,
+		"/home": false, "/home/fen/Videos": false, "/tmp": false, "/var/log": false,
+		"/var/cache/pacman/pkg": false, "/var/lib/containerd": false, "/.snapshots": false, "/mnt/.hidden": false,
+		"/usr/local": false, "/opt": false, "/root": false, "/homestead": true,
+	} {
+		if got := offeredMount(mount); got != want {
+			t.Errorf("offeredMount(%q) = %v, want %v", mount, got, want)
+		}
 	}
 }
 
@@ -167,12 +185,14 @@ func TestAFolderOverlappingOneInUseIsRefused(t *testing.T) {
 		t.Fatalf("the share: %v, want refused as holding Movies and TV", err)
 	}
 
-	top, err := r.Browse(ctx, "")
+	rows, err := r.Browse(ctx, share)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f := top.Folders[0]; !slices.Equal(f.Holds, []string{movies, tv}) || f.InUse {
-		t.Fatalf("the share at the top: %+v, want it holding Movies and TV", f)
+	for _, f := range rows.Folders {
+		if inUse := f.Path == movies || f.Path == tv; f.InUse != inUse {
+			t.Errorf("%s in the share: in use %v, want %v", f.Name, f.InUse, inUse)
+		}
 	}
 	in, err := r.Browse(ctx, movies)
 	if err != nil {

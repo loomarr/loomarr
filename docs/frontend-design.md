@@ -657,6 +657,19 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 - **Upright phone.** Nothing covers the picture. The utilities and Leave are a toolbar under the
   Dynamic Island, in the black above the picture: the back arrow and rating on the left, the utilities
   on the right. The band and keys are in the black below the picture, always shown.
+- **Casting (iPhone).** While the picture plays on an AirPlay video receiver, the AirPlay key's glyph
+  takes the signal amber, as an active tool's does, and a **casting card** fills the picture area: the
+  centred 16:9 strip on an upright phone, the whole screen on its side with its content lifted clear of
+  the band. The card sits on the chrome's canvas surface, which covers the black video layer, and
+  reads at full strength (no scrim over it). In a centred column it holds the AirPlay glyph (28 px,
+  `textSecondary`), **Playing on** the receiver (**your TV** until the player can read its name),
+  *Your phone is the remote*, and a 44 px **Disconnect** button drawn like the unmute pill. Disconnect
+  opens the system's route list with the phone in it: like the AirPlay key it only draws its face, and
+  Apple's route picker lies clear over it and takes the tap, because iOS gives an app no call to leave
+  an AirPlay route; choosing "iPhone" there brings the picture back. The reason: the picture is on
+  the TV, so the phone's picture area says where it went and gives the way back. The band, the channel keys, Pause and More keep working,
+  so the phone stays the TV's remote, and the watermark's clearance is unchanged. Android and the web
+  never show it. (Maintainer, 2026-11-14, #4131.)
 - **Television.** Four keys only, **Last channel, Subtitles, Audio, More** (56 px), with no utilities
   row: Channel up and down, Play/Pause, Volume and Back are the remote's own buttons, and there is no
   fullscreen. With six keys the band was squeezed until the title read "F.". While flipping channels
@@ -744,7 +757,7 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 | --- | --- | --- | --- | --- |
 | Band | Film strip as its foot; preview card on pointing | Progress line and Next | Progress line and Next; title may take two lines; below the picture, always shown | Film strip; preview card on focus |
 | Keys | Last, Channel down, Play, Channel up, Volume, More (56 px) | The same without Volume (48 px) | The same, centred below the band | Last, Subtitles, Audio, More (56 px) |
-| Utilities | Subtitles, Audio, Fullscreen, over the keys | Subtitles, Audio, AirPlay, Picture in picture (iPhone), over the keys | The same, a toolbar above the picture | None: the remote's buttons |
+| Utilities | Subtitles, Audio, Fullscreen, over the keys | Subtitles, Audio, AirPlay (amber while casting), Picture in picture (iPhone), over the keys | The same, a toolbar above the picture | None: the remote's buttons |
 | Leave | Back arrow, top left | Back arrow, top left | Back arrow, toolbar left | Back |
 | Opens as | Cluster menu | Right-hand sheet | Bottom sheet | Cluster menu |
 

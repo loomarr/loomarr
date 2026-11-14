@@ -201,6 +201,24 @@ interface PlayerChromeProps {
    * when the channel has none, so nothing moves.
    */
   watermark?: PlayerWatermark;
+  /**
+   * The picture is playing on an AirPlay receiver (iPhone, §9.7): the casting card fills the picture
+   * area and the AirPlay key lights. The band and keys stay, so the phone is the TV's remote. Omitted
+   * otherwise, and always on Android and the web.
+   */
+  casting?: PlayerCasting;
+}
+
+/** The picture's casting state: where it went, and the way back. */
+interface PlayerCasting {
+  /** The receiver's name; the card says "your TV" until the player can read it. */
+  castingTo?: string;
+  /**
+   * The system's route picker, laid clear over the Disconnect button's face, as the AirPlay key's is:
+   * iOS opens it only from its own button. It lists the routes, and choosing "iPhone" brings the
+   * picture back.
+   */
+  routePicker: ReactNode;
 }
 
 /**
@@ -252,6 +270,8 @@ interface PlayerUtilitiesProps {
    * the app passes that button and the key lays it, clear, over its face.
    */
   airPlayPicker?: ReactNode;
+  /** The picture is casting: the AirPlay key's glyph takes the signal amber, as an active tool's does. The chrome sets it from `casting`. */
+  airPlayCasting?: boolean;
   /** Picture in picture, where the player is a phone app that has a key for it. */
   onPictureInPicture?: () => void;
 }
