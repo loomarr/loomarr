@@ -261,7 +261,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`).
 - **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
-  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
+  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). An episode's NFO that numbers it
+  as another episode than its name's `S01E02` does is that episode's, copied beside the wrong
+  file, and is set aside whole: its title, overview and ids (`numbersAnother`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
   season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
   top, or in a season folder there, is the show its name gives before `S01E02`

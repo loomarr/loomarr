@@ -542,6 +542,25 @@ func TestAnEpisodeIDThatNamesAnotherEpisodeGivesWayToTheFilesNumber(t *testing.T
 	}
 }
 
+// An episode's NFO that numbers it as another episode than its name does is that episode's, copied
+// beside the wrong file: the name's number stands, and so does the name's title, not the NFO's.
+func TestAnNFONumberingAnotherEpisodeDoesNotNameTheFile(t *testing.T) {
+	h := newHarness(t)
+	rel := "Iron Shore/Season 02/Iron Shore - S02E06 - Cathedrals.mkv"
+	h.file(rel, 10)
+	doc := `<episodedetails><title>Tunnels</title><plot>Below the yard.</plot><season>2</season><episode>7</episode>` +
+		`<uniqueid type="tvdb" default="true">90090907</uniqueid></episodedetails>`
+	if err := os.WriteFile(filepath.Join(h.root, "Iron Shore", "Season 02", "Iron Shore - S02E06 - Cathedrals.nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	o := fileOrigin(h.root, rel)
+	facts := h.origin(h.item(o), o).Observation.Facts
+	if facts.Name != "Cathedrals" || facts.Overview != "" || facts.SeasonNumber != 2 || facts.EpisodeNumber != 6 {
+		t.Fatalf("= %q (%q) S%dE%d, want Cathedrals S2E6 with no other episode's overview", facts.Name, facts.Overview, facts.SeasonNumber, facts.EpisodeNumber)
+	}
+}
+
 // #3565: the Enricher runs beside the scanner, so it can fetch a season while the pass that asked
 // for it is still writing: after the episodes are written without it, before their file rows are
 // saved. The rewrite it asks for must still name them. The pass saved each row's identity as final,

@@ -390,7 +390,10 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	records = append(records, id.embedded)
 	if file.hasNFO() {
-		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok {
+		// An episode's NFO that numbers it as another episode than its name's mark does is that
+		// episode's, copied beside the wrong file: the name's number stands (precedence), and the
+		// NFO's title, overview and ids, another episode's, are set aside with its number.
+		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok && !(id.kind == mp.KindEpisode && numbersAnother(rec.Numbering, id.embedded.Numbering)) {
 			records = append(records, rec)
 			if id.kind == mp.KindEpisode {
 				further = append(further, rec.More...)
@@ -533,6 +536,14 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 		out.set = b.im.Keys.For(mp.KindCollection, []mp.ExternalID{out.resolved.Collection.Value.ID})
 	}
 	return out
+}
+
+// numbersAnother says whether an NFO's numbering names another episode than a file's own mark: both
+// number a season's episode, and the season or the episode differs. A name that numbers it only
+// across the show, or not at all, doesn't say.
+func numbersAnother(nfo, own *mp.Numbering) bool {
+	return nfo != nil && own != nil && nfo.Episode > 0 && own.Episode > 0 &&
+		(nfo.Season != own.Season || nfo.Episode != own.Episode)
 }
 
 // sidecar reads what a sidecar provider (NFO, artwork) finds beside a file or in a series folder.
