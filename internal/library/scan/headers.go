@@ -100,8 +100,9 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 		mu    sync.Mutex
 		batch []pending
 		first error
-		// faults counts the files in a row the share could not give back.
-		faults int
+		// faults counts, per root, the files in a row its share could not give back: one share's
+		// faults never stop reading another's.
+		faults = map[string]int{}
 		// faulted are the folders whose share gave back headerFaultLimit files in a row with no
 		// read between: the stage reads no more of them.
 		faulted = map[string]bool{}
@@ -192,18 +193,18 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 					}
 				case errors.Is(err, errFileFault):
 					// The file stays pending, and the stage goes on to the next.
-					faults++
-					if faults >= headerFaultLimit && !faulted[job.root()] {
+					faults[job.root()]++
+					if n := faults[job.root()]; n >= headerFaultLimit && !faulted[job.root()] {
 						faulted[job.root()] = true
 						im.log().Warn("library scan: header reads stopped for a folder", "root", job.root(),
-							"err", fmt.Errorf("%w: %d files in a row, the last: %w", errShareFault, faults, err))
+							"err", fmt.Errorf("%w: %d files in a row, the last: %w", errShareFault, n, err))
 					}
 				case err != nil:
 					if first == nil {
 						first = err
 					}
 				default:
-					faults = 0
+					delete(faults, job.root())
 					job.row = row
 					batch = append(batch, job)
 					flush(false)
