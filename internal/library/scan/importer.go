@@ -562,6 +562,19 @@ func within(root string, walked map[string]bool) (string, bool) {
 	return "", false
 }
 
+// ForgetReleased forgets the files of every root no longer walked, now, outside a pass: "Stop
+// using" takes effect at once rather than after the running pass's reading. It waits for a walk
+// under way, which holds the import's lock.
+func (im *Importer) ForgetReleased(ctx context.Context) error {
+	im.run.Lock()
+	defer im.run.Unlock()
+	all, err := im.Store.LibraryRoots(ctx)
+	if err != nil {
+		return err
+	}
+	return im.forgetReleased(ctx, scannedRoots(all.Roots))
+}
+
 // forgetReleased marks every file of a root no longer walked unseen and forgets its rows: releasing
 // a root is the maintainer's word, not a walk's guess, so the removal guard does not apply.
 func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) error {
