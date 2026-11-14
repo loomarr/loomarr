@@ -575,8 +575,18 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	im.gen++
 	gen := im.gen
 	var save []librarystore.LibraryFile
-	// On every return, an error included: a file applied before the error was still written.
-	defer func() { im.touch(save, gen) }()
+	// written are the rows whose item this pass applied; persisted says save was saved. On every
+	// return, an error included, the files the pass wrote are touched: all it saved, or, ended
+	// before it saved them, only those it applied, so a read queued for a file it never wrote stays.
+	var written []librarystore.LibraryFile
+	persisted := false
+	defer func() {
+		if persisted {
+			im.touch(save, gen)
+		} else {
+			im.touch(written, gen)
+		}
+	}()
 	result := RootResult{Root: root, State: RootScanned}
 	if im.Disk != nil {
 		look := im.Disk.Look(ctx, root)
@@ -760,6 +770,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			continue
 		}
 		row.ItemID = itemID
+		written = append(written, row)
 		if snapshot.Kind == kindMovie {
 			b.listed(ctx, itemID, snapshot)
 		}
@@ -830,6 +841,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {
 		return result, nil, err
 	}
+	persisted = true
 	if len(save) > 0 {
 		im.titlesChanged()
 	}
