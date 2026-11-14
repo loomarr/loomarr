@@ -419,6 +419,12 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
 	res := b.resolve(ctx, snapshot.Origin, in)
+	if id.kind == mp.KindEpisode && res.record == nil && !res.waiting {
+		if kept, ok := b.unknownNFOAside(ctx, file, in, res); ok {
+			in = kept
+			res = b.resolve(ctx, snapshot.Origin, in)
+		}
+	}
 	if id.kind == mp.KindEpisode && res.record != nil {
 		res = b.ownNumberOver(ctx, snapshot.Origin, file, id, in, res)
 	}
