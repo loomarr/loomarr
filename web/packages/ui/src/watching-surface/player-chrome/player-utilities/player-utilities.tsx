@@ -16,6 +16,8 @@ const UTILITY_SIZE = { pointer: 40, touch: 44 } as const;
 interface UtilityKeyProps {
   /** Subtitles on: a small white dot, never amber. */
   active?: boolean | undefined;
+  /** The tool is in use: its glyph takes the signal amber (AirPlay while casting). */
+  lit?: boolean | undefined;
   /**
    * A system control laid over the key's face that takes its taps (AirPlay's route picker); the key
    * then only draws, and leaves the control to be the one a screen reader finds.
@@ -39,6 +41,7 @@ const UtilityKey = ({
   hint,
   icon,
   label,
+  lit,
   onPress,
   pointer,
   pressed,
@@ -82,7 +85,7 @@ const UtilityKey = ({
         })}
       >
         <Icon
-          color={playerChrome.text}
+          color={lit ? playerChrome.signal : playerChrome.text}
           decorative
           glyph={icons[icon]}
           size={pointer ? "default" : "navigation"}
@@ -137,6 +140,7 @@ const UtilityKey = ({
 };
 
 const PlayerUtilities = ({
+  airPlayCasting,
   airPlayPicker,
   audioOpen,
   fullscreen,
@@ -171,7 +175,13 @@ const PlayerUtilities = ({
       />
     ) : null}
     {airPlayPicker ? (
-      <UtilityKey cover={airPlayPicker} icon="airplay" label="AirPlay" pointer={pointer} />
+      <UtilityKey
+        cover={airPlayPicker}
+        icon="airplay"
+        label="AirPlay"
+        lit={airPlayCasting}
+        pointer={pointer}
+      />
     ) : null}
     {onPictureInPicture ? (
       <UtilityKey

@@ -28,6 +28,9 @@ interface NativePlayerTransport extends PlayerTransport {
   /** The picture's view reports picture in picture starting and stopping. */
   setPictureInPicture: (active: boolean) => void;
   subscribePictureInPicture: (listener: (active: boolean) => void) => () => void;
+  /** Whether the picture is playing on an AirPlay video receiver (iOS) rather than on the phone. */
+  externalPlaybackActive: () => boolean;
+  subscribeExternalPlayback: (listener: (active: boolean) => void) => () => void;
   resume: () => void;
   subscribePlayer: (listener: () => void) => () => void;
   suspend: () => void;
@@ -95,7 +98,10 @@ const createNativePlayerTransport = (
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const playerListeners = new Set<() => void>();
   const pictureInPictureListeners = new Set<(active: boolean) => void>();
+  const externalPlaybackListeners = new Set<(active: boolean) => void>();
+  let externalPlayback = false;
   let pictureInPicture = false;
+  let externalPlaybackSubscription: { remove: () => void } | undefined;
   let playingSubscription: { remove: () => void } | undefined;
   let statusSubscription: { remove: () => void } | undefined;
   let timeSubscription: { remove: () => void } | undefined;
@@ -157,8 +163,19 @@ const createNativePlayerTransport = (
     if (clock.shouldRejoin(positionOf(currentLiveTimestamp, currentOffsetFromLive))) seekToLiveEdge(player);
   };
 
+  const setExternalPlayback = (active: boolean) => {
+    if (active === externalPlayback) return;
+    externalPlayback = active;
+    for (const listener of externalPlaybackListeners) listener(active);
+  };
+
   const attachPlayer = (next: VideoPlayer) => {
     player = next;
+    setExternalPlayback(next.isExternalPlaybackActive === true);
+    externalPlaybackSubscription = next.addListener(
+      "isExternalPlaybackActiveChange",
+      ({ isExternalPlaybackActive }) => setExternalPlayback(isExternalPlaybackActive),
+    );
     next.loop = false;
     next.showNowPlayingNotification = false;
     next.staysActiveInBackground = false;
@@ -226,10 +243,13 @@ const createNativePlayerTransport = (
     if (!current) return;
     current.pause();
     endStall("released");
+    externalPlaybackSubscription?.remove();
     statusSubscription?.remove();
     playingSubscription?.remove();
     timeSubscription?.remove();
     trackSubscription?.remove();
+    externalPlaybackSubscription = undefined;
+    setExternalPlayback(false);
     statusSubscription = undefined;
     playingSubscription = undefined;
     timeSubscription = undefined;
@@ -250,6 +270,12 @@ const createNativePlayerTransport = (
       listeners.clear();
       playerListeners.clear();
       pictureInPictureListeners.clear();
+      externalPlaybackListeners.clear();
+    },
+    externalPlaybackActive: () => externalPlayback,
+    subscribeExternalPlayback: (listener) => {
+      externalPlaybackListeners.add(listener);
+      return () => externalPlaybackListeners.delete(listener);
     },
     firstFrame: () => {
       if (activeAttemptId === undefined) return;

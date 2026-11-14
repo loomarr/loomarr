@@ -207,6 +207,77 @@ describe("PlayerChrome", () => {
     expect(onPictureInPicture).toHaveBeenCalledOnce();
   });
 
+  describe("while the picture plays on an AirPlay receiver", () => {
+    const airPlayStroke = (host: Host) =>
+      (button(host, "AirPlay") as unknown as { querySelector(s: string): Node | null })
+        .querySelector("svg")
+        ?.getAttribute("stroke");
+    const routePicker = <span data-testid="disconnect-picker" />;
+    const castingUtilities = utilities({
+      airPlayPicker: <span data-testid="route-picker" />,
+      density: "touch",
+      pointer: false,
+    });
+
+    it("says where the picture went, calling the receiver your TV until it has a name", () => {
+      const host = mount(chrome({ casting: { routePicker }, density: "touch", utilities: castingUtilities }));
+
+      expect(host.querySelector('[data-testid="player-casting-card"]')).not.toBeNull();
+      expect(host.textContent).toContain("Playing on your TV");
+      expect(host.textContent).toContain("Your phone is the remote");
+    });
+
+    it("names the receiver when it is given", () => {
+      const host = mount(
+        chrome({
+          casting: { castingTo: "Den Display", routePicker },
+          density: "touch",
+          utilities: castingUtilities,
+        }),
+      );
+
+      expect(host.textContent).toContain("Playing on Den Display");
+      expect(host.textContent).not.toContain("your TV");
+    });
+
+    // Apple's route list is the only way out of a cast, and iOS opens it only from its own button: the
+    // picker is the Disconnect control, and the face under it is drawing only.
+    it("draws Disconnect's face with the system's picker over it as the pressable control", () => {
+      const host = mount(chrome({ casting: { routePicker }, density: "touch", utilities: castingUtilities }));
+
+      expect(
+        host.querySelector('[data-testid="player-casting-card"] [data-testid="disconnect-picker"]'),
+      ).not.toBeNull();
+      expect(host.textContent).toContain("Disconnect");
+      expect(button(host, "Disconnect")?.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("lights the AirPlay key amber, and leaves the band and keys working as the TV's remote", () => {
+      const onTogglePlay = vi.fn();
+      const host = mount(
+        chrome({
+          casting: { routePicker },
+          density: "touch",
+          keys: keys({ density: "touch", onTogglePlay, pointer: false }),
+          utilities: castingUtilities,
+        }),
+      );
+
+      expect(airPlayStroke(host)).toBe(playerChrome.signal);
+      expect(host.textContent).toContain("Coast 90s");
+      act(() => button(host, "Pause")?.click());
+      expect(onTogglePlay).toHaveBeenCalledOnce();
+    });
+
+    it("shows nothing of it, and leaves the key plain, when the picture is on the phone", () => {
+      const host = mount(chrome({ density: "touch", utilities: castingUtilities }));
+
+      expect(host.querySelector('[data-testid="player-casting-card"]')).toBeNull();
+      expect(button(host, "Disconnect")).toBeUndefined();
+      expect(airPlayStroke(host)).toBe(playerChrome.text);
+    });
+  });
+
   it("sets the programme's rating beside Leave, and leaves", () => {
     const onLeave = vi.fn();
     const host = mount(chrome({ band: { ...band, rating: "TV-PG" }, onLeave }));

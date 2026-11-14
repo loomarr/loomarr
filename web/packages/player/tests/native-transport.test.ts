@@ -221,7 +221,7 @@ describe("Expo video transport", () => {
     expect(transport.getPlayer()).toBeUndefined();
     expect(raw.pause).toHaveBeenCalledOnce();
     expect(raw.release).toHaveBeenCalledOnce();
-    expect(removals).toHaveLength(3);
+    expect(removals).toHaveLength(4);
     expect(removals.every((remove) => remove.mock.calls.length === 1)).toBe(true);
     expect(playerChanges).toHaveBeenCalledOnce();
     expect(events).not.toHaveBeenCalled();
@@ -507,6 +507,35 @@ describe("native start-failure reason (#1455)", () => {
     emit("statusChange", { error: { message: "Response code: 502" }, status: "error" });
 
     expect(events).toContainEqual({ attemptId: 1, error: "Response code: 502", type: "error" });
+  });
+
+  describe("casting to an AirPlay receiver", () => {
+    it("reports the player's external playback as it starts and stops", () => {
+      const { emit, player } = nativePlayer();
+      const transport = createNativePlayerTransport(player);
+      const reports: boolean[] = [];
+      transport.subscribeExternalPlayback((active) => reports.push(active));
+      expect(transport.externalPlaybackActive()).toBe(false);
+
+      emit("isExternalPlaybackActiveChange", { isExternalPlaybackActive: true });
+      emit("isExternalPlaybackActiveChange", { isExternalPlaybackActive: true });
+      expect(transport.externalPlaybackActive()).toBe(true);
+      emit("isExternalPlaybackActiveChange", { isExternalPlaybackActive: false });
+
+      // Only a change is reported.
+      expect(reports).toEqual([true, false]);
+      expect(transport.externalPlaybackActive()).toBe(false);
+    });
+
+    it("is no longer casting once the player is released", () => {
+      const { emit, player } = nativePlayer();
+      const transport = createNativePlayerTransport(player, () => nativePlayer().player);
+      emit("isExternalPlaybackActiveChange", { isExternalPlaybackActive: true });
+
+      transport.suspend();
+
+      expect(transport.externalPlaybackActive()).toBe(false);
+    });
   });
 });
 
