@@ -237,14 +237,14 @@ const ProcessDetail = ({
         </Text>
       </Stack>
       <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
-        <Stack>
+        <div>
           <Text as="span" textRole="hint" tone="secondary">
             Run ID
           </Text>
           <CopyValue label="Run ID" value={run.id} />
-        </Stack>
+        </div>
         {run.channelId && (
-          <Stack>
+          <div>
             <Text as="span" textRole="hint" tone="secondary">
               Channel
             </Text>
@@ -261,15 +261,15 @@ const ProcessDetail = ({
                 </Action>
               )}
             </Stack>
-          </Stack>
+          </div>
         )}
         {run.jobId && (
-          <Stack>
+          <div>
             <Text as="span" textRole="hint" tone="secondary">
               Job
             </Text>
             <CopyValue label="Job" value={run.jobId} />
-          </Stack>
+          </div>
         )}
         <Stack>
           <Text as="span" textRole="hint" tone="secondary">
@@ -536,10 +536,10 @@ const PlayoutDiagnostics = ({
                               </Stack>
                             </Text>
                           </Stack>
-                          <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
+                          <Text as="span" numberOfLines={1} textAlign="left" textRole="hint" tone="secondary">
                             {run.target ?? run.id}
                           </Text>
-                          <Text as="time" textRole="hint" tone="secondary">
+                          <Text as="time" textAlign="left" textRole="hint" tone="secondary">
                             {formatTime(run.startedAt)}
                           </Text>
                         </Stack>
