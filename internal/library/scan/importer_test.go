@@ -1176,6 +1176,52 @@ func TestHeaderStageReadsOnPastAFileItCannotOpen(t *testing.T) {
 	}
 }
 
+// A folder that replaces the folders in use inside it keeps the headers they read: its first pass
+// opens only a file whose bytes changed since, not the whole library again.
+func TestReplacingInnerFoldersKeepsTheirReads(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	inner := filepath.Join(h.root, "Films")
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, inner: true}}
+	if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: inner, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Films/Mike (2002)/Mike.mkv", 10)
+	changed := h.file("Films/November (2003)/November.mkv", 10)
+	h.run()
+	if got := h.reads.Load(); got != 2 {
+		t.Fatalf("the inner folder read %d headers, want 2", got)
+	}
+
+	// Replace: the outer folder is used, and the inner one stops being.
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.SetLibraryRootInUse(ctx, inner, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(changed, make([]byte, 20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.reads.Store(0)
+	h.run()
+	if got := h.reads.Load(); got != 1 {
+		t.Fatalf("the outer folder read %d headers, want only the changed file's", got)
+	}
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("outer rows = %d, %v; want 2", len(rows), err)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(row.Path), row.Header)
+		}
+	}
+}
+
 // A folder released while its files are read is forgotten for good: the stage reads no more of
 // them, and the reads already done are not saved back, so the files don't return to the Library.
 func TestReleasingAFolderStopsItsReads(t *testing.T) {

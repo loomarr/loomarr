@@ -583,6 +583,46 @@ func (im *Importer) ForgetReleased(ctx context.Context) error {
 	return im.forgetReleased(ctx, scannedRoots(all.Roots))
 }
 
+// releasedWithin lists the folders inside root whose files this importer forgot when they stopped
+// being used: those a Replace of root took the place of, among others. A folder added by hand is
+// gone from the roots once released, so only the importer still knows it.
+func (im *Importer) releasedWithin(root string) []string {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	var out []string
+	for r := range im.forgotten {
+		if r != root && inside(r, root) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// headerWithin is the header a released folder inside the root read for file, at the same path
+// and with the same bytes: the file's own, read before the outer folder replaced the inner. A
+// file the root already knew, one whose bytes have changed since, or one no released folder read,
+// has none.
+func (im *Importer) headerWithin(ctx context.Context, released []string, file File, known bool) (*inventory.SourceFacts, int) {
+	if known {
+		return nil, 0
+	}
+	for _, inner := range released {
+		if !inside(file.Path, inner) {
+			continue
+		}
+		rel, err := filepath.Rel(inner, file.Path)
+		if err != nil {
+			return nil, 0
+		}
+		read, by := im.lastHeader(ctx, fileOrigin(inner, filepath.ToSlash(rel)))
+		if read == nil || read.SizeBytes != file.Stat.Size || read.ModifiedUnixNano != file.Stat.ModifiedNs {
+			return nil, 0
+		}
+		return read, by
+	}
+	return nil, 0
+}
+
 // forgetReleased marks every file of a root no longer walked unseen and forgets its rows: releasing
 // a root is the maintainer's word, not a walk's guess, so the removal guard does not apply.
 func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) error {
@@ -686,6 +726,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	// while a file gone from anywhere the walk did read is still gone.
 	inScope := func(path string) bool { return (scope == nil || under(path, scope)) && !under(path, walk.Unread) }
 	moved := movedFrom(prev, found, inScope)
+	released := im.releasedWithin(root)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
 	var others []identity
@@ -766,6 +807,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			if read == nil {
 				row.Header = librarystore.LibraryHeaderPending
 			}
+		} else if r, by := im.headerWithin(ctx, released, file, known); r != nil {
+			// A folder in use inside this one read it, before this one replaced it (Replace).
+			read, readBy, row.Header = r, by, librarystore.LibraryHeaderRead
 		} else if from, ok := moved[file.Stat]; ok && !sameBytes {
 			// Renamed or moved: the header read at its old path is this file's, and it is not
 			// opened again.

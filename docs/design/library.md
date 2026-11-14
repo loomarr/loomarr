@@ -244,7 +244,9 @@ the household's language wins over it, and a refresh after TMDB gains a translat
   Movies"), and so is one holding folders in use, unless it is added with `replace`, which uses it
   in their place in one step. The scan already reads a folder nested in another once, as part of the
   outer one (`scannedRoots`), so the list would name a folder the scan never walks; the outer one's
-  next pass keys their files under it.
+  next pass keys their files under it. Each keeps the header its inner folder read while its bytes
+  are the same (`headerWithin`), so a replace opens only the files that changed, not the whole
+  library again.
 
 ## Scanner
 
