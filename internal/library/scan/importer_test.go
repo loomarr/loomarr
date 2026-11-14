@@ -1225,6 +1225,49 @@ func TestReplacingInnerFoldersKeepsTheirReads(t *testing.T) {
 	}
 }
 
+// A folder released and then added again keeps the headers it read: its files are forgotten while
+// it is out of use, but the pass that finds them again opens only a file whose bytes changed.
+func TestAFolderAddedAgainKeepsItsReads(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.file("Mike (2002)/Mike.mkv", 10)
+	changed := h.file("November (2003)/November.mkv", 10)
+	h.run()
+	if got := h.reads.Load(); got != 2 {
+		t.Fatalf("the first pass read %d headers, want 2", got)
+	}
+
+	if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.im.ForgetReleased(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 0 {
+		t.Fatalf("released rows = %d, %v; want none", len(rows), err)
+	}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: h.root, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(changed, make([]byte, 20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.reads.Store(0)
+	h.run()
+	if got := h.reads.Load(); got != 1 {
+		t.Fatalf("the folder added again read %d headers, want only the changed file's", got)
+	}
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("rows = %d, %v; want 2", len(rows), err)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(row.Path), row.Header)
+		}
+	}
+}
+
 // A folder released while its files are read is forgotten for good: the stage reads no more of
 // them, and the reads already done are not saved back, so the files don't return to the Library.
 func TestReleasingAFolderStopsItsReads(t *testing.T) {

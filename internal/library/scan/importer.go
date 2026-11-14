@@ -595,7 +595,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	// while a file gone from anywhere the walk did read is still gone.
 	inScope := func(path string) bool { return (scope == nil || under(path, scope)) && !under(path, walk.Unread) }
 	moved := movedFrom(prev, found, inScope)
-	released := im.releasedWithin(root)
+	// A file with no row may have been read before its folder was released and added again: its
+	// own origin keeps that read, as the folders a Replace released inside the root keep theirs.
+	released := append([]string{root}, im.releasedWithin(root)...)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
 	var others []identity
