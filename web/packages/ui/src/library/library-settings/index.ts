@@ -1,8 +1,10 @@
 export { LibrarySettings } from "./library-settings";
 export type {
   LibraryAuthority,
+  LibraryBrowseListing,
   LibraryDetails,
   LibraryFolder,
+  LibraryFolderBrowser,
   LibraryHealth,
   LibraryHeldRemoval,
   LibraryHook,

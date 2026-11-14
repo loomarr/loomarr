@@ -3,6 +3,7 @@ import type { StatusDot } from "@loomarr/design-system";
 import type { ComponentProps } from "react";
 import type {
   LibraryDetails,
+  LibraryFolderSummary,
   LibraryHeldRemoval,
   LibraryScan,
   LibrarySkipped,
@@ -214,9 +215,24 @@ const detailsWaiting = (details: LibraryDetails | undefined, scan: LibraryScan, 
   return { title, line: `${title} — ${retry}`, reason };
 };
 
+// What the folder browser says a folder holds, one look inside it (#2151):
+//   "12 folders · 340 videos", "3 folders", "1 video", "Empty", "Slow to answer",
+//   "Loomarr can't open this", and "…" while it is being counted.
+const folderSummary = (summary: LibraryFolderSummary | undefined) => {
+  if (!summary) return "…";
+  if (summary.state === "slow") return "Slow to answer";
+  if (summary.state === "unreadable") return "Loomarr can't open this";
+  const parts = [
+    summary.folders ? count(summary.folders, "folder", "folders") : "",
+    summary.videos ? count(summary.videos, "video", "videos") : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "Empty";
+};
+
 export {
   detailsWaiting,
   folderName,
+  folderSummary,
   heldNames,
   heldTitle,
   joinNames,

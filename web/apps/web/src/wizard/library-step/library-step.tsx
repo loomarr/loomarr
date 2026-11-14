@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { readyTitleOf } from "@/library/ready-title";
+import { useFolderBrowser } from "@/library/use-folder-browser";
 import { useLibraryFolders } from "@/library/use-library-folders";
 import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -36,6 +37,7 @@ const LibraryStep = (props: LibraryStepProps) => (
 
 const LibraryStepBody = ({ backend }: LibraryStepProps) => {
   const folders = useLibraryFolders();
+  const folderBrowser = useFolderBrowser();
   const entries = useSettingsEntries();
   const value = (key: SettingKey) => entries.find((e) => e.key === key)?.value ?? "";
   const arrsMissing =
@@ -59,6 +61,7 @@ const LibraryStepBody = ({ backend }: LibraryStepProps) => {
         checking={folders.checking}
         folders={body.roots}
         onAddFolder={folders.onAddFolder}
+        folderBrowser={folderBrowser}
         onCheckAgain={folders.onCheckAgain}
         onUseFolder={folders.onUseFolder}
         pathMap={body.pathMap}

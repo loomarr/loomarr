@@ -34,6 +34,8 @@ const useLibraryFolders = ({ enabled = true }: { enabled?: boolean } = {}) => {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: libraryApi.getListLibraryRootsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: libraryApi.getLibraryStatusQueryKey() }),
+      // Which folders are in use, inside one, or hold some, as the folder browser lists them.
+      queryClient.invalidateQueries({ queryKey: libraryApi.getBrowseLibraryFoldersQueryKey() }),
     ]);
   const mutation = { mutation: { onSettled: refresh } };
   const discover = libraryApi.useDiscoverLibraryRoots(mutation);
@@ -52,10 +54,11 @@ const useLibraryFolders = ({ enabled = true }: { enabled?: boolean } = {}) => {
     }
   }, [body, discover]);
 
-  // Resolves to a sentence saying why the folder was refused, or undefined when it was added.
-  const onAddFolder = async (path: string) => {
+  // Resolves to a sentence saying why the folder was refused, or undefined when it was added. With
+  // replace, it is used in place of the folders in use inside it.
+  const onAddFolder = async (path: string, options?: { replace?: boolean }) => {
     try {
-      await add.mutateAsync({ data: { path } });
+      await add.mutateAsync({ data: options?.replace ? { path, replace: true } : { path } });
       return undefined;
     } catch (err) {
       const problem = toProblem(err);

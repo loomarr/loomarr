@@ -29,6 +29,7 @@ const LibrarySettings = ({
   onConfirmRemoval,
   onUseFolder,
   onAddFolder,
+  folderBrowser,
   onMapFolder,
   now,
   timeZone,
@@ -65,7 +66,7 @@ const LibrarySettings = ({
             onUseFolder={onUseFolder}
           />
         ))}
-        <AddFolder onAddFolder={onAddFolder} />
+        <AddFolder folderBrowser={folderBrowser} onAddFolder={onAddFolder} />
       </Stack>
       <PathMap onMapFolder={onMapFolder} pathMap={pathMap} />
     </Section>

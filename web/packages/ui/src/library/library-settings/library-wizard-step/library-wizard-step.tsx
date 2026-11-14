@@ -22,6 +22,7 @@ const LibraryWizardStep = ({
   onCheckAgain,
   onUseFolder,
   onAddFolder,
+  folderBrowser,
   now,
 }: LibraryWizardStepProps) => {
   const names = [...new Set(pathMap.map((m) => AUTHORITY_NAMES[m.authority]))];
@@ -46,7 +47,7 @@ const LibraryWizardStep = ({
             onUseFolder={onUseFolder}
           />
         ))}
-        <AddFolder onAddFolder={onAddFolder} />
+        <AddFolder folderBrowser={folderBrowser} onAddFolder={onAddFolder} />
         <Line gap="control">
           <Action disabled={checking} onPress={onCheckAgain} variant="outline">
             {checking ? "Checking…" : "Check again"}

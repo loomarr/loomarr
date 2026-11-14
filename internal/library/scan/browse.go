@@ -91,6 +91,21 @@ const (
 	summaryWorkers = 4
 )
 
+// hostTrees are an operating system's own trees, which a desktop or a NAS mounts on their own
+// (Arch's /var/cache/pacman/pkg, containerd's store, a separate /home) but which hold no library the
+// browser should offer at the top. A folder the apps name is listed wherever it is, and one under
+// these can still be typed, and browsed from there.
+var hostTrees = []string{"/home", "/root", "/tmp", "/var", "/usr", "/opt"}
+
+// offeredMount says whether the browser lists mount at the top: not one of the OS's own trees, nor a
+// hidden one ("/.snapshots").
+func offeredMount(mount string) bool {
+	if slices.ContainsFunc(strings.Split(mount, string(filepath.Separator)), func(seg string) bool { return strings.HasPrefix(seg, ".") }) {
+		return false
+	}
+	return !slices.ContainsFunc(hostTrees, func(tree string) bool { return mount == tree || inside(mount, tree) })
+}
+
 type summaryAt struct {
 	summary FolderSummary
 	at      time.Time
@@ -123,7 +138,7 @@ func (r *Roots) Browse(ctx context.Context, path string) (Browsed, error) {
 			out.Folders = append(out.Folders, BrowseFolder{Path: p, Name: p, Named: true})
 		}
 		for _, p := range mounts {
-			if !slices.Contains(named, p) {
+			if !slices.Contains(named, p) && offeredMount(p) {
 				out.Folders = append(out.Folders, BrowseFolder{Path: p, Name: p})
 			}
 		}
