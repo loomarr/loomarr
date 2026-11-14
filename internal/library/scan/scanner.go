@@ -44,17 +44,60 @@ type Scanner struct {
 
 	mu      sync.Mutex
 	folders map[string]map[string]folderWait // root → changed folders
+	// held are the folders Rewrite was given while a header stage read (root → folders), passed
+	// over once it ends. Guarded by mu.
+	held map[string]map[string]bool
 	// passing is whether a round of folder passes is running. Guarded by mu.
 	passing bool
 	changed chan struct{}
 }
 
-// FoldersSettled reports whether no folder waits for a pass and none is being passed over: every
-// pass asked for so far has written what it found.
+// FoldersSettled reports whether no folder waits for a pass, held or not, and none is being passed
+// over: every pass asked for so far has written what it found.
 func (s *Scanner) FoldersSettled() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.folders) == 0 && !s.passing
+	return len(s.folders) == 0 && len(s.held) == 0 && !s.passing
+}
+
+// Rewrite asks for a pass over dirs, under root, to write their titles again with details the
+// Enricher fetched. While a header stage reads, the folders are held until it ends: a file still
+// to be read takes the details when its read writes it, and a pass now would only hold the reads
+// up (each pass writes under the import's lock) and make the reads of its files stale, to be done
+// again. An import's first lookups land while its files are read, so passing over each title's
+// folders as it was looked up turned the reading to a crawl.
+func (s *Scanner) Rewrite(root string, dirs ...string) {
+	if len(dirs) == 0 {
+		return
+	}
+	s.mu.Lock()
+	if s.Importer.Reading() {
+		if s.held == nil {
+			s.held = map[string]map[string]bool{}
+		}
+		if s.held[root] == nil {
+			s.held[root] = map[string]bool{}
+		}
+		for _, dir := range dirs {
+			s.held[root][dir] = true
+		}
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+	s.PassFolders(root, dirs...)
+}
+
+// ReleaseHeld asks for the passes Rewrite held while a header stage read. The Importer calls it as
+// each stage ends (AfterReading).
+func (s *Scanner) ReleaseHeld() {
+	s.mu.Lock()
+	held := s.held
+	s.held = nil
+	s.mu.Unlock()
+	for root, set := range held {
+		s.PassFolders(root, slices.Sorted(maps.Keys(set))...)
+	}
 }
 
 // folderWait is when a folder's waiting changes began, and its latest.
