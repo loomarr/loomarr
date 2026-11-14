@@ -38,7 +38,7 @@ const DiagnosticsPage = ({
     { id: "process" as const, label: "Media processes", icon: icons.process },
   ];
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader
         title="Diagnostics"
         description="Find what happened and check whether this Loomarr server is healthy."
@@ -58,9 +58,13 @@ const DiagnosticsPage = ({
       />
       <Stack
         aria-label="Diagnostics views"
-        className="border-border overflow-x-auto border-b px-4 pt-2 pb-2 sm:px-6"
+        borderBottomWidth={1}
+        borderColor="borderDecorative"
+        className="px-4 sm:px-6"
         direction="row"
         gap="1"
+        overflowX="auto"
+        paddingVertical={8}
         render="nav"
       >
         {tabs.map(({ id, label, icon }) => (
@@ -88,9 +92,13 @@ const DiagnosticsPage = ({
       {/* ⚠ `position: relative` is load-bearing: visually-hidden (`sr-only`) text is absolutely
           positioned, and without a positioned scroller it stretches the document instead of
           scrolling in here (#3404, #2724). */}
-      <div
-        className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"
+      <Stack
+        className="p-4 sm:p-6"
         data-testid="diagnostics-scroller"
+        flex={1}
+        flexShrink={1}
+        minHeight={0}
+        overflowY="auto"
         style={{ position: "relative" }}
       >
         {search.view === "logs" && (
@@ -108,7 +116,7 @@ const DiagnosticsPage = ({
           </>
         )}
         {search.view === "process" && playout}
-      </div>
+      </Stack>
     </Stack>
   );
 };

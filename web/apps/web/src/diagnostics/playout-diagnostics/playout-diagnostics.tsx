@@ -7,6 +7,8 @@ import {
   Card,
   CompactSelect,
   Field,
+  Grid,
+  GridItem,
   Icon,
   icons,
   PressableRow,
@@ -234,7 +236,7 @@ const ProcessDetail = ({
           </Stack>
         </Text>
       </Stack>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="2">
         <div>
           <Text as="span" textRole="hint" tone="secondary">
             Run ID
@@ -269,7 +271,7 @@ const ProcessDetail = ({
             <CopyValue label="Job" value={run.jobId} />
           </div>
         )}
-        <div>
+        <Stack>
           <Text as="span" textRole="hint" tone="secondary">
             Executable
           </Text>
@@ -277,35 +279,34 @@ const ProcessDetail = ({
             {run.executable ?? "Unavailable"}
             {run.executableVersion ? ` · ${run.executableVersion}` : ""}
           </Text>
-        </div>
-        <div>
+        </Stack>
+        <Stack>
           <Text as="span" textRole="hint" tone="secondary">
             Target
           </Text>
-          <Text as="p" className="break-all" textRole="compact">
+          <Text as="p" textRole="compact" wordBreak="break-all">
             {run.target ?? "Unavailable"}
           </Text>
-        </div>
-        <div>
+        </Stack>
+        <Stack>
           <Text as="span" textRole="hint" tone="secondary">
             Ended
           </Text>
           <Text as="p" textRole="compact">
             {formatTime(run.endedAt)}
           </Text>
-        </div>
-      </div>
+        </Stack>
+      </Grid>
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : latest ? (
-        <Stack
+        <Card
           aria-label="Latest Process progress"
-          className="bg-muted/30 rounded-md"
-          direction="row"
+          flexDirection="row"
+          flexWrap="wrap"
           gap="5"
           padding={12}
           role="status"
-          wrap
         >
           <Text as="span" textRole="compact">
             Frame <strong>{latest.frame}</strong>
@@ -321,7 +322,7 @@ const ProcessDetail = ({
               Earlier progress samples omitted
             </Text>
           )}
-        </Stack>
+        </Card>
       ) : (
         <Text as="p" textRole="compact" tone="secondary">
           No progress samples retained for this run.
@@ -399,62 +400,68 @@ const PlayoutDiagnostics = ({
           </Text>
         </div>
       </Stack>
-      <div className="border-border bg-card grid gap-3 rounded-lg border p-3 sm:grid-cols-2">
-        <CompactSelect<DiagnosticsSearch["processRange"]>
-          label="Process time range"
-          onValueChange={(processRange) => update({ ...filters, processRange })}
-          options={[
-            { value: "1h", label: "Last hour" },
-            { value: "6h", label: "Last 6 hours" },
-            { value: "24h", label: "Last 24 hours" },
-          ]}
-          value={filters.processRange}
-        />
-        <CompactSelect<DiagnosticsSearch["processStatus"]>
-          label="Process status"
-          onValueChange={(processStatus) => update({ ...filters, processStatus })}
-          options={[
-            { value: "all", label: "All statuses" },
-            { value: "running", label: "Running" },
-            { value: "succeeded", label: "Succeeded" },
-            { value: "failed", label: "Failed" },
-            { value: "cancelled", label: "Cancelled" },
-            { value: "interrupted", label: "Interrupted" },
-          ]}
-          value={filters.processStatus}
-        />
-        <details className="sm:col-span-2">
-          <Text as="summary" className="cursor-pointer py-1" textRole="compact" tone="secondary">
-            More filters
-          </Text>
-          <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            <Field
-              accessibilityLabel="Process purpose"
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={(processPurpose) => update({ ...filters, processPurpose })}
-              placeholder="Purpose"
-              value={filters.processPurpose}
-            />
-            <Field
-              accessibilityLabel="Process Channel id"
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={(processChannelId) => update({ ...filters, processChannelId })}
-              placeholder="Channel id"
-              value={filters.processChannelId}
-            />
-            <Field
-              accessibilityLabel="Process Job id"
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={(processJobId) => update({ ...filters, processJobId })}
-              placeholder="Job id"
-              value={filters.processJobId}
-            />
-          </div>
-        </details>
-      </div>
+      <Card padding={12}>
+        <Grid columns={{ base: 1, sm: 2 }} gap="3">
+          <CompactSelect<DiagnosticsSearch["processRange"]>
+            label="Process time range"
+            onValueChange={(processRange) => update({ ...filters, processRange })}
+            options={[
+              { value: "1h", label: "Last hour" },
+              { value: "6h", label: "Last 6 hours" },
+              { value: "24h", label: "Last 24 hours" },
+            ]}
+            value={filters.processRange}
+          />
+          <CompactSelect<DiagnosticsSearch["processStatus"]>
+            label="Process status"
+            onValueChange={(processStatus) => update({ ...filters, processStatus })}
+            options={[
+              { value: "all", label: "All statuses" },
+              { value: "running", label: "Running" },
+              { value: "succeeded", label: "Succeeded" },
+              { value: "failed", label: "Failed" },
+              { value: "cancelled", label: "Cancelled" },
+              { value: "interrupted", label: "Interrupted" },
+            ]}
+            value={filters.processStatus}
+          />
+          <GridItem span={{ base: 1, sm: "full" }}>
+            <details>
+              <Text as="summary" cursor="pointer" textRole="compact" tone="secondary" className="py-1">
+                More filters
+              </Text>
+              <Stack paddingTop={8}>
+                <Grid columns={{ base: 1, sm: 3 }} gap="3">
+                  <Field
+                    accessibilityLabel="Process purpose"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={(processPurpose) => update({ ...filters, processPurpose })}
+                    placeholder="Purpose"
+                    value={filters.processPurpose}
+                  />
+                  <Field
+                    accessibilityLabel="Process Channel id"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={(processChannelId) => update({ ...filters, processChannelId })}
+                    placeholder="Channel id"
+                    value={filters.processChannelId}
+                  />
+                  <Field
+                    accessibilityLabel="Process Job id"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={(processJobId) => update({ ...filters, processJobId })}
+                    placeholder="Job id"
+                    value={filters.processJobId}
+                  />
+                </Grid>
+              </Stack>
+            </details>
+          </GridItem>
+        </Grid>
+      </Card>
       <DiagnosticsPager
         label="Media process pages"
         page={cursorStack.length + 1}
@@ -468,13 +475,13 @@ const PlayoutDiagnostics = ({
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
         <Card paddingHorizontal={16} paddingVertical={32}>
-          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             Loading media processes…
           </Text>
         </Card>
       ) : runs.length === 0 ? (
         <Card paddingHorizontal={16} paddingVertical={32}>
-          <Text as="p" className="text-center" textRole="compact" tone="secondary">
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
             No media processes match this bounded window.
           </Text>
         </Card>
@@ -492,8 +499,7 @@ const PlayoutDiagnostics = ({
               style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 152), 640)}px` }}
             >
               <ul
-                className="relative w-full"
-                style={{ height: `${virtualizer.getTotalSize()}px` }}
+                style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative", width: "100%" }}
                 aria-label="Media processes"
               >
                 {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -503,10 +509,13 @@ const PlayoutDiagnostics = ({
                     <li
                       key={run.id}
                       data-index={virtualRow.index}
-                      className="absolute top-0 left-0 w-full"
                       style={{
                         height: `${virtualRow.size}px`,
+                        left: 0,
+                        position: "absolute",
+                        top: 0,
                         transform: `translateY(${virtualRow.start}px)`,
+                        width: "100%",
                       }}
                     >
                       <PressableRow
@@ -515,9 +524,9 @@ const PlayoutDiagnostics = ({
                         onPress={() => onFiltersChange({ ...filters, processId: run.id })}
                         selected={selected?.id === run.id}
                       >
-                        <div className="grid w-full gap-1 text-left">
+                        <Stack gap="1" width="100%">
                           <Stack align="center" direction="row" gap="inline" justify="between" render="span">
-                            <Text as="strong" className="truncate" strong textRole="cardLabel" tone="primary">
+                            <Text as="strong" numberOfLines={1} strong textRole="cardLabel" tone="primary">
                               {run.purpose}
                             </Text>
                             <Text as="span" textRole="hint" tone="primary">
@@ -527,13 +536,13 @@ const PlayoutDiagnostics = ({
                               </Stack>
                             </Text>
                           </Stack>
-                          <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                          <Text as="span" numberOfLines={1} textAlign="left" textRole="hint" tone="secondary">
                             {run.target ?? run.id}
                           </Text>
-                          <Text as="time" textRole="hint" tone="secondary">
+                          <Text as="time" textAlign="left" textRole="hint" tone="secondary">
                             {formatTime(run.startedAt)}
                           </Text>
-                        </div>
+                        </Stack>
                       </PressableRow>
                     </li>
                   );

@@ -1,4 +1,4 @@
-import { Stack, Surface, Text, typography } from "@loomarr/design-system";
+import { Card, Grid, Stack, Surface, Text, typography } from "@loomarr/design-system";
 import { webType } from "@loomarr/design-system/web-theme";
 
 const TYPE_ROLES = ["display", "heading", "body", "label", "mono"] as const;
@@ -24,12 +24,12 @@ const SIZE_USE: Record<string, string> = {
 };
 
 const Typography = () => (
-  <Stack gap="screen" padding={24}>
-    <Stack gap="1" render="header">
+  <Stack gap="screen" padding="section">
+    <Stack gap="1" maxWidth={672} render="header">
       <Text as="h1" textRole="title">
         Typography
       </Text>
-      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
+      <Text as="p" textRole="compact" tone="secondary">
         Geist and Geist Mono, self-hosted (§2.2) — no webfont CDN, because the app must work on a LAN with no
         internet. Sizes come from the generated tokens; the samples below render at their real values.
       </Text>
@@ -39,27 +39,34 @@ const Typography = () => (
       <Text as="h2" textRole="heading">
         The two families
       </Text>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Stack className="border-border rounded-md border" gap="inline" padding={16}>
-          <div className="text-static-400 font-mono text-[11px]">Sans</div>
-          <div className="text-lg" style={{ fontFamily: webType.fonts.sans }}>
+      <Grid columns={{ base: 1, sm: 2 }} gap="4">
+        <Card gap="inline" padding={16}>
+          <Text textRole="mono" tone="muted">
+            Sans
+          </Text>
+          <Text style={{ fontFamily: webType.fonts.sans }} textRole="headline">
             Saturday Morning Cartoons
-          </div>
+          </Text>
           <Text as="p" textRole="compact" tone="secondary">
             Everything a person wrote or would say aloud: titles, descriptions, prose, buttons.
           </Text>
-        </Stack>
-        <Stack className="border-border rounded-md border" gap="inline" padding={16}>
-          <div className="text-static-400 font-mono text-[11px]">Mono</div>
-          <div className="font-mono text-lg" style={{ fontFamily: webType.fonts.mono }}>
-            CH 42 · 21:30–22:00
-          </div>
-          <Text as="p" textRole="compact" tone="secondary">
-            <strong className="text-foreground">{MONO_RULE}</strong> Channel numbers, clock times, durations,
-            ids, state badges — anything the system emitted rather than authored.
+        </Card>
+        <Card gap="inline" padding={16}>
+          <Text textRole="mono" tone="muted">
+            Mono
           </Text>
-        </Stack>
-      </div>
+          <Text style={{ fontFamily: webType.fonts.mono }} textRole="headline">
+            CH 42 · 21:30–22:00
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            <Text as="strong" strong textRole="compact" tone="primary">
+              {MONO_RULE}
+            </Text>{" "}
+            Channel numbers, clock times, durations, ids, state badges — anything the system emitted rather
+            than authored.
+          </Text>
+        </Card>
+      </Grid>
     </Stack>
 
     <Surface backgroundColor="transparent" borderWidth={0} gap="control" padding={0}>
@@ -95,44 +102,62 @@ const Typography = () => (
       <Text as="h2" textRole="heading">
         Scale
       </Text>
-      <Stack className="divide-border divide-y">
-        {Object.entries(webType.size).map(([name, px]) => (
-          <Stack align="baseline" direction="row" gap="4" key={name} paddingVertical={12}>
-            <span className="text-static-400 w-12 shrink-0 font-mono text-[11px]">{name}</span>
-            <span className="text-static-400 w-12 shrink-0 font-mono text-[11px] tabular-nums">
+      <Stack>
+        {Object.entries(webType.size).map(([name, px], row) => (
+          <Stack
+            align="baseline"
+            borderColor="borderDecorative"
+            borderTopWidth={row === 0 ? 0 : 1}
+            direction="row"
+            gap="4"
+            key={name}
+            paddingVertical={12}
+          >
+            <Text flexShrink={0} textRole="mono" tone="muted" width={48}>
+              {name}
+            </Text>
+            <Text fontVariant={["tabular-nums"]} flexShrink={0} textRole="mono" tone="muted" width={48}>
               {`${px}px`}
-            </span>
-            <span style={{ fontSize: px }} className="min-w-0 flex-1 truncate">
+            </Text>
+            <Text
+              flex={1}
+              minWidth={0}
+              numberOfLines={1}
+              style={{ fontSize: px, lineHeight: "inherit" }}
+              textRole="body"
+            >
               Channels play what's ready
-            </span>
-            <Text as="span" className="hidden shrink-0 sm:block" textRole="hint" tone="secondary">
+            </Text>
+            <Text className="hidden sm:block" flexShrink={0} textRole="hint" tone="muted">
               {SIZE_USE[name]}
             </Text>
           </Stack>
         ))}
       </Stack>
-      <Text as="p" className="max-w-2xl" textRole="compact" tone="secondary">
-        Seven sizes, and nothing between them. A component reaching for an off-scale value is usually solving
-        a spacing problem with type — the scale is short on purpose so that shows up as a decision rather than
-        a drift.
-      </Text>
+      <Stack maxWidth={672}>
+        <Text as="p" textRole="compact" tone="secondary">
+          Seven sizes, and nothing between them. A component reaching for an off-scale value is usually
+          solving a spacing problem with type — the scale is short on purpose so that shows up as a decision
+          rather than a drift.
+        </Text>
+      </Stack>
     </Stack>
 
     <Stack gap="control" render="section">
       <Text as="h2" textRole="heading">
         Leading
       </Text>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <Grid columns={{ base: 1, sm: 2 }} gap="4">
         {Object.entries(webType.leading).map(([name, value]) => (
-          <Stack className="border-border rounded-md border" gap="inline" key={name} padding={16}>
-            <div className="text-static-400 font-mono text-[11px]">{`${name} · ${value}`}</div>
-            <Text style={{ lineHeight: value }} as="p" textRole="compact">
+          <Card gap="inline" key={name} padding={16}>
+            <Text textRole="mono" tone="muted">{`${name} · ${value}`}</Text>
+            <Text as="p" style={{ lineHeight: value }} textRole="body">
               A channel is a wall clock, not a playlist that starts when someone watches. Tune in forty
               minutes into an hour-long film and you land forty minutes in.
             </Text>
-          </Stack>
+          </Card>
         ))}
-      </div>
+      </Grid>
     </Stack>
   </Stack>
 );
