@@ -166,6 +166,43 @@ describe("PressableRow", () => {
       unmount();
     });
 
+    it("hands a function child and a function selected the link's state, as a router Link gives it", () => {
+      // A stand-in for a router Link: it calls a function child with its own `isActive`.
+      const RouterLink = ({
+        children,
+        isActive,
+        ...props
+      }: {
+        children?: (state: { isActive: boolean }) => React.ReactNode;
+        isActive: boolean;
+      } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children?.({ isActive })}</a>;
+      const row = (isActive: boolean) => (
+        <PressableRow
+          render={<RouterLink href="/guide" isActive={isActive} />}
+          selected={({ isActive: active }) => active}
+        >
+          {({ isActive: active }) => (active ? "Guide, here" : "Guide")}
+        </PressableRow>
+      );
+
+      const here = mount(row(true));
+      expect(here.container.querySelector("a")?.textContent).toBe("Guide, here");
+      here.unmount();
+
+      const away = mount(row(false));
+      expect(away.container.querySelector("a")?.textContent).toBe("Guide");
+      away.unmount();
+
+      // The fill follows `selected`: the active row draws differently from the idle one.
+      const filled = mount(row(true));
+      const idle = mount(row(false));
+      expect(filled.container.querySelector("a")?.innerHTML).not.toBe(
+        idle.container.querySelector("a")?.innerHTML.replace("Guide", "Guide, here"),
+      );
+      filled.unmount();
+      idle.unmount();
+    });
+
     it("leaves a disabled link out of the tab order and ignores its press", () => {
       const onPress = vi.fn();
       const { container, unmount } = mount(

@@ -13,11 +13,22 @@ import { Pressable } from "react-native";
 import { useFocusLook } from "../focus-look";
 import { semanticSpace } from "../tokens";
 
+/** What a router link reports about itself, which a link row reads to draw the current page. */
+type PressableRowLinkState = { isActive: boolean };
+
 type PressableRowProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
-  /** The row's content, laid out as a row: a thumbnail, a block of text, a trailing status. */
-  children: ReactNode;
-  /** The row is the current one of its set (the open item, the highlighted option): an elevated fill. */
-  selected?: boolean;
+  /**
+   * The row's content, laid out as a row: a thumbnail, a block of text, a trailing status. Given as
+   * a function it receives the link's state, so a nav row can read whether its route is the
+   * current one (`isActive`); a plain row is never active.
+   */
+  children: ReactNode | ((state: PressableRowLinkState) => ReactNode);
+  /**
+   * The row is the current one of its set (the open item, the highlighted option): an elevated
+   * fill. Given as a function it receives the link's state, to follow the route (`isActive`) or to
+   * override it.
+   */
+  selected?: boolean | ((state: PressableRowLinkState) => boolean);
   /** A hairline under the row, for rows stacked in a list. */
   divided?: boolean;
   /**
@@ -64,11 +75,12 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
     ) => {
       const focusLook = useFocusLook({ onBlur, onFocus });
       const [hovered, setHovered] = useState(false);
-      const filled = selected || (hovered && !disabled);
       const role = accessibilityRole ?? (render ? undefined : "button");
-      const content = (
+      const isSelected = (state: PressableRowLinkState) =>
+        typeof selected === "function" ? selected(state) : selected;
+      const drawn = (state: PressableRowLinkState) => (
         <View
-          backgroundColor={filled ? "$surfaceElevated" : "transparent"}
+          backgroundColor={isSelected(state) || (hovered && !disabled) ? "$surfaceElevated" : "transparent"}
           borderBottomColor="$borderDecorative"
           borderBottomWidth={divided ? 1 : 0}
         >
@@ -82,10 +94,11 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
             paddingHorizontal={semanticSpace.control - 2}
             paddingVertical={semanticSpace.inline}
           >
-            {children}
+            {typeof children === "function" ? children(state) : children}
           </View>
         </View>
       );
+      const idle: PressableRowLinkState = { isActive: false };
 
       if (isWeb && render && isValidElement(render)) {
         // The host element takes DOM names, not Pressable's: a press is a click, and a label is an
@@ -106,11 +119,12 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
           render,
           {
             ...aria,
-            "aria-current": selected && role === "link" ? "page" : undefined,
+            // The router's own link already sets `aria-current` from its route.
+            ...(selected === true && role === "link" ? { "aria-current": "page" } : {}),
             "aria-disabled": disabled || undefined,
             "aria-label": accessibilityLabel ?? (aria["aria-label"] as string | undefined),
             "aria-selected":
-              role === undefined || role === "button" || role === "link" ? undefined : selected,
+              role === undefined || role === "button" || role === "link" ? undefined : isSelected(idle),
             "data-testid": testID,
             onBlur: (event: unknown) => {
               focusLook.onBlur(event as never);
@@ -153,7 +167,11 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
             },
             tabIndex: disabled ? -1 : undefined,
           },
-          content,
+          // A router link calls a function child with its state, which is how the row learns its
+          // route is the current one. Any other element takes the drawn row as it is.
+          typeof children === "function" || typeof selected === "function"
+            ? (((state: PressableRowLinkState) => drawn(state ?? idle)) as unknown as ReactNode)
+            : drawn(idle),
         ) as ReactElement;
       }
 
@@ -163,7 +181,7 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
           // `selected` is announced only for a role that has it (option, tab, row): aria-selected on a
           // plain button is invalid, so a button row shows the fill alone.
           accessibilityState={{ ...accessibilityState, disabled }}
-          aria-selected={role === "button" ? undefined : selected}
+          aria-selected={role === "button" ? undefined : isSelected(idle)}
           disabled={disabled}
           onBlur={focusLook.onBlur}
           onFocus={focusLook.onFocus}
@@ -173,7 +191,7 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
           style={({ pressed }) => ({ opacity: disabled ? 0.55 : pressed ? 0.82 : 1, width: "100%" })}
           {...props}
         >
-          {content}
+          {drawn(idle)}
         </Pressable>
       );
     },

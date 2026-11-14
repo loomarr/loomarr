@@ -73,7 +73,6 @@ describe("AppShell", () => {
     await screen.findByRole("main");
     const rail = [
       screen.getByRole("button", { name: /search/i }),
-      screen.getByRole("link", { name: "Guide" }),
       screen.getByRole("link", { name: /About/ }),
       screen.getByRole("link", { name: /Your account/ }),
     ];
@@ -334,12 +333,10 @@ describe("AppShell", () => {
       // route must light the rail's Watch entry, not just the one it links to.
       renderShellAt("/watch/$id", { isAdmin: true, watchChannelId: "ch-7" });
       const watch = await screen.findByRole("link", { name: "Watch" });
-      // "You are here" is neutral (#1909 Q1): elevated fill, foreground text at the role's strong weight, never amber.
-      expect(watch).toHaveClass("bg-static-800", "text-foreground");
+      // "You are here" is neutral (#1909 Q1): the current page, with its label at the role's strong weight.
+      expect(watch).toHaveAttribute("aria-current", "page");
       expect(within(watch).getByText("Watch")).toHaveStyle({ fontWeight: "600" });
-      // Amber is focus only: the focus-visible ring is the one place `signal` may appear.
-      expect(watch.className.replace(/focus-visible:ring-signal/, "")).not.toContain("signal");
-      expect(screen.getByRole("link", { name: "Guide" })).not.toHaveClass("bg-static-800");
+      expect(screen.getByRole("link", { name: "Guide" })).not.toHaveAttribute("aria-current", "page");
     });
 
     it.each(["info", "programming", "filler", "danger"] as const)(
@@ -347,25 +344,24 @@ describe("AppShell", () => {
       async (section) => {
         renderShellAt(`/channels/$id/${section}`, { isAdmin: true, watchChannelId: "ch-7" });
         const guide = await screen.findByRole("link", { name: "Guide" });
-        expect(guide).toHaveClass("bg-static-800", "text-foreground");
-        expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-static-800");
+        expect(guide).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("link", { name: "Watch" })).not.toHaveAttribute("aria-current", "page");
       },
     );
 
     it("highlights Guide, not Watch, on the channel's info route (member)", async () => {
       renderShellAt("/channels/$id/info", { isAdmin: false, watchChannelId: "ch-7" });
       const guide = await screen.findByRole("link", { name: "Guide" });
-      expect(guide).toHaveClass("bg-static-800", "text-foreground");
-      expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-static-800");
+      expect(guide).toHaveAttribute("aria-current", "page");
+      expect(screen.getByRole("link", { name: "Watch" })).not.toHaveAttribute("aria-current", "page");
     });
 
     it("still highlights Guide normally when actually on /guide", async () => {
       renderShellAt("/guide", { isAdmin: true, watchChannelId: "ch-7" });
       const guide = await screen.findByRole("link", { name: "Guide" });
       expect(guide).toHaveAttribute("data-status", "active");
-      // `data-status` alone proved nothing: the drawn state once never reached /guide itself.
-      expect(guide).toHaveClass("data-[status=active]:bg-static-800");
-      expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-static-800");
+      expect(guide).toHaveAttribute("aria-current", "page");
+      expect(screen.getByRole("link", { name: "Watch" })).not.toHaveAttribute("aria-current", "page");
     });
   });
 });
