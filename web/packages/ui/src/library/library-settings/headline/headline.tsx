@@ -28,7 +28,9 @@ const Headline = ({
       </Line>
     );
   }
-  const reading = scan.step === "reading";
+  // While media is added the block keeps one shape whatever the step: every line holds its place,
+  // blank when it has nothing to say, so nothing under it jumps as steps change, a second walk
+  // starts beside the reading, or the scan pauses.
   return (
     <>
       <Line gap="control">
@@ -48,31 +50,17 @@ const Headline = ({
           <Text textRole="body" tone="secondary">
             {words.stepLine}
           </Text>
-          {scan.paused ? (
-            <Text textRole="body" tone="secondary">
-              Picks up again when everyone's done watching.
+          <Text textRole="body" tone="secondary">
+            {scan.paused ? "Picks up again when everyone's done watching." : words.timeLine}
+          </Text>
+          {/* A clipped, min-width-0 box is what lets the design system truncate. */}
+          <Stack flexShrink={1} minWidth={0} overflow="hidden">
+            <Text numberOfLines={1} textRole="mono" tone="secondary">
+              {words.current ?? " "}
             </Text>
-          ) : (
-            <>
-              <Text textRole="body" tone="secondary">
-                {words.timeLine}
-              </Text>
-              {words.current ? (
-                // A clipped, min-width-0 box is what lets the design system truncate.
-                <Stack flexShrink={1} minWidth={0} overflow="hidden">
-                  <Text numberOfLines={1} textRole="mono" tone="secondary">
-                    {words.current}
-                  </Text>
-                </Stack>
-              ) : null}
-              {reading ? (
-                <Text textRole="body" tone="secondary">
-                  Titles appear as they're ready.
-                </Text>
-              ) : null}
-              {reading && readySoFar.length > 0 ? <ReadySoFar titles={readySoFar} /> : null}
-            </>
-          )}
+          </Stack>
+          {/* Each title fills its place here as it is ready: the scan's work shown, not said. */}
+          <ReadySoFar titles={readySoFar} />
         </Stack>
       ) : null}
     </>

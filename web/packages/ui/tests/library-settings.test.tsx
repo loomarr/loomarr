@@ -270,7 +270,9 @@ describe("LibrarySettings", () => {
     expect(host.textContent).toContain("Step 1 of 3 · Looking through your folders · 112 of 533");
     expect(host.textContent).toContain("About 9 minutes left in this step");
     expect(host.textContent).toContain("TV / Night Ferry / Season 2");
-    expect(host.textContent).not.toContain("Titles appear as they're ready.");
+    // The titles' row is shown, not said: no words about it, its place kept from the start.
+    expect(host.textContent).not.toContain("Titles appear");
+    expect(host.textContent).not.toContain("so far");
     expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("21");
     expect(twirls(host)).toBe(1);
     cleanup();
@@ -285,7 +287,6 @@ describe("LibrarySettings", () => {
     expect(host.textContent).toContain("Step 2 of 3 · Reading each file · 25 of 100");
     expect(host.textContent).toContain("Working out how long this takes…");
     expect(host.textContent).toContain("Night Ferry S02E03.mkv");
-    expect(host.textContent).toContain("Titles appear as they're ready.");
     expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25");
     cleanup();
   });
@@ -350,20 +351,50 @@ describe("LibrarySettings", () => {
     cleanup();
   });
 
-  it("shows the first five titles ready so far while the import runs, and none while paused", () => {
+  it("shows the first five titles found so far while the import runs, paused or not", () => {
     const reading = READING;
     const readySoFar = ["Quiet Harbor", "Paper Kites", "Tidewater", "Harbour Lights", "Alpha", "Zulu"].map(
-      (name, i) => ({ id: `9000095${i}`, name }),
+      (name, i) => ({ id: `9000095${i}`, name, ready: true }),
     );
     const adding = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar });
-    expect(adding.host.textContent).toContain("Ready so far");
     expect(adding.host.textContent).toContain("Alpha");
     expect(adding.host.textContent).not.toContain("Zulu");
     adding.cleanup();
 
     const none = render({ health: "ok", folders: [TV_IN_USE], scan: reading, readySoFar: [] });
-    expect(none.host.textContent).not.toContain("Ready so far");
+    expect(none.host.textContent).not.toContain("Alpha");
     none.cleanup();
+
+    // A title still being prepared shows faded; once ready, in full.
+    const poster = (id: string) => <span data-poster={id} />;
+    const mixed = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: WALKING,
+      readySoFar: [
+        { id: "90000960", name: "Quiet Harbor", ready: false, poster: poster("90000960") },
+        { id: "90000961", name: "Paper Kites", ready: true, poster: poster("90000961") },
+      ],
+    });
+    expect(mixed.host.textContent).toContain("Quiet Harbor");
+    // The frame each poster sits in: faded below full opacity while the title is prepared.
+    // The package compiles without the DOM lib, so the jsdom side is typed structurally.
+    type Node = { parentElement: Node | null };
+    const { getComputedStyle } = globalThis as unknown as {
+      getComputedStyle(node: Node): { opacity: string };
+    };
+    const opacity = (id: string) => {
+      let at = (mixed.host.querySelector(`[data-poster="${id}"]`) as Node | null)?.parentElement ?? null;
+      while (at && at !== (mixed.host as unknown as Node)) {
+        const value = getComputedStyle(at).opacity;
+        if (value !== "" && value !== "1") return Number(value);
+        at = at.parentElement;
+      }
+      return 1;
+    };
+    expect(opacity("90000960")).toBeLessThan(1);
+    expect(opacity("90000961")).toBe(1);
+    mixed.cleanup();
 
     const paused = render({
       health: "ok",
@@ -371,8 +402,18 @@ describe("LibrarySettings", () => {
       scan: { ...reading, paused: true },
       readySoFar,
     });
-    expect(paused.host.textContent).not.toContain("Ready so far");
+    // Titles found stay while the scan waits, and a walk starting again keeps them too.
+    expect(paused.host.textContent).toContain("Alpha");
+    expect(paused.host.textContent).toContain("Picks up again when everyone's done watching.");
     paused.cleanup();
+    const walking = render({
+      health: "ok",
+      folders: [TV_IN_USE],
+      scan: { ...reading, step: "walking" },
+      readySoFar,
+    });
+    expect(walking.host.textContent).toContain("Alpha");
+    walking.cleanup();
   });
 
   it("scans now, and refreshes everything only once asked", () => {
