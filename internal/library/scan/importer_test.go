@@ -1160,13 +1160,18 @@ func TestReleasingAFolderStopsItsReads(t *testing.T) {
 	}
 	read := h.im.Header
 	var (
-		mu    sync.Mutex
-		reads int
+		mu sync.Mutex
+		// after counts the reads begun once the folder was forgotten.
+		reads, after int
+		forgotten    bool
 	)
 	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
 		mu.Lock()
 		reads++
 		first := reads == 1
+		if forgotten {
+			after++
+		}
 		mu.Unlock()
 		if first {
 			// "Stop using" lands, and a pass forgets the folder, while the stage reads.
@@ -1179,6 +1184,9 @@ func TestReleasingAFolderStopsItsReads(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
+			mu.Lock()
+			forgotten = true
+			mu.Unlock()
 		}
 		return read(ctx, path)
 	}
@@ -1187,9 +1195,10 @@ func TestReleasingAFolderStopsItsReads(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("%d of the forgotten folder's files saved back, %v", len(rows), err)
 	}
-	// The reads in flight when it was forgotten finish; no more start.
-	if reads > 2*headerConcurrency {
-		t.Fatalf("read %d of %d files after the folder was released", reads, files)
+	// A reader already past its file's check when the folder was forgotten still reads it; no
+	// other read starts.
+	if after > headerConcurrency-1 {
+		t.Fatalf("%d reads began after the folder was forgotten, of %d files", after, files)
 	}
 }
 
