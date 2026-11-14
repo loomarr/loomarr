@@ -119,7 +119,13 @@ const Typography = () => (
             <Text fontVariant={["tabular-nums"]} flexShrink={0} textRole="mono" tone="muted" width={48}>
               {`${px}px`}
             </Text>
-            <Text flex={1} minWidth={0} numberOfLines={1} style={{ fontSize: px }} textRole="body">
+            <Text
+              flex={1}
+              minWidth={0}
+              numberOfLines={1}
+              style={{ fontSize: px, lineHeight: 1.15 }}
+              textRole="body"
+            >
               Channels play what's ready
             </Text>
             <Text className="hidden sm:block" flexShrink={0} textRole="hint" tone="muted">

@@ -306,7 +306,11 @@ const SupportBundle = ({
                   </Stack>
                 </Grid>
                 {warnings.length > 0 ? (
-                  <Notice body={`${warnings.join(", ")}.`} title="Some evidence is limited" tone="warn" />
+                  <Notice
+                    body={`${warnings.join(", ").replace(/^./, (first) => first.toUpperCase())}.`}
+                    title="Some evidence is limited"
+                    tone="warn"
+                  />
                 ) : (
                   <Text as="p" textRole="hint" tone="secondary">
                     No evidence limits were reached in this review.
