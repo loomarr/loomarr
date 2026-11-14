@@ -5,11 +5,11 @@ import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
 
 const SignInLink = () => (
-  <a className="text-signal underline-offset-4 hover:underline" href="/login">
-    <Text as="span" textRole="compact" tone="signal">
+  <Text as="span" textRole="compact">
+    <a className="text-signal underline-offset-4 hover:underline" href="/login">
       Back to sign in
-    </Text>
-  </a>
+    </a>
+  </Text>
 );
 
 const PasswordRecoveryRequest = ({

@@ -76,11 +76,11 @@ const LoginForm = ({
         )}
       </form.AppField>
 
-      <a className="text-signal -mt-3 self-end underline-offset-4 hover:underline" href="/forgot-password">
-        <Text as="span" textRole="compact" tone="signal">
+      <Text as="div" className="-mt-3 self-end" textRole="compact">
+        <a className="text-signal underline-offset-4 hover:underline" href="/forgot-password">
           Forgot password?
-        </Text>
-      </a>
+        </a>
+      </Text>
 
       <Action disabled={isPending} submit>
         {isPending ? "Signing in…" : "Sign in"}

@@ -116,7 +116,11 @@ const SortableLineupRow = ({
       placeholder={placeholder}
       aria-label={`${entry.name} ${bound === "seasonMin" ? "first" : "last"} season`}
       className="border-border bg-background focus-visible:ring-ring w-16 rounded border px-2 py-1 focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
-      style={{ fontSize: typography.pointer.hint.size, fontWeight: typography.pointer.hint.weight }}
+      style={{
+        fontSize: typography.pointer.hint.size,
+        fontWeight: typography.pointer.hint.weight,
+        lineHeight: `${typography.pointer.hint.lineHeight}px`,
+      }}
       onBlur={(e) => {
         const next = e.target.value === "" ? undefined : Number(e.target.value);
         if (next === (value || undefined)) return;

@@ -296,6 +296,7 @@ const ChannelIconField = ({
                     style={{
                       fontSize: typography.pointer.compact.size,
                       fontWeight: typography.pointer.compact.weight,
+                      lineHeight: `${typography.pointer.compact.lineHeight}px`,
                     }}
                   />
                   {uploading && <ActivityIndicator decorative size="compact" tone="muted" />}
