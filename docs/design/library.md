@@ -523,7 +523,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
 - **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
-  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
+  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. A title
+  known only by another catalog's id (a `tvshow.nfo` with only its TVDB or IMDb id) is looked up by
+  it, through TMDB's `/find` (`tvdb:series:<id>`, `imdb:series:<id>`, `imdb:movie:<id>`). Once
+  found it is cached and keyed by TMDB's own id too, as its seasons and orders are. An id only a
+  name or an NFO gives, that the catalog was asked for and does not know, grounds nothing: the
+  title is in Needs you, not matched in silence. An arr's id always grounds. The first answer for a
+  catalog row, "no such title" included, writes its titles again. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
   answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the

@@ -332,6 +332,41 @@ func (p *Provider) episodeOrder(ctx context.Context, loc locale, id string) (mp.
 	return rec, nil
 }
 
+// byFind fetches a movie or series an NFO knows only by its TVDB or IMDb id: /find names TMDB's
+// own, and the title is TMDB's record by it, whose ids carry TMDB's own first.
+func (p *Provider) byFind(ctx context.Context, loc locale, ref mp.Ref) (mp.Record, error) {
+	source := map[mp.Namespace]string{mp.NamespaceTVDB: "tvdb_id", mp.NamespaceIMDB: "imdb_id"}[ref.ID.Namespace]
+	value := strings.TrimSpace(ref.ID.Value)
+	if source == "" || value == "" || strings.ContainsAny(value, "/?#") {
+		return mp.Record{}, fmt.Errorf("tmdb: %s by %s %q: %w", ref.Kind, ref.ID.Namespace, ref.ID.Value, mp.ErrUnsupported)
+	}
+	var found struct {
+		Movies []struct {
+			ID int `json:"id"`
+		} `json:"movie_results"`
+		Series []struct {
+			ID int `json:"id"`
+		} `json:"tv_results"`
+	}
+	q := url.Values{"external_source": {source}}
+	if err := p.get(ctx, "/find/"+url.PathEscape(value)+"?"+q.Encode(), &found); err != nil {
+		return mp.Record{}, err
+	}
+	id := 0
+	if ref.Kind == mp.KindMovie && len(found.Movies) > 0 {
+		id = found.Movies[0].ID
+	} else if ref.Kind == mp.KindSeries && len(found.Series) > 0 {
+		id = found.Series[0].ID
+	}
+	if id <= 0 {
+		return mp.Record{}, fmt.Errorf("tmdb %s %s %s: %w", ref.Kind, ref.ID.Namespace, value, mp.ErrNotFound)
+	}
+	if ref.Kind == mp.KindMovie {
+		return p.movie(ctx, loc, id)
+	}
+	return p.series(ctx, loc, id)
+}
+
 // ---- episode ----
 
 type wireFind struct {

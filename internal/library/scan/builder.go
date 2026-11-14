@@ -503,6 +503,22 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 	out.catalog = b.im.Keys.For(in.Kind, pickedIDs(out.resolved.IDs))
 	rec, ok, waiting := b.im.catalogRecord(ctx, out.catalog)
 	out.waiting = waiting
+	titled := in.Kind == mp.KindMovie || in.Kind == mp.KindSeries
+	if ok && titled {
+		// A title its NFO knows by another catalog's id is keyed by the catalog's own once found, as
+		// its seasons and orders are; the Enricher caches the record by both.
+		if own := b.im.Keys.For(in.Kind, rec.IDs); own.String() != "" && own != out.catalog {
+			if canon, cached, _ := b.im.catalogRecord(ctx, own); cached {
+				out.catalog, rec = own, canon
+			}
+		}
+	}
+	// An id only a name or an NFO gives, that the catalog was asked for and does not know, grounds
+	// nothing: the title is the household's to say (Needs you), not one matched in silence.
+	if !ok && !waiting && titled && (out.match.Basis == string(mp.BasisSidecar) || out.match.Basis == string(mp.BasisEmbeddedID)) &&
+		b.im.catalogMisses(ctx, out.catalog) {
+		out.match = librarystore.LibraryMatch{}
+	}
 	if ok {
 		out.record = &rec
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)

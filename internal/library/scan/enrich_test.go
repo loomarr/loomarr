@@ -40,6 +40,9 @@ func (f *fakeCatalog) Capabilities() mp.Capabilities {
 var fakeCatalogKeys = CatalogKeys{
 	{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 	{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceTVDB},
+	{Kind: mp.KindSeries, Namespace: mp.NamespaceIMDB},
+	{Kind: mp.KindMovie, Namespace: mp.NamespaceIMDB},
 	{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 	{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
 	{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
@@ -339,6 +342,62 @@ func TestEnricherDescribesAnEpisodeByItsTVDBID(t *testing.T) {
 	}
 	if facts.SeasonNumber != 1 || facts.EpisodeNumber != 2 {
 		t.Fatalf("numbering = S%dE%d, want the file's S1E2 (TMDB's record carries none)", facts.SeasonNumber, facts.EpisodeNumber)
+	}
+}
+
+// A show its tvshow.nfo knows only by a TVDB id is looked up by it, and once found is keyed by the
+// catalog's own id, so its episodes take their season's entries. One whose id the catalog doesn't
+// know is the household's to say: it is in Needs you, not matched in silence.
+func TestAShowItsNFOKnowsByAnotherIDIsLookedUpByIt(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for show, tvdb := range map[string]string{"Harbour Lights": "90000911", "Quay Street": "90000912"} {
+		h.file(show+"/Season 01/"+show+" S01E01.mkv", 10)
+		doc := `<tvshow><title>` + show + `</title><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></tvshow>`
+		if err := os.WriteFile(filepath.Join(h.root, show, "tvshow.nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000911": {Source: src, Kind: mp.KindSeries,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000901"}, {Namespace: mp.NamespaceTVDB, Value: "90000911"}},
+			Descriptive: &mp.Descriptive{Title: "Harbour Lights", Overview: "A lighthouse keeps its town.",
+				Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 1}}}},
+		"90000901/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000921"}},
+			Numbering: &mp.Numbering{Season: 1, Episode: 1}, Descriptive: &mp.Descriptive{Title: "Lamp Lit"},
+		}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !slices.Contains(catalog.fetched, "series:90000911") {
+		t.Fatalf("fetched %v, want the show by its NFO's TVDB id", catalog.fetched)
+	}
+	episode := fileOrigin(h.root, "Harbour Lights/Season 01/Harbour Lights S01E01.mkv")
+	if got := h.origin(h.item(episode), episode).Observation.Facts.Name; got != "Lamp Lit" {
+		t.Fatalf("the episode = %q, want its season's entry, Lamp Lit", got)
+	}
+	needs, err := h.st.LibraryNeeds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, n := range needs {
+		names = append(names, n.Name)
+	}
+	if !slices.Equal(names, []string{"Quay Street"}) {
+		t.Fatalf("Needs you = %v, want only the show the catalog doesn't know", names)
 	}
 }
 
