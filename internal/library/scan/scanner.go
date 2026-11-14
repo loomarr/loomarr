@@ -398,6 +398,18 @@ func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
 	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
 		return err
 	}
+	if !inUse {
+		// A pass forgets a released root first thing, but the next pass waits for the running
+		// one's reading, which on a first import is most of it: the folder is forgotten here, now,
+		// in the background, waiting at most for a walk under way. The header stage then reads
+		// none of its files that are left.
+		im := l.Scanner.Importer
+		go func(ctx context.Context) {
+			if err := im.ForgetReleased(ctx); err != nil {
+				im.log().Warn("library scan: a released folder's files were not forgotten", "err", err)
+			}
+		}(context.WithoutCancel(ctx))
+	}
 	if l.Enabled() {
 		l.Scanner.Trigger()
 	}
