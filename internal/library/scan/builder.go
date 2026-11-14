@@ -362,8 +362,9 @@ func (id identity) cheapIDs() []inventory.ExternalID {
 // the builder.
 //
 // waiting reports an item written without a catalog record it asked for: its own, its season's,
-// or, for an episode, its series'. The file is then saved with no identity, so the next pass over
-// its folder writes it again. The Enricher asks for that pass once it has the record, but it can
+// or, for an episode, its series'. The file is then saved with a waiting identity (waitingFor), so
+// the next pass over its folder once the record is cached writes it again, and one before leaves
+// it. The Enricher asks for that pass once it has the record, but it can
 // fetch the record while this pass is still writing, before the file's row is saved; the row's
 // identity must not then say the file is written as it will stay (#3565).
 func (b *builder) snapshot(ctx context.Context, file File, id identity, now time.Time) (snapshot inventory.Snapshot, waiting bool) {

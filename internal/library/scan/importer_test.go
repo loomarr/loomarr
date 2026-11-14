@@ -1657,3 +1657,43 @@ func TestImportFoldersPassStaysInItsFolders(t *testing.T) {
 }
 
 func twoDigits(n int) string { return fmt.Sprintf("%02d", n) }
+
+// A title waiting for its catalog record is written once: a later pass before the record is cached
+// finds it as the last one wrote it and leaves it, so the header read the first pass queued for it
+// stays its own, not thrown away for a read at the back of the second pass's queue. A pass once
+// the record is cached writes it again (TestEnricherNamesEpisodesWhoseSeasonArrivesWhileTheirPassWrites).
+func TestATitleWaitingForItsRecordIsNotWrittenAgainUntilItComes(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	for i := range 4 {
+		h.file(fmt.Sprintf("Movies/Fen Lark %d (2001) {tmdb-930000%d}/Fen Lark %d (2001).mkv", i, i, i), 10)
+	}
+	read1, err := h.im.Walk(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written := h.inv.applied.Load()
+	read2, err := h.im.Walk(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again := h.inv.applied.Load() - written; again != 0 {
+		t.Fatalf("a second pass wrote %d waiting titles again", again)
+	}
+	before := h.reads.Load()
+	if err := read1(); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.reads.Load() - before; got != 4 {
+		t.Fatalf("the first pass's queue read %d of its 4 files; the rest were thrown away", got)
+	}
+	if err := read2(); err != nil {
+		t.Fatal(err)
+	}
+	written = h.inv.applied.Load()
+	h.run()
+	if again := h.inv.applied.Load() - written; again != 0 {
+		t.Fatalf("a pass after the reads wrote %d waiting titles again", again)
+	}
+}

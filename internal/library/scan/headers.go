@@ -343,7 +343,7 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 		row.Problem, row.Identity = problem, ""
 	case waiting:
 		// As the walk saves it: a record still to come is written on a later pass (#3565).
-		row.ItemID, row.Identity = itemID, ""
+		row.ItemID, row.Identity = itemID, waitingFor(job.id.digest)
 	default:
 		row.ItemID = itemID
 	}
