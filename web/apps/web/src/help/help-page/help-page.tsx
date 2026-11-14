@@ -68,14 +68,13 @@ const HelpPage = () => {
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
       <Stack
-        className="overflow-auto"
         direction={{ base: "column", md: "row" }}
-        flexBasis="0%"
-        flexGrow={1}
+        flex={1}
         flexShrink={1}
         gap="6"
         minHeight={0}
-        padding={24}
+        overflow="auto"
+        padding="section"
       >
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card gap={12} padding={12}>
@@ -100,15 +99,17 @@ const HelpPage = () => {
                 </li>
               ))}
               {visible.length === 0 && (
-                <Text as="li" className="px-2 py-1.5" textRole="compact" tone="secondary">
-                  No pages match.
-                </Text>
+                <Stack paddingHorizontal={8} paddingVertical={6} render="li">
+                  <Text textRole="compact" tone="secondary">
+                    No pages match.
+                  </Text>
+                </Stack>
               )}
             </Stack>
           </Card>
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <Stack flex={1} flexShrink={1} minWidth={0}>
           {doc.error ? (
             <ErrorState error={doc.error} onRetry={() => doc.refetch()} />
           ) : doc.isLoading ? (
@@ -123,7 +124,7 @@ const HelpPage = () => {
               }
             />
           )}
-        </div>
+        </Stack>
       </Stack>
     </Stack>
   );

@@ -1,5 +1,6 @@
 import { anchorOf, parseDocHref } from "@loomarr/core/anchor";
 import {
+  Card,
   Stack,
   Table,
   TableBody,
@@ -110,25 +111,17 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
           <code className="bg-static-800 rounded-sm px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
         pre: ({ children }) => (
-          <Text
-            as="pre"
-            className="border-border bg-static-900 overflow-x-auto rounded-md border p-3"
-            textRole="mono"
-            tone="primary"
-          >
-            {children}
-          </Text>
+          <Card overflowX="auto" padding={12}>
+            <Text as="pre" textRole="mono" tone="primary">
+              {children}
+            </Text>
+          </Card>
         ),
-        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        strong: ({ children }) => <strong style={{ fontWeight: 600 }}>{children}</strong>,
         blockquote: ({ children }) => (
-          <Text
-            as="blockquote"
-            className="border-static-700 border-l-2 pl-3"
-            textRole="compact"
-            tone="secondary"
-          >
+          <Stack borderColor="borderDecorative" borderLeftWidth={2} paddingLeft={12} render="blockquote">
             {children}
-          </Text>
+          </Stack>
         ),
         // Three link kinds: an INTERNAL cross-page link ("concepts",
         // "member-guide#section") is routed into the Help center (§13 — a raw href would
@@ -156,9 +149,11 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
         img: ({ src, alt }) => {
           const embedded = embeddedSrc(src);
           return embedded ? (
-            <img src={embedded} alt={alt ?? ""} className="my-2 h-auto max-w-full" loading="lazy" />
+            <img src={embedded} alt={alt ?? ""} loading="lazy" style={{ height: "auto", maxWidth: "100%" }} />
           ) : (
-            <span className="text-muted-foreground">{alt}</span>
+            <Text textRole="compact" tone="muted">
+              {alt}
+            </Text>
           );
         },
         // A page's table is the design system's, as the mock draws it. A Markdown table has no
