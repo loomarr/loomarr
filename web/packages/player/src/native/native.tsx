@@ -365,10 +365,17 @@ const NativePlayerView = ({ pictureInPicture = false, ref, style, transport }: N
 /**
  * AirPlay's route picker. iOS opens the picker only from its own button, so the AirPlay key (§9.7)
  * lays this, with its own icon clear, over the key's face; the key draws what the viewer sees.
- * Renders nothing off iOS.
+ * The list puts speakers on the same footing as TVs: with expo-video's default (video devices
+ * first), a real iPhone listed the TV but none of the household's AirPlay or Bluetooth speakers
+ * (#4130). Renders nothing off iOS.
  */
 const NativeAirPlayPicker = () => (
-  <VideoAirPlayButton activeTint="transparent" style={{ height: "100%", width: "100%" }} tint="transparent" />
+  <VideoAirPlayButton
+    activeTint="transparent"
+    prioritizeVideoDevices={false}
+    style={{ height: "100%", width: "100%" }}
+    tint="transparent"
+  />
 );
 
 const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: PairedNativeImageProps) => {
