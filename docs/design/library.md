@@ -524,7 +524,11 @@ step 5). Nothing reads the scanner's origins until the cutover.
   beside the wrong file, or TMDB's TVDB mapping points one along. So when the file's own mark
   ("S02E22") places it, and TMDB numbers the show as the disk does (below), TMDB's season entry at
   that mark is checked against the id's record. An entry that shares no id with it stands over
-  the id: the file is described and keyed by its own number (`ownNumberOver`). An episode id also
+  the id: the file is described and keyed by its own number (`ownNumberOver`). In a show TMDB
+  numbers otherwise, the title the file's name gives after its mark (`toldTitle`; "Episode 4"
+  says none) weighs the id instead: an id whose record that title names stands, and one it
+  doesn't gives way to TMDB's season entry at the mark when the title names that, or else to the
+  file's own details, unnumbered, for Needs you. An episode id also
   grounds only the same episode in the inventory: an episode file never joins a title another of
   whose files is numbered otherwise, so two episodes sharing a stale id stay two titles, and
   neither is offered as an extra copy. An episode with no TVDB id takes TMDB's entry for its season and number,

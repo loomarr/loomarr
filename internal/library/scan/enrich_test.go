@@ -561,6 +561,65 @@ func TestAnNFONumberingAnotherEpisodeDoesNotNameTheFile(t *testing.T) {
 	}
 }
 
+// A show the catalog numbers unlike the disk, here a season missing its last episode, has no entry
+// at a file's mark to weigh an episode id against, so the file's own title does. An id whose record
+// the title doesn't name gives way to TMDB's entry at the mark that the title does name; an id whose
+// record it names stands, wherever TMDB numbers that episode.
+func TestAnEpisodeIDItsFilesTitleDoesNotNameGivesWayInAShowNumberedOtherwise(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000089" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	dir := "Pine Links (2010) {tmdb-90000801}/Season 01/"
+	nfo := func(name string, episode int, tvdb string) {
+		doc := `<episodedetails><title>Stale</title><season>1</season><episode>` + strconv.Itoa(episode) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, dir, name+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, second := "Pine Links (2010) - S01E01 - Tee Off [HDTV-720p]", "Pine Links (2010) - S01E02 - The Back Nine [HDTV-720p]"
+	h.file(dir+first+".mkv", 10)
+	h.file(dir+second+".mkv", 10)
+	nfo(second, 2, "90090803") // the 3rd's id
+	nfo(first, 1, "90090805")  // its own, which TMDB numbers 5th
+	h.run()
+	third, fifth := entry(3, "Sudden Death"), entry(5, "Tee Off")
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000801": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{Title: "Pine Links", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 5}}}},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Opening Drive"), entry(2, "The Back Nine"), third, entry(4, "Clubhouse"), fifth}},
+		"90090803": {Source: src, Kind: mp.KindEpisode, Descriptive: third.Descriptive, Numbering: third.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090803"}, third.IDs[0]}},
+		"90090805": {Source: src, Kind: mp.KindEpisode, Descriptive: fifth.Descriptive, Numbering: fifth.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090805"}, fifth.IDs[0]}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ file, name string }{{second, "The Back Nine"}, {first, "Tee Off"}} {
+		o := fileOrigin(h.root, dir+c.file+".mkv")
+		facts := h.origin(h.item(o), o).Observation.Facts
+		if facts.Name != c.name || facts.Overview != c.name+"." {
+			t.Errorf("%s = %q (%q), want %q with the catalog's overview", c.file, facts.Name, facts.Overview, c.name)
+		}
+	}
+}
+
 // #3565: the Enricher runs beside the scanner, so it can fetch a season while the pass that asked
 // for it is still writing: after the episodes are written without it, before their file rows are
 // saved. The rewrite it asks for must still name them. The pass saved each row's identity as final,
