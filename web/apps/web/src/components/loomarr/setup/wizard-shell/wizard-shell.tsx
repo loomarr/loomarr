@@ -45,8 +45,10 @@ const WizardShell = ({
   className,
 }: WizardShellProps) => (
   <Grid
-    className={cn("bg-background relative min-h-screen", className)}
+    className={cn("bg-background relative", className)}
     columns={{ base: 1, md: ["17rem", "1fr"] }}
+    // A prop, not `min-h-screen`: a View's own `min-height: 0` outranks the utility.
+    minHeight="100vh"
     render="main"
   >
     {/* Behind everything: the static is a positioned layer, so content siblings need an
