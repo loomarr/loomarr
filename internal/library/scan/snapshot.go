@@ -538,6 +538,40 @@ var duplicateMark = regexp.MustCompile(`(?i)(\(\d{4}\))\s*(?:-\s*)?copy(?:\s*\(?
 // (bonusBeside), "Gale Spit (2004)/Cast Q and A.mkv" or "…/Return to Gale Spit.mkv", keeps its own:
 // a bonus feature named by the folder would be a second copy of the film, and a film kept there
 // is its own title. Either is listed, never skipped.
+// leadingMark is an episode's own mark at the start of what is left of its name, with the
+// separators after it: "S01E03 - ", "1x04 ".
+var leadingMark = regexp.MustCompile(`(?i)^(?:s\d{1,4}[ ._-]?e\d{1,4}(?:[-e]+\d{1,4})*|\d{1,2}x\d{2,3})(?:[ ._]*-[ ._]*|[ ._]+)`)
+
+// episodeName is what an episode's file calls it until a catalog does: its name read as a search
+// reads it, its release's notes set aside, less its show's name and its own mark when a title
+// follows them. "Kettle Bay - S01E03 - The Long Tide [WEBDL-1080p]" is "The Long Tide", and "Kettle
+// Bay - Holiday Special [1080p]" in its Specials is "Holiday Special". A name that is only its
+// show's and its mark, "Golf Show S01E02", says nothing more and keeps both.
+func episodeName(rel, name string) string {
+	title, _, _ := searchQuery(name, 0)
+	if title == "" {
+		return name
+	}
+	rest := title
+	for d := path.Dir(rel); d != "."; d = path.Dir(d) {
+		show := showFolderName(path.Base(d))
+		if show == "" || len(rest) <= len(show) || !strings.EqualFold(rest[:len(show)], show) {
+			continue
+		}
+		if after := strings.TrimLeft(rest[len(show):], " ._"); after != rest[len(show):] || strings.HasPrefix(after, "-") {
+			rest = strings.TrimLeft(strings.TrimPrefix(after, "-"), " ._")
+			break
+		}
+	}
+	if m := leadingMark.FindStringIndex(rest); m != nil {
+		rest = rest[m[1]:]
+	}
+	if rest = strings.TrimSpace(rest); rest == "" || leadingMark.MatchString(rest+" ") {
+		return title
+	}
+	return rest
+}
+
 func fallbackName(rel string, kind mp.Kind, part int, sole bool) string {
 	clean := func(name string) string {
 		name = strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
@@ -551,6 +585,9 @@ func fallbackName(rel string, kind mp.Kind, part int, sole bool) string {
 		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
 			return clean(path.Base(path.Dir(dir)))
 		}
+	}
+	if kind == mp.KindEpisode {
+		return clean(episodeName(rel, name))
 	}
 	// A recorder names a film it recorded by the film, then its channel and when it began: "Iron
 	// Spire (2011)_Film4_2022_05_01_21_00_00" and "Grey Harbour (1958) 2022-01-01" are "Iron Spire

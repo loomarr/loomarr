@@ -261,3 +261,25 @@ func TestPartFoldersAreAWholeSetOfOneVideoEach(t *testing.T) {
 		})
 	}
 }
+
+// An episode no catalog names yet is named as its file names it, its release's notes set aside,
+// less its show's name and its own mark when a title follows them; a name that is only those
+// keeps both.
+func TestAnEpisodeIsNamedByWhatFollowsItsShowAndMark(t *testing.T) {
+	for _, c := range []struct{ rel, want string }{
+		{"Kettle Bay/Season 01/Kettle Bay - S01E03 - The Long Tide [WEBDL-1080p].mkv", "The Long Tide"},
+		{"Kettle Bay/Specials/Kettle Bay - Holiday Special [1080p].mkv", "Holiday Special"},
+		{"Kettle Bay/Season 02/Kettle Bay - Lost Pilot (2019) {tvdb-123}.mkv", "Lost Pilot"},
+		{"Kettle Bay/Season 01/S01E04 - Undertow.mkv", "Undertow"},
+		{"Kettle Bay/Season 01/1x05 Low Water.mkv", "Low Water"},
+		{"Kettle Bay/Specials/The.Making.Of.Kettle.Bay.1080p.WEB.h264-GRP.mkv", "The Making Of Kettle Bay"},
+		{"Kettle Bay/Season 01/Kettle.Bay.S01E02.720p.HDTV.x264-GRP.mkv", "Kettle Bay S01E02"},
+		{"Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv", "Golf Show S01E02"},
+		// A longer show name that only starts with this one is not this one's.
+		{"Kettle Bayside/Season 01/Kettle Bayside S01E01.mkv", "Kettle Bayside S01E01"},
+	} {
+		if got := fallbackName(c.rel, mp.KindEpisode, 0, true); got != c.want {
+			t.Errorf("fallbackName(%q) = %q, want %q", c.rel, got, c.want)
+		}
+	}
+}
