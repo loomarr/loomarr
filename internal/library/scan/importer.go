@@ -255,10 +255,14 @@ func (im *Importer) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := im.readHeaders(ctx, queue); err != nil {
+	complete, err := im.readHeaders(ctx, queue)
+	if err != nil {
 		return err
 	}
-	im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
+	// A pass that left a folder's files unread, its share not answering, has not scanned it.
+	if complete {
+		im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
+	}
 	return nil
 }
 
@@ -338,7 +342,8 @@ func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) 
 	if err != nil {
 		return err
 	}
-	return im.readHeaders(ctx, queue)
+	_, err = im.readHeaders(ctx, queue)
+	return err
 }
 
 // importFolders walks and imports the named folders of one root, and returns the files waiting

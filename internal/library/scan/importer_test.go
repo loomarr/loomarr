@@ -1186,13 +1186,18 @@ func TestReleasingAFolderStopsItsReads(t *testing.T) {
 	}
 	read := h.im.Header
 	var (
-		mu    sync.Mutex
-		reads int
+		mu sync.Mutex
+		// after counts the reads begun once the folder was forgotten.
+		reads, after int
+		forgotten    bool
 	)
 	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
 		mu.Lock()
 		reads++
 		first := reads == 1
+		if forgotten {
+			after++
+		}
 		mu.Unlock()
 		if first {
 			// "Stop using" lands, and a pass forgets the folder, while the stage reads.
@@ -1205,6 +1210,9 @@ func TestReleasingAFolderStopsItsReads(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
+			mu.Lock()
+			forgotten = true
+			mu.Unlock()
 		}
 		return read(ctx, path)
 	}
@@ -1213,9 +1221,10 @@ func TestReleasingAFolderStopsItsReads(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("%d of the forgotten folder's files saved back, %v", len(rows), err)
 	}
-	// The reads in flight when it was forgotten finish; no more start.
-	if reads > 2*headerConcurrency {
-		t.Fatalf("read %d of %d files after the folder was released", reads, files)
+	// A reader already past its file's check when the folder was forgotten still reads it; no
+	// other read starts.
+	if after > headerConcurrency-1 {
+		t.Fatalf("%d reads began after the folder was forgotten, of %d files", after, files)
 	}
 }
 
@@ -1277,6 +1286,9 @@ func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
 	if !h.im.stalled(h.root) {
 		t.Fatal("the root does not read as stalled while the read is still out")
 	}
+	if !h.im.Progress().CompletedAt.IsZero() {
+		t.Fatal("a pass that left its folder unread says it completed")
+	}
 
 	close(release)
 	for deadline := time.Now().Add(5 * time.Second); h.im.stalled(h.root); time.Sleep(time.Millisecond) {
@@ -1287,6 +1299,71 @@ func TestHeaderReadThatNeverReturnsIsGivenUpOn(t *testing.T) {
 	h.run()
 	if got := h.fileRow(stuck).Header; got != librarystore.LibraryHeaderRead {
 		t.Fatalf("header = %q on the pass after, want read", got)
+	}
+}
+
+// One slow read, given up on, holds up its folder only until it returns: the folder's other files
+// wait, then are read in the same pass, the slow one again with them, and the pass completes.
+func TestASlowReadHoldsUpItsFolderOnlyUntilItReturns(t *testing.T) {
+	h := newHarness(t)
+	slow := h.file("Alpha (2001)/Alpha.mkv", 10)
+	const files = 20
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	h.im.HeaderStall = 50 * time.Millisecond
+	var once sync.Once
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if path == slow {
+			stuck := false
+			once.Do(func() { stuck = true })
+			if stuck {
+				time.Sleep(80 * time.Millisecond) // past the stall, then the share answers within another
+			}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != files+1 {
+		t.Fatalf("%d rows, %v; want %d", len(rows), err, files+1)
+	}
+	for _, row := range rows {
+		if row.Header != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read in the same pass", filepath.Base(row.Path), row.Header)
+		}
+	}
+	if h.im.Progress().CompletedAt.IsZero() {
+		t.Fatal("the pass read every file, yet does not say it completed")
+	}
+}
+
+// Files an arr renamed between the walk and their reads are gone from a folder still there: a run
+// of them says nothing of the share, and the files after them are read.
+func TestFilesRenamedAwayDoNotStopTheReads(t *testing.T) {
+	h := newHarness(t)
+	const gone, kept = 3 * headerFaultLimit, 10
+	for i := range gone {
+		h.file(fmt.Sprintf("Show/Season 01/Show S01E%02d.mkv", i+1), 10)
+	}
+	// Named after the show, the films are read after the run of gone files.
+	for i := range kept {
+		h.file(fmt.Sprintf("Zulu %02d (2001)/Zulu %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		if strings.Contains(path, "Season 01") {
+			return header.Header{}, &fs.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	for i := range kept {
+		path := filepath.Join(h.root, fmt.Sprintf("Zulu %02d (2001)/Zulu %02d.mkv", i, i))
+		if got := h.fileRow(path).Header; got != librarystore.LibraryHeaderRead {
+			t.Errorf("%s header = %q, want read", filepath.Base(path), got)
+		}
 	}
 }
 
