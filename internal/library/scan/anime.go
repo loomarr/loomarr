@@ -84,8 +84,11 @@ func animeRelease(name string, inAnime bool) (string, mp.Numbering, bool) {
 			m = animeNumber.FindStringSubmatch(bare)
 		}
 		// A year after a dashed number of two digits or more is the release's, "[Grp] Kaze Tori - 03
-		// (2019)", "- 12 (2019)", "- 112 (2019)": a film is never numbered so.
-		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && len(m[2]) < 2) {
+		// (2019)", "- 12 (2019)", "- 112 (2019)": a film is never numbered so. After one digit it is
+		// a sequel's, "[Grp] Dusk Lantern - 2 (2015)", unless an anime's shelf holds it, or the
+		// release's siblings number the same show and year (folderNotes.Released): a film's parts
+		// never share a year.
+		if m != nil && bracketYear.MatchString(s) && (m[2] == "" || !bracketYear.MatchString(m[1]) && len(m[2]) < 2 && !inAnime) {
 			m = nil
 		}
 		if m != nil && (tagged || m[2] != "" || grouped && strings.HasPrefix(m[3], "0")) && !yearToken.MatchString(matched(m[2], m[3])) {
