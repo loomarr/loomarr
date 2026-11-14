@@ -57,16 +57,6 @@ const Workshop = () => (
         >
           <Picture label="Unsplittable reel" />
         </MediaTile>
-        <MediaTile
-          height={64}
-          label="Preview Unsplittable reel"
-          onPress={() => undefined}
-          radius="medium"
-          tone="warning"
-          width={112}
-        >
-          <Picture label="Warning" />
-        </MediaTile>
       </Stack>
     </Stack>
     <Stack gap="inline">
