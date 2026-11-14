@@ -244,8 +244,7 @@
       "rawTypeSize": 1
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 67,
-      "rawButton": 2,
+      "tailwindClasses": 37,
       "rawTypeSize": 1
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
