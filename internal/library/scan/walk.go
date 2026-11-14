@@ -55,7 +55,8 @@ var videoExtensions = map[string]bool{
 // "_FAILED_…" folders by their prefixes (skippedPrefixes). A snapshot holds a second copy of the
 // whole library.
 var skippedDirs = map[string]bool{
-	"trickplay": true, "extrafanart": true, ".actors": true,
+	// Emby's and Kodi's artwork folders: trickplay tiles, extra backdrops and thumbnails, cast photos.
+	"trickplay": true, "extrafanart": true, "extrathumbs": true, ".actors": true,
 	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "incomplete": true,
 	"#snapshot": true, "system volume information": true, "plex versions": true,
 	// A Mac's leavings on a share, Windows' older recycle bins, NZBGet's unpacking.
@@ -439,6 +440,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 	notes.Dashed = dashedShows(path.Join(w.shelf, w.rel(dir)), videoNames)
 	notes.Root = w.shelf
 	notes.Years = looseYears(videoNames)
+	notes.Released = releasedShows(videoNames)
 	notes.MonthFirst = monthFirstDays(videoNames)
 	for _, e := range entries {
 		if e.IsDir() {

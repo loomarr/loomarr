@@ -748,6 +748,72 @@ func TestAnAbsoluteEpisodeIsPlacedByItsShowsSeasons(t *testing.T) {
 	}
 }
 
+// Kodi's "Show - 214 - Title" reads as season 2's 14th, and its show's catalog confirms it: a show
+// whose second season holds no 14th episode, but whose seasons hold a 214th, numbers it across
+// the show. One whose second season holds a 14th keeps the reading.
+func TestKodisThreeDigitsAreConfirmedByTheCatalog(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	season := func(show string, n, episodes int) mp.Record {
+		rec := mp.Record{Source: src, Kind: mp.KindSeason}
+		for e := 1; e <= episodes; e++ {
+			rec.Children = append(rec.Children, mp.Record{
+				Source: src, Kind: mp.KindEpisode,
+				IDs:         []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("%s%02d%03d", show, n, e)}},
+				Numbering:   &mp.Numbering{Season: n, Episode: e},
+				Descriptive: &mp.Descriptive{Title: fmt.Sprintf("Tide %d-%d", n, e)},
+			})
+		}
+		return rec
+	}
+	series := func(id, title string, sizes ...mp.SeasonSize) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, Seasons: sizes, Orders: []mp.EpisodeOrder{}},
+		}
+	}
+	records := map[string]mp.Record{
+		// A long first season of 210 and a second of 10: season 2 has no 14th, and the show's 214th
+		// is season 2's 4th.
+		"90001101":   series("90001101", "Cutters Run", mp.SeasonSize{Number: 1, Episodes: 210}, mp.SeasonSize{Number: 2, Episodes: 10}),
+		"90001101/1": season("90001101", 1, 210), "90001101/2": season("90001101", 2, 10),
+		// Seasons of 5 and 14, as its files end: season 2 holds a 14th.
+		"90001102":   series("90001102", "Brindle Point", mp.SeasonSize{Number: 1, Episodes: 5}, mp.SeasonSize{Number: 2, Episodes: 14}),
+		"90001102/1": season("90001102", 1, 5), "90001102/2": season("90001102", 2, 14),
+	}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	files := map[string]string{
+		"Cutters Run {tmdb-90001101}/Cutters Run - 214 - Late.mkv":     "S2E4 Tide 2-4",
+		"Brindle Point {tmdb-90001102}/Brindle Point - 214 - Late.mkv": "S2E14 Tide 2-14",
+		"Brindle Point {tmdb-90001102}/Brindle Point - 105 - Dew.mkv":  "S1E5 Tide 1-5",
+	}
+	for rel := range files {
+		h.file(rel, 10)
+	}
+	h.run()
+	e := &Enricher{
+		Store: h.st, Provider: &fakeCatalog{records: records},
+		Rewrite: func(root string, dirs ...string) {
+			if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rel, want := range files {
+		origin := fileOrigin(h.root, rel)
+		facts := h.origin(h.item(origin), origin).Observation.Facts
+		if got := fmt.Sprintf("S%dE%d %s", facts.SeasonNumber, facts.EpisodeNumber, facts.Name); got != want {
+			t.Errorf("%s = %s, want %s", rel, got, want)
+		}
+	}
+}
+
 // A series record cached in an older shape is fetched again on the next tick, fresh as it is; a
 // movie record of the same age, already in the movie's current shape, is left until its refresh.
 func TestEnricherFetchesARecordOfAnOlderShapeAgain(t *testing.T) {

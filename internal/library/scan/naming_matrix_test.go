@@ -1264,6 +1264,17 @@ var namingMatrix = []namingRow{
 		"Sample/Gallowfen.2012.1080p.mkv": "skip",
 		"Gallowfen (2012).mkv":            "movie Gallowfen 2012",
 	}},
+	// A release's single-digit number before a year: an episode on an anime's shelf, or beside its
+	// show's other numbers in that year; a sequel alone, or beside its saga's other years.
+	{id: "W156", files: map[string]string{
+		"Anime/[Grp] Kaze Tori - 7 (2019).mkv":        "episode Kaze Tori S?E?",
+		"Downloads/[Grp] Hoshi Rail - 3 (2020).mkv":   "episode Hoshi Rail S?E?",
+		"Downloads/[Grp] Hoshi Rail - 4 (2020).mkv":   "episode Hoshi Rail S?E?",
+		"Downloads/[Grp] Fen Bell - 5 (2021).mkv":     "movie Fen Bell - 5 2021",
+		"Downloads/[Grp] Dusk Lantern - 2 (2015).mkv": "movie Dusk Lantern - 2 2015",
+		"Downloads/[Grp] Dusk Lantern - 3 (2018).mkv": "movie Dusk Lantern - 3 2018",
+		"Movies/[Grp] Wick Harbour - 2 (2011).mkv":    "movie Wick Harbour - 2 2011",
+	}},
 	{id: "W150", files: map[string]string{
 		"Movies/Featurette (1999)/Featurette.mkv":                     "movie Featurette 1999",
 		"Movies/Deleted Scenes (2016)/Deleted Scenes.mkv":             "movie Deleted Scenes 2016",

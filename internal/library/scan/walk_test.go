@@ -35,6 +35,7 @@ func TestWalkRoot(t *testing.T) {
 	touch(t, root, "India/India-featurette.mkv")
 	touch(t, root, "India/backdrops/Theme.mkv")
 	touch(t, root, "India/trickplay/India.mkv")
+	touch(t, root, "India/extrathumbs/India.mkv")
 	// A show named like an extras folder, at the top of the root, is a show.
 	touch(t, root, "Shorts/Season 01/Shorts S01E01.mkv")
 	touch(t, root, "@eaDir/India.mkv")

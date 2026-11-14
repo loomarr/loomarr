@@ -92,6 +92,29 @@ func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.I
 	return b.byEntry(ctx, s, in, res)
 }
 
+// acrossOnly says a show's catalog can't hold an episode where its name's three digits place it
+// (identity.runOn), "214" as season 2's 14th, but holds the show's 214th: its seasons are known,
+// the one named holds fewer episodes, and all of them hold that many. A season whose size the
+// record doesn't say holds it; with no series record cached yet the name's reading stands, and
+// the episode is written again once the record comes.
+func (b *builder) acrossOnly(ctx context.Context, s *seriesSeen, n mp.Numbering, runOn int) bool {
+	if s == nil {
+		return false
+	}
+	series := b.resolveSeries(ctx, s)
+	if series.record == nil || series.record.Descriptive == nil {
+		return false
+	}
+	seasons := series.record.Descriptive.Seasons
+	if len(seasons) == 0 || slices.ContainsFunc(seasons, func(size mp.SeasonSize) bool {
+		return size.Number == n.Season && (size.Episodes <= 0 || size.Episodes >= n.Episode)
+	}) {
+		return false
+	}
+	_, _, ok := absoluteAt(seasons, runOn)
+	return ok
+}
+
 // absoluteAt is where the abs-th episode of a show sits in its seasons, specials aside.
 func absoluteAt(seasons []mp.SeasonSize, abs int) (int, int, bool) {
 	sorted := slices.SortedFunc(slices.Values(seasons), func(a, b mp.SeasonSize) int { return a.Number - b.Number })

@@ -138,8 +138,24 @@ type identity struct {
 	seriesDir string
 	// named is the show an episode's file name gives before its mark, "" for none: "Brindle
 	// Point" of "Brindle Point S01E01.mkv".
-	named  string
+	named string
+	// runOn is the number across its show a name read by Kodi's three digits also reads as: 214 of
+	// "Cutters Bay - 214 - Late", read as season 2's 14th. Its show's catalog says which it is
+	// (acrossOnly); 0 for any other name.
+	runOn  int
 	digest string
+}
+
+// runOnOf is identity.runOn for a file whose numbering is n.
+func runOnOf(file File, n *mp.Numbering) int {
+	m := kodiTitled.FindStringSubmatch(plainStem(path.Base(file.Rel)))
+	if m == nil || n == nil {
+		return 0
+	}
+	if v := atoi(m[1]); n.Season == v/100 && n.Episode == v%100 && n.EpisodeEnd == 0 {
+		return v
+	}
+	return 0
 }
 
 // airDate is the day the file's name says its episode aired, for one named by it rather than by
@@ -206,6 +222,9 @@ func (b *builder) identify(file File) identity {
 		if id.kind == mp.KindEpisode && seriesDir == "" {
 			id.seriesDir = seriesFolderOf(file)
 		}
+	} else if id.kind == mp.KindEpisode {
+		// An arr's record places its file itself; only the name's own reading is the catalog's to check.
+		id.runOn = runOnOf(file, embedded.Numbering)
 	}
 	b.seen[fileOrigin(b.root, file.Rel)] = true
 	var seriesSidecars map[string]Stat
@@ -382,6 +401,8 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
 		} else if abs := id.absolute(); abs > 0 {
 			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, abs)
+		} else if id.runOn > 0 && b.acrossOnly(ctx, b.series[id.seriesDir], *id.numbering(), id.runOn) {
+			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, id.runOn)
 		} else {
 			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
 		}

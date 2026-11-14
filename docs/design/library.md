@@ -1048,6 +1048,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   (`rippedExtras`). An episode's name titled by a kind only an extra is named by, "S01E01 - Behind
   the Episode", beside that episode titled otherwise is its extra (`extrasBeside`). A films'
   shelf's "Sample/" holds samples, but a film named as the folder (`shelfSamples`).
+- **84:** a release's single-digit number before a year, "[Grp] Kaze Tori - 7 (2019)", is an
+  episode on an anime's shelf, and beside its show's other numbers in that year
+  (`folderNotes.Released`): a film's sequels never share a year. Alone anywhere else it stays a
+  sequel. Kodi's "extrathumbs" folders are artwork and are not walked. Kodi's "Show - 214 -
+  Title", read as season 2's 14th, is the show's 214th when its catalog's second season holds no
+  14th and its seasons hold a 214th (`acrossOnly`).
 
 ## Search
 

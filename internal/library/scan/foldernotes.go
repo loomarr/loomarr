@@ -64,6 +64,52 @@ type folderNotes struct {
 	// name (normName): "Pembroke.Gate.2019.S01E01" gives "pembroke gate" 2019. A show two of them
 	// give two years is two shows, and has none.
 	Years map[string]int
+	// Released are the shows two or more of the folder's group-tagged videos number by one digit
+	// after a dash, before a year they share (releasedShow): "[Grp] Hoshi Rail - 3 (2020)" beside
+	// "… - 4 (2020)" are the 2020 show's episodes, as a film's sequels never share a year.
+	Released map[string]bool
+}
+
+// releasedShow is the show and year a group-tagged video numbers itself by one digit after a dash
+// before ("[Grp] Hoshi Rail - 3 (2020)" gives "hoshi rail 2020", and its number), "" for any other.
+func releasedShow(name string) (string, int) {
+	s := stem(name)
+	if !leadingTags.MatchString(s) {
+		return "", 0
+	}
+	m := animeDashed.FindStringSubmatch(leadingTags.ReplaceAllString(s, ""))
+	year := bracketYear.FindString(s)
+	if m == nil || len(m[2]) != 1 || year == "" || bracketYear.MatchString(m[1]) {
+		return "", 0
+	}
+	return normName(m[1]) + " " + year[1:5], atoi(m[2])
+}
+
+// released says a file's siblings number its show and year as a release's episodes do: its folder
+// notes it among the Released.
+func released(file File) bool {
+	show, _ := releasedShow(path.Base(file.Rel))
+	return show != "" && file.Notes.Released[show]
+}
+
+// releasedShows reads folderNotes.Released: the shows two or more videos number differently.
+func releasedShows(names []string) map[string]bool {
+	numbers := map[string]map[int]bool{}
+	for _, name := range names {
+		if show, n := releasedShow(name); show != "" {
+			if numbers[show] == nil {
+				numbers[show] = map[int]bool{}
+			}
+			numbers[show][n] = true
+		}
+	}
+	released := map[string]bool{}
+	for show, ns := range numbers {
+		if len(ns) >= 2 {
+			released[show] = true
+		}
+	}
+	return released
 }
 
 // looseYears reads folderNotes.Years from a folder's videos' names.

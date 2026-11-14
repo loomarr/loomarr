@@ -241,7 +241,7 @@ func showFolderIn(file File) string {
 	// folder names several too, when the show was renamed or its files spell it two ways, but one of
 	// them is the folder's.
 	show := ownSeries(name)
-	if show == "" && inAnime(shelved(file, dir)) {
+	if show == "" && (inAnime(shelved(file, dir)) || released(file)) {
 		show, _, _ = animeRelease(name, true)
 	}
 	// A folder's files numbered after a name they share, "Cartoons/Fizzy Fox 01.mp4" beside "… 02",
