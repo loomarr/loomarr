@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
-import { Action, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Action, Grid, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -90,7 +90,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
           </Text>
         </div>
       ) : null}
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
+      <Grid columnGap="4" columns={["auto", "minmax(0,1fr)"]} render="dl" rowGap="2">
         <Text as="dt" textRole="compact" tone="secondary">
           Length
         </Text>
@@ -145,7 +145,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             </Text>
           </>
         ) : null}
-      </dl>
+      </Grid>
       <Text as="p" textRole="hint" tone="secondary">
         {playsLine(clip)}
       </Text>

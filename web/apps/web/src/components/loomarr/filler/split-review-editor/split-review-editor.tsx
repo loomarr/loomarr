@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Grid,
   Icon,
   icons,
   PressableRow,
@@ -632,7 +633,7 @@ const SegmentInspector = ({
             <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
           </Stack>
         </Text>
-        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
+        <Grid className="mt-3" columns={{ base: 1, sm: ["minmax(12rem,1fr)", "7rem", "7rem"] }} gap="3">
           <Field
             id={`seg-name-${position}`}
             label="Name"
@@ -659,7 +660,7 @@ const SegmentInspector = ({
             }
             value={segment.endText}
           />
-        </div>
+        </Grid>
       </details>
 
       {hasDetails ? (

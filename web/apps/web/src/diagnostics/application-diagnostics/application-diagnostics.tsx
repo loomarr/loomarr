@@ -628,7 +628,12 @@ const ApplicationDiagnostics = ({
                         onPress={() => setExpanded(open ? undefined : event.id)}
                         selected={open}
                       >
-                        <div className="grid w-full gap-2 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start">
+                        <Grid
+                          align={{ base: "stretch", sm: "start" }}
+                          className="w-full text-left"
+                          columns={{ base: 1, sm: ["7rem", "minmax(0,1fr)", "8rem"] }}
+                          gap="2"
+                        >
                           <Text as="span" textRole="hint" tone="primary">
                             <Stack align="center" direction="row" gap="2" render="span">
                               <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
@@ -651,7 +656,7 @@ const ApplicationDiagnostics = ({
                               {formatTime(event.occurredAt)}
                             </Text>
                           </time>
-                        </div>
+                        </Grid>
                       </PressableRow>
                       {open && (
                         <Stack

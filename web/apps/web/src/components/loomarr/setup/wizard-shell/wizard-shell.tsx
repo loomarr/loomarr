@@ -1,4 +1,4 @@
-import { Action, Card, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Grid, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
@@ -44,8 +44,10 @@ const WizardShell = ({
   busy = false,
   className,
 }: WizardShellProps) => (
-  <main
-    className={cn("bg-background relative grid min-h-screen grid-cols-1 md:grid-cols-[17rem_1fr]", className)}
+  <Grid
+    className={cn("bg-background relative min-h-screen", className)}
+    columns={{ base: 1, md: ["17rem", "1fr"] }}
+    render="main"
   >
     {/* Behind everything: the static is a positioned layer, so content siblings need an
         explicit stacking context above it (relative z-10) — otherwise a position:absolute
@@ -215,7 +217,7 @@ const WizardShell = ({
         </Stack>
       </Stack>
     </Stack>
-  </main>
+  </Grid>
 );
 
 export { WizardShell };
