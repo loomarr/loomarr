@@ -80,8 +80,6 @@ var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
 // walked either, but is listed as a problem.
 func skippedDir(parent, name string, titled bool) bool {
 	lower := strings.ToLower(name)
-	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
-	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
 	// A film's own "Specials" ("Movies/Ashwood (2015)/Specials/") are its extras, where a show's
 	// are its season 0; and a subtitles' folder holds no title, whatever a release put in it.
 	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !shelfAt(parent)
@@ -91,9 +89,19 @@ func skippedDir(parent, name string, titled bool) bool {
 	// Its "Extras/" is walked: a film may be kept there (shelfBonusExtras).
 	shelfTrailers := shelfExtras[lower] && parent != "." && amongFilms(parent) ||
 		shelfExtras[lower] && (parent == "." || shelfAt(parent) && !underShows(name) && !showsFolderNames[folderKey(path.Base(parent))])
-	return skippedDirs[lower] || prefixed || seasonExtrasFolder(name) || filmSpecials || subsDirs[lower] || shelfTrailers ||
+	return neverMedia(name) || seasonExtrasFolder(name) || filmSpecials || shelfTrailers ||
 		(parent != "." && extrasFolder(name, parent) && titled && !shelfAt(parent)) ||
 		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
+}
+
+// neverMedia says whether a folder's name alone says it holds no media, wherever it is: a NAS's,
+// an OS's or a downloader's own folder ("@eaDir", "#recycle", ".Trash-1000", "lost+found") or a
+// subtitles' folder. The folder browser hides what this says, so it and the scan agree.
+func neverMedia(name string) bool {
+	lower := strings.ToLower(name)
+	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
+	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
+	return skippedDirs[lower] || prefixed || subsDirs[lower]
 }
 
 // holdsTitle says whether a folder, rel to the root with its entries, is a title's own: a season

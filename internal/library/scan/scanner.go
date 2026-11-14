@@ -371,6 +371,18 @@ func (l *Library) Add(ctx context.Context, path string) error {
 	return nil
 }
 
+// Replace adds a folder in place of the folders in use inside it (Roots.Replace), and asks for a
+// pass, which reads their files as the outer folder's.
+func (l *Library) Replace(ctx context.Context, path string) error {
+	if err := l.Roots.Replace(ctx, path); err != nil {
+		return err
+	}
+	if l.Enabled() {
+		l.Scanner.Trigger()
+	}
+	return nil
+}
+
 // SetMapping points an authority's folder at a local folder by hand and, when it points somewhere,
 // asks for a pass: the files the mapping reaches arrive now, not at the next hourly pass, and no
 // restart is needed to make a corrected mapping take (#3359). Clearing one asks for nothing.

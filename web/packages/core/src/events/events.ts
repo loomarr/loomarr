@@ -168,6 +168,10 @@ const EVENT_INVALIDATIONS: { [T in EventType]: Invalidation<T> } = {
   // again), found by a scan pass rather than by anything done on screen: the folders' cards and
   // the status read again, so a warning appears and clears without a reload.
   library_roots: { prefixes: ["/v1/library/roots", "/v1/library/status"] },
+  // One folder the folder browser listed, counted: a whole summary for its row. A hand-off to the
+  // browser, which fills that row; refetching the listing for each folder counted would list it
+  // once per row. A dropped frame leaves its row waiting until the folder is listed again.
+  library_folder: { prefixes: [] },
 };
 
 // isFrameFed: does an SSE frame keep this query current? The client gives such a read
