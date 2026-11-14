@@ -77,7 +77,7 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
           // measured ratio is still printed for every step, so the scope of the rule stays
           // visible without being enacted.
           <Stack className="min-w-24" gap="1" key={step}>
-            <Text as="span" textRole="mono">{`${step}%`}</Text>
+            <span className="text-2xs text-static-400 font-mono">{`${step}%`}</span>
             <Stack
               align="center"
               className="border-border h-8 rounded-md border"
@@ -86,9 +86,9 @@ const TintRamp = ({ accent, hex, textHex }: { accent: string; hex: string; textH
               style={{ backgroundColor: composited }}
             >
               {isTextStep(step) ? (
-                <Text as="span" style={{ color: textHex }} textRole="mono">
+                <span className="text-2xs font-mono" style={{ color: textHex }}>
                   Badge
-                </Text>
+                </span>
               ) : (
                 <span className="text-2xs text-static-400/0 font-mono">fill</span>
               )}

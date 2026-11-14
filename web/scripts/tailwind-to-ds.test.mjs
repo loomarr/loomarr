@@ -200,6 +200,11 @@ describe("typography", () => {
     expectUntouched(`const A = () => <p className="text-sm font-mono">x</p>;\n`);
   });
 
+  it("leaves text-2xs mono: it is 11px and the mono role is 12px, so the picture grows (#4110 palette)", () => {
+    expectUntouched(`const A = () => <span className="text-2xs font-mono">x</span>;\n`);
+    expectUntouched(`const A = () => <span className="text-2xs text-static-400 font-mono">x</span>;\n`);
+  });
+
   it("leaves leading, tracking, a state variant and an unknown colour", () => {
     expectUntouched(`const A = () => <p className="text-sm leading-none">x</p>;\n`);
     expectUntouched(`const A = () => <p className="text-sm tracking-tight">x</p>;\n`);

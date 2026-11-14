@@ -584,7 +584,6 @@ const roleFor = (size, weight, mono) => {
   return (
     {
       "2xl||": { role: "display" },
-      "2xs||mono": { role: "mono" },
       "base||": { role: "body" },
       "base|font-semibold|": { role: "heading" },
       "lg||": { role: "headline" },

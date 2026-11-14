@@ -310,8 +310,8 @@
       "tailwindClasses": 24
     },
     "src/design/palette/palette.tsx": {
-      "tailwindClasses": 51,
-      "rawTypeSize": 10,
+      "tailwindClasses": 56,
+      "rawTypeSize": 12,
       "rawTypeWeight": 1
     },
     "src/design/spacing/spacing.tsx": {
