@@ -92,19 +92,40 @@ func TestTrackerETA(t *testing.T) {
 		t.Fatalf("eta = %v %v, want 6m0s", got.ETA, got.HasETA)
 	}
 
+	// A step that begins again (a second folder added) tells its time by the rate it last
+	// measured, 4 s each, until it has measured its own: never "working out" again.
 	tr.Begin(StepWalking, 1000)
+	if got := tr.Snapshot(c.now()); !got.HasETA || got.ETA != 4000*time.Second {
+		t.Fatalf("eta on beginning again = %v %v, want 1h6m40s from the last rate", got.ETA, got.HasETA)
+	}
 	tr.Advance(StepWalking, 19)
-	if got := tr.Snapshot(c.advance(time.Minute)); got.HasETA {
-		t.Fatalf("an ETA under 2%% done: %+v", got)
+	if got := tr.Snapshot(c.advance(time.Minute)); !got.HasETA || got.ETA != 3924*time.Second {
+		t.Fatalf("eta under 2%% done = %v %v, want 1h5m24s, still the last rate", got.ETA, got.HasETA)
 	}
 	tr.Advance(StepWalking, 1)
 	if got := tr.Snapshot(c.now()); !got.HasETA || got.ETA != 49*time.Minute {
-		t.Fatalf("eta at 2%% = %v %v, want 49m0s", got.ETA, got.HasETA)
+		t.Fatalf("eta at 2%% = %v %v, want 49m0s, its own", got.ETA, got.HasETA)
+	}
+
+	// A first step with no rate kept says nothing until it has measured one.
+	fresh, fc := newClockTracker()
+	fresh.Begin(StepReading, 100)
+	fresh.Advance(StepReading, 50)
+	if got := fresh.Snapshot(fc.advance(29 * time.Second)); got.HasETA {
+		t.Fatalf("an ETA before 30 s with no rate kept: %+v", got)
+	}
+	// Rebase drops the kept rate: the work ahead goes at another.
+	tr.Rebase(StepWalking)
+	tr.End(StepWalking)
+	tr.Begin(StepWalking, 10)
+	if got := tr.Snapshot(c.now()); got.HasETA {
+		t.Fatalf("an ETA from a rate Rebase dropped: %+v", got)
 	}
 }
 
 // A pause for watching hides the ETA and what the step is on; going again restarts the rate
-// baseline, so the wait never counts against the rate.
+// baseline, so the wait never counts against the rate, and tells the time left by the rate before
+// the pause until it has measured a new one.
 func TestTrackerPauseResetsTheRate(t *testing.T) {
 	tr, c := newClockTracker()
 	tr.Begin(StepReading, 100)
@@ -117,8 +138,8 @@ func TestTrackerPauseResetsTheRate(t *testing.T) {
 		t.Fatalf("paused snapshot = %+v, want paused with no ETA or current", got)
 	}
 	tr.Pause(StepReading, false)
-	if got := tr.Snapshot(c.advance(time.Minute)); got.Paused || got.HasETA {
-		t.Fatalf("an ETA with nothing done since the pause: %+v", got)
+	if got := tr.Snapshot(c.advance(time.Minute)); got.Paused || !got.HasETA || got.ETA != time.Minute {
+		t.Fatalf("eta with nothing done since the pause = %+v, want 1m0s (50 left at the 1.2 s each before it)", got)
 	}
 	tr.Advance(StepReading, 10)
 	if got := tr.Snapshot(c.now()); !got.HasETA || got.ETA != 4*time.Minute {

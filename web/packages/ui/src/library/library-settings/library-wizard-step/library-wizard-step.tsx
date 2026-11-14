@@ -61,7 +61,7 @@ const LibraryWizardStep = ({
           <>
             <Headline readySoFar={readySoFar} scan={scan} />
             <Text textRole="body" tone="secondary">
-              You can carry on — titles appear as they're ready.
+              You can carry on while it adds them.
             </Text>
           </>
         ) : null}
