@@ -23,10 +23,14 @@ const (
 var steps = [...]Step{StepWalking, StepReading, StepLookingUp}
 
 // An estimate of the time left in a step is given only once the step has run etaAfter since its
-// rate baseline and done at least etaShare of its total: before that the rate is noise.
+// rate baseline and done, since then, etaSamples or etaShare of its total, whichever comes first:
+// before that the rate is noise. The count is what makes a rate steady, so a large step (forty
+// thousand files read a few a second) tells its time left within a minute or two, not after its
+// first 2%; the share lets a small step, done before it reaches the count, tell it too.
 const (
-	etaAfter = 30 * time.Second
-	etaShare = 0.02
+	etaAfter   = 30 * time.Second
+	etaSamples = 20
+	etaShare   = 0.02
 )
 
 // ProgressSnapshot is what the maintainer sees of an import at one moment: the earliest step still
@@ -247,10 +251,11 @@ func (s stepState) rate(now time.Time) (float64, bool) {
 }
 
 // eta is remaining × (elapsed ÷ done) since the rate baseline, once the step has run etaAfter
-// and done etaShare of its total.
+// and done etaSamples or etaShare of its total since then.
 func (s stepState) eta(now time.Time) (time.Duration, bool) {
 	elapsed, since := now.Sub(s.since), s.done-s.sinceDone
-	if elapsed < etaAfter || since <= 0 || s.total <= 0 || float64(s.done) < etaShare*float64(s.total) {
+	if elapsed < etaAfter || since <= 0 || s.total <= 0 ||
+		(since < etaSamples && float64(since) < etaShare*float64(s.total)) {
 		return 0, false
 	}
 	left := max(s.total-s.done, 0)

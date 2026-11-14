@@ -123,6 +123,22 @@ func TestTrackerETA(t *testing.T) {
 	}
 }
 
+// A large step tells its time left once it has read enough files to measure a steady rate, not
+// after its first 2%: forty thousand files read a few a minute would otherwise say "working out"
+// for most of an hour.
+func TestTrackerETAOnALargeStep(t *testing.T) {
+	tr, c := newClockTracker()
+	tr.Begin(StepReading, 40_000)
+	tr.Advance(StepReading, 19)
+	if got := tr.Snapshot(c.advance(time.Minute)); got.HasETA {
+		t.Fatalf("an ETA from 19 files: %+v", got)
+	}
+	tr.Advance(StepReading, 1) // 20 in 60 s: 3 s each, 39,980 left
+	if got := tr.Snapshot(c.now()); !got.HasETA || got.ETA != 39_980*3*time.Second {
+		t.Fatalf("eta at 20 of 40,000 = %v %v, want %v", got.ETA, got.HasETA, 39_980*3*time.Second)
+	}
+}
+
 // A pause for watching hides the ETA and what the step is on; going again restarts the rate
 // baseline, so the wait never counts against the rate, and tells the time left by the rate before
 // the pause until it has measured a new one.
