@@ -1,5 +1,5 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
-import type { ComponentProps, ElementType } from "react";
+import type { ComponentProps, CSSProperties, ElementType } from "react";
 import { createElement } from "react";
 
 import { TamaguiText } from "../text-base";
@@ -68,6 +68,46 @@ const themeVal = (theme: ReturnType<typeof useTheme>, key: string) =>
 const lineHeightPx = (px: number) => `${px}px`;
 
 const SHOUT_TRACKING = 0.025;
+
+type HostTextStyleProps = Pick<
+  TamaguiTextProps,
+  "fontVariant" | "numberOfLines" | "overflowWrap" | "textAlign" | "textDecorationLine" | "wordBreak"
+>;
+
+/**
+ * The Tamagui text-style props a caller of the `as` host may set, as the inline style they mean.
+ * That branch hands a plain DOM element its props, where Tamagui's own Text would have turned each
+ * of these into CSS: left in the props they reach the DOM as attributes React warns about and no
+ * browser reads. `numberOfLines` is `truncate` for 1 (one line, an ellipsis) and a line clamp for
+ * more, as Tamagui draws it.
+ */
+const hostTextStyle = ({
+  fontVariant,
+  numberOfLines,
+  overflowWrap,
+  textAlign,
+  textDecorationLine,
+  wordBreak,
+}: HostTextStyleProps): CSSProperties => {
+  // Tamagui types each prop as a token, media object or CSS keyword too; a host takes the keyword.
+  const lines = typeof numberOfLines === "number" ? numberOfLines : 0;
+  return {
+    ...(textAlign && { textAlign: textAlign as CSSProperties["textAlign"] }),
+    ...(textDecorationLine && {
+      textDecorationLine: textDecorationLine as CSSProperties["textDecorationLine"],
+    }),
+    ...(Array.isArray(fontVariant) && fontVariant.length > 0 && { fontVariant: fontVariant.join(" ") }),
+    ...(overflowWrap && { overflowWrap: overflowWrap as CSSProperties["overflowWrap"] }),
+    ...(wordBreak && { wordBreak: wordBreak as CSSProperties["wordBreak"] }),
+    ...(lines === 1 && { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
+    ...(lines > 1 && {
+      WebkitBoxOrient: "vertical",
+      WebkitLineClamp: lines,
+      display: "-webkit-box",
+      overflow: "hidden",
+    }),
+  };
+};
 
 // "#0B0C0E" + 0.9 → "rgba(11,12,14,0.9)": the halo is the theme's canvas, part-transparent.
 const withAlpha = (hex: string, alpha: number) => {
@@ -184,9 +224,19 @@ const Text = ({
 
   if (isWeb && as) {
     const Tag = as;
+    const { fontVariant, numberOfLines, overflowWrap, textAlign, textDecorationLine, wordBreak, ...host } =
+      props;
     return createElement(Tag, {
-      ...props,
+      ...host,
       style: {
+        ...hostTextStyle({
+          fontVariant,
+          numberOfLines,
+          overflowWrap,
+          textAlign,
+          textDecorationLine,
+          wordBreak,
+        }),
         color: themeVal(theme, colorToken),
         fontFamily: dataRoles.has(textRole) ? typography.family.data.web : typography.family.body.web,
         fontSize: value.size,
