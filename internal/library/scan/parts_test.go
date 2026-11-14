@@ -277,6 +277,9 @@ func TestAnEpisodeIsNamedByWhatFollowsItsShowAndMark(t *testing.T) {
 		{"Gale Spit The Return/Season 07/Gale Spit - The Return (1987) - S07E10 - Inheritance [Bluray-1080p Remux].mkv", "Inheritance"},
 		{"Kettle Bay - The Series (1987)/Season 01/Kettle Bay - The Series (1987) - S01E24 - Pipe Dream [DVD].mkv", "Pipe Dream"},
 		{"Kettle Bay/Season 01/S01E06.mkv", "S01E06"},
+		// Every bracket of an older Sonarr name is the release's, the group after them too.
+		{"Kettle Bay (1992)/Season 05/Kettle Bay (1992) - S05E02 - The Tale of Station 101.3 [DVD][MP3 2.0][XviD]-GRP37.avi", "The Tale of Station 101.3"},
+		{"Kettle Bay (1992)/Season 05/Kettle Bay (1992) - S05E03 - Twenty Tides [SDTV][MP2 2.0][MPEG].mpg", "Twenty Tides"},
 		{"Kettle Bay/Specials/Kettle Bay - Holiday Special [1080p].mkv", "Holiday Special"},
 		{"Kettle Bay/Season 02/Kettle Bay - Lost Pilot (2019) {tvdb-123}.mkv", "Lost Pilot"},
 		{"Kettle Bay/Season 01/S01E04 - Undertow.mkv", "Undertow"},

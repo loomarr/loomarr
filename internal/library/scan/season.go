@@ -74,7 +74,11 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 // title (toldTitle) does: an id whose record the title names stands, and one it doesn't gives way
 // to TMDB's own entry at the mark when the title names that, or else to the file's own details,
 // which byNumber then marks unnumbered for Needs you. A name with no title of its own keeps the
-// id's record.
+// id's record unless the record numbers another episode than the mark: then nothing at the mark
+// settles which the file is, and it gives way to the file's own details the same way.
+//
+// An id that gives way takes the NFO that carried it along: an NFO with another episode's id was
+// written for that episode, so its title and overview name the file no more than its id does.
 func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey, file File, id identity, in precedence.Input, res resolution) resolution {
 	own := id.embedded.Numbering
 	if len(id.managed.records) > 0 || own == nil || own.Episode <= 0 {
@@ -87,19 +91,31 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 	bare := in
 	bare.Records = make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
+		if r.Source.Provider == mp.IDNFO && sharesID(r, res.record) {
+			continue
+		}
 		r.IDs = nil
 		bare.Records = append(bare.Records, r)
 	}
 	plain := b.resolve(ctx, origin, bare)
 	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, plain)
 	if alt.entry != nil {
-		if slices.ContainsFunc(alt.entry.IDs, func(e mp.ExternalID) bool { return slices.Contains(res.record.IDs, e) }) {
+		if sharesID(*alt.entry, res.record) {
 			return res
 		}
 		return alt
 	}
-	if told == "" || alt.waiting || res.record.Descriptive == nil || res.record.Descriptive.Title == "" {
-		res.waiting = res.waiting || alt.waiting
+	if alt.waiting {
+		res.waiting = true
+		return res
+	}
+	if told == "" {
+		if numbersAnother(res.record.Numbering, own) {
+			return plain
+		}
+		return res
+	}
+	if res.record.Descriptive == nil || res.record.Descriptive.Title == "" {
 		return res
 	}
 	// A season not cached yet is asked for, the file described by its own details meanwhile, and
@@ -108,6 +124,33 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 		return at
 	}
 	return plain
+}
+
+// unknownNFOAside sets aside an episode's NFO whose id the catalog was asked for and does not know,
+// when the file's own name gives another title than the NFO's: nothing settles which episode the
+// NFO was written for, and an NFO that names another episode is one copied, or written again
+// after its show was renumbered, beside the wrong file. The file is then described by its own
+// name, numbered by its show's catalog (byNumber) as a file with no id is. An NFO its name's title
+// agrees with, or a name with no title, keeps it.
+func (b *builder) unknownNFOAside(ctx context.Context, file File, in precedence.Input, res resolution) (precedence.Input, bool) {
+	told := toldTitle(file.Rel)
+	if told == "" || !b.im.catalogMisses(ctx, res.catalog) {
+		return in, false
+	}
+	out := in
+	out.Records = make([]mp.Record, 0, len(in.Records))
+	for _, r := range in.Records {
+		if r.Source.Provider == mp.IDNFO && r.Descriptive != nil && r.Descriptive.Title != "" && !titled(&r, told) {
+			continue
+		}
+		out.Records = append(out.Records, r)
+	}
+	return out, len(out.Records) < len(in.Records)
+}
+
+// sharesID says whether a record carries any of another's ids.
+func sharesID(r mp.Record, other *mp.Record) bool {
+	return other != nil && slices.ContainsFunc(r.IDs, func(e mp.ExternalID) bool { return slices.Contains(other.IDs, e) })
 }
 
 // catalogEntryAt is the entry of TMDB's own season at an episode's number, as byNumber finds it for
