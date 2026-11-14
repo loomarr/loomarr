@@ -196,9 +196,11 @@ const SourceSearch = ({
                       href={clip.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="block truncate text-sm hover:underline"
+                      className="block truncate hover:underline"
                     >
-                      {clip.title || clip.id}
+                      <Text as="span" textRole="compact">
+                        {clip.title || clip.id}
+                      </Text>
                     </a>
                     {/* ⚠ "checking…" only while a request is genuinely in flight. Once it has
                         answered, an unknown duration renders as nothing at all — a permanent

@@ -1,4 +1,4 @@
-import { Action, Chip, Stack } from "@loomarr/design-system";
+import { Action, Chip, Stack, typography } from "@loomarr/design-system";
 import type { IntentInputProps } from "./intent-input.type";
 
 // IntentInput — the hero (§3). A natural-language channel intent wearing the
@@ -34,7 +34,8 @@ const IntentInput = ({
         rows={3}
         disabled={submitting}
         aria-label="Channel intent"
-        className="border-input placeholder:text-muted-foreground focus-visible:border-suggest focus-visible:ring-suggest focus-visible:ring-offset-background w-full resize-none rounded-lg border bg-transparent px-4 py-3 text-base leading-relaxed shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="border-input placeholder:text-muted-foreground focus-visible:border-suggest focus-visible:ring-suggest focus-visible:ring-offset-background w-full resize-none rounded-lg border bg-transparent px-4 py-3 leading-relaxed shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ fontSize: typography.pointer.body.size, fontWeight: typography.pointer.body.weight }}
       />
 
       {templates.length > 0 && (

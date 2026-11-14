@@ -146,9 +146,9 @@ const LocationPicker = ({
   return (
     <div className="max-w-2xl">
       <Stack align="center" className="mb-1.5" direction="row" gap="inline">
-        <label htmlFor={`${listID}-input`} className="text-sm font-medium">
+        <Text as="label" htmlFor={`${listID}-input`} textRole="cardLabel" tone="primary">
           Location
-        </label>
+        </Text>
         {locked && lockedLabel && (
           <Text
             as="span"

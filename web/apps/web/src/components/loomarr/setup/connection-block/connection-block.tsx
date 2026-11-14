@@ -1,7 +1,6 @@
 import { parseDocHref } from "@loomarr/core/anchor";
-import { Disclosure, Icon, icons, Stack, type StatusTone, TextLink } from "@loomarr/design-system";
+import { Disclosure, Icon, icons, Stack, type StatusTone, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import type { ConnectionBlockProps } from "./connection-block.type";
 
 // ConnectionBlock — one service (Media server, Tunarr, …) as a self-diagnosing, collapsible
@@ -75,25 +74,29 @@ const ConnectionBlock = ({
             {verdict && (
               <Stack
                 align="center"
-                className={cn(
-                  "text-sm",
-                  verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400",
-                )}
+                className={verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400"}
                 direction="row"
                 gap="1.5"
                 render="p"
                 role="status"
               >
                 {failing && <Icon decorative glyph={icons.close} size="compact" tone="inherit" />}
-                <span className="min-w-0">
+                <Text
+                  as="span"
+                  className="min-w-0"
+                  textRole="compact"
+                  tone={verdict.ok ? "success" : failing ? "danger" : "secondary"}
+                >
                   {verdict.hint ?? (verdict.ok ? "Connection OK" : "Not connected yet")}
-                </span>
+                </Text>
                 {failing && docHref && (
                   // Route into the Help center via parseDocHref — a raw href would
                   // resolve relative to /settings and 404 (mirrors ChecklistItem).
-                  <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
-                    Fix
-                  </TextLink>
+                  <Text as="span" textRole="compact">
+                    <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+                      Fix
+                    </TextLink>
+                  </Text>
                 )}
               </Stack>
             )}

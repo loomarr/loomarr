@@ -1,4 +1,4 @@
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text, typography } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { useCopied } from "@/lib/use-copied";
@@ -37,9 +37,15 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
             </div>
 
             <Stack align="center" direction="row" gap="inline">
-              <code className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5 font-mono text-sm">
+              <Text
+                as="code"
+                className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5"
+                style={{ fontFamily: typography.family.data.web }}
+                textRole="compact"
+                tone="primary"
+              >
                 {value ?? "••••••••••••••••"}
-              </code>
+              </Text>
               <Action
                 disabled={busy === secret.name}
                 icon={value ? "conceal" : "reveal"}

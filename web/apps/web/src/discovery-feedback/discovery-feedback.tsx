@@ -1,7 +1,7 @@
 import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import type { DiscoveryFeedbackDTO } from "@loomarr/api/models/discoveryFeedbackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Stack } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 
 type DiscoveryFeedbackAction = "keep" | "less" | "never" | "surprise";
@@ -102,10 +102,10 @@ const DiscoveryFeedbackControls = ({
         )}
       </Stack>
       {(selected || effectNote) && (
-        <p className="text-muted-foreground text-xs">
+        <Text as="p" textRole="hint" tone="secondary">
           {selected ? `${source}: ${actionLabel(selected) ?? selected}. ` : ""}
           {effectNote ? "Affects future suggestions only." : ""}
-        </p>
+        </Text>
       )}
     </Stack>
   );

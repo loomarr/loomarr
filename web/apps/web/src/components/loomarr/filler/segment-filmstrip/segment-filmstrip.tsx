@@ -158,7 +158,6 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     ) : (
                       <Stack
                         align="center"
-                        className="text-muted-foreground text-center text-[10px]"
                         direction="row"
                         height="100%"
                         justify="center"
@@ -166,11 +165,15 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         width="100%"
                         render="span"
                       >
-                        Preview unavailable
+                        <Text as="span" textAlign="center" textRole="guideCell" tone="secondary">
+                          Preview unavailable
+                        </Text>
                       </Stack>
                     )}
                     <span className="from-static-950 via-static-950/85 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-5 pb-1.5">
-                      <span className="text-static-50 block truncate text-[11px] font-medium">{name}</span>
+                      <Text as="span" className="block truncate" textRole="label" tone="primary">
+                        {name}
+                      </Text>
                       <span className="text-static-300 font-mono text-[9px] tabular-nums">
                         {formatClipDuration(item.durationMs)}
                       </span>
