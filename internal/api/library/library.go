@@ -460,7 +460,7 @@ type libraryHeldDTO struct {
 
 // librarySkippedDTO is one reason the scan skips files, with its files.
 type librarySkippedDTO struct {
-	Reason string   `json:"reason" enum:"broken_link,link_outside,disc_image,identity_conflict,invalid_facts" doc:"Why: broken_link, a shortcut whose file is gone; link_outside, a shortcut to a file outside the media folders; disc_image, a whole disc's image; identity_conflict, a file that claims another's identity; invalid_facts, a file whose details were refused"`
+	Reason string   `json:"reason" enum:"broken_link,link_outside,disc_image,empty_file,identity_conflict,invalid_facts" doc:"Why: broken_link, a shortcut whose file is gone; link_outside, a shortcut to a file outside the media folders; disc_image, a whole disc's image; empty_file, a video file with no bytes; identity_conflict, a file that claims another's identity; invalid_facts, a file whose details were refused"`
 	Total  int      `json:"total" doc:"How many files are skipped for this reason"`
 	Paths  []string `json:"paths" doc:"The first of them, by path"`
 }
