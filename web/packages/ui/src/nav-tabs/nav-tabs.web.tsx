@@ -1,11 +1,31 @@
-import { Icon, Text } from "@loomarr/design-system";
+import { Text } from "@loomarr/design-system";
 import { useLayoutEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
 
 import type { NavButtonTab, NavTab, NavTabsProps } from "./nav-tabs.type";
 
-// Tailwind's `sm`: from here up a tab draws its icon.
-const ICON_MIN_WIDTH = 640;
+// Tailwind's `sm`: from here up a tab draws its icon. This package has no DOM lib, so the slice of
+// `matchMedia` it reads is spelled out. Without matchMedia (jsdom) the icons draw.
+type MediaList = {
+  matches: boolean;
+  addEventListener(type: "change", listener: () => void): void;
+  removeEventListener(type: "change", listener: () => void): void;
+};
+const WIDE = "(min-width: 640px)";
+const matchWide = (): MediaList | undefined =>
+  (globalThis as { matchMedia?: (query: string) => MediaList }).matchMedia?.(WIDE);
+
+const useWide = () => {
+  const [wide, setWide] = useState(() => matchWide()?.matches ?? true);
+  useLayoutEffect(() => {
+    const list = matchWide();
+    if (!list) return;
+    const update = () => setWide(list.matches);
+    update();
+    list.addEventListener("change", update);
+    return () => list.removeEventListener("change", update);
+  }, []);
+  return wide;
+};
 
 // The slice of the DOM the scroll-into-view effect touches. This package has no DOM lib (it targets
 // React Native too), so the shape is spelled out here.
@@ -54,7 +74,7 @@ const NavTabs = ({
   variant = "pill",
 }: NavTabsProps) => {
   const underline = variant === "underline";
-  const showIcons = useWindowDimensions().width >= ICON_MIN_WIDTH;
+  const showIcons = useWide();
   const [hovered, setHovered] = useState<string>();
   // One line at every width, scrolling sideways when the tabs don't fit (#1785). The active tab is
   // scrolled into view, sideways only: the page itself never moves. It is scrolled again when the
@@ -153,7 +173,7 @@ const NavTabs = ({
         const active = tab.id === activeId;
         const content = (
           <>
-            {showIcons && tab.icon && <Icon decorative glyph={tab.icon} size="compact" tone="inherit" />}
+            {showIcons && tab.icon}
             {tab.label}
             {/* ⚠ Omitted when a tab has no count, rather than rendered as "0" — see NavTabLook.count. */}
             {tab.count !== undefined && (

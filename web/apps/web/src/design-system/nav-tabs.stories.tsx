@@ -1,4 +1,4 @@
-import { icons } from "@loomarr/design-system";
+import { Icon, icons } from "@loomarr/design-system";
 import { type LinkLike, NavTabs } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
@@ -120,9 +120,21 @@ const ButtonMode: Story = {
     linkComponent: undefined,
     onSelect: () => undefined,
     tabs: [
-      { id: "logs", label: "Logs", icon: icons.activity },
-      { id: "health", label: "Current Health", icon: icons.health },
-      { id: "process", label: "Media processes", icon: icons.process },
+      {
+        id: "logs",
+        label: "Logs",
+        icon: <Icon decorative glyph={icons.activity} size="compact" tone="inherit" />,
+      },
+      {
+        id: "health",
+        label: "Current Health",
+        icon: <Icon decorative glyph={icons.health} size="compact" tone="inherit" />,
+      },
+      {
+        id: "process",
+        label: "Media processes",
+        icon: <Icon decorative glyph={icons.process} size="compact" tone="inherit" />,
+      },
     ],
   },
 };

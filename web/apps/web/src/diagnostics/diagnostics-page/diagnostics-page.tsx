@@ -1,4 +1,4 @@
-import { icons, Stack } from "@loomarr/design-system";
+import { Icon, icons, Stack } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
@@ -34,9 +34,21 @@ const DiagnosticsPage = ({
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const tabs = [
-    { id: "logs" as const, label: "Logs", icon: icons.activity },
-    { id: "health" as const, label: "Current Health", icon: icons.health },
-    { id: "process" as const, label: "Media processes", icon: icons.process },
+    {
+      id: "logs" as const,
+      label: "Logs",
+      icon: <Icon decorative glyph={icons.activity} size="compact" tone="inherit" />,
+    },
+    {
+      id: "health" as const,
+      label: "Current Health",
+      icon: <Icon decorative glyph={icons.health} size="compact" tone="inherit" />,
+    },
+    {
+      id: "process" as const,
+      label: "Media processes",
+      icon: <Icon decorative glyph={icons.process} size="compact" tone="inherit" />,
+    },
   ];
   return (
     <Stack height="100%" minHeight={0}>

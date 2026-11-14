@@ -1,4 +1,3 @@
-import type { IconProps } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
 interface NavTabLook {
@@ -6,10 +5,11 @@ interface NavTabLook {
   id: string;
   label: ReactNode;
   /**
-   * A glyph drawn before the label from the `sm` width (640 px) up, and left out below it, where
-   * the bar needs the room for the labels. Decorative: the label is the name.
+   * An icon drawn before the label from the `sm` width (640 px) up, and left out below it, where
+   * the bar needs the room for the labels. Pass a decorative compact `Icon` (tone `inherit`): the
+   * label is the name.
    */
-  icon?: IconProps["glyph"];
+  icon?: ReactNode;
   /**
    * Shown as a pill beside the label.
    *
