@@ -1,5 +1,15 @@
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Icon, icons, Stack, type StatusTone, Surface, Text, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Icon,
+  icons,
+  Stack,
+  type StatusTone,
+  Surface,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { CardAction, CardStatus, ListGroup, RowCard, SearchField } from "@loomarr/ui";
 import { type ReactNode, useState } from "react";
 import type { FillerSourcesProps } from "./filler-sources.type";
@@ -250,26 +260,21 @@ const FillerSources = ({
       </Stack>
 
       {needsLocation && (
-        <Stack
-          align="center"
-          className="border-caution/30 bg-caution/5 rounded-lg border px-4 py-3"
-          direction="row"
-          gap="control"
-          justify="between"
-          wrap
-        >
-          <div>
-            <Text as="p" textRole="cardLabel" tone="primary">
-              Add your location
-            </Text>
-            <Text as="p" textRole="compact" tone="secondary">
-              Loomarr uses it to choose sources that fit your area.
-            </Text>
-          </div>
-          <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
-            Set location
-          </Action>
-        </Stack>
+        <Card borderRadius={8} paddingHorizontal={16} paddingVertical={12} tone="caution">
+          <Stack align="center" direction="row" gap="control" justify="between" wrap>
+            <div>
+              <Text as="p" textRole="cardLabel" tone="primary">
+                Add your location
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                Loomarr uses it to choose sources that fit your area.
+              </Text>
+            </div>
+            <Action accessibilityRole="link" render={<a href="/settings/access" />} variant="outline">
+              Set location
+            </Action>
+          </Stack>
+        </Card>
       )}
 
       {error && (

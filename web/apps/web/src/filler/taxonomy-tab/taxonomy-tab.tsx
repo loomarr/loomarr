@@ -380,13 +380,7 @@ const TaxonEditor = ({
         must be unique across the whole vocabulary.
       </Text>
       {review ? (
-        <Card
-          aria-label="Change impact"
-          aria-live="polite"
-          className="border-signal/40! bg-signal/5!"
-          gap={12}
-          padding={16}
-        >
+        <Card aria-label="Change impact" aria-live="polite" gap={12} padding={16} tone="signal">
           <Stack gap="1">
             <Text as="h4" textRole="heading">
               Review the impact
