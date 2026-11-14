@@ -54,7 +54,57 @@ func airDateOrdered(name string, monthFirst bool) string {
 			return day
 		}
 	}
+	if day, _ := spelledDayIn(name); day != "" {
+		return day
+	}
 	return ""
+}
+
+// spelledDay matches a day written with its month's name, month first or day first, its year
+// last: "March 14th 2023", "Mar 14, 2023", "14 March 2023", "14th Mar. 2023".
+var spelledDay = regexp.MustCompile(`(?i)(?:^|[ ._(\[-])(?:` +
+	`(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?[ ._-]+(\d{1,2})(?:st|nd|rd|th)?,?|` +
+	`(\d{1,2})(?:st|nd|rd|th)?[ ._-]+(?:of[ ._-]+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?)` +
+	`[ ._-]+((?:19|20)\d{2})(?:$|[ ._)\]-])`)
+
+// monthNamed is the month a word names, whole or by its first three letters ("Sept" too).
+func monthNamed(word string) (time.Month, bool) {
+	w := strings.ToLower(word)
+	for m := time.January; m <= time.December; m++ {
+		full := strings.ToLower(m.String())
+		if w == full || w == full[:3] || m == time.September && w == "sept" {
+			return m, true
+		}
+	}
+	return 0, false
+}
+
+// spelledDayIn is the day a name spells with its month's name (spelledDay), YYYY-MM-DD, and where
+// the day starts in the name; "" for none. A month's name must be one: "Marching 4 2023" is none.
+func spelledDayIn(name string) (string, int) {
+	for _, m := range spelledDay.FindAllStringSubmatchIndex(name, -1) {
+		part := func(i int) string {
+			if m[2*i] < 0 {
+				return ""
+			}
+			return name[m[2*i]:m[2*i+1]]
+		}
+		day, at := part(2), m[2]
+		if at < 0 {
+			day, at = part(3), m[8]
+		}
+		// The month's word whole: "Mar", "Mar.", "March", never "Marching".
+		word := strings.FieldsFunc(name[at:], func(r rune) bool { return strings.ContainsRune(" ._-,", r) })[0]
+		t, ok := monthNamed(word)
+		if !ok {
+			continue
+		}
+		// A day the month never had, "February 30th", is none: time.Date would roll it on.
+		if d := time.Date(atoi(part(5)), t, atoi(day), 0, 0, 0, 0, time.UTC); d.Day() == atoi(day) && d.Month() == t {
+			return d.Format(time.DateOnly), m[0]
+		}
+	}
+	return "", -1
 }
 
 // shortDay matches a day written with its year in two digits, its parts apart by one separator, at
@@ -204,6 +254,11 @@ func datedShow(name string) string {
 		// "Breakfast.Bellow.24.03.19", its year short (shortDay).
 		if s := shortDay.FindStringSubmatchIndex(name); s != nil && airDateIn(name) != "" {
 			return strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(name[:s[2]])), " ")
+		}
+		// "Late Lamp - March 14th 2023", its day spelled (spelledDay).
+		if day, at := spelledDayIn(name); day != "" {
+			show := strings.Join(strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(leadingTags.ReplaceAllString(name[:at], ""))), " ")
+			return strings.Trim(show, " -([")
 		}
 		return ""
 	}

@@ -748,10 +748,12 @@ func TestAnAbsoluteEpisodeIsPlacedByItsShowsSeasons(t *testing.T) {
 	}
 }
 
-// Kodi's "Show - 214 - Title" reads as season 2's 14th, and its show's catalog confirms it: a show
-// whose second season holds no 14th episode, but whose seasons hold a 214th, numbers it across
-// the show. One whose second season holds a 14th keeps the reading.
-func TestKodisThreeDigitsAreConfirmedByTheCatalog(t *testing.T) {
+// Three digits read two ways, and the show's catalog says which. Kodi's "Show - 214 - Title" reads
+// as season 2's 14th: a show whose second season holds no 14th episode, but whose seasons hold a
+// 214th, numbers it across the show; one whose second season holds a 14th keeps the reading.
+// "Show - 101" reads as the show's 101st: a show too short for one, whose first season holds a
+// first, ran its season and episode together.
+func TestThreeDigitsAreConfirmedByTheCatalog(t *testing.T) {
 	ctx := context.Background()
 	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
 	season := func(show string, n, episodes int) mp.Record {
@@ -780,6 +782,9 @@ func TestKodisThreeDigitsAreConfirmedByTheCatalog(t *testing.T) {
 		// Seasons of 5 and 14, as its files end: season 2 holds a 14th.
 		"90001102":   series("90001102", "Brindle Point", mp.SeasonSize{Number: 1, Episodes: 5}, mp.SeasonSize{Number: 2, Episodes: 14}),
 		"90001102/1": season("90001102", 1, 5), "90001102/2": season("90001102", 2, 14),
+		// Two seasons of 10: no 101st.
+		"90001103":   series("90001103", "Orrin Vale", mp.SeasonSize{Number: 1, Episodes: 10}, mp.SeasonSize{Number: 2, Episodes: 10}),
+		"90001103/1": season("90001103", 1, 10), "90001103/2": season("90001103", 2, 10),
 	}
 	h := newHarness(t)
 	h.im.Catalog, h.im.Answers = h.st, h.st
@@ -787,6 +792,8 @@ func TestKodisThreeDigitsAreConfirmedByTheCatalog(t *testing.T) {
 		"Cutters Run {tmdb-90001101}/Cutters Run - 214 - Late.mkv":     "S2E4 Tide 2-4",
 		"Brindle Point {tmdb-90001102}/Brindle Point - 214 - Late.mkv": "S2E14 Tide 2-14",
 		"Brindle Point {tmdb-90001102}/Brindle Point - 105 - Dew.mkv":  "S1E5 Tide 1-5",
+		"Orrin Vale {tmdb-90001103}/Disc 1/Orrin Vale - 101.mkv":       "S1E1 Tide 1-1",
+		"Orrin Vale {tmdb-90001103}/Disc 2/Orrin Vale - 203.mkv":       "S2E3 Tide 2-3",
 	}
 	for rel := range files {
 		h.file(rel, 10)
