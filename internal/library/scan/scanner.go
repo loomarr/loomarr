@@ -408,7 +408,7 @@ func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
 	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
 		return err
 	}
-	if !inUse {
+	if !inUse && l.Scanner != nil {
 		// A pass forgets a released root first thing, but the next pass waits for the running
 		// one's reading, which on a first import is most of it: the folder is forgotten here, now,
 		// in the background, waiting at most for a walk under way. The header stage then reads
