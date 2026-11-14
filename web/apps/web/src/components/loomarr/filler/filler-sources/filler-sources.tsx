@@ -188,7 +188,8 @@ const FillerSources = ({
     return (
       <Stack
         align="center"
-        backgroundColor={selectedId === source.id ? "surfaceElevated" : undefined}
+        // Raised, not elevated: RowCard's lead disc is surfaceElevated and would vanish on it.
+        backgroundColor={selectedId === source.id ? "surfaceRaised" : undefined}
         direction="row"
         gap="inline"
         key={source.id}
