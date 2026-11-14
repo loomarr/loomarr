@@ -485,9 +485,15 @@ func (r *AssetRefs) Claim(assetPath string) bool {
 	if r == nil {
 		return false
 	}
-	last := r.counts[assetPath] == 1 && len(r.unreadable) == 0
+	last := r.Sole(assetPath)
 	r.counts[assetPath]--
 	return last
+}
+
+// Sole reports what Claim would, without counting a reference released: for a caller whose
+// disposal can still fail after it decides, and which calls Claim once it has succeeded.
+func (r *AssetRefs) Sole(assetPath string) bool {
+	return r != nil && r.counts[assetPath] == 1 && len(r.unreadable) == 0
 }
 
 // ReferencedAssets counts how many clips' sidecars name each media asset, across the whole catalog.

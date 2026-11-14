@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
+	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/quarantine"
 	"github.com/loomarr/loomarr/internal/media/tools"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -118,6 +120,73 @@ func TestAClipHeldAfterTheListingKeepsItsOriginal(t *testing.T) {
 	}
 	if res.Originals != 0 || sidecarMaster(t, full).Released() || !exists(filepath.Join(f.dir, masterRel("fetched"))) {
 		t.Fatalf("Run = %+v, want a clip going back on the conveyor to keep its original", res)
+	}
+}
+
+// The original is the only way back to a clip whose airing copy is damaged, so it goes only once
+// that copy is the file its sidecar records and intake has finished with the download.
+func TestAnOriginalStaysWhileItsAiringCopyOrAcquisitionIsNotSound(t *testing.T) {
+	cases := map[string]func(t *testing.T, f *fixture, full string){
+		"broken airing copy": func(t *testing.T, f *fixture, full string) {
+			if err := os.WriteFile(full, []byte("damaged bytes, not the ones recorded"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"missing airing copy": func(t *testing.T, f *fixture, full string) {
+			if err := os.Remove(full); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"acquisition in repair": func(t *testing.T, f *fixture, _ string) {
+			a := f.store.artifacts[hashOf("fetched")]
+			a.State, a.RepairReason = acquisition.ArtifactRepair, acquisition.ArtifactMediaMissing
+			f.store.artifacts[hashOf("fetched")] = a
+		},
+		"no acquisition record": func(t *testing.T, f *fixture, _ string) {
+			delete(f.store.artifacts, hashOf("fetched"))
+		},
+	}
+	for name, damage := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			full := f.ready(t, hashOf("fetched"), "run-1", masterRel("fetched"))
+			damage(t, f, full)
+			now := func() time.Time { return t0 }
+			res, err := New(f.store, quarantine.New(f.dir, now), nil, f.dir, now, nil).Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Originals != 0 || !exists(filepath.Join(f.dir, masterRel("fetched"))) {
+				t.Fatalf("Run = %+v, want the original kept", res)
+			}
+			if tags, ok := asset.ReadSidecarTags(full); ok && tags.MediaAssets.SourceMaster.Released() {
+				t.Fatal("the sidecar records the original released")
+			}
+		})
+	}
+}
+
+// A clip kept for a broken copy is looked at again: once the copy is sound, the original goes.
+func TestAnOriginalKeptForABrokenCopyIsReleasedOnceTheCopyIsSound(t *testing.T) {
+	f := newFixture(t)
+	full := f.ready(t, hashOf("fetched"), "run-1", masterRel("fetched"))
+	sound, err := os.ReadFile(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("damaged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := func() time.Time { return t0 }
+	job := New(f.store, quarantine.New(f.dir, now), nil, f.dir, now, nil)
+	if res, err := job.Run(context.Background()); err != nil || res.Originals != 0 {
+		t.Fatalf("Run = %+v, %v; want the original kept while the copy is broken", res, err)
+	}
+	if err := os.WriteFile(full, sound, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := job.Run(context.Background()); err != nil || res.Originals != 1 {
+		t.Fatalf("Run = %+v, %v; want the original released once the copy is sound", res, err)
 	}
 }
 

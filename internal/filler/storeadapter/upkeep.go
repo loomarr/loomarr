@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/filler/acquisition"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -33,6 +34,10 @@ func (a Upkeep) ListReadyClips(ctx context.Context) ([]clipstore.Clip, error) {
 
 func (a Upkeep) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
 	return a.st.GetClipPipeline(ctx, hash)
+}
+
+func (a Upkeep) AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error) {
+	return a.st.AcquisitionArtifactForClip(ctx, mediaPath, clipHash)
 }
 
 func (a Upkeep) ListClipPaths(ctx context.Context) ([]string, error) {

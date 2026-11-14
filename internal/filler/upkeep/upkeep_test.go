@@ -35,6 +35,13 @@ type fakeStore struct {
 	clips   map[string]clipstore.Clip
 	pinned  map[string]bool
 	retires int
+	// artifacts is each fetched clip's acquisition, by clip hash.
+	artifacts map[string]acquisition.Artifact
+}
+
+func (f *fakeStore) AcquisitionArtifactForClip(_ context.Context, _, clipHash string) (acquisition.Artifact, bool, error) {
+	a, ok := f.artifacts[clipHash]
+	return a, ok, nil
 }
 
 func (f *fakeStore) ListClipPipelines(_ context.Context, _ pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
@@ -95,32 +102,48 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	return &fixture{dir: t.TempDir(), store: &fakeStore{
 		rows: map[string]pipelinestate.ClipPipeline{}, clips: map[string]clipstore.Clip{}, pinned: map[string]bool{},
+		artifacts: map[string]acquisition.Artifact{},
 	}}
 }
 
 func (f *fixture) write(t *testing.T, rel string) string {
 	t.Helper()
+	return f.writeContent(t, rel, rel)
+}
+
+func (f *fixture) writeContent(t *testing.T, rel, content string) string {
+	t.Helper()
 	full := filepath.Join(f.dir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(full, []byte(rel), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return full
 }
 
 // reject adds a rejected clip with a playback file and a sidecar naming master, and returns the
-// playback file's full path.
+// playback file's full path. With a master, the playback file holds the master's bytes, as a clip
+// with no separate playback copy does, so its airing copy checks against the master's identity.
 func (f *fixture) reject(t *testing.T, hash, acquisition, master string, rejectedAt time.Time) string {
 	t.Helper()
 	rel := cliplibrary.ClipRelPath(hash, ".mp4")
 	full := f.write(t, rel)
 	var tags asset.SidecarTags
 	if master != "" {
-		f.write(t, master)
+		masterFull := f.writeContent(t, master, master)
+		f.writeContent(t, rel, master)
+		sum, size, err := asset.FileSHA256(masterFull)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sparse, err := asset.ClipID(masterFull)
+		if err != nil {
+			t.Fatal(err)
+		}
 		tags.MediaAssets = &asset.Manifest{Version: 1, SourceMaster: asset.Identity{
-			Role: asset.RoleSourceMaster, SHA256: hashOf(master), Bytes: int64(len(master)), ClipHash: hash, Path: master,
+			Role: asset.RoleSourceMaster, SHA256: sum, Bytes: size, ClipHash: sparse, Path: master,
 		}}
 	}
 	if err := asset.WriteSidecarTags(full, tags, false); err != nil {
@@ -136,16 +159,19 @@ func (f *fixture) reject(t *testing.T, hash, acquisition, master string, rejecte
 }
 
 // ready adds a clip on air with a playback file whose sidecar names master, and returns the
-// playback file's full path.
-func (f *fixture) ready(t *testing.T, hash, acquisition, master string) string {
+// playback file's full path. A fetched one's acquisition is consumed, as intake leaves it.
+func (f *fixture) ready(t *testing.T, hash, run, master string) string {
 	t.Helper()
-	full := f.reject(t, hash, acquisition, master, t0)
+	full := f.reject(t, hash, run, master, t0)
 	c := f.store.clips[hash]
 	c.Held = false
 	f.store.clips[hash] = c
 	row := f.store.rows[hash]
 	row.Disposition, row.RejectReason = pipelinestate.DispositionReady, ""
 	f.store.rows[hash] = row
+	if run != "" {
+		f.store.artifacts[hash] = acquisition.Artifact{AcquisitionID: run, ClipHash: hash, State: acquisition.ArtifactConsumed}
+	}
 	return full
 }
 

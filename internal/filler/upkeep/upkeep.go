@@ -15,6 +15,7 @@ package upkeep
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"time"
@@ -47,6 +48,9 @@ type Store interface {
 	ListReadyClips(ctx context.Context) ([]clipstore.Clip, error)
 	// GetClipPipeline reads a clip's pipeline row; a clip with none was never on the conveyor.
 	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
+	// AcquisitionArtifactForClip reads the download a fetched clip came from; its original is
+	// released only once intake has consumed it.
+	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
 }
 
 // Bin is the quarantine (quarantine.Bin).
@@ -238,7 +242,9 @@ func (j *Job) quarantine(ctx context.Context, hash string, referenced *identity.
 // releaseOriginals releases the original download of every Ready clip Loomarr fetched (decision 14
 // of #3838): only the airing copy stays, and the sidecar keeps the original's digest and size. A
 // clip added by hand keeps its original, as does one the library re-encode still has to encode
-// from. The file goes to quarantine before the sidecar stops naming it, so a crash between the
+// from, one whose airing copy is missing or not the bytes its sidecar records, and one whose
+// acquisition intake has not consumed (sync marks it in repair when a file stops matching). The
+// file goes to quarantine before the sidecar stops naming it, so a crash between the
 // two leaves a sidecar naming a missing file, which the next pass finishes, never an unnamed file
 // nothing would find again. An original another clip's sidecar still names stays until the last
 // of them is released.
@@ -252,7 +258,7 @@ func (j *Job) releaseOriginals(ctx context.Context, res *Result) error {
 	if err != nil {
 		return err
 	}
-	var referenced map[string]int
+	var referenced *identity.AssetRefs
 	for _, c := range ready {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -285,13 +291,18 @@ func (j *Job) releaseOriginals(ctx context.Context, res *Result) error {
 			if err != nil {
 				return err
 			}
-			referenced = identity.ReferencedAssets(j.clipDir, paths)
+			referenced = identity.ReferencedAssets(j.clipDir, paths, j.log)
 		}
-		master, released := j.release(ctx, c.Hash, full, referenced)
+		// An unreadable sidecar might name an original too. Dropping this clip's path to one it
+		// shares would leave the file named by nothing anyone can read; the release waits.
+		if len(referenced.Unreadable()) > 0 {
+			return nil
+		}
+		master, released := j.release(ctx, c, full, referenced)
 		if !released {
 			continue
 		}
-		referenced[master]--
+		referenced.Claim(master)
 		j.settled[c.Hash] = true
 		res.Originals++
 	}
@@ -302,7 +313,8 @@ func (j *Job) releaseOriginals(ctx context.Context, res *Result) error {
 // and rewrites the clip's sidecar without its path. It holds the sidecar lock from the read to the
 // write, which the defect floor and a rewind share: neither puts back what this removed, and a
 // rewind either holds the clip first, which the re-read here sees, or finds the original gone.
-func (j *Job) release(ctx context.Context, hash, full string, referenced map[string]int) (string, bool) {
+func (j *Job) release(ctx context.Context, c clipstore.Clip, full string, referenced *identity.AssetRefs) (string, bool) {
+	hash := c.Hash
 	unlock := asset.LockSidecar(full)
 	defer unlock()
 	tags, ok := asset.ReadSidecarTags(full)
@@ -312,8 +324,12 @@ func (j *Job) release(ctx context.Context, hash, full string, referenced map[str
 	if now, found, err := j.store.GetClip(ctx, hash); err != nil || !found || now.Held || !now.RemovedAt.IsZero() {
 		return "", false
 	}
+	if err := j.sound(ctx, c, *tags.MediaAssets); err != nil {
+		j.warn("upkeep: a Ready clip keeps its original; the next pass looks again", "clip", hash, "reason", err)
+		return "", false
+	}
 	master := tags.MediaAssets.SourceMaster.Path
-	if referenced[master] <= 1 {
+	if referenced.Sole(master) {
 		masterFull := filepath.Join(j.clipDir, filepath.FromSlash(master))
 		// The media first: a crash after it leaves the provenance sidecar, which the clip's
 		// sidecar still leads the next pass to.
@@ -329,6 +345,31 @@ func (j *Job) release(ctx context.Context, hash, full string, referenced map[str
 		return "", false
 	}
 	return master, true
+}
+
+// sound is nil when c's original is no longer the only way back to it: intake has consumed its
+// acquisition (sync marks one in repair when a file stops matching it), and the file c airs is the
+// one its sidecar records, byte for byte. That is the playback copy, or for a clip with no separate
+// playback copy, the visible file, which holds the master's bytes.
+func (j *Job) sound(ctx context.Context, c clipstore.Clip, m asset.Manifest) error {
+	artifact, found, err := j.store.AcquisitionArtifactForClip(ctx, c.Path, c.Hash)
+	switch {
+	case err != nil:
+		return err
+	case !found:
+		return errors.New("its acquisition has no record")
+	case artifact.State != acquisition.ArtifactConsumed:
+		return fmt.Errorf("its acquisition is %s, not consumed", artifact.State)
+	}
+	airing := m.SourceMaster
+	airing.Role, airing.Path = asset.RolePlayback, c.Path
+	if m.Playback != nil {
+		airing = m.Playback.Asset
+	}
+	if filepath.Clean(filepath.FromSlash(airing.Path)) != filepath.Clean(filepath.FromSlash(c.Path)) {
+		return errors.New("its sidecar records a playback copy other than the file it airs")
+	}
+	return asset.ValidateFile(ctx, j.clipDir, airing, asset.RolePlayback, "")
 }
 
 // report logs each file of what that could not go to quarantine and reports whether any failed.
