@@ -561,6 +561,33 @@ func TestAnNFONumberingAnotherEpisodeDoesNotNameTheFile(t *testing.T) {
 	}
 }
 
+// An episode's copies are one title from the first pass, with no ids to join them: a 720p beside a
+// 1080p, and a copy kept in "Season 1" beside "Season 01". Two files numbered alike but titled apart
+// are two episodes, one misnumbered, never one title's copies.
+func TestAnEpisodesCopiesAreOneTitle(t *testing.T) {
+	h := newHarness(t)
+	for _, rel := range []string{
+		"Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [HDTV-720p].mkv",
+		"Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [WEBDL-1080p].mkv",
+		"Hollin Reach (2005)/Season 1/Hollin Reach - S01E02 - The Pit.avi",
+		"Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E03 - Low Ground [HDTV-720p].mkv",
+		"Hollin Reach (2005)/Season 1/Hollin Reach - S01E03 - High Water.avi",
+	} {
+		h.file(rel, 10)
+	}
+	h.run()
+	item := func(rel string) string { return string(h.item(fileOrigin(h.root, rel)).ID) }
+	pit := item("Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [HDTV-720p].mkv")
+	if item("Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E02 - The Pit [WEBDL-1080p].mkv") != pit ||
+		item("Hollin Reach (2005)/Season 1/Hollin Reach - S01E02 - The Pit.avi") != pit {
+		t.Error("The Pit's three copies are not one title")
+	}
+	if item("Hollin Reach (2005)/Season 01/Hollin Reach (2005) - S01E03 - Low Ground [HDTV-720p].mkv") ==
+		item("Hollin Reach (2005)/Season 1/Hollin Reach - S01E03 - High Water.avi") {
+		t.Error("two episodes numbered alike but titled apart are one title")
+	}
+}
+
 // A show the catalog numbers unlike the disk, here a season missing its last episode, has no entry
 // at a file's mark to weigh an episode id against, so the file's own title does. An id whose record
 // the title doesn't name gives way to TMDB's entry at the mark that the title does name; an id whose
