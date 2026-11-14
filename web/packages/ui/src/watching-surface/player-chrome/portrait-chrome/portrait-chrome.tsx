@@ -2,6 +2,7 @@ import type { ViewportInsets } from "@loomarr/design-system";
 import { useState } from "react";
 import { type LayoutChangeEvent, View } from "react-native";
 
+import { CastingCard } from "../casting-card";
 import { ChannelBand } from "../channel-band";
 import { ChannelCards } from "../channel-cards";
 import { PlayerCaption } from "../player-caption";
@@ -20,6 +21,7 @@ import { UnmutePill } from "../unmute-pill";
 const PortraitChrome = ({
   band,
   captions,
+  casting,
   formatTime,
   insets,
   keys,
@@ -33,6 +35,7 @@ const PortraitChrome = ({
 }: Pick<
   PlayerChromeProps,
   | "band"
+  | "casting"
   | "formatTime"
   | "keys"
   | "live"
@@ -56,6 +59,14 @@ const PortraitChrome = ({
       pointerEvents="box-none"
       style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0, zIndex: 30 }}
     >
+      {casting && frame.height > 0 ? (
+        // The picture is on the receiver: the card is exactly the centred 16:9 strip, under the toolbar and keys.
+        <CastingCard
+          {...casting}
+          height={(frame.width * 9) / 16}
+          top={(frame.height - (frame.width * 9) / 16) / 2}
+        />
+      ) : null}
       {surf ? null : (
         <View
           pointerEvents="box-none"

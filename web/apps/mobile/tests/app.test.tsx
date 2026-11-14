@@ -109,6 +109,7 @@ vi.mock("@loomarr/player/native", async (importOriginal) => ({
   PairedNativeImage: () => null,
   createExpoVideoTransport: () => ({
     dispose: () => undefined,
+    externalPlaybackActive: () => false,
     goLive: () => undefined,
     inPictureInPicture: () => false,
     pause: () => undefined,
@@ -117,6 +118,7 @@ vi.mock("@loomarr/player/native", async (importOriginal) => ({
     resume: () => undefined,
     setPictureInPicture: () => undefined,
     subscribe: () => () => undefined,
+    subscribeExternalPlayback: () => () => undefined,
     subscribePictureInPicture: () => () => undefined,
     suspend: () => undefined,
   }),
