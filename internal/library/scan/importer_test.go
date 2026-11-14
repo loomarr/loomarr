@@ -1150,6 +1150,49 @@ func TestHeaderStageReadsOnPastAFileItCannotOpen(t *testing.T) {
 	}
 }
 
+// A folder released while its files are read is forgotten for good: the stage reads no more of
+// them, and the reads already done are not saved back, so the files don't return to the Library.
+func TestReleasingAFolderStopsItsReads(t *testing.T) {
+	h := newHarness(t)
+	const files = 6 * headerConcurrency
+	for i := range files {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	read := h.im.Header
+	var (
+		mu    sync.Mutex
+		reads int
+	)
+	h.im.Header = func(ctx context.Context, path string) (header.Header, error) {
+		mu.Lock()
+		reads++
+		first := reads == 1
+		mu.Unlock()
+		if first {
+			// "Stop using" lands, and a pass forgets the folder, while the stage reads.
+			if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+				t.Error(err)
+			}
+			h.im.run.Lock()
+			err := h.im.forgetReleased(ctx, map[string]bool{})
+			h.im.run.Unlock()
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		return read(ctx, path)
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(context.Background(), h.root)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("%d of the forgotten folder's files saved back, %v", len(rows), err)
+	}
+	// The reads in flight when it was forgotten finish; no more start.
+	if reads > 2*headerConcurrency {
+		t.Fatalf("read %d of %d files after the folder was released", reads, files)
+	}
+}
+
 // A share that gives no file back stops the stage after headerFaultLimit files in a row, so a
 // share that went away is not asked for every file of a library. Every file stays pending.
 func TestHeaderStageStopsWhenTheShareGivesNothingBack(t *testing.T) {

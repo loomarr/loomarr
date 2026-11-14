@@ -144,11 +144,14 @@ type Importer struct {
 	// reading is true while a header stage takes files; handoff are the files later passes queued
 	// for it, and staged every file the stage has taken, so a pass's hand-off of one it already
 	// holds is dropped as it arrives. touched is the import that last wrote each file, one entry a
-	// path: a read queued by an older one is dropped. Guarded by mu.
-	reading bool
-	handoff []pending
-	staged  map[string]bool
-	touched map[string]int64
+	// path: a read queued by an older one is dropped. forgotten is the import that forgot each
+	// released root's files: a read of one queued before is dropped too, neither read nor saved
+	// back. Guarded by mu.
+	reading   bool
+	handoff   []pending
+	staged    map[string]bool
+	touched   map[string]int64
+	forgotten map[string]int64
 	// arrChanged are arr items to read again before the next folder pass uses the index; relist
 	// asks for every arr to be listed again. Guarded by mu.
 	arrChanged []ArrItem
@@ -576,6 +579,15 @@ func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) e
 		if err := im.Store.DeleteLibraryFiles(ctx, root); err != nil {
 			return err
 		}
+		// The header stage may still hold the root's files: their reads are stale now, so the
+		// stage neither reads them nor saves the forgotten rows back.
+		im.gen++
+		im.mu.Lock()
+		if im.forgotten == nil {
+			im.forgotten = map[string]int64{}
+		}
+		im.forgotten[root] = im.gen
+		im.mu.Unlock()
 		im.titlesChanged()
 	}
 	return nil

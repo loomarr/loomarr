@@ -288,11 +288,12 @@ func (im *Importer) touch(rows []librarystore.LibraryFile, gen int64) {
 	}
 }
 
-// stale reports whether an import later than the one that queued job wrote its file.
+// stale reports whether an import later than the one that queued job wrote its file, or forgot its
+// root.
 func (im *Importer) stale(job pending) bool {
 	im.mu.Lock()
 	defer im.mu.Unlock()
-	return im.touched[job.file.Path] > job.gen
+	return im.touched[job.file.Path] > job.gen || im.forgotten[job.root()] > job.gen
 }
 
 // errShareFault ends a header stage whose share stopped answering.
