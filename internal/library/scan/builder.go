@@ -431,6 +431,14 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
 		if day := id.airDate(); day != "" {
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+			// A day the name writes so it reads either way, "11-05-2019", that airs none of the
+			// show's episodes is the other way round when that one airs one: the catalog says how
+			// the name is written.
+			if other := otherReading(file, day); other != "" && res.catalog.String() == "" && !res.waiting {
+				if alt := b.byAirDate(ctx, b.series[id.seriesDir], withDay(in, other), res, other); alt.catalog.String() != "" && !alt.waiting {
+					res = alt
+				}
+			}
 		} else if id.runTogether > 0 && id.absolute() == id.runTogether {
 			res = b.byRunTogether(ctx, b.series[id.seriesDir], in, res, id.runTogether)
 		} else if abs := id.absolute(); abs > 0 {

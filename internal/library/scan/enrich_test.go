@@ -995,6 +995,64 @@ func TestAShowNamedByAirDateIsPlacedByTheDay(t *testing.T) {
 	}
 }
 
+// A day a lone file writes so it reads either way, "11-05-2019", is read day first, as Plex
+// writes it, unless the show aired nothing that day and did the other way round: the catalog says
+// which way the name is written. A day first one the catalog agrees with stays as it is.
+func TestADayThatReadsEitherWayIsTheOneTheShowAired(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, aired, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode,
+			IDs:       []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: fmt.Sprintf("9000096%d", n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, PremiereDate: aired},
+		}
+	}
+	series := func(id, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 2}}, Orders: []mp.EpisodeOrder{}},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000961": series("90000961", "Velvet Hour"),
+		"90000961/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "2019-11-05", "Election Night"), entry(2, "2019-11-12", "Recount"),
+		}},
+		"90000962": series("90000962", "Ash Lane"),
+		"90000962/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(3, "2019-05-11", "Spring Fair"), entry(4, "2019-05-18", "Fete"),
+		}},
+	}}
+	h := newHarness(t)
+	h.im.Catalog, h.im.Answers = h.st, h.st
+	monthFirst := "Velvet Hour {tmdb-90000961}/Velvet Hour - 11-05-2019.mkv"
+	dayFirst := "Ash Lane {tmdb-90000962}/Ash Lane - 11-05-2019.mkv"
+	h.file(monthFirst, 10)
+	h.file(dayFirst, 10)
+	h.run()
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct{ rel, name, aired string }{
+		{monthFirst, "Election Night", "2019-11-05"},
+		{dayFirst, "Spring Fair", "2019-05-11"},
+	} {
+		origin := fileOrigin(h.root, c.rel)
+		facts := h.origin(h.item(origin), origin).Observation.Facts
+		if facts.Name != c.name || facts.PremiereDate != c.aired {
+			t.Errorf("%s = %q aired %s, want %q aired %s", c.rel, facts.Name, facts.PremiereDate, c.name, c.aired)
+		}
+	}
+}
+
 // An anime release numbered across its whole show ("Show - 013", as Sonarr names an anime's, or
 // "[Group] Show - 13") is placed by its series' catalog: the seasons hold the episodes one after
 // another, specials aside, so the 13th of two 12-episode seasons is season 2's first. One past the

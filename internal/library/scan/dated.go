@@ -6,6 +6,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
+	"github.com/loomarr/loomarr/internal/library/metadataprovider/precedence"
 )
 
 // Dated episodes: a daily or weekly show's episode named by the day it aired, "2013-02-15", and a
@@ -14,6 +17,31 @@ import (
 // airDateIn is the day a file's name says its episode aired, YYYY-MM-DD; "" for none. A day that
 // never was, such as "2024-02-30" or a number that only looks like one, is none.
 func airDateIn(name string) string { return airDateOrdered(name, false) }
+
+// otherReading is the day a file's name says read the other way round, month first rather than
+// day first or the reverse, when its day reads both ways ("11-05-2019"); "" when it reads one way.
+func otherReading(file File, day string) string {
+	other := airDateOrdered(path.Base(regrouped(file).Rel), !file.Notes.MonthFirst)
+	if other == day {
+		return ""
+	}
+	return other
+}
+
+// withDay is in with the day its name says (the embedded record's) changed to day.
+func withDay(in precedence.Input, day string) precedence.Input {
+	out := in
+	out.Records = make([]mp.Record, 0, len(in.Records))
+	for _, r := range in.Records {
+		if r.Source.Basis == mp.BasisEmbeddedID && r.Descriptive != nil && r.Descriptive.PremiereDate != "" {
+			d := *r.Descriptive
+			d.PremiereDate = day
+			r.Descriptive = &d
+		}
+		out.Records = append(out.Records, r)
+	}
+	return out
+}
 
 // airDateOrdered is airDateIn with a day written "05-06-2023" read month first when monthFirst: its
 // folder's other days say America's order ("03-14-2023" beside it, folderNotes.MonthFirst).
