@@ -273,8 +273,7 @@
       "tailwindClasses": 30
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 93,
-      "rawButton": 1
+      "tailwindClasses": 80
     },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
       "tailwindClasses": 5
