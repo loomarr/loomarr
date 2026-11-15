@@ -81,6 +81,15 @@ func (c CatalogKeys) For(kind mp.Kind, ids []mp.ExternalID) librarystore.Library
 	return librarystore.LibraryCatalogKey{}
 }
 
+// catalogMisses reports whether the catalog was asked for key and has no such title.
+func (im *Importer) catalogMisses(ctx context.Context, key librarystore.LibraryCatalogKey) bool {
+	if im.Catalog == nil || key.String() == "" {
+		return false
+	}
+	raw, fetched, err := im.Catalog.LibraryCatalogRecord(ctx, key)
+	return err == nil && fetched && raw == ""
+}
+
 // catalogRecord is the cached record for key. A key not fetched yet is noted as wanted, so the
 // Enricher fetches it, and reported as waiting: a title written without it is written again on a
 // later pass (#3565). A catalog that does not know the title, or a cache that cannot be read, says

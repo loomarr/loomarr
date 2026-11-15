@@ -554,9 +554,10 @@ var (
 	paddedAbsolute = regexp.MustCompile(`[ ._]-[ ._]+(?:0\d{1,3}|[1-9]\d{2})(?:v\d+)?$`)
 	// dashedLast matches a dashed number at the end of a name: "Show - 7", "Show - 07v2".
 	dashedLast = regexp.MustCompile(`[ ._]-[ ._]+\d{1,4}(?:v\d+)?$`)
-	// releaseNotes matches a release's bracketed notes at the end of its name: "[1080p]", "(BD
-	// 1080p x265)", "[WEB][AAC]".
-	releaseNotes = regexp.MustCompile(`(?i)[\[(][^\])]*(?:\d{3,4}p|bd|web|hevc|x26[45]|aac|flac|bluray|dvd|hdtv)[^\])]*[\])][ ._]*$`)
+	// releaseNotes matches a release's bracketed notes at the end of its name, with the group a
+	// Sonarr name ends with after them: "[1080p]", "(BD 1080p x265)", "[WEB][AAC]",
+	// "[SDTV][MP3 2.0][XviD]-GRP".
+	releaseNotes = regexp.MustCompile(`(?i)[\[(][^\])]*(?:\d{3,4}p|bd|web|hevc|x26[45]|h\.?26[45]|xvid|divx|avc|aac|e?ac3|dts|mp[23]|mpeg|flac|opus|atmos|bluray|dvd|[hs]dtv|remux)[^\])]*[\])](?:-[A-Za-z0-9]+)?[ ._]*$`)
 	// animeBrackets matches a release that brackets its number after its group's tag and its show,
 	// the show bracketed or not: "[Kumo][Show][13][1080p]", "[Kumo] Show [06] [1080p]".
 	animeBrackets = regexp.MustCompile(`^\[[^\]]*\][ ._]*(?:\[([^\]]+)\]|([^\[\]]*\pL[^\[\]]*?))[ ._]*\[(\d{1,4})(?:v\d+)?\]`)

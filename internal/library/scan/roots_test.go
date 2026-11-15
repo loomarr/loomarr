@@ -181,6 +181,26 @@ func TestStopUsingForgetsAtOnce(t *testing.T) {
 	}
 }
 
+// With no scanner (it failed to start), Stop using still releases the folder, and leaves the
+// forgetting to the scanner's first pass once there is one.
+func TestStopUsingWithNoScannerReleasesTheFolder(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	lib := &Library{Roots: &Roots{Store: h.st, Now: time.Now}}
+	if err := lib.SetInUse(ctx, h.root, false); err != nil {
+		t.Fatal(err)
+	}
+	roots, err := h.st.LibraryRoots(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range roots.Roots {
+		if r.Path == h.root && r.InUse {
+			t.Fatal("the folder is still in use")
+		}
+	}
+}
+
 // Using a folder, releasing one, typing one in, or mapping one by hand asks for a pass at once;
 // clearing a mapping does not.
 func TestUsingAFolderAsksForAPass(t *testing.T) {

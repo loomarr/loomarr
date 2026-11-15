@@ -4,7 +4,18 @@ import { SettingKey } from "@loomarr/api/models/settingKey";
 import type { SettingPreset } from "@loomarr/api/models/settingPreset";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, goDurationMinutes } from "@loomarr/core/format";
-import { Action, Card, Icon, icons, Stack, Surface, Text, TextLink } from "@loomarr/design-system";
+import {
+  Action,
+  Card,
+  Grid,
+  Icon,
+  icons,
+  PressableRow,
+  Stack,
+  Surface,
+  Text,
+  TextLink,
+} from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
@@ -184,33 +195,32 @@ const FillerSettingsIndex = () => (
             {group.description}
           </Text>
         </Stack>
-        <div className="grid gap-2 md:grid-cols-2">
+        <Grid columns={{ base: 1, md: 2 }} gap="2">
           {SETTINGS_SECTIONS.filter((item) => item.group === group.id).map((item) => (
-            <Link
-              key={item.id}
-              to="/filler/settings/$section"
-              params={{ section: item.id }}
-              className="group border-border bg-card hover:border-signal/40 hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-lg border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <Stack flexBasis="0%" flexGrow={1} gap="0.5" minWidth={0} render="span">
-                <Text as="span" textRole="cardLabel">
-                  {item.label}
-                </Text>
-                <Text as="span" textRole="hint" tone="secondary">
-                  {item.description}
-                </Text>
-              </Stack>
-              <Stack
-                className="text-muted-foreground group-hover:text-foreground transition-colors"
-                direction="row"
-                marginTop={2}
-                render="span"
-              >
-                <Icon decorative glyph={icons.goForward} size="compact" tone="inherit" />
-              </Stack>
-            </Link>
+            <Card borderRadius={8} key={item.id} overflow="hidden">
+              <PressableRow render={<Link to="/filler/settings/$section" params={{ section: item.id }} />}>
+                <Stack
+                  alignSelf="flex-start"
+                  flexBasis="0%"
+                  flexGrow={1}
+                  gap="0.5"
+                  minWidth={0}
+                  render="span"
+                >
+                  <Text as="span" textRole="cardLabel">
+                    {item.label}
+                  </Text>
+                  <Text as="span" textRole="hint" tone="secondary">
+                    {item.description}
+                  </Text>
+                </Stack>
+                <Stack alignSelf="flex-start" direction="row" marginTop={2} render="span">
+                  <Icon decorative glyph={icons.goForward} size="compact" tone="secondary" />
+                </Stack>
+              </PressableRow>
+            </Card>
           ))}
-        </div>
+        </Grid>
       </Stack>
     ))}
   </Stack>

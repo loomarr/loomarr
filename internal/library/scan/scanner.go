@@ -238,17 +238,26 @@ func (s *Scanner) dueFolders(now time.Time) (map[string][]string, time.Duration)
 // in full however little it finds.
 func (s *Scanner) Trigger() {
 	s.Importer.Tracker.Ask()
+	s.PassSoon()
+}
+
+// PassSoon asks for a pass soon on nobody's behalf: like the hourly pass, it shows its progress only
+// when it finds something to read or look up. The watch asks so when it lost track of what changed.
+// It never blocks.
+func (s *Scanner) PassSoon() {
 	select {
 	case s.trigger <- struct{}{}:
 	default:
 	}
 }
 
-// Run passes until ctx ends. A failed pass is logged and the next one runs on schedule.
+// Run passes until ctx ends. A failed pass is logged and the next one runs on schedule. Each pass's
+// header reads run behind it, so the next pass, asked for or due, walks while they do.
 func (s *Scanner) Run(ctx context.Context) {
-	var folders sync.WaitGroup
+	var folders, reads sync.WaitGroup
 	folders.Go(func() { s.passFolders(ctx) })
 	defer folders.Wait()
+	defer reads.Wait()
 	t := time.NewTicker(s.Interval)
 	defer t.Stop()
 	// The first pass of a library with no files yet is its first import, as good as asked for.
@@ -256,8 +265,16 @@ func (s *Scanner) Run(ctx context.Context) {
 		s.Importer.Tracker.Ask()
 	}
 	for {
-		if err := s.Importer.Run(ctx); err != nil && ctx.Err() == nil {
-			s.Importer.log().Warn("library scan: pass failed", "err", err)
+		if read, err := s.Importer.Walk(ctx); err != nil {
+			if ctx.Err() == nil {
+				s.Importer.log().Warn("library scan: pass failed", "err", err)
+			}
+		} else {
+			reads.Go(func() {
+				if err := read(); err != nil && ctx.Err() == nil {
+					s.Importer.log().Warn("library scan: header reads failed", "err", err)
+				}
+			})
 		}
 		select {
 		case <-ctx.Done():
@@ -398,7 +415,7 @@ func (l *Library) SetInUse(ctx context.Context, path string, inUse bool) error {
 	if err := l.Roots.SetInUse(ctx, path, inUse); err != nil {
 		return err
 	}
-	if !inUse {
+	if !inUse && l.Scanner != nil {
 		// A pass forgets a released root first thing, but the next pass waits for the running
 		// one's reading, which on a first import is most of it: the folder is forgotten here, now,
 		// in the background, waiting at most for a walk under way. The header stage then reads

@@ -1,5 +1,5 @@
 import { provisionKey } from "@loomarr/core/provision";
-import { Action, Badge, type BadgeTone, Card, Field, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, type BadgeTone, Card, Field, Grid, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import {
@@ -202,7 +202,13 @@ const ProposalReview = ({
                     Other request details ({requestDetails.length})
                   </Text>
                 </summary>
-                <dl className="bg-background/60 mt-2 grid gap-x-4 gap-y-1.5 rounded-md p-3 sm:grid-cols-[auto_1fr]">
+                <Grid
+                  className="bg-background/60 mt-2 rounded-md p-3"
+                  columnGap="4"
+                  columns={{ base: 1, sm: ["auto", "1fr"] }}
+                  render="dl"
+                  rowGap="1.5"
+                >
                   {requestDetails.map(([label, value]) => (
                     <div key={label} className="contents">
                       <Text as="dt" textRole="cardLabel" tone="secondary">
@@ -213,7 +219,7 @@ const ProposalReview = ({
                       </Text>
                     </div>
                   ))}
-                </dl>
+                </Grid>
               </details>
             )}
             <Stack direction="row" gap="inline" justify="end" wrap>

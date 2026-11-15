@@ -94,6 +94,8 @@ type stepState struct {
 	// baseline moving to the one before.
 	markAt   time.Time
 	markDone int
+	// began is when the step began.
+	began time.Time
 }
 
 // rebase takes the rate baseline, and the first checkpoint, at now.
@@ -135,7 +137,7 @@ func (t *Tracker) Begin(step Step, total int) {
 		}
 		now := t.now()
 		t.keepRate(step, now)
-		t.state[step.index()] = stepState{active: true, total: max(total, 0)}
+		t.state[step.index()] = stepState{active: true, total: max(total, 0), began: now}
 		t.state[step.index()].rebase(now)
 	})
 }
@@ -251,8 +253,15 @@ func (t *Tracker) Snapshot(now time.Time) ProgressSnapshot {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	reading := t.state[StepReading.index()]
 	for i, s := range t.state {
 		if !s.active {
+			continue
+		}
+		// A walk begun once reading had begun is a later pass's, run behind the reading (a
+		// first import's reading outlasts the hourly pass): the strip stays on step 2, never
+		// back to step 1 and off its time left.
+		if steps[i] == StepWalking && reading.active && reading.began.Before(s.began) {
 			continue
 		}
 		out := ProgressSnapshot{

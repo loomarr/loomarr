@@ -9,8 +9,12 @@ import { nativeFocus, raised, webOnly } from "../flat";
 // covers the black video layer, and is drawn under the keys: the band, the channel keys, Pause and
 // More keep working, so the phone is the TV's remote.
 
-/** The foot of a phone on its side, left clear of the band and keys so the card's content reads above them. */
-const CASTING_LIFT = 190;
+/**
+ * The foot of a phone on its side, left clear of the band and keys so the card's content reads above them.
+ * With the phone's one-row band (#4132) the keys are the tallest thing there: the utility row over the
+ * main keys reaches 116px up from the foot, plus a 24px gap.
+ */
+const CASTING_LIFT = 140;
 
 /** The Disconnect button's height. */
 const DISCONNECT_HEIGHT = 44;

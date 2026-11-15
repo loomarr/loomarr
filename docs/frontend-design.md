@@ -599,8 +599,7 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
      title, always typed, and its episode line. On desktop the row ends with `n min left`. In a break,
      the title of the programme that comes back and `Back in n min` in the break colour. When the row
      is tight the episode line gives way first, then the title; the text column is
-     `minmax(0, 1fr)`, so a long name never pushes out of the band. A phone held upright lets the
-     title take two lines.
+     `minmax(0, 1fr)`, so a long name never pushes out of the band.
   3. **Desktop and television: the film strip** is the band's foot, the full width of the band, under
      the channel block too. It is the timeline of the programme on air and what follows: each
      programme's still (its fanart, or a drawn stand-in), breaks spot by spot, a white playhead and,
@@ -610,10 +609,17 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
      opens that block's **preview card**, 12 px clear of the band: the fanart, with the title's logo on
      it when there is one (sized by area, over a flat ink wash), the name, `Starts`/`Until` and the
      time, the facts (episode, rating, genres) and two lines of synopsis.
-  4. **Phones: the progress line and Next.** One white line over the programme's own time slot on a
-     faint track, start and stop clocks at its ends (behind live, a red tick marks live). Then **Next**
-     in the same gutter, the start time in mono and the next programme's name. Behind live on a
-     landscape phone, `n min behind` ends this row. The phone's film strip is in More.
+  4. **Without a strip: the progress line and Next.** One white line over the programme's own time
+     slot on a faint track, start and stop clocks at its ends (behind live, a red tick marks live).
+     Then **Next** in the same gutter, the start time in mono and the next programme's name.
+- **A phone's band is one row** (#4132, maintainer, 2026-11-14, option B): the full band arriving on
+  every tune overwhelmed a phone's screen. Held either way, beside the 56 px block: the title (strong,
+  one line) over `Channel · n min left` (secondary). In a break the second line is `Back in n min` in
+  the break colour; with nothing scheduled the channel's name is the first line and "Nothing
+  scheduled" the second. No Live mark, clock, episode line, progress line or Next: being live is what a
+  channel is, so only **Go live**, at the row's right end, appears, and only when behind. The episode,
+  the slot's times and what follows are in Info, and the film strip in More. The station-ID card keeps
+  the fuller band.
 - **Titles are typed, never a logo, in the band** (maintainer, 2026-11-09, reversing the band half of
   #2773): a logo brings its own colours beside the channel block, its detail turns to fuss at band size,
   it breaks the baseline the row shares, and only some titles have one. Logos go where they have room
@@ -755,7 +761,7 @@ glass elevation exception; §2.3's "borders first" holds for the player too.
 
 | | Desktop (pointer) | Phone on its side | Phone upright | Television (remote) |
 | --- | --- | --- | --- | --- |
-| Band | Film strip as its foot; preview card on pointing | Progress line and Next | Progress line and Next; title may take two lines; below the picture, always shown | Film strip; preview card on focus |
+| Band | Film strip as its foot; preview card on pointing | One row: title over channel and minutes left | The same one row, below the picture, always shown | Film strip; preview card on focus |
 | Keys | Last, Channel down, Play, Channel up, Volume, More (56 px) | The same without Volume (48 px) | The same, centred below the band | Last, Subtitles, Audio, More (56 px) |
 | Utilities | Subtitles, Audio, Fullscreen, over the keys | Subtitles, Audio, AirPlay (amber while casting), Picture in picture (iPhone), over the keys | The same, a toolbar above the picture | None: the remote's buttons |
 | Leave | Back arrow, top left | Back arrow, top left | Back arrow, toolbar left | Back |

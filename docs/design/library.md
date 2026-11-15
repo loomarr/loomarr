@@ -244,7 +244,9 @@ the household's language wins over it, and a refresh after TMDB gains a translat
   Movies"), and so is one holding folders in use, unless it is added with `replace`, which uses it
   in their place in one step. The scan already reads a folder nested in another once, as part of the
   outer one (`scannedRoots`), so the list would name a folder the scan never walks; the outer one's
-  next pass keys their files under it.
+  next pass keys their files under it. Each keeps the header its inner folder read while its bytes
+  are the same (`headerWithin`), so a replace opens only the files that changed, not the whole
+  library again.
 
 ## Scanner
 
@@ -256,10 +258,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
   the media server's origin of the same title does; an id joins only items of its own kind, since
   TVDB numbers shows and episodes from one sequence. A series is an origin keyed by its folder. A
   multi-episode file is one item, its first episode numbered through its last, carrying every
-  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`).
+  episode's own ids (Sonarr's records, or the NFO's further `<episodedetails>`). An episode's
+  copies, a 720p beside a 1080p or a "Season 1" beside a "Season 01", join one item with no ids
+  between them: each carries the scanner's own id of its series folder, its mark's numbers and the
+  title its name gives after the mark (`episodeCopyID`), never listed. Two files numbered alike but
+  titled apart stay two.
 - **Identity** is the precedence resolver's, over Sonarr's or Radarr's record for the file (its
   path translated by the path map), ids in names (`{tmdb-1234}`), the name's `S01E02`, and the
-  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). A movie takes ids only from its
+  file's own NFO (`<name>.nfo`, or a movie folder's `movie.nfo`). An episode's NFO that numbers it
+  as another episode than its name's `S01E02` does is that episode's, copied beside the wrong
+  file, and is set aside whole: its title, overview and ids (`numbersAnother`). A movie takes ids only from its
   file's or its own folder's name, never a tvdb id; an episode's series is the folder above its
   season folder, else the nearest folder named by an id, else its own. An episode loose at a root's
   top, or in a season folder there, is the show its name gives before `S01E02`
@@ -290,11 +298,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
   until its bytes change; a share that stops answering ends the stage and leaves the rest pending.
   The wait never holds up a pass (decision 11): one header stage takes files at a time, outside
   the pass lock, a pass that finds it taking files hands its files over, and a read whose file a
-  later pass wrote meanwhile is dropped.
+  later pass wrote meanwhile is dropped. The scanner runs each pass's reads behind it
+  (`Importer.Walk`), so a pass asked for while a first import reads (a folder added, Use this
+  folder, Scan now) walks at once, and its new files are listed then, not once every header is
+  read.
 - **Removals.** An unreadable root or folder makes the walk incomplete, and nothing is marked
   missing. A complete walk that would remove more than 10% or 500 of a root's files is held; the
   status lists it per folder and kind, and `POST /v1/library/roots/confirm-removal` records the
-  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once.
+  maintainer's confirmation, which the next pass applies. Releasing a root forgets its files at once;
+  one step 1 is walking or writing stops at the file it is on, and the pass goes on to the next
+  root.
 - **Passes.** `scan.Scanner` makes one when the app starts, hourly, when a folder is used,
   added or released (its files are forgotten first thing), when a path mapping is set by hand (#3359: a corrected mapping takes without a restart or
   the hourly wait), and on `POST /v1/library/scan` (Settings → Library's Scan now, as in Emby and
@@ -334,7 +347,9 @@ step 5). Nothing reads the scanner's origins until the cutover.
   file), and 3 *Looking up details* (the Enricher's fetches of catalog rows due as new: never
   fetched, an outdated shape or language, or marked by Refresh everything; counted when it starts
   and grown as more become due; it names the title). Steps 2 and 3 can run together; the status
-  shows the earliest one running. Each step's time left is remaining × elapsed ÷ done since its
+  shows the earliest one running. A walk begun once reading has begun, a later pass's behind a
+  first import's reading, runs behind it: the status stays on step 2 until the reading ends,
+  never back to step 1. Each step's time left is remaining × elapsed ÷ done since its
   rate baseline, sent only once it has run 30 s and done 2%, never while paused, and the baseline
   restarts when a pause for watching ends. Folder passes show only the header reads they queue.
   `GET /v1/library/status` carries it as `scan` (`step`, `stepNumber`, `done`, `total`, `current`,
@@ -395,11 +410,16 @@ step 5). Nothing reads the scanner's origins until the cutover.
 - **A stuck share does not stall the scanner.** A walk that lists no folder and reads no file for 2
   minutes is given up on: the root reads as offline and nothing in it is marked missing. A call
   blocked on a dead mount cannot be cancelled, so the root is not walked again until that one ends.
-  A header read gets the same 2 minutes: one that does not return ends the header stage and stalls
-  its root the same way, so no further reader is sent into the mount. One file the share cannot
-  give back (gone since the walk, an I/O error) stays pending for the next pass and the stage reads
-  on; eight such files in a row with no read between are the share's fault, and end the stage with
-  the rest still pending.
+  A header read gets the same 2 minutes: one that does not return stalls its root the same way, so
+  no further reader is sent into the mount, and the root's other files are set aside while the
+  other roots read on. Once nothing else is left, the stage waits up to 2 minutes more for the read
+  to return, then takes the set-aside files up again, the slow one with them (three times at
+  most). One file the share cannot give back (an I/O error) stays pending for the next pass and the
+  stage reads on; eight such files of one root in a row, with no read of that root between, are
+  its share's fault, and the stage reads no more of that root. Another root's faults never count
+  toward it. A file gone from a folder the share still lists was renamed or
+  deleted by an arr since the walk, which says nothing of the share. A pass that left a root's
+  files unread does not count as a completed scan.
 - **Notifications** (decision 32) go to operators. Each pass records every root's readability
   (`CheckLibraryRoot`), so the status strip shows what the last pass found, and a flip publishes
   `library_folder_offline` or `library_folder_back` once per change. An arr whose webhook
@@ -504,7 +524,18 @@ step 5). Nothing reads the scanner's origins until the cutover.
   The kill switch stops it too. An episode whose ids include its own TVDB id (from Sonarr or an
   NFO) is cached the same way, keyed `tvdb:episode:<id>` in its `library_items.catalog`: TMDB's
   view of that episode, found through TMDB's `/find`, never by its season and number when it has
-  that id (decision 53). An episode with no TVDB id takes TMDB's entry for its season and number,
+  that id (decision 53). An NFO's id can still be another episode's: a scraper copies an NFO
+  beside the wrong file, or TMDB's TVDB mapping points one along. So when the file's own mark
+  ("S02E22") places it, and TMDB numbers the show as the disk does (below), TMDB's season entry at
+  that mark is checked against the id's record. An entry that shares no id with it stands over
+  the id: the file is described and keyed by its own number (`ownNumberOver`). In a show TMDB
+  numbers otherwise, the title the file's name gives after its mark (`toldTitle`; "Episode 4"
+  says none) weighs the id instead: an id whose record that title names stands, and one it
+  doesn't gives way to TMDB's season entry at the mark when the title names that, or else to the
+  file's own details, unnumbered, for Needs you. An episode id also
+  grounds only the same episode in the inventory: an episode file never joins a title another of
+  whose files is numbered otherwise, so two episodes sharing a stale id stay two titles, and
+  neither is offered as an extra copy. An episode with no TVDB id takes TMDB's entry for its season and number,
   keyed `tmdb:season:<series id>/<season>` (one record per season, every episode in it), but only
   when TMDB numbers the series the way the disk does: TMDB lists no other episode ordering for it
   (episode groups: DVD, absolute, story arc), and every season on disk ends at TMDB's episode
@@ -523,7 +554,13 @@ step 5). Nothing reads the scanner's origins until the cutover.
   makes every file written once more, keeping its header, so a title written before this names
   its catalog row on the next pass.
 - **Needs you** (step 11a, decision 27). A movie or series is grounded when anything gives it a
-  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. Each
+  TMDB, TVDB or IMDb id: an arr, an id in its name, a sidecar, or the maintainer's link. A title
+  known only by another catalog's id (a `tvshow.nfo` with only its TVDB or IMDb id) is looked up by
+  it, through TMDB's `/find` (`tvdb:series:<id>`, `imdb:series:<id>`, `imdb:movie:<id>`). Once
+  found it is cached and keyed by TMDB's own id too, as its seasons and orders are. An id only a
+  name or an NFO gives, that the catalog was asked for and does not know, grounds nothing: the
+  title is in Needs you, not matched in silence. An arr's id always grounds. The first answer for a
+  catalog row, "no such title" included, writes its titles again. Each
   title row keeps its scan origin (a movie's file, a series' folder) and whether it is grounded.
   `scan.Matcher` searches TMDB every minute for present titles nothing grounds and nobody
   answered, up to 20 a tick at the provider's rate hint. A title whose search fails is left for the
@@ -1040,7 +1077,9 @@ header is kept, so no file is opened again. Each version and what it changed:
 - **81:** a shelf names no show: an episode named by its mark alone, "Downloads/S01E01.mkv",
   "TV/S01E07.mkv", is no show's, as one loose at the top is (`showFolderIn`, `noShowIn`).
 - **82:** a file written without a catalog record it asked for (its own, its season's, or its
-  series') is saved with no identity, so the next pass over its folder writes it again (#3565).
+  series') is saved with a waiting identity, never its own, so the next pass over its folder once
+  the record is cached writes it again (#3565). A pass before then finds the same file still
+  waiting and leaves it, and the header read queued for it stays its own (`waitingFor`).
   The Enricher could fetch the record while that pass was still writing, before the file's row
   was saved; the pass then saved an identity that said the file was final, and every later pass,
   a full scan included, left its episodes named by their files. The new version writes every
@@ -1062,6 +1101,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   20" counts across the show, placed by its catalog; a film's chapters give their years. "Show -
   101", the show's 101st, is season 1's first when its catalog is too short for a 101st and its
   first season holds a first (`byRunTogether`).
+- **86:** an episode no catalog names yet is named by what its file says after its own mark, its
+  release's notes set aside: Sonarr's "Show (2005) - S01E03 - The Long Tide [WEBDL-1080p]" is "The
+  Long Tide", however the show's folder spells the show. A mark with no title after it, "Show
+  (2005) - S01E04 [HDTV-720p]", is the show and its mark, "Show S01E04"; a Specials' "Show -
+  Holiday Special [1080p]", with no mark, is what follows the show's name (`episodeName`).
 
 ## Search
 

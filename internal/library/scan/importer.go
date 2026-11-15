@@ -8,7 +8,7 @@ import (
 	"log/slog"
 
 	"path/filepath"
-	"slices"
+
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -164,7 +164,13 @@ type Importer struct {
 	stalledWalks map[string]<-chan struct{}
 	// confirmed are roots whose held removal the maintainer confirmed, applied by their next pass.
 	confirmed map[string]bool
+	// walking cancels each root's step 1 while the import walks and writes it, so a root released
+	// meanwhile stops at once (ForgetReleased). Guarded by mu.
+	walking map[string]context.CancelCauseFunc
 }
+
+// errReleased ends a root's step 1 when the root stops being used mid-walk.
+var errReleased = errors.New("library scan: the folder was released")
 
 // RootState is how one root's last pass ended.
 type RootState string
@@ -245,21 +251,39 @@ type episodeRow struct {
 	seriesDir string
 }
 
-// Run makes one pass. Imports never overlap: a second caller waits for the first. Header reads
-// follow the import, in the one header stage (readHeaders).
+// Run makes one pass: Walk, then its header reads.
 func (im *Importer) Run(ctx context.Context) error {
-	if im.Enabled != nil && !im.Enabled() {
-		return nil
-	}
-	queue, err := im.importAll(ctx)
+	read, err := im.Walk(ctx)
 	if err != nil {
 		return err
 	}
-	if err := im.readHeaders(ctx, queue); err != nil {
-		return err
+	return read()
+}
+
+// Walk walks and imports every in-use root, and returns the pass's header reads, in the one header
+// stage (readHeaders). Imports never overlap: a second caller waits for the first. A pass whose
+// reads find the stage reading hands its files to it, so a caller running read in the background
+// can walk again at once: a folder added, or a Scan now, is not held behind a first import's
+// reading (Scanner.Run).
+func (im *Importer) Walk(ctx context.Context) (read func() error, err error) {
+	if im.Enabled != nil && !im.Enabled() {
+		return func() error { return nil }, nil
 	}
-	im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
-	return nil
+	queue, err := im.importAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return func() error {
+		complete, err := im.readHeaders(ctx, queue)
+		if err != nil {
+			return err
+		}
+		// A pass that left a folder's files unread, its share not answering, has not scanned it.
+		if complete {
+			im.setProgress(func(p *Progress) { p.CompletedAt = im.now() })
+		}
+		return nil
+	}, nil
 }
 
 // importAll walks and imports every in-use root, and returns the files waiting for their header.
@@ -313,9 +337,32 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
-		result, waiting, err := im.scanRoot(ctx, root.Path, idx, nil, reports[root.Path])
+		walk, cancel := context.WithCancelCause(ctx)
+		im.mu.Lock()
+		if im.walking == nil {
+			im.walking = map[string]context.CancelCauseFunc{}
+		}
+		im.walking[root.Path] = cancel
+		im.mu.Unlock()
+		result, waiting, err := im.scanRoot(walk, root.Path, idx, nil, reports[root.Path])
+		im.mu.Lock()
+		delete(im.walking, root.Path)
+		im.mu.Unlock()
+		cancel(nil)
 		// However its walk ended, every one of the root's entries is finished with.
 		reports[root.Path].close()
+		if err != nil && ctx.Err() == nil && errors.Is(context.Cause(walk), errReleased) {
+			// Released while it was walked: what was written of it is forgotten now, and the
+			// other roots go on.
+			now, err := im.Store.LibraryRoots(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if err := im.forgetReleased(ctx, scannedRoots(now.Roots)); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", root.Path, err)
 		}
@@ -338,7 +385,8 @@ func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) 
 	if err != nil {
 		return err
 	}
-	return im.readHeaders(ctx, queue)
+	_, err = im.readHeaders(ctx, queue)
+	return err
 }
 
 // importFolders walks and imports the named folders of one root, and returns the files waiting
@@ -376,106 +424,6 @@ func (im *Importer) importFolders(ctx context.Context, root string, dirs []strin
 		}
 	})
 	return queue, nil
-}
-
-// ArrChanged notes that an arr changed item, or changed files without naming the item (nil): the
-// next folder pass reads it again, or lists every arr again, before trusting its index.
-func (im *Importer) ArrChanged(item *ArrItem) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-	if item == nil {
-		im.relist = true
-		return
-	}
-	im.arrChanged = append(im.arrChanged, *item)
-}
-
-// arrIndex is what the arrs say each local file is. A full pass lists every arr, as does a folder
-// pass with no index yet, an index from a listing an arr failed, a changed path map, or a change
-// it cannot read alone. Otherwise a folder pass reuses the last listing, reading again just the
-// items an arr said changed: Sonarr's listing costs two requests per series. Call it holding run.
-func (im *Importer) arrIndex(ctx context.Context, paths []librarystore.LibraryRootPath, full bool) managerIndex {
-	im.mu.Lock()
-	changed, relist := im.arrChanged, im.relist
-	im.arrChanged, im.relist = nil, false
-	im.mu.Unlock()
-
-	var managers []Manager
-	if im.Managers != nil {
-		managers = im.Managers()
-	}
-	key := fmt.Sprint(paths)
-	for _, m := range managers {
-		if m.Address != nil {
-			key += "|" + m.Authority + "=" + m.Address()
-		}
-	}
-	retry := im.index != nil && !im.index.complete && im.now().Sub(im.indexedAt) >= arrRetry
-	if full || relist || im.index == nil || retry || im.indexPaths != key {
-		return im.listArrs(ctx, managers, paths, key)
-	}
-	if !im.index.complete {
-		// An arr failed a moment ago: asking it again on every folder pass only waits on it
-		// again. Its folders' files wait; the rest pass on what the others listed.
-		return *im.index
-	}
-	for _, item := range changed {
-		if !im.refreshArrItem(ctx, managers, paths, item) {
-			return im.listArrs(ctx, managers, paths, key)
-		}
-	}
-	return *im.index
-}
-
-// arrWithoutFolders reports whether a connected arr has no folder in the path map.
-func (im *Importer) arrWithoutFolders(paths []librarystore.LibraryRootPath) bool {
-	if im.Managers == nil {
-		return false
-	}
-	for _, m := range im.Managers() {
-		if m.Address == nil || m.Address() == "" {
-			continue
-		}
-		if !slices.ContainsFunc(paths, func(p librarystore.LibraryRootPath) bool { return p.Authority == m.Authority }) {
-			return true
-		}
-	}
-	return false
-}
-
-func (im *Importer) listArrs(ctx context.Context, managers []Manager, paths []librarystore.LibraryRootPath, key string) managerIndex {
-	idx, errs := indexManagers(ctx, managers, paths)
-	for _, err := range errs {
-		im.log().Warn("library scan: an arr did not list", "err", err)
-	}
-	im.index, im.indexPaths, im.indexedAt = &idx, key, im.now()
-	return idx
-}
-
-// refreshArrItem reads one changed item into the index. It reports false when it cannot, and the
-// arr must be listed whole instead.
-func (im *Importer) refreshArrItem(ctx context.Context, managers []Manager, paths []librarystore.LibraryRootPath, item ArrItem) bool {
-	for _, m := range managers {
-		if m.Authority != item.Authority {
-			continue
-		}
-		if m.Fetcher == nil {
-			return false
-		}
-		rec, err := m.Fetcher.Fetch(ctx, item.Ref)
-		switch {
-		case errors.Is(err, mp.ErrNotFound):
-			im.index.refresh(m.Authority, pathMapper(m.Authority, paths), item.Ref, nil)
-		case err != nil:
-			im.log().Warn("library scan: an arr did not answer for one item; listing it whole",
-				"arr", m.Authority, "err", err)
-			return false
-		default:
-			im.index.refresh(m.Authority, pathMapper(m.Authority, paths), item.Ref, &rec)
-		}
-		return true
-	}
-	return true // an arr no longer configured manages nothing
 }
 
 // recordReadability keeps the root's readability, and whether it held anything, as the pass found
@@ -565,50 +513,6 @@ func within(root string, walked map[string]bool) (string, bool) {
 	return "", false
 }
 
-// ForgetReleased forgets the files of every root no longer walked, now, outside a pass: "Stop
-// using" takes effect at once rather than after the running pass's reading. It waits for a walk
-// under way, which holds the import's lock.
-func (im *Importer) ForgetReleased(ctx context.Context) error {
-	im.run.Lock()
-	defer im.run.Unlock()
-	all, err := im.Store.LibraryRoots(ctx)
-	if err != nil {
-		return err
-	}
-	return im.forgetReleased(ctx, scannedRoots(all.Roots))
-}
-
-// forgetReleased marks every file of a root no longer walked unseen and forgets its rows: releasing
-// a root is the maintainer's word, not a walk's guess, so the removal guard does not apply.
-func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) error {
-	scanned, err := im.Store.LibraryFileRoots(ctx)
-	if err != nil {
-		return err
-	}
-	for _, root := range scanned {
-		if inUse[root] {
-			continue
-		}
-		if err := im.Inventory.MarkUnseen(ctx, Authority(root), im.now(), nil); err != nil {
-			return err
-		}
-		if err := im.Store.DeleteLibraryFiles(ctx, root); err != nil {
-			return err
-		}
-		// The header stage may still hold the root's files: their reads are stale now, so the
-		// stage neither reads them nor saves the forgotten rows back.
-		im.gen++
-		im.mu.Lock()
-		if im.forgotten == nil {
-			im.forgotten = map[string]int64{}
-		}
-		im.forgotten[root] = im.gen
-		im.mu.Unlock()
-		im.titlesChanged()
-	}
-	return nil
-}
-
 // scanRoot walks one root, or only the folders of it in scope when scope is set, and writes what
 // changed. It returns the files whose headers are unread. report, when not nil, hears how the
 // walk of the whole root goes.
@@ -616,8 +520,18 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	im.gen++
 	gen := im.gen
 	var save []librarystore.LibraryFile
-	// On every return, an error included: a file applied before the error was still written.
-	defer func() { im.touch(save, gen) }()
+	// written are the rows whose item this pass applied; persisted says save was saved. On every
+	// return, an error included, the files the pass wrote are touched: all it saved, or, ended
+	// before it saved them, only those it applied, so a read queued for a file it never wrote stays.
+	var written []librarystore.LibraryFile
+	persisted := false
+	defer func() {
+		if persisted {
+			im.touch(save, gen)
+		} else {
+			im.touch(written, gen)
+		}
+	}()
 	result := RootResult{Root: root, State: RootScanned}
 	if im.Disk != nil {
 		look := im.Disk.Look(ctx, root)
@@ -681,6 +595,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	// while a file gone from anywhere the walk did read is still gone.
 	inScope := func(path string) bool { return (scope == nil || under(path, scope)) && !under(path, walk.Unread) }
 	moved := movedFrom(prev, found, inScope)
+	// A file with no row may have been read before its folder was released and added again: its
+	// own origin keeps that read, as the folders a Replace released inside the root keep theirs.
+	released := append([]string{root}, im.releasedWithin(root)...)
 	// A pass over some folders still sees every present file outside them, so marking unseen
 	// below takes only what is gone from the folders it walked.
 	var others []identity
@@ -707,6 +624,10 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	report.writing()
 	writingDir := ""
 	for i, file := range walk.Files {
+		// A root released mid-pass stops writing at the file it is on (ForgetReleased).
+		if err := ctx.Err(); err != nil {
+			return result, nil, err
+		}
 		// The entries before this file's are written, and the step names the folder it is on.
 		report.wrote(file.Top)
 		if dir := relDir(file.Rel); dir != writingDir {
@@ -752,8 +673,20 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			}
 			continue
 		}
-		b.markWritten(id)
 		snapshot, waiting := b.snapshot(ctx, file, id, now)
+		if waiting && sameBytes && old.MissingAt.IsZero() && old.ItemID != "" && old.Identity == waitingFor(id.digest) {
+			// Still waiting for the record the last pass wrote it without: it is as that pass wrote
+			// it, so it is left as it is, and its queued read stays its own. The pass the Enricher
+			// asks for once it has the record finds it no longer waiting, and writes it.
+			if prev[file.Path].Held {
+				save = append(save, old)
+			}
+			if old.Header == librarystore.LibraryHeaderPending && old.Problem == "" {
+				queue = append(queue, pending{row: old, file: file, id: id, b: b, gen: gen})
+			}
+			continue
+		}
+		b.markWritten(id)
 		var read *inventory.SourceFacts
 		var readBy int
 		if sameBytes && old.Header == librarystore.LibraryHeaderRead {
@@ -761,6 +694,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			if read == nil {
 				row.Header = librarystore.LibraryHeaderPending
 			}
+		} else if r, by := im.headerWithin(ctx, released, file, known); r != nil {
+			// A folder in use inside this one read it, before this one replaced it (Replace).
+			read, readBy, row.Header = r, by, librarystore.LibraryHeaderRead
 		} else if from, ok := moved[file.Stat]; ok && !sameBytes {
 			// Renamed or moved: the header read at its old path is this file's, and it is not
 			// opened again.
@@ -785,6 +721,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			continue
 		}
 		row.ItemID = itemID
+		written = append(written, row)
 		if snapshot.Kind == kindMovie {
 			b.listed(ctx, itemID, snapshot)
 		}
@@ -795,10 +732,11 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		if reread {
 			saved.Identity = old.Identity
 		}
-		// Written without a record still to come: the next pass over the folder writes it again,
-		// whenever the Enricher's fetch lands (#3565).
+		// Written without a record still to come: its identity says so, and the next pass over the
+		// folder writes it again once the record is cached, whenever the Enricher's fetch lands
+		// (#3565). Until then a pass leaves it as it is.
 		if waiting {
-			row.Identity, saved.Identity = "", ""
+			row.Identity, saved.Identity = waitingFor(id.digest), waitingFor(id.digest)
 		}
 		save = append(save, saved)
 		if row.Header == librarystore.LibraryHeaderPending || reread {
@@ -854,6 +792,7 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	if err := im.Store.SaveLibraryFiles(ctx, save); err != nil {
 		return result, nil, err
 	}
+	persisted = true
 	if len(save) > 0 {
 		im.titlesChanged()
 	}
@@ -924,6 +863,11 @@ func (im *Importer) lastHeader(ctx context.Context, origin inventory.OriginKey) 
 
 // reader is the header.Version this importer's header reads are recorded under.
 func (im *Importer) reader() int { return cmp.Or(im.readerVersion, header.Version) }
+
+// waitingFor is the identity a file's row keeps while its title waits for a catalog record: never
+// its own digest, so the pass after the record is cached writes it again (#3565), and never empty,
+// so a pass before then can tell it is still the same file waiting.
+func waitingFor(digest string) string { return "waiting:" + digest }
 
 func (im *Importer) now() time.Time {
 	if im.Now != nil {
