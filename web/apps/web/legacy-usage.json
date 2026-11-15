@@ -177,25 +177,25 @@
       "tailwindClasses": 3
     },
     "src/components/loomarr/people/import-dialog/import-dialog.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 7
     },
     "src/components/loomarr/people/invitation-dialog/invitation-dialog.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 11
     },
     "src/components/loomarr/people/invitation-join/invitation-join.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 7
     },
     "src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
-      "tailwindClasses": 21
+      "tailwindClasses": 2
     },
     "src/components/loomarr/people/people-roster/people-roster.tsx": {
-      "tailwindClasses": 21
+      "tailwindClasses": 2
     },
     "src/components/loomarr/people/person-detail/person-detail.tsx": {
-      "tailwindClasses": 12
+      "tailwindClasses": 4
     },
     "src/components/loomarr/people/session-list/session-list.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 2
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
       "tailwindClasses": 11,
