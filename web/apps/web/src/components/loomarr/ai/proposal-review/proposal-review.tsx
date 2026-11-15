@@ -1,6 +1,6 @@
 import { provisionKey } from "@loomarr/core/provision";
 import { Action, Badge, type BadgeTone, Card, Field, Grid, Stack, Text } from "@loomarr/design-system";
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { useAppForm } from "@/lib/app-form";
 import {
   MAX_SUGGESTION_OPTIONS,
@@ -213,14 +213,14 @@ const ProposalReview = ({
                   rowGap="1.5"
                 >
                   {requestDetails.map(([label, value]) => (
-                    <div key={label} className="contents">
+                    <Fragment key={label}>
                       <Text as="dt" textRole="cardLabel" tone="secondary">
                         {label}
                       </Text>
                       <Text as="dd" textRole="compact">
                         {value}
                       </Text>
-                    </div>
+                    </Fragment>
                   ))}
                 </Grid>
               </details>
@@ -497,9 +497,10 @@ const ProposalReview = ({
                       </Text>
                       <Stack divided render="ul">
                         {proposal.trace.candidates.map((candidate) => (
-                          <li
+                          <Stack
                             key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
-                            className="py-2"
+                            paddingVertical={8}
+                            render="li"
                           >
                             <Text as="p" textRole="cardLabel">
                               {friendlyCandidateName(candidate.name)}
@@ -507,7 +508,7 @@ const ProposalReview = ({
                             <Text as="p" textRole="compact" tone="secondary">
                               {catalogDecision(candidate.disposition, candidate.reason)}
                             </Text>
-                          </li>
+                          </Stack>
                         ))}
                       </Stack>
                     </Stack>

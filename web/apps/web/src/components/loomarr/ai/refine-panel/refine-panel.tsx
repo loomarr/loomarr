@@ -1,13 +1,12 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Field, Icon, icons, LoadingStrip, Stack, Surface, Text } from "@loomarr/design-system";
+import { Action, Card, Field, Icon, icons, LoadingStrip, Stack, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { useAppForm } from "@/lib/app-form";
-import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
 import { useElapsed } from "@/suggest/use-elapsed";
@@ -86,10 +85,12 @@ const RefinePanel = ({
   return (
     // The web mock's card: always open, a one-line input and "Suggest changes". The running and
     // review states below are today's; the mock draws neither.
-    <Stack
+    <Card
       aria-labelledby={headingId}
-      className={cn("border-border bg-card rounded-lg border p-4", className)}
-      gap="2.5"
+      borderRadius={8}
+      className={className}
+      gap={10}
+      padding={16}
       render="section"
     >
       <Stack align="center" direction="row" gap="inline" wrap>
@@ -97,25 +98,28 @@ const RefinePanel = ({
         <Text as="h3" id={headingId} textRole="cardLabel">
           Refine with AI
         </Text>
-        <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
-          Describe what to change. You'll see the result before anything is saved.
-        </Text>
+        <Stack marginLeft="auto">
+          <Text as="span" textRole="hint" tone="secondary">
+            Describe what to change. You'll see the result before anything is saved.
+          </Text>
+        </Stack>
       </Stack>
 
       {(state === "idle" || state === "open") && (
         <Stack gap="2.5">
           {generationFailed && (
-            <Stack
-              align="start"
-              className="border-onair-tint-15 bg-onair-tint-10 text-onair-300 rounded-lg border"
-              direction="row"
-              gap="inline"
+            <Card
+              alignItems="flex-start"
+              borderRadius={8}
+              flexDirection="row"
+              gap={8}
               paddingHorizontal={12}
               paddingVertical={8}
               role="alert"
+              tone="onair"
             >
               <Stack direction="row" marginTop={2} render="span">
-                <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
+                <Icon decorative glyph={icons.alert} size="compact" tone="danger" />
               </Stack>
               {failureCopy ? (
                 <Stack gap="0.5" render="span">
@@ -134,7 +138,7 @@ const RefinePanel = ({
                   Loomarr couldn't update this channel. Try again or describe the change another way.
                 </Text>
               )}
-            </Stack>
+            </Card>
           )}
           <Stack
             direction="row"
@@ -206,7 +210,7 @@ const RefinePanel = ({
           onDiscard={close}
         />
       )}
-    </Stack>
+    </Card>
   );
 };
 

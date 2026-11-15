@@ -355,19 +355,20 @@ const ApprovalQueueItem = ({
             // with drop/add/note. Without one it stays read-only, so every other caller and the
             // member-facing views are unchanged.
             (onEdit ? (
-              <ProposalEdit
-                className="mt-2"
-                lineup={lineup ?? []}
-                acquisitions={acquisitionItems ?? []}
-                alternates={alternates ?? []}
-                episodeSelectionPreview={episodeSelectionPreview}
-                value={edit}
-                disabled={status === "approving"}
-                // The title editor knows drops, adds and the note; a raised limit is kept across.
-                onChange={(next) => onEdit(withAudience(next, edit?.audience))}
-                showNote
-                renderFeedback={renderFeedback}
-              />
+              <Stack marginTop={8}>
+                <ProposalEdit
+                  lineup={lineup ?? []}
+                  acquisitions={acquisitionItems ?? []}
+                  alternates={alternates ?? []}
+                  episodeSelectionPreview={episodeSelectionPreview}
+                  value={edit}
+                  disabled={status === "approving"}
+                  // The title editor knows drops, adds and the note; a raised limit is kept across.
+                  onChange={(next) => onEdit(withAudience(next, edit?.audience))}
+                  showNote
+                  renderFeedback={renderFeedback}
+                />
+              </Stack>
             ) : (
               <Stack gap="1.5" marginTop={8} render="ul">
                 {lineup?.map((it) => (

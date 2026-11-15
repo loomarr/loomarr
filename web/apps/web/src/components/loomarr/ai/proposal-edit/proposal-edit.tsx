@@ -6,7 +6,6 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { Action, Badge, Field, Stack, Text, Toggle } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
-import { cn } from "@/lib/utils";
 import { MovieCollectionChoices, movieCollectionKeys } from "@/suggest/movie-collection-choices";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import { SearchCommand } from "../../shell";
@@ -102,7 +101,7 @@ const PickRow = ({
       )}
       <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
         <Stack align="center" columnGap="2" direction="row" rowGap="1" wrap>
-          <Text as="span" className={cn(!included && "line-through")} textRole="cardLabel">
+          <Text as="span" textDecorationLine={included ? undefined : "line-through"} textRole="cardLabel">
             {pick.item.name}
           </Text>
           {pick.item.year ? (
