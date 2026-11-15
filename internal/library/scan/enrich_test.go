@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/library/inventory"
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
 	"github.com/loomarr/loomarr/internal/library/tmdb"
+	"github.com/loomarr/loomarr/internal/media/header"
 	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
@@ -1496,5 +1499,72 @@ func TestAnIDWhoseRecordIsAnotherTitleGroundsNothing(t *testing.T) {
 	o := seriesOrigin(h.root, "TV/Brindle Cove (2019) {tmdb-90000951}")
 	if s, ok := ProjectLibraryItem(h.item(o)); !ok || s.Name == "Orrin Vale" || s.Match.Basis != "" {
 		t.Errorf("show = %q matched %q, want Brindle Cove in Needs you", s.Name, s.Match.Basis)
+	}
+}
+
+// A movie id whose record is another film of its year grounds nothing either: one no name of the
+// files shares a word with that runs another length, a sequel's (an NFO copied from the next film's folder), or one far
+// longer or shorter than the file whose title the folder does not give (a film's tag naming the
+// short special of its name). A long cut named word for word stands, as do a sequel numbered
+// another way and a title the files give in another language that runs as long as the file.
+func TestAMovieIDNamingAnotherFilmOfItsYearGroundsNothing(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	movie := func(id, title, original string, year int, runtime time.Duration) mp.Record {
+		return mp.Record{Source: src, Kind: mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+			Descriptive: &mp.Descriptive{Title: title, OriginalTitle: original, Year: year, Runtime: runtime}}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	copied := "Movies/Hollow Pines (2004)/Hollow Pines (2004).mkv"
+	sequel := "Movies/Tansy Reach (2004)/Tansy Reach (2004) [tmdbid-9100013].mkv"
+	special := "Movies/Grey Harbor (2000)/Grey Harbor The Lighthouse Watch (2001) [tmdbid-9100014] - [Remux-2160p].mkv"
+	extended := "Movies/Moss Hollow (1990) {tmdb-9100015}/Moss Hollow (1990) - Extended Cut.mkv"
+	numbered := "Movies/Tansy Reach 2 (2005) {tmdb-9100016}/Tansy Reach 2 (2005).mkv"
+	foreign := "Movies/Kaze no Oka (1988) {tmdb-9100017}/Kaze no Oka (1988).mkv"
+	length := map[string]time.Duration{special: 104 * time.Minute, extended: 170 * time.Minute, foreign: 95 * time.Minute}
+	for _, rel := range []string{copied, sequel, special, extended, numbered, foreign} {
+		h.file(rel, 10)
+	}
+	if err := os.WriteFile(filepath.Join(h.root, "Movies/Hollow Pines (2004)/Hollow Pines (2004).nfo"),
+		[]byte(`<movie><title>Hollow Pines</title><year>2004</year><uniqueid type="tmdb" default="true">9100012</uniqueid></movie>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.im.Header = func(_ context.Context, p string) (header.Header, error) {
+		rel, _ := filepath.Rel(h.root, p)
+		return header.Header{Container: "matroska,webm", DurationMillis: cmp.Or(length[filepath.ToSlash(rel)], 100*time.Minute).Milliseconds(),
+			Streams: []inventory.Stream{{Index: 0, Kind: inventory.StreamVideo, Codec: "h264", Width: 1920, Height: 1080}}}, nil
+	}
+	h.run()
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"9100012": movie("9100012", "Ferrow Lane", "", 2004, 130*time.Minute),
+		"9100013": movie("9100013", "Tansy Reach II", "", 2005, 0),
+		"9100014": movie("9100014", "Grey Harbor: The Lighthouse Watch", "", 2000, 22*time.Minute),
+		"9100015": movie("9100015", "Moss Hollow", "", 1990, 2*time.Hour),
+		"9100016": movie("9100016", "Tansy Reach II", "", 2005, 0),
+		"9100017": movie("9100017", "Hill of Wind", "風の丘", 1988, 96*time.Minute),
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range []struct {
+		rel     string
+		matched bool
+	}{{copied, false}, {sequel, false}, {special, false}, {extended, true}, {numbered, true}, {foreign, true}} {
+		o := fileOrigin(h.root, c.rel)
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", c.rel)
+		}
+		if matched := it.Match.Basis != ""; matched != c.matched {
+			t.Errorf("%s = %q %d matched %v, want matched %v", c.rel, it.Name, it.Year, matched, c.matched)
+		}
 	}
 }

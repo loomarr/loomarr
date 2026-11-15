@@ -333,7 +333,9 @@ func (im *Importer) readOne(ctx context.Context, job pending) (librarystore.Libr
 	if seen.IsZero() {
 		seen = now
 	}
-	snapshot, waiting := job.b.snapshot(ctx, job.file, job.id, seen)
+	file := job.file
+	file.Length = time.Duration(facts.DurationMillis) * time.Millisecond
+	snapshot, waiting := job.b.snapshot(ctx, file, job.id, seen)
 	snapshot.Sources = []inventory.SourceSnapshot{sourceSnapshot(job.file, &facts, im.reader(), now)}
 	itemID, problem, err := im.applyFile(ctx, snapshot)
 	if err != nil {

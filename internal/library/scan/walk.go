@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"sync/atomic"
+	"time"
 
 	"unicode/utf8"
 
@@ -74,6 +75,8 @@ type File struct {
 	Path string
 	Rel  string
 	Stat Stat
+	// Length is its running time as its header has just been read; 0 on a walk.
+	Length time.Duration
 	// Sidecars are the file's own NFO, artwork and trickplay files, by path, so a changed sidecar
 	// changes the file's identity digest without being read. A trickplay file's Stat is zero: only
 	// its being there counts.
