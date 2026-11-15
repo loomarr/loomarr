@@ -142,14 +142,14 @@ const DatabaseMigration = ({
                 <Stack align="center" direction="row" gap="inline" key={s.key} render="li">
                   <Stack
                     align="center"
-                    className={cn(
-                      "size-5 rounded-full border",
-                      done && "border-signal bg-signal-tint-15",
-                      current && "border-tune bg-tune-tint-15",
-                      !done && !current && "border-border",
-                    )}
+                    borderColor={done ? "$actionPrimary" : current ? "$stateInfo" : "$borderDecorative"}
+                    borderRadius={999}
+                    borderWidth={1}
+                    className={cn(done && "bg-signal-tint-15", current && "bg-tune-tint-15")}
+                    height={20}
                     justify="center"
                     render="span"
+                    width={20}
                   >
                     <Text
                       as="span"

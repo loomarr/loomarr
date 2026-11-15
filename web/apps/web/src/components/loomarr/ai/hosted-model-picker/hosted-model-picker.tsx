@@ -1,9 +1,8 @@
 import type { HostedModelView } from "@loomarr/api/models/hostedModelView";
 import type { HostedProviderView } from "@loomarr/api/models/hostedProviderView";
-import { Action, Badge, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Action, Badge, Card, Stack, Text, TextLink } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { HostedModelPickerProps } from "./hosted-model-picker.type";
 
 const GUIDED_ALTERNATIVES = 2;
@@ -61,17 +60,17 @@ const ModelRow = ({
           : "Use this";
 
   return (
-    <Stack
-      align="start"
-      className={cn(
-        "border-border bg-card rounded-md border px-3 py-2.5",
-        primary && !isActive && "border-signal-tint-30 bg-signal-tint-5",
-        // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
-        isActive && "bg-static-800",
-      )}
-      direction="row"
-      gap="control"
+    // The model in use is neutral, an elevated row like the drawer's tuned one (#1909 Q2).
+    <Card
+      alignItems="flex-start"
+      borderRadius={6}
+      flexDirection="row"
+      gap={12}
+      level={isActive ? "elevated" : "raised"}
+      paddingHorizontal={12}
+      paddingVertical={10}
       render="li"
+      tone={primary && !isActive ? "signal" : undefined}
     >
       <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
         <Stack align="center" direction="row" gap="inline" render="p" wrap>
@@ -118,7 +117,7 @@ const ModelRow = ({
       >
         {action}
       </Action>
-    </Stack>
+    </Card>
   );
 };
 

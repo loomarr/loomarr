@@ -9,7 +9,6 @@ import { seasonalModeOf } from "@/components/loomarr/channels/channel-seasonal";
 import { eraOf } from "@/lib/era-dates";
 import { playOrderLabel } from "@/lib/play-order-copy";
 import { datesMode } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import type { CurrentLineupItem, RefineReviewProps } from "./refine-review.type";
 
@@ -107,16 +106,23 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
             </Text>
             {d.pinned ? (
               <Text as="span" textRole="compact" tone="secondary">
-                keeping <span className="text-foreground">{d.from}</span>, you set this; the AI suggested{" "}
-                {d.to}
+                keeping{" "}
+                <Text as="span" textRole="compact" tone="primary">
+                  {d.from}
+                </Text>
+                , you set this; the AI suggested {d.to}
               </Text>
             ) : (
               <Text as="span" textRole="compact">
-                <span className="text-static-400 line-through">{d.from}</span>
-                <span className="text-muted-foreground mx-1" aria-hidden>
+                <Text as="span" textDecorationLine="line-through" textRole="compact" tone="secondary">
+                  {d.from}
+                </Text>
+                <Text aria-hidden as="span" className="mx-1" textRole="compact" tone="secondary">
                   →
-                </span>
-                <span className="text-foreground">{d.to}</span>
+                </Text>
+                <Text as="span" textRole="compact" tone="primary">
+                  {d.to}
+                </Text>
               </Text>
             )}
           </Stack>
@@ -193,7 +199,7 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
       </Stack>
       <Text
         as="span"
-        className={cn(tone === "removed" && "line-through")}
+        textDecorationLine={tone === "removed" ? "line-through" : undefined}
         textRole="compact"
         tone={tone === "kept" ? "secondary" : tone === "removed" ? "danger" : "primary"}
       >

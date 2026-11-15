@@ -18,7 +18,7 @@ import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import type { LineupEntryDTOState } from "@loomarr/api/models/lineupEntryDTOState";
 import type { SearchCandidate } from "@loomarr/api/models/searchCandidate";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Badge, Chip, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
+import { Action, Badge, Card, Chip, Stack, Text, Tooltip, typography } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 import { useChannelLineup } from "@/channels/use-channel-lineup";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -161,7 +161,7 @@ const SortableLineupRow = ({
       </Action>
 
       <div className="contents @md:block @md:min-w-0 @md:flex-1">
-        <Stack align="center" className="min-w-0" direction="row" flexShrink={1} gap="inline" wrap>
+        <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0} wrap>
           <Text as="span" numberOfLines={1} textRole="cardLabel" tone="primary">
             {entry.name}
           </Text>
@@ -290,158 +290,163 @@ const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEdit
   };
 
   return (
-    <Stack className={cn("border-border rounded-lg border p-4", className)} gap="control" render="section">
-      <div>
-        <Text as="h2" strong textRole="headline">
-          Lineup
-        </Text>
-        <Text as="p" textRole="compact" tone="secondary">
-          Add, remove, and reorder the titles this channel plays. Changes save immediately.
-        </Text>
-      </div>
+    <Card backgroundColor="transparent" borderRadius={8} className={className} padding={16} render="section">
+      <Stack gap="control">
+        <div>
+          <Text as="h2" strong textRole="headline">
+            Lineup
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
+            Add, remove, and reorder the titles this channel plays. Changes save immediately.
+          </Text>
+        </div>
 
-      {feedback.error && <ErrorState error={feedback.error} onRetry={feedback.retry} className="p-4" />}
+        {feedback.error && <ErrorState error={feedback.error} onRetry={feedback.retry} className="p-4" />}
 
-      {/* Sort is a VIEW, not an edit — nothing here writes. Newest-first exists because
+        {/* Sort is a VIEW, not an edit — nothing here writes. Newest-first exists because
           auto-curate appends, so the default play order shows the oldest picks first and hides
           everything added since. */}
-      {entries.length > 1 && (
-        <Stack align="center" direction="row" gap="1.75" wrap>
-          {/* The same toolbar label voice as the guide's "Start at". */}
-          <Text as="span" textRole="metadata">
-            Show
-          </Text>
-          {(
-            [
-              ["order", "Play order"],
-              ["newest", "Newest first"],
-              ["year", "Year"],
-            ] as const
-          ).map(([value, label]) => (
-            <Chip key={value} mono onPress={() => setSort(value)} selected={sort === value}>
-              {label}
-            </Chip>
-          ))}
-          {!dragEnabled && (
-            <Text as="span" textRole="hint" tone="secondary">
-              Switch to Play order to reorder
+        {entries.length > 1 && (
+          <Stack align="center" direction="row" gap="1.75" wrap>
+            {/* The same toolbar label voice as the guide's "Start at". */}
+            <Text as="span" textRole="metadata">
+              Show
             </Text>
-          )}
-        </Stack>
-      )}
+            {(
+              [
+                ["order", "Play order"],
+                ["newest", "Newest first"],
+                ["year", "Year"],
+              ] as const
+            ).map(([value, label]) => (
+              <Chip key={value} mono onPress={() => setSort(value)} selected={sort === value}>
+                {label}
+              </Chip>
+            ))}
+            {!dragEnabled && (
+              <Text as="span" textRole="hint" tone="secondary">
+                Switch to Play order to reorder
+              </Text>
+            )}
+          </Stack>
+        )}
 
-      {entries.length === 0 ? (
-        <Text
-          as="p"
-          className="border-border rounded-md border border-dashed px-3 py-6"
-          textAlign="center"
-          textRole="compact"
-          tone="secondary"
-        >
-          Nothing in the lineup yet. Add a title below.
-        </Text>
-      ) : (
-        <>
-          {/* The rows' Keep / Less / Never / Surprise share one note here, not one per row (#2744). */}
-          <Text textRole="caption" tone="secondary">
-            Keep, Less, Never and Surprise affect future suggestions only.
-          </Text>
-          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-            <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
-              {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
+        {entries.length === 0 ? (
+          <Stack
+            borderColor="borderDecorative"
+            borderRadius={6}
+            borderStyle="dashed"
+            borderWidth={1}
+            paddingHorizontal={12}
+            paddingVertical={24}
+          >
+            <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+              Nothing in the lineup yet. Add a title below.
+            </Text>
+          </Stack>
+        ) : (
+          <>
+            {/* The rows' Keep / Less / Never / Surprise share one note here, not one per row (#2744). */}
+            <Text textRole="caption" tone="secondary">
+              Keep, Less, Never and Surprise affect future suggestions only.
+            </Text>
+            <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+              <SortableContext items={shown.map((e) => e.key)} strategy={verticalListSortingStrategy}>
+                {/* Cap the lineup at a comfortable height and scroll INSIDE once it's long — a
                 channel with many titles otherwise runs the page off. max-height means a short
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-              <Stack className="scroll-thin @container max-h-128 overflow-y-auto" gap="inline" render="ul">
-                {shown.map((entry) => (
-                  <SortableLineupRow
-                    key={entry.key}
-                    entry={entry}
-                    disabled={!dragEnabled}
-                    onRemove={() => remove(entry.key)}
-                    onSeasonChange={(patch) => updateEntry(entry.key, patch)}
-                    feedback={
-                      <DiscoveryFeedbackControls
-                        compact
-                        effectNote={false}
-                        name={entry.name}
-                        scope={feedbackScope}
-                        effective={feedback.feedbackFor(entry.key)}
-                        disabled={feedback.isPending}
-                        onSet={(action) => feedback.setFeedback(entry.key, action)}
-                        onClear={() => feedback.clearFeedback(entry.key)}
-                      />
-                    }
-                  />
-                ))}
-              </Stack>
-            </SortableContext>
-          </DndContext>
-        </>
-      )}
+                <Stack className="scroll-thin @container max-h-128 overflow-y-auto" gap="inline" render="ul">
+                  {shown.map((entry) => (
+                    <SortableLineupRow
+                      key={entry.key}
+                      entry={entry}
+                      disabled={!dragEnabled}
+                      onRemove={() => remove(entry.key)}
+                      onSeasonChange={(patch) => updateEntry(entry.key, patch)}
+                      feedback={
+                        <DiscoveryFeedbackControls
+                          compact
+                          effectNote={false}
+                          name={entry.name}
+                          scope={feedbackScope}
+                          effective={feedback.feedbackFor(entry.key)}
+                          disabled={feedback.isPending}
+                          onSet={(action) => feedback.setFeedback(entry.key, action)}
+                          onClear={() => feedback.clearFeedback(entry.key)}
+                        />
+                      }
+                    />
+                  ))}
+                </Stack>
+              </SortableContext>
+            </DndContext>
+          </>
+        )}
 
-      {adding ? (
-        <Stack gap="inline">
-          <SearchCommand
-            query={query}
-            onQueryChange={setQuery}
-            loading={search.isFetching}
-            // Escape does what Cancel does — the same `closeAdd`, so the two paths cannot
-            // drift. Opt-in because the ⌘K palette binds Escape window-level (see onEscape).
-            onEscape={closeAdd}
-            // Two kinds of candidate are left out entirely rather than shown-then-rejected:
-            // (1) one already on the lineup (the backend 422s on a duplicate key), and
-            // (2) one with no usable id, whose key falls back to `name:…` — the backend's
-            // provision.ParseKey rejects that shape (a title with no tmdb/tvdb id can't be
-            // provisioned or resolved anyway), so offering it would let a user pick it, see
-            // the optimistic add appear, then watch the whole list snap back on the 422.
-            // SearchCommand has no per-item disabled affordance, so filtering is the clean
-            // prevention: an unaddable title simply isn't offered.
-            results={candidates
-              .filter((c) => {
-                const k = keyOf(c);
-                return !k.startsWith("name:") && !existingKeys.has(k);
-              })
-              .map((c) => ({
-                id: keyOf(c),
-                scope: c.inLibrary ? "library" : "tmdb",
-                name: c.name,
-                ...(c.year ? { meta: String(c.year) } : {}),
-                inLibrary: c.inLibrary,
-              }))}
-            onSelect={(result) => {
-              const candidate = candidates.find((c) => keyOf(c) === result.id);
-              if (!candidate) return;
-              // Seed the optimistic `state` from the candidate's library membership: a pick
-              // already in the library reads `available` immediately, one that isn't reads
-              // `pending`. The server re-derives the authoritative state (from the provision
-              // Record) on the refetch this add triggers — so the badge is right instantly
-              // AND durable across reloads, no client-only pending tracking.
-              add({
-                key: result.id,
-                name: candidate.name,
-                year: candidate.year,
-                state: candidate.inLibrary ? "available" : "pending",
-              });
-              closeAdd();
-            }}
-          />
-          <Action onPress={closeAdd} style={{ alignSelf: "flex-start" }} variant="ghost">
-            Cancel
+        {adding ? (
+          <Stack gap="inline">
+            <SearchCommand
+              query={query}
+              onQueryChange={setQuery}
+              loading={search.isFetching}
+              // Escape does what Cancel does — the same `closeAdd`, so the two paths cannot
+              // drift. Opt-in because the ⌘K palette binds Escape window-level (see onEscape).
+              onEscape={closeAdd}
+              // Two kinds of candidate are left out entirely rather than shown-then-rejected:
+              // (1) one already on the lineup (the backend 422s on a duplicate key), and
+              // (2) one with no usable id, whose key falls back to `name:…` — the backend's
+              // provision.ParseKey rejects that shape (a title with no tmdb/tvdb id can't be
+              // provisioned or resolved anyway), so offering it would let a user pick it, see
+              // the optimistic add appear, then watch the whole list snap back on the 422.
+              // SearchCommand has no per-item disabled affordance, so filtering is the clean
+              // prevention: an unaddable title simply isn't offered.
+              results={candidates
+                .filter((c) => {
+                  const k = keyOf(c);
+                  return !k.startsWith("name:") && !existingKeys.has(k);
+                })
+                .map((c) => ({
+                  id: keyOf(c),
+                  scope: c.inLibrary ? "library" : "tmdb",
+                  name: c.name,
+                  ...(c.year ? { meta: String(c.year) } : {}),
+                  inLibrary: c.inLibrary,
+                }))}
+              onSelect={(result) => {
+                const candidate = candidates.find((c) => keyOf(c) === result.id);
+                if (!candidate) return;
+                // Seed the optimistic `state` from the candidate's library membership: a pick
+                // already in the library reads `available` immediately, one that isn't reads
+                // `pending`. The server re-derives the authoritative state (from the provision
+                // Record) on the refetch this add triggers — so the badge is right instantly
+                // AND durable across reloads, no client-only pending tracking.
+                add({
+                  key: result.id,
+                  name: candidate.name,
+                  year: candidate.year,
+                  state: candidate.inLibrary ? "available" : "pending",
+                });
+                closeAdd();
+              }}
+            />
+            <Action onPress={closeAdd} style={{ alignSelf: "flex-start" }} variant="ghost">
+              Cancel
+            </Action>
+          </Stack>
+        ) : (
+          <Action
+            icon="plus"
+            onPress={() => setAdding(true)}
+            style={{ alignSelf: "flex-start" }}
+            variant="outline"
+          >
+            Add a title…
           </Action>
-        </Stack>
-      ) : (
-        <Action
-          icon="plus"
-          onPress={() => setAdding(true)}
-          style={{ alignSelf: "flex-start" }}
-          variant="outline"
-        >
-          Add a title…
-        </Action>
-      )}
-    </Stack>
+        )}
+      </Stack>
+    </Card>
   );
 };
 

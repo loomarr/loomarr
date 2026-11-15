@@ -33,7 +33,9 @@ const PageHeader = ({ title, description, status, actions, className, ...rest }:
       {status}
     </Stack>
     {actions ? (
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>
+      <Stack align="center" direction="row" flexShrink={0} gap="2" minWidth={0} wrap>
+        {actions}
+      </Stack>
     ) : null}
   </Stack>
 );

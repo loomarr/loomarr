@@ -1,5 +1,6 @@
 import type { Assessment } from "@loomarr/api/models/assessment";
 import { Grid, Stack, Text } from "@loomarr/design-system";
+import { Fragment } from "react";
 
 interface ProposalOutlookProps {
   assessment?: Assessment;
@@ -47,10 +48,10 @@ const ProposalOutlookDiagnostics = ({
       )
         .filter(([, count]) => count > 0)
         .map(([label, count]) => (
-          <div key={label} className="contents">
+          <Fragment key={label}>
             <dt>{label}</dt>
             <dd>{count}</dd>
-          </div>
+          </Fragment>
         ))}
       <dt>Seasons represented</dt>
       <dd>{value.seasons}</dd>
