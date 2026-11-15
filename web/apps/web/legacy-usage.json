@@ -194,6 +194,9 @@
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "tailwindClasses": 22
     },
+    "src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
+      "tailwindClasses": 8
+    },
     "src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
       "tailwindClasses": 9
     },
