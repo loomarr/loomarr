@@ -54,7 +54,7 @@
       "tailwindClasses": 11
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 42
+      "tailwindClasses": 41
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "tailwindClasses": 11
@@ -122,9 +122,6 @@
     },
     "src/components/loomarr/feedback/field-help/field-help.tsx": {
       "tailwindClasses": 3
-    },
-    "src/components/loomarr/feedback/generation-progress/generation-progress.tsx": {
-      "tailwindClasses": 1
     },
     "src/components/loomarr/feedback/placeholder/placeholder.tsx": {
       "tailwindClasses": 6
@@ -202,7 +199,7 @@
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 4
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
       "tailwindClasses": 11
@@ -491,13 +488,13 @@
       "tailwindClasses": 5
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 5
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
       "tailwindClasses": 1
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 2
+      "tailwindClasses": 1
     },
     "src/settings/notification-destinations-panel/provider-field-input/provider-field-input.tsx": {
       "tailwindClasses": 2

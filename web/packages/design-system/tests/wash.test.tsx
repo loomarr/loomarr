@@ -2,7 +2,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { LoomarrProvider, Stack, semanticThemes } from "../index";
-import { washes } from "../src/tokens";
 
 const render = (mode: "dark" | "light", node: React.ReactNode) =>
   renderToStaticMarkup(<LoomarrProvider theme={mode}>{node}</LoomarrProvider>);
@@ -25,8 +24,17 @@ const expected = {
 } as const;
 
 describe("alpha washes", () => {
-  it("draws each base stop at its alpha", () => {
-    expect(washes).toEqual(expected);
+  it.each(Object.entries(expected))("%s is its base stop at its alpha", (name, value) => {
+    const markup = render(
+      "dark",
+      <Stack backgroundColor={name as keyof typeof expected}>
+        <span>x</span>
+      </Stack>,
+    );
+
+    expect(markup).toContain(`background-color:var(--${name})`);
+    // The theme holds the rgba itself, so a wash is the same under either theme.
+    expect(markup).toContain(value);
   });
 
   it("builds the surface washes from the dark palette's own stops", () => {
