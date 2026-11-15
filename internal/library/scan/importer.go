@@ -6,9 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-
 	"path/filepath"
-
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -124,13 +123,19 @@ type Importer struct {
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int
+	// listed, when set, runs once a full pass has listed a root and before it writes it, without
+	// the import's lock: tests act there as a folder pass or a release would.
+	listed func(root string)
 	// nfoRoots are the NFOs read for whether they say their file is an episode.
 	nfoRoots nfoRoots
 
-	// run serializes every write to the Library: a pass's walk and import, and each header read's
-	// write. The header stage waits for playback without it, so a pass is never held up by a viewer
-	// (decision 11).
+	// run serializes every write to the Library: a pass's import of what it walked, and each header
+	// read's write. A full pass lists each root without it (importAll). The header stage waits for
+	// playback without it, so a pass is never held up by a viewer (decision 11).
 	run sync.Mutex
+	// pass keeps full passes from overlapping while they let go of run to list; it is taken before
+	// run, never while holding it.
+	pass sync.Mutex
 	// gen numbers each root a pass imports, so a header read queued by an older import can tell a
 	// newer one has written its file since. Guarded by run.
 	gen int64
@@ -287,9 +292,19 @@ func (im *Importer) Walk(ctx context.Context) (read func() error, err error) {
 }
 
 // importAll walks and imports every in-use root, and returns the files waiting for their header.
+// It holds run but while it lists each root over its share, the long part of a pass over a
+// network share: header reads, folder passes and releases go on meanwhile, and the root's writes
+// leave what they wrote as they wrote it (importListed).
 func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
+	im.pass.Lock()
+	defer im.pass.Unlock()
 	im.run.Lock()
-	defer im.run.Unlock()
+	held := true
+	defer func() {
+		if held {
+			im.run.Unlock()
+		}
+	}()
 	im.setProgress(func(p *Progress) { p.Roots, p.ArrIncomplete = nil, false })
 	// Its total is known once the roots are listed below.
 	im.Tracker.Begin(StepWalking, 0)
@@ -344,14 +359,26 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		}
 		im.walking[root.Path] = cancel
 		im.mu.Unlock()
-		result, waiting, err := im.scanRoot(walk, root.Path, idx, nil, reports[root.Path])
+		since := im.gen
+		im.run.Unlock()
+		held = false
+		listed, result, ok, err := im.listRoot(walk, root.Path, nil, reports[root.Path])
+		if im.listed != nil {
+			im.listed(root.Path)
+		}
+		im.run.Lock()
+		held = true
+		var waiting []pending
+		if ok && err == nil {
+			result, waiting, err = im.importListed(walk, root.Path, idx, nil, listed, result, since, reports[root.Path])
+		}
 		im.mu.Lock()
 		delete(im.walking, root.Path)
 		im.mu.Unlock()
 		cancel(nil)
 		// However its walk ended, every one of the root's entries is finished with.
 		reports[root.Path].close()
-		if err != nil && ctx.Err() == nil && errors.Is(context.Cause(walk), errReleased) {
+		if err != nil && ctx.Err() == nil && (errors.Is(err, errReleased) || errors.Is(context.Cause(walk), errReleased)) {
 			// Released while it was walked: what was written of it is forgotten now, and the
 			// other roots go on.
 			now, err := im.Store.LibraryRoots(ctx)
@@ -515,8 +542,76 @@ func within(root string, walked map[string]bool) (string, bool) {
 
 // scanRoot walks one root, or only the folders of it in scope when scope is set, and writes what
 // changed. It returns the files whose headers are unread. report, when not nil, hears how the
-// walk of the whole root goes.
+// walk of the whole root goes. The caller holds run throughout.
 func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex, scope []string, report *walkReport) (RootResult, []pending, error) {
+	walk, result, ok, err := im.listRoot(ctx, root, scope, report)
+	if !ok || err != nil {
+		return result, nil, err
+	}
+	return im.importListed(ctx, root, idx, scope, walk, result, im.gen, report)
+}
+
+// listRoot walks one root, or the folders of it in scope, for importListed to write. It reads
+// only the share, so it needs no lock: a full pass lists a root without run, and header reads and
+// folder passes write meanwhile. ok is false when the root is not to be written: unreadable, or
+// its share stalled.
+func (im *Importer) listRoot(ctx context.Context, root string, scope []string, report *walkReport) (walk Walk, result RootResult, ok bool, err error) {
+	result = RootResult{Root: root, State: RootScanned}
+	if im.Disk != nil {
+		look := im.Disk.Look(ctx, root)
+		if !look.Readable {
+			result.State = RootUnreadable
+			return walk, result, false, nil
+		}
+		result.Empty = look.Empty
+	}
+	if im.stalled(root) {
+		// The last walk is still blocked on this share: it reads as offline, and nothing in it
+		// is marked missing.
+		result.State = RootUnreadable
+		return walk, result, false, nil
+	}
+	walk, done, err := watchedWalk(ctx, orDuration(im.WalkStall, walkStall), func(steps *atomic.Int64) (Walk, error) {
+		if scope == nil {
+			return walkRoot(ctx, root, steps, report)
+		}
+		return walkFolders(ctx, root, existingFolders(root, scope), steps)
+	})
+	if errors.Is(err, errWalkStalled) {
+		im.log().Warn("library scan: a media folder stopped answering mid-walk; nothing in it is marked missing", "root", root)
+		im.markStalled(root, done)
+		result.State = RootUnreadable
+		return walk, result, false, nil
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return walk, result, false, ctx.Err()
+		}
+		result.State = RootUnreadable
+		return walk, result, false, nil
+	}
+	if !walk.Complete {
+		result.State = RootIncomplete
+	}
+	for _, path := range walk.Skipped {
+		im.log().Warn("library scan: a name is not UTF-8 and was skipped", "path", path)
+		result.Unreadable = append(result.Unreadable, strings.ToValidUTF8(relTo(root, path), "�"))
+	}
+	return walk, result, true, nil
+}
+
+// importListed writes what changed in a root as listRoot found it, and returns the files whose
+// headers are unread. The caller holds run. since is the import generation when the listing
+// began: a file a folder pass wrote after it, or a folder released after it, is newer than the
+// listing, and is left as that import left it.
+func (im *Importer) importListed(ctx context.Context, root string, idx managerIndex, scope []string, walk Walk, result RootResult, since int64, report *walkReport) (RootResult, []pending, error) {
+	newer, lateReleased := im.changedSince(since)
+	if slices.ContainsFunc(lateReleased, func(r string) bool { return r == root || inside(root, r) }) {
+		return result, nil, errReleased
+	}
+	if scope != nil {
+		scope = existingFolders(root, scope)
+	}
 	im.gen++
 	gen := im.gen
 	var save []librarystore.LibraryFile
@@ -532,47 +627,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 			im.touch(written, gen)
 		}
 	}()
-	result := RootResult{Root: root, State: RootScanned}
-	if im.Disk != nil {
-		look := im.Disk.Look(ctx, root)
-		if !look.Readable {
-			result.State = RootUnreadable
-			return result, nil, nil
-		}
-		result.Empty = look.Empty
-	}
-	if im.stalled(root) {
-		// The last walk is still blocked on this share: it reads as offline, and nothing in it
-		// is marked missing.
-		result.State = RootUnreadable
-		return result, nil, nil
-	}
-	walk, done, err := watchedWalk(ctx, orDuration(im.WalkStall, walkStall), func(steps *atomic.Int64) (Walk, error) {
-		if scope == nil {
-			return walkRoot(ctx, root, steps, report)
-		}
-		scope = existingFolders(root, scope)
-		return walkFolders(ctx, root, scope, steps)
-	})
-	if errors.Is(err, errWalkStalled) {
-		im.log().Warn("library scan: a media folder stopped answering mid-walk; nothing in it is marked missing", "root", root)
-		im.markStalled(root, done)
-		result.State = RootUnreadable
-		return result, nil, nil
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return result, nil, ctx.Err()
-		}
-		result.State = RootUnreadable
-		return result, nil, nil
-	}
-	if !walk.Complete {
-		result.State = RootIncomplete
-	}
-	for _, path := range walk.Skipped {
-		im.log().Warn("library scan: a name is not UTF-8 and was skipped", "path", path)
-		result.Unreadable = append(result.Unreadable, strings.ToValidUTF8(relTo(root, path), "�"))
+	// A file written, or a folder released, since the listing began is newer than the listing.
+	listedLate := func(path string) bool {
+		return newer[path] || slices.ContainsFunc(lateReleased, func(r string) bool { return inside(path, r) })
 	}
 	rows, err := im.Store.LibraryFiles(ctx, root)
 	if err != nil {
@@ -593,7 +650,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	}
 	// A folder or file the walk couldn't read is out of scope too: whatever it holds stands as it was,
 	// while a file gone from anywhere the walk did read is still gone.
-	inScope := func(path string) bool { return (scope == nil || under(path, scope)) && !under(path, walk.Unread) }
+	inScope := func(path string) bool {
+		return (scope == nil || under(path, scope)) && !under(path, walk.Unread) && !listedLate(path)
+	}
 	moved := movedFrom(prev, found, inScope)
 	// A file with no row may have been read before its folder was released and added again: its
 	// own origin keeps that read, as the folders a Replace released inside the root keep theirs.
@@ -613,7 +672,8 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 	// disk when the episode is described (decision 53), and a show kept in several places is one.
 	ids := make([]identity, len(walk.Files))
 	for i, file := range walk.Files {
-		if file.Problem == "" {
+		// One listed late is identified, if still there, from its row among the others.
+		if file.Problem == "" && !listedLate(file.Path) {
 			ids[i] = b.identify(file)
 		}
 	}
@@ -633,6 +693,9 @@ func (im *Importer) scanRoot(ctx context.Context, root string, idx managerIndex,
 		if dir := relDir(file.Rel); dir != writingDir {
 			writingDir = dir
 			report.listing(dir)
+		}
+		if listedLate(file.Path) {
+			continue
 		}
 		old, known := prev[file.Path]
 		// A held file the walk finds again is back.

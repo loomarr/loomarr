@@ -1225,6 +1225,76 @@ func TestReplacingInnerFoldersKeepsTheirReads(t *testing.T) {
 	}
 }
 
+// A full pass lists a root without the import's lock, so a folder pass runs while it lists (one
+// that waited on it would never return here), and the full pass then leaves what that pass wrote
+// as it wrote it: a file deleted since the listing stays gone, one added since stays.
+func TestAFullPassLeavesWhatAFolderPassWroteWhileItListed(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	gone := h.file("Mike (2002)/Mike.mkv", 10)
+	// Enough others that one file gone is under the removal guard's share.
+	for i := range 20 {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	h.run()
+	var added string
+	var after map[string]librarystore.LibraryFile
+	h.im.listed = func(root string) {
+		h.im.listed = nil
+		if err := os.RemoveAll(filepath.Dir(gone)); err != nil {
+			t.Fatal(err)
+		}
+		added = h.file("Papa (2005)/Papa.mkv", 10)
+		if err := h.im.RunFolders(ctx, root, []string{filepath.Dir(gone), filepath.Dir(added)}); err != nil {
+			t.Fatal(err)
+		}
+		after = map[string]librarystore.LibraryFile{gone: h.fileRow(gone), added: h.fileRow(added)}
+	}
+	h.run()
+	if after == nil {
+		t.Fatal("the pass never listed its root")
+	}
+	if after[added].ItemID == "" {
+		t.Fatalf("the folder pass did not write %s", added)
+	}
+	for path, want := range after {
+		if got := h.fileRow(path); got.ItemID != want.ItemID || got.MissingAt.IsZero() != want.MissingAt.IsZero() {
+			t.Errorf("%s = item %q missing %v after the full pass, want it as the folder pass left it: item %q missing %v",
+				path, got.ItemID, !got.MissingAt.IsZero(), want.ItemID, !want.MissingAt.IsZero())
+		}
+	}
+	// Each file's origin on its item says the same: the deleted one gone, the added one there.
+	for path, gone := range map[string]bool{gone: true, added: false} {
+		rel, _ := filepath.Rel(h.root, path)
+		o := fileOrigin(h.root, filepath.ToSlash(rel))
+		if missing := !h.origin(h.item(o), o).MissingAt.IsZero(); missing != gone {
+			t.Errorf("%s's origin missing = %v, want %v", path, missing, gone)
+		}
+	}
+}
+
+// A folder released while a full pass lists it is not written back once the listing is done.
+func TestAFolderReleasedWhileListedIsNotWrittenBack(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	h.file("Mike (2002)/Mike.mkv", 10)
+	h.run()
+	h.file("Oscar (2004)/Oscar.mkv", 10)
+	h.im.listed = func(string) {
+		h.im.listed = nil
+		if err := h.st.SetLibraryRootInUse(ctx, h.root, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.im.ForgetReleased(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	if rows, err := h.st.LibraryFiles(ctx, h.root); err != nil || len(rows) != 0 {
+		t.Fatalf("the released folder has %d rows, %v; want none", len(rows), err)
+	}
+}
+
 // A folder released and then added again keeps the headers it read: its files are forgotten while
 // it is out of use, but the pass that finds them again opens only a file whose bytes changed.
 func TestAFolderAddedAgainKeepsItsReads(t *testing.T) {
