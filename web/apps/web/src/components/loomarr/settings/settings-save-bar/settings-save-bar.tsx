@@ -1,4 +1,5 @@
 import { Action, Stack, Text } from "@loomarr/design-system";
+import { cn } from "@/lib/utils";
 import type { SettingsSaveBarProps } from "./settings-save-bar.type";
 
 // Sonarr's sticky save bar (config-design §5). Explicit per-page saving, chosen over
@@ -19,23 +20,14 @@ const SettingsSaveBar = ({
     <Stack
       align="center"
       aria-label="Unsaved changes"
-      backgroundColor="$surfaceRaised"
-      borderColor="$borderDecorative"
-      borderTopWidth={1}
-      bottom={0}
-      className={className}
+      className={cn("border-border bg-card sticky bottom-0 border-t px-6 py-3", className)}
       direction="row"
       gap="control"
-      paddingHorizontal={24}
-      paddingVertical={12}
-      position="sticky"
       render="section"
     >
-      <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
-        <Text as="p" textRole="compact">
-          {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
-        </Text>
-      </Stack>
+      <Text as="p" className="flex-1" textRole="compact">
+        {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
+      </Text>
       <Action disabled={saving} onPress={onDiscard} variant="ghost">
         Discard
       </Action>
