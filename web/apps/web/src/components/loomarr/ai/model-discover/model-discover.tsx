@@ -70,7 +70,7 @@ const ModelDiscover = ({
       )}
 
       {visible && visible.length > 0 && (
-        <Stack className="divide-border/60 border-border/60 divide-y rounded-md border" render="ul">
+        <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} divided render="ul">
           {visible.map((m: DiscoverModelView) => {
             const isPulling = pulling?.tag === m.pullRef;
             const progress = isPulling ? pulling?.percent : undefined;
