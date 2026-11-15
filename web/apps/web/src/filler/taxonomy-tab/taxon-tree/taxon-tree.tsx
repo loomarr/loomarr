@@ -60,12 +60,12 @@ const TaxonTree = ({
                 {taxon.label}
               </Action>
               <Stack align="center" direction="row" gap="inline" marginTop={2} wrap>
-                <Text as="span" className="break-all" textRole="mono">
+                <Text as="span" textRole="mono" wordBreak="break-all">
                   {taxon.slug}
                 </Text>
                 {resolverTermCount > 0 ? (
                   <details>
-                    <Text as="summary" className="cursor-pointer" textRole="hint" tone="secondary">
+                    <Text as="summary" cursor="pointer" textRole="hint" tone="secondary">
                       {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
                     </Text>
                     <Stack className="break-words" gap="1" marginTop={4} maxWidth={384}>

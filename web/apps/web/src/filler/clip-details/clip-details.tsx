@@ -1,6 +1,6 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { countryLabel, formatClipDuration, topicLabel } from "@loomarr/core/format";
-import { Action, Grid, Stack, Text, TextLink } from "@loomarr/design-system";
+import { Action, Card, Grid, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 import { AUDIENCE_LABEL, playsLine, ROLE_LABEL } from "@/components/loomarr/filler/clip-card";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -63,12 +63,12 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
         : undefined;
 
   return (
-    <div className="space-y-5">
-      <div className="border-border overflow-hidden rounded-lg border">
+    <Stack gap="5">
+      <Card overflow="hidden">
         {showPreview ? (
           <ClipPreview clip={clip} />
         ) : (
-          <div className="space-y-3 p-4">
+          <Stack gap="3" padding={16}>
             <Text as="p" textRole="compact" tone="secondary">
               This clip is not ready for channels yet. Open the preview when you are ready.
             </Text>
@@ -77,18 +77,20 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
                 Preview clip
               </Action>
             </Stack>
-          </div>
+          </Stack>
         )}
-      </div>
+      </Card>
       {enrichmentMessage ? (
-        <div className="bg-muted/40 rounded-lg px-4 py-3">
+        <Stack borderRadius={12} className="bg-muted/40" paddingHorizontal={16} paddingVertical={12}>
           <Text as="p" textRole="cardLabel">
             {enrichmentMessage.title}
           </Text>
-          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-            {enrichmentMessage.detail}
-          </Text>
-        </div>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {enrichmentMessage.detail}
+            </Text>
+          </Stack>
+        </Stack>
       ) : null}
       <Grid columnGap="4" columns={["auto", "minmax(0,1fr)"]} render="dl" rowGap="2">
         <Text as="dt" textRole="compact" tone="secondary">
@@ -112,7 +114,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <Text as="dt" textRole="compact" tone="secondary">
               Context
             </Text>
-            <Text as="dd" className="min-w-0 space-y-1 break-words" textRole="compact">
+            <Text as="dd" className="min-w-0 space-y-1" overflowWrap="break-word" textRole="compact">
               {suggestion.explanation ? <p>{suggestion.explanation}</p> : null}
               {suggestion.sources.length ? (
                 <Stack columnGap="3" direction="row" rowGap="1" wrap>
@@ -133,7 +135,8 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             </Text>
             <Text
               as="dd"
-              className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 break-words"
+              className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
+              overflowWrap="break-word"
               textRole="compact"
             >
               {sourceLabel ? <span>{sourceLabel}</span> : null}
@@ -161,7 +164,7 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
           </Action>
         </Stack>
       ) : null}
-    </div>
+    </Stack>
   );
 };
 

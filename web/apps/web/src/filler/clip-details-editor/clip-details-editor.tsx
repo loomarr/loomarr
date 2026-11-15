@@ -323,7 +323,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
           <Text as="summary" className="cursor-pointer" textRole="cardLabel">
             Topics and tags
           </Text>
-          <Stack className="mt-3" gap="control">
+          <Stack gap="control" marginTop={12}>
             <Text as="p" textRole="hint" tone="secondary">
               Choose what this clip shows or advertises.
             </Text>
