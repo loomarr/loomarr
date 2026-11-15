@@ -78,9 +78,14 @@ const PodTimeline = ({
 
       <Stack
         aria-label="Pod segments"
-        className="border-border h-9 w-full overflow-hidden rounded-md border"
+        borderColor="$borderDecorative"
+        borderRadius={6}
+        borderWidth={1}
         direction="row"
+        height={36}
+        overflow="hidden"
         render="ul"
+        width="100%"
       >
         {entries.map((entry, i) => (
           <li
@@ -109,7 +114,7 @@ const PodTimeline = ({
                 radius="none"
                 width="100%"
               >
-                <Stack className="min-w-0 px-1" render="span">
+                <Stack minWidth={0} paddingHorizontal={4} render="span">
                   <Text as="span" className="truncate" textRole="caption" tone="primary">
                     {segmentLabel(entry)}
                   </Text>
@@ -118,9 +123,11 @@ const PodTimeline = ({
             ) : (
               <Stack
                 align="center"
-                className="h-full min-w-0 px-1"
                 direction="row"
+                height="100%"
                 justify="center"
+                minWidth={0}
+                paddingHorizontal={4}
                 render="span"
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>

@@ -142,7 +142,7 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 7
     },
     "src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "tailwindClasses": 3
@@ -305,7 +305,7 @@
       "tailwindClasses": 16
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
-      "tailwindClasses": 13
+      "tailwindClasses": 5
     },
     "src/filler/channel-filler/filler-criteria/filler-criteria.tsx": {
       "tailwindClasses": 12
@@ -347,13 +347,13 @@
       "tailwindClasses": 13
     },
     "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 20
+      "tailwindClasses": 4
     },
     "src/filler/filler-page/filler-page.tsx": {
       "tailwindClasses": 12
     },
     "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 21
+      "tailwindClasses": 4
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
       "tailwindClasses": 8
