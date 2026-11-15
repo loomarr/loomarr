@@ -8,23 +8,8 @@
     "apps/web/src/channels/guide-page/guide-toolbar/guide-toolbar.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/channels/channel-card/channel-card.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/channels/channel-cycle-preview/channel-cycle-preview.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/channels/channel-ident/channel-ident.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
       "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
-      "flexStack": 3
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
       "flexStack": 1
