@@ -341,13 +341,13 @@
       "tailwindClasses": 4
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
-      "tailwindClasses": 8
+      "tailwindClasses": 5
     },
     "src/filler/incoming/incoming-processing-details/incoming-processing-details.tsx": {
-      "tailwindClasses": 22
+      "tailwindClasses": 19
     },
     "src/filler/incoming/incoming.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 5
     },
     "src/filler/sources-panel/automatic-downloads-form/automatic-downloads-form.tsx": {
       "tailwindClasses": 1
@@ -359,16 +359,13 @@
       "tailwindClasses": 14
     },
     "src/filler/sources-panel/source-content-preview/source-content-preview.tsx": {
-      "tailwindClasses": 8
-    },
-    "src/filler/sources-panel/source-detail-sheet/source-detail-sheet.tsx": {
-      "tailwindClasses": 1
+      "tailwindClasses": 7
     },
     "src/filler/sources-panel/source-item-preview-dialog/source-item-preview-dialog.tsx": {
-      "tailwindClasses": 11
+      "tailwindClasses": 10
     },
     "src/filler/sources-panel/source-location-form/source-location-form.tsx": {
-      "tailwindClasses": 3
+      "tailwindClasses": 2
     },
     "src/filler/sources-panel/source-preview-section/source-preview-section.tsx": {
       "tailwindClasses": 4

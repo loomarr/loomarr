@@ -40,7 +40,7 @@ const ProcessingStage = ({ stage, timeZone }: { stage: IncomingProcessingStageDT
       </Text>
     </Stack>
     <Stack marginTop={4}>
-      <Text as="p" className="break-words" textRole="hint" tone="secondary">
+      <Text as="p" overflowWrap="break-word" textRole="hint" tone="secondary">
         {stage.note}
       </Text>
     </Stack>
@@ -77,7 +77,7 @@ const IncomingProcessingDetails = ({
 
   return (
     <details className="border-border rounded-lg border p-4">
-      <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+      <Text as="summary" cursor="pointer" textRole="cardLabel">
         Processing details
       </Text>
       <Stack gap="4" marginTop={16}>
@@ -92,13 +92,13 @@ const IncomingProcessingDetails = ({
           </Text>
         ) : null}
         {stages.length ? (
-          <ol className="pl-1">
+          <Stack paddingLeft={4} render="ol">
             {keyedStages.map(({ key, stage }) => (
               // The ordered projection may contain identical stored occurrences. Its array
               // occurrence is part of the identity so content-derived keys do not collapse it.
               <ProcessingStage key={key} stage={stage} timeZone={timeZone} />
             ))}
-          </ol>
+          </Stack>
         ) : (
           <Text as="p" textRole="compact" tone="secondary">
             No processing steps recorded yet.
