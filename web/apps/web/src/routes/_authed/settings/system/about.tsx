@@ -27,9 +27,9 @@ const AboutPage = () => {
   const v = version.data.data;
 
   return (
-    <Stack className="h-full min-h-0">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="About" description="Loomarr, and the services it's built on." />
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflowY="auto" padding={24}>
         <About
           demo={demo}
           details={aboutDetails(v, Date.now())}
@@ -37,7 +37,7 @@ const AboutPage = () => {
           tmdbLogo={<img alt="TMDB" src="/tmdb.svg" style={{ height: 16, width: "auto" }} />}
           version={aboutVersion(v)}
         />
-      </div>
+      </Stack>
     </Stack>
   );
 };

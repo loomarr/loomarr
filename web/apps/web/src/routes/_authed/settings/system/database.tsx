@@ -106,7 +106,7 @@ const DatabasePage = () => {
         title="Database"
         description="Which database Loomarr stores everything in, and how to move to another one."
       />
-      <div className="min-h-0 flex-1 overflow-auto p-6">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto" padding={24}>
         <DatabaseMigration
           status={view}
           step={step}
@@ -122,7 +122,7 @@ const DatabasePage = () => {
           error={error}
           envPinned={envPinned}
         />
-      </div>
+      </Stack>
     </Stack>
   );
 };

@@ -10,17 +10,8 @@
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
       "tailwindClasses": 4
     },
-    "src/channels/channel-row-menu/channel-row-menu.tsx": {
-      "tailwindClasses": 2
-    },
     "src/channels/channel-watch/channel-watch.tsx": {
-      "tailwindClasses": 9
-    },
-    "src/channels/channel-watch/paused-cover/paused-cover.tsx": {
-      "tailwindClasses": 2
-    },
-    "src/channels/channel-watch/sheet-for/sheet-for.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 3
     },
     "src/channels/guide-page/guide-page.tsx": {
       "tailwindClasses": 24
@@ -450,9 +441,6 @@
     "src/queue/request-lists/request-lists.tsx": {
       "tailwindClasses": 11
     },
-    "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 5
-    },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
       "tailwindClasses": 6
     },
@@ -467,47 +455,14 @@
     "src/routes/_authed/channels/$id/route.tsx": {
       "tailwindClasses": 54
     },
-    "src/routes/_authed/filler/settings/route.tsx": {
-      "tailwindClasses": 4
-    },
-    "src/routes/_authed/requests/_tabs.tsx": {
-      "tailwindClasses": 10
-    },
-    "src/routes/_authed/settings/access.tsx": {
-      "tailwindClasses": 5
-    },
-    "src/routes/_authed/settings/advanced.tsx": {
-      "tailwindClasses": 6
-    },
     "src/routes/_authed/settings/index.tsx": {
-      "tailwindClasses": 15
-    },
-    "src/routes/_authed/settings/route.tsx": {
-      "tailwindClasses": 5
-    },
-    "src/routes/_authed/settings/system/about.tsx": {
-      "tailwindClasses": 6
-    },
-    "src/routes/_authed/settings/system/backup.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/routes/_authed/settings/system/database.tsx": {
-      "tailwindClasses": 4
-    },
-    "src/routes/_authed/settings/system/index.tsx": {
-      "tailwindClasses": 1
-    },
-    "src/routes/_authed/settings/system/storage.tsx": {
-      "tailwindClasses": 1
+      "tailwindClasses": 13
     },
     "src/routes/join.tsx": {
       "tailwindClasses": 1
     },
     "src/routes/reset-password.tsx": {
       "tailwindClasses": 1
-    },
-    "src/routes/wizard.tsx": {
-      "tailwindClasses": 5
     },
     "src/settings/ai-model-settings/ai-model-settings.tsx": {
       "tailwindClasses": 9

@@ -9,6 +9,7 @@ import {
   MenuContent,
   MenuGroup,
   MenuTrigger,
+  Stack,
 } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -97,7 +98,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
       .then(resetConfirm, ignoreFailure);
 
   return (
-    <div className="relative shrink-0">
+    <Stack align="start" flexShrink={0} position="relative">
       {/* Closing always disarms the confirm: reopening the menu on a channel you nearly deleted
           should not present the armed Delete button again. */}
       <Menu
@@ -187,7 +188,7 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
           )}
         </MenuContent>
       </Menu>
-    </div>
+    </Stack>
   );
 };
 

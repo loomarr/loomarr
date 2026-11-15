@@ -34,9 +34,9 @@ const SettingsLayout = () => {
   // it replaced their own Settings with a bare "Forbidden" (#1977).
   if (settings.error && isAdmin) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={settings.error} onRetry={() => settings.refetch()} />
-      </div>
+      </Stack>
     );
   }
 
@@ -59,11 +59,13 @@ const SettingsLayout = () => {
     // belongs to the layout, so switching pages re-renders the outlet without unmounting the
     // edits. Held one level lower (inside a page) it died on every tab switch.
     <SettingsEditsProvider>
-      <Stack className="h-full">
+      <Stack height="100%">
         {showContextNav ? (
           <SettingsContextNav section={pathname.startsWith("/settings/system") ? "This server" : undefined} />
         ) : null}
-        <div className="min-w-0 flex-1 overflow-hidden">{page}</div>
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+          {page}
+        </Stack>
         <SettingsSaveBarHost />
       </Stack>
     </SettingsEditsProvider>

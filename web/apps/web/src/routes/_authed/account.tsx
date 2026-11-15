@@ -93,11 +93,12 @@ const AccountScreen = () => {
       />
 
       <Stack
-        className="max-w-form overflow-auto"
         flexBasis="0%"
         flexGrow={1}
         flexShrink={1}
         gap="4"
+        maxWidth={672}
+        overflow="auto"
         marginHorizontal="auto"
         padding={24}
         width="100%"
@@ -209,10 +210,11 @@ const AccountScreen = () => {
             </Stack>
           )}
           <ul>
-            {sessionRows.map((s) => (
+            {sessionRows.map((s, index) => (
               <Stack
                 align="center"
-                className="border-border border-b last:border-b-0"
+                borderBottomWidth={index === sessionRows.length - 1 ? 0 : 1}
+                borderColor="borderDecorative"
                 direction="row"
                 gap="control"
                 key={s.id}

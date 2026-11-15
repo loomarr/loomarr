@@ -6,10 +6,10 @@ import { SettingsSaveBarHost } from "@/settings/settings-save-bar-host";
 
 const FillerSettingsLayout = () => (
   <SettingsEditsProvider>
-    <Stack className="h-full min-h-0">
-      <div className="min-h-0 flex-1">
+    <Stack height="100%" minHeight={0}>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
         <Outlet />
-      </div>
+      </Stack>
       <SettingsSaveBarHost />
     </Stack>
   </SettingsEditsProvider>
