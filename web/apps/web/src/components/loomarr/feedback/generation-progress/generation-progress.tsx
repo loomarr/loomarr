@@ -28,10 +28,11 @@ const useSecondsSince = (startedAt: string | undefined): number | undefined => {
 
 // A streamed title reads like a row of the lineup it is about to become: name, year, and the
 // same state wording the review uses.
-const PickRow = ({ pick }: { pick: ProposalJourneyProgressDTO["picks"][number] }) => (
+const PickRow = ({ last, pick }: { last: boolean; pick: ProposalJourneyProgressDTO["picks"][number] }) => (
   <Stack
     align="center"
-    className="border-border border-b last:border-b-0"
+    borderBottomWidth={last ? 0 : 1}
+    borderColor="$borderDecorative"
     columnGap="2"
     direction="row"
     flexShrink={0}
@@ -71,16 +72,20 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   return (
     <Stack
       align="start"
-      className={cn("border-border bg-muted/35 rounded-lg border p-4", className)}
+      borderColor="$borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
+      className={cn("bg-muted/35", className)}
       direction="row"
       gap="control"
+      padding={16}
     >
       {!complete && (
-        <Stack className="mt-0.5" direction="row" render="span">
+        <Stack direction="row" marginTop={2} render="span">
           <ActivityIndicator decorative size="compact" tone="suggest" />
         </Stack>
       )}
-      <div className="min-w-0 flex-1">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
         <div role="status" aria-live="polite">
           <Text as="p" textRole="cardLabel">
             {line}
@@ -88,23 +93,27 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
         </div>
         {progress && progress.picks.length > 0 && (
           <>
-            <Stack aria-label="Titles chosen so far" className="mt-2" render="ul">
-              {progress.picks.map((pick) => (
-                <PickRow key={pick.key} pick={pick} />
+            <Stack aria-label="Titles chosen so far" marginTop={8} render="ul">
+              {progress.picks.map((pick, index) => (
+                <PickRow key={pick.key} last={index === progress.picks.length - 1} pick={pick} />
               ))}
             </Stack>
-            <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-              {count}
-              {seconds !== undefined ? ` · ${seconds} s` : ""}
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="hint" tone="secondary">
+                {count}
+                {seconds !== undefined ? ` · ${seconds} s` : ""}
+              </Text>
+            </Stack>
           </>
         )}
         {!complete && seconds !== undefined && seconds >= 10 && !(progress && progress.picks.length > 0) && (
-          <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-            This can take a little while. You can leave this page open.
-          </Text>
+          <Stack marginTop={4}>
+            <Text as="p" textRole="compact" tone="secondary">
+              This can take a little while. You can leave this page open.
+            </Text>
+          </Stack>
         )}
-      </div>
+      </Stack>
     </Stack>
   );
 };

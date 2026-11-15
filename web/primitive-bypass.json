@@ -32,19 +32,10 @@
     "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "flexStack": 3
     },
-    "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
@@ -86,23 +77,14 @@
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 2
     },
-    "apps/web/src/home/channel-ideas/channel-ideas.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/home/new-this-week/new-this-week.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
-      "flexStack": 3
+      "flexStack": 2
     },
     "apps/web/src/routes/_authed/settings/index.tsx": {
       "flexStack": 1
     },
     "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
       "flexStack": 1
-    },
-    "apps/web/src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "flexStack": 2
     },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {
       "flexStack": 1

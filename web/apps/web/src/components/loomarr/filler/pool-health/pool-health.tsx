@@ -2,7 +2,6 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
 import { Action, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
 
 // Library-local coverage context, below the stable workspace navigation. Acquisition belongs
@@ -76,15 +75,22 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
       <Stack
         align="center"
         aria-label="Catalog health"
-        className={cn("border-border rounded-lg border px-3 py-2.5", className)}
+        borderColor="$borderDecorative"
+        borderRadius={8}
+        borderWidth={1}
+        className={className}
         direction="row"
         gap="inline"
+        paddingHorizontal={12}
+        paddingVertical={10}
         render="section"
       >
-        <Text as="p" className="min-w-0 flex-1" textRole="compact" tone="primary">
-          {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
-          {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
-        </Text>
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+          <Text as="p" textRole="compact" tone="primary">
+            {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
+            {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
+          </Text>
+        </Stack>
         <Action aria-expanded={false} onPress={() => setExpanded(true)} variant="outline">
           Details
         </Action>
@@ -93,12 +99,19 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
   }
 
   return (
-    <section
+    <Stack
+      align="center"
       aria-label="Catalog health"
-      className={cn(
-        "border-border flex flex-wrap items-center gap-x-8 gap-y-4 rounded-lg border p-4",
-        className,
-      )}
+      borderColor="$borderDecorative"
+      borderRadius={8}
+      borderWidth={1}
+      className={className}
+      columnGap="8"
+      direction="row"
+      padding={16}
+      render="section"
+      rowGap="4"
+      wrap
     >
       {folded ? (
         <div className="order-last">
@@ -165,7 +178,7 @@ const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
           tone="warn"
         />
       )}
-    </section>
+    </Stack>
   );
 };
 
