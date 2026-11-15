@@ -181,7 +181,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   return (
     <Stack borderColor="borderDecorative" borderTopWidth={1} gap="4" paddingTop={16}>
       {statusQuery.isError || !enabled || configured ? (
-        <Stack className="bg-muted/40 rounded-lg" padding={16}>
+        <Stack borderRadius={12} className="bg-muted/40" padding={16}>
           <Stack align="start" direction="row" gap="control">
             {configured && status?.state === "ready" ? (
               <Stack direction="row" marginTop={2} render="span">
@@ -230,7 +230,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       ) : null}
 
       <Card padding={16} render="details">
-        <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+        <Text as="summary" cursor="pointer" textRole="cardLabel">
           <span>Where Loomarr looks</span>
           <Text as="span" className="ml-2" textRole="compact" tone="secondary">
             ·{" "}
@@ -320,7 +320,8 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
       {!configured ? (
         <Stack
           align={{ base: "stretch", sm: "center" }}
-          className="bg-muted/40 rounded-lg"
+          borderRadius={12}
+          className="bg-muted/40"
           direction={{ base: "column", sm: "row" }}
           gap="3"
           justify={{ base: "start", sm: "between" }}
@@ -387,7 +388,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                   </Stack>
                 </Stack>
                 <Card padding={16} render="details">
-                  <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+                  <Text as="summary" cursor="pointer" textRole="cardLabel">
                     Advanced / self-hosted
                   </Text>
                   <Stack

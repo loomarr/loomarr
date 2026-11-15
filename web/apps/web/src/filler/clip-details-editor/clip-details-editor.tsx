@@ -236,7 +236,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
         </Grid>
 
         <details className="border-border rounded-lg border p-3">
-          <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+          <Text as="summary" cursor="pointer" textRole="cardLabel">
             Location and broadcast details
           </Text>
           <Grid columns={{ base: 1, sm: 2 }} gap="3" marginTop={12}>
@@ -320,7 +320,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             actual vocabulary is both easier and impossible to mis-type. The category shadow is derived
             server-side, so it is not edited here. */}
         <details className="border-border rounded-lg border p-3">
-          <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+          <Text as="summary" cursor="pointer" textRole="cardLabel">
             Topics and tags
           </Text>
           <Stack gap="control" marginTop={12}>
@@ -366,7 +366,7 @@ const ClipDetailsEditor = ({ clip, onClose, onSaved }: ClipDetailsEditorProps) =
             <Text as="p" className="mt-1" textRole="hint" tone="secondary">
               Inherited from the observed facts above and updated automatically when the hierarchy changes.
             </Text>
-            <Text as="p" className="mt-2 break-words" textRole="compact">
+            <Text as="p" className="mt-2" overflowWrap="break-word" textRole="compact">
               {derivedLabels.join(", ")}
             </Text>
           </section>

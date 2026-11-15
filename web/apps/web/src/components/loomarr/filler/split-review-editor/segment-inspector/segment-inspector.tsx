@@ -127,7 +127,8 @@ const SegmentInspector = ({
 
       {segment.holdReason ? (
         <Stack
-          className="bg-caution-tint-15 rounded-sm"
+          borderRadius={4}
+          className="bg-caution-tint-15"
           paddingHorizontal={8}
           paddingVertical={6}
           render="p"
@@ -139,7 +140,7 @@ const SegmentInspector = ({
         </Stack>
       ) : null}
       {segment.unsplittable ? (
-        <Stack className="bg-onair-tint-15 rounded-sm" paddingHorizontal={8} paddingVertical={6}>
+        <Stack borderRadius={4} className="bg-onair-tint-15" paddingHorizontal={8} paddingVertical={6}>
           <Text as="p" textRole="compact" tone="danger">
             Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next
             clip, or remove it.
@@ -148,7 +149,8 @@ const SegmentInspector = ({
       ) : null}
       {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
         <Stack
-          className="bg-onair-tint-15 rounded-sm"
+          borderRadius={4}
+          className="bg-onair-tint-15"
           paddingHorizontal={8}
           paddingVertical={6}
           render="p"
@@ -179,12 +181,12 @@ const SegmentInspector = ({
       ) : null}
 
       <details open={timingNeedsAttention} className="border-border/70 rounded-md border px-3 py-2">
-        <Text as="summary" className="cursor-pointer list-none" textRole="cardLabel" tone="primary">
+        <Text as="summary" className="list-none" cursor="pointer" textRole="cardLabel" tone="primary">
           <Stack align="center" direction="row" gap="2" render="span">
             <Icon decorative glyph={icons.edit} size="compact" tone="inherit" /> Rename or adjust timing
           </Stack>
         </Text>
-        <Grid className="mt-3" columns={{ base: 1, sm: ["minmax(12rem,1fr)", "7rem", "7rem"] }} gap="3">
+        <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "7rem", "7rem"] }} gap="3" marginTop={12}>
           <Field
             id={`seg-name-${position}`}
             label="Name"
@@ -216,7 +218,7 @@ const SegmentInspector = ({
 
       {hasDetails ? (
         <details className="px-1">
-          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
+          <Text as="summary" cursor="pointer" textRole="compact" tone="secondary">
             Details
           </Text>
           <Stack gap="2" marginTop={8}>
