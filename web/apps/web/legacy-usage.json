@@ -189,26 +189,17 @@
       "tailwindClasses": 11,
       "rawTypeSize": 2
     },
-    "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
-      "tailwindClasses": 4
-    },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
-      "tailwindClasses": 11
+      "tailwindClasses": 5
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
-      "tailwindClasses": 9
+      "tailwindClasses": 7
     },
     "src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
       "tailwindClasses": 1
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "tailwindClasses": 22
-    },
-    "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
-      "tailwindClasses": 7
-    },
-    "src/components/loomarr/settings/settings-save-bar/settings-save-bar.tsx": {
-      "tailwindClasses": 8
     },
     "src/components/loomarr/setup/checklist-item/checklist-item.tsx": {
       "tailwindClasses": 9
