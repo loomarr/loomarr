@@ -60,6 +60,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 			}
 			im.staged[job.file.Path] = true
 			im.handoff = append(im.handoff, job)
+			im.countUnread(job, 1)
 			kept++
 		}
 		// Counted under the pass lock, so the stage's Begin is never after a hand-off's Grow.
@@ -69,8 +70,10 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 	}
 	im.reading = true
 	im.staged = make(map[string]bool, len(queue))
+	im.unread = map[string]int{}
 	for _, job := range queue {
 		im.staged[job.file.Path] = true
+		im.countUnread(job, 1)
 	}
 	im.Tracker.Begin(StepReading, len(queue))
 	im.mu.Unlock()
@@ -82,7 +85,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 		if !released {
 			// Ended early (a share fault, the kill switch, an error): the files handed to it stay
 			// pending, and the next walk over them queues them again.
-			im.reading, im.handoff, im.staged = false, nil, nil
+			im.reading, im.handoff, im.staged, im.unread = false, nil, nil, nil
 		}
 		ended := !im.reading
 		im.mu.Unlock()
@@ -151,7 +154,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 				mu.Unlock()
 				continue
 			}
-			im.reading, im.staged, released = false, nil, true
+			im.reading, im.staged, im.unread, released = false, nil, nil, true
 			im.mu.Unlock()
 			mu.Lock()
 			left += len(set)
@@ -169,6 +172,8 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 		if err := im.saveRead(ctx, batch); err != nil && first == nil {
 			first = err
 		}
+		// Saved, the reads are the files' own: a pass over their folders now leaves them be.
+		im.doneUnread(batch)
 		batch = batch[:0]
 	}
 	var wg sync.WaitGroup
@@ -183,16 +188,19 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 				switch {
 				case errors.Is(err, errFileGone):
 					// Renamed or deleted since the walk: the next walk says which.
+					im.doneUnread([]pending{job})
 				case errors.Is(err, errShareFault):
 					// Given up on: its folder's files wait until the read returns.
 					if retried[job.file.Path] {
 						left++
+						im.doneUnread([]pending{job})
 					} else {
 						retried[job.file.Path] = true
 						aside = append(aside, job)
 					}
 				case errors.Is(err, errFileFault):
 					// The file stays pending, and the stage goes on to the next.
+					im.doneUnread([]pending{job})
 					faults[job.root()]++
 					if n := faults[job.root()]; n >= headerFaultLimit && !faulted[job.root()] {
 						faulted[job.root()] = true
@@ -200,6 +208,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 							"err", fmt.Errorf("%w: %d files in a row, the last: %w", errShareFault, n, err))
 					}
 				case err != nil:
+					im.doneUnread([]pending{job})
 					if first == nil {
 						first = err
 					}
@@ -236,6 +245,7 @@ func (im *Importer) readHeaders(ctx context.Context, queue []pending) (complete 
 		switch {
 		case faulted[job.root()]:
 			left++
+			im.doneUnread([]pending{job})
 			im.Tracker.Grow(StepReading, -1)
 		case im.stalled(job.root()):
 			// A read under this root was given up on and has still not returned: the file waits
@@ -392,6 +402,48 @@ func (im *Importer) touch(rows []librarystore.LibraryFile, gen int64) {
 	for _, r := range rows {
 		im.touched[r.Path] = gen
 	}
+}
+
+// countUnread adds n to the files the stage holds unread in job's folder. The caller holds mu. It
+// reports whether the folder has none left.
+func (im *Importer) countUnread(job pending, n int) bool {
+	if im.unread == nil {
+		return false
+	}
+	dir := filepath.Dir(job.file.Path)
+	im.unread[dir] += n
+	if im.unread[dir] > 0 {
+		return false
+	}
+	delete(im.unread, dir)
+	return true
+}
+
+// doneUnread notes the stage is done with jobs: read and saved, or left. A folder it leaves with
+// nothing to read is told to FolderRead, so a pass held for it need not wait for the stage's end.
+func (im *Importer) doneUnread(jobs []pending) {
+	type folder struct{ root, dir string }
+	var emptied []folder
+	im.mu.Lock()
+	for _, job := range jobs {
+		if im.countUnread(job, -1) {
+			emptied = append(emptied, folder{job.root(), filepath.Dir(job.file.Path)})
+		}
+	}
+	im.mu.Unlock()
+	if im.FolderRead == nil {
+		return
+	}
+	for _, f := range emptied {
+		im.FolderRead(f.root, f.dir)
+	}
+}
+
+// FolderUnread reports whether the header stage holds files of dir it has not read and saved.
+func (im *Importer) FolderUnread(dir string) bool {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	return im.unread[dir] > 0
 }
 
 // changedSince lists the files an import wrote, and the folders released, after generation since.

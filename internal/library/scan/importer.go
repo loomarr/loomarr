@@ -120,6 +120,9 @@ type Importer struct {
 	// AfterReading hears the end of each header stage, once it takes no more files. It must not
 	// block; nil hears nothing.
 	AfterReading func()
+	// FolderRead hears a folder, under its root, whose files the header stage has all read and
+	// saved, or left, while the stage reads on. It must not block; nil hears nothing.
+	FolderRead func(root, dir string)
 
 	// readerVersion stands in for header.Version when not zero: tests read as an older reader.
 	readerVersion int
@@ -155,9 +158,12 @@ type Importer struct {
 	// path: a read queued by an older one is dropped. forgotten is the import that forgot each
 	// released root's files: a read of one queued before is dropped too, neither read nor saved
 	// back. Guarded by mu.
-	reading   bool
-	handoff   []pending
-	staged    map[string]bool
+	reading bool
+	handoff []pending
+	staged  map[string]bool
+	// unread counts, by folder, the files the stage holds and has not yet read and saved, or left.
+	// Guarded by mu.
+	unread    map[string]int
 	touched   map[string]int64
 	forgotten map[string]int64
 	// arrChanged are arr items to read again before the next folder pass uses the index; relist

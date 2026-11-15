@@ -180,8 +180,10 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		im.RootReadability = deps.notify.LibraryFolder
 	}
 	scanner := scan.NewScanner(im, scan.ReconcileInterval)
-	// The Enricher's rewrites wait out each header stage (Scanner.Rewrite); its end lets them go.
+	// The Enricher's rewrites of a folder wait for its header reads (Scanner.Rewrite); each folder's
+	// last read, or the stage's end, lets them go.
 	im.AfterReading = scanner.ReleaseHeld
+	im.FolderRead = scanner.ReleaseFolder
 	watcher := &scan.Watcher{Scanner: scanner}
 	hooks := &scan.ArrHooks{
 		Scanner: scanner,
