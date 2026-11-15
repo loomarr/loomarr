@@ -548,6 +548,90 @@ func TestAFileTitledAsAnotherEpisodeOfItsSeasonIsUnnumbered(t *testing.T) {
 	}
 }
 
+// A file whose title is another episode's of its show, whichever season holds it, however the
+// title spaces its words, and however the file is numbered, keeps its own details, unnumbered;
+// one whose title is its own entry's written another way takes the entry.
+func TestAFileTitledAsAnotherEpisodeOfItsShowIsUnnumbered(t *testing.T) {
+	type file struct {
+		rel, name  string
+		unnumbered bool
+	}
+	cases := []struct {
+		name    string
+		seasons [][]string // TMDB's titles, season by season
+		files   []file
+	}{
+		{"across a season line", [][]string{{"Lantern Hill", "Copper Gate", "Saltmarsh"}, {"Weir Road", "Gull Tower"}}, []file{
+			{"Season 01/Quillmoor - S01E01 - Lantern Hill.mkv", "Lantern Hill", false},
+			{"Season 01/Quillmoor - S01E03 - Weir Road.mkv", "Weir Road", true},
+			{"Season 02/Quillmoor - S02E01 - Saltmarsh.mkv", "Saltmarsh", true},
+			{"Season 02/Quillmoor - S02E02 - Gull Tower.mkv", "Gull Tower", false},
+		}},
+		{"words run together", [][]string{{"Lantern Hill", "Salt Marsh", "Copper Gate"}}, []file{
+			{"Season 01/Quillmoor - S01E02 - Copper Gate.mkv", "Copper Gate", true},
+			{"Season 01/Quillmoor - S01E03 - Saltmarsh.mkv", "Saltmarsh", true},
+		}},
+		{"numbered across the show", [][]string{{"Lantern Hill", "Copper Gate", "Saltmarsh"}, {"Weir Road"}}, []file{
+			{"Quillmoor - 001 - Lantern Hill.mkv", "Lantern Hill", false},
+			{"Quillmoor - 002 - Saltmarsh.mkv", "Saltmarsh", true},
+			{"Quillmoor - 003 - Copper Gate.mkv", "Copper Gate", true},
+			{"Quillmoor - 004 - Weir Road.mkv", "Weir Road", false},
+		}},
+		{"its own title spelled otherwise", [][]string{{"Lantern Hill", "Mr. Fenwick's Boat"}}, []file{
+			{"Season 01/Quillmoor - S01E02 - Mister Fenwicks Boat.mkv", "Mr. Fenwick's Boat", false},
+		}},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			id := "9000085" + strconv.Itoa(i)
+			src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+			recs := map[string]mp.Record{}
+			var sizes []mp.SeasonSize
+			for s, titles := range c.seasons {
+				var children []mp.Record
+				for e, title := range titles {
+					children = append(children, mp.Record{
+						Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id + strconv.Itoa(s+1) + strconv.Itoa(e+1)}},
+						Numbering: &mp.Numbering{Season: s + 1, Episode: e + 1}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+					})
+				}
+				recs[id+"/"+strconv.Itoa(s+1)] = mp.Record{Source: src, Kind: mp.KindSeason, Children: children}
+				sizes = append(sizes, mp.SeasonSize{Number: s + 1, Episodes: len(titles)})
+			}
+			recs[id] = mp.Record{Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: id}},
+				Descriptive: &mp.Descriptive{Title: "Quillmoor", Orders: []mp.EpisodeOrder{}, Seasons: sizes}}
+			h := newHarness(t)
+			h.im.Catalog = h.st
+			dir := "Quillmoor {tmdb-" + id + "}/"
+			for _, f := range c.files {
+				h.file(dir+f.rel, 10)
+			}
+			h.run()
+			e := &Enricher{Store: h.st, Provider: &fakeCatalog{records: recs}, Rewrite: func(root string, dirs ...string) {
+				if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			for range 4 {
+				if err := e.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, f := range c.files {
+				o := fileOrigin(h.root, dir+f.rel)
+				it, ok := ProjectLibraryItem(h.item(o))
+				if !ok {
+					t.Fatalf("%s: not a library item", f.rel)
+				}
+				if name := h.origin(h.item(o), o).Observation.Facts.Name; name != f.name || it.Unnumbered != f.unnumbered {
+					t.Errorf("%s = %q unnumbered %v, want %q unnumbered %v", f.rel, name, it.Unnumbered, f.name, f.unnumbered)
+				}
+			}
+		})
+	}
+}
+
 // A season on disk that ends before TMDB's count, one still airing or collected in part, is
 // numbered by TMDB episode by episode: an episode whose name gives the title of TMDB's entry at its
 // mark takes the entry, and one whose name gives another title keeps its file's details, unnumbered.
