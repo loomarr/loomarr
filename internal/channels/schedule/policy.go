@@ -36,7 +36,7 @@ type ChannelPolicy struct {
 	// It is NOT extracted — enforcement writes it, the API surfaces it. Recomputed
 	// from scratch each reconcile, so it un-relaxes automatically when the pool recovers.
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
-	// The ladder descends at most maxLadderSteps (8) steps, so a channel never records more.
+	// Each separation guard relaxes at most once (§7), so a channel records at most four.
 	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
@@ -606,11 +606,11 @@ type SeasonalPolicy struct {
 	Placement HolidayPlacement `json:"placement,omitempty"` // evenings | anytime; "" = evenings
 }
 
-// AppliedRelaxation records one step the relaxation ladder took (§7), surfaced in
+// AppliedRelaxation records one separation guard that relaxed (§7), surfaced in
 // the UI ("policy relaxed: repeat window 7d → 3d"). Kind is a stable slug; From/To
 // are human-readable values for display.
 type AppliedRelaxation struct {
-	Kind string `json:"kind"` // "episodeNoRepeat" | "seriesMinGap" | "era" | ...
+	Kind string `json:"kind"` // "episodeNoRepeat" | "movieNoRepeat" | "seriesMinGap" | "blockMax"
 	From string `json:"from"`
 	To   string `json:"to"`
 }
