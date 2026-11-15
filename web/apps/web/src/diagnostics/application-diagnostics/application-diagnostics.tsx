@@ -374,9 +374,10 @@ const ApplicationDiagnostics = ({
                       >
                         <Grid
                           align={{ base: "stretch", sm: "start" }}
-                          className="w-full text-left"
+                          className="text-left"
                           columns={{ base: 1, sm: ["7rem", "minmax(0,1fr)", "8rem"] }}
                           gap="2"
+                          width="100%"
                         >
                           <Text as="span" textRole="hint" tone="primary">
                             <Stack align="center" direction="row" gap="2" render="span">

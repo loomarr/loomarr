@@ -495,7 +495,7 @@ const ProposalReview = ({
                       <Text as="h3" textRole="cardLabel">
                         Titles considered
                       </Text>
-                      <Stack className="divide-border divide-y" render="ul">
+                      <Stack divided render="ul">
                         {proposal.trace.candidates.map((candidate) => (
                           <li
                             key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}
