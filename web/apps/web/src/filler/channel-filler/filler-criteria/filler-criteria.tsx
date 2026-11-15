@@ -4,12 +4,21 @@ import { ClipDTORole } from "@loomarr/api/models/clipDTORole";
 import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
 import type { Range } from "@loomarr/api/models/range";
-import { Action, Chip, CompactSelect, InlineAction, Stack, Text, Toggle } from "@loomarr/design-system";
+import {
+  Action,
+  Chip,
+  CompactSelect,
+  Grid,
+  GridItem,
+  InlineAction,
+  Stack,
+  Text,
+  Toggle,
+} from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YEAR_MAX, YEAR_MIN, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { FieldHelp } from "@/components/loomarr/feedback/field-help";
 import { LocationPicker, usePlaceLabel } from "@/components/loomarr/settings/installation-location";
-import { cn } from "@/lib/utils";
 
 // FieldLabel — a label + (i) help icon, replacing the permanent helper `<p>` under each
 // control (mirrors ChannelPolicyFields). Help on hover keeps the criteria form compact.
@@ -174,8 +183,8 @@ const FillerCriteria = ({
   return (
     // Responsive 2-col grid: Era + Audience are cells; Categories (chip cloud) + Clip kinds
     // (checkbox row) span both columns.
-    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
-      <Stack className="sm:col-span-2" gap="1.5">
+    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
+      <GridItem gap={6} span={{ base: 1, sm: "full" }}>
         <FieldLabel help="Country is a hard boundary. A place also limits local clips to TV stations near it; timezone is never used as location.">
           Geography
         </FieldLabel>
@@ -219,7 +228,7 @@ const FillerCriteria = ({
                 }
                 width={112}
               />
-              <div className="min-w-52 flex-1">
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={208}>
                 <LocationPicker
                   value={{
                     country: fixedCountry ?? selection.geography.country,
@@ -238,7 +247,7 @@ const FillerCriteria = ({
                     })
                   }
                 />
-              </div>
+              </Stack>
             </Stack>
             <Text as="p" textRole="hint" tone="secondary">
               A blank place follows the installation's city; with no city, only national filler airs.{" "}
@@ -254,10 +263,10 @@ const FillerCriteria = ({
             </Text>
           </>
         )}
-      </Stack>
+      </GridItem>
       {/* Era — two commit-on-blur year inputs, the same idiom as the program-scope era.
           Blank on either side means unbounded, not 0. Spans both columns (nested 2-up row). */}
-      <Stack className="sm:col-span-2" gap="1.5">
+      <GridItem gap={6} span={{ base: 1, sm: "full" }}>
         <FieldLabel help="Match commercials from this era. Left blank, it follows the channel's own era.">
           Era
         </FieldLabel>
@@ -389,10 +398,10 @@ const FillerCriteria = ({
             Follow the channel&rsquo;s era ({scopeLabel})
           </Action>
         )}
-      </Stack>
+      </GridItem>
 
       {/* Audience — the empty value is "any audience". */}
-      <Stack className="sm:col-span-2" gap="1.5">
+      <GridItem gap={6} span={{ base: 1, sm: "full" }}>
         <FieldLabel
           htmlFor="filler-audience"
           help="Keep breaks age-appropriate: kids' cartoons get kids' ads."
@@ -407,11 +416,11 @@ const FillerCriteria = ({
           options={AUDIENCE_OPTIONS}
           value={selection.audience ?? ""}
         />
-      </Stack>
+      </GridItem>
 
       {/* Product/topic tags — a multi-select over the live product-axis hierarchy. No selection
           means any product/topic, the widest pool. */}
-      <Stack className="sm:col-span-2" gap="1.5">
+      <GridItem gap={6} span={{ base: 1, sm: "full" }}>
         <FieldLabel help="Narrow by what a clip is about. A broad tag such as Food includes every descendant; none selected draws from all products and topics.">
           Products & topics
         </FieldLabel>
@@ -450,11 +459,11 @@ const FillerCriteria = ({
               })}
           </Stack>
         )}
-      </Stack>
+      </GridItem>
 
       {/* Roles — checkboxes over the playable clip roles. A channel that chose none shows the
           server's default ticked: every role except political ads and news (#2037). */}
-      <Stack className="sm:col-span-2" gap="1.5">
+      <GridItem gap={6} span={{ base: 1, sm: "full" }}>
         <FieldLabel help="Which clips a break may use. Political ads and news stay off until you tick them; a nearby station's own news airs with its station IDs.">
           Clip kinds
         </FieldLabel>
@@ -477,8 +486,8 @@ const FillerCriteria = ({
             Clip kinds unlock once this channel's coverage check loads.
           </Text>
         )}
-      </Stack>
-    </div>
+      </GridItem>
+    </Grid>
   );
 };
 

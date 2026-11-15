@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
-import { Action, Card, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -10,7 +10,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ClipCard } from "@/components/loomarr/filler/clip-card";
 import { ClipRow } from "@/components/loomarr/filler/clip-row";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
 import { CATALOG_PAGE_SIZE, catalogListParams, type FillerSearch } from "../filler-search";
 import { CatalogBulkBar } from "./catalog-bulk-bar";
@@ -347,21 +346,21 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             )}
           </Stack>
           {view === "list" ? (
-            <div className="border-border overflow-hidden rounded-lg border">
+            <Card overflow="hidden">
               {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
-            </div>
+            </Card>
           ) : (
-            <div className={cn("grid", phone ? "grid-cols-2 gap-2.5" : "grid-cols-2 gap-3 lg:grid-cols-3")}>
+            <Grid columns={phone ? 2 : { base: 2, lg: 3 }} gap={phone ? "2.5" : "3"}>
               {rows.map((clip) =>
                 clip.isComposite ? (
-                  <div key={clip.hash} className="col-span-full">
+                  <GridItem key={clip.hash} span="full">
                     {renderComposite(clip)}
-                  </div>
+                  </GridItem>
                 ) : (
                   renderCatalogCard(clip)
                 ),
               )}
-            </div>
+            </Grid>
           )}
 
           {/* The pager sits BELOW the grid ("what's next?"); the count line above it answers

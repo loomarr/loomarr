@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatClipDuration, pluralize } from "@loomarr/core/format";
-import { Action, Disclosure, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Disclosure, Stack, Text } from "@loomarr/design-system";
 import { type ReactNode, useState } from "react";
 
 interface CompositeCatalogGroupProps {
@@ -53,7 +53,7 @@ const CompositeCatalogGroup = ({ clip, onManage, renderParent, renderChild }: Co
             Segments could not be loaded.
           </Text>
         ) : rows.length > 0 ? (
-          <div className="border-border overflow-hidden rounded-lg border">{rows.map(renderChild)}</div>
+          <Card overflow="hidden">{rows.map(renderChild)}</Card>
         ) : children.isFetching ? null : (
           <Text as="p" textRole="compact" tone="secondary">
             No filed segments remain under this compilation.
