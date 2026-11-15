@@ -54,7 +54,7 @@
       "tailwindClasses": 11
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 42
+      "tailwindClasses": 40
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "tailwindClasses": 11
@@ -529,7 +529,7 @@
       "tailwindClasses": 2
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 7
+      "tailwindClasses": 5
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 4
