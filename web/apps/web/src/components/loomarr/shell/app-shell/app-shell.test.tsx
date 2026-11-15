@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
@@ -70,11 +70,11 @@ describe("AppShell", () => {
     expect(await screen.findByRole("main")).toHaveClass("overscroll-contain");
   });
 
-  // One focus style across the app: the amber ring the design system's controls draw. A rail
-  // control with no focus classes falls back to the browser's white rectangular outline (#2780).
-  // The rail's Sign out is a design-system Action and its Search a SearchButton; both draw their own
-  // amber focus border.
-  it("draws the amber focus ring on every plain rail control", async () => {
+  // One focus style across the app: the amber border the design system's controls draw. A rail
+  // control with no focus look falls back to the browser's white rectangular outline (#2780). The
+  // rail's About and account links are design-system rows, so they draw it themselves, and the
+  // browser's own outline is switched off.
+  it("draws the amber focus border on every plain rail control", async () => {
     render(
       <RouterHarness
         content={
@@ -90,11 +90,14 @@ describe("AppShell", () => {
       screen.getByRole("link", { name: /Your account/ }),
     ];
     for (const control of rail) {
-      expect(control).toHaveClass(
-        "focus-visible:ring-2",
-        "focus-visible:ring-signal",
-        "focus-visible:outline-none",
-      );
+      const frame = control.querySelector("div > div") as HTMLElement;
+      expect(control.style.outline).toMatch(/none|0px/);
+      const rest = frame.className;
+      act(() => control.focus());
+      // The row's inner border takes the focus colour and gives it back on blur.
+      expect(frame.className).not.toBe(rest);
+      act(() => control.blur());
+      expect(frame.className).toBe(rest);
     }
   });
 
@@ -111,13 +114,32 @@ describe("AppShell", () => {
 
     const version = await screen.findByRole("link", { name: "Loomarr v0.9.3 (modified) — About" });
     expect(version).toHaveAttribute("href", "/settings/system/about");
-    expect(version).toHaveClass("text-static-400");
-    expect(version).not.toHaveClass("text-static-500");
     expect(
       within(screen.getByRole("navigation", { name: "Primary" })).queryByRole("link", {
         name: /loomarr v0\.9\.3/i,
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it("explains the version in a tooltip on hover and on keyboard focus", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin serverVersion="v0.9.3">
+            content
+          </AppShell>
+        }
+      />,
+    );
+    const version = await screen.findByRole("link", { name: "Loomarr v0.9.3 — About" });
+
+    await userEvent.hover(version);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Loomarr v0.9.3");
+
+    await userEvent.unhover(version);
+    await userEvent.keyboard("{Escape}");
+    act(() => version.focus());
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Loomarr v0.9.3");
   });
 
   it("shows members the version without linking them into admin Settings", async () => {

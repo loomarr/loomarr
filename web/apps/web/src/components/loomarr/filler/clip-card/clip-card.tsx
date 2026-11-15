@@ -5,7 +5,9 @@ import {
   InlineAction,
   icons,
   MediaTile,
+  Reveal,
   Stack,
+  semanticThemes,
   Text,
   Tooltip,
   typography,
@@ -16,6 +18,9 @@ import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
+
+// The play disc's drop shadow, as the card has always drawn it.
+const DISC_SHADOW = "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)";
 
 // ClipCard — a filler clip with its match tags (§3, §10): role/era/audience/category
 // chips + a mono, sub-minute-aware duration. tagged clips are pod-ready; untagged
@@ -235,20 +240,28 @@ const ClipFrame = ({
             {/* ⚠ Nudged right by a pixel: a triangle's optical centre is left of its bounding
                 box, so a mathematically centred play glyph reads as sitting too far left. The
                 mock does the same thing with `padding-left:4px`. */}
-            <Stack
+            <Reveal
               align="center"
+              backgroundColor="washSignal90"
               borderRadius={999}
-              className="bg-signal/90 text-static-950 opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
               direction="row"
               height={44}
               justify="center"
               render="span"
+              shown={hovered}
+              style={{ boxShadow: DISC_SHADOW }}
               width={44}
             >
               <Stack direction="row" marginLeft={2} render="span">
-                <Icon decorative glyph={icons.play} size="default" tone="inherit" />
+                {/* Dark ink on the amber disc in either theme, as the disc is the same amber in both. */}
+                <Icon
+                  color={semanticThemes.dark.surface.canvas}
+                  decorative
+                  glyph={icons.play}
+                  size="default"
+                />
               </Stack>
-            </Stack>
+            </Reveal>
           </MediaTile>
         </Stack>
       )}
