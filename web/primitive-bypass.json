@@ -32,9 +32,6 @@
     "apps/web/src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "flexStack": 3
     },
-    "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
       "flexStack": 1
     },
