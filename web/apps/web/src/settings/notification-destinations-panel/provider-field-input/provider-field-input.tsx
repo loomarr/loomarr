@@ -34,7 +34,7 @@ const ProviderFieldInput = ({
     );
   }
   return (
-    <div className="grid gap-1.5">
+    <Stack gap="1.5">
       <Text as="label" htmlFor={inputId} textRole="label">
         {field.label}
         {field.required ? " *" : ""}
@@ -101,7 +101,7 @@ const ProviderFieldInput = ({
           {field.description}
         </Text>
       ) : null}
-    </div>
+    </Stack>
   );
 };
 

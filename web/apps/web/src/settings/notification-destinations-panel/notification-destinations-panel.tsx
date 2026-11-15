@@ -42,14 +42,13 @@ const NotificationDestinationsPanel = () => {
             align="center"
             backgroundColor="washSignal10"
             borderRadius={8}
-            className="text-signal"
             flexShrink={0}
             height={36}
             justify="center"
             render="span"
             width={36}
           >
-            <Icon decorative glyph={icons.notifications} size="compact" tone="inherit" />
+            <Icon decorative glyph={icons.notifications} size="compact" tone="primary" />
           </Stack>
           <div>
             <Text as="h2" id="notification-providers-title" strong textRole="headline">
