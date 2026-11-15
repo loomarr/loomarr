@@ -190,7 +190,9 @@ Recency closes that loop using `airings` (design.md §5): the last time each epi
   window opened, so it is constant for the whole window, like the slice offset. What airs during
   the window shapes the next one. Read live, every reconcile after a tune-in re-sorted the deck and
   the guide rewrote the programme on air (#1674). An unbounded window never opens a new one, so it
-  reads no history.
+  reads no history. Library facts do not re-arrange the window either, and an edit re-arranges only
+  what follows the programme on air (#4140; `docs/design/scheduling.md`, "Nothing that has aired
+  moves inside a window").
 
 - **A SOFT RANKING SIGNAL, not a constraint.** Among candidates that are equally valid under every
   §3 rule, the least-recently-aired wins; a title that has never aired sorts first. It cannot be

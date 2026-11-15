@@ -79,6 +79,23 @@ func TestTrackerShowsTheEarliestActiveStep(t *testing.T) {
 	}
 }
 
+// A walk begun once reading has begun is a later pass's, behind a first import's reading: the strip
+// stays on step 2 with its time left, and takes the walk again only once the reading ends.
+func TestAWalkBegunDuringReadingDoesNotTakeTheStrip(t *testing.T) {
+	tr, c := newClockTracker()
+	tr.Begin(StepReading, 400)
+	c.advance(time.Minute)
+	tr.Advance(StepReading, 100)
+	tr.Begin(StepWalking, 3)
+	if got := tr.Snapshot(c.now()); got.Step != StepReading || got.Number != 2 || got.Done != 100 || !got.HasETA {
+		t.Fatalf("snapshot = %+v, want reading, 100 of 400 with its time left", got)
+	}
+	tr.End(StepReading)
+	if got := tr.Snapshot(c.now()); got.Step != StepWalking {
+		t.Fatalf("snapshot = %+v, want the walk once the reading ends", got)
+	}
+}
+
 // The time left is remaining × elapsed ÷ done, only once 30 s have passed and 2% is done.
 func TestTrackerETA(t *testing.T) {
 	tr, c := newClockTracker()

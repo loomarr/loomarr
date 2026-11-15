@@ -384,72 +384,17 @@ const SettingField = ({
             pre-3.1 state exactly, rather than rendering a button that does nothing. */}
         {pinned &&
           (canUnlock ? (
-            <button
-              type="button"
-              onClick={() => onEnvOverride(true)}
-              // The visible text is the STATE; the action belongs in the accessible name, or
-              // a screen-reader user hears "set via environment, button" and has to guess.
-              aria-label={`Unlock ${label} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
-              className="group/unlock focus-visible:outline-signal cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              {/* The hover/focus tell: the chip warms from inert grey to `signal`, and the
-                  padlock springs open. `opacity-80` (what this was) says only "something is
-                  here"; it never said the lock could be OPENED, which is the one thing an
-                  operator needs to know before they can edit an env-pinned field.
-
-                  ⚠ `signal`, NOT `lock`. `lock` is the GREEN success token — "checklist pass,
-                  signal locked" (frontend-design §palette) — so colouring an *unlock*
-                  affordance with it would claim success for an action not yet taken. `signal`
-                  is the primary/interactive alias, which is what this is.
-
-                  ⚠ The ICON SWAP is not decoration, it is the accessible half. A hover state
-                  carried by colour alone excludes anyone who cannot distinguish the two, so
-                  the shape has to change too — the same reason the connection dot pairs its
-                  colour with a check/cross glyph.
-
-                  ⚠ Driven by `group-focus-visible` as well as `group-hover`: a keyboard user
-                  arrives here by Tab and would otherwise get a chip that never reacts.
-
-                  ⚠ A NAMED group (`group/unlock`), and it has to be. The field wrapper is already
-                  `.group` — it reveals the "changed by …" audit line on hover — and Tailwind's
-                  bare `group-hover:` compiles to `:is(:where(.group):hover *)`, which matches ANY
-                  hovered `.group` ancestor. Unnamed, the chip therefore lit up amber whenever the
-                  pointer was anywhere in the field, promising that the label and the input were
-                  clickable too. Naming the group scopes the tell to the chip itself.
-
-                  200ms is the house duration for this kind of moment (frontend-design §7's
-                  "lock in"). No reduced-motion guard needed — styles.css already zeroes every
-                  transition under `prefers-reduced-motion`, globally. */}
-              {/* Both padlocks occupy ONE fixed box so the crossfade cannot reflow the label's
-                  text — a swap that changes width would make the label twitch on hover. The
-                  padlock is the control and keeps its open-on-hover tell; the state itself is
-                  the quiet dot and word, not a filled chip (#2784). */}
-              <Stack
-                align="center"
-                className="text-muted-foreground group-hover/unlock:text-signal group-focus-visible/unlock:text-signal"
-                direction="row"
-                gap="1.5"
-                render="span"
-              >
-                <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
-                  <Stack
-                    className="absolute transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-0 group-focus-visible/unlock:opacity-0"
-                    direction="row"
-                    render="span"
-                  >
-                    <Icon decorative glyph={icons.locked} size="compact" tone="inherit" />
-                  </Stack>
-                  <Stack
-                    className="absolute opacity-0 transition-opacity duration-(--duration-fast) group-hover/unlock:opacity-100 group-focus-visible/unlock:opacity-100"
-                    direction="row"
-                    render="span"
-                  >
-                    <Icon decorative glyph={icons.unlocked} size="compact" tone="inherit" />
-                  </Stack>
-                </span>
-                <StatusLabel tone="off">Set via environment</StatusLabel>
-              </Stack>
-            </button>
+            // The padlock is the DS's compact ghost icon action; the state beside it is the quiet
+            // dot and word (#2784). The padlock's name carries the action, or a screen-reader user
+            // hears "set via environment" and has to guess. The hover tell (the label warming to
+            // `signal`, the padlock springing open) is not carried: the DS draws a pressed icon
+            // action with its one focus outline and no colour swap.
+            <Stack align="center" direction="row" gap="1.5">
+              <Action compact icon="locked" layout="icon" onPress={() => onEnvOverride(true)} variant="ghost">
+                {`Unlock ${label} to edit it here, currently set by ${entry.envVar ?? "the environment"}`}
+              </Action>
+              <StatusLabel tone="off">Set via environment</StatusLabel>
+            </Stack>
           ) : (
             <StatusLabel tone="off">Set via environment</StatusLabel>
           ))}
@@ -458,14 +403,14 @@ const SettingField = ({
             bare `db` chip would imply the environment never mentioned this key. */}
         {overriding &&
           (canUnlock ? (
-            <button
-              type="button"
-              onClick={() => onEnvOverride(false)}
-              aria-label={`Hand ${label} back to ${entry.envVar ?? "the environment"}, your saved value is kept`}
-              className="cursor-pointer rounded-full transition-opacity hover:opacity-80"
+            // The name starts with the visible word (WCAG 2.5.3), then says what the press does.
+            <StatusLabel
+              aria-label={`Overriding ${entry.envVar ?? "the environment"}: hand ${label} back, your saved value is kept`}
+              onPress={() => onEnvOverride(false)}
+              tone="warn"
             >
-              <StatusLabel tone="warn">Overriding {entry.envVar ?? "the environment"}</StatusLabel>
-            </button>
+              Overriding {entry.envVar ?? "the environment"}
+            </StatusLabel>
           ) : (
             <StatusLabel tone="warn">Overriding {entry.envVar ?? "the environment"}</StatusLabel>
           ))}

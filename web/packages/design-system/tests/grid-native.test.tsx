@@ -50,6 +50,23 @@ describe("Grid without CSS grid (native)", () => {
     expect(getComputedStyle(rowOf("d").children[1] as HTMLElement).flexGrow).toBe("2");
   });
 
+  it("sizes the cells of a track list: a fixed width, a share, and a content-sized column", () => {
+    render(
+      <LoomarrProvider theme="dark">
+        <Grid columns={["7rem", "1.5fr", "auto"]}>
+          <span>a</span>
+          <span>b</span>
+          <span>c</span>
+        </Grid>
+      </LoomarrProvider>,
+    );
+
+    expect(rowOf("a")).toBe(rowOf("c"));
+    expect(getComputedStyle(cell("a")).width).toBe("112px");
+    expect(getComputedStyle(cell("b")).flexGrow).toBe("1.5");
+    expect(getComputedStyle(cell("c")).flexGrow).toBe("0");
+  });
+
   it("gives an item the columns it spans, on a row of its own when it does not fit", () => {
     render(
       <LoomarrProvider theme="dark">

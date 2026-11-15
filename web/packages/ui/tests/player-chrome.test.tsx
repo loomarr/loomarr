@@ -405,6 +405,42 @@ describe("PlayerChrome", () => {
     expect(host.querySelector('[data-testid="band-title"]')?.textContent).toBe("An ensemble comedy");
   });
 
+  describe("a phone's one-row band (#4132)", () => {
+    const phone = (overrides: Partial<PlayerChromeProps>) =>
+      chrome({
+        density: "touch",
+        keys: keys({ density: "touch", pointer: false }),
+        utilities: utilities({ density: "touch", pointer: false }),
+        ...overrides,
+      });
+
+    it("says Back in n min under the title in a break, in place of the channel", () => {
+      const host = mount(phone({ band: { ...band, breakMinutesLeft: 3, inBreak: true } }));
+      expect(host.querySelector('[data-testid="band-break"]')?.textContent).toBe("Back in 3 min");
+      expect(host.querySelector('[data-testid="band-channel-name"]')).toBeNull();
+    });
+
+    it("shows Go live only when behind, which goes live", () => {
+      const onGoLive = vi.fn();
+      const host = mount(
+        phone({
+          band: { ...band, behindLabel: "2m 14s behind" },
+          live: { lagSeconds: 134, mode: "paused" },
+          onGoLive,
+        }),
+      );
+      act(() => button(host, "Go live")?.click());
+      expect(onGoLive).toHaveBeenCalledOnce();
+      expect(button(mount(phone({})), "Go live")).toBeUndefined();
+    });
+
+    it("names the channel and says Nothing scheduled when the channel has nothing on", () => {
+      const host = mount(phone({ band: { channelName: "Coast 90s", channelNumber: "7", clockMs: 1 } }));
+      expect(host.querySelector('[data-testid="band-title"]')?.textContent).toBe("Coast 90s");
+      expect(host.textContent).toContain("Nothing scheduled");
+    });
+  });
+
   it("reads a break as the programme's title with Back in n min, and no badge", () => {
     const host = mount(chrome({ band: { ...band, breakMinutesLeft: 3, inBreak: true, line: undefined } }));
     expect(host.textContent).toContain("An ensemble comedy");

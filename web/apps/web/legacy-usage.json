@@ -48,10 +48,10 @@
       "tailwindClasses": 33
     },
     "src/components/loomarr/ai/proposal-outlook/proposal-outlook.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 11
     },
     "src/components/loomarr/ai/proposal-review/proposal-review.tsx": {
-      "tailwindClasses": 49
+      "tailwindClasses": 45
     },
     "src/components/loomarr/ai/refine-panel/refine-panel.tsx": {
       "tailwindClasses": 11
@@ -145,9 +145,7 @@
       "tailwindClasses": 32
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "tailwindClasses": 36,
-      "rawButton": 1,
-      "rawTypeSize": 1
+      "tailwindClasses": 18
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
       "tailwindClasses": 25
@@ -176,7 +174,7 @@
       "tailwindClasses": 20
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 39
+      "tailwindClasses": 36
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 7
@@ -206,7 +204,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
-      "tailwindClasses": 47,
+      "tailwindClasses": 40,
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
@@ -228,8 +226,7 @@
       "tailwindClasses": 13
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 67,
-      "rawButton": 2,
+      "tailwindClasses": 37,
       "rawTypeSize": 1
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
@@ -254,10 +251,10 @@
       "tailwindClasses": 26
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "tailwindClasses": 34
+      "tailwindClasses": 30
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 93,
+      "tailwindClasses": 76,
       "rawButton": 1
     },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
@@ -289,7 +286,7 @@
       "tailwindClasses": 2
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 26
+      "tailwindClasses": 22
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 4
@@ -331,7 +328,7 @@
       "tailwindClasses": 19
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 27
+      "tailwindClasses": 23
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 6
@@ -367,7 +364,7 @@
       "tailwindClasses": 12
     },
     "src/filler/filler-settings/filler-settings.tsx": {
-      "tailwindClasses": 44
+      "tailwindClasses": 21
     },
     "src/filler/incoming/incoming-preparation-summary/incoming-preparation-summary.tsx": {
       "tailwindClasses": 8
@@ -421,8 +418,7 @@
       "tailwindClasses": 14
     },
     "src/help/help-page/help-page.tsx": {
-      "tailwindClasses": 19,
-      "rawTypeSize": 2
+      "tailwindClasses": 2
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
       "tailwindClasses": 18
@@ -500,7 +496,7 @@
       "tailwindClasses": 4
     },
     "src/routes/_authed/settings/system/index.tsx": {
-      "tailwindClasses": 24
+      "tailwindClasses": 1
     },
     "src/routes/_authed/settings/system/storage.tsx": {
       "tailwindClasses": 1

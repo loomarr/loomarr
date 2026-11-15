@@ -2,7 +2,10 @@ package scan
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,8 +56,13 @@ type seriesSeen struct {
 	// normName: "Unit S9 S01E01" gives "unit s9".
 	named map[string]int
 
-	once       sync.Once
+	// resolution is the series resolved from records, its own (its folder's sidecars, read once a
+	// pass) and its catalog's; resolvedAt is when, zero until it is. One still waiting for its
+	// catalog record is resolved again, at most every recheckWaiting (lookedAgain).
+	resolveMu  sync.Mutex
+	records    []mp.Record
 	resolution resolution
+	resolvedAt time.Time
 	// seasons are its season and episode-order records the pass read, by catalog id.
 	seasonsMu sync.Mutex
 	seasons   map[string]cachedSeason
@@ -362,8 +370,9 @@ func (id identity) cheapIDs() []inventory.ExternalID {
 // the builder.
 //
 // waiting reports an item written without a catalog record it asked for: its own, its season's,
-// or, for an episode, its series'. The file is then saved with no identity, so the next pass over
-// its folder writes it again. The Enricher asks for that pass once it has the record, but it can
+// or, for an episode, its series'. The file is then saved with a waiting identity (waitingFor), so
+// the next pass over its folder once the record is cached writes it again, and one before leaves
+// it. The Enricher asks for that pass once it has the record, but it can
 // fetch the record while this pass is still writing, before the file's row is saved; the row's
 // identity must not then say the file is written as it will stay (#3565).
 func (b *builder) snapshot(ctx context.Context, file File, id identity, now time.Time) (snapshot inventory.Snapshot, waiting bool) {
@@ -390,7 +399,10 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	records = append(records, id.embedded)
 	if file.hasNFO() {
-		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok {
+		// An episode's NFO that numbers it as another episode than its name's mark does is that
+		// episode's, copied beside the wrong file: the name's number stands (precedence), and the
+		// NFO's title, overview and ids, another episode's, are set aside with its number.
+		if rec, ok := b.sidecar(ctx, b.im.NFO, id.kind, file.Path); ok && (id.kind != mp.KindEpisode || !numbersAnother(rec.Numbering, id.embedded.Numbering)) {
 			records = append(records, rec)
 			if id.kind == mp.KindEpisode {
 				further = append(further, rec.More...)
@@ -411,10 +423,31 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		}
 	}
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
-	res := b.resolve(ctx, snapshot.Origin, in)
+	var named told
+	if id.kind == mp.KindMovie {
+		named = b.movieTold(ctx, snapshot.Origin, file)
+	}
+	res := b.resolveNamed(ctx, snapshot.Origin, in, named)
+	if id.kind == mp.KindEpisode && res.record == nil && !res.waiting {
+		if kept, ok := b.unknownNFOAside(ctx, file, in, res); ok {
+			in = kept
+			res = b.resolve(ctx, snapshot.Origin, in)
+		}
+	}
+	if id.kind == mp.KindEpisode && res.record != nil {
+		res = b.ownNumberOver(ctx, snapshot.Origin, file, id, in, res)
+	}
 	if id.kind == mp.KindEpisode && res.catalog.String() == "" {
 		if day := id.airDate(); day != "" {
 			res = b.byAirDate(ctx, b.series[id.seriesDir], in, res, day)
+			// A day the name writes so it reads either way, "11-05-2019", that airs none of the
+			// show's episodes is the other way round when that one airs one: the catalog says how
+			// the name is written.
+			if other := otherReading(file, day); other != "" && res.catalog.String() == "" && !res.waiting {
+				if alt := b.byAirDate(ctx, b.series[id.seriesDir], withDay(in, other), res, other); alt.catalog.String() != "" && !alt.waiting {
+					res = alt
+				}
+			}
 		} else if id.runTogether > 0 && id.absolute() == id.runTogether {
 			res = b.byRunTogether(ctx, b.series[id.seriesDir], in, res, id.runTogether)
 		} else if abs := id.absolute(); abs > 0 {
@@ -455,7 +488,39 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	if id.kind == mp.KindMovie && file.Part > 0 && file.PartSet != "" {
 		snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: partsNamespace, Value: partsID(file.PartSet)})
 	}
+	// Every copy of one episode names it alike, so its copies are one title from the first pass,
+	// whatever ids each carries: a 720p beside a 1080p, a "Season 01" beside a "Season 1".
+	if id.kind == mp.KindEpisode {
+		if key := episodeCopyID(b.root, id.seriesDir, file.Rel, id.embedded.Numbering); key != "" {
+			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: copiesNamespace, Value: key})
+		}
+	}
 	return snapshot, waiting
+}
+
+// copiesNamespace is the scanner's own id for an episode's copies: every copy of one episode
+// carries the same value, so they are one title before any catalog names it. It is never listed.
+const copiesNamespace = "loomarr-episode"
+
+// episodeCopyID is the id an episode's copies share: its series folder, its own mark's season and
+// episodes, and the title its name gives after the mark (toldTitle), small words aside. Two files
+// that number one episode but name it apart ("The Pit", "Low Ground") are two episodes, one of them
+// misnumbered, and never one title's copies; a name with no title of its own joins only another
+// with none. "" for an episode with no series folder or no mark of its own.
+func episodeCopyID(root, seriesDir, rel string, n *mp.Numbering) string {
+	if seriesDir == "" || n == nil || n.Episode <= 0 {
+		return ""
+	}
+	var words []string
+	for _, w := range strings.Fields(normName(toldTitle(rel))) {
+		if !smallWord[w] {
+			words = append(words, w)
+		}
+	}
+	key := fmt.Sprintf("%s\x00%d/%d-%d\x00%s", seriesOrigin(root, seriesDir).ExternalItemID, n.Season, n.Episode,
+		max(n.EpisodeEnd, n.Episode), strings.Join(words, " "))
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:16])
 }
 
 // withFurtherIDs adds the further episodes' own ids to a multi-episode file's, once each.
@@ -480,6 +545,8 @@ type resolution struct {
 	set librarystore.LibraryCatalogKey
 	// record is that row's cached record, nil until the Enricher fetches it.
 	record *mp.Record
+	// entry is the entry of a season or order record that describes an episode; nil for none.
+	entry *mp.Record
 	// unnumbered is an episode its show's catalog could not number, with no answer for the show.
 	unnumbered bool
 	// waiting is a title written without a catalog record it asked for and the Enricher has not
@@ -492,6 +559,11 @@ type resolution struct {
 // a cached catalog record is resolved again with it, so its details come from the catalog
 // (decision 7); one not cached yet is written without, and again once the Enricher fetches it.
 func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in precedence.Input) resolution {
+	return b.resolveNamed(ctx, origin, in, told{})
+}
+
+// resolveNamed is resolve for a movie or a series whose names say what it is (named).
+func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, in precedence.Input, named told) resolution {
 	if rec, ok := b.im.linkRecord(ctx, in.Kind, origin); ok {
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
@@ -503,6 +575,28 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 	out.catalog = b.im.Keys.For(in.Kind, pickedIDs(out.resolved.IDs))
 	rec, ok, waiting := b.im.catalogRecord(ctx, out.catalog)
 	out.waiting = waiting
+	titled := in.Kind == mp.KindMovie || in.Kind == mp.KindSeries
+	if ok && titled {
+		// A title its NFO knows by another catalog's id is keyed by the catalog's own once found, as
+		// its seasons and orders are; the Enricher caches the record by both.
+		if own := b.im.Keys.For(in.Kind, rec.IDs); own.String() != "" && own != out.catalog {
+			if canon, cached, _ := b.im.catalogRecord(ctx, own); cached {
+				out.catalog, rec = own, canon
+			}
+		}
+	}
+	// An id only a name or an NFO gives, that the catalog was asked for and does not know, grounds
+	// nothing: the title is the household's to say (Needs you), not one matched in silence. Nor
+	// does one whose record is another title than the files name: an NFO copied from another
+	// film's folder, or an id typed wrong.
+	fromFiles := out.match.Basis == string(mp.BasisSidecar) || out.match.Basis == string(mp.BasisEmbeddedID)
+	if ok && titled && fromFiles && namesAnother(out.resolved, named, rec) {
+		ok, rec = false, mp.Record{}
+		out.match, out.catalog = librarystore.LibraryMatch{}, librarystore.LibraryCatalogKey{}
+	}
+	if !ok && !waiting && titled && fromFiles && b.im.catalogMisses(ctx, out.catalog) {
+		out.match = librarystore.LibraryMatch{}
+	}
 	if ok {
 		out.record = &rec
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
@@ -512,6 +606,14 @@ func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in pr
 		out.set = b.im.Keys.For(mp.KindCollection, []mp.ExternalID{out.resolved.Collection.Value.ID})
 	}
 	return out
+}
+
+// numbersAnother says whether an NFO's numbering names another episode than a file's own mark: both
+// number a season's episode, and the season or the episode differs. A name that numbers it only
+// across the show, or not at all, doesn't say.
+func numbersAnother(nfo, own *mp.Numbering) bool {
+	return nfo != nil && own != nil && nfo.Episode > 0 && own.Episode > 0 &&
+		(nfo.Season != own.Season || nfo.Episode != own.Episode)
 }
 
 // sidecar reads what a sidecar provider (NFO, artwork) finds beside a file or in a series folder.
@@ -534,10 +636,15 @@ func (b *builder) sidecar(ctx context.Context, p mp.Provider, kind mp.Kind, medi
 // catalog's seasons, and writeSeries writes it. Header reads resolve concurrently, so it is
 // guarded.
 func (b *builder) resolveSeries(ctx context.Context, s *seriesSeen) resolution {
-	s.once.Do(func() {
-		records := []mp.Record{{Source: mp.Source{Basis: mp.BasisEmbeddedID}, Kind: mp.KindSeries, IDs: s.ids}}
+	s.resolveMu.Lock()
+	defer s.resolveMu.Unlock()
+	if !s.resolvedAt.IsZero() && !b.lookedAgain(s.resolution.waiting, s.resolvedAt) {
+		return s.resolution
+	}
+	if s.resolvedAt.IsZero() {
+		s.records = []mp.Record{{Source: mp.Source{Basis: mp.BasisEmbeddedID}, Kind: mp.KindSeries, IDs: s.ids}}
 		if s.managed != nil {
-			records = append(records, *s.managed)
+			s.records = append(s.records, *s.managed)
 		}
 		if s.dir != "" {
 			dir := filepath.Join(b.root, filepath.FromSlash(s.dir))
@@ -547,13 +654,25 @@ func (b *builder) resolveSeries(ctx context.Context, s *seriesSeen) resolution {
 			}
 			for _, p := range providers {
 				if rec, ok := b.sidecar(ctx, p, mp.KindSeries, dir); ok {
-					records = append(records, rec)
+					s.records = append(s.records, rec)
 				}
 			}
 		}
-		s.resolution = b.resolve(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: records})
-	})
+	}
+	s.resolution = b.resolveNamed(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: s.records}, told{name: saidBy(path.Base(s.dir))})
+	s.resolvedAt = b.im.now()
 	return s.resolution
+}
+
+// recheckWaiting is how long a pass keeps a catalog record it found still to come before it looks
+// again. On a first import the Enricher fetches what the walk asked for while the headers are
+// read, so the reads that follow describe their episodes by what it has fetched, rather than
+// each episode being written waiting and then again once its pass is over.
+const recheckWaiting = 10 * time.Second
+
+// lookedAgain says whether a record read at `at` and still waiting then is due a second look.
+func (b *builder) lookedAgain(waiting bool, at time.Time) bool {
+	return waiting && b.im.now().Sub(at) >= recheckWaiting
 }
 
 // writeSeries writes each series one of whose episodes this pass wrote.

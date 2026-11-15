@@ -45,7 +45,7 @@ export {
 export type { DockedPanelProps } from "./src/docked-panel";
 export { DockedPanel } from "./src/docked-panel";
 export { useFocusLook } from "./src/focus-look";
-export type { GridItemProps, GridProps, GridSpan } from "./src/grid";
+export type { GridColumnSpec, GridItemProps, GridProps, GridSpan, GridTrack } from "./src/grid";
 export { Grid, GridItem } from "./src/grid";
 export type { IconName, IconProps, IconSize, IconTone } from "./src/icon";
 export { Icon, icons } from "./src/icon";

@@ -1,7 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Grid, type GridTrack, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,9 @@ import type { AdvancedSettingsTableProps } from "./advanced-settings-table.type"
 // way of already knowing what you want: the key when you read it in a config file, the group
 // when you remember roughly where it lives, and the value when you are hunting for whichever
 // setting is pointing at the wrong URL.
+// Key, value, owner, provenance, action: the header and every row share these tracks.
+const SETTING_COLUMNS: readonly GridTrack[] = ["1.5fr", "1.2fr", "110px", "128px", "88px"];
+
 const matches = (entry: SettingEntry, q: string): boolean => {
   if (q === "") return true;
   const haystack = `${entry.key} ${entry.group} ${entry.value ?? ""}`.toLowerCase();
@@ -88,13 +91,13 @@ const AdvancedSettingsTable = ({
 
       <div className="border-border overflow-x-auto rounded-lg border">
         <div className="min-w-[780px]">
-          <div className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] gap-3 border-b px-4 py-2">
+          <Grid className="border-border border-b px-4 py-2" columns={SETTING_COLUMNS} gap="3">
             {["Key", "Value", "Owner", "Provenance", "Action"].map((heading) => (
               <Text as="div" key={heading} textRole="label" tone="secondary">
                 {heading}
               </Text>
             ))}
-          </div>
+          </Grid>
 
           {rows.length === 0 && (
             <Text as="p" className="px-4 py-6" textAlign="center" textRole="compact" tone="secondary">
@@ -117,9 +120,12 @@ const AdvancedSettingsTable = ({
             // for OpenRouter, so keep the key searchable but route edits to its owner.
             const pickerOwned = entry.key === SettingKey.LLMModel;
             return (
-              <div
+              <Grid
+                align="center"
                 key={entry.key}
-                className="border-border grid grid-cols-[1.5fr_1.2fr_110px_128px_88px] items-center gap-3 border-b px-4 py-2 last:border-b-0"
+                className="border-border border-b px-4 py-2 last:border-b-0"
+                columns={SETTING_COLUMNS}
+                gap="3"
               >
                 <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0}>
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
@@ -192,7 +198,7 @@ const AdvancedSettingsTable = ({
                     Use default
                   </Action>
                 )}
-              </div>
+              </Grid>
             );
           })}
         </div>

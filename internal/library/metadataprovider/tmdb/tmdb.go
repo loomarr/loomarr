@@ -89,6 +89,11 @@ func (*Provider) Capabilities() mp.Capabilities {
 		Resolves: []mp.Resolvable{
 			{Kind: mp.KindMovie, Namespace: mp.NamespaceTMDB},
 			{Kind: mp.KindSeries, Namespace: mp.NamespaceTMDB},
+			// A title an NFO knows only by another catalog's id is found through /find. TMDB's own id
+			// comes first: a title's catalog row is the first of these its ids give.
+			{Kind: mp.KindSeries, Namespace: mp.NamespaceTVDB},
+			{Kind: mp.KindSeries, Namespace: mp.NamespaceIMDB},
+			{Kind: mp.KindMovie, Namespace: mp.NamespaceIMDB},
 			{Kind: mp.KindEpisode, Namespace: mp.NamespaceTVDB},
 			{Kind: mp.KindCollection, Namespace: mp.NamespaceTMDBCollection},
 			{Kind: mp.KindSeason, Namespace: mp.NamespaceTMDB},
@@ -101,8 +106,8 @@ func (*Provider) Capabilities() mp.Capabilities {
 	}
 }
 
-// Fetch returns a movie or series by TMDB id, an episode by TVDB episode id, or a TMDB collection
-// by its collection id.
+// Fetch returns a movie or series by TMDB id, a series by TVDB or IMDb id or a movie by IMDb id
+// (through /find), an episode by TVDB episode id, or a TMDB collection by its collection id.
 func (p *Provider) Fetch(ctx context.Context, ref mp.Ref) (mp.Record, error) {
 	if !p.Capabilities().CanResolve(ref) {
 		return mp.Record{}, fmt.Errorf("tmdb: %s by %s: %w", ref.Kind, ref.ID.Namespace, mp.ErrUnsupported)
@@ -135,6 +140,9 @@ func (p *Provider) fetch(ctx context.Context, loc locale, ref mp.Ref) (mp.Record
 	}
 	if ref.Kind == mp.KindEpisodeOrder {
 		return p.episodeOrder(ctx, loc, strings.TrimSpace(ref.ID.Value))
+	}
+	if (ref.Kind == mp.KindMovie || ref.Kind == mp.KindSeries) && ref.ID.Namespace != mp.NamespaceTMDB {
+		return p.byFind(ctx, loc, ref)
 	}
 	id, err := strconv.Atoi(strings.TrimSpace(ref.ID.Value))
 	if err != nil || id <= 0 {

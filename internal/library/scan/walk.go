@@ -7,10 +7,10 @@ import (
 	"path"
 	"path/filepath"
 
-	"slices"
 	"strings"
-	"sync"
+
 	"sync/atomic"
+	"time"
 
 	"unicode/utf8"
 
@@ -54,84 +54,6 @@ var videoExtensions = map[string]bool{
 	".m2t": true, ".trp": true, ".tp": true,
 }
 
-// skippedDirs hold media-server and NAS by-products, snapshots and recycle bins, never media. A
-// ".trash-<uid>" folder is skipped as hidden; a NAS's "@…" folders (QNAP's "@Recycle" and
-// "@Recently-Snapshot", Synology's "@eaDir") and a downloader's unfinished "_UNPACK_…" and
-// "_FAILED_…" folders by their prefixes (skippedPrefixes). A snapshot holds a second copy of the
-// whole library.
-var skippedDirs = map[string]bool{
-	// Emby's and Kodi's artwork folders: trickplay tiles, extra backdrops and thumbnails, cast photos.
-	"trickplay": true, "extrafanart": true, "extrathumbs": true, ".actors": true,
-	".recycle.bin": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "incomplete": true,
-	"#snapshot": true, "system volume information": true, "plex versions": true,
-	// A Mac's leavings on a share, Windows' older recycle bins, NZBGet's unpacking.
-	"network trash folder": true, "temporary items": true, "recycler": true, "recycle bin": true,
-	"intermediate": true,
-}
-
-// subsDirs are the folders a release keeps its subtitles in.
-var subsDirs = map[string]bool{"subs": true, "subtitles": true, "subtitle": true, "sub": true}
-
-// skippedPrefixes begin the names of folders skippedDirs skips by their prefix.
-var skippedPrefixes = []string{".", "@", "~", "_unpack_", "_failed_"}
-
-// discDirs are disc structures, which are not imported but listed as problems.
-var discDirs = map[string]bool{"video_ts": true, "bdmv": true}
-
-// skippedDir reports whether a walk passes over a folder named name in parent (relative to the
-// root, "." its top): a by-product, a recycle bin, a download still coming, a hidden folder, or an
-// extras folder in a title's own folder (titled, as holdsTitle says), which a season folder's
-// "Specials" is (Emby's). An extras folder in a catch-all ("Movies/Shorts") or a folder of folders
-// ("Movies/Kids/Shorts") is a collection of titles, not a title's extras. A disc structure is not
-// walked either, but is listed as a problem.
-func skippedDir(parent, name string, titled bool) bool {
-	lower := strings.ToLower(name)
-	// A film's own "Specials" ("Movies/Ashwood (2015)/Specials/") are its extras, where a show's
-	// are its season 0; and a subtitles' folder holds no title, whatever a release put in it.
-	filmSpecials := lower == "specials" && parent != "." && amongFilms(parent) && !shelfAt(parent)
-	// A films' shelf's "Trailers/" or "Samples/" holds its films' trailers and samples, named as
-	// the films are; a film called so names its folder with its year, "Trailers (2019)/".
-	// "Trailers/" at a root's top, or on a shelf of shelves ("Media/Library/"), holds trailers too.
-	// Its "Extras/" is walked: a film may be kept there (shelfBonusExtras).
-	shelfTrailers := shelfExtras[lower] && parent != "." && amongFilms(parent) ||
-		shelfExtras[lower] && (parent == "." || shelfAt(parent) && !underShows(name) && !showsFolderNames[folderKey(path.Base(parent))])
-	return neverMedia(name) || seasonExtrasFolder(name) || filmSpecials || shelfTrailers ||
-		(parent != "." && extrasFolder(name, parent) && titled && !shelfAt(parent)) ||
-		(lower == "specials" && parent != "." && isSeasonFolder(parent) && !strings.EqualFold(path.Base(parent), "specials"))
-}
-
-// neverMedia says whether a folder's name alone says it holds no media, wherever it is: a NAS's,
-// an OS's or a downloader's own folder ("@eaDir", "#recycle", ".Trash-1000", "lost+found") or a
-// subtitles' folder. The folder browser hides what this says, so it and the scan agree.
-func neverMedia(name string) bool {
-	lower := strings.ToLower(name)
-	// A NAS's own folders have no spaces ("@eaDir", ".Trash-1000"); "@Home Again (2019)" is a title's.
-	prefixed := !strings.Contains(lower, " ") && slices.ContainsFunc(skippedPrefixes, func(p string) bool { return strings.HasPrefix(lower, p) })
-	return skippedDirs[lower] || prefixed || subsDirs[lower]
-}
-
-// holdsTitle says whether a folder, rel to the root with its entries, is a title's own: a season
-// folder, one named as a title is with its year ("Ashgrove (2015)"), or one holding a video, a
-// disc or a season folder. An extras folder in it is that title's extras.
-func holdsTitle(rel string, entries []fs.DirEntry) bool {
-	if rel == "." {
-		return false
-	}
-	if title, year, _ := searchQuery(path.Base(rel), 0); isSeasonFolder(rel) || title != "" && year != 0 {
-		return true
-	}
-	for _, e := range entries {
-		lower := strings.ToLower(e.Name())
-		switch {
-		case e.IsDir() && (discDirs[lower] || isSeasonFolder(path.Join(rel, e.Name()))):
-			return true
-		case !e.IsDir() && (videoExtensions[filepath.Ext(lower)] && !extraIn(e.Name(), path.Base(rel)) || filepath.Ext(lower) == ".iso"):
-			return true
-		}
-	}
-	return false
-}
-
 // relTo is path relative to root with forward slashes, "." for the root itself.
 func relTo(root, p string) string {
 	rel, err := filepath.Rel(root, p)
@@ -153,6 +75,8 @@ type File struct {
 	Path string
 	Rel  string
 	Stat Stat
+	// Length is its running time as its header has just been read; 0 on a walk.
+	Length time.Duration
 	// Sidecars are the file's own NFO, artwork and trickplay files, by path, so a changed sidecar
 	// changes the file's identity digest without being read. A trickplay file's Stat is zero: only
 	// its being there counts.
@@ -389,86 +313,11 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 			}
 		}
 	}
-	folder := ""
-	if dir != w.root {
-		folder = filepath.Base(dir)
-	}
-	shows := dir != w.root && underShows(path.Join(w.shelf, w.rel(dir)))
-	extras := siblingExtras(folder, videoNames, shows || seasonDirOf(w.rel(dir)) != "")
-	for name := range extrasBeside(videoNames) {
-		extras[name] = true
-	}
-	for name := range shelfBonusExtras(w.rel(dir), videoNames) {
-		extras[name] = true
-	}
-	for name := range shelfSamples(path.Join(w.shelf, w.rel(dir)), videoNames) {
-		extras[name] = true
-	}
-	videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return extras[name] })
-	if !shows && seasonDirOf(w.rel(dir)) == "" {
-		ripped := rippedExtras(folder, videoNames, func(name string) int64 {
-			i := slices.IndexFunc(entries, func(e fs.DirEntry) bool { return e.Name() == name })
-			if st, ok := w.stat(filepath.Join(dir, name), entries[i]); ok {
-				return st.Size
-			}
-			return 0
-		})
-		videoNames = slices.DeleteFunc(videoNames, func(name string) bool { return ripped[name] })
-		for name := range ripped {
-			extras[name] = true
-		}
-	}
-	notes, parts := notesOf(videoNames), partsOf(folder, videoNames)
-	if shows || showLabelled(folder) {
-		// A shows' folder's "Part 1", "Part 2" are a miniseries' episodes (numberingInFolder), as
-		// are a folder's labelled a show's on any shelf, "Movies/The Long Watch Miniseries/".
-		parts = nil
-	}
-	marked := 0
-	for _, name := range videoNames {
-		if episodeMark.MatchString(name) {
-			marked++
-		}
-	}
-	// In a shows' catch-all, one marked episode says a show's folder, as does one that names the
-	// folder's show: "Kids/Puffin Patrol/Puffin Patrol 1x02.mp4".
-	ownMarked := dir != w.root && slices.ContainsFunc(videoNames, func(name string) bool {
-		show := looseSeries(name)
-		return show != "" && sameWords(show, showFolderName(folder))
-	})
-	notes.Episodes = marked >= 2 || marked == 1 && (shows || ownMarked) || slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
-		return e.IsDir() && dir != w.root && isSeasonFolder(path.Join(w.rel(dir), e.Name()))
-	})
-	notes.Leading = leadingEpisodes(folder, videoNames)
-	notes.Series = dir != w.root && namedSeries(folder, videoNames, onAudienceShelf(path.Join(w.shelf, w.rel(dir))))
-	notes.Titled = dir != w.root && titledEpisodes(path.Join(w.shelf, w.rel(dir)), videoNames)
-	notes.Dashed = dashedShows(path.Join(w.shelf, w.rel(dir)), videoNames)
-	notes.Root = w.shelf
-	notes.Years = looseYears(videoNames)
-	notes.Released = releasedShows(videoNames)
-	notes.MonthFirst = monthFirstDays(videoNames)
-	for _, e := range entries {
-		if e.IsDir() {
-			notes.Folders = append(notes.Folders, e.Name())
-		}
-	}
-	// A season folder's episodes name their show, not the season: it is never a dump.
-	notes.Dump = dir != w.root && seasonDirOf(w.rel(dir)) == "" && len(idsIn(filepath.Base(dir))) == 0 &&
-		dumpFolder(filepath.Base(dir), videoNames, showsFolderNames[folderKey(path.Base(path.Dir(w.rel(dir))))])
-	// A folder holding one video, named by a part mark alone, may be one part of a movie whose
-	// parts each have a folder: the movie's folder is the set.
-	folderPart := 0
-	if len(videoNames) == 1 {
-		folderPart = partFolderOf(dir)
-	}
-	// A movie in parts is one video: its folder's poster is the movie's.
-	movies := len(videoNames) - len(parts)
-	for _, n := range parts {
-		if n == 1 {
-			movies++
-		}
-	}
-	w.nfo[dir], w.videos[dir] = nfos, movies
+	// What the folder's videos are, and say of each other, is read in one place (foldernotes.go);
+	// the walk records what that reading keeps.
+	reading := w.readFolder(dir, entries, videoNames)
+	videoNames, extras, notes, parts, folderPart := reading.videos, reading.extras, reading.notes, reading.parts, reading.folderPart
+	w.nfo[dir], w.videos[dir] = nfos, reading.movies
 	defer delete(w.nfo, dir)
 	defer delete(w.videos, dir)
 
@@ -525,7 +374,7 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 		switch {
 		case isDir && skippedDir(w.rel(dir), e.Name(), titled):
-		case isDir && bonusDisc(e.Name(), videoNames, shows || seasonDirOf(w.rel(dir)) != ""):
+		case isDir && bonusDisc(e.Name(), videoNames, reading.shows || seasonDirOf(w.rel(dir)) != ""):
 		case isDir && discDirs[lower]:
 			w.problem(path, Stat{}, ProblemDiscImage)
 		case isDir:
@@ -560,147 +409,6 @@ func (w *walker) dir(ctx context.Context, dir string) error {
 		}
 	}
 	return nil
-}
-
-// walkReport tells the Tracker how one root goes through step 1 of an import: the folder it is on,
-// named from the root's own folder name down ("TV / Night Ferry / Season 2"), and how many of the
-// root's top-level entries are finished. An entry is finished in two halves, once the walk has
-// listed it and once the import has written its files, so the count moves through both: over a
-// share either can take minutes. The walk runs on its own goroutine, which a walk given up on
-// outlives, so it is locked, and close ends it.
-type walkReport struct {
-	tracker *Tracker
-	// name is the root's folder name; entries is how many top-level entries the import counted.
-	name    string
-	entries int
-
-	mu sync.Mutex
-	// walked and written are how many entries the walk has listed and the import has written.
-	walked, written int
-	// reported is how many entries the Tracker was told are finished: half of walked and written.
-	reported int
-	closed   bool
-}
-
-// listing names the folder the walk lists, by its path relative to the root.
-func (r *walkReport) listing(rel string) {
-	if r == nil {
-		return
-	}
-	current := r.name
-	if rel != "." {
-		current += " / " + strings.ReplaceAll(rel, "/", " / ")
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.closed {
-		r.tracker.Current(StepWalking, current)
-	}
-}
-
-// relDir is the folder of a path relative to the root, "." for a file in the root itself.
-func relDir(rel string) string {
-	if i := strings.LastIndexByte(rel, '/'); i >= 0 {
-		return rel[:i]
-	}
-	return "."
-}
-
-// counted is the root's top-level entries as the walk lists them. The count made before the walk
-// can come back empty (a listing late past readableTimeout) or be stale (an entry added or removed
-// since), so step 1's total takes the walk's count: a root counted as nothing would otherwise read
-// full while every one of its files is still to come.
-func (r *walkReport) counted(n int) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closed || n == r.entries {
-		return
-	}
-	r.tracker.Grow(StepWalking, n-r.entries)
-	r.entries = n
-}
-
-// listed reports n of the root's top-level entries listed by the walk.
-func (r *walkReport) listed(n int) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.walked = max(r.walked, min(n, r.entries))
-	r.tell()
-}
-
-// writing begins the import's writes: the walk is over, and what is left goes at the writes' rate,
-// so the time left is worked out from here.
-func (r *walkReport) writing() {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.closed {
-		r.walked = r.entries
-		r.tell()
-		r.tracker.Rebase(StepWalking)
-	}
-}
-
-// wrote reports the files of n of the root's top-level entries written.
-func (r *walkReport) wrote(n int) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.written = max(r.written, min(n, r.entries))
-	r.tell()
-}
-
-// tell reports to the Tracker the entries finished since it was last told: half of those listed
-// and those written, never more than were counted. Called with mu held.
-func (r *walkReport) tell() {
-	if r.closed {
-		return
-	}
-	if n := (r.walked + r.written) / 2; n > r.reported {
-		r.tracker.Advance(StepWalking, n-r.reported)
-		r.reported = n
-	}
-}
-
-// close finishes every counted entry, however the root's pass ended, and stops hearing it.
-func (r *walkReport) close() {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.walked, r.written = r.entries, r.entries
-	r.tell()
-	r.closed = true
-}
-
-// topEntries counts root's top-level entries within readableTimeout; 0 when it cannot be listed
-// in time. A mount whose server went away can block a listing for good, so one that is late is
-// left to end on its own.
-func topEntries(ctx context.Context, root string) int {
-	ctx, cancel := context.WithTimeout(ctx, readableTimeout)
-	defer cancel()
-	n := make(chan int, 1)
-	go func() {
-		entries, _ := os.ReadDir(root)
-		n <- len(entries)
-	}()
-	select {
-	case c := <-n:
-		return c
-	case <-ctx.Done():
-		return 0
-	}
 }
 
 // canonicalPath is real, a resolved path, as the root names it: the root joined with real's place
@@ -762,71 +470,4 @@ func (w *walker) sidecars(dir, name string) map[string]Stat {
 		}
 	}
 	return out
-}
-
-func isNFO(name string) bool { return strings.EqualFold(filepath.Ext(name), ".nfo") }
-
-// isTrickplay reports whether name is a trickplay file: a Roku BIF of seek thumbnails, which Emby
-// writes beside the video as "<name>.bif" (decision 61).
-func isTrickplay(name string) bool { return strings.EqualFold(filepath.Ext(name), ".bif") }
-
-// isEDL reports whether name is an edit decision list: the spans a player skips or mutes, or marks
-// as scenes or commercial breaks (decision 61).
-func isEDL(name string) bool { return strings.EqualFold(filepath.Ext(name), ".edl") }
-
-// externalCodecs are the external track files the walk notes, by extension: each one's kind and
-// codec as ffprobe names it ("" where the extension does not say).
-var externalCodecs = map[string][2]string{
-	".srt": {"subtitle", "subrip"}, ".ass": {"subtitle", "ass"}, ".ssa": {"subtitle", "ssa"},
-	".vtt": {"subtitle", "webvtt"}, ".sup": {"subtitle", "hdmv_pgs_subtitle"}, ".sub": {"subtitle", "dvd_subtitle"},
-	".mka": {"audio", ""}, ".ac3": {"audio", "ac3"}, ".eac3": {"audio", "eac3"}, ".dts": {"audio", "dts"},
-	".aac": {"audio", "aac"}, ".flac": {"audio", "flac"},
-}
-
-// externalTrackKind is "subtitle" or "audio" for an external track file, "" for anything else.
-func externalTrackKind(name string) string {
-	return externalCodecs[strings.ToLower(filepath.Ext(name))][0]
-}
-
-// edl is the file's .edl, "" for none.
-func (f File) edl() string {
-	for path := range f.Sidecars {
-		if isEDL(path) {
-			return path
-		}
-	}
-	return ""
-}
-
-// trickplay is the file's trickplay files, by path, in order.
-func (f File) trickplay() []string {
-	var out []string
-	for path := range f.Sidecars {
-		if isTrickplay(path) {
-			out = append(out, path)
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
-// hasNFO reports whether the file has an NFO to read.
-func (f File) hasNFO() bool {
-	for path := range f.Sidecars {
-		if isNFO(path) {
-			return true
-		}
-	}
-	return false
-}
-
-// art is the file's artwork sidecars, by name.
-func (f File) art() []string {
-	var names []string
-	for path := range f.Sidecars {
-		if localart.IsImage(path) {
-			names = append(names, filepath.Base(path))
-		}
-	}
-	return names
 }
