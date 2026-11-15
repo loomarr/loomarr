@@ -79,12 +79,53 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 	// named it before its catalog renumbered the season, and its NFO since follows the new one.
 	// Its number is not the catalog's, so it is unnumbered, not described as the episode its mark
 	// now holds. A household's answer that the catalog's numbering stands is not second-guessed.
-	if !answered && at.entry != nil && told != "" && !titled(at.entry, told) && namesOther(at.record, n.Value, told) {
-		b.wantOrders(ctx, s, series.catalog, d.Orders)
-		res.unnumbered = true
-		return res
+	if !answered && at.entry != nil && told != "" && !titled(at.entry, told) {
+		names, toCome := b.elsewhere(ctx, s, series, n.Value, told)
+		if names {
+			b.wantOrders(ctx, s, series.catalog, d.Orders)
+			res.unnumbered = true
+			return res
+		}
+		at = waitOn(at, toCome)
 	}
 	return at
+}
+
+// elsewhere says whether a file's title (told) is another episode's of its show than the ones it
+// numbers (n, through its last), in its own season or another, specials aside: Sonarr named the
+// file before its catalog renumbered the show, moving episodes within a season or across one.
+// toCome is a season not cached yet that may hold the title; it is asked for.
+func (b *builder) elsewhere(ctx context.Context, s *seriesSeen, series resolution, n mp.Numbering, told string) (names bool, toCome librarystore.LibraryCatalogKey) {
+	if told == "" || series.record == nil || series.record.Descriptive == nil {
+		return false, toCome
+	}
+	for _, size := range series.record.Descriptive.Seasons {
+		if size.Number <= 0 {
+			continue
+		}
+		key := seasonKey(series.catalog, size.Number)
+		rec, ok, waiting := b.season(ctx, s, key)
+		if !ok {
+			if waiting && toCome.String() == "" {
+				toCome = key
+			}
+			continue
+		}
+		if namesOther(&rec, n, told) {
+			return true, librarystore.LibraryCatalogKey{}
+		}
+	}
+	return false, toCome
+}
+
+// waitOn keys an episode described by the entry at its mark by a season still to come that may
+// name it as another (elsewhere), so the Enricher fetching that season writes it again; the
+// entry describes it meanwhile.
+func waitOn(res resolution, toCome librarystore.LibraryCatalogKey) resolution {
+	if toCome.String() != "" {
+		res.catalog, res.waiting = toCome, true
+	}
+	return res
 }
 
 // namesOther says whether a season's entry other than the episodes a file numbers (n, through its
@@ -94,7 +135,7 @@ func namesOther(season *mp.Record, n mp.Numbering, told string) bool {
 		return false
 	}
 	return slices.ContainsFunc(season.Children, func(e mp.Record) bool {
-		if e.Numbering == nil || e.Numbering.Season != n.Season || e.Numbering.Episode >= n.Episode && e.Numbering.Episode <= max(n.Episode, n.EpisodeEnd) {
+		if e.Numbering == nil || e.Numbering.Season == n.Season && e.Numbering.Episode >= n.Episode && e.Numbering.Episode <= max(n.Episode, n.EpisodeEnd) {
 			return false
 		}
 		return titled(&e, told)
@@ -182,7 +223,7 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 	// rewrote names it: with its season not cached yet, the file is described by its own details,
 	// keyed by the season so its fetch weighs it again. One that shares a word is the record's
 	// written another way ("Bobbys Roomate"), and the record stands meanwhile.
-	if alt.waiting && alt.catalog.Kind == string(mp.KindSeason) && told != "" && res.record.Descriptive != nil && apart(res.record.Descriptive.Title, told) {
+	if alt.waiting && alt.entry == nil && alt.catalog.Kind == string(mp.KindSeason) && told != "" && res.record.Descriptive != nil && apart(res.record.Descriptive.Title, told) {
 		return alt
 	}
 	if alt.entry != nil {
@@ -276,8 +317,30 @@ func toldTitle(rel string) string {
 	return title
 }
 
+// leadNumber is the number across its show that an episode's title follows: "002 - Saltmarsh".
+var leadNumber = regexp.MustCompile(`^\d{1,4}(?:-\d{1,4})?\s*[-._ ]\s*`)
+
+// toldAfterNumber is the title a name numbered across its show gives after that number,
+// "Quillmoor - 002 - Saltmarsh" is "Saltmarsh", or after its mark (toldTitle); "" for none.
+func toldAfterNumber(rel string) string {
+	if told := toldTitle(rel); told != "" {
+		return told
+	}
+	name := episodeName(rel, stem(path.Base(rel)))
+	m := leadNumber.FindStringIndex(name)
+	if m == nil {
+		return ""
+	}
+	title := strings.TrimSpace(name[m[1]:])
+	if title == "" || genericTitle.MatchString(title) {
+		return ""
+	}
+	return title
+}
+
 // titled says whether a catalog record's title is the one a file's name gives: the same words,
-// small ones aside, or one's words all among the other's ("The Pit (1)" and "The Pit, Part 1").
+// small ones aside, or one's words all among the other's ("The Pit (1)" and "The Pit, Part 1"), or
+// the same letters with the words run together.
 func titled(r *mp.Record, told string) bool {
 	return r != nil && r.Descriptive != nil && oneTitle(r.Descriptive.Title, told)
 }
@@ -288,8 +351,12 @@ func oneTitle(title, told string) bool {
 		return false
 	}
 	a, b := wordsOf(title), wordsOf(told)
+	// A title that runs its words together is the one that spaces them: "Saltmarsh", "Salt Marsh".
+	if strings.ReplaceAll(normName(title), " ", "") == strings.ReplaceAll(normName(told), " ", "") {
+		return true
+	}
 	if len(a) == 0 || len(b) == 0 {
-		return normName(title) == normName(told)
+		return false
 	}
 	if len(a) > len(b) {
 		a, b = b, a
@@ -321,7 +388,7 @@ var smallWord = map[string]bool{"the": true, "a": true, "an": true, "and": true,
 // episodes one after another, so the 13th of a show of two 12-episode seasons is season 2's 1st.
 // It is then described by that season's entry, as a name's "S02E01" would be. With no series
 // record cached yet, or one too short to hold it, res is returned as it was.
-func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, abs int) resolution {
+func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, abs int, told string) resolution {
 	if s == nil {
 		return res
 	}
@@ -333,13 +400,13 @@ func (b *builder) byAbsolute(ctx context.Context, s *seriesSeen, in precedence.I
 	if !ok {
 		return res
 	}
-	return b.placeAt(ctx, s, series, in, res, mp.Numbering{Season: season, Episode: episode, Absolute: abs})
+	return b.placeAt(ctx, s, series, in, res, mp.Numbering{Season: season, Episode: episode, Absolute: abs}, told)
 }
 
 // byRunTogether places an episode its name numbers across the show in three digits, "Orrin Vale -
 // 101", that its show's catalog can't hold so, by its season and episode run together: the 101st
 // of a show of 24 is season 1's first, when season 1 holds one (identity.runTogether).
-func (b *builder) byRunTogether(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, n int) resolution {
+func (b *builder) byRunTogether(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, n int, told string) resolution {
 	if s == nil {
 		return res
 	}
@@ -351,14 +418,17 @@ func (b *builder) byRunTogether(ctx context.Context, s *seriesSeen, in precedenc
 	if _, _, ok := absoluteAt(seasons, n); ok || !slices.ContainsFunc(seasons, func(size mp.SeasonSize) bool {
 		return size.Number == n/100 && size.Episodes >= n%100
 	}) {
-		return b.byAbsolute(ctx, s, in, res, n)
+		return b.byAbsolute(ctx, s, in, res, n, told)
 	}
-	return b.placeAt(ctx, s, series, in, res, mp.Numbering{Season: n / 100, Episode: n % 100})
+	return b.placeAt(ctx, s, series, in, res, mp.Numbering{Season: n / 100, Episode: n % 100}, told)
 }
 
 // placeAt describes an episode by its series' catalog at, as a name's "S02E01" would: the file's
-// own record says at, and the season's entry describes it.
-func (b *builder) placeAt(ctx context.Context, s *seriesSeen, series resolution, in precedence.Input, res resolution, at mp.Numbering) resolution {
+// own record says at, and the season's entry describes it. A file whose title (told) is another
+// episode's of the show was numbered in another order than the catalog's, as Sonarr's absolute
+// numbers often are: it keeps its own details, unnumbered, for Needs you (elsewhere).
+func (b *builder) placeAt(ctx context.Context, s *seriesSeen, series resolution, in precedence.Input, res resolution, at mp.Numbering, told string) resolution {
+	own := res
 	records := make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
 		if r.Source.Basis == mp.BasisEmbeddedID {
@@ -372,7 +442,19 @@ func (b *builder) placeAt(ctx context.Context, s *seriesSeen, series resolution,
 		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
 		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(at.Season),
 	}
-	return b.byEntry(ctx, s, in, res)
+	res = b.byEntry(ctx, s, in, res)
+	if res.entry != nil && told != "" && !titled(res.entry, told) {
+		names, toCome := b.elsewhere(ctx, s, series, at, told)
+		if names {
+			if d := series.record.Descriptive; d != nil {
+				b.wantOrders(ctx, s, series.catalog, d.Orders)
+			}
+			own.unnumbered = true
+			return own
+		}
+		res = waitOn(res, toCome)
+	}
+	return res
 }
 
 // acrossOnly says a show's catalog can't hold an episode where its name's three digits place it

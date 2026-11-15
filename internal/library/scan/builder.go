@@ -449,11 +449,11 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 				}
 			}
 		} else if id.runTogether > 0 && id.absolute() == id.runTogether {
-			res = b.byRunTogether(ctx, b.series[id.seriesDir], in, res, id.runTogether)
+			res = b.byRunTogether(ctx, b.series[id.seriesDir], in, res, id.runTogether, toldAfterNumber(file.Rel))
 		} else if abs := id.absolute(); abs > 0 {
-			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, abs)
+			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, abs, toldAfterNumber(file.Rel))
 		} else if id.runOn > 0 && b.acrossOnly(ctx, b.series[id.seriesDir], *id.numbering(), id.runOn) {
-			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, id.runOn)
+			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, id.runOn, toldAfterNumber(file.Rel))
 		} else {
 			res = b.byNumber(ctx, b.series[id.seriesDir], in, res, toldTitle(file.Rel))
 		}
@@ -466,6 +466,11 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	facts, coverage := itemFacts(resolved)
 	if facts.Name == "" {
 		facts.Name = fallbackName(file.Rel, id.kind, file.Part, file.Sole)
+		// An episode numbered across its show is named by the title after its number, as one
+		// numbered "S01E02" is by the title after its mark.
+		if told := toldAfterNumber(file.Rel); id.kind == mp.KindEpisode && id.absolute() > 0 && told != "" {
+			facts.Name = told
+		}
 	}
 	// An episode its file names by the day it aired lists that day until a catalog says more.
 	if day := id.airDate(); facts.PremiereDate == "" && day != "" {
