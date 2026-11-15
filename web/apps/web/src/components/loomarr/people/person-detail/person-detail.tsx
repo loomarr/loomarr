@@ -6,6 +6,7 @@ import {
   Card,
   Field,
   FieldHint,
+  Grid,
   Icon,
   icons,
   Stack,
@@ -153,7 +154,7 @@ const PersonDetail = ({
           <Card gap={8} padding={12}>
             <Stack align="center" direction="row" gap="inline" wrap>
               <Icon decorative glyph={icons.mail} size="compact" tone="muted" />
-              <Text as="span" className="break-all" textRole="compact">
+              <Text as="span" textRole="compact" wordBreak="break-all">
                 {user.contactAddress.email}
               </Text>
               <StatusLabel tone={user.contactAddress.status === "verified" ? "ok" : "off"}>
@@ -180,7 +181,7 @@ const PersonDetail = ({
             padding={12}
           >
             <Stack align="center" direction="row" gap="inline" wrap>
-              <Text as="span" className="break-all" textRole="compact">
+              <Text as="span" textRole="compact" wordBreak="break-all">
                 {user.contactReplacement.email}
               </Text>
               <StatusLabel tone="pending">Pending replacement</StatusLabel>
@@ -304,7 +305,7 @@ const PersonDetail = ({
             Control how much this person may acquire and approve.
           </Text>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_7rem] items-end gap-4">
+        <Grid align="end" columns={["minmax(0,1fr)", "7rem"]} gap="4">
           <div>
             <Text as="p" textRole="compact">
               Pending acquisitions
@@ -331,7 +332,7 @@ const PersonDetail = ({
               if (Number.isInteger(next) && next >= 0 && next !== user.quota) onQuotaChange?.(next);
             }}
           />
-        </div>
+        </Grid>
         <Toggle
           id={autoId}
           label="Auto-approve requests"
