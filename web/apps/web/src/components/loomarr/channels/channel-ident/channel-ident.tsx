@@ -1,7 +1,6 @@
 import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
-import { CHANNEL_IDENT_WASH_PERCENT } from "@loomarr/design-system";
+import { CHANNEL_IDENT_WASH_PERCENT, Stack, Text } from "@loomarr/design-system";
 import { onTintVar } from "@loomarr/design-system/web-theme";
-import { cn } from "@/lib/utils";
 import type { ChannelIdentProps } from "./channel-ident.type";
 
 // ChannelIdent — a channel's mark in the guide rail (§12, the v2 mock's rail icon).
@@ -21,14 +20,22 @@ import type { ChannelIdentProps } from "./channel-ident.type";
 const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdentProps) => {
   if (logo) {
     return (
-      <div
-        role="img"
+      <Stack
         aria-label={`${name} logo`}
-        style={{ width: size, height: size, backgroundImage: `url(${JSON.stringify(logo)})` }}
-        className={cn(
-          "border-border bg-background shrink-0 rounded-[5px] border bg-cover bg-center",
-          className,
-        )}
+        backgroundColor="$surfaceCanvas"
+        borderColor="borderDecorative"
+        borderRadius={5}
+        borderWidth={1}
+        className={className}
+        flexShrink={0}
+        role="img"
+        style={{
+          backgroundImage: `url(${JSON.stringify(logo)})`,
+          backgroundPosition: "center",
+          backgroundSize: "cover",
+          height: size,
+          width: size,
+        }}
       />
     );
   }
@@ -36,8 +43,14 @@ const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdent
   const hue = channelIdentHue(number);
   const color = `var(--color-${hue})`;
   return (
-    <div
-      aria-hidden="true"
+    <Stack
+      align="center"
+      aria-hidden
+      borderRadius={5}
+      borderWidth={1}
+      className={className}
+      flexShrink={0}
+      justify="center"
       style={{
         width: size,
         height: size,
@@ -48,15 +61,17 @@ const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdent
         backgroundColor: `color-mix(in srgb, ${color} ${CHANNEL_IDENT_WASH_PERCENT}%, transparent)`,
         borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
       }}
-      className={cn("flex shrink-0 items-center justify-center rounded-[5px] border", className)}
     >
-      <span
+      <Text
+        as="span"
+        strong
         style={{ color: onTintVar(hue), fontSize: Math.round(size * 0.37) }}
-        className="font-mono font-semibold tracking-[0.02em]"
+        textRole="mono"
+        tracking={0.02}
       >
         {monogramOf(name)}
-      </span>
-    </div>
+      </Text>
+    </Stack>
   );
 };
 

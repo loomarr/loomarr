@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Card,
   Field,
+  Grid,
   Icon,
   icons,
   MediaTile,
@@ -163,7 +164,11 @@ const ChannelIconField = ({
               fallback={<Icon decorative glyph={icons.noImage} size="control" tone="muted" />}
             />
           ) : logo ? (
-            <img src={logo} alt="Channel icon" className="size-full object-cover" />
+            <img
+              src={logo}
+              alt="Channel icon"
+              style={{ height: "100%", objectFit: "cover", width: "100%" }}
+            />
           ) : (
             <Icon decorative glyph={icons.noImage} size="control" tone="muted" />
           )}
@@ -236,7 +241,7 @@ const ChannelIconField = ({
                   </Text>
                 )}
               {suggestionList.length > 0 && (
-                <ul className="grid grid-cols-5 gap-2 sm:grid-cols-8">
+                <Grid columns={{ base: 5, sm: 8 }} gap="2" render="ul">
                   {suggestionList.map((s) => (
                     <li key={s.url}>
                       <MediaTile
@@ -266,12 +271,17 @@ const ChannelIconField = ({
                             fallback={<Icon decorative glyph={icons.noImage} size="compact" tone="muted" />}
                           />
                         ) : (
-                          <img src={s.url} alt={s.title} className="size-full object-cover" loading="lazy" />
+                          <img
+                            src={s.url}
+                            alt={s.title}
+                            loading="lazy"
+                            style={{ height: "100%", objectFit: "cover", width: "100%" }}
+                          />
                         )}
                       </MediaTile>
                     </li>
                   ))}
-                </ul>
+                </Grid>
               )}
             </Stack>
 
