@@ -51,9 +51,12 @@ const SegmentPreview = ({
   const player = failed ? (
     <Stack
       align="center"
-      className="bg-static-900 aspect-video rounded-md p-6"
+      aspectRatio={16 / 9}
+      backgroundColor="$surfaceRaised"
+      borderRadius={6}
       direction="row"
       justify="center"
+      padding={24}
       role="alert"
     >
       <Text as="span" textAlign="center" textRole="compact" tone="secondary">
@@ -143,10 +146,15 @@ const SegmentPreview = ({
         <Stack
           align="center"
           aria-hidden
-          className="bg-static-950/25 absolute inset-0"
+          bottom={0}
+          className="bg-static-950/25"
           direction="row"
           justify="center"
+          left={0}
+          position="absolute"
           render="span"
+          right={0}
+          top={0}
         >
           <Text as="span" style={{ color: "var(--color-static-0)" }} textRole="compact">
             ▶

@@ -1,5 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Grid, InlineAction, MediaTile, Text } from "@loomarr/design-system";
+import { Grid, InlineAction, MediaTile, Stack, Text } from "@loomarr/design-system";
 import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { cn } from "@/lib/utils";
@@ -98,9 +98,9 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       {/* Phone only, as the mock draws it: below `md` the tag columns are gone, so the row has no
           other way to say this commercial is missing one. */}
       {clip.needsDetails && !clip.held && !clip.isComposite ? (
-        <div className="mt-0.5 flex md:hidden">
+        <Stack direction="row" hidden={{ base: false, md: true }} marginTop={2}>
           <NeedsDetailsChip />
-        </div>
+        </Stack>
       ) : null}
     </div>
 
