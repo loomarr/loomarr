@@ -455,7 +455,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		} else if id.runOn > 0 && b.acrossOnly(ctx, b.series[id.seriesDir], *id.numbering(), id.runOn) {
 			res = b.byAbsolute(ctx, b.series[id.seriesDir], in, res, id.runOn)
 		} else {
-			res = b.byNumber(ctx, b.series[id.seriesDir], in, res)
+			res = b.byNumber(ctx, b.series[id.seriesDir], in, res, toldTitle(file.Rel))
 		}
 	}
 	waiting = res.waiting
