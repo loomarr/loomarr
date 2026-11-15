@@ -175,7 +175,7 @@ const ClipFrame = ({
       )}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
-          top-left. ⚠ Each sits on a scrim (`bg-static-900/80`) rather than directly on the frame
+          top-left. ⚠ Each sits on a scrim (`washRaised80`) rather than directly on the frame
           — a thumbnail is arbitrary video, so text with no backing plate has NO guaranteed
           contrast against it. That is a legibility rule, not a style choice. */}
       {clip.quality && (
@@ -183,11 +183,19 @@ const ClipFrame = ({
         // ARIA only permits naming on an element that has a role, and the chip-row version below
         // gets one from Badge. Without it the label silently does nothing and "1080P" is announced
         // as letter-spaced shouting, which is the whole reason the label exists.
-        <span
-          role="img"
-          className="bg-static-900/80 absolute top-1.5 right-1.5 rounded px-1.5 py-0.5"
-          title="Resolution, from the clip's video height"
+        <Stack
           aria-label={`Resolution ${clip.quality}`}
+          backgroundColor="washRaised80"
+          borderRadius={4}
+          paddingHorizontal={6}
+          paddingVertical={2}
+          position="absolute"
+          render="span"
+          right={6}
+          role="img"
+          // The browser's own hover text; a Stack's props do not name `title`.
+          {...({ title: "Resolution, from the clip's video height" } as object)}
+          top={6}
         >
           {/* The plate is fixed dark over a thumbnail in either theme, so the ink is the static light
               stop rather than a theme tone, and it keeps the mono face the role does not carry. */}
@@ -198,7 +206,7 @@ const ClipFrame = ({
           >
             {clip.quality}
           </Text>
-        </span>
+        </Stack>
       )}
       {onToggleSelect && (
         <Stack left={2} position="absolute" top={2} zIndex={10}>

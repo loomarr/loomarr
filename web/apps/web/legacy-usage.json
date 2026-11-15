@@ -114,7 +114,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 14
+      "tailwindClasses": 7
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
       "tailwindClasses": 15
