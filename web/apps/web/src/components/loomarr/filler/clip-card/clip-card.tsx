@@ -188,7 +188,10 @@ const ClipFrame = ({
           backgroundColor="washRaised80"
           borderRadius={4}
           paddingHorizontal={6}
-          paddingVertical={2}
+          // 4, not the old `py-0.5`: the old inline span's box was the inherited font's content
+          // area plus 2px a side (22px). As a flex box it is the role's 14px line, so 4px a side
+          // keeps the plate 22px tall.
+          paddingVertical={4}
           position="absolute"
           render="span"
           right={6}
