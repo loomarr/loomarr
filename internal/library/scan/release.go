@@ -8,9 +8,9 @@ import (
 )
 
 // ForgetReleased forgets the files of every root no longer walked, now, outside a pass: "Stop
-// using" takes effect at once rather than after the running pass's reading. A walk under way holds
-// the import's lock, so a released root it is walking is stopped instead, and the import forgets
-// its files itself before it goes on to the next root.
+// using" takes effect at once rather than after the running pass's reading. A released root the
+// running pass is walking is stopped, and the import forgets its files itself before it goes on
+// to the next root; one it listed before the release is not written (importListed).
 func (im *Importer) ForgetReleased(ctx context.Context) error {
 	all, err := im.Store.LibraryRoots(ctx)
 	if err != nil {

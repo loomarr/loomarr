@@ -394,6 +394,24 @@ func (im *Importer) touch(rows []librarystore.LibraryFile, gen int64) {
 	}
 }
 
+// changedSince lists the files an import wrote, and the folders released, after generation since.
+func (im *Importer) changedSince(since int64) (files map[string]bool, released []string) {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	files = map[string]bool{}
+	for path, gen := range im.touched {
+		if gen > since {
+			files[path] = true
+		}
+	}
+	for root, gen := range im.forgotten {
+		if gen > since {
+			released = append(released, root)
+		}
+	}
+	return files, released
+}
+
 // Reading reports whether a header stage is taking files.
 func (im *Importer) Reading() bool {
 	im.mu.Lock()
