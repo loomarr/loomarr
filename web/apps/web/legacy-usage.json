@@ -171,7 +171,13 @@
       "tailwindClasses": 15
     },
     "src/components/loomarr/filler/split-review-editor/split-review-editor.tsx": {
-      "tailwindClasses": 36
+      "tailwindClasses": 2
+    },
+    "src/components/loomarr/filler/split-review-editor/segment-inspector/segment-inspector.tsx": {
+      "tailwindClasses": 22
+    },
+    "src/components/loomarr/filler/split-review-editor/segment-summary-row/segment-summary-row.tsx": {
+      "tailwindClasses": 12
     },
     "src/components/loomarr/filler/watch-line/watch-line.tsx": {
       "tailwindClasses": 7
@@ -282,7 +288,10 @@
       "tailwindClasses": 2
     },
     "src/diagnostics/application-diagnostics/application-diagnostics.tsx": {
-      "tailwindClasses": 22
+      "tailwindClasses": 21
+    },
+    "src/diagnostics/application-diagnostics/event-detail/event-detail.tsx": {
+      "tailwindClasses": 1
     },
     "src/diagnostics/diagnostics-page/diagnostics-page.tsx": {
       "tailwindClasses": 4
@@ -407,8 +416,14 @@
     "src/filler/split-review-page/split-review-page.tsx": {
       "tailwindClasses": 23
     },
+    "src/filler/taxonomy-tab/taxon-editor/taxon-impact-review/taxon-impact-review.tsx": {
+      "tailwindClasses": 2
+    },
+    "src/filler/taxonomy-tab/taxon-tree/taxon-tree.tsx": {
+      "tailwindClasses": 14
+    },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "tailwindClasses": 40
+      "tailwindClasses": 24
     },
     "src/help/doc-view/doc-view.tsx": {
       "tailwindClasses": 14
