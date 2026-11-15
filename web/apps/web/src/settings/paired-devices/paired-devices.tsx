@@ -157,13 +157,24 @@ const ApproveDevice = () => {
 };
 
 // Removing signs the device out for good (it has to pair again), so the first press only asks.
-const DeviceRow = ({ device, onRevoke, busy }: { device: Device; onRevoke: () => void; busy: boolean }) => {
+const DeviceRow = ({
+  device,
+  onRevoke,
+  busy,
+  divided,
+}: {
+  device: Device;
+  onRevoke: () => void;
+  busy: boolean;
+  divided: boolean;
+}) => {
   const [confirming, setConfirming] = useState(false);
   const name = device.deviceName || "Device";
   return (
     <Stack
       align="center"
-      className="border-border border-b last:border-b-0"
+      borderBottomColor="borderDecorative"
+      borderBottomWidth={divided ? 1 : 0}
       direction="row"
       gap="inline"
       justify="between"
@@ -231,10 +242,11 @@ const PairedDevices = () => {
         ) : null}
         {devices.length > 0 ? (
           <ul className="mt-2">
-            {devices.map((device) => (
+            {devices.map((device, index) => (
               <DeviceRow
                 busy={revoke.isPending && revoke.variables?.id === device.id}
                 device={device}
+                divided={index < devices.length - 1}
                 key={device.id}
                 onRevoke={() => revoke.mutate({ id: device.id })}
               />

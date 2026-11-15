@@ -505,7 +505,7 @@
       "rawTypeWeight": 1
     },
     "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 11
+      "tailwindClasses": 8
     },
     "src/settings/settings-context-nav/settings-context-nav.tsx": {
       "tailwindClasses": 13
