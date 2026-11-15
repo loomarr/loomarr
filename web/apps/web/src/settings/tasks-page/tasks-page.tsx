@@ -164,32 +164,34 @@ const ExecutionHistory = ({ name }: { name: string }) => {
       </Stack>
 
       {history.recent.length > 0 && (
-        <Card className="divide-border divide-y" marginTop={8} render="ul">
-          {history.recent.map((run) => {
-            const failed = run.result === "error";
-            return (
-              <Stack
-                key={`${run.startedAt}-${run.trigger}`}
-                paddingHorizontal={12}
-                paddingVertical={8}
-                render="li"
-              >
-                <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
-                  <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
-                  <Text as="span" textRole="label" tone="primary">
-                    {run.trigger === "manual" ? "Manual" : "Scheduled"}
-                  </Text>
-                  <Text as="span" textRole="hint" tone="secondary">
-                    {formatRelative(run.startedAt)}
-                  </Text>
-                  <Text as="span" textRole="mono">
-                    {executionDuration(run.durationMs)}
-                  </Text>
+        <Card marginTop={8}>
+          <Stack divided render="ul">
+            {history.recent.map((run) => {
+              const failed = run.result === "error";
+              return (
+                <Stack
+                  key={`${run.startedAt}-${run.trigger}`}
+                  paddingHorizontal={12}
+                  paddingVertical={8}
+                  render="li"
+                >
+                  <Stack align="center" columnGap="3" direction="row" rowGap="1" wrap>
+                    <StatusDot tone={failed ? "error" : "ok"} label={failed ? "Failed" : "Succeeded"} />
+                    <Text as="span" textRole="label" tone="primary">
+                      {run.trigger === "manual" ? "Manual" : "Scheduled"}
+                    </Text>
+                    <Text as="span" textRole="hint" tone="secondary">
+                      {formatRelative(run.startedAt)}
+                    </Text>
+                    <Text as="span" textRole="mono">
+                      {executionDuration(run.durationMs)}
+                    </Text>
+                  </Stack>
+                  {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
                 </Stack>
-                {failed && run.error && <ErrorDetails message={run.error} className="mt-1" />}
-              </Stack>
-            );
-          })}
+              );
+            })}
+          </Stack>
         </Card>
       )}
     </Stack>

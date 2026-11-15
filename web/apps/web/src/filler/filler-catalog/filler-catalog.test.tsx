@@ -221,12 +221,19 @@ describe("FillerCatalog", () => {
       return screen.findByRole("button", { name: "View details for Local soda commercial" });
     };
 
+    // The nearest ancestor that lays its children out in grid columns: the clip grid.
+    const clipGrid = (from: HTMLElement) => {
+      for (let node = from.parentElement; node; node = node.parentElement) {
+        if (node.style.gridTemplateColumns) return node;
+      }
+      throw new Error("no grid above the clip card");
+    };
+
     it("lays clips out 2-up", async () => {
       stubWidth(false);
       const name = await showCatalog();
-      const grid = name.closest(".grid") as HTMLElement;
-      expect(grid).toHaveClass("grid-cols-2");
-      expect(grid).not.toHaveClass("lg:grid-cols-3");
+      const grid = clipGrid(name);
+      expect(grid.style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
       // The same card as on a wide screen: its metadata line wraps instead of dropping parts.
       expect(within(grid).getAllByText("Commercial")).toHaveLength(2);
     });
@@ -234,8 +241,8 @@ describe("FillerCatalog", () => {
     it("keeps the full cards and three columns on a wide screen", async () => {
       stubWidth(true);
       const name = await showCatalog();
-      const grid = name.closest(".grid") as HTMLElement;
-      expect(grid).toHaveClass("lg:grid-cols-3");
+      const grid = clipGrid(name);
+      expect(grid.style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
       expect(within(grid).getAllByText("Commercial")).toHaveLength(2);
     });
 
