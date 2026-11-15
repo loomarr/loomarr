@@ -27,29 +27,33 @@ const ChecklistItem = ({ name, status, hint, docHref, className }: ChecklistItem
     direction="row"
     gap="control"
   >
-    <span className="mt-0.5" role="img" aria-label={ICON[status].label}>
+    <Stack aria-label={ICON[status].label} direction="row" marginTop={2} render="span" role="img">
       {ICON[status].node}
-    </span>
-    <div className="min-w-0 flex-1">
+    </Stack>
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
       <Text as="p" textRole="cardLabel">
         {name}
       </Text>
       {status === "fail" && hint && (
-        <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-          {hint}
-        </Text>
+        <Stack marginTop={2}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {hint}
+          </Text>
+        </Stack>
       )}
-    </div>
+    </Stack>
     {status === "fail" && docHref && (
       // Route into the Help center — the docHref ("troubleshooting#tunarr") is parsed
       // into { page, section }, not used as a raw href (which resolves relative to the
       // current path and 404s). This is what makes §13's "every red check deep-links to
       // its section" actually navigate.
-      <Text as="span" className="shrink-0" textRole="hint">
-        <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
-          Fix
-        </TextLink>
-      </Text>
+      <Stack flexShrink={0} render="span">
+        <Text as="span" textRole="hint">
+          <TextLink icon="goTo" render={<Link search={parseDocHref(docHref)} to="/help" />}>
+            Fix
+          </TextLink>
+        </Text>
+      </Stack>
     )}
   </Stack>
 );
