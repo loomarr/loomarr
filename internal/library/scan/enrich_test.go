@@ -793,6 +793,65 @@ func TestAnEpisodesCopiesAreOneTitle(t *testing.T) {
 	}
 }
 
+// Two copies of an episode the catalog describes as one entry are one title, whatever their names
+// call it: one kept by Sonarr with its NFO's TVDB id, an older one named another way beside it, or
+// one that runs its title's words together.
+func TestCopiesTheCatalogDescribesAsOneEpisodeAreOneTitle(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000087" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	show := "Fallow Mere (2017) {tmdb-90000871}/"
+	kept := show + "Season 01/Fallow Mere (2017) - S01E02 - Between the Tides [WEBDL-1080p]"
+	older := show + "Season 1/Fallow Mere - S01E02 - In Between.mkv"
+	together := show + "Season 1/Fallow Mere - S01E03 - Back Doors.mkv"
+	sonarr := show + "Season 01/Fallow Mere (2017) - S01E03 - Backdoors [WEBDL-1080p].mkv"
+	h.file(kept+".mkv", 10)
+	for _, rel := range []string{older, together, sonarr} {
+		h.file(rel, 10)
+	}
+	doc := `<episodedetails><title>Between the Tides</title><season>1</season><episode>2</episode>` +
+		`<uniqueid type="tvdb" default="true">90090872</uniqueid></episodedetails>`
+	if err := os.WriteFile(filepath.Join(h.root, kept+".nfo"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.run()
+	second := entry(2, "Between the Tides")
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000871": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000871"}},
+			Descriptive: &mp.Descriptive{Title: "Fallow Mere", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
+		"90000871/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{entry(1, "Still Water"), second, entry(3, "Backdoors")}},
+		"90090872": {Source: src, Kind: mp.KindEpisode, Descriptive: second.Descriptive, Numbering: second.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090872"}}},
+	}}
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item := func(rel string) inventory.ItemID { return h.item(fileOrigin(h.root, rel)).ID }
+	if item(kept+".mkv") != item(older) {
+		t.Error("an episode's copies the catalog describes alike are two titles")
+	}
+	if item(together) != item(sonarr) {
+		t.Error("copies whose titles run their words together apart are two titles")
+	}
+	if item(kept+".mkv") == item(sonarr) {
+		t.Error("two episodes are one title")
+	}
+}
+
 // A show the catalog numbers unlike the disk, here a season missing its last episode, has no entry
 // at a file's mark to weigh an episode id against, so the file's own title does. An id whose record
 // the title doesn't name gives way to TMDB's entry at the mark that the title does name; an id whose

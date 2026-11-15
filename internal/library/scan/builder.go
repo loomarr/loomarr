@@ -494,9 +494,17 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: partsNamespace, Value: partsID(file.PartSet)})
 	}
 	// Every copy of one episode names it alike, so its copies are one title from the first pass,
-	// whatever ids each carries: a 720p beside a 1080p, a "Season 01" beside a "Season 1".
+	// whatever ids each carries: a 720p beside a 1080p, a "Season 01" beside a "Season 1". One the
+	// catalog describes by a title its name doesn't give ("In Between" for "Between the Time") is
+	// joined by the catalog's, so copies it describes as one episode are one title however their
+	// names call it. A name the catalog's title agrees with joins by the name, so copies named alike
+	// stay one title though only one is described yet, or only one is in Needs you.
 	if id.kind == mp.KindEpisode {
-		if key := episodeCopyID(b.root, id.seriesDir, file.Rel, id.embedded.Numbering); key != "" {
+		title := toldTitle(file.Rel)
+		if title != "" && res.record != nil && !res.unnumbered && facts.Name != "" && !oneTitle(facts.Name, title) {
+			title = facts.Name
+		}
+		if key := episodeCopyID(b.root, id.seriesDir, title, id.embedded.Numbering); key != "" {
 			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: copiesNamespace, Value: key})
 		}
 	}
@@ -508,22 +516,23 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 const copiesNamespace = "loomarr-episode"
 
 // episodeCopyID is the id an episode's copies share: its series folder, its own mark's season and
-// episodes, and the title its name gives after the mark (toldTitle), small words aside. Two files
-// that number one episode but name it apart ("The Pit", "Low Ground") are two episodes, one of them
-// misnumbered, and never one title's copies; a name with no title of its own joins only another
-// with none. "" for an episode with no series folder or no mark of its own.
-func episodeCopyID(root, seriesDir, rel string, n *mp.Numbering) string {
+// episodes, and its title (the catalog's, or else the one its name gives after the mark), small
+// words aside and the rest run together ("Back Doors" is "Backdoors"). Two files that number one
+// episode but name it apart ("The Pit", "Low Ground") with no catalog to say otherwise are two
+// episodes, one of them misnumbered, and never one title's copies; a name with no title of its own
+// joins only another with none. "" for an episode with no series folder or no mark of its own.
+func episodeCopyID(root, seriesDir, title string, n *mp.Numbering) string {
 	if seriesDir == "" || n == nil || n.Episode <= 0 {
 		return ""
 	}
 	var words []string
-	for _, w := range strings.Fields(normName(toldTitle(rel))) {
+	for _, w := range strings.Fields(normName(title)) {
 		if !smallWord[w] {
 			words = append(words, w)
 		}
 	}
 	key := fmt.Sprintf("%s\x00%d/%d-%d\x00%s", seriesOrigin(root, seriesDir).ExternalItemID, n.Season, n.Episode,
-		max(n.EpisodeEnd, n.Episode), strings.Join(words, " "))
+		max(n.EpisodeEnd, n.Episode), strings.Join(words, ""))
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:16])
 }
