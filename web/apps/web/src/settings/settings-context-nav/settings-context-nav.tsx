@@ -18,7 +18,6 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
     flexShrink={0}
     gap="control"
     justify="between"
-    minHeight={44}
   >
     <Stack aria-label="Settings location" minWidth={0} render="nav">
       <Stack align="center" direction="row" gap="inline" minWidth={0} render="ol">
