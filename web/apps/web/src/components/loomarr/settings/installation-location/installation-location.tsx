@@ -48,9 +48,11 @@ const InstallationLocation = ({
           <Text as="h2" strong textRole="headline">
             Your area and language
           </Text>
-          <Text as="p" className="mt-1 max-w-xl" textRole="compact" tone="secondary">
-            Loomarr uses these to find commercials that fit your home.
-          </Text>
+          <Stack marginTop={4} maxWidth={576}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loomarr uses these to find commercials that fit your home.
+            </Text>
+          </Stack>
         </div>
       )}
 
