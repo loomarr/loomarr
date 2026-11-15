@@ -47,7 +47,7 @@ import { installMockBackend } from "./mock-backend";
 // Requests land well inside it. Those two are where the loader work has most to earn.
 
 const API_DELAY_MS = 100;
-const RUNS = 3;
+const RUNS = 12; // DIAGNOSTIC: more sessions per CI run, to catch the slow tail
 
 interface Destination {
   name: string;
@@ -115,6 +115,7 @@ const LIBRARY_ITEMS: ListLibraryItemsOutputBody = {
 interface Visit {
   to: string;
   revisit: boolean;
+  startedAt: number;
   rendered?: number;
   content?: number;
 }
@@ -129,7 +130,11 @@ const readVisits = (page: Page): Promise<Visit[]> =>
           to: string;
           revisit: boolean;
         };
-        const visit = visits.get(detail.visitId) ?? { to: detail.to, revisit: detail.revisit };
+        const visit = visits.get(detail.visitId) ?? {
+          to: detail.to,
+          revisit: detail.revisit,
+          startedAt: entry.startTime,
+        };
         visit[phase] = entry.duration;
         visits.set(detail.visitId, visit);
       }
@@ -147,6 +152,13 @@ const reached = (visits: Visit[], destination: Destination): Visit[] =>
 // Asks for the page and waits for its content mark, returning that visit.
 const visit = async (page: Page, destination: Destination): Promise<Visit> => {
   const before = reached(await readVisits(page), destination).length;
+  // DIAGNOSTIC: which reads the app issues between the click and its content mark.
+  const seen: string[] = [];
+  const onRequest = (request: { url(): string }) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith("/v1/") && !pathname.includes("/events")) seen.push(pathname);
+  };
+  page.on("request", onRequest);
   if (destination.link) {
     await page
       .getByRole("navigation", { name: "Primary" })
@@ -166,8 +178,19 @@ const visit = async (page: Page, destination: Destination): Promise<Visit> => {
       timeout: 8_000,
     })
     .toBe(before + 1);
+  page.off("request", onRequest);
   const last = reached(await readVisits(page), destination).at(-1);
   if (!last) throw new Error(`${destination.name} reported no visit`);
+  const longTasks = await page.evaluate(
+    (since) =>
+      (((window as unknown as { __lt?: Array<{ s: number; d: number }> }).__lt ?? []) as Array<{ s: number; d: number }>)
+        .filter((t) => t.s >= since)
+        .map((t) => `${Math.round(t.d)}@${Math.round(t.s - since)}`),
+    last.startedAt,
+  );
+  console.log(
+    `DIAG ${destination.name} content=${last.content?.toFixed(0)} rendered=${last.rendered?.toFixed(0)} reads=[${seen.join(",")}] longtasks=[${longTasks.join(",")}]`,
+  );
   return last;
 };
 
@@ -221,6 +244,13 @@ for (let run = 1; run <= RUNS; run++) {
       await route.fallback();
     });
 
+    await page.addInitScript(() => {
+      const w = window as unknown as { __lt: Array<{ s: number; d: number }> };
+      w.__lt = [];
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) w.__lt.push({ s: e.startTime, d: e.duration });
+      }).observe({ type: "longtask", buffered: true });
+    });
     // Open on Help, which has no data and no content mark, so every measured page is reached by
     // navigation from inside the app and Home is cold like the rest.
     await page.goto("/help");
