@@ -174,12 +174,7 @@ const PersonDetail = ({
         )}
 
         {user.contactReplacement && (
-          <Stack
-            borderRadius={8}
-            className="border-suggest-700/50 border"
-            gap="inline"
-            padding={12}
-          >
+          <Stack borderRadius={8} className="border-suggest-700/50 border" gap="inline" padding={12}>
             <Stack align="center" direction="row" gap="inline" wrap>
               <Text as="span" textRole="compact" wordBreak="break-all">
                 {user.contactReplacement.email}
