@@ -453,19 +453,13 @@
     "src/routes/_authed/account.tsx": {
       "tailwindClasses": 5
     },
-    "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
-      "tailwindClasses": 6
-    },
-    "src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "tailwindClasses": 15
-    },
     "src/routes/_authed/channels/$id/info.tsx": {
-      "tailwindClasses": 22,
+      "tailwindClasses": 8,
       "rawTypeSize": 1,
       "rawTypeWeight": 1
     },
     "src/routes/_authed/channels/$id/route.tsx": {
-      "tailwindClasses": 54
+      "tailwindClasses": 21
     },
     "src/routes/_authed/filler/settings/route.tsx": {
       "tailwindClasses": 4
