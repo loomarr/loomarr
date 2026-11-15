@@ -74,7 +74,45 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 		return res
 	}
 	res.catalog = seasonKey(series.catalog, n.Value.Season)
-	return b.byEntry(ctx, s, in, res)
+	at := b.byEntry(ctx, s, in, res)
+	// A file whose title is another of the season's episodes was named by another order: Sonarr
+	// named it before its catalog renumbered the season, and its NFO since follows the new one.
+	// Its number is not the catalog's, so it is unnumbered, not described as the episode its mark
+	// now holds. A household's answer that the catalog's numbering stands is not second-guessed.
+	if !answered && at.entry != nil && told != "" && !titled(at.entry, told) && namesOther(at.record, n.Value, told) {
+		b.wantOrders(ctx, s, series.catalog, d.Orders)
+		res.unnumbered = true
+		return res
+	}
+	return at
+}
+
+// namesOther says whether a season's entry other than the episodes a file numbers (n, through its
+// last) has the title its name gives.
+func namesOther(season *mp.Record, n mp.Numbering, told string) bool {
+	if season == nil {
+		return false
+	}
+	return slices.ContainsFunc(season.Children, func(e mp.Record) bool {
+		if e.Numbering == nil || e.Numbering.Season != n.Season || e.Numbering.Episode >= n.Episode && e.Numbering.Episode <= max(n.Episode, n.EpisodeEnd) {
+			return false
+		}
+		return titled(&e, told)
+	})
+}
+
+// apart says whether two titles share no word, small ones aside, and neither runs the other's
+// letters together ("Carfished" and "Car Fished", "Hamsterdam" and "Amsterdam"); an empty one
+// shares nothing.
+func apart(a, b string) bool {
+	wb := wordsOf(b)
+	for w := range wordsOf(a) {
+		if wb[w] {
+			return false
+		}
+	}
+	ra, rb := strings.ReplaceAll(normName(a), " ", ""), strings.ReplaceAll(normName(b), " ", "")
+	return ra == "" || rb == "" || !strings.Contains(ra, rb) && !strings.Contains(rb, ra)
 }
 
 // seasonKey is the catalog row of a series' season.
@@ -140,6 +178,13 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 	}
 	plain := b.resolve(ctx, origin, bare)
 	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, plain, told)
+	// A title that shares no word with the id's record is another episode's, as an NFO a renumber
+	// rewrote names it: with its season not cached yet, the file is described by its own details,
+	// keyed by the season so its fetch weighs it again. One that shares a word is the record's
+	// written another way ("Bobbys Roomate"), and the record stands meanwhile.
+	if alt.waiting && alt.catalog.Kind == string(mp.KindSeason) && told != "" && res.record.Descriptive != nil && apart(res.record.Descriptive.Title, told) {
+		return alt
+	}
 	if alt.entry != nil {
 		if sharesID(*alt.entry, res.record) {
 			return res
