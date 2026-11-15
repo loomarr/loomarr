@@ -186,7 +186,7 @@ const diffLineup = (proposed: ProposalItem[], current: CurrentLineupItem[]): Dif
 const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "removed"; note?: string }) => (
   <Stack gap="0.5" render="li">
     <Stack align="baseline" direction="row" gap="inline">
-      <Stack align="center" aria-hidden className="size-4" flexShrink={0} justify="center" render="span">
+      <Stack align="center" aria-hidden flexShrink={0} height={16} justify="center" render="span" width={16}>
         {tone === "kept" && <Icon decorative glyph={icons.selected} size="compact" tone="muted" />}
         {tone === "added" && <Icon decorative glyph={icons.selected} size="compact" tone="success" />}
         {tone === "removed" && <Icon decorative glyph={icons.remove} size="compact" tone="danger" />}
@@ -214,9 +214,11 @@ const Row = ({ row, tone, note }: { row: DiffRow; tone: "kept" | "added" | "remo
         title was the operator's pick in the first place — but "Adding: Predator" with no
         reason is the refine asking for trust it hasn't earned. */}
     {tone === "added" && row.rationale && (
-      <Text as="p" className="pl-6" textRole="hint" tone="secondary">
-        {friendlyTitleRationale(row.rationale)}
-      </Text>
+      <Stack paddingLeft={24}>
+        <Text as="p" textRole="hint" tone="secondary">
+          {friendlyTitleRationale(row.rationale)}
+        </Text>
+      </Stack>
     )}
   </Stack>
 );
@@ -301,10 +303,12 @@ const RefineReview = ({
       )}
 
       <Stack
-        className="border-border border-t pt-4"
+        borderColor="$borderDecorative"
+        borderTopWidth={1}
         direction="row"
         gap="inline"
         justify="end"
+        paddingTop={16}
         render="footer"
       >
         <Action disabled={busy} onPress={onDiscard} variant="ghost">
