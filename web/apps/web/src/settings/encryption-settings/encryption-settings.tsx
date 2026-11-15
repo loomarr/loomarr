@@ -86,7 +86,7 @@ const EncryptionSettings = () => {
             <Text as="dt" textRole="compact" tone="secondary">
               Installation key fingerprint
             </Text>
-            <Text as="dd" className="break-all" textRole="mono" tone="primary">
+            <Text as="dd" textRole="mono" tone="primary" wordBreak="break-all">
               {encryption.installationKeyFingerprint || "Unavailable"}
             </Text>
           </div>

@@ -205,7 +205,9 @@ const ProviderRow = ({ provider, definition }: ProviderRowProps) => {
           </Card>
         ) : null}
         {update.error != null || remove.error != null || test.error != null ? (
-          <ErrorState className="mt-3" error={update.error ?? remove.error ?? test.error} />
+          <Stack marginTop={12}>
+            <ErrorState error={update.error ?? remove.error ?? test.error} />
+          </Stack>
         ) : null}
         {message ? (
           <Stack aria-live="polite" marginTop={12} role="status">

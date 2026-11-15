@@ -161,7 +161,9 @@ const VisionPicker = ({
   return (
     <Stack
       aria-labelledby="role-vision"
-      className="border-border rounded-md border"
+      borderColor="$borderDecorative"
+      borderRadius={6}
+      borderWidth={1}
       gap="inline"
       padding={12}
       render="section"
@@ -347,7 +349,8 @@ const AiModelSettings = ({
     <Stack gap="4">
       <Stack
         aria-labelledby="role-lineup"
-        className="border-border border-t"
+        borderColor="$borderDecorative"
+        borderTopWidth={1}
         gap="control"
         paddingTop={16}
         render="section"

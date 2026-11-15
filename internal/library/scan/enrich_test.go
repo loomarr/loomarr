@@ -483,6 +483,71 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	}
 }
 
+// In a show TMDB numbers as the disk does, a file whose name gives the title of another of the
+// season's episodes was named by another order: Sonarr named it before the season was renumbered,
+// and its NFO, rewritten since, carries the id and title of the episode now at its mark. It goes to
+// Needs you unnumbered, named as its file names it, rather than as the episode at its mark. A
+// title written another way ("Low Watter") keeps the entry at its mark.
+func TestAFileTitledAsAnotherEpisodeOfItsSeasonIsUnnumbered(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000083" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	dir := "Quillmoor (2011) {tmdb-90000831}/Season 01/"
+	names := []string{"Quillmoor (2011) - S01E01 - Low Watter", "Quillmoor (2011) - S01E02 - Saltmarsh", "Quillmoor (2011) - S01E03 - Copper Gate"}
+	order := []string{"Low Water", "Copper Gate", "Saltmarsh"} // TMDB's, and the NFOs' since the renumber
+	recs := map[string]mp.Record{
+		"90000831": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000831"}},
+			Descriptive: &mp.Descriptive{Title: "Quillmoor", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
+	}
+	var children []mp.Record
+	for i, n := range names {
+		h.file(dir+n+".mkv", 10)
+		tvdb := "9009083" + strconv.Itoa(i+1)
+		doc := `<episodedetails><title>` + order[i] + `</title><season>1</season><episode>` + strconv.Itoa(i+1) +
+			`</episode><uniqueid type="tvdb" default="true">` + tvdb + `</uniqueid></episodedetails>`
+		if err := os.WriteFile(filepath.Join(h.root, dir, n+".nfo"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		e := entry(i+1, order[i])
+		children = append(children, e)
+		recs[tvdb] = mp.Record{Source: src, Kind: mp.KindEpisode, Descriptive: e.Descriptive, Numbering: e.Numbering,
+			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: tvdb}, e.IDs[0]}}
+	}
+	recs["90000831/1"] = mp.Record{Source: src, Kind: mp.KindSeason, Children: children}
+	h.run()
+	e := &Enricher{Store: h.st, Provider: &fakeCatalog{records: recs}, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 4 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, want := range []struct {
+		name       string
+		unnumbered bool
+	}{{"Low Water", false}, {"Saltmarsh", true}, {"Copper Gate", true}} {
+		o := fileOrigin(h.root, dir+names[i]+".mkv")
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", names[i])
+		}
+		facts := h.origin(h.item(o), o).Observation.Facts
+		if facts.Name != want.name || it.Unnumbered != want.unnumbered {
+			t.Errorf("%s = %q unnumbered %v, want %q unnumbered %v", names[i], facts.Name, it.Unnumbered, want.name, want.unnumbered)
+		}
+	}
+}
+
 // A season on disk that ends before TMDB's count, one still airing or collected in part, is
 // numbered by TMDB episode by episode: an episode whose name gives the title of TMDB's entry at its
 // mark takes the entry, and one whose name gives another title keeps its file's details, unnumbered.
