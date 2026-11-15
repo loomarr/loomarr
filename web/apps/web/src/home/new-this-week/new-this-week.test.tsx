@@ -117,6 +117,7 @@ describe("New this week — rendering (#1822 evidence)", () => {
       "The remarkably long story of a lighthouse keeper and the extraordinary journey home and on";
     await renderNewThisWeek({ titles: [title("t1", { name: longTitle })] });
     const node = screen.getByText(longTitle);
-    expect(node.className).toContain("break-words");
+    expect(node.style.overflowWrap).toBe("break-word");
+    expect(node.style.textOverflow).toBe("");
   });
 });
