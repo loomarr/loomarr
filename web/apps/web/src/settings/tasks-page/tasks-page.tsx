@@ -434,7 +434,7 @@ const TasksPage = () => {
 
         {list.length === 0 && !jobs.isLoading && (
           <Card paddingHorizontal={16} paddingVertical={24}>
-            <Text as="p" className="text-center" textRole="body" tone="secondary">
+            <Text as="p" textAlign="center" textRole="body" tone="secondary">
               No scheduled tasks.
             </Text>
           </Card>
