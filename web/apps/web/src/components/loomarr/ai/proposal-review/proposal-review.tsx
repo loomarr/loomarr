@@ -203,8 +203,8 @@ const ProposalReview = ({
                   </Text>
                 </summary>
                 <Grid
+                  backgroundColor="washCanvas60"
                   borderRadius={6}
-                  className="bg-background/60"
                   columnGap="4"
                   columns={{ base: 1, sm: ["auto", "1fr"] }}
                   marginTop={8}
