@@ -11,14 +11,16 @@ interface SettingsContextNavProps {
 const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
   <Stack
     align="center"
-    className="border-border min-h-11 border-b px-4 sm:px-6"
+    borderBottomWidth={1}
+    borderColor="$borderDecorative"
+    className="px-4 sm:px-6"
     direction="row"
     flexShrink={0}
     gap="control"
     justify="between"
   >
-    <nav aria-label="Settings location" className="min-w-0">
-      <Stack align="center" className="min-w-0" direction="row" gap="inline" render="ol">
+    <Stack aria-label="Settings location" minWidth={0} render="nav">
+      <Stack align="center" direction="row" gap="inline" minWidth={0} render="ol">
         <li>
           <Action accessibilityRole="link" icon="goBack" render={<Link to="/settings" />} variant="ghost">
             Settings
@@ -35,7 +37,7 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
           </>
         ) : null}
       </Stack>
-    </nav>
+    </Stack>
     <Link
       to="/settings"
       aria-label="Find another setting"
