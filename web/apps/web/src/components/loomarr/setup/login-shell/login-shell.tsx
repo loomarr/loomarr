@@ -1,4 +1,5 @@
 import { Card, Stack } from "@loomarr/design-system";
+import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
 
@@ -11,13 +12,14 @@ const LoginShell = ({ children, className }: LoginShellProps) => (
   <Stack
     align="center"
     backgroundColor="$surfaceCanvas"
-    className={className}
+    // Padding stays a class: the join and reset routes pass `py-10`, which `cn` lets replace
+    // the default, where a padding prop would beat it.
+    className={cn("p-6", className)}
     gap="8"
     justify="center"
     // A prop, not `min-h-screen`: the View base rule's `min-height: 0` is unlayered and beats the
     // utility, which collapsed the page to its content and lifted the card off centre.
     minHeight="100vh"
-    padding={24}
     position="relative"
     render="main"
   >

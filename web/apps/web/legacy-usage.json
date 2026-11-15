@@ -101,6 +101,9 @@
     "src/components/loomarr/feedback/error-details/error-details.tsx": {
       "tailwindClasses": 16
     },
+    "src/components/loomarr/feedback/error-state/error-state.tsx": {
+      "tailwindClasses": 1
+    },
     "src/components/loomarr/feedback/field-help/field-help.tsx": {
       "tailwindClasses": 1
     },
@@ -207,7 +210,7 @@
       "tailwindClasses": 11
     },
     "src/components/loomarr/setup/login-shell/login-shell.tsx": {
-      "tailwindClasses": 3
+      "tailwindClasses": 4
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
       "tailwindClasses": 3

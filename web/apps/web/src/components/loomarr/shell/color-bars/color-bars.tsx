@@ -16,14 +16,16 @@ const SEGMENTS = [
   "bg-static-400",
 ] as const;
 
-const HEIGHT: Record<ColorBarsSize, number> = {
-  sm: 6, // the sidebar lockup
-  lg: 14, // the login/wizard hero (matches the prototype)
+// A caller's `className` (the guide's dead-air card sets `h-16 w-50`) replaces these through
+// `cn`, so the size stays a class; a size prop would beat the caller's class.
+const HEIGHT: Record<ColorBarsSize, string> = {
+  sm: "h-1.5", // ~6px — the sidebar lockup
+  lg: "h-3.5", // 14px — the login/wizard hero (matches the prototype)
 };
 
-const WIDTH: Record<ColorBarsSize, number> = {
-  sm: 56,
-  lg: 200, // the prototype's hero width
+const WIDTH: Record<ColorBarsSize, string> = {
+  sm: "w-14", // ~56px
+  lg: "w-50", // 200px — the prototype's hero width
 };
 
 // How far apart the segments' breathe cycles are staggered. 0.28s across seven bars spreads
@@ -35,11 +37,9 @@ const ColorBars = ({ size = "lg", breathe = false, className }: ColorBarsProps) 
   <Stack
     aria-hidden
     borderRadius={2}
-    className={className}
+    className={cn(HEIGHT[size], WIDTH[size], className)}
     direction="row"
-    height={HEIGHT[size]}
     overflow="hidden"
-    width={WIDTH[size]}
   >
     {SEGMENTS.map((bg, i) => (
       <span
