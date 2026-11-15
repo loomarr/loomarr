@@ -11,9 +11,6 @@
     "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
       "flexStack": 1
     },
@@ -21,9 +18,6 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {

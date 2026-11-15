@@ -72,15 +72,8 @@ const ConnectionBlock = ({
           <Stack align="center" direction="row" gap="control" wrap>
             {action}
             {verdict && (
-              <Stack
-                align="center"
-                className={verdict.ok ? "text-lock" : failing ? "text-onair-300" : "text-static-400"}
-                direction="row"
-                gap="1.5"
-                render="p"
-                role="status"
-              >
-                {failing && <Icon decorative glyph={icons.close} size="compact" tone="inherit" />}
+              <Stack align="center" direction="row" gap="1.5" render="p" role="status">
+                {failing && <Icon decorative glyph={icons.close} size="compact" tone="danger" />}
                 <Text
                   as="span"
                   className="min-w-0"
