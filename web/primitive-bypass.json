@@ -63,7 +63,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "flexStack": 4
+      "flexStack": 3
     },
     "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
       "flexStack": 1

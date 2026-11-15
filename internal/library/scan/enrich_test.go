@@ -483,6 +483,59 @@ func TestEnricherNumbersAnEpisodeByItsSeasonOnlyWhenTMDBAgrees(t *testing.T) {
 	}
 }
 
+// A season on disk that ends before TMDB's count, one still airing or collected in part, is
+// numbered by TMDB episode by episode: an episode whose name gives the title of TMDB's entry at its
+// mark takes the entry, and one whose name gives another title keeps its file's details, unnumbered.
+func TestASeasonThatEndsBeforeTMDBsCountIsNumberedWhereTheTitlesAgree(t *testing.T) {
+	ctx := context.Background()
+	src := mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB}
+	entry := func(n int, title string) mp.Record {
+		return mp.Record{
+			Source: src, Kind: mp.KindEpisode, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9000081" + strconv.Itoa(n)}},
+			Numbering: &mp.Numbering{Season: 1, Episode: n}, Descriptive: &mp.Descriptive{Title: title, Overview: title + "."},
+		}
+	}
+	catalog := &fakeCatalog{records: map[string]mp.Record{
+		"90000801": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000801"}},
+			Descriptive: &mp.Descriptive{Title: "Larch Row", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 4}}}},
+		"90000801/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{
+			entry(1, "Tee Off"), entry(2, "The Back Nine"), entry(3, "Sudden Death"), entry(4, "Clubhouse"),
+		}},
+	}}
+	h := newHarness(t)
+	h.im.Catalog = h.st
+	dir := "Larch Row {tmdb-90000801}/Season 01/"
+	files := []string{dir + "Larch Row - S01E01 - Tee Off.mkv", dir + "Larch Row - S01E02 - Back Nine.mkv", dir + "Larch Row - S01E03 - Clubhouse.mkv"}
+	for _, f := range files {
+		h.file(f, 10)
+	}
+	h.run()
+	e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+		if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	for range 3 {
+		if err := e.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, want := range []struct {
+		name       string
+		unnumbered bool
+	}{{"Tee Off", false}, {"The Back Nine", false}, {"Clubhouse", true}} {
+		o := fileOrigin(h.root, files[i])
+		it, ok := ProjectLibraryItem(h.item(o))
+		if !ok {
+			t.Fatalf("%s: not a library item", files[i])
+		}
+		facts := h.origin(h.item(o), o).Observation.Facts
+		if facts.Name != want.name || it.Unnumbered != want.unnumbered || facts.EpisodeNumber != i+1 {
+			t.Errorf("%s = %q E%d unnumbered %v, want %q unnumbered %v", files[i], facts.Name, facts.EpisodeNumber, it.Unnumbered, want.name, want.unnumbered)
+		}
+	}
+}
+
 // An NFO's episode id can be another episode's: a scraper copied it beside the wrong file, or the
 // catalog's TVDB mapping points one along. When the file's own mark places it, and its show's
 // catalog numbers the show as the disk does, the catalog's entry at that mark is what it is. The

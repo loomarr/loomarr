@@ -21,6 +21,9 @@ import (
 //     orders, or the names and numbers in the files;
 //   - with no answer, the catalog's own seasons when they number the series the way the disk does:
 //     the catalog lists no other order for it, and every season on disk ends at its count;
+//   - a season on disk that ends before its count, one still airing or collected in part, is
+//     numbered by them episode by episode: the entry at an episode's mark describes it when its
+//     title is the one the file's name gives (told), as it would be for a full season;
 //   - otherwise the episode keeps its file's name and number and is marked unnumbered, which puts
 //     its show in Needs you, and the catalog's other orders are asked for so Needs you can say
 //     which one fits.
@@ -28,7 +31,7 @@ import (
 // With no series record cached yet, or one that does not say what orders it has, res is returned
 // as it was, unmarked: the episode is written again once the record says. An episode numbered by
 // a record is keyed by it, cached or not, so the Enricher fetching or changing it writes it again.
-func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution) resolution {
+func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Input, res resolution, told string) resolution {
 	n := res.resolved.Numbering
 	if s == nil || !n.Known() || n.Value.Episode <= 0 {
 		return res
@@ -52,15 +55,52 @@ func (b *builder) byNumber(ctx context.Context, s *seriesSeen, in precedence.Inp
 	case d == nil || d.Orders == nil:
 		return res
 	case !numberedLikeDisk(d, s.last):
+		if told != "" && withinCatalog(d, s.last) {
+			at := res
+			at.catalog = seasonKey(series.catalog, n.Value.Season)
+			if at = b.byEntry(ctx, s, in, at); at.entry != nil && titled(at.entry, told) {
+				return at
+			}
+			if at.entry == nil && at.waiting {
+				// The season is asked for, and the episode is unnumbered till it is fetched: it is
+				// keyed by the season, so the fetch writes it again.
+				b.wantOrders(ctx, s, series.catalog, d.Orders)
+				res.catalog, res.unnumbered = at.catalog, true
+				return res
+			}
+		}
 		b.wantOrders(ctx, s, series.catalog, d.Orders)
 		res.unnumbered = true
 		return res
 	}
-	res.catalog = librarystore.LibraryCatalogKey{
-		Provider: series.catalog.Provider, Kind: string(mp.KindSeason),
-		ExternalID: series.catalog.ExternalID + "/" + strconv.Itoa(n.Value.Season),
-	}
+	res.catalog = seasonKey(series.catalog, n.Value.Season)
 	return b.byEntry(ctx, s, in, res)
+}
+
+// seasonKey is the catalog row of a series' season.
+func seasonKey(series librarystore.LibraryCatalogKey, season int) librarystore.LibraryCatalogKey {
+	return librarystore.LibraryCatalogKey{
+		Provider: series.Provider, Kind: string(mp.KindSeason), ExternalID: series.ExternalID + "/" + strconv.Itoa(season),
+	}
+}
+
+// withinCatalog reports whether a series' catalog holds every episode on disk where the disk
+// numbers it: it knows no other ordering, and no season on disk runs past its count, though one
+// may end before it.
+func withinCatalog(d *mp.Descriptive, last map[int]int) bool {
+	if d == nil || d.Orders == nil || len(d.Orders) != 0 || len(last) == 0 {
+		return false
+	}
+	size := make(map[int]int, len(d.Seasons))
+	for _, s := range d.Seasons {
+		size[s.Number] = s.Episodes
+	}
+	for season, episode := range last {
+		if episode > size[season] {
+			return false
+		}
+	}
+	return true
 }
 
 // ownNumberOver checks the catalog record an episode's own ids found (res.record, through its NFO's
@@ -92,14 +132,14 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 	bare := in
 	bare.Records = make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
-		if r.Source.Provider == mp.IDNFO && sharesID(r, res.record) {
+		if r.Source.Basis == mp.BasisSidecar && sharesID(r, res.record) {
 			continue
 		}
 		r.IDs = nil
 		bare.Records = append(bare.Records, r)
 	}
 	plain := b.resolve(ctx, origin, bare)
-	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, plain)
+	alt := b.byNumber(ctx, b.series[id.seriesDir], bare, plain, told)
 	if alt.entry != nil {
 		if sharesID(*alt.entry, res.record) {
 			return res
@@ -141,7 +181,7 @@ func (b *builder) unknownNFOAside(ctx context.Context, file File, in precedence.
 	out := in
 	out.Records = make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
-		if r.Source.Provider == mp.IDNFO && r.Descriptive != nil && r.Descriptive.Title != "" && !titled(&r, told) {
+		if r.Source.Basis == mp.BasisSidecar && r.Descriptive != nil && r.Descriptive.Title != "" && !titled(&r, told) {
 			continue
 		}
 		out.Records = append(out.Records, r)
