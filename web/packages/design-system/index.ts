@@ -25,6 +25,8 @@ export type { CompactSelectOption, CompactSelectProps } from "./src/compact-sele
 export { CompactSelect } from "./src/compact-select";
 export type { DateFieldProps } from "./src/date-field";
 export { DateField } from "./src/date-field";
+export type { DetailsProps } from "./src/details";
+export { Details } from "./src/details";
 export type {
   DialogActionProps,
   DialogContentProps,
