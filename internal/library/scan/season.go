@@ -132,7 +132,7 @@ func (b *builder) ownNumberOver(ctx context.Context, origin inventory.OriginKey,
 	bare := in
 	bare.Records = make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
-		if r.Source.Provider == mp.IDNFO && sharesID(r, res.record) {
+		if r.Source.Basis == mp.BasisSidecar && sharesID(r, res.record) {
 			continue
 		}
 		r.IDs = nil
@@ -181,7 +181,7 @@ func (b *builder) unknownNFOAside(ctx context.Context, file File, in precedence.
 	out := in
 	out.Records = make([]mp.Record, 0, len(in.Records))
 	for _, r := range in.Records {
-		if r.Source.Provider == mp.IDNFO && r.Descriptive != nil && r.Descriptive.Title != "" && !titled(&r, told) {
+		if r.Source.Basis == mp.BasisSidecar && r.Descriptive != nil && r.Descriptive.Title != "" && !titled(&r, told) {
 			continue
 		}
 		out.Records = append(out.Records, r)
