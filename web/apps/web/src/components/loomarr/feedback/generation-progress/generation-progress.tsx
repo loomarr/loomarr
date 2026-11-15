@@ -2,7 +2,6 @@ import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJou
 import { pickCount, progressLine } from "@loomarr/core/requests";
 import { ActivityIndicator, Badge, Stack, Text } from "@loomarr/design-system";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";
 
 const LABELS: Partial<Record<GenerationProgressProps["phase"], string>> = {
@@ -72,10 +71,11 @@ const GenerationProgress = ({ phase, elapsedSeconds, progress, className }: Gene
   return (
     <Stack
       align="start"
+      backgroundColor="washElevated35"
       borderColor="$borderDecorative"
       borderRadius={8}
       borderWidth={1}
-      className={cn("bg-muted/35", className)}
+      className={className}
       direction="row"
       gap="control"
       padding={16}

@@ -122,10 +122,10 @@ const BackupPanel = ({
           {backups.map((b) => (
             <Stack
               align="center"
+              backgroundColor="washElevated30"
               borderColor="borderDecorative"
               borderRadius={8}
               borderWidth={1}
-              className="bg-muted/30"
               direction="row"
               gap="control"
               key={b.name}

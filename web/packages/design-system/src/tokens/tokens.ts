@@ -243,6 +243,28 @@ const tintFrame = Object.fromEntries(
   ]),
 ) as { [Tone in keyof typeof tintFrameHue]: { backgroundColor: string; borderColor: string } };
 
+// Alpha washes: a surface or a brand hue at a fixed alpha, as the app's `bg-<colour>/<n>` utilities
+// draw them. The base is the dark palette's own stop (the app is dark only), so a wash is the same
+// in both themes, like a tinted frame. Each name is its base and its percentage, and a key exists
+// only for a value the app draws more than once or on a brand hue; one-off washes stay as they are.
+//   muted      -> surface.elevated (`static-800`)    destructive -> brand onair
+//   background -> surface.canvas   (`static-950`)    card/static-900 -> surface.raised
+const washes = {
+  washCanvas60: rgba(semanticThemes.dark.surface.canvas, 0.6),
+  washElevated20: rgba(semanticThemes.dark.surface.elevated, 0.2),
+  washElevated30: rgba(semanticThemes.dark.surface.elevated, 0.3),
+  washElevated35: rgba(semanticThemes.dark.surface.elevated, 0.35),
+  washElevated40: rgba(semanticThemes.dark.surface.elevated, 0.4),
+  washElevated50: rgba(semanticThemes.dark.surface.elevated, 0.5),
+  washOnair10: rgba(brandChroma[5], 0.1),
+  washOnair5: rgba(brandChroma[5], tintFrameAlpha.fill),
+  washRaised80: rgba(semanticThemes.dark.surface.raised, 0.8),
+  washSignal10: rgba(brandChroma[0], 0.1),
+  washSignal28: rgba(brandChroma[0], 0.28),
+  washSignal90: rgba(brandChroma[0], 0.9),
+  washTune5: rgba(brandChroma[3], tintFrameAlpha.fill),
+} as const;
+
 const semanticRadius = {
   control: 10,
   card: 16,
@@ -509,4 +531,5 @@ export {
   spaceSteps,
   tintFrame,
   typography,
+  washes,
 };

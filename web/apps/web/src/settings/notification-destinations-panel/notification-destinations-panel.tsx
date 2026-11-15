@@ -40,8 +40,9 @@ const NotificationDestinationsPanel = () => {
         <Stack direction="row" gap="control">
           <Stack
             align="center"
+            backgroundColor="washSignal10"
             borderRadius={8}
-            className="bg-signal/10 text-signal"
+            className="text-signal"
             flexShrink={0}
             height={36}
             justify="center"
