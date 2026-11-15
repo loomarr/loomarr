@@ -235,10 +235,10 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/setup/password-recovery/password-recovery.tsx": {
-      "tailwindClasses": 26
+      "tailwindClasses": 3
     },
     "src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "tailwindClasses": 30
+      "tailwindClasses": 7
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
       "tailwindClasses": 41
@@ -515,7 +515,7 @@
       "tailwindClasses": 6
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 30,
+      "tailwindClasses": 3,
       "rawTypeSize": 1,
       "rawTypeWeight": 1
     },
@@ -544,7 +544,7 @@
       "tailwindClasses": 1
     },
     "src/wizard/playout-step/playout-step.tsx": {
-      "tailwindClasses": 31
+      "tailwindClasses": 20
     },
     "src/wizard/users-step/users-step.tsx": {
       "tailwindClasses": 5

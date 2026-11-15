@@ -3,7 +3,7 @@ import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { unwrap } from "@loomarr/api/unwrap";
 import { invalidateSettings } from "@loomarr/core/events";
-import { Action, Badge, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Grid, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -141,7 +141,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           attached to them. Arrow-key navigation comes free with native inputs. */}
       <fieldset className="border-0 p-0" disabled={pinnedBy !== undefined}>
         <legend className="sr-only">How should Loomarr play your channels?</legend>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Grid columns={{ base: 1, sm: 2 }} gap="3">
           {OPTIONS.map((option) => {
             const selected = option.value === value;
             return (
@@ -185,7 +185,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
               </label>
             );
           })}
-        </div>
+        </Grid>
       </fieldset>
 
       {pinnedBy && (
@@ -203,7 +203,7 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
           It belongs beside the backend choice because selecting Loomarr without supplying its
           machine-reachable address is not a complete answer to "who plays the channel?". */}
       {value === PLAYOUT_INTERNAL && (
-        <div className="border-input rounded-lg border p-4">
+        <Stack borderColor="$borderControl" borderRadius={8} borderWidth={1} padding={16}>
           <SettingsFields
             entries={publicURLEntries}
             values={publicURLEdits}
@@ -211,24 +211,20 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
             results={patchResults}
             descriptionIds={{ [SettingKey.ServerPublicURL]: "server-public-url-requirement" }}
           />
-          <Text
-            as="p"
-            className="mt-3"
-            id="server-public-url-requirement"
-            textRole="compact"
-            tone="secondary"
-          >
-            Required for Loomarr playback. Your media server must be able to reach this address to fetch the
-            guide and every channel stream.
-          </Text>
+          <Stack marginTop={12}>
+            <Text as="p" id="server-public-url-requirement" textRole="compact" tone="secondary">
+              Required for Loomarr playback. Your media server must be able to reach this address to fetch the
+              guide and every channel stream.
+            </Text>
+          </Stack>
           {publicURLDirty && (
-            <div className="mt-3">
+            <Stack marginTop={12}>
               <Action disabled={patch.isPending} onPress={() => void savePublicURL()}>
                 {patch.isPending ? "Saving…" : "Save address"}
               </Action>
-            </div>
+            </Stack>
           )}
-        </div>
+        </Stack>
       )}
 
       {/* ⚠ Tunarr's own settings live HERE, under the choice that makes them relevant, rather
@@ -259,11 +255,11 @@ const PlayoutStep = ({ value, pinnedBy }: PlayoutStepProps) => {
             results={patchResults}
           />
           {tunarrDirty && (
-            <div className="mt-3">
+            <Stack marginTop={12}>
               <Action disabled={patch.isPending} onPress={() => void saveTunarr()}>
                 {patch.isPending ? "Saving…" : "Save"}
               </Action>
-            </div>
+            </Stack>
           )}
         </ConnectionBlock>
       )}
