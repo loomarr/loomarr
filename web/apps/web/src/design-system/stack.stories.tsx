@@ -176,6 +176,33 @@ const ResponsiveWorkshop = () => (
   </Screen>
 );
 
+// `divided`: a hairline between rows, the decorative border, as the `divide-y` it replaces drew it.
+// A list renders as a <ul> with DOM <li> children; a Stack child takes the same line.
+const DividedWorkshop = () => (
+  <Screen gap="section">
+    <Surface gap="control" padding="section">
+      <Text textRole="title">Divided list</Text>
+      <Surface backgroundColor="transparent" borderRadius={12}>
+        <Stack divided render="ul">
+          {wrapping.slice(0, 4).map((name) => (
+            <Stack key={name} paddingHorizontal={12} paddingVertical={8} render="li">
+              <Text textRole="label">{name}</Text>
+            </Stack>
+          ))}
+        </Stack>
+      </Surface>
+      <Text textRole="title">Divided row</Text>
+      <Stack align="center" direction="row" divided>
+        {wrapping.slice(0, 3).map((name) => (
+          <Stack key={name} paddingHorizontal={12} paddingVertical={8}>
+            <Text textRole="label">{name}</Text>
+          </Stack>
+        ))}
+      </Stack>
+    </Surface>
+  </Screen>
+);
+
 const meta = {
   title: "Loomarr Components/Stack",
   component: Workshop,
@@ -188,6 +215,7 @@ const Light: Story = { globals: { theme: "light" } };
 const AsForm: Story = { render: () => <FormWorkshop /> };
 const AxisGaps: Story = { render: () => <AxisGapsWorkshop /> };
 const Responsive: Story = { render: () => <ResponsiveWorkshop /> };
+const Divided: Story = { render: () => <DividedWorkshop /> };
 
 export default meta;
-export { AsForm, AxisGaps, Default, Light, Responsive };
+export { AsForm, AxisGaps, Default, Divided, Light, Responsive };

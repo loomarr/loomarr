@@ -20,7 +20,7 @@ const ErrorDetails = ({ message, showLabel, hideLabel, className }: ErrorDetails
   if (!message) return null;
   return (
     <details className={cn("group", className)}>
-      <Text as="summary" className="cursor-pointer list-none hover:underline" textRole="hint" tone="danger">
+      <Text as="summary" className="list-none hover:underline" cursor="pointer" textRole="hint" tone="danger">
         <span className="group-open:hidden">{showLabel ?? "Show error"}</span>
         <span className="hidden group-open:inline">{hideLabel ?? "Hide error"}</span>
       </Text>
