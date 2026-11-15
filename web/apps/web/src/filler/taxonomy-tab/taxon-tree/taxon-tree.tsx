@@ -1,5 +1,5 @@
 import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
-import { Action, Badge, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { TaxonomyAxis as Axis } from "../../taxonomy-axes";
 import { AXIS_COPY } from "../taxonomy-axis-copy";
@@ -90,16 +90,19 @@ const TaxonTree = ({
                   {taxon.assertedClips.toLocaleString()} direct
                 </Badge>
               ) : null}
-              <Link
-                to="/filler/library"
-                search={{ taxon: taxon.slug }}
-                className="focus-visible:ring-ring rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
-                title={`Browse clips matching ${taxon.label}, including descendants`}
-              >
-                <Text as="span" textRole="mono" tone="signal">
+              <Text as="span" textRole="mono">
+                <TextLink
+                  render={
+                    <Link
+                      to="/filler/library"
+                      search={{ taxon: taxon.slug }}
+                      title={`Browse clips matching ${taxon.label}, including descendants`}
+                    />
+                  }
+                >
                   {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
-                </Text>
-              </Link>
+                </TextLink>
+              </Text>
             </Stack>
           </Stack>
           {children.length > 0 ? (

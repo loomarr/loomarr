@@ -1,6 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Card, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Grid, GridItem, Stack, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -75,16 +75,12 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                   Nothing to classify yet.
                 </Text>
               ) : data.unclassifiedClips > 0 ? (
-                <Link
-                  to="/filler/library"
-                  search={{ unclassified: true }}
-                  className="inline-flex underline-offset-2 hover:underline"
-                >
-                  <Text as="span" textRole="compact" tone="signal">
+                <Text as="span" textRole="compact">
+                  <TextLink render={<Link to="/filler/library" search={{ unclassified: true }} />}>
                     Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
                     {data.unclassifiedClips === 1 ? "clip" : "clips"}
-                  </Text>
-                </Link>
+                  </TextLink>
+                </Text>
               ) : (
                 <Text as="p" textRole="compact" tone="success">
                   Every playable clip has at least one taxonomy tag.
@@ -153,15 +149,11 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                         of {data.totalClips.toLocaleString()} playable clips
                       </Text>
                       {coverage.untaggedClips > 0 ? (
-                        <Link
-                          to="/filler/library"
-                          search={{ withoutAxis: axis }}
-                          className="inline-flex underline-offset-2 hover:underline"
-                        >
-                          <Text as="span" textRole="hint" tone="signal">
+                        <Text as="span" textRole="hint">
+                          <TextLink render={<Link to="/filler/library" search={{ withoutAxis: axis }} />}>
                             Browse {coverage.untaggedClips.toLocaleString()} without this signal
-                          </Text>
-                        </Link>
+                          </TextLink>
+                        </Text>
                       ) : (
                         <Text as="p" textRole="hint" tone="success">
                           All playable clips have this signal.

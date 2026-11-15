@@ -3,7 +3,7 @@ import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
-import { Stack, Text } from "@loomarr/design-system";
+import { Stack, Text, TextLink } from "@loomarr/design-system";
 import { CardAction, ListGroup } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -50,13 +50,7 @@ const When = ({ at, verb }: { at: string; verb: string }) => {
 
 // The title as a link to the request's detail, for a row whose one action goes somewhere else.
 const DetailLink = ({ jobId, title }: { jobId: string; title: string }) => (
-  <Link
-    to="/requests/$jobId"
-    params={{ jobId }}
-    className="focus-visible:ring-ring rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none"
-  >
-    {title}
-  </Link>
+  <TextLink render={<Link to="/requests/$jobId" params={{ jobId }} />}>{title}</TextLink>
 );
 
 // Requests › In progress and Done: each request is a row you scan (#1817 Q11, #2765), the same row

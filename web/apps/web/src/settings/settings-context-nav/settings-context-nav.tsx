@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 
 interface SettingsContextNavProps {
@@ -38,24 +38,29 @@ const SettingsContextNav = ({ section }: SettingsContextNavProps) => (
         ) : null}
       </Stack>
     </Stack>
-    <Link
-      to="/settings"
-      aria-label="Find another setting"
-      className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex shrink-0 items-center gap-1.5 rounded-sm focus-visible:ring-2 focus-visible:outline-none"
-    >
-      <Icon decorative glyph={icons.search} size="compact" tone="inherit" />
-      {/* The label takes the link's own colour (and its hover), so the role sets only the type. */}
-      <Stack hidden={{ base: true, sm: false }} render="span">
-        <Text as="span" style={{ color: "inherit" }} textRole="compact">
-          Find another setting
-        </Text>
-      </Stack>
-      <Stack hidden={{ base: false, sm: true }} render="span">
-        <Text as="span" style={{ color: "inherit" }} textRole="compact">
-          Find
-        </Text>
-      </Stack>
-    </Link>
+    {/* The short "Find" is the narrow label; both are the one link, named in full either way. */}
+    <Stack flexShrink={0} hidden={{ base: true, sm: false }}>
+      <Action
+        accessibilityLabel="Find another setting"
+        accessibilityRole="link"
+        icon="search"
+        render={<Link to="/settings" />}
+        variant="ghost"
+      >
+        Find another setting
+      </Action>
+    </Stack>
+    <Stack flexShrink={0} hidden={{ base: false, sm: true }}>
+      <Action
+        accessibilityLabel="Find another setting"
+        accessibilityRole="link"
+        icon="search"
+        render={<Link to="/settings" />}
+        variant="ghost"
+      >
+        Find
+      </Action>
+    </Stack>
   </Stack>
 );
 

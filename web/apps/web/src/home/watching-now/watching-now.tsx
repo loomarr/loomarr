@@ -1,6 +1,7 @@
-import { Grid, SectionHeader } from "@loomarr/design-system";
+import { Grid, SectionHeader, useFocusLook } from "@loomarr/design-system";
 import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { AiringArtwork } from "../channel-wall";
 import type { WatchingCard, WatchingNowProps } from "./watching-now.type";
 
@@ -35,6 +36,29 @@ const watchingMeta = ({ viewing }: Pick<WatchingNowProps, "viewing">): string | 
   return others > 0 ? `${others} watching` : undefined;
 };
 
+// The card's link. Focus is the card's own amber border (the one the hover draws), so the link
+// keeps no outline of its own.
+const CardLink = ({
+  channelId,
+  children,
+}: {
+  channelId: string;
+  children: (focused: boolean) => ReactNode;
+}) => {
+  const focus = useFocusLook();
+  return (
+    <Link
+      to="/watch/$id"
+      params={{ id: channelId }}
+      onBlur={focus.onBlur}
+      onFocus={focus.onFocus}
+      style={{ display: "block", outline: "none" }}
+    >
+      {children(focus.focused)}
+    </Link>
+  );
+};
+
 // WatchingNow — Home's "Watching now" (#1659 web mock): who is watching what, on which device, as
 // the overlay ProgrammeCard over the airing's still. Admins see named viewing across the
 // household; members see their own and a count (Q-H2, enforced server-side by #1662).
@@ -54,27 +78,24 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
       {/* Three across as the mock draws it; fewer as the page narrows, down to one on a phone (#1785). */}
       <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="3">
         {cards.map(({ key, channel, programme, airing, viewer, you }) => (
-          <Link
-            key={key}
-            to="/watch/$id"
-            params={{ id: channel.source.channelId }}
-            className="focus-visible:ring-ring block rounded-lg focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <ProgrammeCard
-              layout="overlay"
-              highlighted={you}
-              hoverHighlight
-              viewer={viewer}
-              programme={programme}
-              artwork={
-                <AiringArtwork
-                  airing={airing}
-                  channel={{ name: channel.source.name, number: channel.source.number }}
-                  sizes="22rem"
-                />
-              }
-            />
-          </Link>
+          <CardLink key={key} channelId={channel.source.channelId}>
+            {(focused) => (
+              <ProgrammeCard
+                layout="overlay"
+                highlighted={you || focused}
+                hoverHighlight
+                viewer={viewer}
+                programme={programme}
+                artwork={
+                  <AiringArtwork
+                    airing={airing}
+                    channel={{ name: channel.source.name, number: channel.source.number }}
+                    sizes="22rem"
+                  />
+                }
+              />
+            )}
+          </CardLink>
         ))}
       </Grid>
     </section>

@@ -60,9 +60,9 @@ describe("New this week — rendering (#1822 evidence)", () => {
     });
     const row = screen.getByRole("link", { name: /Field Notes/ });
     const section = screen.getByRole("heading", { name: "New this week" }).closest("section");
-    // The row is its own direct child of the section — a sibling of the poster grid, never a
-    // column inside it (the geometry table: "New channel: Separate row").
-    expect(row.parentElement).toBe(section);
+    // The row (its link inside its card) is its own direct child of the section — a sibling of the
+    // poster grid, never a column inside it (the geometry table: "New channel: Separate row").
+    expect(row.parentElement?.parentElement).toBe(section);
     expect(row.className).not.toContain("grid");
   });
 

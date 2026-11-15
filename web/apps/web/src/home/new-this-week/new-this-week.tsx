@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import { SectionHeader, Stack, Text } from "@loomarr/design-system";
+import { Card, PressableRow, SectionHeader, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
@@ -65,45 +65,42 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           sharing a track with five poster columns is what left phone poster slivers in the first
           place. It wraps its own text and action instead. */}
       {fresh.map((lead) => (
-        <Link
-          key={lead.id}
-          to="/watch/$id"
-          params={{ id: lead.id }}
-          className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring block rounded-md border focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <Stack align="center" direction="row" gap="3" padding={14} wrap>
-            <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
-            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
-              <Text as="span" textRole="hint" tone="secondary">
-                New channel
-              </Text>
-              <Text as="span" overflowWrap="break-word" textRole="cardTitle" tone="primary">
-                <Text as="span" textRole="mono" tone="primary">
-                  {lead.number}
-                </Text>{" "}
-                {lead.name}
-              </Text>
-              <Text as="span" textRole="hint" tone="secondary">
-                {addedLine(lead, viewerName, timeZone)}
-              </Text>
+        <Card key={lead.id} overflow="hidden">
+          <PressableRow render={<Link to="/watch/$id" params={{ id: lead.id }} />}>
+            <Stack align="center" direction="row" flexGrow={1} gap="3" wrap>
+              <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
+                <Text as="span" textRole="hint" tone="secondary">
+                  New channel
+                </Text>
+                <Text as="span" overflowWrap="break-word" textRole="cardTitle" tone="primary">
+                  <Text as="span" textRole="mono" tone="primary">
+                    {lead.number}
+                  </Text>{" "}
+                  {lead.name}
+                </Text>
+                <Text as="span" textRole="hint" tone="secondary">
+                  {addedLine(lead, viewerName, timeZone)}
+                </Text>
+              </Stack>
+              <Stack
+                align="center"
+                alignSelf="flex-start"
+                borderColor="borderControl"
+                borderRadius={8}
+                borderWidth={1}
+                height={28}
+                justify="center"
+                paddingHorizontal={10}
+                render="span"
+              >
+                <Text as="span" textRole="label" tone="primary">
+                  Watch
+                </Text>
+              </Stack>
             </Stack>
-            <Stack
-              align="center"
-              alignSelf="flex-start"
-              borderColor="borderControl"
-              borderRadius={8}
-              borderWidth={1}
-              height={28}
-              justify="center"
-              paddingHorizontal={10}
-              render="span"
-            >
-              <Text as="span" textRole="label" tone="primary">
-                Watch
-              </Text>
-            </Stack>
-          </Stack>
-        </Link>
+          </PressableRow>
+        </Card>
       ))}
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,

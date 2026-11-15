@@ -1,7 +1,7 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Action, Badge, Grid, type GridTrack, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Grid, type GridTrack, Stack, Text, TextLink } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { destinationForOwner } from "@/settings/settings-destinations";
@@ -177,12 +177,9 @@ const AdvancedSettingsTable = ({
                   />
                 )}
                 {home ? (
-                  <a
-                    href={home.path}
-                    className="text-muted-foreground hover:text-foreground truncate text-xs underline-offset-4 hover:underline"
-                  >
-                    {home.label}
-                  </a>
+                  <Text as="span" numberOfLines={1} textRole="hint">
+                    <TextLink href={home.path}>{home.label}</TextLink>
+                  </Text>
                 ) : (
                   // A key with no page but this one: say so in words, not the server's group id
                   // or a link to the page already open (#3411). The group stays searchable.

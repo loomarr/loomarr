@@ -4,7 +4,7 @@ import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, Card, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, StatusLabel, type StatusTone, Text, TextLink } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -302,16 +302,19 @@ const FillerOverview = () => {
                   key={channel.channelId}
                   coverage={channel}
                   title={
-                    <Link
-                      className="hover:underline"
-                      to="/channels/$id/filler"
-                      params={{ id: channel.channelId }}
-                      search={{ from: "filler" }}
-                    >
-                      <Text as="span" textRole="cardLabel" tone="primary">
+                    <Text as="span" textRole="cardLabel">
+                      <TextLink
+                        render={
+                          <Link
+                            to="/channels/$id/filler"
+                            params={{ id: channel.channelId }}
+                            search={{ from: "filler" }}
+                          />
+                        }
+                      >
                         {channel.number} · {channel.name}
-                      </Text>
-                    </Link>
+                      </TextLink>
+                    </Text>
                   }
                 />
               ))

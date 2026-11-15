@@ -2,7 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
 import { ApiError } from "@loomarr/api/mutator";
 import { bootstrapSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -92,9 +92,7 @@ const BootstrapStep = ({ onDone, ownerName }: BootstrapStepProps) => {
           This Loomarr already has an owner account, so you can sign in instead.
         </Text>
         <Text as="div" className="w-fit" textRole="compact">
-          <Link to="/login" className="text-tune underline-offset-4 hover:underline">
-            Sign in instead
-          </Link>
+          <TextLink render={<Link to="/login" />}>Sign in instead</TextLink>
         </Text>
       </Stack>
     );

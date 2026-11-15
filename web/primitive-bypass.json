@@ -50,16 +50,10 @@
     "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
-      "flexStack": 2
-    },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
       "flexStack": 2
     },
     "apps/web/src/routes/_authed/settings/index.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/settings/settings-context-nav/settings-context-nav.tsx": {
       "flexStack": 1
     },
     "apps/web/src/wizard/playout-step/playout-step.tsx": {

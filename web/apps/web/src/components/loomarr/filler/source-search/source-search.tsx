@@ -1,7 +1,17 @@
 import type { DiscoveredClip } from "@loomarr/api/models/discoveredClip";
 import type { DiscoveredClipStats } from "@loomarr/api/models/discoveredClipStats";
 import { formatClipDuration, formatDuration, pluralize } from "@loomarr/core/format";
-import { Action, ActivityIndicator, Field, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
+import {
+  Action,
+  ActivityIndicator,
+  Field,
+  Icon,
+  icons,
+  Stack,
+  Surface,
+  Text,
+  TextLink,
+} from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import type { SourceSearchProps } from "./source-search.type";
 
@@ -195,9 +205,9 @@ const SourceSearch = ({
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
                     <Text as="div" numberOfLines={1} textRole="compact">
-                      <a href={clip.url} target="_blank" rel="noreferrer" className="hover:underline">
+                      <TextLink render={<a href={clip.url} rel="noreferrer" target="_blank" />}>
                         {clip.title || clip.id}
-                      </a>
+                      </TextLink>
                     </Text>
                     {/* ⚠ "checking…" only while a request is genuinely in flight. Once it has
                         answered, an unknown duration renders as nothing at all — a permanent

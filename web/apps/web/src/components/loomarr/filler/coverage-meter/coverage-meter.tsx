@@ -1,6 +1,6 @@
 import type { CoverageCriterionDTOCriterion } from "@loomarr/api/models/coverageCriterionDTOCriterion";
 import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
-import { Card, Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
+import { Card, Stack, StatusDot, type StatusTone, Text, TextLink } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { CoverageMeterProps } from "./coverage-meter.type";
@@ -243,19 +243,12 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             "Find clips" while the destination said something else, which is how an operator
             learns to distrust a link. */}
         {isThin && (
-          <Link
-            to="/filler"
-            className="underline-offset-2 hover:underline"
-            data-testid="find-clips"
-            // One line of 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
-            data-touch-target
-          >
-            <Stack direction="row" render="span">
-              <Text as="span" textRole="hint" tone="signal">
-                Propose a pull →
-              </Text>
-            </Stack>
-          </Link>
+          <Stack direction="row">
+            {/* TextLink carries the 24 px tap area for a line of 12 px text (styles.css, #1785). */}
+            <Text as="span" textRole="hint">
+              <TextLink render={<Link to="/filler" data-testid="find-clips" />}>Propose a pull →</TextLink>
+            </Text>
+          </Stack>
         )}
       </Stack>
     </Card>
