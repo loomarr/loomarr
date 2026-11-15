@@ -29,9 +29,6 @@
     "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
       "flexStack": 1
     },
@@ -50,13 +47,7 @@
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/filler/clip-details/clip-details.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
       "flexStack": 1
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
