@@ -192,14 +192,11 @@ const SourceSearch = ({
                   <div className="min-w-0 flex-1">
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
-                    <a
-                      href={clip.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block truncate text-sm hover:underline"
-                    >
-                      {clip.title || clip.id}
-                    </a>
+                    <Text as="div" className="truncate" textRole="compact">
+                      <a href={clip.url} target="_blank" rel="noreferrer" className="hover:underline">
+                        {clip.title || clip.id}
+                      </a>
+                    </Text>
                     {/* ⚠ "checking…" only while a request is genuinely in flight. Once it has
                         answered, an unknown duration renders as nothing at all — a permanent
                         spinner would promise a value that is never coming, and "0:00" would

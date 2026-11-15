@@ -9,6 +9,7 @@ import {
   Stack,
   StatusLabel,
   Text,
+  typography,
 } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { DatabaseMigrationProps, MigrationStep } from "./database-migration.type";
@@ -142,15 +143,26 @@ const DatabaseMigration = ({
                   <Stack
                     align="center"
                     className={cn(
-                      "text-2xs size-5 rounded-full border font-mono",
-                      done && "border-signal bg-signal-tint-15 text-signal",
-                      current && "border-tune bg-tune-tint-15 text-tune",
-                      !done && !current && "border-border text-muted-foreground",
+                      "size-5 rounded-full border",
+                      done && "border-signal bg-signal-tint-15",
+                      current && "border-tune bg-tune-tint-15",
+                      !done && !current && "border-border",
                     )}
                     justify="center"
                     render="span"
                   >
-                    {done ? <Icon decorative glyph={icons.selected} size="compact" tone="inherit" /> : i + 1}
+                    <Text
+                      as="span"
+                      style={{ fontFamily: typography.family.data.web }}
+                      textRole="guideCell"
+                      tone={done ? "signal" : current ? "info" : "secondary"}
+                    >
+                      {done ? (
+                        <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                      ) : (
+                        i + 1
+                      )}
+                    </Text>
                   </Stack>
                   <Text
                     as="span"
@@ -215,10 +227,7 @@ const DatabaseMigration = ({
                         align="center"
                         aria-hidden
                         borderRadius={999}
-                        className={cn(
-                          "text-2xs font-mono",
-                          c.ok ? "bg-signal-tint-15 text-signal" : "bg-onair-tint-15 text-onair-300",
-                        )}
+                        className={c.ok ? "bg-signal-tint-15" : "bg-onair-tint-15"}
                         flexShrink={0}
                         height={16}
                         justify="center"
@@ -226,7 +235,14 @@ const DatabaseMigration = ({
                         render="span"
                         width={16}
                       >
-                        {c.ok ? "✓" : "✕"}
+                        <Text
+                          as="span"
+                          style={{ fontFamily: typography.family.data.web }}
+                          textRole="guideCell"
+                          tone={c.ok ? "signal" : "danger"}
+                        >
+                          {c.ok ? "✓" : "✕"}
+                        </Text>
                       </Stack>
                       <Text as="span" textRole="compact">
                         {c.name}

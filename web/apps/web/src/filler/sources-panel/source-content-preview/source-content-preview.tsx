@@ -72,15 +72,17 @@ const SourceContentPreview = ({
                     key={item.url}
                     render="li"
                   >
-                    <a
-                      className="min-w-0 flex-1 truncate text-sm hover:underline"
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </a>
+                    <Text as="div" className="min-w-0 flex-1 truncate" textRole="compact">
+                      <a
+                        className="hover:underline"
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={item.title}
+                      >
+                        {item.title}
+                      </a>
+                    </Text>
                     {item.durationMs ? (
                       <Text as="span" className="shrink-0" textRole="hint" tone="secondary">
                         {formatClipDuration(item.durationMs)}

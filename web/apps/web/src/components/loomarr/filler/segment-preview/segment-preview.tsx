@@ -129,19 +129,28 @@ const SegmentPreview = ({
         {artwork ? (
           <ServedImage image={artwork} alt="" sizes="112px" />
         ) : (
-          <span id={unavailableId} className="text-muted-foreground px-2 text-center text-[10px]">
+          <Text
+            as="span"
+            className="px-2"
+            id={unavailableId}
+            textAlign="center"
+            textRole="guideCell"
+            tone="secondary"
+          >
             Preview unavailable
-          </span>
+          </Text>
         )}
         <Stack
           align="center"
           aria-hidden
-          className="bg-static-950/25 absolute inset-0 text-sm text-white"
+          className="bg-static-950/25 absolute inset-0"
           direction="row"
           justify="center"
           render="span"
         >
-          ▶
+          <Text as="span" style={{ color: "var(--color-static-0)" }} textRole="compact">
+            ▶
+          </Text>
         </Stack>
         {/* ⚠ `formatMmSs` ("00:30"), NOT `formatClipDuration` ("30s"). The row already renders the
             span as "30s", and a second "30s" inside the same region makes the editor's existing

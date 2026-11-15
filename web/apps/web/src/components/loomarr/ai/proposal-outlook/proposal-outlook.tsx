@@ -169,7 +169,7 @@ const ProposalOutlook = ({
           ? `Short lineup: ${programmingDuration} of programming.`
           : `${sentenceCase(programmingDuration)} of programming.`;
   return (
-    <section aria-label="Channel outlook" className="text-sm">
+    <Text as="section" aria-label="Channel outlook" textRole="compact" tone="secondary">
       <Text as="p" textRole="compact" tone={value.thin ? "warning" : "secondary"}>
         {summary}
       </Text>
@@ -181,7 +181,7 @@ const ProposalOutlook = ({
           </div>
         </details>
       )}
-    </section>
+    </Text>
   );
 };
 

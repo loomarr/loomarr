@@ -129,9 +129,14 @@ const PickRow = ({
         </Text>
         {included && pick.item.rationale && (
           <details className="mt-1.5">
-            <summary className="text-muted-foreground hover:text-foreground w-fit cursor-pointer text-xs">
+            <Text
+              as="summary"
+              className="hover:text-foreground! w-fit cursor-pointer"
+              textRole="hint"
+              tone="secondary"
+            >
               Why this title?
-            </summary>
+            </Text>
             <Text as="p" className="mt-1 max-w-prose" textRole="compact" tone="secondary">
               {friendlyTitleRationale(pick.item.rationale)}
             </Text>
