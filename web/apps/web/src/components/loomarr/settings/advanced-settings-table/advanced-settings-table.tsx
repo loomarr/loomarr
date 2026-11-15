@@ -1,10 +1,9 @@
 import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { SettingEntryProvenance } from "@loomarr/api/models/settingEntryProvenance";
 import { SettingKey } from "@loomarr/api/models/settingKey";
-import { Action, Grid, type GridTrack, Stack, Text } from "@loomarr/design-system";
+import { Action, Badge, Grid, type GridTrack, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import { destinationForOwner } from "@/settings/settings-destinations";
 import { SettingField } from "../setting-field";
 import type { AdvancedSettingsTableProps } from "./advanced-settings-table.type";
@@ -42,19 +41,15 @@ const matches = (entry: SettingEntry, q: string): boolean => {
 // enum has exactly env/db/default. Rendering a fourth state would mean inventing a value the
 // backend never sends. Those secrets live under Access and devices, where view/copy/
 // regenerate belong.
-const PROVENANCE: Record<
-  string,
-  { label: string; className: string; tone: "info" | "secondary" | "success" }
-> = {
+const PROVENANCE: Record<string, { label: string; tone: "tune" | "lock" | "neutral" }> = {
   [SettingEntryProvenance.env]: {
     label: "SET VIA ENV",
     // The only one that is not merely informational: an env-pinned key cannot be edited in the
     // UI at all (§3), so it reads as a lock rather than a note.
-    className: "bg-tune-tint-15",
-    tone: "info",
+    tone: "tune",
   },
-  [SettingEntryProvenance.db]: { label: "DATABASE", className: "bg-lock-tint-15", tone: "success" },
-  [SettingEntryProvenance.default]: { label: "DEFAULT", className: "bg-static-800", tone: "secondary" },
+  [SettingEntryProvenance.db]: { label: "DATABASE", tone: "lock" },
+  [SettingEntryProvenance.default]: { label: "DEFAULT", tone: "neutral" },
 };
 
 const AdvancedSettingsTable = ({
@@ -89,9 +84,16 @@ const AdvancedSettingsTable = ({
         </Text>
       </Stack>
 
-      <div className="border-border overflow-x-auto rounded-lg border">
-        <div className="min-w-[780px]">
-          <Grid className="border-border border-b px-4 py-2" columns={SETTING_COLUMNS} gap="3">
+      <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} style={{ overflowX: "auto" }}>
+        <Stack minWidth={780}>
+          <Grid
+            borderBottomWidth={1}
+            borderColor="$borderDecorative"
+            columns={SETTING_COLUMNS}
+            gap="3"
+            paddingHorizontal={16}
+            paddingVertical={8}
+          >
             {["Key", "Value", "Owner", "Provenance", "Action"].map((heading) => (
               <Text as="div" key={heading} textRole="label" tone="secondary">
                 {heading}
@@ -100,19 +102,20 @@ const AdvancedSettingsTable = ({
           </Grid>
 
           {rows.length === 0 && (
-            <Text as="p" className="px-4 py-6" textAlign="center" textRole="compact" tone="secondary">
-              {`No setting matches “${query}”.`}
-            </Text>
+            <Stack paddingHorizontal={16} paddingVertical={24}>
+              <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+                {`No setting matches “${query}”.`}
+              </Text>
+            </Stack>
           )}
 
-          {rows.map((entry) => {
+          {rows.map((entry, index) => {
             // A key this page owns has no other home: a link back to this page says nothing.
             const owner = destinationForOwner(entry.owner);
             const home = owner?.id === "advanced" ? undefined : owner;
             const prov = PROVENANCE[entry.provenance] ?? {
               label: entry.provenance.toUpperCase(),
-              className: "bg-static-800",
-              tone: "secondary" as const,
+              tone: "neutral" as const,
             };
             // llm.model is committed through the model-selection action, which also
             // verifies capability, persists provider metadata, and hot-swaps the client.
@@ -122,10 +125,13 @@ const AdvancedSettingsTable = ({
             return (
               <Grid
                 align="center"
+                borderBottomWidth={index === rows.length - 1 ? 0 : 1}
+                borderColor="$borderDecorative"
                 key={entry.key}
-                className="border-border border-b px-4 py-2 last:border-b-0"
                 columns={SETTING_COLUMNS}
                 gap="3"
+                paddingHorizontal={16}
+                paddingVertical={8}
               >
                 <Stack align="center" direction="row" flexShrink={1} gap="inline" minWidth={0}>
                   {/* The visible label for this row's control (see `labelledBy` below) — which is
@@ -138,13 +144,19 @@ const AdvancedSettingsTable = ({
                     HERE especially: this is the surface someone reaches precisely because the
                     key was not where they looked, and "it's advanced" is the answer. */}
                   {entry.advanced && (
-                    <span
-                      title="advanced: also shown behind its home page's disclosure"
-                      className="border-border shrink-0 rounded-sm border px-1"
-                    >
-                      <Text as="span" textRole="mono" tone="secondary">
-                        ADV
-                      </Text>
+                    <span title="advanced: also shown behind its home page's disclosure">
+                      <Stack
+                        borderColor="$borderDecorative"
+                        borderRadius={4}
+                        borderWidth={1}
+                        flexShrink={0}
+                        paddingHorizontal={4}
+                        render="span"
+                      >
+                        <Text as="span" textRole="mono" tone="secondary">
+                          ADV
+                        </Text>
+                      </Stack>
                     </span>
                   )}
                 </Stack>
@@ -178,11 +190,9 @@ const AdvancedSettingsTable = ({
                     Only here
                   </Text>
                 )}
-                <span className={cn("w-fit rounded-sm px-1.5 py-0.5", prov.className)}>
-                  <Text as="span" textRole="mono" tone={prov.tone}>
-                    {prov.label}
-                  </Text>
-                </span>
+                <Badge shape="square" tone={prov.tone}>
+                  {prov.label}
+                </Badge>
                 {pickerOwned ? (
                   <Link to="/settings/ai" className="text-signal w-fit text-xs underline underline-offset-4">
                     Choose model
@@ -201,8 +211,8 @@ const AdvancedSettingsTable = ({
               </Grid>
             );
           })}
-        </div>
-      </div>
+        </Stack>
+      </Stack>
     </Stack>
   );
 };

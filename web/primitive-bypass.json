@@ -54,7 +54,7 @@
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "flexStack": 3
+      "flexStack": 1
     },
     "apps/web/src/components/loomarr/shell/page-header/page-header.tsx": {
       "flexStack": 1

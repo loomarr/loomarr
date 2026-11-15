@@ -1,9 +1,22 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 import { RouterHarness } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
+
+// The rail is a Stack hidden below `md`, and a Stack reads the width from matchMedia, which jsdom
+// does not have: left alone it is the narrowest layout and the rail is out of the tree. A desktop
+// window matches every min-width query; the phone tests below stub their own.
+beforeEach(() => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    addEventListener: vi.fn(),
+    matches: true,
+    media: query,
+    removeEventListener: vi.fn(),
+  }));
+});
+afterEach(() => vi.unstubAllGlobals());
 
 const renderShell = (isAdmin: boolean) =>
   render(<RouterHarness content={<AppShell isAdmin={isAdmin}>content</AppShell>} />);

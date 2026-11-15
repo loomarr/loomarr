@@ -207,7 +207,7 @@
       "tailwindClasses": 6
     },
     "src/components/loomarr/settings/advanced-settings-table/advanced-settings-table.tsx": {
-      "tailwindClasses": 40,
+      "tailwindClasses": 11,
       "rawTypeSize": 2
     },
     "src/components/loomarr/settings/backup-panel/backup-panel.tsx": {
@@ -229,8 +229,7 @@
       "tailwindClasses": 13
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 37,
-      "rawTypeSize": 1
+      "tailwindClasses": 22
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
       "tailwindClasses": 7
@@ -257,7 +256,7 @@
       "tailwindClasses": 30
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 63
+      "tailwindClasses": 41
     },
     "src/components/loomarr/shell/color-bars/color-bars.tsx": {
       "tailwindClasses": 5
@@ -272,7 +271,7 @@
       "tailwindClasses": 7
     },
     "src/components/loomarr/shell/tuner-loader/tuner-loader.tsx": {
-      "tailwindClasses": 36,
+      "tailwindClasses": 29,
       "rawTypeWeight": 4
     },
     "src/components/loomarr/shell/tv-static/tv-static.tsx": {

@@ -158,25 +158,35 @@ const AppShell = ({
           Skip to content
         </Text>
       </a>
-      {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
+      {/* Hidden below `md`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
-      <aside className="border-border bg-card hidden flex-col gap-1 border-r px-3 py-4 md:flex md:w-56">
+      <Stack
+        backgroundColor="$surfaceRaised"
+        borderColor="$borderDecorative"
+        borderRightWidth={1}
+        gap="1"
+        hidden={{ base: true, md: false }}
+        paddingHorizontal={12}
+        paddingVertical={16}
+        render="aside"
+        width={224}
+      >
         <Stack aria-label="Primary" gap="1" render="nav" width={224}>
-          <div className="mb-4 px-2">
+          <Stack marginBottom={16} paddingHorizontal={8}>
             <BrandLockup variant="compact" />
-          </div>
+          </Stack>
 
           {/* The shell's search is the SearchField's press-only form (maintainer: field look, as a
               button): a press opens the command search, and the shortcut hint says how to reach it
               from the keyboard. */}
-          <div className="mb-2">
+          <Stack marginBottom={8}>
             <SearchButton
               hint={commandShortcutLabel()}
               keyShortcuts={commandShortcutAria()}
               onPress={() => onOpenCommand?.()}
               placeholder="Search…"
             />
-          </div>
+          </Stack>
 
           {navItemsFor(isAdmin, watchChannelId).map((item) => {
             const { label, icon } = item;
@@ -262,7 +272,7 @@ const AppShell = ({
                 to="/settings/system/about"
                 aria-label={`Loomarr ${serverVersion} — About`}
                 className={cn(
-                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto flex min-w-0 items-center rounded-md px-3 py-1.5 transition-colors",
+                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto min-w-0 rounded-md px-3 py-1.5 transition-colors",
                   FOCUS_RING,
                 )}
               >
@@ -306,28 +316,30 @@ const AppShell = ({
               NAV item: it isn't a section of the app, it's you. */}
           <Link
             to="/account"
-            className={cn(
-              "hover:bg-accent flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors",
-              FOCUS_RING,
-            )}
+            className={cn("hover:bg-accent min-w-0 flex-1 rounded-md transition-colors", FOCUS_RING)}
             // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
             aria-label={`Your account: ${accountInitials} ${userName}`}
           >
-            <Stack
-              align="center"
-              className="bg-static-800 size-7 rounded-full"
-              flexShrink={0}
-              justify="center"
-            >
-              <Text as="span" textRole="mono" tone="primary">
-                {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
-                    between, so "KB" + "Kira" would otherwise read as one word against the label. */}
-                {accountInitials}{" "}
+            <Stack align="center" direction="row" gap="2" minWidth={0} padding={4}>
+              <Stack
+                align="center"
+                backgroundColor="$surfaceElevated"
+                borderRadius={999}
+                flexShrink={0}
+                height={28}
+                justify="center"
+                width={28}
+              >
+                <Text as="span" textRole="mono" tone="primary">
+                  {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+                      between, so "KB" + "Kira" would otherwise read as one word against the label. */}
+                  {accountInitials}{" "}
+                </Text>
+              </Stack>
+              <Text as="span" numberOfLines={1} textRole="compact" tone="secondary">
+                {userName}
               </Text>
             </Stack>
-            <Text as="span" numberOfLines={1} textRole="compact" tone="secondary">
-              {userName}
-            </Text>
           </Link>
           {onLogout && (
             <Tooltip content="Sign out">
@@ -337,7 +349,7 @@ const AppShell = ({
             </Tooltip>
           )}
         </Stack>
-      </aside>
+      </Stack>
 
       {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
           the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows
