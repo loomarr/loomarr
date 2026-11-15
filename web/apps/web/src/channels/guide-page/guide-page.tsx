@@ -6,24 +6,13 @@ import {
   formatGuideTimeRange,
   type GuideAiringLayout,
   type GuideChannelLayout,
-  type GuideLayout,
   type GuideNavigationDirection,
   type GuideSelection,
-  guideSelectionForChannel,
   layoutGuide,
   moveGuideSelection,
   useGuideWindow,
 } from "@loomarr/core/guide";
-import {
-  Action,
-  Chip,
-  CompactSelect,
-  Notice,
-  SegmentedControl,
-  Stack,
-  Surface,
-  Text,
-} from "@loomarr/design-system";
+import { Action, SegmentedControl, Stack } from "@loomarr/design-system";
 import {
   GuideCompact,
   type GuideFilter,
@@ -32,7 +21,7 @@ import {
   GuidePhoneHeader,
   GuideProgrammeDetail,
 } from "@loomarr/ui";
-import { keepPreviousData, type QueryClient, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
@@ -44,14 +33,20 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { useRouteContent } from "@/lib/use-route-content";
 import { ChannelRowMenu } from "../channel-row-menu";
-import {
-  DEFAULT_WINDOW_MINUTES,
-  guideDayOffset,
-  guideDayStart,
-  guideHourOf,
-  guideWindow,
-} from "../guide-window";
+import { DEFAULT_WINDOW_MINUTES, guideHourOf, guideWindow } from "../guide-window";
 import { useGuideDay } from "../use-guide-day";
+import {
+  cachedGuideZone,
+  dayOffsetOf,
+  FORWARD_DAYS,
+  GUIDE_VIEWS,
+  type GuideView,
+  RETENTION_DAYS,
+  reconcileSelection,
+  WINDOW_CHOICES,
+} from "./guide-page-model";
+import { GuideRefreshNotice } from "./guide-refresh-notice";
+import { GuideToolbar } from "./guide-toolbar";
 
 // The Guide — THE channels surface (§12), headed "Channels". One row per channel, time the
 // shared axis. It answers both halves of the question in one place: "what do I have" and
@@ -69,63 +64,10 @@ import { useGuideDay } from "../use-guide-day";
 // The grid is the shared `ui/guide` one (#1659, N7). The window always fits the grid's width, and
 // the span picker below is how you see more or less time (it replaced zoom, #1659).
 
-// How far a window may span. Kept as compact chips because this is the everyday view choice;
-// the longer phrase remains in each chip's accessible name.
-const WINDOW_CHOICES = [
-  { value: "120", label: "2h", description: "2 hours" },
-  { value: "240", label: "4h", description: "4 hours" },
-  { value: "360", label: "6h", description: "6 hours" },
-  { value: "720", label: "12h", description: "12 hours" },
-] as const;
-
-// How far back the day picker offers. Matches the server's `guide.retention_hours` default —
-// past listings are RECOMPUTED from each channel's current lineup, so a distant past would be
-// fiction rather than history. The server clamps regardless; this keeps the UI from offering
-// a day it will not serve.
-const RETENTION_DAYS = 1;
-const FORWARD_DAYS = 6;
-
 // The now-line advances CLIENT-SIDE (`useGuideWindow`'s `nowMs`). The browser already knows the
 // wall clock, so pushing "time passed" over SSE would be pure waste — a frame per second per
 // viewer to transmit something every client can compute. SSE is reserved for the genuine
 // invalidation (a lineup changed).
-
-// The hours the START picker offers. Every third hour is enough to land anywhere in the day
-// in one click; a 24-entry list is a scroll, not a choice.
-const START_HOURS = [0, 3, 6, 7, 8, 9, 12, 15, 18, 20, 21, 22] as const;
-
-const hourLabel = (h: number) => {
-  const suffix = h < 12 ? "AM" : "PM";
-  const twelve = h % 12 === 0 ? 12 : h % 12;
-  return `${twelve} ${suffix}`;
-};
-
-// "auto" follows now; the rest pin the window's start to that hour of the chosen day.
-const START_HOUR_OPTIONS = [
-  { label: "Now", value: "auto" },
-  ...START_HOURS.map((h) => ({ label: hourLabel(h), value: String(h) })),
-];
-
-// The guide's two views (#2766 on phones, #2787 on desktops): a Now/Next list, or the full grid.
-const GUIDE_VIEWS = [
-  { label: "Now & next", value: "list" },
-  { label: "Full grid", value: "grid" },
-] as const;
-type GuideView = (typeof GUIDE_VIEWS)[number]["value"];
-
-// The selection survives a new window or a refetch: the same channel, at the block nearest the
-// same time, as the shared guide controller does. Otherwise the block airing now on the first
-// channel.
-const reconcileSelection = (
-  layout: GuideLayout | undefined,
-  selection: GuideSelection | undefined,
-  atMs: number,
-): GuideSelection | undefined => {
-  if (!layout) return undefined;
-  const kept = selection && guideSelectionForChannel(layout, selection.channelId, selection.anchorMs);
-  const first = layout.channels[0]?.source.channelId;
-  return kept ?? (first ? guideSelectionForChannel(layout, first, atMs) : undefined);
-};
 
 // The programme card's art: the shared ServedImage (ThumbHash placeholder, sized sources),
 // contained rather than cropped so it still identifies what will air.
@@ -135,37 +77,6 @@ const renderArtwork = (airing: GuideAiringLayout) =>
   ) : airing.source.thumbUrl ? (
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;
-
-// The day picker's offset of a moment from today on the household's calendar, within the days the
-// picker offers.
-const dayOffsetOf = (atMs: number, timeZone?: string): number =>
-  Math.min(FORWARD_DAYS, Math.max(-RETENTION_DAYS, guideDayOffset(atMs, Date.now(), timeZone)));
-
-// The day picker's label: relative for the days people actually mean, absolute beyond that, and
-// the household's date, as the axis is.
-const dayLabel = (offset: number, now: number, timeZone?: string): string => {
-  if (offset === 0) return "Today";
-  if (offset === 1) return "Tomorrow";
-  if (offset === -1) return "Yesterday";
-  return new Date(guideDayStart(now, offset, timeZone)).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone,
-  });
-};
-
-// The household's zone, which the axis is labelled in and its days and hours are read on. Every
-// guide answer carries it, and the route's loader has fetched one before the page renders.
-const cachedGuideZone = (queryClient: QueryClient): string | undefined =>
-  queryClient
-    .getQueriesData<channelsApi.channelGuideResponse>({ queryKey: channelsApi.getChannelGuideQueryKey() })
-    .map(([, data]) => unwrap(data)?.timezone)
-    .find((zone) => zone !== undefined && zone !== "");
-
-// A window by its day and its hours, as the controls and the axis read them: "Tomorrow 8 PM–8 AM".
-const windowName = (offset: number, fromMs: number, toMs: number, now: number, timeZone?: string): string =>
-  `${dayLabel(offset, now, timeZone)} ${formatGuideTimeRange(fromMs, toMs, timeZone)}`;
 
 const GuidePage = () => {
   // The tab is named for the nav item that opens it, as every other page's is.
@@ -394,12 +305,6 @@ const GuidePage = () => {
     [],
   );
 
-  const dayChoices = useMemo(() => {
-    const out: number[] = [];
-    for (let d = -RETENTION_DAYS; d <= FORWARD_DAYS; d++) out.push(d);
-    return out;
-  }, []);
-
   // A failed refetch of a Guide already on screen (an SSE invalidation, a window revisited) keeps it
   // and says it may be stale; only a Guide that never answered gives the page to the error.
   if (firstFailed) {
@@ -445,34 +350,16 @@ const GuidePage = () => {
       />
 
       {guide.error || noticeUp ? (
-        // The same inset the TV and phone Guide give it (GuideJourney).
-        <Surface backgroundColor="transparent" borderWidth={0} padding="control">
-          <Notice
-            // Mounted while the retry runs, so the focus on its button stays; a press during it is the
-            // same retry.
-            action={{
-              label: guide.isFetching ? "Trying again…" : "Try again",
-              onPress: () => {
-                if (!guide.isFetching) void guide.refetch();
-              },
-            }}
-            body={
-              showingEarlierWindow && body
-                ? // The controls stay on what the viewer chose (Try again reads it); the notice names it
-                  // and the grid still drawn, so neither is read as the other.
-                  `${windowName(dayOffset, from, to, anchorMs, timeZone)} didn't load. Showing ${windowName(
-                    dayOffsetOf(body.fromMs, timeZone),
-                    body.fromMs,
-                    body.toMs,
-                    anchorMs,
-                    timeZone,
-                  )}, the last one that did.`
-                : "Showing what Loomarr had a moment ago."
-            }
-            title="Couldn't refresh the Guide"
-            tone="warn"
-          />
-        </Surface>
+        <GuideRefreshNotice
+          anchorMs={anchorMs}
+          dayOffset={dayOffset}
+          from={from}
+          isFetching={guide.isFetching}
+          onRetry={() => void guide.refetch()}
+          showing={showingEarlierWindow && body ? body : undefined}
+          timeZone={timeZone}
+          to={to}
+        />
       ) : null}
 
       {/* Row 2 — the everyday guide questions stay visible: which day, where now is, and how
@@ -500,124 +387,21 @@ const GuidePage = () => {
       )}
 
       {channels.length > 0 && !nowNextView && (
-        <>
-          <div className="border-border/60 flex flex-wrap items-center gap-3.5 border-b px-7 py-2.5">
-            <Stack align="center" direction="row" flexShrink={1} gap="1.75">
-              <div>
-                <CompactSelect
-                  label="Day"
-                  onValueChange={(v) => setDayOffset(Number(v))}
-                  options={dayChoices.map((d) => ({
-                    label: dayLabel(d, anchorMs, timeZone),
-                    value: String(d),
-                  }))}
-                  value={String(dayOffset)}
-                />
-              </div>
-
-              {/* A past day is RECOMPUTED from the current lineup, not a recording — and a
-                  future one is a plan. The chip says which, and doubles as the way back. */}
-              {dayOffset !== 0 && (
-                <Chip mono onPress={() => setDayOffset(0)} tone={dayOffset < 0 ? "muted" : "info"}>
-                  {`${dayOffset < 0 ? "AS AIRED" : "SCHEDULED"} · back to today`}
-                </Chip>
-              )}
-            </Stack>
-
-            {/* Hour stepper. NOW is the anchor an operator returns to; the arrows nudge the
-                window without changing the day. */}
-            <Stack align="center" direction="row" flexShrink={1} gap="1">
-              <Action
-                icon="earlier"
-                layout="icon"
-                onPress={() => setHourShift((h) => h - 1)}
-                variant="outline"
-              >
-                Back an hour
-              </Action>
-              {/* Already at now, the anchor is the quiet choice; away from it, the way back. */}
-              <Action
-                onPress={() => {
-                  setHourShift(0);
-                  setDayOffset(0);
-                  setStartHour(null);
-                }}
-                variant={atNow ? "ghost" : "outline"}
-              >
-                NOW
-              </Action>
-              <Action icon="later" layout="icon" onPress={() => setHourShift((h) => h + 1)} variant="outline">
-                Forward an hour
-              </Action>
-            </Stack>
-
-            {/* Span stays in the primary row: it changes the question the guide answers, and
-                four compact choices are faster to scan than a select. */}
-            <Stack align="center" className="sm:ml-auto" direction="row" flexShrink={1} gap="1.75">
-              <Text as="span" textRole="metadata">
-                Span
-              </Text>
-              <Stack direction="row" gap="1">
-                {WINDOW_CHOICES.map((w) => {
-                  const active = windowMinutes === Number(w.value);
-                  return (
-                    <Chip
-                      accessibilityLabel={`Show ${w.description}`}
-                      key={w.value}
-                      mono
-                      onPress={() => setWindowMinutes(Number(w.value))}
-                      selected={active}
-                    >
-                      {w.label}
-                    </Chip>
-                  );
-                })}
-              </Stack>
-            </Stack>
-
-            <Action
-              accessibilityLabel={hasCustomView ? "View options, custom" : "View options"}
-              aria-controls="guide-view-options"
-              aria-expanded={viewOptionsOpen}
-              icon="filter"
-              onPress={() => setViewOptionsOpen((open) => !open)}
-              variant="outline"
-            >
-              {hasCustomView ? "View · custom" : "View"}
-            </Action>
-          </div>
-
-          {viewOptionsOpen && (
-            <Stack
-              align="center"
-              className="border-border/60 bg-card/40 border-b"
-              columnGap="6"
-              direction="row"
-              id="guide-view-options"
-              justify={{ base: "start", sm: "end" }}
-              paddingHorizontal={28}
-              paddingVertical={10}
-              rowGap="2"
-              wrap
-            >
-              {/* Pin the window to a specific part of the chosen day without stepping there
-                  one hour at a time. */}
-              <Stack align="center" direction="row" gap="1.75">
-                <Text as="span" textRole="metadata">
-                  Start at
-                </Text>
-                <div>
-                  <CompactSelect
-                    label="Start hour"
-                    onValueChange={(v) => setStartHour(v === "auto" ? null : Number(v))}
-                    options={START_HOUR_OPTIONS}
-                    value={startHour === null ? "auto" : String(startHour)}
-                  />
-                </div>
-              </Stack>
-            </Stack>
-          )}
-        </>
+        <GuideToolbar
+          anchorMs={anchorMs}
+          atNow={atNow}
+          dayOffset={dayOffset}
+          hasCustomView={hasCustomView}
+          setDayOffset={setDayOffset}
+          setHourShift={setHourShift}
+          setStartHour={setStartHour}
+          setViewOptionsOpen={setViewOptionsOpen}
+          setWindowMinutes={setWindowMinutes}
+          startHour={startHour}
+          timeZone={timeZone}
+          viewOptionsOpen={viewOptionsOpen}
+          windowMinutes={windowMinutes}
+        />
       )}
 
       {isEmpty ? (
