@@ -112,7 +112,7 @@ const ApproveDevice = () => {
       >
         <form.Field name="userCode">
           {(field) => (
-            <div className="w-44">
+            <Stack width={176}>
               <Field
                 accessibilityLabel="Code shown on the device"
                 autoCapitalize="characters"
@@ -124,7 +124,7 @@ const ApproveDevice = () => {
                 style={{ letterSpacing: 1.4, textTransform: "uppercase" }}
                 value={field.state.value}
               />
-            </div>
+            </Stack>
           )}
         </form.Field>
         <form.Subscribe selector={(state) => state.values.userCode}>
@@ -183,7 +183,7 @@ const DeviceRow = ({
       wrap
     >
       <Stack flexShrink={1} minWidth={0}>
-        <Text as="p" className="truncate" textRole="cardLabel">
+        <Text as="p" numberOfLines={1} textRole="cardLabel">
           {name}
         </Text>
         <Text as="p" textRole="hint" tone="secondary">
@@ -227,7 +227,7 @@ const PairedDevices = () => {
   return (
     <>
       <ApproveDevice />
-      <section className="border-border rounded-lg border p-4">
+      <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} padding={16} render="section">
         <Text as="h2" textRole="cardLabel">
           Your devices
         </Text>
@@ -241,7 +241,7 @@ const PairedDevices = () => {
           <EmptyState description="Approve a code above to add your first TV." title="No devices yet" />
         ) : null}
         {devices.length > 0 ? (
-          <ul className="mt-2">
+          <Stack marginTop={8} render="ul">
             {devices.map((device, index) => (
               <DeviceRow
                 busy={revoke.isPending && revoke.variables?.id === device.id}
@@ -251,9 +251,9 @@ const PairedDevices = () => {
                 onRevoke={() => revoke.mutate({ id: device.id })}
               />
             ))}
-          </ul>
+          </Stack>
         ) : null}
-      </section>
+      </Stack>
     </>
   );
 };

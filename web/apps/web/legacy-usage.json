@@ -451,19 +451,16 @@
       "rawTypeWeight": 1
     },
     "src/settings/paired-devices/paired-devices.tsx": {
-      "tailwindClasses": 8
+      "tailwindClasses": 1
     },
     "src/settings/settings-context-nav/settings-context-nav.tsx": {
       "tailwindClasses": 13
     },
     "src/settings/settings-page/settings-page.tsx": {
-      "tailwindClasses": 12
-    },
-    "src/settings/settings-save-bar-host/settings-save-bar-host.tsx": {
-      "tailwindClasses": 2
+      "tailwindClasses": 8
     },
     "src/settings/tasks-page/tasks-page.tsx": {
-      "tailwindClasses": 5
+      "tailwindClasses": 4
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 4

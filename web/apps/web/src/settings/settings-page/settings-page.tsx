@@ -179,16 +179,18 @@ const SettingsPage = ({
   };
 
   return (
-    <Stack className={cn(!embedded && "h-full")}>
+    <Stack height={embedded ? undefined : "100%"}>
       {embedded ? (
         <div>
           <Text as="h2" textRole="title">
             {title}
           </Text>
           {description && (
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              {description}
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {description}
+              </Text>
+            </Stack>
           )}
         </div>
       ) : (
@@ -196,9 +198,9 @@ const SettingsPage = ({
       )}
 
       <Stack
-        className={embedded ? "mt-6" : "overflow-auto p-6"}
+        className={embedded ? undefined : "overflow-auto"}
         gap="8"
-        {...(embedded ? {} : { flexBasis: "0%", flexGrow: 1, flexShrink: 1 })}
+        {...(embedded ? { marginTop: 24 } : { flexBasis: "0%", flexGrow: 1, flexShrink: 1, padding: 24 })}
       >
         {typeof children === "function" ? children({ liveValue, setEdit }) : children}
 
