@@ -69,37 +69,39 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           key={lead.id}
           to="/watch/$id"
           params={{ id: lead.id }}
-          className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring flex flex-wrap items-center gap-3 rounded-md border p-3.5 focus-visible:ring-2 focus-visible:outline-none"
+          className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring block rounded-md border focus-visible:ring-2 focus-visible:outline-none"
         >
-          <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
-          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
-            <Text as="span" textRole="hint" tone="secondary">
-              New channel
-            </Text>
-            <Text as="span" className="break-words" textRole="cardTitle" tone="primary">
-              <Text as="span" textRole="mono" tone="primary">
-                {lead.number}
-              </Text>{" "}
-              {lead.name}
-            </Text>
-            <Text as="span" textRole="hint" tone="secondary">
-              {addedLine(lead, viewerName, timeZone)}
-            </Text>
-          </Stack>
-          <Stack
-            align="center"
-            alignSelf="flex-start"
-            borderColor="borderControl"
-            borderRadius={8}
-            borderWidth={1}
-            height={28}
-            justify="center"
-            paddingHorizontal={10}
-            render="span"
-          >
-            <Text as="span" textRole="label" tone="primary">
-              Watch
-            </Text>
+          <Stack align="center" direction="row" gap="3" padding={14} wrap>
+            <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
+            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
+              <Text as="span" textRole="hint" tone="secondary">
+                New channel
+              </Text>
+              <Text as="span" overflowWrap="break-word" textRole="cardTitle" tone="primary">
+                <Text as="span" textRole="mono" tone="primary">
+                  {lead.number}
+                </Text>{" "}
+                {lead.name}
+              </Text>
+              <Text as="span" textRole="hint" tone="secondary">
+                {addedLine(lead, viewerName, timeZone)}
+              </Text>
+            </Stack>
+            <Stack
+              align="center"
+              alignSelf="flex-start"
+              borderColor="borderControl"
+              borderRadius={8}
+              borderWidth={1}
+              height={28}
+              justify="center"
+              paddingHorizontal={10}
+              render="span"
+            >
+              <Text as="span" textRole="label" tone="primary">
+                Watch
+              </Text>
+            </Stack>
           </Stack>
         </Link>
       ))}
@@ -126,11 +128,11 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
                   seed={seedOf(t.key)}
                 />
               </Stack>
-              <Text as="span" className="break-words" textRole="cardLabel">
+              <Text as="span" overflowWrap="break-word" textRole="cardLabel">
                 {t.name ?? t.key}
               </Text>
               {t.channels?.[0] && (
-                <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
                   {t.channels[0].name}
                 </Text>
               )}

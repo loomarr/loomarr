@@ -8,7 +8,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
 import { formatProgrammeTitle } from "@loomarr/core/guide";
-import { Action, Icon, icons, Stack, Surface, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Surface, Text } from "@loomarr/design-system";
 import { ChannelIdent, NavTabs } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
@@ -21,7 +21,6 @@ import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-chann
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRouteContent } from "@/lib/use-route-content";
-import { cn } from "@/lib/utils";
 import { type AirState, ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -210,9 +209,9 @@ const ChannelDetailLayout = () => {
 
   if (channel.error) {
     return (
-      <div className="p-6">
+      <Stack padding={24}>
         <ErrorState error={channel.error} onRetry={() => channel.refetch()} />
-      </div>
+      </Stack>
     );
   }
   const ch = unwrap(channel.data);
@@ -250,23 +249,39 @@ const ChannelDetailLayout = () => {
           target; the mock's 16 px glyph alone is under the minimum. */}
       <Stack
         align="center"
-        className="border-border border-b px-4 py-4 sm:px-6"
+        borderBottomWidth={1}
+        borderColor="borderDecorative"
+        className="px-4 sm:px-6"
         direction="row"
         gap="control"
+        paddingVertical={16}
         render="header"
         wrap
       >
-        <Link
-          to="/guide"
-          aria-label="Back to channels"
-          className="text-muted-foreground hover:text-foreground -ml-1 flex size-6 cursor-pointer items-center justify-center rounded"
+        {/* A 24 px ghost icon link; its 16 px glyph alone is under the minimum target. */}
+        <Action
+          accessibilityRole="link"
+          compact
+          icon="goBack"
+          layout="icon"
+          render={<Link to="/guide" />}
+          style={{ marginLeft: -4 }}
+          variant="ghost"
         >
-          <Icon decorative glyph={icons.goBack} size="compact" tone="inherit" />
-        </Link>
+          Back to channels
+        </Action>
         {ch.logo ? (
-          <div className="border-border bg-static-800 relative size-12 shrink-0 overflow-hidden rounded-lg border">
-            <img src={ch.logo} alt="" className="size-full object-cover" />
-          </div>
+          <Card
+            borderRadius={8}
+            flexShrink={0}
+            height={48}
+            level="elevated"
+            overflow="hidden"
+            position="relative"
+            width={48}
+          >
+            <img src={ch.logo} alt="" style={{ height: "100%", objectFit: "cover", width: "100%" }} />
+          </Card>
         ) : (
           <ChannelIdent name={ch.name} number={ch.number} size={48} />
         )}
@@ -291,9 +306,13 @@ const ChannelDetailLayout = () => {
               </Text>
             )}
             <Stack align="center" direction="row" gap="1.5" render="span">
-              <span
+              <Stack
                 aria-hidden
-                className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
+                backgroundColor={airLine.onAir ? "$guideOnAir" : "$actionDisabled"}
+                borderRadius={999}
+                height={7}
+                render="span"
+                width={7}
               />
               <Text as="span" textRole="compact" tone="secondary">
                 {airLine.text}
@@ -318,9 +337,11 @@ const ChannelDetailLayout = () => {
                 onSave={saveNumber}
               />
             ) : (
-              <Text as="span" className="px-1.5 py-0.5" textRole="data" tone="primary">
-                {channelNumber(ch.number)}
-              </Text>
+              <Stack paddingHorizontal={6} paddingVertical={2} render="span">
+                <Text as="span" textRole="data" tone="primary">
+                  {channelNumber(ch.number)}
+                </Text>
+              </Stack>
             )}
           </Stack>
         </div>
@@ -363,14 +384,21 @@ const ChannelDetailLayout = () => {
         return (
           // min-w-0 + overflow-x-auto: on a phone the four tabs scroll sideways inside this row
           // instead of widening the page past the viewport (#3404).
-          <div className="min-w-0 overflow-x-auto px-4 pt-2 sm:px-6" data-testid="channel-tab-strip">
+          <Stack
+            className="px-4 sm:px-6"
+            data-testid="channel-tab-strip"
+            flexShrink={1}
+            minWidth={0}
+            overflowX="auto"
+            paddingTop={8}
+          >
             <NavTabs
               label="Channel sections"
               linkComponent={Link}
               tabs={visible.map((s) => ({ id: s.id, label: s.label, to: s.to.replace("$id", id) }))}
               activeId={visible.find((s) => pathname.endsWith(`/${s.id}`))?.id}
             />
-          </div>
+          </Stack>
         );
       })()}
 
@@ -387,7 +415,7 @@ const ChannelDetailLayout = () => {
         ref={sectionScroller}
         style={{ position: "relative" }}
       >
-        <Stack className="max-w-detail" gap="4" marginHorizontal="auto" padding={24} width="100%">
+        <Stack gap="4" marginHorizontal="auto" maxWidth={896} padding={24} width="100%">
           <ChannelDetailProvider
             value={{
               id,

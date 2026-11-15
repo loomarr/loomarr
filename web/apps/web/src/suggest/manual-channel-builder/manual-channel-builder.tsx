@@ -201,7 +201,8 @@ const ManualChannelBuilder = ({
                 .map((item, index) => (
                   <Stack
                     align="center"
-                    className="border-border border-b last:border-b-0"
+                    borderColor="borderDecorative"
+                    borderTopWidth={index === 0 ? 0 : 1}
                     direction="row"
                     gap="inline"
                     key={provisionKey(item) || `${activeFacet.id}-${index}`}
@@ -209,12 +210,14 @@ const ManualChannelBuilder = ({
                     paddingVertical={8}
                     render="li"
                   >
-                    <Text as="span" className="min-w-0 flex-1" textRole="compact">
-                      {item.name}{" "}
-                      <Text as="span" textRole="compact" tone="secondary">
-                        {item.year}
+                    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0} render="span">
+                      <Text as="span" textRole="compact">
+                        {item.name}{" "}
+                        <Text as="span" textRole="compact" tone="secondary">
+                          {item.year}
+                        </Text>
                       </Text>
-                    </Text>
+                    </Stack>
                     {lineupBadge(item)}
                     <Action
                       accessibilityLabel={`Add ${item.name}`}
@@ -227,9 +230,11 @@ const ManualChannelBuilder = ({
                   </Stack>
                 ))}
               {activeFacet.titles.length === 0 && (
-                <Text as="li" className="px-3 py-2" textRole="compact" tone="secondary">
-                  Every title here is already in your lineup.
-                </Text>
+                <Stack paddingHorizontal={12} paddingVertical={8} render="li">
+                  <Text as="span" textRole="compact" tone="secondary">
+                    Every title here is already in your lineup.
+                  </Text>
+                </Stack>
               )}
             </Stack>
           )}
@@ -297,16 +302,19 @@ const ManualChannelBuilder = ({
         </Stack>
         <Stack borderColor="borderDecorative" borderRadius={8} borderWidth={1} render="ul">
           {lineup.length === 0 ? (
-            <Text as="li" className="px-3 py-5 text-center" textRole="compact" tone="secondary">
-              No titles yet. Pick a facet above or search for one.
-            </Text>
+            <Stack paddingHorizontal={12} paddingVertical={20} render="li">
+              <Text as="span" textAlign="center" textRole="compact" tone="secondary">
+                No titles yet. Pick a facet above or search for one.
+              </Text>
+            </Stack>
           ) : (
             lineup.map((item, index) => {
               const key = provisionKey(item) || `unkeyed-${index}`;
               return (
                 <Stack
                   align="center"
-                  className="border-border border-b last:border-b-0"
+                  borderColor="borderDecorative"
+                  borderTopWidth={index === 0 ? 0 : 1}
                   direction="row"
                   gap="inline"
                   key={key}
@@ -314,12 +322,14 @@ const ManualChannelBuilder = ({
                   paddingVertical={8}
                   render="li"
                 >
-                  <Text as="span" className="min-w-0 flex-1" textRole="compact">
-                    {item.name}{" "}
-                    <Text as="span" textRole="compact" tone="secondary">
-                      {item.year}
+                  <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0} render="span">
+                    <Text as="span" textRole="compact">
+                      {item.name}{" "}
+                      <Text as="span" textRole="compact" tone="secondary">
+                        {item.year}
+                      </Text>
                     </Text>
-                  </Text>
+                  </Stack>
                   {lineupBadge(item)}
                   <Action
                     icon="close"

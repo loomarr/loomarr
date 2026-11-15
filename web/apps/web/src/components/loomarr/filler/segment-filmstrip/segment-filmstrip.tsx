@@ -1,5 +1,5 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
-import { Card, MediaTile, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Card, Grid, type GridTrack, MediaTile, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useId } from "react";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { languageName } from "@/lib/languages";
@@ -43,11 +43,10 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
   if (positiveSpans.length === 0 || reelEnd <= 0) return null;
 
   const items = timelineItems(positiveSpans);
-  const columns = items
-    .map(
-      (item) => `minmax(${item.kind === "segment" ? "6rem" : "1.5rem"}, ${Math.max(1, item.durationMs)}fr)`,
-    )
-    .join(" ");
+  const columns = items.map(
+    (item): GridTrack =>
+      `minmax(${item.kind === "segment" ? "6rem" : "1.5rem"}, ${Math.max(1, item.durationMs)}fr)`,
+  );
 
   return (
     <Card
@@ -73,15 +72,20 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
         </Text>
       </Stack>
 
-      <section className="overflow-x-auto pb-2" aria-label="Detected clip timeline">
-        <ul
-          className="grid h-24 list-none gap-1"
-          style={{
-            gridTemplateColumns: columns,
-            gridTemplateRows: "minmax(0, 1fr)",
-            minWidth: `${Math.max(items.length * 96, 480)}px`,
-          }}
+      <Stack
+        aria-label="Detected clip timeline"
+        paddingBottom={8}
+        render="section"
+        style={{ overflowX: "auto" }}
+      >
+        <Grid
           aria-label="Detected clips, in order"
+          columns={columns}
+          gap="1"
+          height={96}
+          minWidth={Math.max(items.length * 96, 480)}
+          render="ul"
+          style={{ gridTemplateRows: "minmax(0, 1fr)" }}
         >
           {items.map((item, itemIndex) => {
             if (item.kind === "gap") {
@@ -100,7 +104,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
             const tooltipId = `${tooltipIdPrefix}-clip-${itemIndex}`;
             const tags = (item.tags ?? []).slice(0, 3);
             return (
-              <li key={item.key} className="min-h-0 min-w-0">
+              <Stack key={item.key} minHeight={0} minWidth={0} render="li">
                 <Tooltip
                   id={tooltipId}
                   side="bottom"
@@ -180,11 +184,11 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                     </span>
                   </MediaTile>
                 </Tooltip>
-              </li>
+              </Stack>
             );
           })}
-        </ul>
-      </section>
+        </Grid>
+      </Stack>
     </Card>
   );
 };
