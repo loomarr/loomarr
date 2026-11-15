@@ -139,7 +139,7 @@
       "tailwindClasses": 4
     },
     "src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 5
     },
     "src/components/loomarr/filler/pod-timeline/pod-timeline.tsx": {
       "tailwindClasses": 7
@@ -314,16 +314,13 @@
       "tailwindClasses": 19
     },
     "src/filler/clip-details/clip-details.tsx": {
-      "tailwindClasses": 10
+      "tailwindClasses": 4
     },
     "src/filler/confirm-split-dialog/confirm-split-dialog.tsx": {
       "tailwindClasses": 4
     },
     "src/filler/filler-catalog/catalog-toolbar/catalog-toolbar.tsx": {
       "tailwindClasses": 12
-    },
-    "src/filler/filler-catalog/catalog-view-toggle/catalog-view-toggle.tsx": {
-      "tailwindClasses": 4
     },
     "src/filler/filler-catalog/clip-inspector-sheet/clip-inspector-sheet.tsx": {
       "tailwindClasses": 2

@@ -133,19 +133,29 @@ const ClipDetails = ({ clip, onEdit }: { clip: ClipDTO; onEdit?: () => void }) =
             <Text as="dt" textRole="compact" tone="secondary">
               Source
             </Text>
-            <Text
-              as="dd"
-              className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
-              overflowWrap="break-word"
-              textRole="compact"
+            <Stack
+              align="center"
+              columnGap="3"
+              direction="row"
+              flexShrink={1}
+              minWidth={0}
+              render="dd"
+              rowGap="1"
+              wrap
             >
-              {sourceLabel ? <span>{sourceLabel}</span> : null}
-              {sourceURL ? (
-                <TextLink external href={sourceURL}>
-                  View original
-                </TextLink>
+              {sourceLabel ? (
+                <Text as="span" overflowWrap="break-word" textRole="compact">
+                  {sourceLabel}
+                </Text>
               ) : null}
-            </Text>
+              {sourceURL ? (
+                <Text as="span" overflowWrap="break-word" textRole="compact">
+                  <TextLink external href={sourceURL}>
+                    View original
+                  </TextLink>
+                </Text>
+              ) : null}
+            </Stack>
           </>
         ) : null}
       </Grid>
