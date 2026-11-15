@@ -34,14 +34,14 @@ const Stat = ({
   note: string;
   tone?: "warn";
 }) => (
-  <Stack className="min-w-0" flexShrink={1} gap="0.5">
+  <Stack flexShrink={1} gap="0.5" minWidth={0}>
     <Text as="span" textRole="metadata">
       {label}
     </Text>
     {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
     <Text
       as="span"
-      className="tabular-nums"
+      fontVariant={["tabular-nums"]}
       strong
       textRole="headline"
       tone={tone === "warn" ? "warning" : "primary"}

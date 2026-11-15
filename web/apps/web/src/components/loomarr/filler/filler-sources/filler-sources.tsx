@@ -368,9 +368,11 @@ const FillerSources = ({
                   renderRow={row}
                 />
               ) : (
-                <Text as="p" className="mt-3" textRole="hint" tone="secondary">
-                  Nothing added yet.
-                </Text>
+                <Stack marginTop={12}>
+                  <Text as="p" textRole="hint" tone="secondary">
+                    Nothing added yet.
+                  </Text>
+                </Stack>
               )}
             </div>
           </Stack>

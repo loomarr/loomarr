@@ -115,7 +115,7 @@ const PodTimeline = ({
                 width="100%"
               >
                 <Stack minWidth={0} paddingHorizontal={4} render="span">
-                  <Text as="span" className="truncate" textRole="caption" tone="primary">
+                  <Text as="span" numberOfLines={1} textRole="caption" tone="primary">
                     {segmentLabel(entry)}
                   </Text>
                 </Stack>
@@ -131,7 +131,7 @@ const PodTimeline = ({
                 render="span"
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+                <Text aria-hidden as="span" numberOfLines={1} textRole="caption" tone="primary">
                   {segmentLabel(entry)}
                 </Text>
               </Stack>

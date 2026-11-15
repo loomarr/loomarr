@@ -194,7 +194,7 @@ const SourceSearch = ({
                   <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
-                    <Text as="div" className="truncate" textRole="compact">
+                    <Text as="div" numberOfLines={1} textRole="compact">
                       <a href={clip.url} target="_blank" rel="noreferrer" className="hover:underline">
                         {clip.title || clip.id}
                       </a>

@@ -146,7 +146,7 @@ const PullCard = ({
                   there, what deduplicates, and what the splitter makes of a compilation — a
                   number presented as exact becomes "Loomarr said 40 and downloaded 12". */}
               {row.estimateClips > 0 && (
-                <Text as="span" className="tabular-nums" textRole="mono">
+                <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
                   ~{row.estimateClips} clips
                 </Text>
               )}
@@ -165,7 +165,7 @@ const PullCard = ({
 
       {(pull.rejected?.length ?? 0) > 0 && (
         <details className="border-border rounded-md border px-3 py-2">
-          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
+          <Text as="summary" cursor="pointer" textRole="compact" tone="secondary">
             {pluralize(pull.rejected?.length ?? 0, "other candidate")} considered and excluded
           </Text>
           <Stack gap="1" marginTop={8} render="ul">
@@ -185,7 +185,7 @@ const PullCard = ({
 
       {skippedSources.length > 0 && (
         <details className="border-border rounded-md border px-3 py-2">
-          <Text as="summary" className="cursor-pointer" textRole="compact" tone="secondary">
+          <Text as="summary" cursor="pointer" textRole="compact" tone="secondary">
             {pluralize(skippedSources.length, "registered source")} not searched
           </Text>
           <Stack gap="1" marginTop={8} render="ul">
