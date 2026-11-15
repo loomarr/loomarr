@@ -48,7 +48,23 @@ describe("ClipRow", () => {
     const { rerender } = render(<ClipRow clip={{ ...base, tagged: false }} />);
     expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
     rerender(<ClipRow clip={{ ...base, needsDetails: true }} />);
-    expect(screen.getByText("Needs details").closest(".md\\:hidden")).not.toBeNull();
+    expect(screen.getByText("Needs details")).toBeInTheDocument();
+  });
+
+  // The phone-only line is a Stack hidden from `md` (display: none).
+  it("leaves the needs-details line off the row from the tablet width", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      addEventListener: vi.fn(),
+      matches: true,
+      media: query,
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      render(<ClipRow clip={{ ...base, needsDetails: true }} />);
+      expect(screen.getByText("Needs details")).not.toBeVisible();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   // The select box is @loomarr/ui's ClipSelect, whose 24px+ target (WCAG 2.2, 2.5.8) is pinned in

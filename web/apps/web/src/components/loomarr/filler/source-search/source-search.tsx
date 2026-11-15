@@ -166,9 +166,11 @@ const SourceSearch = ({
                 <Stack
                   align="center"
                   key={clip.id}
+                  borderColor="$borderDecorative"
+                  borderRadius={8}
+                  borderWidth={1}
                   paddingHorizontal={12}
                   paddingVertical={8}
-                  className="border-border rounded-lg border"
                   data-clip-id={clip.id}
                   direction="row"
                   gap="control"
@@ -189,7 +191,7 @@ const SourceSearch = ({
                     />
                   )}
 
-                  <div className="min-w-0 flex-1">
+                  <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
                     <Text as="div" className="truncate" textRole="compact">
@@ -206,7 +208,7 @@ const SourceSearch = ({
                         {[...parts, ...(loadingSet.has(clip.id) ? ["checking…"] : [])].join(" · ")}
                       </Text>
                     )}
-                  </div>
+                  </Stack>
 
                   <Stack align="center" direction="row" flexShrink={0} gap="1" marginLeft="auto">
                     {onPreview && (
