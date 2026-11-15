@@ -1,7 +1,7 @@
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { SourceAutomaticDownloadsInputMode } from "@loomarr/api/models/sourceAutomaticDownloadsInputMode";
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { useStore } from "@tanstack/react-form";
 import { type ComponentRef, useRef, useState } from "react";
@@ -143,13 +143,17 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         <Text as="p" textRole="cardLabel">
           Automatic downloads
         </Text>
-        <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-          {automaticDownloads.summary}
-        </Text>
-        {automaticDownloads.nextCheckAt && (
-          <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-            Next automatic check {formatRelative(automaticDownloads.nextCheckAt)}
+        <Stack marginTop={4}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {automaticDownloads.summary}
           </Text>
+        </Stack>
+        {automaticDownloads.nextCheckAt && (
+          <Stack marginTop={4}>
+            <Text as="p" textRole="hint" tone="secondary">
+              Next automatic check {formatRelative(automaticDownloads.nextCheckAt)}
+            </Text>
+          </Stack>
         )}
       </div>
       <div ref={modeField}>
@@ -168,7 +172,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         />
       </div>
       {mode === SourceAutomaticDownloadsInputMode.custom && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Grid columns={{ base: 1, sm: 2 }} gap="3">
           <Stack gap="1.5">
             <Text as="span" textRole="compact">
               Look for new clips
@@ -198,7 +202,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
             />
           </Stack>
           {editingCustomSchedule && (
-            <Stack className="sm:col-span-2" gap="1.5">
+            <GridItem gap={6} span={{ base: 1, sm: "full" }}>
               <Text as="span" textRole="compact">
                 Custom schedule
               </Text>
@@ -211,7 +215,7 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                     setEverySeconds(downloadIntervalSeconds(Math.min(amount, maximum), interval.unit));
                   }}
                 />
-                <div className="w-28 shrink-0">
+                <Stack flexShrink={0} width={112}>
                   <BrowserSelectControl
                     appearance="field"
                     label="Source check interval unit"
@@ -227,11 +231,11 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
                     options={UNIT_OPTIONS}
                     value={interval.unit}
                   />
-                </div>
+                </Stack>
               </Stack>
-            </Stack>
+            </GridItem>
           )}
-        </div>
+        </Grid>
       )}
       <Action
         disabled={actions.updating || !changed}
@@ -243,11 +247,17 @@ const AutomaticDownloadsForm = ({ source, actions }: AutomaticDownloadsFormProps
         {actions.updatingSourceID === source.id ? "Saving…" : "Save automatic downloads"}
       </Action>
       {saveError && (
-        <div role="alert" className="bg-destructive/10 rounded-md px-3 py-2">
+        <Stack
+          borderRadius={8}
+          className="bg-destructive/10"
+          paddingHorizontal={12}
+          paddingVertical={8}
+          role="alert"
+        >
           <Text as="p" textRole="compact" tone="danger">
             {saveError}
           </Text>
-        </div>
+        </Stack>
       )}
     </Stack>
   );

@@ -1,9 +1,4 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
-import type { EventView } from "@loomarr/api/models/eventView";
-import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEventsLevel";
-import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
-import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
-import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
 import {
   Action,
   Card,
@@ -16,7 +11,6 @@ import {
   PressableRow,
   Stack,
   StatusDot,
-  type StatusTone,
   Surface,
   Text,
   Tooltip,
@@ -26,7 +20,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { useCopied } from "@/lib/use-copied";
 import {
   type ApplicationFilters,
   type EventOrder,
@@ -35,15 +28,13 @@ import {
   eventSources,
   sourceNames,
 } from "../application-filters";
-import { CopyValue } from "../copy-value";
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
+import { EventDetail } from "./event-detail";
+import { fallbackMessage, formatTime, levelLabel, levelTone, sourceLabel } from "./event-format";
+import { eventParams } from "./event-params";
+import { VerboseCaptureControl } from "./verbose-capture-control";
 
-const RANGE_MS: Record<Exclude<EventRange, "all">, number> = {
-  "1h": 3_600_000,
-  "6h": 21_600_000,
-  "24h": 86_400_000,
-};
 const VIRTUAL_VIEWPORT = { width: 960, height: 520 };
 
 const observeVirtualRect = (
@@ -64,253 +55,6 @@ const observeVirtualRect = (
   const observer = new ResizeObserver(report);
   observer.observe(element);
   return () => observer.disconnect();
-};
-
-const formatTime = (millis: number) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(millis));
-
-const levelTone = (level: EventView["level"]): StatusTone => {
-  if (level === "error") return "error";
-  if (level === "warn") return "warn";
-  if (level === "info") return "ok";
-  return "off";
-};
-
-const levelLabel = (level: EventView["level"]) => {
-  if (level === "warn") return "Warning";
-  return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
-};
-
-const sourceLabel = (source: EventView["source"]) => sourceNames[source];
-
-const fallbackMessage = (event: EventView) =>
-  event.event
-    .split(/[._]/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-
-const eventParams = (
-  filters: ApplicationFilters,
-  cursor?: string,
-  now = Date.now(),
-): ListDiagnosticEventsParams => {
-  const to = now;
-  // Zero asks the API to apply its one-hour default, so one millisecond after the epoch is the
-  // explicit lower bound for every retained Loomarr event.
-  const timeWindow = filters.range === "all" ? { from: 1, to } : { from: to - RANGE_MS[filters.range], to };
-  return {
-    ...timeWindow,
-    limit: 50,
-    order: ListDiagnosticEventsOrder[filters.order],
-    ...(cursor ? { cursor } : {}),
-    ...(filters.level === "all" ? {} : { level: ListDiagnosticEventsLevel[filters.level] }),
-    ...(filters.source === "all" ? {} : { source: ListDiagnosticEventsSource[filters.source] }),
-    ...(filters.subsystem.trim() ? { subsystem: filters.subsystem.trim() } : {}),
-    ...(filters.text.trim() ? { text: filters.text.trim() } : {}),
-    ...(filters.requestId ? { requestId: filters.requestId } : {}),
-    ...(filters.playbackSessionId ? { playbackSessionId: filters.playbackSessionId } : {}),
-    ...(filters.channelId ? { channelId: filters.channelId } : {}),
-    ...(filters.scheduleBlockId ? { scheduleBlockId: filters.scheduleBlockId } : {}),
-    ...(filters.jobId ? { jobId: filters.jobId } : {}),
-    ...(filters.processRunId ? { processRunId: filters.processRunId } : {}),
-  };
-};
-
-const EventDetail = ({
-  event,
-  onOpenProcess,
-  onOpenRelated,
-}: {
-  event: EventView;
-  onOpenProcess?: (id: string) => void;
-  onOpenRelated?: (kind: "channel" | "job", id: string) => void;
-}) => {
-  const { copied, copy } = useCopied();
-  const correlations = [
-    ["Request id", event.requestId],
-    ["Playback session", event.playbackSessionId],
-    ["Channel", event.channelId],
-    ["Schedule block", event.scheduleBlockId],
-    ["Job", event.jobId],
-    ["Process run", event.processRunId],
-    ["Instance", event.instanceId],
-  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
-  const copyLog = () => void copy(JSON.stringify(event, null, 2));
-  return (
-    <Stack className="bg-muted/20" gap="4" padding={16}>
-      <Stack align="start" direction="row" gap="control" justify="between">
-        <Stack gap="2">
-          <Text as="span" textRole="hint" tone="secondary">
-            <Stack align="center" direction="row" gap="2" render="span">
-              <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-              {levelLabel(event.level)} · {sourceLabel(event.source)}
-            </Stack>
-          </Text>
-          <Stack gap="1">
-            <Text as="h3" textRole="headline">
-              {event.message || fallbackMessage(event)}
-            </Text>
-            <Text as="p" textRole="hint" tone="secondary">
-              {formatTime(event.occurredAt)}
-              {event.subsystem ? ` · ${event.subsystem}` : ""}
-            </Text>
-          </Stack>
-        </Stack>
-        <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
-          <Action
-            icon={copied ? "success" : "copy"}
-            layout="icon"
-            onPress={copyLog}
-            style={{ flexShrink: 0 }}
-            variant="ghost"
-          >
-            {copied ? "Copied log details" : "Copy log details"}
-          </Action>
-        </Tooltip>
-      </Stack>
-      <Stack direction="row" gap="inline" wrap>
-        {event.processRunId && onOpenProcess && (
-          <Action icon="process" onPress={() => onOpenProcess(event.processRunId ?? "")} variant="outline">
-            Open process output
-          </Action>
-        )}
-        {event.channelId && onOpenRelated && (
-          <Action onPress={() => onOpenRelated("channel", event.channelId ?? "")} variant="outline">
-            Open related Channel
-          </Action>
-        )}
-        {event.jobId && onOpenRelated && (
-          <Action onPress={() => onOpenRelated("job", event.jobId ?? "")} variant="outline">
-            Open related Job
-          </Action>
-        )}
-      </Stack>
-      <Card padding={12} render="details">
-        <Text as="summary" cursor="pointer" textRole="cardLabel">
-          Technical details
-        </Text>
-        <Stack gap="3" marginTop={12}>
-          <Text as="p" textRole="mono">
-            {event.event}
-          </Text>
-          {correlations.length > 0 && (
-            <Stack gap="1">
-              {correlations.map(([label, value]) => (
-                <Stack align="center" direction="row" flexShrink={1} gap="1" key={label} minWidth={0}>
-                  <Stack flexShrink={0} render="span" width={112}>
-                    <Text as="span" textRole="hint" tone="secondary">
-                      {label}
-                    </Text>
-                  </Stack>
-                  <CopyValue label={label} value={value} />
-                </Stack>
-              ))}
-            </Stack>
-          )}
-          {Object.keys(event.attributes).length === 0 ? (
-            <Text as="p" textRole="hint" tone="secondary">
-              No structured attributes.
-            </Text>
-          ) : (
-            <Card maxHeight={224} overflow="auto" padding={12}>
-              <Text as="pre" textRole="mono" tone="primary">
-                {JSON.stringify(event.attributes, null, 2)}
-              </Text>
-            </Card>
-          )}
-        </Stack>
-      </Card>
-    </Stack>
-  );
-};
-
-const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => {
-  const [duration, setDuration] = useState("5");
-  const query = diagnosticsApi.useGetDiagnosticVerboseCapture({
-    query: { retry: false, refetchInterval: 5_000 },
-  });
-  const start = diagnosticsApi.useStartDiagnosticVerboseCapture();
-  const stop = diagnosticsApi.useStopDiagnosticVerboseCapture();
-  const capture = query.data?.status === 200 ? query.data.data : undefined;
-  const busy = start.isPending || stop.isPending;
-  const startCapture = async () => {
-    await start.mutateAsync({
-      data: {
-        durationMinutes: Number(duration),
-        ...(filters.subsystem.trim() ? { subsystem: filters.subsystem.trim() } : {}),
-        ...(filters.channelId ? { channelId: filters.channelId } : {}),
-      },
-    });
-    await query.refetch();
-  };
-  const stopCapture = async () => {
-    await stop.mutateAsync();
-    await query.refetch();
-  };
-  return (
-    <Card aria-labelledby="verbose-capture-title" gap={8} padding={12} render="section">
-      <Stack align="center" direction="row" gap="control" wrap>
-        <Stack flexBasis="0%" flexGrow={1} minWidth={256}>
-          <Text as="h3" id="verbose-capture-title" textRole="cardLabel">
-            Verbose capture
-          </Text>
-          <Text as="p" textRole="hint" tone="secondary">
-            Temporarily retain debug events
-            {filters.subsystem.trim() ? ` for ${filters.subsystem.trim()}` : ""}
-            {filters.channelId ? ` on Channel ${filters.channelId}` : ""}. The same redaction, queue, and
-            retention limits still apply.
-          </Text>
-        </Stack>
-        {capture?.active ? (
-          <>
-            <Text as="span" textRole="compact">
-              <Stack align="center" direction="row" gap="2" render="span">
-                <Icon decorative glyph={icons.capture} size="compact" tone="warning" />
-                Active until {formatTime(capture.endsAt ?? Date.now())}
-              </Stack>
-            </Text>
-            <Action disabled={busy} icon="stop" onPress={() => void stopCapture()} variant="outline">
-              Stop
-            </Action>
-          </>
-        ) : (
-          <>
-            <CompactSelect
-              label="Verbose capture duration"
-              onValueChange={setDuration}
-              options={[
-                { value: "1", label: "1 minute" },
-                { value: "5", label: "5 minutes" },
-                { value: "10", label: "10 minutes" },
-                { value: "15", label: "15 minutes" },
-              ]}
-              value={duration}
-              width={128}
-            />
-            <Action
-              disabled={busy || query.isError}
-              icon="capture"
-              onPress={() => void startCapture()}
-              variant="outline"
-            >
-              Start capture
-            </Action>
-          </>
-        )}
-      </Stack>
-      {query.isError && (
-        <Text as="p" textRole="hint" tone="danger">
-          Verbose capture is unavailable.
-        </Text>
-      )}
-      {(start.isError || stop.isError) && (
-        <Text as="p" textRole="hint" tone="danger">
-          The capture control could not be updated.
-        </Text>
-      )}
-    </Card>
-  );
 };
 
 const ApplicationDiagnostics = ({
@@ -630,9 +374,10 @@ const ApplicationDiagnostics = ({
                       >
                         <Grid
                           align={{ base: "stretch", sm: "start" }}
-                          className="w-full text-left"
+                          className="text-left"
                           columns={{ base: 1, sm: ["7rem", "minmax(0,1fr)", "8rem"] }}
                           gap="2"
+                          width="100%"
                         >
                           <Text as="span" textRole="hint" tone="primary">
                             <Stack align="center" direction="row" gap="2" render="span">

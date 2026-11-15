@@ -325,17 +325,19 @@ const FillerSources = ({
             paddingTop={20}
             render="section"
           >
-            <div className="flex flex-wrap items-start justify-between gap-4 sm:flex-nowrap">
-              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+            <Stack align={{ base: "stretch", sm: "start" }} direction={{ base: "column", sm: "row" }} gap="4">
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
                 <Text as="h3" id={`provider-${provider.kind}`} textRole="cardLabel" tone="primary">
                   {provider.target}
                 </Text>
-                <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-                  {!provider.enabled
-                    ? `${provider.target} is paused. Sources and clips stay saved.`
-                    : descriptions.find((description) => description.id === provider.kind)?.blurb}
-                </Text>
-              </div>
+                <Stack marginTop={4}>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    {!provider.enabled
+                      ? `${provider.target} is paused. Sources and clips stay saved.`
+                      : descriptions.find((description) => description.id === provider.kind)?.blurb}
+                  </Text>
+                </Stack>
+              </Stack>
               <Stack align="center" direction="row" gap="3" marginLeft="auto">
                 <Text as="span" textRole="hint" tone="secondary">
                   {sourceSummary(children)}
@@ -352,7 +354,7 @@ const FillerSources = ({
                   />
                 )}
               </Stack>
-            </div>
+            </Stack>
 
             {/* Folded, not unmounted: a paused provider's children keep their saved switches. */}
             <div hidden={!providerBodyOpen}>
@@ -366,9 +368,11 @@ const FillerSources = ({
                   renderRow={row}
                 />
               ) : (
-                <Text as="p" className="mt-3" textRole="hint" tone="secondary">
-                  Nothing added yet.
-                </Text>
+                <Stack marginTop={12}>
+                  <Text as="p" textRole="hint" tone="secondary">
+                    Nothing added yet.
+                  </Text>
+                </Stack>
               )}
             </div>
           </Stack>

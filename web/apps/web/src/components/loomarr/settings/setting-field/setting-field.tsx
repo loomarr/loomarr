@@ -75,10 +75,14 @@ const WithUnit = ({ unit, children }: { unit: string; children: ReactNode }) => 
     {children}
     <Stack
       align="center"
-      className="border-input h-10 w-16 rounded-md border"
+      borderColor="$borderControl"
+      borderRadius={6}
+      borderWidth={1}
       flexShrink={0}
+      height={40}
       justify="center"
       render="span"
+      width={64}
     >
       <Text as="span" textRole="compact" tone="secondary">
         {unit}
@@ -343,7 +347,7 @@ const SettingField = ({
   // render its value, in a table cell least of all.
   if (compact) {
     return (
-      <div className={cn("min-w-0", className)}>
+      <Stack className={className} minWidth={0}>
         {secretLocked ? (
           <Text as="span" textRole="mono">
             {entry.preview ?? "stored"}
@@ -351,7 +355,7 @@ const SettingField = ({
         ) : (
           control()
         )}
-      </div>
+      </Stack>
     );
   }
 
@@ -423,13 +427,19 @@ const SettingField = ({
         <Stack align="center" direction="row" gap="inline">
           <Stack
             align="center"
-            className="border-input text-muted-foreground h-9 rounded-md border px-3 font-mono text-sm"
+            borderColor="$borderControl"
+            borderRadius={6}
+            borderWidth={1}
             direction="row"
             flexBasis="0%"
             flexGrow={1}
+            height={36}
+            paddingHorizontal={12}
             render="span"
           >
-            {entry.preview ?? "stored"}
+            <Text as="span" textRole="mono" tone="secondary">
+              {entry.preview ?? "stored"}
+            </Text>
           </Stack>
           <Action
             onPress={() => {
@@ -469,7 +479,7 @@ const SettingField = ({
           className={cn(inlineSwitch && "col-span-2")}
         >
           <Stack align="start" direction="row" gap="1" render="span">
-            <Stack className="mt-0.5" direction="row" render="span">
+            <Stack direction="row" marginTop={2} render="span">
               <Icon decorative glyph={icons.alert} size="compact" tone="inherit" />
             </Stack>
             {disabledReason}

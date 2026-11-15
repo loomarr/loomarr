@@ -7,6 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Grid,
   Icon,
   icons,
   Stack,
@@ -125,9 +126,9 @@ const ImportDialog = ({
           {!available ? (
             <Stack
               align="start"
-              className="overflow-auto"
               flexShrink={1}
               gap="4"
+              overflow="auto"
               paddingBottom={24}
               paddingHorizontal={24}
             >
@@ -147,15 +148,15 @@ const ImportDialog = ({
           ) : (
             <>
               <Stack
-                className="overflow-auto"
                 flexBasis="0%"
                 flexGrow={1}
                 flexShrink={1}
                 gap="4"
                 minHeight={0}
+                overflow="auto"
                 paddingHorizontal={24}
               >
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <Grid columns={{ base: 1, sm: ["minmax(0,1fr)", "12rem"] }} gap="3">
                   <SearchField
                     label="Search accounts"
                     onChangeText={setQuery}
@@ -169,7 +170,7 @@ const ImportDialog = ({
                     options={CANDIDATE_FILTERS}
                     value={filter}
                   />
-                </div>
+                </Grid>
 
                 {mutationError != null && <ErrorState error={mutationError} className="p-4" />}
 
@@ -267,7 +268,7 @@ const ImportDialog = ({
                 )}
 
                 <Card flexShrink={0} padding={16}>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <Grid columns={{ base: 1, sm: 2 }} gap="3">
                     <Stack gap="1">
                       <Stack align="center" direction="row" gap="inline" render="p">
                         <Icon decorative glyph={icons.verified} size="compact" tone="success" />
@@ -299,7 +300,7 @@ const ImportDialog = ({
                         </Action>
                       </Stack>
                     </Stack>
-                  </div>
+                  </Grid>
                 </Card>
               </Stack>
 

@@ -1,18 +1,11 @@
 import { formatGuideTime } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
-import {
-  createPairingCredentialStore,
-  createPairingTransport,
-  PairingSession,
-  validatePairingCredential,
-} from "@loomarr/core/pairing";
-import type { RequestsController } from "@loomarr/core/requests";
+import { createPairingTransport, PairingSession, validatePairingCredential } from "@loomarr/core/pairing";
 import { BottomSheet, PHONE_GUTTER } from "@loomarr/design-system";
-import { type HapticFeedback, useHaptic } from "@loomarr/design-system/haptics";
+import { useHaptic } from "@loomarr/design-system/haptics";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import { useAppForeground, usePairingBreadcrumbs, useShellCrashReporting } from "@loomarr/native-app";
 import {
-  createLastChannelStore,
   type PairedClient,
   phoneClientOptions,
   retryPairedClient,
@@ -30,7 +23,6 @@ import {
   PairedNativeImage,
   useShellTune,
 } from "@loomarr/player/native";
-import type { ApprovalBrowser } from "@loomarr/ui";
 import {
   ClientShell,
   DeviceSheet,
@@ -56,55 +48,17 @@ import {
 } from "@loomarr/ui";
 import Constants from "expo-constants";
 import * as ScreenOrientation from "expo-screen-orientation";
-import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import * as WebBrowser from "expo-web-browser";
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BackHandler, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import {
+  approvalBrowser,
+  credentialStore,
+  deviceStorage,
+  lastChannel,
+  withDecisionHaptic,
+} from "../src/device-services";
 import { nativeApp } from "../src/native-app";
-
-const credentialStore = createPairingCredentialStore({
-  deleteItem: SecureStore.deleteItemAsync,
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-});
-
-// What the device remembers: the channel last watched (#23), which the Guide starts on and Watching
-// tunes first, and the viewer's subtitles.
-const deviceStorage = { getItem: SecureStore.getItemAsync, setItem: SecureStore.setItemAsync };
-const lastChannel = createLastChannelStore(deviceStorage);
-
-// The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
-// SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
-// ⚠ Android has no dismissBrowser: Expo returns undefined there, not a promise, and the `.catch` on
-// it threw as every Android phone finished pairing. The viewer leaves the Custom Tab themselves.
-const approvalBrowser: ApprovalBrowser = {
-  close: () => void Promise.resolve(WebBrowser.dismissBrowser()).catch(() => undefined),
-  name: Platform.OS === "ios" ? "Safari" : "your browser",
-  open: (url) => {
-    void WebBrowser.openBrowserAsync(url, {
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-    });
-  },
-};
-// A request decided (approved or denied) taps success; a refused one stays silent.
-const withDecisionHaptic = (controller: RequestsController, haptic: HapticFeedback): RequestsController => {
-  const tapWhenDone =
-    <Args extends unknown[], Result extends { kind: string }>(decide: (...args: Args) => Promise<Result>) =>
-    async (...args: Args) => {
-      const result = await decide(...args);
-      if (result.kind === "done") haptic.success();
-      return result;
-    };
-  return {
-    ...controller,
-    approve: tapWhenDone(controller.approve),
-    approveFillerPull: tapWhenDone(controller.approveFillerPull),
-    approveFillerPulls: tapWhenDone(controller.approveFillerPulls),
-    approveMany: tapWhenDone(controller.approveMany),
-    deny: tapWhenDone(controller.deny),
-  };
-};
 
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
 const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";

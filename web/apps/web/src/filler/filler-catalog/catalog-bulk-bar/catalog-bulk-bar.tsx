@@ -105,11 +105,11 @@ const CatalogBulkBar = ({ selected, onClear }: CatalogBulkBarProps) => {
           </Action>
         </Tooltip>
 
-        <div className="ml-auto">
+        <Stack marginLeft="auto">
           <Action onPress={onClear} variant="ghost">
             Clear
           </Action>
-        </div>
+        </Stack>
       </Stack>
     </Card>
   );

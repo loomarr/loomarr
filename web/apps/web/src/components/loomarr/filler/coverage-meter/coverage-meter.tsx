@@ -172,7 +172,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 </Stack>
                 {/* tabular-nums so the counts do not jitter as the catalog changes. */}
                 <Stack flexShrink={0} render="span" width={40}>
-                  <Text as="span" className="tabular-nums" textAlign="right" textRole="mono">
+                  <Text as="span" fontVariant={["tabular-nums"]} textAlign="right" textRole="mono">
                     {rung.clips}
                   </Text>
                 </Stack>
@@ -207,7 +207,7 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
                 <Stack flexShrink={0} render="span">
                   <Text
                     as="span"
-                    className="tabular-nums"
+                    fontVariant={["tabular-nums"]}
                     // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
                     // thing to act on. The non-zero rows keep the role's quiet colour so the eye
                     // lands on the one row that matters rather than scanning six equal-weight

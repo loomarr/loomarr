@@ -8,6 +8,7 @@ import {
   Action,
   Badge,
   Card,
+  Grid,
   SectionHeader,
   Stack,
   StatusDot,
@@ -19,7 +20,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 
 const PAGE = 3;
@@ -30,17 +30,18 @@ const POSTERS = 4;
 const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps) => {
   const nameId = `idea-${idea.id}`;
   return (
-    <article
+    <Card
       aria-labelledby={nameId}
-      className={cn(
-        "bg-static-900 flex min-w-0 flex-col overflow-hidden rounded-lg border",
-        idea.requested ? "border-suggest-tint-40" : "border-static-700",
-      )}
+      borderRadius={8}
+      minWidth={0}
+      overflow="hidden"
+      render="article"
+      tone={idea.requested ? "suggest" : undefined}
     >
       {/* Poster slots. Titles carry no artwork yet, so they're the mock's empty tiles: at a quarter
           of a card the artwork frame's "No artwork" label doesn't fit, and the text below says
           what the idea is. */}
-      <div aria-hidden className="grid grid-cols-4 gap-1.5 px-3 pt-3">
+      <Grid aria-hidden columns={4} gap="1.5" paddingHorizontal={12} paddingTop={12}>
         {idea.keys.slice(0, POSTERS).map((key) => (
           <Stack
             aspectRatio={2 / 3}
@@ -51,7 +52,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
             key={key}
           />
         ))}
-      </div>
+      </Grid>
       <Stack gap="1" paddingHorizontal={16} paddingTop={14}>
         <Text as="span" textRole="hint" tone="secondary">
           {ideaReason(idea, empty, nowMs)}
@@ -105,7 +106,7 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
           </Stack>
         )}
       </Stack>
-    </article>
+    </Card>
   );
 };
 

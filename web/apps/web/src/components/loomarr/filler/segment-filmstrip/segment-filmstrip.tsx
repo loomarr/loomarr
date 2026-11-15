@@ -67,7 +67,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
             Choose a clip to preview it and make changes.
           </Text>
         </div>
-        <Text as="span" className="tabular-nums" textRole="mono">
+        <Text as="span" fontVariant={["tabular-nums"]} textRole="mono">
           {segments.length} clips · {formatMmSs(reelEnd)}
         </Text>
       </Stack>
@@ -113,10 +113,10 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                   content={
                     <Stack gap="2">
                       <Stack gap="0.5">
-                        <Text as="p" className="truncate" textRole="cardLabel" tone="primary">
+                        <Text as="p" numberOfLines={1} textRole="cardLabel" tone="primary">
                           {name}
                         </Text>
-                        <Text as="p" className="tabular-nums" textRole="mono" tone="secondary">
+                        <Text as="p" fontVariant={["tabular-nums"]} textRole="mono" tone="secondary">
                           {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
                           {formatClipDuration(item.durationMs)}
                         </Text>
@@ -175,7 +175,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                       </Stack>
                     )}
                     <span className="from-static-950 via-static-950/85 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent px-2 pt-5 pb-1.5">
-                      <Text as="span" className="block truncate" textRole="label" tone="primary">
+                      <Text as="span" className="block" numberOfLines={1} textRole="label" tone="primary">
                         {name}
                       </Text>
                       <span className="text-static-300 font-mono text-[9px] tabular-nums">

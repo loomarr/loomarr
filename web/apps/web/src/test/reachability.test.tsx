@@ -690,7 +690,9 @@ describe("feature-gated panels mount when their flag is on", () => {
     await screen.findByRole("navigation", { name: /channel sections/i });
     expect(screen.getByTestId("channel-section-scroller").style.position).toBe("relative");
     const strip = screen.getByTestId("channel-tab-strip");
-    expect(strip).toHaveClass("min-w-0", "overflow-x-auto");
+    const drawn = getComputedStyle(strip);
+    expect(drawn.minWidth).toBe("0px");
+    expect(drawn.overflowX).toBe("auto");
   });
 
   // ⚠ And the section must be reachable FROM the channel page, or the deep-link test above only

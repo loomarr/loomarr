@@ -3,7 +3,7 @@ import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { unwrap } from "@loomarr/api/unwrap";
 import { layoutGuide, useGuideWindow } from "@loomarr/core/guide";
-import { Stack, Text } from "@loomarr/design-system";
+import { Stack, Text, TextLink } from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useMemo } from "react";
@@ -66,12 +66,12 @@ const HomePage = () => {
   const needs = useNeedsYou(isAdmin && hasLife);
 
   return (
-    <Stack className="h-full">
+    <Stack height="100%">
       <PageHeader title="Home" />
-      <div className="flex-1">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1}>
         {/* 16px padding at phone, 24px from `sm` up (the geometry table's "16px padding"). Below
             `md` the bottom bar replaced the 56px rail the table assumed, so 390px leaves 358px. */}
-        <Stack className="max-w-overview mx-auto p-4 sm:p-6" gap={{ base: "6", sm: "8" }}>
+        <Stack className="p-4 sm:p-6" gap={{ base: "6", sm: "8" }} marginHorizontal="auto" maxWidth={1120}>
           <HomeStrip state={stripState} isAdmin={isAdmin} onRetry={() => void guide.refetch()} />
           {hasLife && layout && (
             <ChannelWall
@@ -111,14 +111,11 @@ const HomePage = () => {
           {isAdmin && (
             <Text as="p" textRole="hint" tone="secondary">
               Encoder, storage and service details are in{" "}
-              <Link to="/settings/system" className="text-tune underline underline-offset-2">
-                Settings → This server
-              </Link>
-              .
+              <TextLink render={<Link to="/settings/system" />}>Settings → This server</TextLink>.
             </Text>
           )}
         </Stack>
-      </div>
+      </Stack>
     </Stack>
   );
 };

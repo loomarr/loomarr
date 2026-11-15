@@ -27,14 +27,20 @@ type PairDeviceProps = {
 const SignInFirst = ({ code }: { code: string }) => {
   const here = `/pair${code ? `?code=${encodeURIComponent(code)}` : ""}`;
   return (
-    <div className="max-w-focused mx-auto px-6 py-16 text-center">
-      <Text as="h1" strong textRole="display">
+    <Stack marginHorizontal="auto" maxWidth={512} paddingHorizontal={24} paddingVertical={64} width="100%">
+      <Text as="h1" strong textAlign="center" textRole="display">
         Add a device
       </Text>
-      <Text as="p" className="mt-3" textRole="reading" tone="secondary">
-        Sign in first, then we'll bring you straight back here to finish adding your device.
-      </Text>
-      {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
+      <Stack marginTop={12}>
+        <Text as="p" textAlign="center" textRole="reading" tone="secondary">
+          Sign in first, then we'll bring you straight back here to finish adding your device.
+        </Text>
+      </Stack>
+      {code ? (
+        <Stack align="center" marginTop={24}>
+          <p className="font-mono text-2xl tracking-[0.3em]">{code}</p>
+        </Stack>
+      ) : null}
       <Stack direction="row" justify="center" marginTop={32}>
         <Action
           accessibilityRole="link"
@@ -44,7 +50,7 @@ const SignInFirst = ({ code }: { code: string }) => {
           Sign in
         </Action>
       </Stack>
-    </div>
+    </Stack>
   );
 };
 
@@ -106,13 +112,15 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
   if (!user) return <SignInFirst code={initialCode ?? ""} />;
 
   return (
-    <div className="max-w-focused mx-auto px-6 py-16">
+    <Stack marginHorizontal="auto" maxWidth={512} paddingHorizontal={24} paddingVertical={64} width="100%">
       <Text as="h1" strong textRole="display">
         Add a device
       </Text>
-      <Text as="p" className="mt-3" textRole="reading" tone="secondary">
-        Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
-      </Text>
+      <Stack marginTop={12}>
+        <Text as="p" textRole="reading" tone="secondary">
+          Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
+        </Text>
+      </Stack>
 
       <Stack
         gap="4"
@@ -170,19 +178,24 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             const failure = classifyApproveFailure(approve.error);
             if (failure === "invalid-code")
               return (
-                <Text as="p" className="mt-4 text-center" textRole="reading" tone="danger">
-                  That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
-                </Text>
+                <Stack marginTop={16}>
+                  <Text as="p" textAlign="center" textRole="reading" tone="danger">
+                    That code is wrong or has expired. Codes last ten minutes — check the screen and try
+                    again.
+                  </Text>
+                </Stack>
               );
             if (failure === "rate-limited")
               return (
-                <Text as="p" className="mt-4 text-center" textRole="reading" tone="warning">
-                  Too many pairing codes tried. Wait a moment and try again.
-                </Text>
+                <Stack marginTop={16}>
+                  <Text as="p" textAlign="center" textRole="reading" tone="warning">
+                    Too many pairing codes tried. Wait a moment and try again.
+                  </Text>
+                </Stack>
               );
             return (
-              <div className="mt-4 text-center">
-                <Text as="p" textRole="reading" tone="warning">
+              <Stack marginTop={16}>
+                <Text as="p" textAlign="center" textRole="reading" tone="warning">
                   Couldn't reach Loomarr. Check your connection and try again.
                 </Text>
                 <Stack direction="row" justify="center" marginTop={12}>
@@ -190,29 +203,33 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
                     Try again
                   </Action>
                 </Stack>
-              </div>
+              </Stack>
             );
           })()
         : null}
 
       {approved ? (
-        <div className="border-border mt-8 rounded-lg border p-5 text-center">
-          <Text as="p" textRole="heading">
+        <Stack borderColor="$borderDecorative" borderRadius={8} borderWidth={1} marginTop={32} padding={20}>
+          <Text as="p" textAlign="center" textRole="heading">
             {approved} is ready
           </Text>
-          <Text as="p" className="mt-1" textRole="body" tone="secondary">
-            It should start playing in a few seconds. You can remove it any time from Settings → Access and
-            devices.
-          </Text>
-        </div>
+          <Stack marginTop={4}>
+            <Text as="p" textAlign="center" textRole="body" tone="secondary">
+              It should start playing in a few seconds. You can remove it any time from Settings → Access and
+              devices.
+            </Text>
+          </Stack>
+        </Stack>
       ) : null}
 
       {/* A paired device acts as the person who approved it, with their real role (ADR 0043), so an
           admin's TV is an admin. */}
-      <Text as="p" className="mt-10 text-center" textRole="compact" tone="secondary">
-        The device acts with your access and role. Removing it later signs out only that device.
-      </Text>
-    </div>
+      <Stack marginTop={40}>
+        <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+          The device acts with your access and role. Removing it later signs out only that device.
+        </Text>
+      </Stack>
+    </Stack>
   );
 };
 

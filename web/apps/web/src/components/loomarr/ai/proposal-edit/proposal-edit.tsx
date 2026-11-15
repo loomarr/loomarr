@@ -61,9 +61,11 @@ const PickRow = ({
   disabled,
   episodeSelectionPreview,
   feedback,
+  last,
   onToggle,
   onAdd,
 }: {
+  last?: boolean;
   pick: Keyed;
   included: boolean;
   editable: boolean;
@@ -80,9 +82,13 @@ const PickRow = ({
   return (
     <Stack
       align="start"
-      className={cn("border-border border-b px-1 py-3 last:border-b-0", !included && "opacity-55")}
+      borderBottomWidth={last ? 0 : 1}
+      borderColor="$borderDecorative"
       direction="row"
       gap="control"
+      opacity={included ? 1 : 0.55}
+      paddingHorizontal={4}
+      paddingVertical={12}
       render="li"
     >
       {editable && onToggle && pick.key !== "" && (
@@ -94,7 +100,7 @@ const PickRow = ({
           onCheckedChange={onToggle}
         />
       )}
-      <div className="min-w-0 flex-1">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
         <Stack align="center" columnGap="2" direction="row" rowGap="1" wrap>
           <Text as="span" className={cn(!included && "line-through")} textRole="cardLabel">
             {pick.item.name}
@@ -124,26 +130,32 @@ const PickRow = ({
             </Badge>
           )}
         </Stack>
-        <Text as="p" className="mt-1" textRole="hint" tone="secondary">
-          {itemDetails(pick.item)}
-        </Text>
+        <Stack marginTop={4}>
+          <Text as="p" textRole="hint" tone="secondary">
+            {itemDetails(pick.item)}
+          </Text>
+        </Stack>
         {included && pick.item.rationale && (
-          <details className="mt-1.5">
-            <Text
-              as="summary"
-              className="hover:text-foreground! w-fit cursor-pointer"
-              textRole="hint"
-              tone="secondary"
-            >
-              Why this title?
-            </Text>
-            <Text as="p" className="mt-1 max-w-prose" textRole="compact" tone="secondary">
-              {friendlyTitleRationale(pick.item.rationale)}
-            </Text>
-          </details>
+          <Stack marginTop={6}>
+            <details>
+              <Text
+                as="summary"
+                className="hover:text-foreground! w-fit cursor-pointer"
+                textRole="hint"
+                tone="secondary"
+              >
+                Why this title?
+              </Text>
+              <Stack marginTop={4}>
+                <Text as="p" className="max-w-prose" textRole="compact" tone="secondary">
+                  {friendlyTitleRationale(pick.item.rationale)}
+                </Text>
+              </Stack>
+            </details>
+          </Stack>
         )}
-        {included && feedback && <div className="mt-2">{feedback}</div>}
-      </div>
+        {included && feedback && <Stack marginTop={8}>{feedback}</Stack>}
+      </Stack>
       {editable && onAdd && (
         <Action
           accessibilityLabel={`Add ${pick.item.name}`}
@@ -352,10 +364,18 @@ const ProposalEdit = (props: ProposalEditProps) => {
         )}
       </Stack>
 
-      <ul aria-label="Titles" className="border-border rounded-md border px-3">
-        {picks.map((pick) => (
+      <Stack
+        aria-label="Titles"
+        borderColor="$borderDecorative"
+        borderRadius={6}
+        borderWidth={1}
+        paddingHorizontal={12}
+        render="ul"
+      >
+        {picks.map((pick, index) => (
           <PickRow
             key={pick.key || `unkeyed-${pick.item.name}`}
+            last={index === picks.length + added.length - 1}
             pick={pick}
             included={!dropped.includes(pick.key)}
             editable={editable}
@@ -365,11 +385,12 @@ const ProposalEdit = (props: ProposalEditProps) => {
             onToggle={() => toggleDrop(pick.key)}
           />
         ))}
-        {added.map((item) => {
+        {added.map((item, index) => {
           const key = provisionKey(item);
           return (
             <PickRow
               key={key}
+              last={index === added.length - 1}
               pick={{ item, key, kind: item.inLibrary ? "ready" : "missing" }}
               included
               editable={editable}
@@ -380,7 +401,7 @@ const ProposalEdit = (props: ProposalEditProps) => {
             />
           );
         })}
-      </ul>
+      </Stack>
 
       <MovieCollectionChoices
         collections={displayedMovieCollections}
@@ -467,13 +488,16 @@ const ProposalEdit = (props: ProposalEditProps) => {
               {suggestions.length} {suggestions.length === 1 ? "option" : "options"}
             </Text>
           </summary>
-          <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-            Add any that belong on your channel.
-          </Text>
-          <ul className="border-border mt-2 border-t">
-            {suggestions.map((pick) => (
+          <Stack marginTop={8}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Add any that belong on your channel.
+            </Text>
+          </Stack>
+          <Stack borderColor="$borderDecorative" borderTopWidth={1} marginTop={8} render="ul">
+            {suggestions.map((pick, index) => (
               <PickRow
                 key={pick.key || `unkeyed-${pick.item.name}`}
+                last={index === suggestions.length - 1}
                 pick={pick}
                 included
                 editable={editable}
@@ -483,9 +507,9 @@ const ProposalEdit = (props: ProposalEditProps) => {
                 onAdd={() => addSuggestion(pick)}
               />
             ))}
-          </ul>
+          </Stack>
           {onFindMore && (
-            <Stack className="mt-2" direction="row">
+            <Stack direction="row" marginTop={8}>
               <Action
                 disabled={disabled || findingMore}
                 icon={findingMore ? "loading" : undefined}

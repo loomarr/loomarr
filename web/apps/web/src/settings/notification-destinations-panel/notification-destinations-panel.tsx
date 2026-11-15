@@ -35,15 +35,19 @@ const NotificationDestinationsPanel = () => {
   });
 
   return (
-    <section className="grid gap-4" aria-labelledby="notification-providers-title">
+    <Stack aria-labelledby="notification-providers-title" gap="4" render="section">
       <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <Stack direction="row" gap="control">
           <Stack
             align="center"
-            className="bg-signal/10 text-signal size-9 rounded-lg"
+            backgroundColor="washSignal10"
+            borderRadius={8}
+            className="text-signal"
             flexShrink={0}
+            height={36}
             justify="center"
             render="span"
+            width={36}
           >
             <Icon decorative glyph={icons.notifications} size="compact" tone="inherit" />
           </Stack>
@@ -51,9 +55,11 @@ const NotificationDestinationsPanel = () => {
             <Text as="h2" id="notification-providers-title" strong textRole="headline">
               Notification providers
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              Add SMTP, Slack, Discord, or another provider, then choose the events it receives.
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                Add SMTP, Slack, Discord, or another provider, then choose the events it receives.
+              </Text>
+            </Stack>
           </div>
         </Stack>
         {!adding ? (
@@ -76,9 +82,14 @@ const NotificationDestinationsPanel = () => {
         </div>
       ) : null}
       {!providersQuery.isLoading && providers.length === 0 ? (
-        <section
+        <Stack
           aria-labelledby="notification-events-title"
-          className="border-border rounded-lg border border-dashed p-4"
+          borderColor="$borderDecorative"
+          borderRadius={8}
+          borderStyle="dashed"
+          borderWidth={1}
+          padding={16}
+          render="section"
         >
           <Surface backgroundColor="transparent" borderRadius={0} borderWidth={0} gap="inline">
             <Text as="p" id="notification-events-title" textRole="label">
@@ -105,10 +116,10 @@ const NotificationDestinationsPanel = () => {
               </Surface>
             ) : null}
           </Surface>
-        </section>
+        </Stack>
       ) : null}
 
-      <ul className="grid gap-3">
+      <Stack gap="3" render="ul">
         {providers.map((provider) => (
           <ProviderRow
             provider={provider}
@@ -116,11 +127,11 @@ const NotificationDestinationsPanel = () => {
             key={provider.id}
           />
         ))}
-      </ul>
+      </Stack>
 
       {adding ? (
-        <div className="grid gap-4">
-          <div className="max-w-sm">
+        <Stack gap="4">
+          <Stack maxWidth={384}>
             <BrowserSelectControl
               appearance="field"
               label="Provider"
@@ -128,7 +139,7 @@ const NotificationDestinationsPanel = () => {
               options={definitions.map((item) => ({ label: item.name, value: item.type }))}
               value={definition?.type ?? ""}
             />
-          </div>
+          </Stack>
           {definition ? (
             definition.type === "web_push" ? (
               <WebPushForm
@@ -157,7 +168,7 @@ const NotificationDestinationsPanel = () => {
               />
             )
           ) : null}
-        </div>
+        </Stack>
       ) : null}
 
       {message ? (
@@ -167,7 +178,7 @@ const NotificationDestinationsPanel = () => {
           </Text>
         </div>
       ) : null}
-    </section>
+    </Stack>
   );
 };
 

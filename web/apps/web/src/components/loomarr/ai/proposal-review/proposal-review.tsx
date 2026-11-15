@@ -203,9 +203,12 @@ const ProposalReview = ({
                   </Text>
                 </summary>
                 <Grid
-                  className="bg-background/60 mt-2 rounded-md p-3"
+                  backgroundColor="washCanvas60"
+                  borderRadius={6}
                   columnGap="4"
                   columns={{ base: 1, sm: ["auto", "1fr"] }}
+                  marginTop={8}
+                  padding={12}
                   render="dl"
                   rowGap="1.5"
                 >
@@ -492,7 +495,7 @@ const ProposalReview = ({
                       <Text as="h3" textRole="cardLabel">
                         Titles considered
                       </Text>
-                      <Stack className="divide-border divide-y" render="ul">
+                      <Stack divided render="ul">
                         {proposal.trace.candidates.map((candidate) => (
                           <li
                             key={`${candidate.key}-${candidate.disposition}-${candidate.reason}`}

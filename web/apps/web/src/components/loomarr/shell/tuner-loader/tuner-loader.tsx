@@ -44,7 +44,16 @@ const TunerLoader = ({
   backdrop,
   className,
 }: TunerLoaderProps) => (
-  <div className={cn("pointer-events-none absolute inset-0", className)} aria-hidden>
+  <Stack
+    aria-hidden
+    bottom={0}
+    className={className}
+    left={0}
+    pointerEvents="none"
+    position="absolute"
+    right={0}
+    top={0}
+  >
     {/* The wash over the picture beneath. Its resting style IS the drained frame of `held-drain`:
         the picture greyed, flattened and left at 12% under static-950. */}
     <div
@@ -78,9 +87,14 @@ const TunerLoader = ({
 
     <Stack
       align="center"
-      className="relative z-[1] size-full px-4 text-center"
+      className="text-center"
       gap="control"
+      height="100%"
       justify="center"
+      paddingHorizontal={16}
+      position="relative"
+      width="100%"
+      zIndex={1}
     >
       {/* Phosphor bars. Fixed-height rail so the jittering bar heights have room; items-end so they
           grow from a common baseline like a level meter. `h-*` is animated by signal-lock, so the
@@ -116,7 +130,7 @@ const TunerLoader = ({
         <span className="motion-safe:animate-[onair-pulse_1s_steps(2,end)_infinite]">_</span>
       </Text>
     </Stack>
-  </div>
+  </Stack>
 );
 
 export { TunerLoader };

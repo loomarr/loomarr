@@ -33,21 +33,14 @@ const SourceContentPreview = ({
       </Text>
 
       {showExamples && (
-        <div className="border-border mt-3 border-t pt-3">
+        <Stack borderColor="$borderDecorative" borderTopWidth={1} marginTop={12} paddingTop={12}>
           {provider.previewHeading && (
             <Text as="p" textRole="label" tone="primary">
               {provider.previewHeading}
             </Text>
           )}
           {loading && (
-            <Stack
-              align="center"
-              aria-live="polite"
-              className="mt-2"
-              direction="row"
-              gap="inline"
-              role="status"
-            >
+            <Stack align="center" aria-live="polite" direction="row" gap="inline" marginTop={8} role="status">
               <LoadingStrip decorative width={32} />
               <Text as="span" textRole="hint" tone="secondary">
                 Loading examples…
@@ -55,9 +48,11 @@ const SourceContentPreview = ({
             </Stack>
           )}
           {!loading && error && (
-            <Text as="p" className="mt-2" textRole="hint" tone="secondary">
-              {error}
-            </Text>
+            <Stack marginTop={8}>
+              <Text as="p" textRole="hint" tone="secondary">
+                {error}
+              </Text>
+            </Stack>
           )}
           {!loading && previewItems && previewItems.length > 0 && (
             <>
@@ -65,11 +60,11 @@ const SourceContentPreview = ({
                 {previewItems.map((item) => (
                   <Stack
                     align="center"
-                    className="min-w-0"
                     direction="row"
                     flexShrink={1}
                     gap="inline"
                     key={item.url}
+                    minWidth={0}
                     render="li"
                   >
                     <Text as="div" className="min-w-0 flex-1 truncate" textRole="compact">
@@ -94,12 +89,14 @@ const SourceContentPreview = ({
                   </Stack>
                 ))}
               </ul>
-              <Text as="p" className="mt-2" textRole="hint" tone="secondary">
-                A small sample from this source.
-              </Text>
+              <Stack marginTop={8}>
+                <Text as="p" textRole="hint" tone="secondary">
+                  A small sample from this source.
+                </Text>
+              </Stack>
             </>
           )}
-        </div>
+        </Stack>
       )}
 
       <SourceItemPreviewDialog

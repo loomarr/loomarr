@@ -101,7 +101,10 @@ const OllamaLineup = ({ status, onModelChange }: { status: SystemLLMStatus; onMo
 const TmdbNotice = ({ configured }: { configured: boolean }) => (
   <Stack
     align="center"
-    className="border-border bg-muted/40 rounded-md border"
+    backgroundColor="washElevated40"
+    borderColor="borderDecorative"
+    borderRadius={8}
+    borderWidth={1}
     direction="row"
     gap="control"
     justify="between"

@@ -1,6 +1,13 @@
 import { isWeb, View } from "@tamagui/core";
-import type { ComponentProps, FormHTMLAttributes, ReactNode } from "react";
-import { createContext, useContext, useSyncExternalStore } from "react";
+import type { ComponentProps, FormHTMLAttributes, ReactElement, ReactNode } from "react";
+import {
+  Children,
+  cloneElement,
+  createContext,
+  isValidElement,
+  useContext,
+  useSyncExternalStore,
+} from "react";
 import { Dimensions } from "react-native";
 
 import { breakpoints, type semanticSpace, type spaceSteps } from "../tokens";
@@ -96,6 +103,32 @@ type StackOwnProps = Omit<
   justify?: StackResponsive<StackJustify>;
   /** Let a row break onto further lines instead of overflowing. The gap also separates the lines. */
   wrap?: boolean;
+  /**
+   * Draw a hairline (the decorative border) between children, as Tailwind's `divide-y` does down a
+   * column and `divide-x` along a row: on the leading edge of every child but the first, so a
+   * child that renders nothing leaves no stray line. Each child must be a DOM element or a
+   * Stack, Card or Surface (anything that takes `style` or the border props); a custom component
+   * that does not forward them draws no line. A line is one pixel, so leave `gap` out.
+   */
+  divided?: boolean;
+};
+
+/**
+ * The hairline on a child's leading edge. A DOM element takes it as a CSS border (web only; native
+ * has no DOM children); a Tamagui child takes it as border props, in the theme's decorative colour.
+ */
+const withLeadingHairline = (child: ReactElement<Record<string, unknown>>, direction: "column" | "row") => {
+  if (typeof child.type === "string") {
+    const style = child.props.style as Record<string, unknown> | undefined;
+    const edge = direction === "column" ? "borderTop" : "borderLeft";
+    return cloneElement(child, { style: { ...style, [edge]: "1px solid var(--borderDecorative)" } });
+  }
+  return cloneElement(
+    child,
+    direction === "column"
+      ? { borderTopColor: "$borderDecorative", borderTopWidth: 1 }
+      : { borderLeftColor: "$borderDecorative", borderLeftWidth: 1 },
+  );
 };
 
 /** The direction of the nearest Stack above, which sets whether a Stack shrinks by default. */
@@ -206,7 +239,9 @@ type StackProps = StackOwnProps &
 const Stack = ({
   align = "stretch",
   direction = "column",
+  children,
   columnGap,
+  divided = false,
   gap = "none",
   hidden = false,
   justify = "start",
@@ -244,7 +279,15 @@ const Stack = ({
         justifyContent={justifyContent[resolve(justify, active)]}
         {...(resolve(hidden, active) ? { display: "none" as const } : undefined)}
         {...spacing}
-      />
+      >
+        {divided
+          ? Children.toArray(children).map((child, index) =>
+              index > 0 && isValidElement<Record<string, unknown>>(child)
+                ? withLeadingHairline(child, resolvedDirection)
+                : child,
+            )
+          : children}
+      </View>
     </StackDirection.Provider>
   );
 };
