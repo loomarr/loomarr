@@ -1,7 +1,16 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
 import type { LocationDTO } from "@loomarr/api/models/locationDTO";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Combobox, type ComboboxOption, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import {
+  Action,
+  Badge,
+  Combobox,
+  type ComboboxOption,
+  Icon,
+  icons,
+  Stack,
+  Text,
+} from "@loomarr/design-system";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import type { LocationPickerProps } from "./location-picker.type";
@@ -144,24 +153,23 @@ const LocationPicker = ({
   const visibleError = locationError ?? error;
 
   return (
-    <div className="max-w-2xl">
-      <Stack align="center" className="mb-1.5" direction="row" gap="inline">
+    <Stack maxWidth={672}>
+      <Stack align="center" direction="row" gap="inline" marginBottom={6}>
         <Text as="label" htmlFor={`${listID}-input`} textRole="cardLabel" tone="primary">
           Location
         </Text>
         {locked && lockedLabel && (
-          <Text
-            as="span"
-            className="bg-static-800 inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5"
-            textRole="mono"
-            tone="secondary"
+          <Badge
+            icon={<Icon decorative glyph={icons.locked} size="compact" tone="inherit" />}
+            shape="square"
+            tone="neutral"
           >
-            <Icon decorative glyph={icons.locked} size="compact" tone="inherit" /> {lockedLabel}
-          </Text>
+            {lockedLabel}
+          </Badge>
         )}
       </Stack>
       <Stack direction={{ base: "column", sm: "row" }} gap="2">
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Combobox
             autoHighlight
             disabled={locked}
@@ -190,7 +198,7 @@ const LocationPicker = ({
             stale={!choicesReady}
             value={chosen}
           />
-        </div>
+        </Stack>
         {allowDetection && (
           <Action
             disabled={locked || detecting}
@@ -203,31 +211,35 @@ const LocationPicker = ({
         )}
       </Stack>
       {evidence?.approximate && (
-        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-          Approximate location from your network. You can choose a more specific place above.
-          {evidence.attribution && (
-            <>
-              {" "}
-              <a className="underline" href={evidence.attribution} target="_blank" rel="noreferrer">
-                IP Geolocation by DB-IP
-              </a>
-            </>
-          )}
-        </Text>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="secondary">
+            Approximate location from your network. You can choose a more specific place above.
+            {evidence.attribution && (
+              <>
+                {" "}
+                <a className="underline" href={evidence.attribution} target="_blank" rel="noreferrer">
+                  IP Geolocation by DB-IP
+                </a>
+              </>
+            )}
+          </Text>
+        </Stack>
       )}
       {visibleError && (
-        <div className="mt-2" role="alert">
+        <Stack marginTop={8} role="alert">
           <Text as="p" textRole="compact" tone="danger">
             {visibleError}
           </Text>
-        </div>
+        </Stack>
       )}
       {!value.country && !visibleError && (
-        <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-          {emptyHint}
-        </Text>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {emptyHint}
+          </Text>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 };
 

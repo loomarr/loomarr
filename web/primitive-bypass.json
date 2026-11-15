@@ -50,12 +50,6 @@
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "flexStack": 1
     },

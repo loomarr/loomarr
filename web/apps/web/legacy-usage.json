@@ -216,14 +216,8 @@
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
       "tailwindClasses": 9
     },
-    "src/components/loomarr/settings/installation-location/language-picker/language-picker.tsx": {
-      "tailwindClasses": 10
-    },
     "src/components/loomarr/settings/installation-location/location-picker/location-picker.tsx": {
-      "tailwindClasses": 15
-    },
-    "src/components/loomarr/settings/secrets-panel/secrets-panel.tsx": {
-      "tailwindClasses": 13
+      "tailwindClasses": 1
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "tailwindClasses": 37,
@@ -513,10 +507,10 @@
       "tailwindClasses": 9
     },
     "src/settings/encryption-settings/encryption-settings.tsx": {
-      "tailwindClasses": 14
+      "tailwindClasses": 1
     },
     "src/settings/notification-destinations-panel/notification-destinations-panel.tsx": {
-      "tailwindClasses": 17
+      "tailwindClasses": 2
     },
     "src/settings/notification-destinations-panel/provider-field-input/provider-field-input.tsx": {
       "tailwindClasses": 2
@@ -525,7 +519,7 @@
       "tailwindClasses": 9
     },
     "src/settings/notification-destinations-panel/provider-row/provider-row.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 1
     },
     "src/settings/notification-destinations-panel/web-push-form/web-push-form.tsx": {
       "tailwindClasses": 6
@@ -539,7 +533,7 @@
       "tailwindClasses": 11
     },
     "src/settings/settings-context-nav/settings-context-nav.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 13
     },
     "src/settings/settings-page/settings-page.tsx": {
       "tailwindClasses": 12
