@@ -5,7 +5,7 @@
       "rawDialog": 1,
       "flexStack": 6
     },
-    "apps/web/src/channels/guide-page/guide-page.tsx": {
+    "apps/web/src/channels/guide-page/guide-toolbar/guide-toolbar.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {

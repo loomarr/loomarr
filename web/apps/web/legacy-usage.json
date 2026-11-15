@@ -23,7 +23,10 @@
       "tailwindClasses": 5
     },
     "src/channels/guide-page/guide-page.tsx": {
-      "tailwindClasses": 24
+      "tailwindClasses": 12
+    },
+    "src/channels/guide-page/guide-toolbar/guide-toolbar.tsx": {
+      "tailwindClasses": 12
     },
     "src/channels/tuner-osd/tuner-osd.tsx": {
       "tailwindClasses": 1
