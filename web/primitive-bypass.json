@@ -8,9 +8,6 @@
     "apps/web/src/channels/guide-page/guide-page.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/ai/model-discover/model-discover.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
       "flexStack": 1
     },

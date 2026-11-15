@@ -203,9 +203,12 @@ const ProposalReview = ({
                   </Text>
                 </summary>
                 <Grid
-                  className="bg-background/60 mt-2 rounded-md p-3"
+                  borderRadius={6}
+                  className="bg-background/60"
                   columnGap="4"
                   columns={{ base: 1, sm: ["auto", "1fr"] }}
+                  marginTop={8}
+                  padding={12}
                   render="dl"
                   rowGap="1.5"
                 >
