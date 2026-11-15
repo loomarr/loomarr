@@ -73,7 +73,7 @@ const ModelRow = ({
       gap="control"
       render="li"
     >
-      <div className="min-w-0 flex-1">
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
         <Stack align="center" direction="row" gap="inline" render="p" wrap>
           <Text as="span" textRole="cardLabel">
             {model.label}
@@ -96,16 +96,20 @@ const ModelRow = ({
           )}
         </Stack>
         {model.why && (
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            {model.why}
-          </Text>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              {model.why}
+            </Text>
+          </Stack>
         )}
         {unusable && !model.why && (
-          <Text as="p" className="mt-0.5" textRole="compact" tone="secondary">
-            Loomarr requires advertised tool-calling to ground suggestions safely.
-          </Text>
+          <Stack marginTop={2}>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loomarr requires advertised tool-calling to ground suggestions safely.
+            </Text>
+          </Stack>
         )}
-      </div>
+      </Stack>
       <Action
         disabled={busy || isActive || !provider.keyConfigured || unusable}
         icon={isActive ? "success" : undefined}
@@ -258,9 +262,11 @@ const HostedModelPicker = ({
                 )}
                 {alternatives.length > 0 && (
                   <>
-                    <Text as="p" className="mt-1" textRole="label">
-                      {primary ? "Strong alternatives" : "Available models"}
-                    </Text>
+                    <Stack marginTop={4}>
+                      <Text as="p" textRole="label">
+                        {primary ? "Strong alternatives" : "Available models"}
+                      </Text>
+                    </Stack>
                     <Stack gap="inline" render="ul">
                       {alternatives.map((model) => (
                         <ModelRow
@@ -277,9 +283,11 @@ const HostedModelPicker = ({
                 )}
                 {current && (
                   <>
-                    <Text as="p" className="mt-1" textRole="label">
-                      Currently active
-                    </Text>
+                    <Stack marginTop={4}>
+                      <Text as="p" textRole="label">
+                        Currently active
+                      </Text>
+                    </Stack>
                     <ul>
                       <ModelRow
                         model={current}

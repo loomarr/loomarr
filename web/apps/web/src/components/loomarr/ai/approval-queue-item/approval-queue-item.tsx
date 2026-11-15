@@ -67,7 +67,10 @@ const PickRow = ({
   return (
     <Stack
       align="center"
-      className="border-border bg-card rounded-md border"
+      backgroundColor="$surfaceRaised"
+      borderColor="$borderDecorative"
+      borderRadius={6}
+      borderWidth={1}
       direction="row"
       gap="inline"
       paddingHorizontal={10}
@@ -96,7 +99,7 @@ const PickRow = ({
           {episodeSelectionLabel(item)}
         </Badge>
       )}
-      {renderFeedback && <div className="ml-auto">{renderFeedback(item)}</div>}
+      {renderFeedback && <Stack marginLeft="auto">{renderFeedback(item)}</Stack>}
     </Stack>
   );
 };
@@ -153,7 +156,7 @@ const ApprovalQueueItem = ({
         direction={{ base: "column", sm: "row" }}
         gap={{ base: "3", sm: "4" }}
       >
-        <div className="min-w-0 flex-1">
+        <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
           <Stack align="center" direction="row" gap="inline" wrap>
             <Text as="p" textRole="cardLabel">
               {title}
@@ -174,24 +177,25 @@ const ApprovalQueueItem = ({
             )}
           </Stack>
           {summary && (
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              {summary}
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                {summary}
+              </Text>
+            </Stack>
           )}
           {requestedBy && (
-            <Text
-              as="p"
-              className="mt-1"
-              textRole="mono"
-              tone="secondary"
-            >{`Requested by ${requestedBy}`}</Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="mono" tone="secondary">{`Requested by ${requestedBy}`}</Text>
+            </Stack>
           )}
           {denied && denyReason && (
-            <Text as="p" className="mt-1" textRole="compact" tone="danger">
-              {denyReason}
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="danger">
+                {denyReason}
+              </Text>
+            </Stack>
           )}
-        </div>
+        </Stack>
 
         {!denied && !denying && (
           <Stack direction="row" flexShrink={0} gap="inline">
@@ -220,7 +224,8 @@ const ApprovalQueueItem = ({
           stops a member from re-submitting the same intent, having learned nothing. */}
       {denying && (
         <Stack
-          className="border-border border-t"
+          borderColor="$borderDecorative"
+          borderTopWidth={1}
           gap="2"
           noValidate
           onSubmit={(event) => {
@@ -266,12 +271,7 @@ const ApprovalQueueItem = ({
           changes the meaning of the button is not detail behind a toggle. */}
       {refused && refused.length > 0 && (
         // A warning takes `caution` (#1909 Q5); amber is focus and the primary action.
-        <Stack
-          className="border-caution-tint-40 bg-caution-tint-8 rounded-md border"
-          gap="1.5"
-          paddingHorizontal={12}
-          paddingVertical={8}
-        >
+        <Card borderRadius={6} gap={6} paddingHorizontal={12} paddingVertical={8} tone="caution">
           <Stack align="center" direction="row" gap="1.5" render="p">
             <Icon decorative glyph={icons.risk} size="compact" tone="warning" />
             <Text as="span" textRole="cardLabel">
@@ -320,7 +320,7 @@ const ApprovalQueueItem = ({
               </Action>
             </Surface>
           )}
-        </Stack>
+        </Card>
       )}
 
       {/* Beside the refusals for the same reason: approving gets a channel that doesn't follow the
@@ -340,7 +340,7 @@ const ApprovalQueueItem = ({
       {outlook?.(() => setOpen(true))}
 
       {hasPicks && (
-        <div className="border-border border-t pt-2">
+        <Stack borderColor="$borderDecorative" borderTopWidth={1} paddingTop={8}>
           <Action
             aria-expanded={open}
             icon={open ? "showLess" : "showMore"}
@@ -378,7 +378,7 @@ const ApprovalQueueItem = ({
                 ))}
               </Stack>
             ))}
-        </div>
+        </Stack>
       )}
     </Card>
   );
