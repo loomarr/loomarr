@@ -32,28 +32,37 @@ const LanguageReceipt = ({
   if (exclusions.length === 0) return null;
   return (
     <details className="border-border bg-muted/20 rounded-lg border p-4">
-      <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+      <Text as="summary" cursor="pointer" textRole="cardLabel">
         Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
         <Text as="span" className="ml-1" textRole="compact" tone="secondary">
           · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
         </Text>
       </Text>
-      <Text as="p" className="mt-2" textRole="compact" tone="secondary">
-        This split was checked for {languageList(checkedFor)}. These clips remain in the original compilation
-        but won’t be added as filler.
-      </Text>
-      <ul className="mt-3 space-y-2">
+      <Stack marginTop={8}>
+        <Text as="p" textRole="compact" tone="secondary">
+          This split was checked for {languageList(checkedFor)}. These clips remain in the original
+          compilation but won’t be added as filler.
+        </Text>
+      </Stack>
+      <Stack gap="2" marginTop={12} render="ul">
         {exclusions.map((item) => (
-          <li key={`${item.startMs}-${item.endMs}`} className="bg-background/60 rounded-md px-3 py-2">
-            <Text as="span" className="block" textRole="cardLabel">
+          <Stack
+            borderRadius={8}
+            className="bg-background/60"
+            key={`${item.startMs}-${item.endMs}`}
+            paddingHorizontal={12}
+            paddingVertical={8}
+            render="li"
+          >
+            <Text as="span" textRole="cardLabel">
               {item.name}
             </Text>
             <Text as="span" textRole="hint" tone="secondary">
               {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
             </Text>
-          </li>
+          </Stack>
         ))}
-      </ul>
+      </Stack>
     </details>
   );
 };
@@ -146,7 +155,7 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
     // without one renders flush against the sidebar.
-    <Stack className="p-6" gap="4">
+    <Stack gap="4" padding={24}>
       <div>
         {/* This route sits outside the Filler header and tabs, so it names its way back: to
             wherever review was opened (#1817, decided on #1908). The Settings index's "← Manage"
@@ -171,7 +180,8 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
       {languageChanged ? (
         <Stack
           align={{ base: "stretch", sm: "center" }}
-          className="border-caution/40 bg-caution-tint-15 rounded-lg border"
+          borderRadius={12}
+          className="border-caution/40 bg-caution-tint-15 border"
           direction={{ base: "column", sm: "row" }}
           gap="3"
           justify={{ base: "start", sm: "between" }}
@@ -181,9 +191,11 @@ const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
             <Text as="p" textRole="heading">
               {currentLanguageHeadline}
             </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              This split was checked for {languageList(checked)}. Recheck it before you confirm.
-            </Text>
+            <Stack marginTop={4}>
+              <Text as="p" textRole="compact" tone="secondary">
+                This split was checked for {languageList(checked)}. Recheck it before you confirm.
+              </Text>
+            </Stack>
           </div>
           <Action
             disabled={recheck.isPending}

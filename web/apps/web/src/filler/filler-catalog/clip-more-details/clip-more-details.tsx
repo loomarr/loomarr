@@ -88,10 +88,10 @@ const ClipMoreDetails = ({ clip }: ClipMoreDetailsProps) => {
 
   return (
     <details className="border-border rounded-lg border p-4">
-      <Text as="summary" className="cursor-pointer" textRole="cardLabel">
+      <Text as="summary" cursor="pointer" textRole="cardLabel">
         More about this clip
       </Text>
-      <dl className="mt-3 space-y-2">
+      <Stack gap="2" marginTop={12} render="dl">
         {videoLine ? (
           <div>
             <Text as="dt" textRole="compact" tone="secondary">
@@ -146,7 +146,7 @@ const ClipMoreDetails = ({ clip }: ClipMoreDetailsProps) => {
             <Text as="dt" textRole="compact" tone="secondary">
               Source license
             </Text>
-            <Text as="dd" className="break-words" textRole="compact">
+            <Text as="dd" overflowWrap="break-word" textRole="compact">
               {clip.license}
             </Text>
           </div>
@@ -157,16 +157,16 @@ const ClipMoreDetails = ({ clip }: ClipMoreDetailsProps) => {
               How details were found
             </Text>
             <Text as="dd" textRole="compact">
-              <ul className="mt-1 space-y-1">
+              <Stack gap="1" marginTop={4} render="ul">
                 {clip.enrichment.facts.map((fact) => (
                   <Stack direction="row" gap="4" justify="between" key={fact.axis} render="li">
                     <span>{ENRICHMENT_AXIS_LABEL[fact.axis] ?? fact.axis}</span>
-                    <Text as="span" className="text-right" textRole="compact" tone="secondary">
+                    <Text as="span" textAlign="right" textRole="compact" tone="secondary">
                       {ENRICHMENT_EVIDENCE_LABEL[fact.evidence] ?? fact.evidence}
                     </Text>
                   </Stack>
                 ))}
-              </ul>
+              </Stack>
             </Text>
           </div>
         ) : null}
@@ -181,7 +181,7 @@ const ClipMoreDetails = ({ clip }: ClipMoreDetailsProps) => {
             No additional details recorded yet.
           </Text>
         ) : null}
-      </dl>
+      </Stack>
     </details>
   );
 };
