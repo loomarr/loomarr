@@ -65,13 +65,15 @@ const BackupPage = () => {
       footer={
         <Stack gap="control">
           <Card borderRadius={8} padding={16} render="aside" tone="caution">
-            <Text as="h2" textRole="cardLabel">
-              The image volume is separate
-            </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              This backup contains the database, including settings, channels, people, and generated secrets.
-              It does not copy image files or operator-uploaded artwork.
-            </Text>
+            <Stack gap="1">
+              <Text as="h2" textRole="cardLabel">
+                The image volume is separate
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                This backup contains the database, including settings, channels, people, and generated
+                secrets. It does not copy image files or operator-uploaded artwork.
+              </Text>
+            </Stack>
           </Card>
           <BackupPanel
             list={list.data.data}

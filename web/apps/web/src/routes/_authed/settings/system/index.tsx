@@ -35,7 +35,7 @@ const SystemHome = () => (
       title="This server"
       description="Keep playback running, protect this installation, or investigate a problem."
     />
-    <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto">
       <Stack gap="8" marginHorizontal="auto" maxWidth={1024} padding={24} width="100%">
         {GROUPS.map((group) => {
           const destinations = SETTINGS_DESTINATIONS.filter(

@@ -174,7 +174,7 @@ const sheetFor = ({
   ) : sheet === "info" && info && placement !== "menu" ? (
     sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
   ) : sheet === "channels" && drawer ? (
-    <Stack className="absolute inset-y-0 right-0 z-40 max-w-full" direction="row">
+    <Stack bottom={0} direction="row" maxWidth="100%" position="absolute" right={0} top={0} zIndex={40}>
       <ChannelDrawer
         channels={drawer.channels}
         tunedId={osdChannel.id}

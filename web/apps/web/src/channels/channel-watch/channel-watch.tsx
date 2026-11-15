@@ -456,7 +456,17 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         signature ? (
           <>
             {player.stillURL && (
-              <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
+              <img
+                src={player.stillURL}
+                alt=""
+                style={{
+                  height: "100%",
+                  inset: 0,
+                  objectFit: "contain",
+                  position: "absolute",
+                  width: "100%",
+                }}
+              />
             )}
             <TunerLoader backdrop={holdBackdrop} channel={osdChannel} heldFrame={heldFrame} />
           </>
@@ -484,7 +494,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   }
 
   return (
-    <Stack className="min-h-0" flexBasis="0%" flexGrow={1} flexShrink={1} render="section">
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} render="section">
       <div className="relative min-h-0 flex-1">
         {playerEl}
         {/* The wash's centred channel line is the visible readout; this is the same line for a

@@ -110,7 +110,7 @@ const SettingsHome = () => {
   return (
     <Stack height="100%" minHeight={0}>
       <PageHeader title="Settings" description="Search reaches any setting directly." />
-      <Stack className="overflow-auto" flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0}>
+      <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} overflow="auto">
         <SettingsOverview
           advanced={
             advanced
@@ -188,7 +188,7 @@ const SettingsHome = () => {
                               <Text as="span" textRole="cardLabel">
                                 {result.setting?.label || result.destination.label}
                               </Text>
-                              <Text as="span" className="truncate" textRole="hint" tone="secondary">
+                              <Text as="span" numberOfLines={1} textRole="hint" tone="secondary">
                                 {result.groupLabel} · {result.destination.label}
                                 {result.setting ? ` · ${result.setting.key}` : ""}
                               </Text>
