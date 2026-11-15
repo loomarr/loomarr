@@ -550,19 +550,7 @@
     "src/settings/tasks-page/tasks-page.tsx": {
       "tailwindClasses": 7
     },
-    "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 13
-    },
-    "src/suggest/intent-form/intent-form.tsx": {
-      "tailwindClasses": 5
-    },
-    "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
-      "tailwindClasses": 15
-    },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
-      "tailwindClasses": 16
-    },
-    "src/suggest/suggestion-draft-return/suggestion-draft-return.tsx": {
       "tailwindClasses": 4
     },
     "src/wizard/bootstrap-step/bootstrap-step.tsx": {
