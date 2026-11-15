@@ -136,9 +136,12 @@ const ChannelProgrammingChanges = ({
         {/* Rows are text, so the scroll region itself takes the Tab stop (see the cycle
             preview's slot list for the same treatment). */}
         <Stack
+          className="scroll-thin"
+          maxHeight={384}
+          overflowY="auto"
           // `relative` contains each row's absolutely positioned sr-only text: without it they
           // escape this scroll box's clip and stretch the page by the list's full height.
-          className="scroll-thin relative max-h-96 overflow-y-auto"
+          position="relative"
           render="ul"
           tabIndex={0}
           aria-label="Changed slots"

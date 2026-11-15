@@ -1,6 +1,5 @@
 import { channelNumber } from "@loomarr/core/format";
-import { Card, Stack, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Badge, Card, Stack, Text } from "@loomarr/design-system";
 import { NowNextStrip } from "../now-next-strip";
 import { OnAirIndicator } from "../on-air-indicator";
 import type { ChannelCardProps, ChannelHealth } from "./channel-card.type";
@@ -10,15 +9,15 @@ import type { ChannelCardProps, ChannelHealth } from "./channel-card.type";
 // OnAir + NowNext atoms. States: healthy · pending-slots · drift · error · creating.
 const HEALTH: Record<
   ChannelHealth,
-  { label: string; chip: string; tone: "danger" | "info" | "secondary" | "warning" } | null
+  { label: string; tone: "caution" | "neutral" | "onair" | "tune" } | null
 > = {
   healthy: null,
-  "pending-slots": { label: "Filling in", chip: "bg-tune-tint-15", tone: "info" },
-  drift: { label: "Drift", chip: "bg-caution-tint-15", tone: "warning" },
-  error: { label: "Error", chip: "bg-onair-tint-15", tone: "danger" },
-  creating: { label: "Creating", chip: "bg-static-800", tone: "secondary" },
+  "pending-slots": { label: "Filling in", tone: "tune" },
+  drift: { label: "Drift", tone: "caution" },
+  error: { label: "Error", tone: "onair" },
+  creating: { label: "Creating", tone: "neutral" },
   // A deliberate operator pause — calm and neutral (a muted chip), never an error.
-  paused: { label: "Paused", chip: "bg-static-800", tone: "secondary" },
+  paused: { label: "Paused", tone: "neutral" },
 };
 
 const ChannelCard = ({
@@ -35,7 +34,7 @@ const ChannelCard = ({
     <Card gap={12} padding={16}>
       <Stack align="start" direction="row" gap="control" justify="between">
         <Stack align="baseline" direction="row" gap="control">
-          <Text as="span" className="tabular-nums" textRole="channelNumber" tone="primary">
+          <Text as="span" fontVariant={["tabular-nums"]} textRole="channelNumber" tone="primary">
             {channelNumber(number)}
           </Text>
           <div>
@@ -60,14 +59,9 @@ const ChannelCard = ({
       <NowNextStrip {...nowNext} />
 
       {chip && (
-        <Text
-          as="span"
-          className={cn("inline-flex w-fit items-center rounded-sm px-1.5 py-0.5", chip.chip)}
-          textRole="mono"
-          tone={chip.tone}
-        >
+        <Badge shape="square" tone={chip.tone}>
           {chip.label}
-        </Text>
+        </Badge>
       )}
     </Card>
   );
