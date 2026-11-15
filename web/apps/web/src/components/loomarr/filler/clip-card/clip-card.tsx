@@ -159,14 +159,14 @@ const ClipFrame = ({
         //
         // The animation is ONE rendition and skips the ladder (§22 `animated`), so `sizes` is
         // nominal here — it is the still beneath that does the responsive work.
-        <span className="absolute inset-0">
+        <Stack bottom={0} left={0} position="absolute" render="span" right={0} top={0}>
           <ServedImage
             image={clip.hoverImage}
             alt=""
             sizes="(max-width: 640px) 45vw, 220px"
             fallback={null}
           />
-        </span>
+        </Stack>
       )}
 
       {/* Overlays (V35b, the mock's card): duration bottom-right, quality top-right, select
@@ -196,13 +196,13 @@ const ClipFrame = ({
         </span>
       )}
       {onToggleSelect && (
-        <div className="absolute top-0.5 left-0.5 z-10">
+        <Stack left={2} position="absolute" top={2} zIndex={10}>
           <ClipSelect
             clipName={clip.name}
             selected={Boolean(selected)}
             onSelectedChange={() => onToggleSelect()}
           />
-        </div>
+        </Stack>
       )}
 
       {/* The play button — the mock's 58px amber disc (line 982 of the desktop prototype),
@@ -216,7 +216,7 @@ const ClipFrame = ({
           A button that only exists on hover cannot be reached by Tab, so a keyboard user could
           never play a clip. `group-focus-within` is what makes tabbing to it reveal it. */}
       {onPlay && thumbImage && (
-        <div className="absolute inset-0">
+        <Stack bottom={0} left={0} position="absolute" right={0} top={0}>
           {/* The target is the whole preview frame, drawn as a MediaTile with no fill of its own so
               the still shows through; only the disc is visible. Its focus ring is drawn inside the
               frame, which clips anything outside it. */}
@@ -237,17 +237,20 @@ const ClipFrame = ({
                 mock does the same thing with `padding-left:4px`. */}
             <Stack
               align="center"
-              className="bg-signal/90 text-static-950 size-11 rounded-full opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+              borderRadius={999}
+              className="bg-signal/90 text-static-950 opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
               direction="row"
+              height={44}
               justify="center"
               render="span"
+              width={44}
             >
-              <Stack className="ml-0.5" direction="row" render="span">
+              <Stack direction="row" marginLeft={2} render="span">
                 <Icon decorative glyph={icons.play} size="default" tone="inherit" />
               </Stack>
             </Stack>
           </MediaTile>
-        </div>
+        </Stack>
       )}
     </div>
   );

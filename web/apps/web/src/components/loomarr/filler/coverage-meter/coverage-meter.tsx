@@ -3,7 +3,6 @@ import type { CoverageDTOLevel } from "@loomarr/api/models/coverageDTOLevel";
 import { Card, Stack, StatusDot, type StatusTone, Text } from "@loomarr/design-system";
 import { StatePanel } from "@loomarr/ui";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { cn } from "@/lib/utils";
 import type { CoverageMeterProps } from "./coverage-meter.type";
 
 // CoverageMeter — which rung of the §10 fallback ladder this channel's breaks draw from (V29b).
@@ -147,22 +146,36 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             const share = widest > 0 ? Math.round((rung.clips / widest) * 100) : 0;
             return (
               <Stack align="center" direction="row" gap="inline" key={rung.level} render="li">
-                <Text as="span" className="w-44 shrink-0 truncate" textRole="hint" tone="primary">
-                  {RUNG_LABEL[rung.level] ?? rung.level}
-                </Text>
-                <span className="bg-static-800 h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
-                  <span
-                    className={cn(
-                      "block h-full rounded-full",
-                      rung.level === coverage.level ? "bg-lock" : "bg-static-500",
-                    )}
-                    style={{ width: `${share}%` }}
+                <Stack flexShrink={0} render="span" width={176}>
+                  <Text as="span" numberOfLines={1} textRole="hint" tone="primary">
+                    {RUNG_LABEL[rung.level] ?? rung.level}
+                  </Text>
+                </Stack>
+                <Stack
+                  backgroundColor="$surfaceElevated"
+                  borderRadius={999}
+                  flexBasis="0%"
+                  flexGrow={1}
+                  flexShrink={1}
+                  height={6}
+                  minWidth={0}
+                  overflow="hidden"
+                  render="span"
+                >
+                  <Stack
+                    backgroundColor={rung.level === coverage.level ? "$stateSuccess" : "$actionDisabled"}
+                    borderRadius={999}
+                    height="100%"
+                    render="span"
+                    width={`${share}%`}
                   />
-                </span>
+                </Stack>
                 {/* tabular-nums so the counts do not jitter as the catalog changes. */}
-                <Text as="span" className="w-10 shrink-0 text-right tabular-nums" textRole="mono">
-                  {rung.clips}
-                </Text>
+                <Stack flexShrink={0} render="span" width={40}>
+                  <Text as="span" className="tabular-nums" textAlign="right" textRole="mono">
+                    {rung.clips}
+                  </Text>
+                </Stack>
               </Stack>
             );
           })}
@@ -186,23 +199,27 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           <Stack gap="1" render="ul">
             {criteria.map((c) => (
               <Stack align="center" direction="row" gap="inline" key={c.criterion} render="li">
-                <Text as="span" className="w-44 min-w-0 truncate" textRole="hint" tone="primary">
-                  {CRITERION_LABEL[c.criterion] ?? c.criterion}
-                </Text>
-                <Text
-                  as="span"
-                  className="shrink-0 tabular-nums"
-                  // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
-                  // thing to act on. The non-zero rows keep the role's quiet colour so the eye
-                  // lands on the one row that matters rather than scanning six equal-weight
-                  // numbers. A tone and `strong`, not `text-*`/`font-*` classes: the colour and
-                  // weight are inline style, which a class cannot override (#1956).
-                  strong={c.clips === 0}
-                  textRole="mono"
-                  {...(c.clips === 0 ? { tone: "danger" as const } : {})}
-                >
-                  {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
-                </Text>
+                <Stack minWidth={0} render="span" width={176}>
+                  <Text as="span" numberOfLines={1} textRole="hint" tone="primary">
+                    {CRITERION_LABEL[c.criterion] ?? c.criterion}
+                  </Text>
+                </Stack>
+                <Stack flexShrink={0} render="span">
+                  <Text
+                    as="span"
+                    className="tabular-nums"
+                    // ⚠ `danger` is this palette's "a human is needed" red; a zero here IS the
+                    // thing to act on. The non-zero rows keep the role's quiet colour so the eye
+                    // lands on the one row that matters rather than scanning six equal-weight
+                    // numbers. A tone and `strong`, not `text-*`/`font-*` classes: the colour and
+                    // weight are inline style, which a class cannot override (#1956).
+                    strong={c.clips === 0}
+                    textRole="mono"
+                    {...(c.clips === 0 ? { tone: "danger" as const } : {})}
+                  >
+                    {c.clips === 0 ? "nothing matches" : `${c.clips} ${c.clips === 1 ? "clip" : "clips"}`}
+                  </Text>
+                </Stack>
               </Stack>
             ))}
           </Stack>

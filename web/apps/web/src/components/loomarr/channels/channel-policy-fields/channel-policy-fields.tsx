@@ -1,5 +1,5 @@
 import { tidyGoDuration } from "@loomarr/core/format";
-import { Action, CompactSelect, Stack, Text } from "@loomarr/design-system";
+import { Action, CompactSelect, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { CommitField, normalizeYearRanges, YearRangeListField } from "@loomarr/ui";
 import { useState } from "react";
 import { eraDates, eraOf } from "@/lib/era-dates";
@@ -10,7 +10,6 @@ import {
   type PolicyField as PolicyFieldName,
   resetField,
 } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
@@ -25,7 +24,7 @@ const DateAxisEditor = ({
   ranges: { from: number; to: number }[];
   onChange: (next: { from: number; to: number }[]) => void;
 }) => (
-  <Stack className="border-border rounded-md border p-3" gap="inline">
+  <Stack borderColor="borderDecorative" borderRadius={6} borderWidth={1} gap="inline" padding={12}>
     <Stack align="center" direction="row" gap="control" justify="between">
       <Text textRole="label">{label}</Text>
     </Stack>
@@ -59,18 +58,20 @@ const PolicyField = ({
 }) => {
   const labelId = `${id}-label`;
   return (
-    <Stack className={wide ? "sm:col-span-2" : undefined} gap="1.5">
-      <Stack align="center" direction="row" gap="inline" justify="between" wrap>
-        <Stack align="center" direction="row" gap="1.5">
-          <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
-            {label}
-          </Text>
-          <FieldHelp label={label}>{help}</FieldHelp>
+    <GridItem span={wide ? { base: 1, sm: "full" } : 1}>
+      <Stack gap="1.5">
+        <Stack align="center" direction="row" gap="inline" justify="between" wrap>
+          <Stack align="center" direction="row" gap="1.5">
+            <Text as="label" htmlFor={htmlFor} id={labelId} textRole="label">
+              {label}
+            </Text>
+            <FieldHelp label={label}>{help}</FieldHelp>
+          </Stack>
+          <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
         </Stack>
-        <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
+        {children}
       </Stack>
-      {children}
-    </Stack>
+    </GridItem>
   );
 };
 
@@ -214,7 +215,7 @@ const ChannelPolicyFields = ({
   return (
     // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
     // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
-    <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
+    <Grid className={className} columnGap="4" columns={{ base: 1, sm: 2 }} rowGap="5">
       {/* Ordering — empty string means "inherit the channel's Strategy"; the select names that
           choice "inherit". */}
       {showOrdering && (
@@ -516,7 +517,7 @@ const ChannelPolicyFields = ({
           />
         </PolicyField>
       )}
-    </div>
+    </Grid>
   );
 };
 

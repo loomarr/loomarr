@@ -16,7 +16,6 @@ import { ChannelProgrammingChanges } from "@/components/loomarr/channels/channel
 import { ChannelRulesEditor } from "@/components/loomarr/channels/channel-rules-editor";
 import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal";
 import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
-import { cn } from "@/lib/utils";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). Lineup,
 // Programming rules and Refine with AI are ONE surface with a visible hierarchy rather than
@@ -187,16 +186,25 @@ const ChannelProgramming = ({
                 deliberately the same shape as the filler sandbox's bar: two drafts on one page
                 that commit differently would be two things to learn. */}
             {rules.isDirty && (
-              <Stack align="center" className="border-border border-t pt-4" direction="row" gap="inline">
+              <Stack
+                align="center"
+                borderColor="borderDecorative"
+                borderTopWidth={1}
+                direction="row"
+                gap="inline"
+                paddingTop={16}
+              >
                 <Action disabled={rules.isApplying} onPress={rules.apply} tone="suggest">
                   {rules.isApplying ? "Applying…" : "Apply rules"}
                 </Action>
                 <Action disabled={rules.isApplying} onPress={rules.discard} variant="ghost">
                   Discard
                 </Action>
-                <Text as="span" className="ml-auto" textRole="hint" tone="secondary">
-                  Unsaved changes
-                </Text>
+                <Stack marginLeft="auto" render="span">
+                  <Text as="span" textRole="hint" tone="secondary">
+                    Unsaved changes
+                  </Text>
+                </Stack>
               </Stack>
             )}
 
@@ -210,14 +218,14 @@ const ChannelProgramming = ({
                 vocabulary the rules editor already fetched — the holiday ids come from the
                 same BE-authored list, so the picker cannot offer a holiday the engine does
                 not know. */}
-            <div className="border-border/60 border-t pt-4">
+            <Stack borderColor="borderDecorative" borderTopWidth={1} paddingTop={16}>
               <ChannelSeasonal
                 policy={policy}
                 onChange={onPolicyChange}
                 vocabulary={vocabulary}
                 holidayEpisodes={holidayEpisodes}
               />
-            </div>
+            </Stack>
           </>
         ) : (
           <Text as="p" textRole="compact" tone="secondary">
@@ -230,9 +238,9 @@ const ChannelProgramming = ({
             this decides whether the lineup itself grows as the library does. Sharing the block
             keeps both answers in one place instead of on a settings tab that never existed
             (§12). */}
-        <div className="border-border/60 border-t pt-4">
+        <Stack borderColor="borderDecorative" borderTopWidth={1} paddingTop={16}>
           <ChannelAutoCurate policy={policy} onChange={onPolicyChange} intentBacked={Boolean(fromRequest)} />
-        </div>
+        </Stack>
       </Block>
 
       {/* One shared preview. The banner says which schedule is on screen; the change list
@@ -243,17 +251,23 @@ const ChannelProgramming = ({
         label="Preview schedule"
       >
         <Stack gap="4">
-          <Text
-            as="p"
-            className={cn("rounded-md px-2.5 py-1.5", rules.isDirty ? "bg-tune-tint-15" : "bg-muted")}
-            textRole="hint"
-            // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
-            tone={rules.isDirty ? "info" : "secondary"}
+          <Stack
+            backgroundColor={rules.isDirty ? "$stateInfoSurface" : "$surfaceElevated"}
+            borderRadius={6}
+            paddingHorizontal={10}
+            paddingVertical={6}
           >
-            {rules.isDirty
-              ? "Previewing the unsaved rules draft — Apply above to make this the live schedule."
-              : "Showing the saved, on-air schedule."}
-          </Text>
+            <Text
+              as="p"
+              textRole="hint"
+              // An unsaved draft is information, so it takes `tune` (#1909 Q5), not amber.
+              tone={rules.isDirty ? "info" : "secondary"}
+            >
+              {rules.isDirty
+                ? "Previewing the unsaved rules draft — Apply above to make this the live schedule."
+                : "Showing the saved, on-air schedule."}
+            </Text>
+          </Stack>
           <ChannelProgrammingChanges
             channelId={channelId}
             draftPolicy={rules.isDirty ? rules.draft : undefined}

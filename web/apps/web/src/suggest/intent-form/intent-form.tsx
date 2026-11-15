@@ -1,7 +1,7 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
 import { useAppForm } from "@/lib/app-form";
@@ -126,7 +126,7 @@ const IntentForm = ({
       </Action>
 
       {refining && (
-        <div className="grid grid-cols-2 gap-3">
+        <Grid columns={2} gap="3">
           <form.AppField name="era">
             {(field) => <field.TextField label="Era" placeholder="1990s" />}
           </form.AppField>
@@ -141,19 +141,19 @@ const IntentForm = ({
           </form.AppField>
           <form.AppField name="mustInclude">
             {(field) => (
-              <field.TextField className="col-span-2" label="Must include" placeholder="Point Break, Heat" />
+              <GridItem span="full">
+                <field.TextField label="Must include" placeholder="Point Break, Heat" />
+              </GridItem>
             )}
           </form.AppField>
           <form.AppField name="mustExclude">
             {(field) => (
-              <field.TextField
-                className="col-span-2"
-                label="Must exclude"
-                placeholder="anything with clowns"
-              />
+              <GridItem span="full">
+                <field.TextField label="Must exclude" placeholder="anything with clowns" />
+              </GridItem>
             )}
           </form.AppField>
-        </div>
+        </Grid>
       )}
     </Stack>
   );

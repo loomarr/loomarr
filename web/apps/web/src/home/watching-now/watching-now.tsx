@@ -1,4 +1,4 @@
-import { SectionHeader } from "@loomarr/design-system";
+import { Grid, SectionHeader } from "@loomarr/design-system";
 import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { AiringArtwork } from "../channel-wall";
@@ -52,7 +52,7 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
     <section aria-labelledby="home-watching">
       <SectionHeader id="home-watching" title="Watching now" meta={watchingMeta({ viewing })} />
       {/* Three across as the mock draws it; fewer as the page narrows, down to one on a phone (#1785). */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="3">
         {cards.map(({ key, channel, programme, airing, viewer, you }) => (
           <Link
             key={key}
@@ -76,7 +76,7 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
             />
           </Link>
         ))}
-      </div>
+      </Grid>
     </section>
   );
 };
