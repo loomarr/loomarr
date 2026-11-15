@@ -17,19 +17,10 @@
     "apps/web/src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/feedback/field-help/field-help.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/filler/filler-sources/filler-sources.tsx": {
-      "flexStack": 1
-    },
-    "apps/web/src/components/loomarr/filler/pool-health/pool-health.tsx": {
       "flexStack": 1
     },
     "apps/web/src/components/loomarr/filler/source-search/source-search.tsx": {
