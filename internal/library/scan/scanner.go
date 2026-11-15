@@ -61,31 +61,51 @@ func (s *Scanner) FoldersSettled() bool {
 }
 
 // Rewrite asks for a pass over dirs, under root, to write their titles again with details the
-// Enricher fetched. While a header stage reads, the folders are held until it ends: a file still
-// to be read takes the details when its read writes it, and a pass now would only hold the reads
-// up (each pass writes under the import's lock) and make the reads of its files stale, to be done
-// again. An import's first lookups land while its files are read, so passing over each title's
-// folders as it was looked up turned the reading to a crawl.
+// Enricher fetched. A folder whose files a header stage has still to read is held until they are
+// read and saved (ReleaseFolder), or the stage ends: a file still to be read takes the details
+// when its read writes it, and a pass now would make its read stale, to be done again. An
+// import's first lookups land while its files are read, so passing over each title's folders as
+// it was looked up turned the reading to a crawl. A folder the stage is done with, or holds
+// nothing of, is passed over now.
 func (s *Scanner) Rewrite(root string, dirs ...string) {
 	if len(dirs) == 0 {
 		return
 	}
+	var now []string
 	s.mu.Lock()
-	if s.Importer.Reading() {
+	reading := s.Importer.Reading()
+	for _, dir := range dirs {
+		if !reading || !s.Importer.FolderUnread(dir) {
+			now = append(now, dir)
+			continue
+		}
 		if s.held == nil {
 			s.held = map[string]map[string]bool{}
 		}
 		if s.held[root] == nil {
 			s.held[root] = map[string]bool{}
 		}
-		for _, dir := range dirs {
-			s.held[root][dir] = true
-		}
-		s.mu.Unlock()
-		return
+		s.held[root][dir] = true
 	}
 	s.mu.Unlock()
-	s.PassFolders(root, dirs...)
+	s.PassFolders(root, now...)
+}
+
+// ReleaseFolder asks for the pass Rewrite held for dir, under root, once the header stage has read
+// and saved its files. The Importer calls it as each folder's reads are done (FolderRead).
+func (s *Scanner) ReleaseFolder(root, dir string) {
+	s.mu.Lock()
+	held := s.held[root][dir]
+	if held {
+		delete(s.held[root], dir)
+		if len(s.held[root]) == 0 {
+			delete(s.held, root)
+		}
+	}
+	s.mu.Unlock()
+	if held {
+		s.PassFolders(root, dir)
+	}
 }
 
 // ReleaseHeld asks for the passes Rewrite held while a header stage read. The Importer calls it as

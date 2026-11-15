@@ -2,8 +2,10 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,13 +92,61 @@ func TestScannerSettlesOnceItsFolderPassesHaveRun(t *testing.T) {
 	}
 }
 
-// The Enricher's rewrites wait while a header stage reads: a file still to be read takes the
-// details when its read writes it, and a pass meanwhile would hold the reads up and make them stale.
-// The held folders keep step 3 unsettled, and go to their passes when the stage ends.
+// A header stage tells of each folder once its files are read and saved, while it reads on, so a
+// rewrite held for the folder need not wait for the whole stage.
+func TestAHeaderStageTellsOfEachFolderItHasRead(t *testing.T) {
+	h := newHarness(t)
+	const films = headerBatch + 10
+	for i := range films {
+		h.file(fmt.Sprintf("Film %02d (2001)/Film %02d.mkv", i, i), 10)
+	}
+	var mu sync.Mutex
+	told := map[string]bool{}
+	earliest := int32(-1)
+	ended := false
+	h.im.FolderRead = func(root, dir string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if ended {
+			t.Errorf("%s told after the stage ended", dir)
+		}
+		if earliest < 0 {
+			earliest = h.reads.Load()
+		}
+		rows, err := h.st.LibraryFiles(context.Background(), root)
+		if err != nil {
+			t.Error(err)
+		}
+		for _, r := range rows {
+			if filepath.Dir(r.Path) == dir && r.Header != librarystore.LibraryHeaderRead {
+				t.Errorf("%s told before %s was saved read", dir, r.Path)
+			}
+		}
+		told[dir] = true
+	}
+	h.im.AfterReading = func() {
+		mu.Lock()
+		ended = true
+		mu.Unlock()
+	}
+	h.run()
+	if earliest < 0 || earliest >= films {
+		t.Fatalf("the first folder was told after %d of %d reads; want while the stage read on", earliest, films)
+	}
+	if len(told) < headerBatch {
+		t.Fatalf("%d folders told while the stage read, want at least its first batch's %d", len(told), headerBatch)
+	}
+}
+
+// The Enricher's rewrite of a folder waits while a header stage has its files to read: a file still
+// to be read takes the details when its read writes it, and a pass meanwhile would make its read
+// stale. The held folder keeps step 3 unsettled, and goes to its pass once its files are read and
+// saved, or the stage ends. A folder the stage holds nothing of is passed over at once.
 func TestScannerHoldsRewritesWhileFilesAreRead(t *testing.T) {
 	h := newHarness(t)
 	sc := NewScanner(h.im, time.Hour)
 	lima := filepath.Join(h.root, "Lima (2011)")
+	mike := filepath.Join(h.root, "Mike (2012)")
 	// A header stage tells of its end, once it has read and saved its files.
 	ended := 0
 	h.im.AfterReading = func() { ended++ }
@@ -107,15 +157,28 @@ func TestScannerHoldsRewritesWhileFilesAreRead(t *testing.T) {
 	}
 
 	h.im.mu.Lock()
-	h.im.reading = true
+	h.im.reading, h.im.unread = true, map[string]int{lima: 1}
 	h.im.mu.Unlock()
-	sc.Rewrite(h.root, lima)
-	if len(sc.folders) != 0 {
-		t.Fatalf("a rewrite passed over while files were read: %v", sc.folders)
+	sc.Rewrite(h.root, lima, mike)
+	if _, ok := sc.folders[h.root][lima]; ok {
+		t.Fatalf("a rewrite passed over a folder whose files were being read: %v", sc.folders)
 	}
+	if _, ok := sc.folders[h.root][mike]; !ok {
+		t.Fatalf("a rewrite of a folder with nothing to read was held: %v", sc.folders)
+	}
+	delete(sc.folders, h.root)
 	if sc.FoldersSettled() {
 		t.Fatal("settled with a rewrite held")
 	}
+
+	// Its files read and saved, the folder goes to its pass while the stage reads on.
+	sc.ReleaseFolder(h.root, lima)
+	if _, ok := sc.folders[h.root][lima]; !ok || len(sc.held) != 0 {
+		t.Fatalf("the held rewrite did not go to its pass once its folder was read: folders %v, held %v", sc.folders, sc.held)
+	}
+	delete(sc.folders, h.root)
+	sc.Rewrite(h.root, lima)
+	delete(sc.folders, h.root)
 
 	h.im.mu.Lock()
 	h.im.reading = false
