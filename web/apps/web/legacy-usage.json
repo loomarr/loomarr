@@ -247,7 +247,7 @@
       "tailwindClasses": 5
     },
     "src/components/loomarr/shell/page-header/page-header.tsx": {
-      "tailwindClasses": 14
+      "tailwindClasses": 8
     },
     "src/components/loomarr/shell/restart-overlay/restart-overlay.tsx": {
       "tailwindClasses": 8
@@ -311,7 +311,7 @@
       "tailwindClasses": 12
     },
     "src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "tailwindClasses": 23
+      "tailwindClasses": 20
     },
     "src/filler/clip-details-settings/clip-details-settings.tsx": {
       "tailwindClasses": 19
@@ -423,9 +423,6 @@
     },
     "src/home/watching-now/watching-now.tsx": {
       "tailwindClasses": 5
-    },
-    "src/lib/app-form/app-form.tsx": {
-      "tailwindClasses": 3
     },
     "src/lib/utils/utils.ts": {
       "tailwindMerge": 1,

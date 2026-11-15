@@ -50,9 +50,6 @@
     "apps/web/src/diagnostics/support-bundle/support-bundle.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/filler/clip-details-editor/clip-details-editor.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/filler/clip-details/clip-details.tsx": {
       "flexStack": 1
     },
@@ -64,9 +61,6 @@
     },
     "apps/web/src/filler/taxonomy-tab/taxonomy-tab.tsx": {
       "flexStack": 2
-    },
-    "apps/web/src/lib/app-form/app-form.tsx": {
-      "flexStack": 1
     },
     "apps/web/src/routes/_authed/channels/$id/route.tsx": {
       "flexStack": 2
