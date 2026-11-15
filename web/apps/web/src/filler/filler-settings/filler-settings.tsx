@@ -17,6 +17,7 @@ import {
   TextLink,
 } from "@loomarr/design-system";
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { BrowserSelectControl } from "@/client-adapters";
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -62,33 +63,29 @@ const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): str
   }
 };
 
+// The quiet strip a summary sits in: a muted wash with 8px corners, 16px by 12px of room.
+const QuietStrip = ({ children }: { children: ReactNode }) => (
+  <Stack borderRadius={8} className="bg-muted/50" paddingHorizontal={16} paddingVertical={12}>
+    {children}
+  </Stack>
+);
+
 const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
   if (!storage) {
     return (
-      <Text
-        as="p"
-        aria-live="polite"
-        className="bg-muted/50 rounded-lg px-4 py-3"
-        textRole="compact"
-        tone="secondary"
-      >
-        Checking this drive…
-      </Text>
+      <QuietStrip>
+        <Text as="p" aria-live="polite" textRole="compact" tone="secondary">
+          Checking this drive…
+        </Text>
+      </QuietStrip>
     );
   }
   const pauseMessage = storagePauseMessage(storage.pausedBy);
   // The server owns the warning threshold (storage state); a nearly full or full allowance offers
   // the way out (#2737), which is the allowance field just above.
   const allowanceFull = storage.state === "approaching" || storage.pausedBy === "library_limit";
-  return (
-    <div
-      role="status"
-      className={
-        pauseMessage || allowanceFull
-          ? "border-caution/40 bg-caution/5 rounded-lg border px-4 py-3"
-          : "bg-muted/50 rounded-lg px-4 py-3"
-      }
-    >
+  const body = (
+    <>
       <Text as="p" textRole="cardLabel">
         {storage.automatic ? "Automatic" : "Custom"} {formatBytes(storage.softBudgetBytes)} allowance
       </Text>
@@ -97,9 +94,11 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
         Loomarr keeps at least {formatBytes(storage.hardReserveBytes)} free for this device.
       </Text>
       {pauseMessage ? (
-        <Text as="p" className="mt-2" textRole="compact" tone="warning">
-          {pauseMessage}
-        </Text>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="compact" tone="warning">
+            {pauseMessage}
+          </Text>
+        </Stack>
       ) : null}
       {allowanceFull ? (
         <Surface alignItems="flex-start" backgroundColor="transparent" borderWidth={0} marginTop={12}>
@@ -113,7 +112,17 @@ const StorageSummary = ({ storage }: { storage?: FillerStorageStatusDTO }) => {
           </Action>
         </Surface>
       ) : null}
-    </div>
+    </>
+  );
+  // A full or paused allowance is a caution: the DS caution frame. Otherwise it is the quiet strip.
+  return pauseMessage || allowanceFull ? (
+    <Card borderRadius={8} paddingHorizontal={16} paddingVertical={12} role="status" tone="caution">
+      {body}
+    </Card>
+  ) : (
+    <Stack borderRadius={8} className="bg-muted/50" paddingHorizontal={16} paddingVertical={12} role="status">
+      {body}
+    </Stack>
   );
 };
 
@@ -283,12 +292,14 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
             ? "No enabled sources are currently downloading automatically."
             : `Across ${sourceCount} enabled ${sourceCount === 1 ? "source" : "sources"}, one full check can add up to ${fullCheckMax} ${fullCheckMax === 1 ? "clip" : "clips"}.`;
         return (
-          <Text as="p" className="bg-muted/50 rounded-lg px-4 py-3" textRole="compact" tone="secondary">
-            {cadence} {round}{" "}
-            <TextLink render={<Link to="/filler/settings/$section" params={{ section: "storage" }} />}>
-              Storage limits
-            </TextLink>
-          </Text>
+          <QuietStrip>
+            <Text as="p" textRole="compact" tone="secondary">
+              {cadence} {round}{" "}
+              <TextLink render={<Link to="/filler/settings/$section" params={{ section: "storage" }} />}>
+                Storage limits
+              </TextLink>
+            </Text>
+          </QuietStrip>
         );
       },
     },
