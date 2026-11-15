@@ -53,7 +53,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }:
             Select a person to manage access, requests, and sessions.
           </Text>
         </Stack>
-        <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "9rem", "9rem"] }} gap="3">
+        <Grid columns={{ base: 1, sm: ["minmax(12rem,1fr)", "9rem", "9rem"] }} flexShrink={1} gap="3">
           <SearchField label="Search people" onChangeText={setQuery} placeholder="Name" value={query} />
           <BrowserSelectControl
             appearance="field"
