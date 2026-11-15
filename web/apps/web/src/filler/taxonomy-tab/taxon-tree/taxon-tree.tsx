@@ -1,0 +1,115 @@
+import type { TaxonDTO } from "@loomarr/api/models/taxonDTO";
+import { Action, Badge, Icon, icons, Stack, Text } from "@loomarr/design-system";
+import { Link } from "@tanstack/react-router";
+import type { TaxonomyAxis as Axis } from "../../taxonomy-axes";
+import { AXIS_COPY } from "../taxonomy-axis-copy";
+
+type TaxonTreeNode = { taxon: TaxonDTO; children: TaxonTreeNode[] };
+
+const treeForAxis = (taxa: TaxonDTO[], axis: Axis): TaxonTreeNode[] => {
+  const nodes = taxa.filter((taxon) => taxon.axis === axis);
+  const slugs = new Set(nodes.map((taxon) => taxon.slug));
+  const children = new Map<string, TaxonDTO[]>();
+  for (const taxon of nodes) {
+    const parent = taxon.parent && slugs.has(taxon.parent) ? taxon.parent : "";
+    children.set(parent, [...(children.get(parent) ?? []), taxon]);
+  }
+  for (const rows of children.values()) rows.sort((a, b) => a.label.localeCompare(b.label));
+  const build = (parent: string): TaxonTreeNode[] =>
+    (children.get(parent) ?? []).map((taxon) => ({ taxon, children: build(taxon.slug) }));
+  return build("");
+};
+
+const TaxonTree = ({
+  nodes,
+  axis,
+  isAdmin,
+  onEdit,
+  nested = false,
+}: {
+  nodes: TaxonTreeNode[];
+  axis: Axis;
+  isAdmin: boolean;
+  onEdit: (taxon: TaxonDTO) => void;
+  nested?: boolean;
+}) => (
+  <ul
+    className={nested ? "border-border ml-5 border-l" : "divide-border divide-y"}
+    {...(!nested ? { "aria-label": `${AXIS_COPY[axis].label} vocabulary` } : {})}
+  >
+    {nodes.map(({ taxon, children }) => {
+      const synonyms = taxon.synonyms ?? [];
+      const aliases = taxon.retiredAliases ?? [];
+      const resolverTermCount = synonyms.length + aliases.length;
+      return (
+        <li key={taxon.slug}>
+          <Stack align="start" direction="row" gap="inline" paddingHorizontal={16} paddingVertical={12}>
+            {nested ? (
+              <Stack direction="row" marginTop={4} render="span">
+                <Icon decorative glyph={icons.rowExpand} size="compact" tone="muted" />
+              </Stack>
+            ) : null}
+            <Stack flexBasis="0%" flexGrow={1} minWidth={0}>
+              <Action
+                disabled={!isAdmin}
+                layout="text"
+                onPress={() => onEdit(taxon)}
+                style={{ alignSelf: "flex-start" }}
+                variant="ghost"
+              >
+                {taxon.label}
+              </Action>
+              <Stack align="center" direction="row" gap="inline" marginTop={2} wrap>
+                <Text as="span" className="break-all" textRole="mono">
+                  {taxon.slug}
+                </Text>
+                {resolverTermCount > 0 ? (
+                  <details>
+                    <Text as="summary" className="cursor-pointer" textRole="hint" tone="secondary">
+                      {resolverTermCount} classifier {resolverTermCount === 1 ? "term" : "terms"}
+                    </Text>
+                    <Stack className="break-words" gap="1" marginTop={4} maxWidth={384}>
+                      {synonyms.length > 0 ? (
+                        <Text as="p" textRole="hint" tone="secondary">
+                          Synonyms: {synonyms.join(", ")}
+                        </Text>
+                      ) : null}
+                      {aliases.length > 0 ? (
+                        <Text as="p" textRole="hint" tone="secondary">
+                          Retired slugs: {aliases.join(", ")}
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </details>
+                ) : null}
+              </Stack>
+            </Stack>
+            <Stack align="center" direction="row" flexShrink={0} gap="1.5" justify="end" wrap>
+              {(taxon.assertedClips ?? 0) > 0 && taxon.assertedClips !== taxon.matchedClips ? (
+                <Badge shape="square" title="Clips directly assigned this tag" tone="neutral">
+                  {taxon.assertedClips.toLocaleString()} direct
+                </Badge>
+              ) : null}
+              <Link
+                to="/filler/library"
+                search={{ taxon: taxon.slug }}
+                className="focus-visible:ring-ring rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none"
+                title={`Browse clips matching ${taxon.label}, including descendants`}
+              >
+                <Text as="span" textRole="mono" tone="signal">
+                  {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
+                </Text>
+              </Link>
+            </Stack>
+          </Stack>
+          {children.length > 0 ? (
+            <TaxonTree nodes={children} axis={axis} isAdmin={isAdmin} onEdit={onEdit} nested />
+          ) : null}
+        </li>
+      );
+    })}
+  </ul>
+);
+
+export type { TaxonTreeNode };
+export { TaxonTree, treeForAxis };
