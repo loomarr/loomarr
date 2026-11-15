@@ -176,7 +176,7 @@ const PersonDetail = ({
         {user.contactReplacement && (
           <Stack
             borderRadius={8}
-            className="border-suggest-700/50 bg-suggest-950/20 border"
+            className="border-suggest-700/50 border"
             gap="inline"
             padding={12}
           >
@@ -433,7 +433,7 @@ const PersonDetail = ({
       <Stack
         aria-labelledby="person-danger"
         borderRadius={12}
-        className="border-onair-700 bg-onair-950/20 border"
+        className="border-onair-700 border"
         gap="control"
         padding={16}
         render="section"
