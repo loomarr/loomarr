@@ -59,9 +59,6 @@
     "apps/web/src/components/loomarr/settings/setting-field/setting-field.tsx": {
       "flexStack": 1
     },
-    "apps/web/src/components/loomarr/setup/wizard-shell/wizard-shell.tsx": {
-      "flexStack": 1
-    },
     "apps/web/src/components/loomarr/shell/app-shell/app-shell.tsx": {
       "flexStack": 3
     },
