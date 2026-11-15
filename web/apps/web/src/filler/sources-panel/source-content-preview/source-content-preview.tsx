@@ -60,11 +60,11 @@ const SourceContentPreview = ({
                 {previewItems.map((item) => (
                   <Stack
                     align="center"
-                    className="min-w-0"
                     direction="row"
                     flexShrink={1}
                     gap="inline"
                     key={item.url}
+                    minWidth={0}
                     render="li"
                   >
                     <Text as="div" className="min-w-0 flex-1 truncate" textRole="compact">
