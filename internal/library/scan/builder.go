@@ -423,9 +423,9 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 		}
 	}
 	in := precedence.Input{Kind: id.kind, Records: records, Series: series}
-	var named said
+	var named told
 	if id.kind == mp.KindMovie {
-		named = saidBy(fallbackName(file.Rel, id.kind, file.Part, file.Sole))
+		named = b.movieTold(ctx, snapshot.Origin, file)
 	}
 	res := b.resolveNamed(ctx, snapshot.Origin, in, named)
 	if id.kind == mp.KindEpisode && res.record == nil && !res.waiting {
@@ -559,24 +559,11 @@ type resolution struct {
 // a cached catalog record is resolved again with it, so its details come from the catalog
 // (decision 7); one not cached yet is written without, and again once the Enricher fetches it.
 func (b *builder) resolve(ctx context.Context, origin inventory.OriginKey, in precedence.Input) resolution {
-	return b.resolveNamed(ctx, origin, in, said{})
+	return b.resolveNamed(ctx, origin, in, told{})
 }
 
-// said is the title and year a movie's file or a show's folder is named by, which no record
-// carries: the catalog's search reads them, and an id's record is weighed against them.
-type said struct {
-	title string
-	year  int
-}
-
-// saidBy is what a name says: its title and year as the catalog's search reads them.
-func saidBy(name string) said {
-	title, year, _ := searchQuery(strings.TrimSpace(embeddedID.ReplaceAllString(name, "")), 0)
-	return said{title: title, year: year}
-}
-
-// resolveNamed is resolve for a movie or a series whose name says what it is (named).
-func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, in precedence.Input, named said) resolution {
+// resolveNamed is resolve for a movie or a series whose names say what it is (named).
+func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, in precedence.Input, named told) resolution {
 	if rec, ok := b.im.linkRecord(ctx, in.Kind, origin); ok {
 		in.Records = append(append([]mp.Record(nil), in.Records...), rec)
 	}
@@ -619,26 +606,6 @@ func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, 
 		out.set = b.im.Keys.For(mp.KindCollection, []mp.ExternalID{out.resolved.Collection.Value.ID})
 	}
 	return out
-}
-
-// namesAnother says whether the catalog record an id found is another title than the files name
-// (local, resolved without it, or else the name itself): they give a title and a year, neither
-// the record's title nor its original title is theirs, and its year is more than one off. A remake
-// shares its title, and a title the catalog knows in another language shares its year, so either
-// one stands.
-func namesAnother(local precedence.Resolved, named said, rec mp.Record) bool {
-	d := rec.Descriptive
-	title, year := local.Title.Value, local.Year.Value
-	if title == "" {
-		title = named.title
-	}
-	if year <= 0 {
-		year = named.year
-	}
-	if d == nil || title == "" || year <= 0 || d.Year <= 0 || (d.Year-year <= 1 && year-d.Year <= 1) {
-		return false
-	}
-	return !oneTitle(d.Title, title) && !oneTitle(d.OriginalTitle, title)
 }
 
 // numbersAnother says whether an NFO's numbering names another episode than a file's own mark: both
@@ -692,7 +659,7 @@ func (b *builder) resolveSeries(ctx context.Context, s *seriesSeen) resolution {
 			}
 		}
 	}
-	s.resolution = b.resolveNamed(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: s.records}, saidBy(path.Base(s.dir)))
+	s.resolution = b.resolveNamed(ctx, seriesOrigin(b.root, s.dir), precedence.Input{Kind: mp.KindSeries, Records: s.records}, told{name: saidBy(path.Base(s.dir))})
 	s.resolvedAt = b.im.now()
 	return s.resolution
 }

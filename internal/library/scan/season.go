@@ -202,16 +202,7 @@ func oneTitle(title, told string) bool {
 	if title == "" || told == "" {
 		return false
 	}
-	words := func(s string) map[string]bool {
-		set := map[string]bool{}
-		for _, w := range strings.Fields(normName(s)) {
-			if !smallWord[w] {
-				set[w] = true
-			}
-		}
-		return set
-	}
-	a, b := words(title), words(told)
+	a, b := wordsOf(title), wordsOf(told)
 	if len(a) == 0 || len(b) == 0 {
 		return normName(title) == normName(told)
 	}
@@ -224,6 +215,17 @@ func oneTitle(title, told string) bool {
 		}
 	}
 	return true
+}
+
+// wordsOf are the words a title is told by, small ones aside.
+func wordsOf(s string) map[string]bool {
+	set := map[string]bool{}
+	for _, w := range strings.Fields(normName(s)) {
+		if !smallWord[w] {
+			set[w] = true
+		}
+	}
+	return set
 }
 
 // smallWord are words a title is written with or without: "The Pit" is "Pit".
