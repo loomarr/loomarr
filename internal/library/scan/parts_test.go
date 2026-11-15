@@ -287,6 +287,16 @@ func TestAnEpisodeIsNamedByWhatFollowsItsShowAndMark(t *testing.T) {
 		{"Kettle Bay/Specials/The.Making.Of.Kettle.Bay.1080p.WEB.h264-GRP.mkv", "The Making Of Kettle Bay"},
 		{"Kettle Bay/Season 01/Kettle.Bay.S01E02.720p.HDTV.x264-GRP.mkv", "Kettle Bay S01E02"},
 		{"Golf Show {tmdb-90000701}/Season 01/Golf Show S01E02.mkv", "Golf Show S01E02"},
+		// The folder's year is one a file may leave out.
+		{"Kettle Bay (2005)/Specials/Kettle Bay - Holiday Special.mkv", "Holiday Special"},
+		// A dated episode's title follows its day, which is its premiere date; a year ending a
+		// title is the title's, and the day's year may read as the show's.
+		{"Tern Point (2003)/Season 2014/Tern Point (2003) - 2014-04-04 - April 4, 2014 [WEBDL-720p].mkv", "April 4, 2014"},
+		{"Tern Point (2003)/Season 2014/Tern Point - 2014-04-04 - Low Tide.mkv", "Low Tide"},
+		{"Tern Point (2003)/Season 2014/Tern.Point.2014.04.04.Low.Tide.720p.WEB.h264-GRP.mkv", "Low Tide"},
+		{"Tern Point (2003)/Season 2014/Tern Point (2003) - 2014-04-04 [WEBDL-720p].mkv", "2014-04-04"},
+		{"Kettle Bay (2005)/Season 01/Kettle Bay (2005) - S01E05 - Airport 2010 [WEBDL-720p].mkv", "Airport 2010"},
+		{"Kettle Bay (2005)/Season 01/Kettle Bay (2005) - S01E06 - Guests (2010) [WEBDL-720p].mkv", "Guests"},
 		// A longer show name that only starts with this one is not this one's.
 		{"Kettle Bayside/Season 01/Kettle Bayside S01E01.mkv", "Kettle Bayside S01E01"},
 	} {

@@ -572,6 +572,15 @@ func episodeName(rel, name string) string {
 	for d := path.Dir(rel); d != "."; d = path.Dir(d) {
 		if folder := showFolderName(path.Base(d)); folder != "" {
 			if m := showPrefix(folder).FindStringIndex(name); m != nil {
+				// A dated episode's title follows its day, "Kettle Bay - 2014-04-04 - Low Tide";
+				// the day is its premiere date, listed apart. The show's name may read the day's
+				// year as its own ("Kettle.Bay.2014.04.04.Low.Tide"), so the day may start before
+				// the name ends.
+				if d := nameDay.FindStringSubmatchIndex(name); d != nil && d[2] >= m[0] && d[2] <= m[1] && d[3] > m[1] {
+					if title, ok := titleIn(name[d[1]:]); ok {
+						return title
+					}
+				}
 				if title, ok := titleIn(name[m[1]:]); ok {
 					return title
 				}
@@ -586,15 +595,23 @@ func episodeName(rel, name string) string {
 }
 
 // titleIn is the title in what follows an episode's mark or its show's name, read as a search reads
-// it, when there is one and not only the release's notes.
+// it, when there is one and not only the release's notes. A year last in it, not bracketed, is the
+// title's: "Airport 2010", "March 8 1983". An episode's release year comes before its mark.
 func titleIn(rest string) (string, bool) {
 	rest = trimReleaseNotes(strings.Trim(rest, " ._-"))
 	if onlyReleaseNotes(rest) {
 		return "", false
 	}
-	title, _, _ := searchQuery(rest, 0)
-	return title, title != ""
+	title, _, whole := searchQuery(rest, 0)
+	return cmp.Or(whole, title), title != ""
 }
+
+// bracketedYear is a year written as a show's folder writes it: "(2005)", "[2005]".
+var bracketedYear = regexp.MustCompile(`^[(\[](?:19|20)\d{2}[)\]]$`)
+
+// nameDay is a day a dated episode's name gives (its first group), with the separators after it:
+// "2014-04-04 - ", "2014.04.04.".
+var nameDay = regexp.MustCompile(`(?:^|[ ._-])((?:19|20)\d{2}[-. ]\d{2}[-. ]\d{2})(?:[ ._]*-[ ._]*|[ ._]+|$)`)
 
 // onlyReleaseNotes says whether what follows an episode's mark starts with a word only a release
 // carries (releaseMark), so it holds the release's notes and no title: "[HDTV-720p]",
@@ -613,6 +630,11 @@ func onlyReleaseNotes(s string) bool {
 // and the separators after that: "Kettle Bay (2005) - ", "Kettle.Bay.".
 func showPrefix(show string) *regexp.Regexp {
 	words := strings.FieldsFunc(show, func(r rune) bool { return strings.ContainsRune(" ._-", r) })
+	// The folder's year, "Kettle Bay (2005)", is the optional one after the name: a file may leave
+	// it out.
+	if n := len(words); n > 1 && bracketedYear.MatchString(words[n-1]) {
+		words = words[:n-1]
+	}
 	for i, w := range words {
 		words[i] = regexp.QuoteMeta(w)
 	}
