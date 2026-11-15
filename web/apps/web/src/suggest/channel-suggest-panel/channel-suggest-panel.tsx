@@ -3,7 +3,7 @@ import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
@@ -141,19 +141,21 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
       {run.error != null &&
         !proposal &&
         (aiUnconfigured || groundingUnconfigured ? (
-          <div role="alert" className="border-border bg-muted/40 rounded-lg border p-4">
-            <Text as="p" textRole="cardLabel">
-              {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
-            </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              {groundingUnconfigured
-                ? isAdmin
-                  ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
-                  : "AI is connected, but an administrator needs to connect TMDB before Loomarr can match your description to real titles. Your draft is saved."
-                : isAdmin
-                  ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
-                  : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
-            </Text>
+          <Card borderRadius={8} padding={16} role="alert">
+            <Stack gap="1">
+              <Text as="p" textRole="cardLabel">
+                {groundingUnconfigured ? "Connect TMDB to build this channel" : "Finish AI setup"}
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                {groundingUnconfigured
+                  ? isAdmin
+                    ? "AI is connected. Loomarr also needs TMDB to match your description to real titles. Your draft is saved."
+                    : "AI is connected, but an administrator needs to connect TMDB before Loomarr can match your description to real titles. Your draft is saved."
+                  : isAdmin
+                    ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
+                    : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
+              </Text>
+            </Stack>
             <Stack align="center" direction="row" gap="inline" marginTop={8} wrap>
               {isAdmin &&
                 (groundingUnconfigured ? (
@@ -178,7 +180,7 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
                 </Action>
               )}
             </Stack>
-          </div>
+          </Card>
         ) : (
           <ErrorState error={run.error} />
         ))}
@@ -198,50 +200,45 @@ const ChannelSuggestPanel = ({ flow, onCreated, className }: ChannelSuggestPanel
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain
           independently authorized by that Journey; guidance never grants a capability. */}
       {run.failed && !proposal && (
-        <Stack
-          role="alert"
-          marginHorizontal="auto"
-          padding={16}
-          width="100%"
-          className="max-w-form border-border bg-muted/35 rounded-lg border"
-          gap="control"
-        >
-          <div>
-            <Text as="h3" textRole="cardLabel">
-              {failureCopy?.title ?? "Something went wrong"}
-            </Text>
-            <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-              {failureCopy?.message ?? "Loomarr couldn't finish this request."}
-            </Text>
-            {failureCopy?.guidance && (
-              <Text as="p" className="mt-1" textRole="compact" tone="secondary">
-                {failureCopy.guidance}
+        <Card borderRadius={8} marginHorizontal="auto" maxWidth={672} padding={16} role="alert" width="100%">
+          <Stack gap="control">
+            <Stack gap="1">
+              <Text as="h3" textRole="cardLabel">
+                {failureCopy?.title ?? "Something went wrong"}
               </Text>
-            )}
-          </div>
-          <Stack direction="row" gap="inline" wrap>
-            {run.actions.includes("edit") && (
-              <Action onPress={editFailedDescription} variant={failureNeedsEdit ? undefined : "outline"}>
-                {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
-              </Action>
-            )}
-            {run.actions.includes("retry") && (
-              <Action onPress={retry} variant="outline">
-                Try again
-              </Action>
-            )}
-            {run.actions.includes("check_ai") && (
-              <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="ghost">
-                Check AI settings
-              </Action>
-            )}
-            {/* Always offered client-side (#1817 maintainer decision 1, #1872): a generation
+              <Text as="p" textRole="compact" tone="secondary">
+                {failureCopy?.message ?? "Loomarr couldn't finish this request."}
+              </Text>
+              {failureCopy?.guidance && (
+                <Text as="p" textRole="compact" tone="secondary">
+                  {failureCopy.guidance}
+                </Text>
+              )}
+            </Stack>
+            <Stack direction="row" gap="inline" wrap>
+              {run.actions.includes("edit") && (
+                <Action onPress={editFailedDescription} variant={failureNeedsEdit ? undefined : "outline"}>
+                  {run.failure?.recoveryAction === "edit_reference" ? "Change link" : "Edit description"}
+                </Action>
+              )}
+              {run.actions.includes("retry") && (
+                <Action onPress={retry} variant="outline">
+                  Try again
+                </Action>
+              )}
+              {run.actions.includes("check_ai") && (
+                <Action accessibilityRole="link" render={<Link to="/settings/ai" />} variant="ghost">
+                  Check AI settings
+                </Action>
+              )}
+              {/* Always offered client-side (#1817 maintainer decision 1, #1872): a generation
                 failure, whatever its reason, can always fall back to building by hand. */}
-            <Action onPress={flow.buildManually} tone="suggest">
-              Build it manually instead
-            </Action>
+              <Action onPress={flow.buildManually} tone="suggest">
+                Build it manually instead
+              </Action>
+            </Stack>
           </Stack>
-        </Stack>
+        </Card>
       )}
 
       {/* A proposal landed — review + approve/deny (approve navigates to the new channel). */}
