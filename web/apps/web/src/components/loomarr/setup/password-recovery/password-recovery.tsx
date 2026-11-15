@@ -107,7 +107,7 @@ const PasswordRecoveryReset = ({
 
   if (isLoading) {
     return (
-      <Stack align="center" direction="row" gap="inline" justify="center" minHeight={192} role="status">
+      <Stack align="center" direction="row" gap="inline" justify="center" role="status">
         <LoadingStrip decorative width={32} />
         <Text as="span" textRole="compact" tone="secondary">
           Checking reset link…
