@@ -105,8 +105,8 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
 
       {checkResult && checkResult.sourceId === source.id && (
         <Stack
+          backgroundColor="washElevated40"
           borderRadius={6}
-          className="bg-muted/40"
           paddingHorizontal={12}
           paddingVertical={8}
           role="status"

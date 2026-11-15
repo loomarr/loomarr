@@ -353,7 +353,7 @@
       "tailwindClasses": 4
     },
     "src/filler/sources-panel/source-status/source-status.tsx": {
-      "tailwindClasses": 3
+      "tailwindClasses": 2
     },
     "src/filler/split-review-page/split-review-page.tsx": {
       "tailwindClasses": 12
