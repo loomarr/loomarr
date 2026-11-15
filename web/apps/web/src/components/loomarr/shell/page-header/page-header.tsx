@@ -1,5 +1,4 @@
 import { Stack, Text } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
 import type { PageHeaderProps } from "./page-header.type";
 
 // PageHeader is the page-edge seam, not just shared heading typography. It owns the gutter,
@@ -7,7 +6,9 @@ import type { PageHeaderProps } from "./page-header.type";
 const PageHeader = ({ title, description, status, actions, className, ...rest }: PageHeaderProps) => (
   <Stack
     align={{ base: "stretch", sm: "start" }}
-    className={cn("border-border border-b", className)}
+    borderBottomWidth={1}
+    borderColor="$borderDecorative"
+    className={className}
     data-page-header=""
     direction={{ base: "column", sm: "row" }}
     flexShrink={0}
@@ -18,17 +19,19 @@ const PageHeader = ({ title, description, status, actions, className, ...rest }:
     render="header"
     {...rest}
   >
-    <div className="min-w-0 flex-1">
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
       <Text as="h1" textRole="title">
         {title}
       </Text>
       {description ? (
-        <Text as="p" className="mt-1 max-w-3xl" textRole="compact" tone="secondary">
-          {description}
-        </Text>
+        <Stack marginTop={4} maxWidth={768}>
+          <Text as="p" textRole="compact" tone="secondary">
+            {description}
+          </Text>
+        </Stack>
       ) : null}
       {status}
-    </div>
+    </Stack>
     {actions ? (
       <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>
     ) : null}
