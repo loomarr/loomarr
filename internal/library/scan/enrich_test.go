@@ -808,25 +808,25 @@ func TestCopiesTheCatalogDescribesAsOneEpisodeAreOneTitle(t *testing.T) {
 	h := newHarness(t)
 	h.im.Catalog = h.st
 	show := "Fallow Mere (2017) {tmdb-90000871}/"
-	kept := show + "Season 01/Fallow Mere (2017) - S01E02 - Between the Tides [WEBDL-1080p]"
-	older := show + "Season 1/Fallow Mere - S01E02 - In Between.mkv"
-	together := show + "Season 1/Fallow Mere - S01E03 - Back Doors.mkv"
-	sonarr := show + "Season 01/Fallow Mere (2017) - S01E03 - Backdoors [WEBDL-1080p].mkv"
+	kept := show + "Season 01/Fallow Mere (2017) - S01E02 - The Ebb [WEBDL-1080p]"
+	older := show + "Season 1/Fallow Mere - S01E02 - Low Tide.mkv"
+	together := show + "Season 1/Fallow Mere - S01E03 - Gate Ways.mkv"
+	sonarr := show + "Season 01/Fallow Mere (2017) - S01E03 - Gateways [WEBDL-1080p].mkv"
 	h.file(kept+".mkv", 10)
 	for _, rel := range []string{older, together, sonarr} {
 		h.file(rel, 10)
 	}
-	doc := `<episodedetails><title>Between the Tides</title><season>1</season><episode>2</episode>` +
+	doc := `<episodedetails><title>The Ebb</title><season>1</season><episode>2</episode>` +
 		`<uniqueid type="tvdb" default="true">90090872</uniqueid></episodedetails>`
 	if err := os.WriteFile(filepath.Join(h.root, kept+".nfo"), []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	h.run()
-	second := entry(2, "Between the Tides")
+	second := entry(2, "The Ebb")
 	catalog := &fakeCatalog{records: map[string]mp.Record{
 		"90000871": {Source: src, Kind: mp.KindSeries, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "90000871"}},
 			Descriptive: &mp.Descriptive{Title: "Fallow Mere", Orders: []mp.EpisodeOrder{}, Seasons: []mp.SeasonSize{{Number: 1, Episodes: 3}}}},
-		"90000871/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{entry(1, "Still Water"), second, entry(3, "Backdoors")}},
+		"90000871/1": {Source: src, Kind: mp.KindSeason, Children: []mp.Record{entry(1, "Still Water"), second, entry(3, "Gateways")}},
 		"90090872": {Source: src, Kind: mp.KindEpisode, Descriptive: second.Descriptive, Numbering: second.Numbering,
 			IDs: []mp.ExternalID{{Namespace: mp.NamespaceTVDB, Value: "90090872"}}},
 	}}
