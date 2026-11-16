@@ -144,6 +144,10 @@ func buildFillerSubsystem(
 	result.taxonomy = operator.NewTaxonomyEditor(st, wake, holidaysChanged)
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
+	if fetcher != nil {
+		// A download that fails or waits is remembered per item, so it retries on its own.
+		fetcher.WithLedger(st)
+	}
 	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
 	ytDlpPath := resolveTool(settings.IngestYtdlpPath.Get(set), "yt-dlp")
 	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
@@ -390,6 +394,8 @@ func buildFillerSubsystem(
 	})
 	autoFetch.WithOpenSearch(routine.NewOpenArchiveSearch(fetch.NewArchiveDownloader(), st,
 		placePolicy, stations, result.intakeLanguages))
+	// The scheduled pass skips an item that failed and rests, and retries one whose time has come.
+	autoFetch.WithDownloads(st)
 	adapter.autoFetch = autoFetch
 	result.service = adapter
 	registry.Add(fillerFetchJob(autoFetch, routine.NewLocalCuratedSources(st, placePolicy, log)))

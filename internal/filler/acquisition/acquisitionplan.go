@@ -315,6 +315,8 @@ func dispositionForExisting(state ExistingRemoteState) CandidateDisposition {
 		return CandidateAlreadyQueued
 	case RemoteDeclined:
 		return CandidatePreviouslyDeclined
+	case RemoteResting:
+		return CandidateResting
 	default:
 		return CandidateDuplicateRemote
 	}

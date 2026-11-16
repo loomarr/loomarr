@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler/asset"
 	"github.com/loomarr/loomarr/internal/filler/pipelinestate"
+	"github.com/loomarr/loomarr/internal/platform/httpx"
 	"github.com/loomarr/loomarr/internal/platform/logchange"
 	"github.com/loomarr/loomarr/internal/platform/storagegovernor"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -316,6 +317,24 @@ type PipelineResult struct {
 // ErrDeferred marks a pass that ended before the stage did. It is NOT a failure: no attempt is
 // spent, no backoff is taken, and the clip resumes exactly where it stopped on the next pass.
 var ErrDeferred = errors.New("filler pipeline: the pass ended before this stage finished")
+
+// ErrAIUnavailable marks a stage that could not reach its AI backend: the model is down, busy, or
+// out of its spending cap. It says nothing about the clip, so the rung waits (aiHoldWait) without
+// spending an attempt, and the clip is neither skipped past the rung nor failed.
+var ErrAIUnavailable = errors.New("filler pipeline: the AI backend is unavailable")
+
+// aiHoldWait is how long a rung whose AI backend was unavailable waits before asking again.
+const aiHoldWait = 15 * time.Minute
+
+// aiCallError marks a failed call to an AI backend as ErrAIUnavailable when the backend is the
+// cause: unreachable, busy (429), failing (5xx) or past a call's time budget. Any other failure, such as a
+// refused request, is returned as it is, since asking again cannot change the answer.
+func aiCallError(err error) error {
+	if httpx.Classify(err) == httpx.ClassTransient {
+		return fmt.Errorf("%w: %w", ErrAIUnavailable, err)
+	}
+	return err
+}
 
 // RunOnce is the cron driver: enrol anything new, then advance as much due work as the budget
 // allows.
@@ -646,6 +665,18 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 				}
 				return row.Disposition, ErrDeferred
 			}
+			// An unavailable AI backend waits the same way: no attempt, the reason on the ladder.
+			if errors.Is(runErr, ErrAIUnavailable) {
+				if row.Attempts > 0 {
+					row.Attempts--
+				}
+				row.Record(row.Stage, pipelinestate.StatusQueued, "waiting for the AI backend: "+runErr.Error(), row.Attempts, p.now().UTC())
+				row.NextRun = p.now().UTC().Add(aiHoldWait)
+				if err := p.persist(ctx, row, clip); err != nil {
+					return row.Disposition, err
+				}
+				return row.Disposition, ErrDeferred
+			}
 			if resolved := p.onFailure(&row, runErr); !resolved {
 				return row.Disposition, p.persist(ctx, row, clip)
 			}
@@ -804,8 +835,12 @@ func (p *Pipeline) repairLadderGaps(row *pipelinestate.ClipPipeline) bool {
 // is recorded on the final rung, the attempt count is bounded at MaxAttempts and the row is
 // persisted with a backoff. Without it the row stayed running with next_run=0, sorted first, and
 // took a work slot on every pass (#1392). The row is never skipped past the finish rung, since
-// readiness requires it to have completed, so at MaxAttempts it keeps retrying at the longest
-// backoff — the same fail-closed shape screening uses.
+// readiness requires it to have completed, so a cause that is the install's (the catalog could not
+// be written) keeps retrying at the longest backoff — the same fail-closed shape screening uses.
+// A commit refused as stale (ErrReadyStale: the clip or its row changed under the pipeline) is the
+// clip's own state, which a retry minutes later does not change, so after MaxAttempts it rests
+// pipelinestate.FailureRest. Nothing is rejected: the clip stays as it is and is tried once more
+// when the rest ends (#3855).
 func (p *Pipeline) onReadyFailure(ctx context.Context, row pipelinestate.ClipPipeline, clip clipstore.Clip, cause error) error {
 	now := p.now().UTC()
 	if row.Attempts > MaxAttempts {
@@ -813,6 +848,11 @@ func (p *Pipeline) onReadyFailure(ctx context.Context, row pipelinestate.ClipPip
 	}
 	row.Record(row.Stage, pipelinestate.StatusFailed, "publishing failed: "+cause.Error(), row.Attempts, now)
 	row.NextRun = now.Add(backoff(row.Attempts))
+	if errors.Is(cause, ErrReadyStale) && row.Attempts >= MaxAttempts {
+		row.NextRun = now.Add(pipelinestate.FailureRest)
+		// The rest ends with a fresh set of attempts.
+		row.Attempts = 0
+	}
 	if err := p.persist(ctx, row, clip); err != nil {
 		return errors.Join(cause, err)
 	}
