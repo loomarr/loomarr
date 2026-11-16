@@ -89,6 +89,8 @@ func buildSyncer(st records.Store, set resolved, layout cliplibrary.Layout, log 
 	src := cliplibrary.DirSource{
 		Layout: layout,
 		Probe:  cliplibrary.FFprobeNextTo(settings.PlayoutFFmpegPath.Get(set)),
+		// The 15-minute sync reads only the files that changed since the last one.
+		Probes: cliplibrary.NewProbeCache(),
 		// ⚠ **Artwork must be given `playout.ffmpeg_path`**: its nil default shells out to whatever
 		// `ffmpeg` PATH resolves to, so an operator who points that setting at a custom build
 		// would get frames from a DIFFERENT binary than playout uses, silently.
