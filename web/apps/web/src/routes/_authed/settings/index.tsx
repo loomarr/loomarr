@@ -5,6 +5,7 @@ import * as notificationsApi from "@loomarr/api/endpoints/notifications";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { SearchField, SettingsOverview, type SettingsOverviewCard } from "@loomarr/ui";
+import type { EnsureQueryDataOptions, QueryKey } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   type CSSProperties,
@@ -212,18 +213,24 @@ const SettingsHome = () => {
 const Route = createFileRoute("/_authed/settings/")({
   component: SettingsHome,
   // The reads behind each card's status word (see `useSettingsStatus`). A card whose check fails
-  // settles without a problem, so these are warmed rather than awaited into an error view: a
-  // prefetch never rejects. The admin-only reads are skipped for a member, as the page skips them.
+  // settles without a problem, so a failed read is swallowed rather than awaited into an error view.
+  // The admin-only reads are skipped for a member, as the page skips them.
+  //
+  // ⚠ Await a read only when it has NO data. A cached-but-stale read is shown at once and refreshed
+  // behind the page (`revalidateIfStale`). Awaiting a `prefetchQuery` instead re-fetched whichever
+  // read had gone stale on every return visit and held the navigation for that round trip: warm
+  // Settings landed at ~100 ms (the e2e API delay) whenever one had, against a 70 ms budget.
   loader: async ({ context: { queryClient } }) => {
     const isAdmin = await viewerIsAdmin(queryClient);
+    const warm = <TQueryFnData, TError, TData, TQueryKey extends QueryKey>(
+      options: EnsureQueryDataOptions<TQueryFnData, TError, TData, TQueryKey>,
+    ) => queryClient.ensureQueryData({ ...options, revalidateIfStale: true }).catch(() => undefined);
     await Promise.all([
-      queryClient.prefetchQuery(
-        notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } }),
-      ),
-      isAdmin ? queryClient.prefetchQuery(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(jobsApi.getJobsListQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(systemApi.getSystemBackupsListQueryOptions()) : undefined,
-      isAdmin ? queryClient.prefetchQuery(fillerApi.getFillerReadinessQueryOptions()) : undefined,
+      warm(notificationsApi.getNotificationProvidersListQueryOptions({ query: { retry: false } })),
+      isAdmin ? warm(diagnosticsApi.getGetCurrentHealthQueryOptions()) : undefined,
+      isAdmin ? warm(jobsApi.getJobsListQueryOptions()) : undefined,
+      isAdmin ? warm(systemApi.getSystemBackupsListQueryOptions()) : undefined,
+      isAdmin ? warm(fillerApi.getFillerReadinessQueryOptions()) : undefined,
     ]);
   },
 });
