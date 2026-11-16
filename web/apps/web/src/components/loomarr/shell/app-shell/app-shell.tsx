@@ -1,11 +1,10 @@
-import { Action, Icon, icons, PressableRow, Stack, Text, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, PressableRow, SkipLink, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { SearchButton } from "@loomarr/ui";
 import { Link, useLocation } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
-import { cn } from "@/lib/utils";
 import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem, NavTo, WatchNavItem } from "./app-shell.type";
 
@@ -106,10 +105,6 @@ const MAIN_ID = "main-content";
 // The link is the row's frame: the current-page edge is positioned against its left side.
 const ROW_FRAME = { position: "relative" } as const;
 
-// The one focus style: the amber ring the design system's controls draw. Without it a rail
-// control gets the browser's white rectangular outline.
-const FOCUS_RING = "focus-visible:ring-signal focus-visible:ring-2 focus-visible:outline-none";
-
 const AppShell = ({
   children,
   banner,
@@ -150,14 +145,7 @@ const AppShell = ({
     <div className="bg-background text-foreground flex h-screen flex-col overflow-hidden md:grid md:grid-cols-[auto_1fr]">
       {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
           jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
-      <a
-        href={`#${MAIN_ID}`}
-        className="focus:bg-signal focus:text-static-950 sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:px-3 focus:py-2"
-      >
-        <Text as="span" style={{ color: "inherit" }} textRole="compact" strong>
-          Skip to content
-        </Text>
-      </a>
+      <SkipLink href={`#${MAIN_ID}`}>Skip to content</SkipLink>
       {/* Hidden below `md`, not a width that collapses to icons: below `md` the rail is replaced
           outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
       <Stack
@@ -268,20 +256,18 @@ const AppShell = ({
         {serverVersion && (
           <Tooltip content={`Loomarr ${serverVersion}`} side="right">
             {isAdmin ? (
-              <Link
-                to="/settings/system/about"
-                aria-label={`Loomarr ${serverVersion} — About`}
-                className={cn(
-                  "text-static-400 hover:bg-accent hover:text-foreground mt-auto min-w-0 rounded-md px-3 py-1.5 transition-colors",
-                  FOCUS_RING,
-                )}
-              >
-                <Text as="span" style={versionTextStyle} textRole="mono">
-                  <Stack align="center" direction="row" flexShrink={1} gap="2" minWidth={0} render="span">
-                    {versionLabel}
-                  </Stack>
-                </Text>
-              </Link>
+              <Stack marginTop="auto" minWidth={0}>
+                <PressableRow
+                  aria-label={`Loomarr ${serverVersion} — About`}
+                  render={<Link to="/settings/system/about" />}
+                >
+                  <Text as="span" textRole="mono" tone="secondary">
+                    <Stack align="center" direction="row" flexShrink={1} gap="2" minWidth={0} render="span">
+                      {versionLabel}
+                    </Stack>
+                  </Text>
+                </PressableRow>
+              </Stack>
             ) : (
               <Stack
                 align="center"
@@ -314,33 +300,34 @@ const AppShell = ({
           {/* The footer identity is the way into Your account (§11) — where the mock puts
               it, and where someone looks for "my settings" rather than the app's. Not a
               NAV item: it isn't a section of the app, it's you. */}
-          <Link
-            to="/account"
-            className={cn("hover:bg-accent min-w-0 flex-1 rounded-md transition-colors", FOCUS_RING)}
-            // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
-            aria-label={`Your account: ${accountInitials} ${userName}`}
-          >
-            <Stack align="center" direction="row" gap="2" minWidth={0} padding={4}>
-              <Stack
-                align="center"
-                backgroundColor="$surfaceElevated"
-                borderRadius={999}
-                flexShrink={0}
-                height={28}
-                justify="center"
-                width={28}
-              >
-                <Text as="span" textRole="mono" tone="primary">
-                  {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
+          <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minWidth={0}>
+            <PressableRow
+              // The name holds every visible word, the avatar initials included (WCAG 2.5.3).
+              aria-label={`Your account: ${accountInitials} ${userName}`}
+              render={<Link to="/account" />}
+            >
+              <Stack align="center" direction="row" gap="2" minWidth={0}>
+                <Stack
+                  align="center"
+                  backgroundColor="$surfaceElevated"
+                  borderRadius={999}
+                  flexShrink={0}
+                  height={28}
+                  justify="center"
+                  width={28}
+                >
+                  <Text as="span" textRole="mono" tone="primary">
+                    {/* The trailing space is collapsed on screen; axe joins sibling text with nothing
                       between, so "KB" + "Kira" would otherwise read as one word against the label. */}
-                  {accountInitials}{" "}
+                    {accountInitials}{" "}
+                  </Text>
+                </Stack>
+                <Text as="span" numberOfLines={1} textRole="compact" tone="secondary">
+                  {userName}
                 </Text>
               </Stack>
-              <Text as="span" numberOfLines={1} textRole="compact" tone="secondary">
-                {userName}
-              </Text>
-            </Stack>
-          </Link>
+            </PressableRow>
+          </Stack>
           {onLogout && (
             <Tooltip content="Sign out">
               <Action compact icon="signOut" layout="icon" onPress={onLogout} variant="ghost">

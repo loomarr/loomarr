@@ -146,6 +146,8 @@ export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
 export { LoomarrProvider, resolveLoomarrTheme, ThemeScope } from "./src/provider";
 export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
+export type { RevealProps, RevealRowProps } from "./src/reveal";
+export { Reveal, useRevealOnHover } from "./src/reveal";
 export type { SegmentedControlProps, SegmentOption } from "./src/segmented-control";
 export { SegmentedControl } from "./src/segmented-control";
 export type {
@@ -162,6 +164,8 @@ export type {
 export { Hint, MenuList, RadioGroup, RadioItem, SelectControl, Tabs } from "./src/selection";
 export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
+export type { SkipLinkProps } from "./src/skip-link";
+export { SkipLink } from "./src/skip-link";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
 export type {

@@ -12,11 +12,13 @@ import {
   FieldHint,
   Icon,
   icons,
+  Reveal,
   Stack,
   StatusLabel,
   Surface,
   Text,
   Toggle,
+  useRevealOnHover,
 } from "@loomarr/design-system";
 import { NumberField } from "@loomarr/ui";
 import { type ComponentProps, type ReactNode, useState } from "react";
@@ -103,6 +105,7 @@ const SettingField = ({
   descriptionId,
   className,
 }: SettingFieldProps) => {
+  const reveal = useRevealOnHover();
   const [replacing, setReplacing] = useState(false);
   const [editingCustomSchedule, setEditingCustomSchedule] = useState(false);
   const id = `setting-${entry.key}`;
@@ -360,11 +363,13 @@ const SettingField = ({
   }
 
   return (
-    // `group` so the audit line can reveal on hover/focus of the whole field (below).
+    // The audit line reveals on hover/focus of the whole field (below). The handlers are
+    // decorative: the controls inside are what take focus.
     <div
+      {...reveal.rowProps}
       className={cn(
         // `relative` anchors the absolutely positioned `sr-only` doc below to this field.
-        "group relative",
+        "relative",
         inlineSwitch
           ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5"
           : "flex flex-col gap-1.5",
@@ -494,22 +499,20 @@ const SettingField = ({
           screen readers; the transition is frozen under reduced-motion. Only for a value a
           PERSON set: an env pin or built-in default has no author to name. */}
       {entry.updatedAt && (
-        <Text
-          as="p"
-          className={cn(
-            "pointer-events-none opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
-            inlineSwitch && "col-span-2",
-          )}
-          textRole="hint"
-          tone="secondary"
+        <Reveal
+          render="p"
+          shown={reveal.shown}
+          style={inlineSwitch ? { gridColumn: "span 2 / span 2" } : undefined}
         >
-          {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
-          {entry.updatedByYou
-            ? `Changed by you, ${formatAgo(entry.updatedAt)}`
-            : entry.updatedBy
-              ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
-              : `Changed ${formatAgo(entry.updatedAt)}`}
-        </Text>
+          <Text as="span" textRole="hint" tone="secondary">
+            {/* The server sends a name (never a raw id) and marks the caller's own change (#2736). */}
+            {entry.updatedByYou
+              ? `Changed by you, ${formatAgo(entry.updatedAt)}`
+              : entry.updatedBy
+                ? `Changed by ${entry.updatedBy}, ${formatAgo(entry.updatedAt)}`
+                : `Changed ${formatAgo(entry.updatedAt)}`}
+          </Text>
+        </Reveal>
       )}
 
       {problem && (
