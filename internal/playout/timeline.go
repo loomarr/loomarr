@@ -28,6 +28,12 @@ type Airing struct {
 	// stable across retries and mid-program tune-ins, so downstream playout can distinguish a real
 	// transition from reopening the same item.
 	StartedAt time.Time
+	// ProgramStartedAt is when the programme this airing belongs to began on air: StartedAt, unless
+	// the airing is a later segment of a programme split at natural breaks, when it is the first
+	// segment's start. It is the one start a watched airing is recorded under (#4140), whichever
+	// segment the viewer tuned into. Offset cannot give it: Offset is a position in the source,
+	// and the mid-roll breaks between segments are not in the source.
+	ProgramStartedAt time.Time
 	// Identity is the stable content identity within StartedAt: a provisioning key for programmes,
 	// a clip hash for commercials, and the slot kind for an unplayable scheduled card.
 	Identity string
@@ -134,12 +140,24 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 	}
 	into := elapsed % total
 
+	// pos is where in the cycle the slot under the loop starts; programmeAt is where the
+	// programme it continues started (its first segment), or -1 before any first segment.
+	var pos time.Duration
+	programmeAt := time.Duration(-1)
 	for _, s := range slots {
 		d := slotDuration(s)
 		if d <= 0 {
 			continue // unknown duration — not airable, see above
 		}
+		if s.Kind == schedule.SlotProgram && s.Segment <= 1 {
+			programmeAt = pos
+		}
 		if into < d {
+			startedAt := now.Add(-into)
+			programmeStartedAt := startedAt
+			if s.Kind == schedule.SlotProgram && s.Segment > 1 && programmeAt >= 0 {
+				programmeStartedAt = startedAt.Add(-(pos - programmeAt))
+			}
 			identity := string(s.Key)
 			if identity == "" {
 				identity = s.LibraryItemID
@@ -148,10 +166,11 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 				identity = string(s.Kind)
 			}
 			return Airing{
-				StartedAt:     now.Add(-into),
-				Identity:      identity,
-				Kind:          s.Kind,
-				LibraryItemID: s.LibraryItemID,
+				StartedAt:        startedAt,
+				ProgramStartedAt: programmeStartedAt,
+				Identity:         identity,
+				Kind:             s.Kind,
+				LibraryItemID:    s.LibraryItemID,
 				// Key identifies WHAT aired independently of which library item served it —
 				// the identity airing history is recorded under (§5, programming-design §3.1).
 				// LibraryItemID alone would not do: a re-encoded or replaced file changes it,
@@ -163,6 +182,7 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 			}
 		}
 		into -= d
+		pos += d
 	}
 	// Unreachable while total > 0 and the loop uses the same durations, but returning flex
 	// beats an index panic if those ever diverge.

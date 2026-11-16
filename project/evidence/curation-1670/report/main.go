@@ -162,7 +162,9 @@ func doneWhen(r Report) [][2]string {
 	minFilmGap := -1.0
 	maxShare, relaxed, multi, redeal, days, never := 0.0, 0, 0, 0, 0, 0
 	withRules, inEraMin, replaced := 0, -1, 0
+	twice := 0
 	for _, c := range r.Channels {
+		twice += c.DuplicateWatched
 		if c.FilmOnly {
 			films = append(films, c.Name)
 			if g := c.Scheduled.ReairGapMinH; g > 0 && (minFilmGap < 0 || g < minFilmGap) {
@@ -204,6 +206,7 @@ func doneWhen(r Report) [][2]string {
 		{"Lineup titles that never aired", fmt.Sprint(never)},
 		{"Channels with a scheduling rule", fmt.Sprintf("%d of %d", withRules, len(r.Channels))},
 		{"The same episode on two channels within a week", fmt.Sprint(h.SameEpisodeTwoChannels)},
+		{"Watched airings recorded twice", fmt.Sprint(twice)},
 		{"Watched rows recorded only by a tune-in under a minute", fmt.Sprint(h.ShortTuneInSeen)},
 		{"Watched evenings with an ad aired twice", fmt.Sprintf("%d of %d", h.EveningsWithRepeat, h.Evenings)},
 		{"Ad airings the channel's rules would refuse", fmt.Sprintf("%d of %d", excluded, fillerAirings)},

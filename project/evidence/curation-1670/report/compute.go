@@ -8,8 +8,9 @@ import (
 )
 
 // duplicateWithin is how close two watched rows of one item on one channel may be and still be
-// one airing recorded twice.
-const duplicateWithin = time.Minute
+// one airing recorded twice. A tune-in after a mid-roll break once recorded the start plus the
+// breaks before it (#4140), two to a few minutes on; no repeat guard re-airs an item that soon.
+const duplicateWithin = 15 * time.Minute
 
 // shortTuneIn is the longest stay on a channel that is surfing past, not watching.
 const shortTuneIn = time.Minute
