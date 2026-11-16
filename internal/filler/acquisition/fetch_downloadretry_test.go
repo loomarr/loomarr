@@ -100,11 +100,37 @@ func TestFetch_ADueItemIsRetriedFromItsRecord(t *testing.T) {
 		t.Fatalf("result = %+v ingest = %s/%s %v %v, want the item queued under its own source", res, fx.stub.sourceID, fx.stub.sourceKind, fx.stub.queuedIDs, fx.stub.queued)
 	}
 
-	// The download is in flight: the next pass does not start another.
+	// The download is in flight, and a slow one outlasts the wait for room: no pass starts another
+	// copy until the claim has run out.
 	fx.stub.queuedIDs, fx.stub.queued = nil, nil
-	fx.now = fx.now.Add(time.Minute)
+	fx.now = fx.now.Add(2 * acquisition.DownloadWait)
 	if res := fx.run(t); res.Queued != 0 || len(fx.stub.queuedIDs) != 0 {
-		t.Fatalf("an item already retried was retried again at once: %+v %v", res, fx.stub.queuedIDs)
+		t.Fatalf("an item whose download is still running was queued again: %+v %v", res, fx.stub.queuedIDs)
+	}
+}
+
+// An item of a source the operator has switched off is not retried; one of a deleted source is
+// forgotten.
+func TestFetch_ADueItemOfADisabledOrDeletedSourceIsNotRetried(t *testing.T) {
+	fx := newRetryFixture(t)
+	fx.fail(t, "item-a")
+	gone := acquisition.DownloadItem{Kind: "archive", SourceID: "9000a9", RemoteID: "item-g", URL: "https://archive.org/details/item-g"}
+	if _, err := fx.ledger.RecordDownloadFailure(t.Context(), gone, "x", fx.now); err != nil {
+		t.Fatal(err)
+	}
+	fx.stub.sources[0].Enabled = false
+	fx.now = fx.now.Add(7 * time.Hour)
+
+	fx.run(t)
+	if len(fx.stub.queuedIDs) != 0 {
+		t.Fatalf("retried %v for a source that is off or gone", fx.stub.queuedIDs)
+	}
+	resting, err := fx.ledger.RestingDownloads(t.Context(), fx.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resting[gone.Key()]; ok {
+		t.Fatal("an item of a deleted source is still remembered")
 	}
 }
 

@@ -327,7 +327,7 @@ var ErrAIUnavailable = errors.New("filler pipeline: the AI backend is unavailabl
 const aiHoldWait = 15 * time.Minute
 
 // aiCallError marks a failed call to an AI backend as ErrAIUnavailable when the backend is the
-// cause: unreachable, busy (429), failing (5xx) or past a call budget. Any other failure, such as a
+// cause: unreachable, busy (429), failing (5xx) or past a call's time budget. Any other failure, such as a
 // refused request, is returned as it is, since asking again cannot change the answer.
 func aiCallError(err error) error {
 	if httpx.Classify(err) == httpx.ClassTransient {

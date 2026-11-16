@@ -317,6 +317,10 @@ func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
 	return res, err
 }
 
+// downloadInFlight is how long a retried item stays claimed: long enough for its download to finish
+// or fail and record that itself, so a slow download is not queued a second time.
+const downloadInFlight = 6 * time.Hour
+
 // downloadRetryBatch is how many due items one pass retries; the rest wait for the next.
 const downloadRetryBatch = 10
 
@@ -329,13 +333,43 @@ func (f *Fetcher) retryDownloads(ctx context.Context, res *FetchResult) error {
 		return nil
 	}
 	now := f.now()
-	due, err := f.downloads.ClaimDueDownloads(ctx, now, now.Add(DownloadWait), downloadRetryBatch)
+	if now.UnixMilli() < f.metUntil.Load() {
+		return nil // the pool target is met; nothing is owed a retry yet
+	}
+	due, err := f.downloads.ClaimDueDownloads(ctx, now, now.Add(downloadInFlight), downloadRetryBatch)
 	if err != nil {
 		return fmt.Errorf("claim download retries: %w", err)
 	}
 	if len(due) == 0 {
 		return nil
 	}
+	// A source that was switched off, or deleted, is owed nothing: an item of a deleted one is
+	// forgotten, an item of a disabled one waits for the source to come back.
+	srcs, err := f.store.ListFetchSources(ctx)
+	if err != nil {
+		return fmt.Errorf("list sources: %w", err)
+	}
+	enabled := map[string]bool{}
+	for _, s := range srcs {
+		enabled[s.ID] = s.Enabled
+	}
+	kept := due[:0]
+	for _, d := range due {
+		if d.SourceID != "" && d.SourceID != OpenSearchSourceID {
+			on, known := enabled[d.SourceID]
+			if !known {
+				if err := f.downloads.ClearDownload(ctx, d.Key()); err != nil {
+					return fmt.Errorf("forget item of a deleted source: %w", err)
+				}
+				continue
+			}
+			if !on {
+				continue
+			}
+		}
+		kept = append(kept, d)
+	}
+	due = kept
 	paths, err := f.store.CatalogPaths(ctx)
 	if err != nil {
 		return fmt.Errorf("read catalog: %w", err)
@@ -386,6 +420,13 @@ func (f *Fetcher) retryDownloads(ctx context.Context, res *FetchResult) error {
 		if err != nil {
 			f.log.Warn("filler auto-fetch: could not queue failed downloads for a retry; they wait",
 				"source", g.sourceID, "items", len(items), "err", err)
+			for _, item := range items {
+				d := DownloadItem{Kind: g.kind, SourceID: g.sourceID, RemoteID: item.ID, URL: item.URL,
+					DurationMS: int64(item.DurationMS), Height: item.Height, Gap: item.Gap}
+				if derr := f.downloads.DeferDownload(ctx, d, "could not be queued: "+err.Error(), now.Add(DownloadWait), now); derr != nil {
+					f.log.Warn("filler auto-fetch: could not schedule a waiting download", "err", derr)
+				}
+			}
 			continue
 		}
 		res.Queued += len(items)

@@ -549,8 +549,9 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   then the item rests 30 days (`pipelinestate.FailureRest`) and is tried once each time the rest
   ends. A scheduled source check does not offer a resting item again; the operator's **Look for new
   clips** does. The scheduled fetch pass first queues up to ten items whose retry is due, through
-  the ordinary ingest path, after moving each one's next attempt out by an hour so a restart does
-  not start a second copy. A download that works deletes the row; so does the nightly purge when
+  the ordinary ingest path, after claiming each for six hours so a slow download or a restart does
+  not start a second copy; an item of a disabled source waits, and one of a deleted source is
+  forgotten. A download that works deletes the row; so does the nightly purge when
   the item's source is gone.
 - **A temporary cause is never a failure.** A reservation the governor no longer grants (no room:
   `library_limit`, `host_reserve`, an unmeasurable disk) or a capacity refusal during the download

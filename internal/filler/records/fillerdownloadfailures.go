@@ -76,7 +76,10 @@ func (s *sqlStore) DeferDownload(ctx context.Context, item acquisition.DownloadI
 		return fmt.Errorf("read download failure: %w", err)
 	}
 	failure.DownloadItem = item
-	failure.RetryAt = retryAt
+	// A rest already running is never cut short by a wait for room.
+	if failure.Failures < acquisition.DownloadAttempts || retryAt.After(failure.RetryAt) {
+		failure.RetryAt = retryAt
+	}
 	failure.LastError = reason
 	if err := s.writeDownloadFailure(ctx, tx, key, failure); err != nil {
 		return err
