@@ -1,4 +1,4 @@
-import { DockedPanel, Stack, Text } from "@loomarr/design-system";
+import { Action, DockedPanel, PressableRow, Stack, Text, Tooltip } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { ChannelDrawerProps, DrawerChannel } from "./channel-drawer.type";
@@ -141,91 +141,90 @@ const DrawerRow = ({
   const line = channel.offAir ? OFF_AIR_LINE[channel.offAir] : channel.now;
   return (
     <div className="relative mb-[7px]">
-      <button
-        type="button"
-        onClick={() => onTune(channel.id)}
-        aria-current={tuned ? "true" : undefined}
+      <PressableRow
         // The row's text runs together when read as one name ("07Westerns▸ …"); this says it in order,
         // starting with the visible number and name.
-        aria-label={[
+        accessibilityLabel={[
           `${channelNumber(channel.number)} ${channel.name}`,
           line,
           channel.minutesLeft === undefined ? undefined : `${channel.minutesLeft}m left`,
         ]
           .filter(Boolean)
           .join(", ")}
+        aria-current={tuned ? "true" : undefined}
         // The tuned row is neutral (#1909 Q2): elevated fill, the TUNED tag and `aria-current`.
-        // Amber is left for the focus ring, so a focused row is never confused with the tuned one.
-        className={cn(
-          "text-foreground focus-visible:ring-ring flex w-full flex-col gap-[7px] rounded-xl border px-3 py-[11px] text-left focus-visible:ring-2 focus-visible:outline-none",
-          tuned ? "border-static-700 bg-static-800" : "border-static-800 hover:bg-static-900 bg-transparent",
-        )}
+        // Amber is left for the focus border, so a focused row is never confused with the tuned one.
+        bordered
+        onPress={() => onTune(channel.id)}
+        selected={tuned}
       >
-        <span className="flex items-center gap-[9px] pr-7">
-          <Text as="span" className="w-[26px]" textRole="mono" tone="secondary">
-            {channelNumber(channel.number)}
-          </Text>
-          <Text as="span" className="min-w-0 flex-1 truncate" strong textRole="cardLabel" tone="primary">
-            {channel.name}
-          </Text>
-          {tuned && (
-            <Text as="span" textRole="mono" tone="secondary">
-              TUNED
+        <Stack gap="1.75">
+          <span className="flex items-center gap-[9px] pr-7">
+            <Text as="span" className="w-[26px]" textRole="mono" tone="secondary">
+              {channelNumber(channel.number)}
             </Text>
-          )}
-        </span>
-        <Stack
-          aria-hidden
-          className="relative h-6 overflow-hidden rounded"
-          direction="row"
-          gap="0.5"
-          render="span"
-        >
-          {channel.blocks.map((block) => (
-            <span
-              key={block.key}
-              className={cn(
-                "flex min-w-0.5 items-center overflow-hidden px-1.5",
-                block.pod ? "bg-signal/28" : "bg-foreground/12",
-              )}
-              style={{ flex: `${block.minutes} 1 0px` }}
-            >
-              {block.label && total > 0 && block.minutes / total > LABEL_SHARE && (
-                <Text as="span" className="block min-w-0 truncate" textRole="cardMeta" tone="primary">
-                  {block.label}
-                </Text>
-              )}
-            </span>
-          ))}
-          {channel.blocks.length > 0 && (
-            <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
-          )}
+            <Text as="span" className="min-w-0 flex-1 truncate" strong textRole="cardLabel" tone="primary">
+              {channel.name}
+            </Text>
+            {tuned && (
+              <Text as="span" textRole="mono" tone="secondary">
+                TUNED
+              </Text>
+            )}
+          </span>
+          <Stack
+            aria-hidden
+            className="relative h-6 overflow-hidden rounded"
+            direction="row"
+            gap="0.5"
+            render="span"
+          >
+            {channel.blocks.map((block) => (
+              <span
+                key={block.key}
+                className={cn(
+                  "flex min-w-0.5 items-center overflow-hidden px-1.5",
+                  block.pod ? "bg-signal/28" : "bg-foreground/12",
+                )}
+                style={{ flex: `${block.minutes} 1 0px` }}
+              >
+                {block.label && total > 0 && block.minutes / total > LABEL_SHARE && (
+                  <Text as="span" className="block min-w-0 truncate" textRole="cardMeta" tone="primary">
+                    {block.label}
+                  </Text>
+                )}
+              </span>
+            ))}
+            {channel.blocks.length > 0 && (
+              <span className="bg-onair absolute inset-y-0 w-[1.5px]" style={{ left: `${nowPercent}%` }} />
+            )}
+          </Stack>
+          <Stack align="center" direction="row" gap="1.75" render="span">
+            <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
+              {line ? `▸ ${line}` : ""}
+            </Text>
+            <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
+              {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
+            </Text>
+          </Stack>
         </Stack>
-        <Stack align="center" direction="row" gap="1.75" render="span">
-          <Text as="span" className="min-w-0 truncate" textRole="cardMeta" tone="secondary">
-            {line ? `▸ ${line}` : ""}
-          </Text>
-          <Text as="span" className="ml-auto shrink-0" textRole="mono" tone="secondary">
-            {channel.minutesLeft === undefined ? "—" : `${channel.minutesLeft}m left`}
-          </Text>
-        </Stack>
-      </button>
-      <button
-        type="button"
-        onClick={() => onFavourite(channel.id, !favourite)}
-        aria-pressed={favourite}
-        aria-label={`Favorite ${channel.name}`}
-        title={favourite ? "Unpin favorite" : "Pin as favorite"}
-        className={cn(
-          // A pinned favourite is a pressed state, so it is foreground with the filled star, not amber.
-          "hover:text-foreground focus-visible:ring-ring absolute top-2 right-2 flex size-6 items-center justify-center rounded focus-visible:ring-2 focus-visible:outline-none",
-          favourite ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        <span aria-hidden className="text-sm leading-none">
-          {favourite ? "★" : "☆"}
-        </span>
-      </button>
+      </PressableRow>
+      <Stack position="absolute" right={8} top={8}>
+        <Tooltip content={favourite ? "Unpin favorite" : "Pin as favorite"}>
+          {/* A pinned favourite is a pressed state, so it is foreground with the filled star, not amber. */}
+          <Action
+            aria-pressed={favourite}
+            compact
+            icon={favourite ? "starFilled" : "star"}
+            layout="icon"
+            onPress={() => onFavourite(channel.id, !favourite)}
+            selected={favourite}
+            variant="ghost"
+          >
+            {`Favorite ${channel.name}`}
+          </Action>
+        </Tooltip>
+      </Stack>
     </div>
   );
 };

@@ -2,8 +2,7 @@
   "note": "Design-system primitive ledger (#2147 Wave 4), maintained by web/scripts/check-primitive-bypass.mjs. Counts may only fall: `pnpm primitives:update` shrinks them. Never raise one to pass the check.",
   "files": {
     "apps/web/src/channels/channel-drawer/channel-drawer.tsx": {
-      "rawDialog": 1,
-      "flexStack": 6
+      "flexStack": 2
     },
     "apps/web/src/channels/guide-page/guide-toolbar/guide-toolbar.tsx": {
       "flexStack": 1
