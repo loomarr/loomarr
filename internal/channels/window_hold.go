@@ -63,7 +63,7 @@ func (e *Engine) edited(ch channelstore.Channel, breaksPerHour int) string {
 		Install       schedule.PendingPolicy
 		Zone, Country string
 		Holidays      any
-	}{entries, ch.Policy.WithApplied(nil), ch.Strategy, breaksPerHour, e.breakDurationFor(), e.defaultWindowFor(), e.policy,
+	}{entries, ch.Policy.Decided(), ch.Strategy, breaksPerHour, e.breakDurationFor(), e.defaultWindowFor(), e.policy,
 		zone, cal.Country, cal.Holidays})
 	if err != nil {
 		return "" // the same "" every sweep, so a policy that cannot marshal never reads as an edit

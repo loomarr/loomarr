@@ -160,7 +160,7 @@ func printReport(w io.Writer, r Report, loc *time.Location) error {
 func doneWhen(r Report) [][2]string {
 	var films []string
 	minFilmGap := -1.0
-	maxShare, relaxed, multi, redeal, days, never := 0.0, 0, 0, 0, 0, 0
+	maxShare, relaxed, multi, redeal, days, never, unreported := 0.0, 0, 0, 0, 0, 0, 0
 	withRules, inEraMin, replaced := 0, -1, 0
 	for _, c := range r.Channels {
 		if c.FilmOnly {
@@ -182,6 +182,7 @@ func doneWhen(r Report) [][2]string {
 		replaced += c.ReplacedDeals
 		days += c.ChannelDays
 		never += len(c.NeverScheduled)
+		unreported += len(c.NeverUnreported)
 		if c.Rules > 0 {
 			withRules++
 		}
@@ -202,6 +203,7 @@ func doneWhen(r Report) [][2]string {
 		{"Channel-days re-dealt on air", fmt.Sprintf("%d of %d", redeal, days)},
 		{"Ledger rows replaced before they aired", fmt.Sprint(replaced)},
 		{"Lineup titles that never aired", fmt.Sprint(never)},
+		{"Lineup titles that never aired, unreported", fmt.Sprint(unreported)},
 		{"Channels with a scheduling rule", fmt.Sprintf("%d of %d", withRules, len(r.Channels))},
 		{"The same episode on two channels within a week", fmt.Sprint(h.SameEpisodeTwoChannels)},
 		{"Watched rows recorded only by a tune-in under a minute", fmt.Sprint(h.ShortTuneInSeen)},

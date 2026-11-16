@@ -10,12 +10,20 @@ export type {
   ChannelAudioOption,
   ChannelAudioSectionProps,
   ChannelSeasonalFieldsProps,
+  ChannelUnairableProps,
   SeasonalHoliday,
   SeasonalMode,
   SeasonalOffSeason,
   SeasonalStrength,
+  UnairableReason,
+  UnairableTitle,
 } from "./src/channels";
-export { ChannelAudioSection, ChannelSeasonalFields, seasonalModeLabel } from "./src/channels";
+export {
+  ChannelAudioSection,
+  ChannelSeasonalFields,
+  ChannelUnairable,
+  seasonalModeLabel,
+} from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";

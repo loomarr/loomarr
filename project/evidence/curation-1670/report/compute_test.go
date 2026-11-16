@@ -98,6 +98,20 @@ func TestALineupTitleWithNoStartInTheSpanIsReported(t *testing.T) {
 	}
 }
 
+// A title the channel says it cannot air, with a reason, never aired but is not unreported.
+func TestANeverAiredTitleTheChannelReportsIsNotUnreported(t *testing.T) {
+	s := newSnapshot(Channel{ID: "c", Reported: map[string]bool{"series:b": true}, Lineup: []LineupTitle{
+		{Key: "series:a", Title: "A"}, {Key: "series:b", Title: "B"}, {Key: "series:c", Title: "C"},
+	}})
+	episodes(&s, "c", "series:a", at(10, 0, 0), 4, 30*time.Minute, "a")
+
+	r := Compute(s, at(10, 0, 0), at(11, 0, 0), utc)
+
+	if got := r.Channels[0].NeverUnreported; len(got) != 1 || got[0] != "C" {
+		t.Fatalf("never aired and unreported = %v, want [C]", got)
+	}
+}
+
 func TestOnlyAGuardRelaxedAwayCountsAsRelaxedToNothing(t *testing.T) {
 	halved := []Relaxation{{Kind: "episodeNoRepeat", From: "168h0m0s", To: "84h0m0s"}}
 	if relaxedToNothing(halved) {

@@ -2,6 +2,7 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { toProblem } from "@loomarr/api/mutator";
 import { channelNumber, pluralize } from "@loomarr/core/format";
 import { Action, Card, Disclosure, Stack, Text } from "@loomarr/design-system";
+import { ChannelUnairable } from "@loomarr/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ChannelDefaultAudio } from "@/channels/channel-default-audio";
@@ -102,6 +103,10 @@ const InfoScreen = () => {
           </Stack>
         </Stack>
       </Card>
+
+      {/* The lineup titles the last reconcile could not air, and why (#4140). Admin-only: the
+          fixes (download it, widen the seasons, change the limits) are admin actions. */}
+      {isAdmin && <ChannelUnairable titles={ch.policy.unairable ?? []} />}
 
       {/* The On-screen logo (#1659): admin-only like Programming and Filler, autosaving
           policy.watermark like the Programming fields. Members never see it. */}
