@@ -68,15 +68,13 @@ const SourceContentPreview = ({
                     render="li"
                   >
                     <Text as="div" className="min-w-0 flex-1 truncate" textRole="compact">
-                      <a
-                        className="hover:underline"
-                        href={item.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={item.title}
+                      <TextLink
+                        render={<a href={item.url} rel="noreferrer" target="_blank" title={item.title} />}
+                        tone="inherit"
+                        underline="hover"
                       >
                         {item.title}
-                      </a>
+                      </TextLink>
                     </Text>
                     {item.durationMs ? (
                       <Text as="span" className="shrink-0" textRole="hint" tone="secondary">

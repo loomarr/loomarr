@@ -1,5 +1,5 @@
 import { passwordRecoveryRequestSchema, passwordRecoveryResetSchema } from "@loomarr/core/schemas";
-import { Action, Icon, icons, LoadingStrip, Stack, Text } from "@loomarr/design-system";
+import { Action, Icon, icons, LoadingStrip, Stack, Text, TextLink } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from "./password-recovery.type";
@@ -8,9 +8,9 @@ import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from ".
 const SignInLink = () => (
   <Stack direction="row" justify="center">
     <Text as="span" textRole="compact">
-      <a className="text-signal underline-offset-4 hover:underline" href="/login">
+      <TextLink href="/login" tone="primary" underline="hover">
         Back to sign in
-      </a>
+      </TextLink>
     </Text>
   </Stack>
 );

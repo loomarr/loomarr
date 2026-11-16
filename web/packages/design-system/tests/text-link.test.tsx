@@ -132,4 +132,65 @@ describe("TextLink", () => {
 
     expect(screen.getByRole("link", { name: "Open the Archive.org page for Cereal ad, 1989" })).toBeTruthy();
   });
+
+  it("draws the underline only under the pointer when asked", async () => {
+    const user = userEvent.setup();
+    render(
+      inTheme(
+        <TextLink href="/a" underline="hover">
+          Title
+        </TextLink>,
+      ),
+    );
+    const link = screen.getByRole("link");
+    expect(link.style.textDecorationLine).toBe("none");
+
+    await user.hover(link);
+    expect(link.style.textDecorationLine).toBe("underline");
+
+    await user.unhover(link);
+    expect(link.style.textDecorationLine).toBe("none");
+  });
+
+  it("takes the surrounding colour, or a named one, and a muted link brightens under the pointer", async () => {
+    const user = userEvent.setup();
+    render(
+      inTheme(
+        <>
+          <TextLink href="/a" tone="inherit">
+            Inherit
+          </TextLink>
+          <TextLink href="/b" tone="primary">
+            Primary
+          </TextLink>
+          <TextLink href="/c" tone="muted">
+            Muted
+          </TextLink>
+        </>,
+      ),
+    );
+
+    expect(screen.getByRole("link", { name: "Inherit" }).style.color).toBe("inherit");
+    expect(screen.getByRole("link", { name: "Primary" }).style.color).not.toBe("");
+    const muted = screen.getByRole("link", { name: "Muted" });
+    const resting = muted.style.color;
+    await user.hover(muted);
+    expect(muted.style.color).not.toBe(resting);
+  });
+
+  it("keeps the router link's own hover handlers when it is rendered through `render`", async () => {
+    const user = userEvent.setup();
+    const onMouseEnter = vi.fn();
+    render(
+      inTheme(
+        <TextLink render={<a href="/a" onMouseEnter={onMouseEnter} />} underline="hover">
+          Title
+        </TextLink>,
+      ),
+    );
+
+    await user.hover(screen.getByRole("link"));
+
+    expect(onMouseEnter).toHaveBeenCalledTimes(1);
+  });
 });

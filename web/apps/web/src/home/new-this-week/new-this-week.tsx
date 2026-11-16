@@ -1,5 +1,5 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import { SectionHeader, Stack, Text } from "@loomarr/design-system";
+import { PressableRow, SectionHeader, Stack, Text } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
 import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
@@ -8,6 +8,12 @@ import type { NewThisWeekProps } from "./new-this-week.type";
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const POSTERS = 5;
+
+// The new-channel row's frame at the values it has always drawn (static 900 and 700, a 1px border).
+const LEAD_FRAME = {
+  backgroundColor: "var(--color-static-900)",
+  border: "1px solid var(--color-static-700)",
+} as const;
 
 // The start of "this week", quantised to the hour so the titles query key holds still between
 // renders (the same reason the guide window is quantised).
@@ -65,45 +71,53 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
           sharing a track with five poster columns is what left phone poster slivers in the first
           place. It wraps its own text and action instead. */}
       {fresh.map((lead) => (
-        <Link
-          key={lead.id}
-          to="/watch/$id"
-          params={{ id: lead.id }}
-          className="border-static-700 bg-static-900 text-foreground hover:border-static-500 focus-visible:ring-ring block rounded-md border focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <Stack align="center" direction="row" gap="3" padding={14} wrap>
-            <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
-            <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
-              <Text as="span" textRole="hint" tone="secondary">
-                New channel
-              </Text>
-              <Text as="span" overflowWrap="break-word" textRole="cardTitle" tone="primary">
-                <Text as="span" textRole="mono" tone="primary">
-                  {lead.number}
-                </Text>{" "}
-                {lead.name}
-              </Text>
-              <Text as="span" textRole="hint" tone="secondary">
-                {addedLine(lead, viewerName, timeZone)}
-              </Text>
-            </Stack>
+        // The resting look is the row's own, unchanged: the static 900 fill, 1px static 700 border and 6px
+        // corner. Only hover changed, to the PressableRow's elevated fill.
+        <Stack key={lead.id} overflow="hidden" borderRadius={6} style={LEAD_FRAME}>
+          <PressableRow render={<Link to="/watch/$id" params={{ id: lead.id }} />}>
+            {/* 14px all round in all: the row adds 12px across and 10px down. */}
             <Stack
               align="center"
-              alignSelf="flex-start"
-              borderColor="borderControl"
-              borderRadius={8}
-              borderWidth={1}
-              height={28}
-              justify="center"
-              paddingHorizontal={10}
-              render="span"
+              direction="row"
+              flexGrow={1}
+              gap="3"
+              paddingHorizontal={2}
+              paddingVertical={4}
+              wrap
             >
-              <Text as="span" textRole="label" tone="primary">
-                Watch
-              </Text>
+              <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
+              <Stack flexBasis="0%" flexGrow={1} flexShrink={1} gap="0.5" minWidth={0}>
+                <Text as="span" textRole="hint" tone="secondary">
+                  New channel
+                </Text>
+                <Text as="span" overflowWrap="break-word" textRole="cardTitle" tone="primary">
+                  <Text as="span" textRole="mono" tone="primary">
+                    {lead.number}
+                  </Text>{" "}
+                  {lead.name}
+                </Text>
+                <Text as="span" textRole="hint" tone="secondary">
+                  {addedLine(lead, viewerName, timeZone)}
+                </Text>
+              </Stack>
+              <Stack
+                align="center"
+                alignSelf="flex-start"
+                borderColor="borderControl"
+                borderRadius={8}
+                borderWidth={1}
+                height={28}
+                justify="center"
+                paddingHorizontal={10}
+                render="span"
+              >
+                <Text as="span" textRole="label" tone="primary">
+                  Watch
+                </Text>
+              </Stack>
             </Stack>
-          </Stack>
-        </Link>
+          </PressableRow>
+        </Stack>
       ))}
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,

@@ -1,7 +1,7 @@
 import type { FetchFillerSourceOutputBody } from "@loomarr/api/models/fetchFillerSourceOutputBody";
 import type { FillerSourceDTO } from "@loomarr/api/models/fillerSourceDTO";
 import { formatRelative } from "@loomarr/core/format";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text, TextLink } from "@loomarr/design-system";
 import { useState } from "react";
 
 const checkResultText = (source: FillerSourceDTO, result: FetchFillerSourceOutputBody) => {
@@ -74,12 +74,7 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
               ? `${source.count} ready · `
               : `${source.count} ${source.count === 1 ? "clip" : "clips"}`}
             {source.incoming > 0 && (
-              <a
-                href="/filler/incoming"
-                className="decoration-border hover:text-foreground underline underline-offset-2"
-              >
-                {`${source.incoming} being checked`}
-              </a>
+              <TextLink href="/filler/incoming" tone="muted">{`${source.incoming} being checked`}</TextLink>
             )}
             {source.lastCheckedAt
               ? ` · last checked ${formatRelative(source.lastCheckedAt)}`
@@ -110,8 +105,8 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
 
       {checkResult && checkResult.sourceId === source.id && (
         <Stack
+          backgroundColor="washElevated40"
           borderRadius={6}
-          className="bg-muted/40"
           paddingHorizontal={12}
           paddingVertical={8}
           role="status"

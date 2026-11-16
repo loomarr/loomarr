@@ -1,5 +1,5 @@
 import { loginSchema } from "@loomarr/core/schemas";
-import { Action, Stack, Text } from "@loomarr/design-system";
+import { Action, Stack, Text, TextLink } from "@loomarr/design-system";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useAppForm } from "@/lib/app-form";
 import type { LoginFormProps } from "./login-form.type";
@@ -77,9 +77,9 @@ const LoginForm = ({
       </form.AppField>
 
       <Text as="div" className="-mt-3 self-end" textRole="compact">
-        <a className="text-signal underline-offset-4 hover:underline" href="/forgot-password">
+        <TextLink href="/forgot-password" tone="primary" underline="hover">
           Forgot password?
-        </a>
+        </TextLink>
       </Text>
 
       <Action disabled={isPending} submit>
