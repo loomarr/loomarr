@@ -95,7 +95,13 @@ const BorderedWorkshop = () => {
         <Text textRole="title">Bordered rows</Text>
         <Surface backgroundColor="transparent" borderWidth={0} gap={7} padding={0}>
           {channels.map((channel) => (
-            <Surface backgroundColor="transparent" borderWidth={0} key={channel.name} padding={0}>
+            <Surface
+              backgroundColor="transparent"
+              borderWidth={0}
+              key={channel.name}
+              padding={0}
+              position="relative"
+            >
               <PressableRow bordered onPress={() => setTuned(channel.name)} selected={tuned === channel.name}>
                 <Surface
                   backgroundColor="transparent"
