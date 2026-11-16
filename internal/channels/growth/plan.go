@@ -23,12 +23,23 @@ type Pick struct {
 	Fit Fit
 }
 
+// Judgement is the model's answer on a title for a channel's current line (decision 32); empty
+// when it has not judged the title against that line.
+type Judgement string
+
+// The model's fixed choices.
+const (
+	JudgedFits   Judgement = "fits"
+	JudgedNotFit Judgement = "does_not_fit"
+)
+
 // Plan chooses what joins the channel tonight (decision 8): clear fits first, the closest to the
-// seeds first, until the channel reaches its target for that kind. With withUnclear, unclear fits
-// follow while the channel is still short; that is the install with no model, where nothing will
-// ever review them. Where a model is configured an unclear fit waits for its verdict instead
-// (decision 32). Nothing joins a fixed line, and nothing a person declined.
-func Plan(l Line, candidates []Candidate, carried Carried, target Target, bar float64, declined func(provision.Key) bool, withUnclear bool) []Pick {
+// seeds first, until the channel reaches its target for that kind; then unclear fits, while the
+// channel is still short. A title the model judged does not fit never joins. An unclear fit joins
+// only once the model judged it fits, or, with withUnclear, on an install with no model, where
+// nothing will ever review it. Nothing joins a fixed line, and nothing a person declined.
+func Plan(l Line, candidates []Candidate, carried Carried, target Target, bar float64, declined func(provision.Key) bool,
+	judged func(provision.Key) Judgement, withUnclear bool) []Pick {
 	if l.Fixed {
 		return nil
 	}
@@ -44,8 +55,12 @@ func Plan(l Line, candidates []Candidate, carried Carried, target Target, bar fl
 		if declined != nil && declined(c.Title.Key) {
 			continue
 		}
+		var j Judgement
+		if judged != nil {
+			j = judged(c.Title.Key)
+		}
 		v := l.Classify(c.Title, bar)
-		if v.Fit != Clear && (v.Fit != Unclear || !withUnclear) {
+		if j == JudgedNotFit || (v.Fit != Clear && (v.Fit != Unclear || (!withUnclear && j != JudgedFits))) {
 			continue
 		}
 		s := scored{Candidate: c, fit: v.Fit, share: 1}

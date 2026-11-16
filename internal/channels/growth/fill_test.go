@@ -53,6 +53,12 @@ func seed(tvdb, year int) schedule.LineupEntry {
 // fillHarness is the real store, workflow, approver and binder: the fill writes nothing itself.
 func fillHarness(t *testing.T, policy schedule.ChannelPolicy) (store.Store, *growth.Fill) {
 	t.Helper()
+	return fillHarnessWith(t, policy, false)
+}
+
+// fillHarnessWith is fillHarness on an install with or without a model.
+func fillHarnessWith(t *testing.T, policy schedule.ChannelPolicy, hasModel bool) (store.Store, *growth.Fill) {
+	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	libraryShow(t, st, 90000701, 1989, "TV-PG", 30, "Comedy", "Family")
 	libraryShow(t, st, 90000702, 1992, "TV-PG", 30, "Comedy", "Family")
@@ -68,11 +74,12 @@ func fillHarness(t *testing.T, policy schedule.ChannelPolicy) (store.Store, *gro
 	log := testkit.Logger()
 	ids := 0
 	newID := func() string { ids++; return fmt.Sprintf("id-%d", ids) }
-	clock := func() time.Time { return fillNow }
+	// The clock moves a second each reading, as a real one does between two nights' approvals.
+	ticks := 0
+	clock := func() time.Time { ticks++; return fillNow.Add(time.Duration(ticks) * time.Second) }
 	wf := workflow.New(st, newID, clock, suggest.IntentHash)
 	approver := accept.NewApprover(st, approval.New(st, nil, nil, log), clock)
-	noModel := func() bool { return false }
-	return st, growth.NewFill(st, wf, approver, noModel, clock, log)
+	return st, growth.NewFill(st, wf, approver, func() bool { return hasModel }, clock, log)
 }
 
 func lineupOf(t *testing.T, st store.Store) channelstore.Channel {

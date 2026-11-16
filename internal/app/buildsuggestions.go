@@ -14,9 +14,11 @@ import (
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/edit"
 	"github.com/loomarr/loomarr/internal/channels/growth"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
+	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
 	"github.com/loomarr/loomarr/internal/library/resolvers"
 	"github.com/loomarr/loomarr/internal/library/titlesearch"
@@ -32,7 +34,6 @@ import (
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/metrics"
 	"github.com/loomarr/loomarr/internal/platform/settings"
-	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/webreference"
@@ -57,7 +58,7 @@ type suggestionBuild struct {
 
 func buildSuggestions(
 	rootCtx context.Context,
-	st store.Store,
+	st records.Store,
 	set resolved,
 	overrides Overrides,
 	eventBus *events.Bus,
@@ -149,6 +150,14 @@ func buildSuggestions(
 		return provider != nil
 	}
 	registry.Add(growth.NewFill(st, result.durableWorkflow, approver, hasModel, time.Now, log).Job())
+	// The model reviews what channels grew by, in the background, yielding to a person waiting on it.
+	var reconciler edit.Reconciler
+	if r, ok := channelService.(edit.Reconciler); ok {
+		reconciler = r
+	}
+	if review, ok := growthReview(st, provider, reconciler, interactiveLLM.Busy, set, log); ok {
+		registry.Add(review.Job())
+	}
 
 	result.suggest = service
 	result.progress = service

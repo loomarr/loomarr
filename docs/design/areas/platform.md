@@ -43,7 +43,7 @@ One area of the [package map](../package-map.md#start-here).
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`platform/langcode`** · 4 importers
   Maps the ways a language gets written down onto one code per language, so a channel's commercial language, a setting and a detector's answer compare equal (#2030 decision 12).
-- **`platform/llm`** · 13 importers · → `platform/httpx`, `platform/metrics`
+- **`platform/llm`** · 14 importers · → `platform/httpx`, `platform/metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`platform/llm/picker`** · 2 importers · → `platform/llm`, `platform/llm/selection`, `platform/settings`, `platform/store`
   Language-model picker's service (§8.1): it probes the local Ollama, serves the hosted-provider catalog with live models, validates hosted keys, hot-swaps the active selection, persists the choice, and runs model pulls in the background.

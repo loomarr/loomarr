@@ -11846,6 +11846,7 @@ components:
         - suggest.max_acquisitions
         - job.recurate.schedule
         - job.growth.schedule
+        - job.growth_review.schedule
         - recurate.min_score_pct
         - recurate.max_titles
         - channel.reconcile_every
@@ -12008,6 +12009,7 @@ components:
         - SuggestMaxAcquisitions
         - JobRecurateSchedule
         - JobGrowthSchedule
+        - JobGrowthReviewSchedule
         - RecurateMinScorePct
         - RecurateMaxTitles
         - ChannelReconcileEvery
