@@ -74,6 +74,10 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 	return nil
 }
 
+// visionYieldsFromRank is the evidence rank at which an axis answer outranks a frame read:
+// item metadata (5) and operator (6) in enrichment.EvidenceRank. A test pins both kinds.
+const visionYieldsFromRank = 5
+
 // ApplyClipVision records one semantic vision pass (§10 V44/V55): the on-screen text it saw, a
 // grounded brand and era, and the taxonomy assertions supported by the frames. The facts, direct
 // assertions and rollups commit together.
@@ -87,6 +91,9 @@ func (s *Store) SetClipBrand(ctx context.Context, path, brand string, at time.Ti
 //
 // A blank vision brand preserves a brand grounded by the text tier. Era behaves the same way. Tags
 // are additive: vision can contribute evidence without erasing an operator or the text classifier.
+//
+// A frame read yields to stronger evidence: when the era or brand axis holds item-metadata or
+// operator evidence (visionYieldsFromRank and above), the column keeps that answer.
 func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleText string, era int, leaves []string, at time.Time) error {
 	tx, err := s.h.Begin(ctx)
 	if err != nil {
@@ -99,13 +106,17 @@ func (s *Store) ApplyClipVision(ctx context.Context, hash, path, brand, visibleT
 	result, err := tx.ExecContext(ctx, s.h.Rebind(
 		`UPDATE clips SET
 		   enrichment_revision = CASE WHEN visible_text <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
-		   brand = CASE WHEN ? <> '' THEN ? ELSE brand END,
+		   brand = CASE WHEN ? <> '' AND NOT EXISTS (
+		       SELECT 1 FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = 'brand' AND evidence_rank >= ?)
+		     THEN ? ELSE brand END,
 		   visible_text = ?,
-		   era = CASE WHEN ? > 0 THEN ? ELSE era END,
+		   era = CASE WHEN ? > 0 AND NOT EXISTS (
+		       SELECT 1 FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = 'era' AND evidence_rank >= ?)
+		     THEN ? ELSE era END,
 		   updated_at = ? WHERE hash = ? AND path = ?`),
 		visibleText,
-		brand, brand, visibleText,
-		era, era,
+		brand, hash, visionYieldsFromRank, brand, visibleText,
+		era, hash, visionYieldsFromRank, era,
 		epoch(at), hash, path)
 	if err != nil {
 		return fmt.Errorf("apply clip vision %s: %w", path, err)
