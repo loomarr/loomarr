@@ -81,7 +81,7 @@ aired; where an axis's windows miss the era entirely the era wins, since an empt
 year, as the channel's always did.
 
 Explicit per-axis date windows are not widened to admit out-of-window model picks or by
-automatic relaxation; only an era-shaped scope widens on the §7 ladder. The whole nonempty scope
+automatic relaxation; neither does an era-shaped scope (§7). The whole nonempty scope
 remains operator pinnable. Filler derives its own viewing-era union from the dates through the
 shared selection resolver: a single window seeds `filler.era` (which may be open-ended), a disjoint
 bounded union seeds `filler.eraWindows`; explicit scalar-era and range-list overrides are mutually
@@ -730,14 +730,15 @@ Every token lowers to primitives that already exist — nothing here is new sche
 
 ## 7. The relaxation ladder (constraints degrade predictably, never silently)
 
-When the eligible pool can't satisfy the policy (small library ∩ tight scope ∩ long no-repeat window), enforcement descends in order, and **every applied relaxation is recorded on the channel and surfaced in the UI** ("policy relaxed: repeat window 7d → 3d"):
+When the eligible pool can't satisfy the policy (small library ∩ tight scope ∩ long no-repeat window), **each guard the placed cycle breaches relaxes on its own, to the widest value the pool can hold**, and **every applied relaxation is recorded on the channel and surfaced in the UI** ("policy relaxed: repeat window 7d → 3d 4h") (#4140 decision 3):
 
-1. Shorten `episodeNoRepeat`/`movieNoRepeat` (halve, floor 24h).
-2. Relax `seriesMinGap`/`blockMax`.
-3. Widen an era-shaped `scope.dates` by ±2 years per step (never past the intent's decade boundary if one was stated). Per-axis dates never widen.
-4. Pad with filler pods (§10 main doc — never dead air).
+1. **`episodeNoRepeat` / `movieNoRepeat`.** An item airs once per loop of the cycle, so a window longer than the cycle's program runtime relaxes to that runtime, to the minute. Episodes and films are judged apart: each window relaxes only when the pool holds that kind, and a film shortfall never shortens the episode window.
+2. **`seriesMinGap`.** Relaxes only when the placed cycle breaches it, to the widest gap a placement holds, searched to the minute. Zero only when nothing wider holds.
+3. **`blockMax`.** Rises only when the placed cycle breaches it, to the shortest run a placement holds. Unbounded only when nothing shorter than the largest show's whole run holds.
 
-**Never relaxed, ever:** `audience` and explicit scope filters (series/seasons). A too-small kids' pool becomes a filler-heavy kids' channel — it does not become a less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or identity.
+A shortfall in one guard never touches another: a cycle shorter than the no-repeat window keeps the series gap, and a series-gap breach keeps the no-repeat windows. The gap is settled before the run length, because a run of two always breaches a gap.
+
+**Never relaxed, ever:** `audience` and scope — explicit series/seasons and the dates, era-shaped or not. A channel short of titles stays inside its line and says so; growth (#4140 step 2) is what widens a pool. A too-small kids' pool becomes a filler-heavy kids' channel — it does not become a less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or identity.
 
 ## 8. Pipeline placement & proposal surface
 
@@ -956,7 +957,7 @@ continue.
 - **Separation with wrap:** property test — no episode twice inside the window, no series-gap violation across the cycle seam.
 - **Syndication deck:** every eligible episode airs exactly once per deck before any repeats.
 - **Seasonality under a frozen clock:** Oct 15 boosts Halloween items; Jul 14 benches them; `exclusive` runs `offSeason` fallback out of window; window roll happens via the sweep.
-- **Relaxation ladder:** tiny pool → ladder descends in order, records + surfaces each step, and *never* touches audience/scope; pool growth un-relaxes on a later sweep.
+- **Relaxation:** tiny pool → only the breached guards relax, each to the widest value that holds, recorded + surfaced; a breach of one never touches another; *never* touches audience/scope; pool growth un-relaxes on a later sweep.
 - **Determinism:** same pool + policy + seed → byte-identical cycle.
 
 ## 11. Build integration

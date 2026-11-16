@@ -42,6 +42,11 @@ type ResolvedPolicy struct {
 	// pass and the holiday-episode matchers. Household state, not policy — it rides here for the
 	// same reason LastAired does.
 	Calendar Calendar
+	// searchBudget, when positive, caps separationRepair's backtracking search below
+	// backtrackBudget. Relaxation probes candidate guards with it (§7): a deck that can be solved
+	// is solved without backtracking, so a few attempts per slot tell a guard that holds from one
+	// that does not, and a guard that does not hold stops costing the full budget.
+	searchBudget int
 }
 
 // ResolvedSeparation is the separation policy with every window/limit filled.
