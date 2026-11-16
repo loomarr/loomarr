@@ -159,6 +159,50 @@ func TestAFilmsOwnNFOOutranksItsFoldersCopies(t *testing.T) {
 	}
 }
 
+// Two files in one film's folder that their own NFOs ground as two films by their catalog ids are
+// two titles, however alike their titles and years: a sequel a year on, or a second film of the
+// same name and year.
+func TestFilesTheCatalogGroundsAsTwoFilmsAreTwoTitles(t *testing.T) {
+	nfo := func(tmdb, title, year string) string {
+		return `<movie><title>` + title + `</title><year>` + year + `</year><uniqueid type="tmdb" default="true">` + tmdb + `</uniqueid></movie>`
+	}
+	for name, second := range map[string]string{
+		"a sequel a year on":       nfo("90046333", "Harrow Fen II", "2012"),
+		"same title, another film": nfo("90046444", "Harrow Fen", "2011"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			files := map[string]string{
+				"Harrow Fen (2011)/Harrow Fen (2011).mkv": nfo("90046222", "Harrow Fen", "2011"),
+				"Harrow Fen (2011)/Harrow Fen.mkv":        second,
+			}
+			for rel, doc := range files {
+				p := h.file(rel, 10)
+				if err := os.WriteFile(strings.TrimSuffix(p, ".mkv")+".nfo", []byte(doc), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.run()
+			h.run()
+			rows, err := h.st.LibraryFiles(ctx, h.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := map[string]bool{}
+			for _, r := range rows {
+				if r.ItemID == "" || r.Problem != "" {
+					t.Errorf("%s: item %q, problem %q", r.Path, r.ItemID, r.Problem)
+				}
+				items[r.ItemID] = true
+			}
+			if len(items) != 2 {
+				t.Errorf("%d titles for two films; want 2", len(items))
+			}
+		})
+	}
+}
+
 // A duplicated file is named as its original, so a film's name never depends on which of its
 // copies names the item (#4010); a title that holds the word keeps it.
 func TestADuplicatedFileIsNamedAsItsOriginal(t *testing.T) {

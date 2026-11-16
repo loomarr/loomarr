@@ -33,6 +33,10 @@ type builder struct {
 	// dirs are the folders, relative to the root, that hold a file the pass identified: a series'
 	// key that is none is a loose show's name (joinShows).
 	dirs map[string]bool
+	// films are the catalog ids each film's folder's copies are one title by (filmCopyID's key):
+	// the first grounded copy the pass writes claims the folder's key with its own, and a copy a
+	// catalog grounds as another film stays its own.
+	films map[string][]inventory.ExternalID
 }
 
 type seriesSeen struct {
@@ -522,11 +526,33 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	// A film's copies in its own folder are one title too, though the catalog grounds only one:
 	// "Harrow Fen (2011) - X265 EAC3 5.1" beside the Radarr copy its NFO names.
 	if id.kind == mp.KindMovie {
-		if key := filmCopyID(b.root, file.Rel, known.Name, known.ProductionYear); key != "" {
+		if key := filmCopyID(b.root, file.Rel, known.Name, known.ProductionYear); key != "" && b.claimFilm(key, snapshot.ExternalIDs) {
 			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: filmCopiesNamespace, Value: key})
 		}
 	}
 	return snapshot, waiting
+}
+
+// claimFilm says whether a film's file with these catalog ids (ids, the scanner's own aside) is
+// one of the copies its folder's key joins. One no catalog grounds is; so is the first grounded
+// one, which claims the key with its ids, and any sharing one of them. One grounded as another
+// film, by ids none of the claim's are, is that film: the catalog's word beats the folder's name.
+func (b *builder) claimFilm(key string, ids []inventory.ExternalID) bool {
+	own := slices.DeleteFunc(slices.Clone(ids), func(id inventory.ExternalID) bool {
+		return id.Namespace == partsNamespace || id.Namespace == copiesNamespace || id.Namespace == filmCopiesNamespace
+	})
+	if len(own) == 0 {
+		return true
+	}
+	if b.films == nil {
+		b.films = map[string][]inventory.ExternalID{}
+	}
+	claim, ok := b.films[key]
+	if !ok {
+		b.films[key] = own
+		return true
+	}
+	return slices.ContainsFunc(own, func(id inventory.ExternalID) bool { return slices.Contains(claim, id) })
 }
 
 // filmCopiesNamespace is copiesNamespace's for a film's copies. It is never listed.
