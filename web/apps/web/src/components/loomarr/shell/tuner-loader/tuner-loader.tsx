@@ -113,15 +113,17 @@ const TunerLoader = ({
       </div>
 
       {channel && (
-        <p
-          className="text-static-0 font-sans text-[clamp(18px,2.8vw,28px)] font-semibold tracking-[0.01em]"
-          style={{ textShadow: HALO }}
-        >
-          <span className="text-signal mr-[0.7em] align-[0.18em] font-mono text-[0.62em] font-medium tracking-[0.16em]">
+        <Text as="p" style={{ color: "var(--color-static-0)", textShadow: HALO }} textRole="stationName">
+          <Text
+            as="span"
+            style={{ marginRight: "0.7em", verticalAlign: "0.18em" }}
+            textRole="stationTag"
+            tone="signal"
+          >
             CH {channel.number}
-          </span>
+          </Text>
           <span>{channel.name}</span>
-        </p>
+        </Text>
       )}
 
       {/* The readout — mono, tracked-out amber with the blinking cursor as the one extra sign of life. */}

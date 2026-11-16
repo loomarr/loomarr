@@ -38,7 +38,9 @@ const SignInFirst = ({ code }: { code: string }) => {
       </Stack>
       {code ? (
         <Stack align="center" marginTop={24}>
-          <p className="font-mono text-2xl tracking-[0.3em]">{code}</p>
+          <Text as="p" textRole="pairCode">
+            {code}
+          </Text>
         </Stack>
       ) : null}
       <Stack direction="row" justify="center" marginTop={32}>

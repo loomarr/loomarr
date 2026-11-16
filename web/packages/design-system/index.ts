@@ -205,6 +205,7 @@ export {
   iconography,
   nativeFontFace,
   playerChrome,
+  roleLetterSpacing,
   semanticColors,
   semanticMotion,
   semanticRadius,
