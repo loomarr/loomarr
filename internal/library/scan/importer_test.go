@@ -1295,6 +1295,51 @@ func TestAFolderReleasedWhileListedIsNotWrittenBack(t *testing.T) {
 	}
 }
 
+// A folder released while a full pass lists another is not walked once the pass reaches it: the
+// pass read its roots before the release, and its files are forgotten already.
+func TestAFolderReleasedWhileAnotherIsListedIsNotWalked(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	other := filepath.Join(filepath.Dir(h.root), "second")
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Mike (2002)/Mike.mkv", 10)
+	for _, rel := range []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv"} {
+		p := filepath.Join(other, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	released := ""
+	h.im.listed = func(root string) {
+		h.im.listed = nil
+		// Whichever root the pass lists first, the other is released meanwhile.
+		released = other
+		if root == other {
+			released = h.root
+		}
+		if err := h.st.SetLibraryRootInUse(ctx, released, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.im.ForgetReleased(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.run()
+	if released == "" {
+		t.Fatal("the pass never listed a root")
+	}
+	if rows, err := h.st.LibraryFiles(ctx, released); err != nil || len(rows) != 0 {
+		t.Fatalf("the folder released mid-pass has %d rows, %v; want none", len(rows), err)
+	}
+}
+
 // A folder released and then added again keeps the headers it read: its files are forgotten while
 // it is out of use, but the pass that finds them again opens only a file whose bytes changed.
 func TestAFolderAddedAgainKeepsItsReads(t *testing.T) {

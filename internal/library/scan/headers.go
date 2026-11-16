@@ -446,6 +446,18 @@ func (im *Importer) FolderUnread(dir string) bool {
 	return im.unread[dir] > 0
 }
 
+// releasedSince reports whether root, or a folder holding it, was released after generation since.
+func (im *Importer) releasedSince(root string, since int64) bool {
+	im.mu.Lock()
+	defer im.mu.Unlock()
+	for r, gen := range im.forgotten {
+		if gen > since && (r == root || inside(root, r)) {
+			return true
+		}
+	}
+	return false
+}
+
 // changedSince lists the files an import wrote, and the folders released, after generation since.
 func (im *Importer) changedSince(since int64) (files map[string]bool, released []string) {
 	im.mu.Lock()
