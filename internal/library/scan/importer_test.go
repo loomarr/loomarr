@@ -1360,6 +1360,75 @@ func TestAFolderReleasedWhileAnotherIsListedIsNotWalked(t *testing.T) {
 	}
 }
 
+// releaseAtFirstWrite stops using a root at the first title the import writes for it, and stops
+// its walk as ForgetReleased does at once, before it waits for the import's lock.
+type releaseAtFirstWrite struct {
+	inventory.Service
+	authority inventory.AuthorityID
+	release   func()
+	done      bool
+}
+
+func (r *releaseAtFirstWrite) ApplySnapshot(ctx context.Context, s inventory.Snapshot) (inventory.ItemID, error) {
+	id, err := r.Service.ApplySnapshot(ctx, s)
+	if s.Origin.Authority == r.authority && !r.done {
+		r.done = true
+		r.release()
+	}
+	return id, err
+}
+
+// A folder never walked before, released while the first import writes its titles, keeps none of
+// them: the import writes each title as it goes and the folder's file rows only at its end, so
+// what it wrote is forgotten by the folder, not by its rows.
+func TestAFolderReleasedWhileItsTitlesAreWrittenKeepsNone(t *testing.T) {
+	ctx := context.Background()
+	h := newHarness(t)
+	other := filepath.Join(filepath.Dir(h.root), "second")
+	h.im.Disk = fakeDisk{readable: map[string]bool{h.root: true, other: true}}
+	if err := h.st.AddLibraryRoot(ctx, librarystore.LibraryRootCheck{Path: other, Readable: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	h.file("Mike (2002)/Mike.mkv", 10)
+	rels := []string{"Oscar (2004)/Oscar.mkv", "Papa (2005)/Papa.mkv", "Quebec (2006)/Quebec.mkv"}
+	for _, rel := range rels {
+		p := filepath.Join(other, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, make([]byte, 10), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plain := h.im.Inventory
+	h.im.Inventory = &releaseAtFirstWrite{Service: plain, authority: inventory.AuthorityID(Authority(other)), release: func() {
+		if err := h.st.SetLibraryRootInUse(ctx, other, false); err != nil {
+			t.Error(err)
+		}
+		h.im.mu.Lock()
+		if cancel := h.im.walking[other]; cancel != nil {
+			cancel(errReleased)
+		}
+		h.im.mu.Unlock()
+	}}
+	h.run()
+	if err := h.im.ForgetReleased(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range rels {
+		o := fileOrigin(other, rel)
+		item, ok, err := plain.Item(ctx, inventory.ItemRef{Origin: &o})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, io := range item.Origins {
+			if ok && io.Key == o && io.MissingAt.IsZero() {
+				t.Errorf("%s is still present in the released folder", rel)
+			}
+		}
+	}
+}
+
 // A folder released and then added again keeps the headers it read: its files are forgotten while
 // it is out of use, but the pass that finds them again opens only a file whose bytes changed.
 func TestAFolderAddedAgainKeepsItsReads(t *testing.T) {
