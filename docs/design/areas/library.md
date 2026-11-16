@@ -33,7 +33,7 @@ One area of the [package map](../package-map.md#start-here).
   Conformance suite every metadata provider runs.
 - **`library/metadataprovider/tmdb`** · 1 importer · → `library/metadataprovider`, `library/tmdb`, `platform/httpx`, `platform/rating`
   TMDB as a metadata provider (#2151 decisions 7, 13, 15, 18, 20, 21).
-- **`library/provision`** · 37 importers
+- **`library/provision`** · 38 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
 - **`library/provisionbackstop`** · 2 importers · → `library/mediaserver`, `library/provision`, `library/requester`, `platform/activity`, `platform/jobs`, `platform/settings`, `platform/store`, `platform/store/activitystore`
   Provisioning backstop (design §4, §7, §18).

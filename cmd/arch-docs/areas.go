@@ -78,7 +78,7 @@ var areas = []area{
 			"are re-curated here, Home's channel ideas come from here, and so does who is watching now.",
 		Packages: []string{
 			"channels", "channels/schedule", "channels/edit", "channels/approval", "channels/recurate",
-			"channels/ideas", "channels/recommend", "channels/viewing",
+			"channels/ideas", "channels/recommend", "channels/viewing", "channels/growth",
 		},
 		MayImport: map[string]string{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
