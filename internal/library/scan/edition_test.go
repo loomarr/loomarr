@@ -34,6 +34,20 @@ func TestEditionLabel(t *testing.T) {
 	}
 }
 
+// A film named as its folder, then its release's notes, bracketed or not, is named as its folder,
+// year and all, until a catalog names it; one whose name says more than its folder is its own.
+func TestAFilmNamedAsItsFolderWithItsReleasesNotesIsNamedAsTheFolder(t *testing.T) {
+	for rel, want := range map[string]string{
+		"Gorse Hollow 2 (1990)/Gorse Hollow 2 (1990) - X265 EAC3 5.1.mkv":                        "Gorse Hollow 2 (1990)",
+		"Tarn Ridge (1972)/Tarn Ridge (1972) [imdbid-tt9000158] - [Bluray-2160p][HDR10]-GRP.mkv": "Tarn Ridge (1972)",
+		"Tarn Ridge (1972)/Tarn Ridge Revisited (1972) - X264.mkv":                               "Tarn Ridge Revisited (1972) - X264",
+	} {
+		if got := fallbackName(rel, mp.KindMovie, 0, true); got != want {
+			t.Errorf("fallbackName(%q) = %q, want %q", rel, got, want)
+		}
+	}
+}
+
 // A duplicated file is named as its original, so a film's name never depends on which of its
 // copies names the item (#4010); a title that holds the word keeps it.
 func TestADuplicatedFileIsNamedAsItsOriginal(t *testing.T) {

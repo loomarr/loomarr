@@ -713,9 +713,12 @@ func fallbackName(rel string, kind mp.Kind, part int, sole bool) string {
 				(sole || !bonusBeside(path.Base(dir), path.Base(rel))) {
 				return folder
 			}
-		} else if title, year, _ := searchQuery(folder, 0); year == fileYear && runsOn(title, fileTitle) {
+		} else if title, year, _ := searchQuery(folder, 0); year == fileYear &&
+			(runsOn(title, fileTitle) || sameWords(title, fileTitle) && !sameWords(name, path.Base(dir))) {
 			// A release's file named short, "Wren.Harbor.2003…-GRP/wren.2003.1080p.mkv", is the film
-			// its folder names in full, of the same year.
+			// its folder names in full, of the same year; so is one named as its folder, then its
+			// release's notes, "Gorse Hollow (1990) - X265 EAC3 5.1". One named just as its folder
+			// is, "ashgrove (2015)", keeps its own.
 			return folder
 		}
 	}
