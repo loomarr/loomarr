@@ -44,11 +44,14 @@ type Model interface {
 	Model() string
 }
 
-// Spend reserves one question against the day's AI spending cap, the one cap filler work also
-// draws on (#3838 decision 19). ok is false at the cap: the question waits for another day, and the
-// code's choices stand. A self-hosted model costs nothing and is never held.
+// Spend meters questions against the day's AI spending cap, the one cap filler work also draws on
+// (#3838 decision 19). ReserveReview holds one question's price before it is asked; ok is false at
+// the cap, and the question waits for another day while the code's choices stand. SettleReview
+// then records what the call cost, failed or not. A self-hosted model costs nothing and is never
+// held; its id is empty and settling it does nothing.
 type Spend interface {
-	ReserveReview(ctx context.Context, channelID string, key provision.Key, at time.Time) (ok bool, err error)
+	ReserveReview(ctx context.Context, channelID string, key provision.Key, at time.Time) (id string, ok bool, err error)
+	SettleReview(ctx context.Context, id string, cost llm.Attribution, failed bool, at time.Time) error
 }
 
 // Review is the `channel-growth-review` job (#4333, decisions 8, 32 and 33): in the background, a
@@ -117,7 +120,7 @@ func (r *Review) Run(ctx context.Context) (int, error) {
 		if r.busy() {
 			break // a person came along: they get the model first
 		}
-		ok, err := r.spend.ReserveReview(ctx, q.ch.ID, q.title.candidate.Title.Key, r.now())
+		spendID, ok, err := r.spend.ReserveReview(ctx, q.ch.ID, q.title.candidate.Title.Key, r.now())
 		if err != nil {
 			return judged, err
 		}
@@ -125,7 +128,10 @@ func (r *Review) Run(ctx context.Context) (int, error) {
 			r.log.Info("growth review: the day's AI spending cap is reached; reviews wait")
 			break
 		}
-		verdict, reason, err := r.ask(ctx, q)
+		verdict, reason, cost, err := r.ask(ctx, q)
+		if serr := r.spend.SettleReview(ctx, spendID, cost, err != nil, r.now()); serr != nil {
+			return judged, serr
+		}
 		if err != nil {
 			// An answer outside the fixed choices, or a model that cannot be reached, leaves the
 			// title unjudged; it is asked again on a later run.
@@ -196,7 +202,9 @@ type answer struct {
 	Reason string `json:"reason"`
 }
 
-func (r *Review) ask(ctx context.Context, q question) (Judgement, string, error) {
+// ask puts the question to the model. cost is what the call reported, even when the reply is
+// unusable: a provider bills a reply that was not the asked JSON all the same.
+func (r *Review) ask(ctx context.Context, q question) (j Judgement, reason string, cost llm.Attribution, err error) {
 	t := q.title.candidate.Title
 	kind := "film"
 	if t.Kind == Series {
@@ -227,22 +235,23 @@ func (r *Review) ask(ctx context.Context, q question) (Judgement, string, error)
 		{Role: llm.System, Content: "You decide whether a title belongs on a TV channel. Answer with JSON only."},
 		{Role: llm.User, Content: prompt},
 	}, llm.ChatOptions{JSONMode: true, Temperature: &zero, MaxTokens: 120})
+	cost = resp.Attribution
 	if err != nil {
-		return "", "", err
+		return "", "", cost, err
 	}
 	var a answer
 	if err := json.Unmarshal([]byte(llm.ExtractJSONObject(resp.Content)), &a); err != nil {
-		return "", "", fmt.Errorf("reply is not the asked JSON: %w", err)
+		return "", "", cost, fmt.Errorf("reply is not the asked JSON: %w", err)
 	}
-	j := Judgement(strings.TrimSpace(strings.ToLower(a.Answer)))
+	j = Judgement(strings.TrimSpace(strings.ToLower(a.Answer)))
 	if j != JudgedFits && j != JudgedNotFit {
-		return "", "", fmt.Errorf("answer %q is not one of the choices", a.Answer)
+		return "", "", cost, fmt.Errorf("answer %q is not one of the choices", a.Answer)
 	}
-	reason := strings.TrimSpace(a.Reason)
+	reason = strings.TrimSpace(a.Reason)
 	if words := strings.Fields(reason); len(words) > 20 {
 		reason = strings.Join(words[:20], " ")
 	}
-	return j, reason, nil
+	return j, reason, cost, nil
 }
 
 // takeOff removes a grown title from the channel through the operator write path, which declines

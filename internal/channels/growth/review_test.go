@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/llm"
 	"github.com/loomarr/loomarr/internal/platform/store"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -37,15 +38,23 @@ func (j *judge) Chat(_ context.Context, msgs []llm.Message, _ llm.ChatOptions) (
 	return llm.Response{}, fmt.Errorf("asked about a title the test did not expect: %s", q)
 }
 
-// allow is a spending cap that holds once its room is spent.
-type allow struct{ room int }
+// allow is a spending cap that holds once its room is spent, and counts what was settled.
+type allow struct {
+	room    int
+	settled int
+}
 
-func (a *allow) ReserveReview(context.Context, string, provision.Key, time.Time) (bool, error) {
+func (a *allow) ReserveReview(context.Context, string, provision.Key, time.Time) (string, bool, error) {
 	if a.room <= 0 {
-		return false, nil
+		return "", false, nil
 	}
 	a.room--
-	return true, nil
+	return fmt.Sprintf("spend-%d", a.room), true, nil
+}
+
+func (a *allow) SettleReview(context.Context, string, llm.Attribution, bool, time.Time) error {
+	a.settled++
+	return nil
 }
 
 func review(st store.Store, j *judge, spend growth.Spend, busy func() bool) *growth.Review {
@@ -68,8 +77,12 @@ func TestARejectedGrownTitleIsTakenOffAndStaysOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	j := &judge{answers: map[string]string{"Show 90000703": notFits}}
-	if n, err := review(st, j, &allow{room: 10}, nil).Run(ctx); err != nil || n != 1 {
+	spend := &allow{room: 10}
+	if n, err := review(st, j, spend, nil).Run(ctx); err != nil || n != 1 {
 		t.Fatalf("judged %d (err %v), want the one grown title", n, err)
+	}
+	if spend.settled != 1 {
+		t.Errorf("settled %d questions, want the one asked", spend.settled)
 	}
 	ch := lineupOf(t, st)
 	if len(ch.Lineup) != 2 || !ch.Policy.Declined("series:tvdb:90000703") {
@@ -88,7 +101,7 @@ func TestARejectedGrownTitleIsTakenOffAndStaysOff(t *testing.T) {
 
 	// The undo: a person puts it back by hand. It is a seed now, and the review leaves it alone.
 	if _, err := (&edit.Service{Store: st, Log: testkit.Logger()}).Edit(ctx, edit.Backend{}, "ch-grow", 0,
-		func(ch *store.Channel) error {
+		func(ch *channelstore.Channel) error {
 			ch.Lineup = append(ch.Lineup, seed(90000703, 1990))
 			return nil
 		}); err != nil {

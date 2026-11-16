@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/edit"
@@ -12,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/records"
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/llm"
+	"github.com/loomarr/loomarr/internal/platform/openroutermedia"
 	"github.com/loomarr/loomarr/internal/platform/settings"
 )
 
@@ -25,15 +28,22 @@ const growthReviewNanoUSD = 10_000_000 // one cent
 type growthSpend struct {
 	ledger capability.InferenceLedger
 	set    settings.Reader
-	model  *llm.Swappable
+	model  meteredModel
 	newID  func() string
 }
 
-func (s growthSpend) ReserveReview(ctx context.Context, channelID string, key provision.Key, at time.Time) (bool, error) {
-	sel := s.model.Selection()
-	if _, hosted := llm.HostedProviderByKey(sel.Provider); !hosted {
-		return true, nil
+// meteredModel is what the spend needs to know of the model: who serves it, and whether that is
+// an operator-run endpoint (*llm.Swappable).
+type meteredModel interface {
+	Selection() llm.Selection
+	SelfHosted() bool
+}
+
+func (s growthSpend) ReserveReview(ctx context.Context, channelID string, key provision.Key, at time.Time) (string, bool, error) {
+	if s.model.SelfHosted() {
+		return "", true, nil
 	}
+	sel := s.model.Selection()
 	daily := int64(max(settings.FillerDefectsJudgeDailyCents.Get(s.set), 0)) * 10_000_000
 	ev, err := s.ledger.ReserveInferenceEvaluation(ctx, records.InferenceEvaluation{
 		ID: s.newID(), ClipHash: "growth:" + channelID + ":" + string(key), Role: "growth_review", Rung: "review",
@@ -47,9 +57,47 @@ func (s growthSpend) ReserveReview(ctx context.Context, channelID string, key pr
 		CreatedAt: at,
 	}, records.InferenceBudget{PerClipNanoUSD: math.MaxInt64, PerDayNanoUSD: daily})
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
-	return ev.State != records.InferenceHeldBudget, nil
+	if ev.State == records.InferenceHeldBudget {
+		return "", false, nil
+	}
+	return ev.ID, true, nil
+}
+
+// SettleReview records what a question cost. A reported USD charge is recorded as charged. A call
+// that reported none counts at its reservation, failed or not, because a provider may bill a call
+// that timed out and the day's cap must not understate spend.
+func (s growthSpend) SettleReview(ctx context.Context, id string, cost llm.Attribution, failed bool, at time.Time) error {
+	if id == "" {
+		return nil // self-hosted: nothing was reserved
+	}
+	st := records.InferenceSettlement{
+		ResolvedProvider: cost.ResolvedProvider, ResolvedModel: cost.ResolvedModel,
+		Tokens:    records.InferenceTokens{Prompt: int64(cost.Tokens.Prompt), Completion: int64(cost.Tokens.Completion)},
+		LatencyMS: cost.Latency.Milliseconds(), Attempts: max(cost.Attempts, 1), GenerationID: cost.GenerationID,
+		State: records.InferenceCompleted, UpdatedAt: at,
+	}
+	if failed {
+		st.State, st.FailureReason = records.InferenceFailed, "no usable verdict"
+	}
+	switch {
+	case cost.Charge != nil && strings.EqualFold(cost.Charge.Currency, "USD"):
+		nano, err := openroutermedia.USDToNanoCeil(cost.Charge.Amount)
+		if err != nil {
+			return err
+		}
+		st.ChargedAmount, st.ChargedCurrency, st.ChargedNanoUSD, st.EstimatedNanoUSD = cost.Charge.Amount, "USD", nano, nano
+	case failed:
+		st.RetainReservation = true
+	default:
+		st.ChargedNanoUSD, st.EstimatedNanoUSD = growthReviewNanoUSD, growthReviewNanoUSD
+	}
+	_, err := s.ledger.SettleInferenceEvaluation(ctx, id, st)
+	if errors.Is(err, records.ErrInferenceBudgetExceeded) {
+		return nil // recorded as held; the verdict was paid for and stands
+	}
+	return err
 }
 
 // growthReview wires the background review of what channels grew by. ok is false when the model

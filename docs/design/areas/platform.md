@@ -55,7 +55,7 @@ One area of the [package map](../package-map.md#start-here).
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
 - **`platform/openroutercatalog`** · 2 importers · → `platform/httpx`, `platform/openroutermedia`
   Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
-- **`platform/openroutermedia`** · 3 importers
+- **`platform/openroutermedia`** · 4 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`platform/rating`** · 11 importers
   Audience rating ladder (programming-design §4): one ordered scale that places the TV and film content-rating systems side by side, and the folding of a media server's raw rating string onto it.
