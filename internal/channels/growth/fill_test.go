@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library/provision"
 	"github.com/loomarr/loomarr/internal/platform/store"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
+	"github.com/loomarr/loomarr/internal/platform/store/librarystore"
 	"github.com/loomarr/loomarr/internal/proposals/accept"
 	"github.com/loomarr/loomarr/internal/proposals/suggest"
 	"github.com/loomarr/loomarr/internal/proposals/workflow"
@@ -27,14 +28,14 @@ func libraryShow(t *testing.T, st store.Store, tvdb, year int, rating string, n 
 	t.Helper()
 	ctx := context.Background()
 	id := fmt.Sprintf("show-%d", tvdb)
-	items := []store.LibraryItem{{ID: id, Kind: "series", Name: fmt.Sprintf("Show %d", tvdb), Year: year, Rating: rating,
-		Genres: genres, IDs: []store.LibraryID{{Namespace: "tvdb", Value: fmt.Sprint(tvdb)}}}}
-	var files []store.LibraryFile
+	items := []librarystore.LibraryItem{{ID: id, Kind: "series", Name: fmt.Sprintf("Show %d", tvdb), Year: year, Rating: rating,
+		Genres: genres, IDs: []librarystore.LibraryID{{Namespace: "tvdb", Value: fmt.Sprint(tvdb)}}}}
+	var files []librarystore.LibraryFile
 	for e := range n {
 		ep := fmt.Sprintf("%s-e%d", id, e)
-		items = append(items, store.LibraryItem{ID: ep, Kind: "episode", Name: ep, RuntimeMs: 22 * 60_000})
-		files = append(files, store.LibraryFile{Path: "/t/" + ep + ".mkv", Root: "/t", Size: 1, ModifiedNs: 1, Kind: "episode",
-			Header: store.LibraryHeaderRead, SeenAt: fillNow, ItemID: ep, SeriesID: id})
+		items = append(items, librarystore.LibraryItem{ID: ep, Kind: "episode", Name: ep, RuntimeMs: 22 * 60_000})
+		files = append(files, librarystore.LibraryFile{Path: "/t/" + ep + ".mkv", Root: "/t", Size: 1, ModifiedNs: 1, Kind: "episode",
+			Header: librarystore.LibraryHeaderRead, SeenAt: fillNow, ItemID: ep, SeriesID: id})
 	}
 	if err := st.SaveLibraryItems(ctx, items, fillNow); err != nil {
 		t.Fatal(err)
