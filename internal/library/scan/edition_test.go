@@ -38,7 +38,7 @@ func TestEditionLabel(t *testing.T) {
 // year and all, until a catalog names it; one whose name says more than its folder is its own.
 func TestAFilmNamedAsItsFolderWithItsReleasesNotesIsNamedAsTheFolder(t *testing.T) {
 	for rel, want := range map[string]string{
-		"Gorse Hollow 2 (1990)/Gorse Hollow 2 (1990) - X265 EAC3 5.1.mkv":                       "Gorse Hollow 2 (1990)",
+		"Gorse Hollow 2 (1990)/Gorse Hollow 2 (1990) - X265 EAC3 5.1.mkv":                        "Gorse Hollow 2 (1990)",
 		"Tarn Ridge (1972)/Tarn Ridge (1972) [imdbid-tt9000158] - [Bluray-2160p][HDR10]-GRP.mkv": "Tarn Ridge (1972)",
 		"Tarn Ridge (1972)/Tarn Ridge Revisited (1972) - X264.mkv":                               "Tarn Ridge Revisited (1972) - X264",
 	} {
