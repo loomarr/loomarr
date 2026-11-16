@@ -43,10 +43,10 @@ import { installMockBackend } from "./mock-backend";
 // only the median. The first session of a job tends to be the slowest: it pays the runner's cold
 // disk and the browser's cold code cache.
 //
-// RUNS is 5, not 3 (2026-11-16). The macOS runner adds a ~60 ms spike to roughly one sample in six
-// on every route, unrelated to the route's own work: a 12-session diagnostic showed warm Settings
-// with no reads and no long tasks still landing anywhere from 15 to 97 ms. With 3 sessions, two
-// spikes fail a tight budget (Settings warm failed ~1 run in 11); with 5 it takes three.
+// RUNS is 5, not 3 (2026-11-16): the shared macOS runner spreads every route's samples widely, and
+// with 3 sessions two slow ones decide the median. ⚠ A route whose slow samples sit at ~API_DELAY_MS
+// is not noise: it is awaiting a read. Warm Settings did exactly that, from a loader that re-fetched
+// a stale read on every return visit before it would navigate; see `routes/_authed/settings/index.tsx`.
 //
 // Warm is already near the 100 ms goal; cold misses 300 ms on Home and Library, and Settings and
 // Requests land well inside it. Those two are where the loader work has most to earn.
