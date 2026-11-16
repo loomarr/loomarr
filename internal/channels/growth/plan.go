@@ -24,10 +24,11 @@ type Pick struct {
 }
 
 // Plan chooses what joins the channel tonight (decision 8): clear fits first, the closest to the
-// seeds first, until the channel reaches its target for that kind; then, while it is still short,
-// unclear fits, because no model has reviewed them (decision 8: with no model an unclear fit joins
-// only if the channel is still short). Nothing joins a fixed line, and nothing a person declined.
-func Plan(l Line, candidates []Candidate, carried Carried, target Target, bar float64, declined func(provision.Key) bool) []Pick {
+// seeds first, until the channel reaches its target for that kind. With withUnclear, unclear fits
+// follow while the channel is still short; that is the install with no model, where nothing will
+// ever review them. Where a model is configured an unclear fit waits for its verdict instead
+// (decision 32). Nothing joins a fixed line, and nothing a person declined.
+func Plan(l Line, candidates []Candidate, carried Carried, target Target, bar float64, declined func(provision.Key) bool, withUnclear bool) []Pick {
 	if l.Fixed {
 		return nil
 	}
@@ -44,7 +45,7 @@ func Plan(l Line, candidates []Candidate, carried Carried, target Target, bar fl
 			continue
 		}
 		v := l.Classify(c.Title, bar)
-		if v.Fit != Clear && v.Fit != Unclear {
+		if v.Fit != Clear && (v.Fit != Unclear || !withUnclear) {
 			continue
 		}
 		s := scored{Candidate: c, fit: v.Fit, share: 1}

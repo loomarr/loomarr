@@ -872,7 +872,7 @@ The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content
   - the shortfall after the clear fits, and after the unclear fits too.
 
   It also prints a sweep of the bar. On the install (2026-11-15) no series channel is short of episodes; three are short of shows. The maintainer chose margin 3, bar 0.5 and show share 0.15 from these numbers (#4333).
-- **The plan** (`growth.Plan`) adds clear fits first, the closest to the line first: genre share, then distance in years from the line's middle, then key. It stops at the target for each kind. Unclear fits are added only while the channel is still short. A fixed line adds nothing, and neither does a declined title.
+- **The plan** (`growth.Plan`) adds clear fits first, the closest to the line first: genre share, then distance in years from the line's middle, then key. It stops at the target for each kind. Unclear fits wait for the model's review (decision 8, the next PR) wherever a model is configured. On an install with no model, nothing will ever review them, so they join while the channel is still short. A fixed line adds nothing, and neither does a declined title.
 - **The nightly fill** (`growth.Fill`) reads the library once and then goes through each channel:
   - **Which channels:** those that reconcile, grow (not kept as they are) and were made from a request. A channel made by hand waits for a writer of its own, because approval binds only to a channel made from a request. A channel with a proposal in flight waits for the next night.
   - **Seeds:** the lineup entries with no batch (`LineupEntry.Grown` empty). Titles a batch added are carried towards the target but never draw the line.

@@ -71,7 +71,8 @@ func fillHarness(t *testing.T, policy schedule.ChannelPolicy) (store.Store, *gro
 	clock := func() time.Time { return fillNow }
 	wf := workflow.New(st, newID, clock, suggest.IntentHash)
 	approver := accept.NewApprover(st, approval.New(st, nil, nil, log), clock)
-	return st, growth.NewFill(st, wf, approver, clock, log)
+	noModel := func() bool { return false }
+	return st, growth.NewFill(st, wf, approver, noModel, clock, log)
 }
 
 func lineupOf(t *testing.T, st store.Store) channelstore.Channel {

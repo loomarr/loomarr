@@ -58,19 +58,21 @@ type Fill struct {
 	store    FillStore
 	recorder Recorder
 	approver Approver
+	hasModel func() bool
 	now      func() time.Time
 	log      *slog.Logger
 }
 
-// NewFill wires the job.
-func NewFill(st FillStore, rec Recorder, ap Approver, now func() time.Time, log *slog.Logger) *Fill {
+// NewFill wires the job. hasModel reports, at each run, whether a model is configured: where one
+// is, an unclear fit waits for its review rather than joining by itself (decision 8).
+func NewFill(st FillStore, rec Recorder, ap Approver, hasModel func() bool, now func() time.Time, log *slog.Logger) *Fill {
 	if now == nil {
 		now = time.Now
 	}
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Fill{store: st, recorder: rec, approver: ap, now: now, log: log}
+	return &Fill{store: st, recorder: rec, approver: ap, hasModel: hasModel, now: now, log: log}
 }
 
 // libraryTitle is a library series or film as the fill reads it.
@@ -100,6 +102,7 @@ func (f *Fill) Run(ctx context.Context) (grown int, err error) {
 		return 0, fmt.Errorf("growth: list channels: %w", err)
 	}
 	batch := "growth-" + f.now().UTC().Format("2006-01-02")
+	withUnclear := !f.hasModel()
 	var failures []error
 	for _, ch := range chans {
 		if !ch.Status.Reconcilable() || !ch.Policy.Grows() {
@@ -111,7 +114,7 @@ func (f *Fill) Run(ctx context.Context) (grown int, err error) {
 			f.log.Debug("growth: channel made by hand is not grown yet", "channel", ch.ID)
 			continue
 		}
-		added, err := f.fillChannel(ctx, ch, lib, batch)
+		added, err := f.fillChannel(ctx, ch, lib, batch, withUnclear)
 		if err != nil {
 			f.log.Warn("growth: channel not filled", "channel", ch.ID, "err", err)
 			failures = append(failures, fmt.Errorf("channel %s: %w", ch.ID, err))
@@ -128,13 +131,13 @@ func (f *Fill) Run(ctx context.Context) (grown int, err error) {
 	return grown, nil
 }
 
-func (f *Fill) fillChannel(ctx context.Context, ch channelstore.Channel, lib library, batch string) (int, error) {
+func (f *Fill) fillChannel(ctx context.Context, ch channelstore.Channel, lib library, batch string, withUnclear bool) (int, error) {
 	if busy, err := f.store.ChannelHasUnfinishedJob(ctx, ch.ID); err != nil {
 		return 0, err
 	} else if busy {
 		return 0, nil // a proposal is already in flight for this channel; the next night tries again
 	}
-	picks, items := plan(ch, lib)
+	picks, items := plan(ch, lib, withUnclear)
 	if len(picks) == 0 {
 		return 0, nil
 	}
@@ -158,7 +161,7 @@ func (f *Fill) fillChannel(ctx context.Context, ch channelstore.Channel, lib lib
 }
 
 // plan is what joins ch tonight, as picks and as the proposal items that carry them.
-func plan(ch channelstore.Channel, lib library) ([]Pick, []proposals.ProposalItem) {
+func plan(ch channelstore.Channel, lib library, withUnclear bool) ([]Pick, []proposals.ProposalItem) {
 	carriedKeys := map[int]bool{}
 	var seeds []Title
 	var carried Carried
@@ -221,7 +224,7 @@ func plan(ch channelstore.Channel, lib library) ([]Pick, []proposals.ProposalIte
 			cands = append(cands, lib.titles[byEntry[e.Key]].candidate)
 		}
 	}
-	picks := Plan(line, cands, carried, TargetFor(need, MaxShowShare), Bar, ch.Policy.Declined)
+	picks := Plan(line, cands, carried, TargetFor(need, MaxShowShare), Bar, ch.Policy.Declined, withUnclear)
 	items := make([]proposals.ProposalItem, 0, len(picks))
 	for _, p := range picks {
 		t := lib.titles[byEntry[p.Key]]
