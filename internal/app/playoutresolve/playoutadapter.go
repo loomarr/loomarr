@@ -432,13 +432,15 @@ const servedWriteTimeout = 5 * time.Second
 // and recording on a read rested ads on channels nobody watched.
 //
 // A programme is recorded under its provisioning key (§5, programming-design §3.1), the input
-// recency-aware placement ranks on. It is stamped with its START (`resolvedAt - Offset`), not with
-// the serve time, so the value means "when did this programme begin airing" however late anyone
-// tuned in. The row is an upsert holding the last airing, so the packager re-resolving after an
-// encoder restart is idempotent. It is also stamped with when it was observed, never earlier than
-// the start, because placement reads history as of a window's start (#1674): the packager resolves
-// up to its run-ahead early, and a programme that opens a window must not count toward that
-// window's arrangement.
+// recency-aware placement ranks on. It is stamped with its START (Airing.ProgramStartedAt), not
+// with the serve time, so the value means "when did this programme begin airing" however late
+// anyone tuned in, and in whichever segment of a programme split at natural breaks: one watched
+// airing is one row (#4140). `resolvedAt - Offset` is not that start: Offset is a source position
+// and leaves out the mid-roll breaks. The row is an upsert holding the last airing, so the
+// packager re-resolving after an encoder restart is idempotent. It is also stamped with when it
+// was observed, never earlier than the start, because placement reads history as of a window's
+// start (#1674): the packager resolves up to its run-ahead early, and a programme that opens a
+// window must not count toward that window's arrangement.
 //
 // A filler clip is counted by HASH (`RecordClipPlay` is `WHERE hash = ?`; keyed by path every
 // counter stayed at zero) at its SCHEDULED start, which the store makes idempotent; an entry with
@@ -469,7 +471,7 @@ func (r *Resolver) RecordAiringServed(ctx context.Context, channelID string, air
 			r.metrics.FillerRotationAired(airing.RecentRepeat, airing.RecentRepeat && !airing.RotationPinned, airing.RotationPinned)
 		}
 	case r.airings != nil && airing.Key != "":
-		startedAt := resolvedAt.Add(-airing.Offset)
+		startedAt := airing.ProgramStartedAt
 		recordedAt := r.now()
 		if startedAt.After(recordedAt) {
 			recordedAt = startedAt

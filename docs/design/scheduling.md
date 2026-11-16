@@ -183,8 +183,10 @@ own clock. Artwork is resolved only for the chosen airings, in one batch.
 
 `airings` records one row per airing of a unit, an episode or a film
 (`{channel_id, library_item_id, aired_at, recorded_at, key}`), written by the playout resolver when
-it resolves a programme for streaming. Re-resolving the same airing writes nothing new, so
-`recorded_at` is when the airing was first observed. The write is best-effort: a failed insert is
+it resolves a programme for streaming. `aired_at` is when the programme began on air
+(`Airing.ProgramStartedAt`): for a programme split at natural breaks, its first segment's start,
+whichever segment the viewer tuned into, so one airing is one row (#4140). Re-resolving the same
+airing writes nothing new, so `recorded_at` is when the airing was first observed. The write is best-effort: a failed insert is
 logged and the programme still airs. Each write prunes that unit's rows older than eight days down
 to the newest of them, so the table stays bounded by lineup size. It is Loomarr's own broadcast
 record, not viewer watch state.
