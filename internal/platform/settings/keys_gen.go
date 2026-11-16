@@ -61,6 +61,7 @@ var (
 	ASRModel                            = StringKey{"asr.model"}
 	SuggestMaxAcquisitions              = IntKey{"suggest.max_acquisitions"}
 	JobRecurateSchedule                 = StringKey{"job.recurate.schedule"}
+	JobGrowthSchedule                   = StringKey{"job.growth.schedule"}
 	RecurateMinScorePct                 = IntKey{"recurate.min_score_pct"}
 	RecurateMaxTitles                   = IntKey{"recurate.max_titles"}
 	ChannelReconcileEvery               = DurationKey{"channel.reconcile_every"}

@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels/growth"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/library/provision"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/rating"
 )
 
@@ -44,7 +46,34 @@ type GrowthRow struct {
 // candidate is a library series or film, keyed the way lineups are.
 type candidate struct {
 	title    growth.Title
+	name     string
 	episodes int
+}
+
+// admitted is the library titles the channel's stored scope and ceiling admit, and on a holiday
+// channel only those that fit its holidays: what the nightly fill reads before the line. A policy
+// this build cannot read admits everything, so an older snapshot still reports.
+func admitted(c Channel, library []candidate) map[provision.Key]bool {
+	out := make(map[provision.Key]bool, len(library))
+	var policy schedule.ChannelPolicy
+	if err := json.Unmarshal([]byte(c.PolicyJSON), &policy); err != nil || c.PolicyJSON == "" {
+		for _, cand := range library {
+			out[cand.title.Key] = true
+		}
+		return out
+	}
+	entries := make([]schedule.LineupEntry, 0, len(library))
+	for _, cand := range library {
+		entries = append(entries, schedule.LineupEntry{Key: cand.title.Key, Title: cand.name,
+			OfficialRating: cand.title.Rating, Genres: cand.title.Genres, Year: cand.title.Year})
+	}
+	vocab := holidayvocab.Default()
+	for _, e := range schedule.Admitted(entries, policy, schedule.Strategy(c.Strategy)) {
+		if schedule.FitsHolidayChannel(e, policy, vocab) {
+			out[e.Key] = true
+		}
+	}
+	return out
 }
 
 func runGrowth(ctx context.Context, db *sql.DB, s Snapshot, p GrowthParams, w io.Writer) ([]GrowthRow, error) {
@@ -121,8 +150,9 @@ func growthRow(c Channel, seeds []growth.Title, library []candidate, p GrowthPar
 	}
 	row.Target = growth.TargetFor(need, p.MaxShowShare)
 
+	allowed := admitted(c, library)
 	for _, cand := range library {
-		if _, on := units[string(cand.title.Key)]; on {
+		if _, on := units[string(cand.title.Key)]; on || !allowed[cand.title.Key] {
 			continue
 		}
 		switch l.Classify(cand.title, p.Bar).Fit {
@@ -244,7 +274,7 @@ func loadSeeds(ctx context.Context, db *sql.DB) (map[string][]growth.Title, erro
 // candidate's franchise is unknown here.
 func loadCandidates(ctx context.Context, db *sql.DB) ([]candidate, error) {
 	const q = `
-SELECT t.id, t.kind, t.year, t.rating,
+SELECT t.id, t.kind, t.name, t.year, t.rating,
        coalesce((SELECT n.namespace || ':' || n.value FROM library_ids n WHERE n.item_id = t.id
                  AND n.namespace = CASE t.kind WHEN 'movie' THEN 'tmdb' ELSE 'tvdb' END LIMIT 1), ''),
        coalesce((SELECT group_concat(g.name, '|') FROM library_genres g WHERE g.item_id = t.id), ''),
@@ -256,16 +286,16 @@ FROM library_items t WHERE t.kind IN ('movie', 'series')`
 	}
 	var out []candidate
 	err = each(rows, func(rows *sql.Rows) error {
-		var id, kind, r, ns, genres string
+		var id, kind, name, r, ns, genres string
 		var year, episodes int
-		if err := rows.Scan(&id, &kind, &year, &r, &ns, &genres, &episodes); err != nil {
+		if err := rows.Scan(&id, &kind, &name, &year, &r, &ns, &genres, &episodes); err != nil {
 			return err
 		}
 		if ns == "" || (kind == "series" && episodes == 0) {
 			return nil
 		}
 		c := candidate{title: growth.Title{Key: keyOf(kind + ":" + ns), Kind: growth.Kind(kind), Year: year,
-			Rating: rating.Normalize(r), Airable: true}, episodes: episodes}
+			Rating: rating.Normalize(r), Airable: true}, name: name, episodes: episodes}
 		if genres != "" {
 			c.title.Genres = strings.Split(genres, "|")
 		}

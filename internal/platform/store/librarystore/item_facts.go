@@ -27,6 +27,49 @@ type LibraryItemFactsReader interface {
 	LibraryItemFacts(ctx context.Context, ids []string) (map[string]LibraryItemFacts, error)
 }
 
+// SeriesEpisodes is how much of a series the library can play: its listed episodes and their
+// catalog runtime together.
+type SeriesEpisodes struct {
+	Episodes  int
+	RuntimeMs int64
+}
+
+// SeriesEpisodesReader reads every series' playable episode totals in one query, for sizing a
+// channel against what the library holds (#4333).
+type SeriesEpisodesReader interface {
+	// SeriesEpisodeTotals answers each series with at least one listed episode, by its item id.
+	SeriesEpisodeTotals(ctx context.Context) (map[string]SeriesEpisodes, error)
+}
+
+func (s *Store) SeriesEpisodeTotals(ctx context.Context) (map[string]SeriesEpisodes, error) {
+	// An episode counts toward the series its present file names, the link a series is listed by.
+	rows, err := s.h.QueryContext(ctx, `SELECT e.series, COUNT(*), COALESCE(SUM(i.runtime_ms), 0)
+		FROM (SELECT DISTINCT f.inventory_series_id AS series, f.inventory_item_id AS item FROM library_files f
+			WHERE f.inventory_series_id <> '' AND `+presentFile+`) e
+		JOIN library_items i ON i.id = e.item AND i.kind = 'episode'
+		GROUP BY e.series`)
+	if err != nil {
+		return nil, fmt.Errorf("series episode totals: %w", err)
+	}
+	out := map[string]SeriesEpisodes{}
+	for rows.Next() {
+		var id string
+		var t SeriesEpisodes
+		if err := rows.Scan(&id, &t.Episodes, &t.RuntimeMs); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("series episode totals: %w", err)
+		}
+		out[id] = t
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("series episode totals: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("series episode totals: %w", err)
+	}
+	return out, nil
+}
+
 // libraryFactsChunk bounds one IN list, under SQLite's variable limit.
 const libraryFactsChunk = 500
 

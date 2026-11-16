@@ -843,7 +843,7 @@ The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content
 
 ### 8.2.1. Growth from the line the seeds draw (#4140 step 2, #4333)
 
-Re-curation above is what ships today. #4140 replaces it with deterministic growth. The pure part is `internal/channels/growth`; nothing is wired into reconcile or the fill job yet.
+#4140 replaces re-curation with deterministic growth, in `internal/channels/growth`. The line, the fit, the target and the plan are pure. `growth.Fill` is the nightly `channel-growth` job (`job.growth.schedule`, 00:05 by default), and it uses no model.
 
 - **The seeds draw the line** (`growth.DrawLine`). Every lineup entry is a seed until growth adds titles of its own. A seed with nothing airable is ignored. One airable seed, or none, fixes the line: a single-show channel never grows. Seeds that all share one franchise make the line that franchise. Otherwise the line has four parts:
   - **Kinds:** every kind held by at least a quarter of the seeds and by at least two.
@@ -871,7 +871,14 @@ Re-curation above is what ships today. #4140 replaces it with deterministic grow
   - the target;
   - the shortfall after the clear fits, and after the unclear fits too.
 
-  It also prints a sweep of the bar. On the install (2026-11-15) no series channel is short of episodes; three are short of shows. The bar, the margin and the show share are the simulator's numbers, and they go to the maintainer before the fill job ships.
+  It also prints a sweep of the bar. On the install (2026-11-15) no series channel is short of episodes; three are short of shows. The maintainer chose margin 3, bar 0.5 and show share 0.15 from these numbers (#4333).
+- **The plan** (`growth.Plan`) adds clear fits first, the closest to the line first: genre share, then distance in years from the line's middle, then key. It stops at the target for each kind. Unclear fits are added only while the channel is still short. A fixed line adds nothing, and neither does a declined title.
+- **The nightly fill** (`growth.Fill`) reads the library once and then goes through each channel:
+  - **Which channels:** those that reconcile, grow (not kept as they are) and were made from a request. A channel made by hand waits for a writer of its own, because approval binds only to a channel made from a request. A channel with a proposal in flight waits for the next night.
+  - **Seeds:** the lineup entries with no batch (`LineupEntry.Grown` empty). Titles a batch added are carried towards the target but never draw the line.
+  - **Candidates:** the library's playable series and films, keyed by TVDB for a series and TMDB otherwise. The channel's stored scope and ceiling (`schedule.Admitted`) apply first. On an exclusive holiday channel, a candidate must also fit one of the channel's holidays (`schedule.FitsHolidayChannel`, the in-season filter's own judgment). Its genres are only its mood: a Christmas channel scoped to Comedy must not take every comedy. The report applies the same filters, so its counts are what the fill would add. On the install it would add 15 titles to the holiday channel (not about 290 comedies), and that channel stays short by 276 films.
+  - **Writing:** the picks become one proposal (`Proposal.Growth` holds the batch, `growth-YYYY-MM-DD`). It is recorded against the channel (`Workflow.RecordForChannel`) and approved with `accept.AutoCuratedBy`, so the binder unions it onto the lineup and stamps each entry with the batch. A growth batch never restates the channel's request; the channel keeps its own, or none.
+- **Undo is taking it off.** Any edit that takes a grown title off the lineup adds it to `GrowthPolicy.Declined` (`edit.Service`, `ChannelPolicy.WithRemovedGrowthDeclined`). It never rejoins by itself, and a person can still add it back by hand. The list holds 1000 refusals and forgets the oldest first. `GrowthPolicy.Keep` stops growth for a channel, and a policy PATCH that leaves growth out keeps both.
 
 ## 8.3. Adjacency candidates (a deterministic second corpus)
 

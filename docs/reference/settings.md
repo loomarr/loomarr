@@ -130,6 +130,7 @@ To replace the installation key, supply the new current key and provide the old 
 | Setting (env) | Owner task | Kind | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `job.recurate.schedule` (`JOB_RECURATE_SCHEDULE`) | Background tasks | cron | `0 0 4 * * 0` | How often auto-curate channels look again at what your library offers. How often auto-curate channels re-evaluate their intent against the library (cron). Weekly by default — this runs the AI, so keep it infrequent. _(advanced)_ |
+| `job.growth.schedule` (`JOB_GROWTH_SCHEDULE`) | Background tasks | cron | `0 5 0 * * *` | When channels take in new library titles that fit them. When each channel adds the library titles inside the line its own picks draw, up to its target (cron). Nightly just after midnight by default; it uses no AI. _(advanced)_ |
 | `request.ttl` (`REQUEST_TTL`) | Advanced settings | duration | `48h` | How long Loomarr keeps trying to request a title before giving up. |
 | `downloading.ttl` (`DOWNLOADING_TTL`) | Advanced settings | duration | `12h` | How long a downloading title waits to finish before Loomarr gives up on it. |
 | `job.system_health.schedule` (`JOB_SYSTEM_HEALTH_SCHEDULE`) | Background tasks | cron | `*/30 * * * * *` | How often Loomarr checks its database and connections for Current Health. A cron schedule. |

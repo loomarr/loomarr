@@ -208,6 +208,7 @@ type Repository interface {
 	SubmitChannelIntent(ctx context.Context, channelID string, intent proposals.Intent, kind, createdBy string) (string, error)
 	ReviseIntent(ctx context.Context, jobID, proposalID string, attempts int, intent proposals.Intent) error
 	RecordProposal(ctx context.Context, intent proposals.Intent, prop proposals.Proposal, createdBy string) (CommittedProposal, error)
+	RecordChannelProposal(ctx context.Context, channelID string, intent proposals.Intent, prop proposals.Proposal) (CommittedProposal, error)
 }
 
 type ListOptions struct {
