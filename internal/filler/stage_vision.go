@@ -118,7 +118,7 @@ func (s *VisionStage) Observe(ctx context.Context, c clipstore.Clip) (StageResul
 
 	resp, err := s.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.vision"), visionPrompt(forest), frames)
 	if err != nil {
-		return StageResult{}, VisionObservation{}, fmt.Errorf("vision model for %s: %w", c.Path, err)
+		return StageResult{}, VisionObservation{}, fmt.Errorf("vision model for %s: %w", c.Path, aiCallError(err))
 	}
 	var out visionOutput
 	// ⚠ Unwrap a code fence before parsing (§10 V44, live-found): a vision model wraps its JSON in

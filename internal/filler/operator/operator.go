@@ -416,7 +416,9 @@ func (a *Operator) ingest(
 		a.persistAcquisition(operationCtx, run)
 		a.publishIngest(jobID, "starting", fetch.Result{}, "")
 		res = plan.Run(operationCtx)
-		run.Fetched, run.Skipped = res.Fetched, res.Skipped
+		// An item that waits for room is not a failure: the run records it as skipped, and the
+		// item's own record tries it again.
+		run.Fetched, run.Skipped = res.Fetched, res.Skipped+res.Deferred
 		run.Failed, run.Empty = res.Failed, res.Empty
 		if err := operationCtx.Err(); err != nil {
 			return err

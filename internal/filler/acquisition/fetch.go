@@ -197,6 +197,9 @@ type Fetcher struct {
 	// inertLogged holds the provider IDs a pass has already reported as not fetched, so a source
 	// that stays due is reported once rather than every minute.
 	inertLogged sync.Map
+	// downloads remembers the items whose download failed, so the pass leaves a resting one alone
+	// and retries a due one. Nil leaves failures to the next listing.
+	downloads DownloadLedger
 	// metUntil is when a met pool target is next read again, in Unix milliseconds. A met pass
 	// claims no source, so every source stays due and each minute's wake would otherwise re-read
 	// every channel's coverage and the household's airings.
@@ -212,6 +215,14 @@ const TargetRecheck = 15 * time.Minute
 // always has.
 func (f *Fetcher) WithCoverageGaps(gaps func(context.Context) (CoverageGaps, error)) *Fetcher {
 	f.gaps = gaps
+	return f
+}
+
+// WithDownloads gives the Fetcher the record of failed downloads (#3855): a source check skips an
+// item that is resting, and a scheduled pass retries each item whose time has come, including one
+// no listing offers any more.
+func (f *Fetcher) WithDownloads(ledger DownloadLedger) *Fetcher {
+	f.downloads = ledger
 	return f
 }
 
@@ -289,9 +300,97 @@ func (f *Fetcher) Status(ctx context.Context) (FetchStatus, error) {
 	return status, nil
 }
 
-// Run polls only enabled sources whose effective interval has elapsed.
+// Run retries the failed downloads that are due, then polls the enabled sources whose effective
+// interval has elapsed. The retries come first so that an item the listing also offers is queued
+// once: a retry's claim leaves it resting, and the check skips a resting item.
 func (f *Fetcher) Run(ctx context.Context) (FetchResult, error) {
-	return f.run(ctx, "", true)
+	var retried FetchResult
+	if err := f.retryDownloads(ctx, &retried); err != nil {
+		return retried, err
+	}
+	res, err := f.run(ctx, "", true)
+	res.Queued += retried.Queued
+	res.Skipped += retried.Skipped
+	if res.StoppedBy == "" {
+		res.StoppedBy = retried.StoppedBy
+	}
+	return res, err
+}
+
+// downloadRetryBatch is how many due items one pass retries; the rest wait for the next.
+const downloadRetryBatch = 10
+
+// retryDownloads queues the failed items whose retry is due. Each is claimed first, which moves its
+// next attempt out by DownloadWait, so a pass that cannot queue it (a provider paused, no room, the
+// catalog full) counts nothing against it and the item is tried again after the wait. What the
+// download then does is the Ingestor's to record: a failure counts, a success forgets the item.
+func (f *Fetcher) retryDownloads(ctx context.Context, res *FetchResult) error {
+	if f.downloads == nil {
+		return nil
+	}
+	now := f.now()
+	due, err := f.downloads.ClaimDueDownloads(ctx, now, now.Add(DownloadWait), downloadRetryBatch)
+	if err != nil {
+		return fmt.Errorf("claim download retries: %w", err)
+	}
+	if len(due) == 0 {
+		return nil
+	}
+	paths, err := f.store.CatalogPaths(ctx)
+	if err != nil {
+		return fmt.Errorf("read catalog: %w", err)
+	}
+	if max := f.limits.MaxCatalogClips(); max > 0 && len(paths) >= max {
+		res.StoppedBy = "catalog"
+		return nil
+	}
+	states, err := f.store.ListAcquisitionRemoteStates(ctx)
+	if err != nil {
+		return fmt.Errorf("read acquisition remote states: %w", err)
+	}
+	type group struct{ sourceID, kind string }
+	var order []group
+	byGroup := map[group][]source.Item{}
+	for _, d := range due {
+		if d.RemoteID != "" {
+			identity := RemoteIdentity{Provider: d.Kind, SourceID: d.SourceID, RemoteID: d.RemoteID}
+			if state := states[identity.Key()]; state == RemoteCatalogued || state == RemoteQueued {
+				// Another path already brought it in.
+				if err := f.downloads.ClearDownload(ctx, d.Key()); err != nil {
+					return fmt.Errorf("forget downloaded item: %w", err)
+				}
+				res.Skipped++
+				continue
+			}
+		}
+		g := group{d.SourceID, d.Kind}
+		if _, seen := byGroup[g]; !seen {
+			order = append(order, g)
+		}
+		byGroup[g] = append(byGroup[g], source.Item{
+			ID: d.RemoteID, URL: d.URL, DurationMS: int(d.DurationMS), Height: d.Height, Gap: d.Gap,
+		})
+	}
+	for _, g := range order {
+		items := byGroup[g]
+		var err error
+		if identified, ok := f.ingest.(IdentifiedFetchIngestor); ok {
+			_, err = identified.IngestSourceItems(ctx, g.sourceID, g.kind, items)
+		} else {
+			urls := make([]string, 0, len(items))
+			for _, item := range items {
+				urls = append(urls, item.URL)
+			}
+			_, err = f.ingest.IngestSource(ctx, g.sourceID, g.kind, urls)
+		}
+		if err != nil {
+			f.log.Warn("filler auto-fetch: could not queue failed downloads for a retry; they wait",
+				"source", g.sourceID, "items", len(items), "err", err)
+			continue
+		}
+		res.Queued += len(items)
+	}
+	return nil
 }
 
 // RunSource performs one deliberate, bounded pass for a single registered source. The operator's
@@ -464,6 +563,19 @@ func (p *fetchPass) prepare(ctx context.Context, now time.Time) (stop bool, err 
 	for key, state := range existing {
 		p.inPass[key] = state
 	}
+	// An unattended pass leaves a failed item alone until its retry is due; the operator's click is
+	// a deliberate ask and offers it again.
+	if p.scheduled && f.downloads != nil {
+		resting, err := f.downloads.RestingDownloads(ctx, now)
+		if err != nil {
+			return false, fmt.Errorf("read resting downloads: %w", err)
+		}
+		for key := range resting {
+			if p.inPass[key] == "" {
+				p.inPass[key] = RemoteResting
+			}
+		}
+	}
 	// Channel coverage gaps steer which items this pass takes first (#749). Read once per pass
 	// that has due work, never on an idle wake. A failed read degrades to the unsteered pass:
 	// steering is an optimisation, and the source still deserves its bounded refresh.
@@ -615,7 +727,7 @@ func (c *sourceCheck) run(ctx context.Context, lister source.Lister, b sourceBud
 	}
 	for _, decision := range selection.Rejected {
 		switch decision.Disposition {
-		case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined:
+		case CandidateAlreadyCatalogued, CandidateAlreadyQueued, CandidatePreviouslyDeclined, CandidateResting:
 			p.res.Skipped++
 			c.outcomes[source.OutcomeAlreadyKnown]++
 		}

@@ -91,6 +91,8 @@ type FillerAcquisitionStore interface {
 	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
 	// the bounded acquisition history page.
 	AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error)
+	// DownloadLedger remembers each item that has not downloaded yet, so it retries on its own.
+	acquisition.DownloadLedger
 }
 
 // FillerInferenceStore owns append-only call attribution and the atomic budget

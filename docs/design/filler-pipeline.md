@@ -21,6 +21,14 @@ ends with a completed terminal rung that the ready commit validates against.
 - **Retries** back off 5 min, 30 min, 2 h, then resolve: a `probe` failure rejects (an unmeasurable
   file is not a clip); `transcribe`, `vision` and `language` skip and advance, so a missing
   transcript never strands a clip.
+- **A terminal commit refused as stale rests.** A clip whose publication keeps failing with
+  `ErrReadyStale` (the clip or its row changed under the pipeline) cannot be published by trying
+  again, so after three attempts it rests 30 days and is tried once more when the rest ends. Nothing
+  is rejected, so the clip is never let go for it. A commit that fails for the install's reasons
+  (the catalog could not be written) keeps the 2-hour backoff.
+- **An unavailable AI backend is a wait, not a failure.** A vision call that fails with a transient
+  error (unreachable, 429, 5xx, a call budget) returns `ErrAIUnavailable`; the rung waits 15 minutes
+  with no attempt spent and the reason on the ladder.
 - **Running out of time is a deferral, not a failure.** A deadline returns the clip to the queue with
   its progress kept; any rung that treated a timeout as failure would loop forever.
 - **Recovery rewinds the dependency suffix.** An admin may restart at the failed stage once the cause
