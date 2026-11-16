@@ -26,7 +26,7 @@ type Room struct {
 	// Shortfall is how many bytes the library budget is short of the room a refused reservation
 	// asked for; 0 when none was refused or the budget has since made room.
 	Shortfall func(ctx context.Context) int64
-	// Standing reads how the live channels stand toward the clips on air.
+	// Standing reads how the channels stand toward the clips on air.
 	Standing func(ctx context.Context) (Standing, error)
 	// InBreak is the clips in a break inside the guide window: assembled for a channel's coming
 	// breaks, or airing now. They are never evicted.

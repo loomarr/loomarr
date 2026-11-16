@@ -579,8 +579,9 @@ positive, frees room in this order, stopping at the first rung that is enough:
 
 1. **Leftover download staging**, which the pass has already cleaned.
 2. **Rejects** Loomarr fetched, oldest first, without waiting out their week.
-3. **Clips that fit no live channel**, without waiting out their week. A holiday clip out of season
-   is not one: it is kept through the off-season (decision 9).
+3. **Clips that fit no channel**, without waiting out their week. A paused channel still counts,
+   since pausing resumes and must not become a deletion; a detached channel does not. A holiday
+   clip out of season is not one: it is kept through the off-season (decision 9).
 4. **Surplus beyond the evening target**, most aired first. A channel's evening target is the pool
    fetching already sizes it to (`PoolTargets.For`, from the household's longest watched evening
    without a repeat, and 80 until it has four weeks of history). It keeps that many of the clips it
@@ -590,7 +591,7 @@ positive, frees room in this order, stopping at the first rung that is enough:
 Never evicted, however large the shortfall: a clip a channel keeps for its target, a bumper or
 station ID a channel can air, a clip in a break on a channel's timeline from just before now to the
 end of the four-hour guide window (assembled as the guide assembles it), a pinned clip, and a clip
-added by hand (decision 15). With no live channel nothing is called idle, and with no timeline
+added by hand (decision 15). With no channel nothing is called idle, and with no timeline
 wired or no read of the channels or the coming breaks, no clip on air is evicted: rejects are the
 only rung that still runs.
 

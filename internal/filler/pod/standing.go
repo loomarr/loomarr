@@ -9,11 +9,11 @@ import (
 	"github.com/loomarr/loomarr/internal/filler/clips"
 )
 
-// Standing is how the live channels stand toward the clips on air, read when a full budget needs
+// Standing is how the channels stand toward the clips on air, read when a full budget needs
 // room (#3855, decision 13 of #3838). Each list is ordered most-aired first, ties by hash, so the
 // clip a household has seen most goes first and the order is the same on every read.
 type Standing struct {
-	// Idle is the clips that fit no live channel. A holiday clip out of season is not idle: it is
+	// Idle is the clips that fit no channel. A holiday clip out of season is not idle: it is
 	// kept through the off-season (decision 9), so it is in neither list.
 	Idle []string
 	// Surplus is the clips some channel could air but none needs: each channel keeps the
@@ -25,7 +25,7 @@ type Standing struct {
 // StandingFor reads Standing over one catalog load. A channel's target is the evening it needs
 // (PoolTargets.For over SizePool, the same number fetching steers by): enough clips for the
 // household's longest watched evening without a repeat, and never fewer than spacing needs. With no
-// live channel it reports nothing, since no channel is no reason to call every clip idle.
+// channel it reports nothing, since no channel is no reason to call every clip idle.
 func (a *Adapter) StandingFor(ctx context.Context, channels []PoolChannel, airings []clips.Airing, spacing time.Duration, now time.Time) (Standing, error) {
 	if len(channels) == 0 {
 		return Standing{}, nil

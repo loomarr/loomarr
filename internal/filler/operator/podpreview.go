@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
@@ -128,20 +129,15 @@ func (a PodPreview) ClipFit(ctx context.Context, clipPath string) (map[string]po
 	return out, nil
 }
 
-// liveChannels is the channels whose breaks are airing, with the selection each resolves to.
-//
-// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused, not
-// detached" (every managed state qualifies, drifted included — a transient "the guide is catching
-// up", not a channel that stopped airing). The pool strip and eviction both ask this, so a clip is
-// never called idle by one and in use by the other.
-func (a PodPreview) liveChannels(ctx context.Context) ([]pod.PoolChannel, error) {
+// channelsWhere is the channels keep accepts, with the selection each resolves to.
+func (a PodPreview) channelsWhere(ctx context.Context, keep func(schedule.ChannelStatus) bool) ([]pod.PoolChannel, error) {
 	chans, err := a.store.ListChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]pod.PoolChannel, 0, len(chans))
 	for _, ch := range chans {
-		if !ch.Status.Reconcilable() {
+		if !keep(ch.Status) {
 			continue
 		}
 		out = append(out, pod.PoolChannel{
@@ -151,14 +147,27 @@ func (a PodPreview) liveChannels(ctx context.Context) ([]pod.PoolChannel, error)
 	return out, nil
 }
 
-// Standing reads how the live channels stand toward the clips on air, for a full budget to evict
-// by (#3855): the clips that fit no channel, then the surplus beyond each channel's evening target.
+// liveChannels is the channels whose breaks are airing.
+//
+// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused, not
+// detached" (every managed state qualifies, drifted included — a transient "the guide is catching
+// up", not a channel that stopped airing).
+func (a PodPreview) liveChannels(ctx context.Context) ([]pod.PoolChannel, error) {
+	return a.channelsWhere(ctx, schedule.ChannelStatus.Reconcilable)
+}
+
+// Standing reads how the channels stand toward the clips on air, for a full budget to evict by
+// (#3855): the clips that fit no channel, then the surplus beyond each channel's evening target.
+//
+// ⚠ A paused channel still counts, unlike in the pool strip: pausing is "off air, but keep it" and
+// resumes, so evicting the clips only it can air would turn a pause into a deletion. Only a
+// detached channel, which Loomarr no longer manages, is left out.
 func (a PodPreview) Standing(ctx context.Context, airings []clips.Airing, spacing time.Duration, now time.Time) (pod.Standing, error) {
-	live, err := a.liveChannels(ctx)
+	kept, err := a.channelsWhere(ctx, func(s schedule.ChannelStatus) bool { return s != schedule.StatusDetached })
 	if err != nil {
 		return pod.Standing{}, err
 	}
-	return a.pods.StandingFor(ctx, live, airings, spacing, now)
+	return a.pods.StandingFor(ctx, kept, airings, spacing, now)
 }
 
 // Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35).
