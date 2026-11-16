@@ -14,6 +14,8 @@ import type { SearchResult } from "@loomarr/core/contracts";
 //
 // The clip, guide and filler-source fixtures live in sibling folders and are re-exported here.
 
+export type { DrawerFixtureBlock, DrawerFixtureChannel } from "./channel-drawer";
+export { drawerChannels } from "./channel-drawer";
 export {
   aiTaggedClip,
   bumperClip,
