@@ -49,6 +49,71 @@ describe("PressableRow", () => {
     );
   });
 
+  describe("bordered", () => {
+    const mount = (ui: React.ReactNode) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      act(() => {
+        root.render(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
+      });
+      return {
+        container,
+        unmount: () => {
+          act(() => root.unmount());
+          container.remove();
+        },
+      };
+    };
+
+    it("is still one button named by its content, and presses", () => {
+      const onPress = vi.fn();
+      const { container, unmount } = mount(
+        <PressableRow accessibilityLabel="07 Westerns" bordered onPress={onPress}>
+          <Text textRole="body">Westerns</Text>
+        </PressableRow>,
+      );
+      const button = container.querySelector<HTMLElement>('[role="button"]');
+      expect(button?.getAttribute("aria-label")).toBe("07 Westerns");
+      act(() => button?.click());
+      expect(onPress).toHaveBeenCalledOnce();
+      unmount();
+    });
+
+    it("draws differently from a flat row, and the current row differently from the rest", () => {
+      const flat = markupOf(<PressableRow>A</PressableRow>);
+      const resting = markupOf(<PressableRow bordered>A</PressableRow>);
+      expect(resting).not.toEqual(flat);
+      expect(
+        markupOf(
+          <PressableRow bordered selected>
+            A
+          </PressableRow>,
+        ),
+      ).not.toEqual(resting);
+    });
+
+    it("shows the focus border on the focused row only", () => {
+      const { container, unmount } = mount(
+        <>
+          <PressableRow bordered>Rest</PressableRow>
+          <PressableRow bordered selected>
+            Current
+          </PressableRow>
+        </>,
+      );
+      const [rest, current] = [...container.querySelectorAll<HTMLElement>('[role="button"]')];
+      const drawing = (row?: HTMLElement) => row?.innerHTML;
+      const before = { current: drawing(current), rest: drawing(rest) };
+      act(() => rest?.focus());
+      expect(drawing(rest)).not.toBe(before.rest);
+      expect(drawing(current)).toBe(before.current);
+      act(() => rest?.blur());
+      expect(drawing(rest)).toBe(before.rest);
+      unmount();
+    });
+  });
+
   it("forwards mousedown so a combobox option can keep the input focused", () => {
     const container = document.createElement("div");
     document.body.append(container);
