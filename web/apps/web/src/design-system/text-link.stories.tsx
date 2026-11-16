@@ -1,5 +1,6 @@
 import { Text, TextLink } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { ReactNode } from "react";
 
 // TextLink — a link written into the page: the info colour (or a `tone` that fits its surroundings),
 // an underline (or one that draws on hover), the surrounding type, an optional glyph, and the one
@@ -42,38 +43,49 @@ const Workshop = ({ width = 520 }: { width?: number }) => (
 // changing how they rest: each row is a line of text that already has its own colour, and the link
 // takes it (`inherit`), the amber of the primary action (`primary`), or the quiet text colour that
 // wakes up under the pointer (`muted`). `underline="hover"` draws the line only under the pointer.
+// Each link stands in a block of its own beside its caption, as the converted links do (a title in a
+// list, a link under a form): a hover-only underline inside a running sentence would tell the link
+// apart by colour alone, which the accessibility check rightly refuses.
+const Tone = ({ caption, children }: { caption: string; children: ReactNode }) => (
+  <div style={{ alignItems: "baseline", display: "flex", gap: 12 }}>
+    <div style={{ flex: "0 0 220px" }}>
+      <Text as="span" textRole="hint" tone="secondary">
+        {caption}
+      </Text>
+    </div>
+    <Text as="div" textRole="compact" tone="primary">
+      {children}
+    </Text>
+  </div>
+);
+
 const Tones = () => (
-  <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 520, padding: 24 }}>
-    <Text as="p" textRole="compact" tone="primary">
-      Takes the text around it:{" "}
+  <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 560, padding: 24 }}>
+    <Tone caption="Takes the text around it">
       <TextLink href="/requests/1" tone="inherit" underline="hover">
         A request title
       </TextLink>
-    </Text>
-    <Text as="p" textRole="compact" tone="primary">
-      The amber of the primary action:{" "}
+    </Tone>
+    <Tone caption="The amber of the primary action">
       <TextLink href="/forgot-password" tone="primary" underline="hover">
         Forgot password?
       </TextLink>
-    </Text>
-    <Text as="p" textRole="hint" tone="secondary">
-      Quiet until the pointer reaches it:{" "}
+    </Tone>
+    <Tone caption="Quiet until the pointer reaches it">
       <TextLink href="/settings/library" tone="muted" underline="hover">
         Library settings
       </TextLink>
-    </Text>
-    <Text as="p" textRole="hint" tone="secondary">
-      Quiet, with a hairline underline:{" "}
+    </Tone>
+    <Tone caption="Quiet, with a hairline underline">
       <TextLink href="/filler/incoming" tone="muted">
         3 being checked
       </TextLink>
-    </Text>
-    <Text as="p" textRole="compact" tone="primary">
-      The info colour, underlined only under the pointer:{" "}
+    </Tone>
+    <Tone caption="Info colour, underline on hover">
       <TextLink href="/login" underline="hover">
         Sign in instead
       </TextLink>
-    </Text>
+    </Tone>
   </div>
 );
 
