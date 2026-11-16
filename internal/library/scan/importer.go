@@ -333,6 +333,9 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 	if err := im.forgetReleased(ctx, roots); err != nil {
 		return nil, err
 	}
+	// begun is the generation the pass's roots were read at: a root released after it, while the
+	// pass listed another without run, is not walked.
+	begun := im.gen
 
 	// The walk's total is the top-level entries of every root it walks, listed once up front.
 	reports := map[string]*walkReport{}
@@ -356,6 +359,11 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		if outer, ok := within(root.Path, roots); ok && outer != root.Path {
 			// The root's files are the outer root's: one walk, one origin per file.
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
+			continue
+		}
+		if im.releasedSince(root.Path, begun) {
+			// Released while the pass listed another root: its files are forgotten already.
+			reports[root.Path].close()
 			continue
 		}
 		walk, cancel := context.WithCancelCause(ctx)
