@@ -1106,6 +1106,11 @@ header is kept, so no file is opened again. Each version and what it changed:
   Long Tide", however the show's folder spells the show. A mark with no title after it, "Show
   (2005) - S01E04 [HDTV-720p]", is the show and its mark, "Show S01E04"; a Specials' "Show -
   Holiday Special [1080p]", with no mark, is what follows the show's name (`episodeName`).
+  86 was listed here but never set in the code, so 87 also writes its change.
+- **87:** a film's copies in its own folder are one title (`filmCopyID`): "Harrow Fen (2011) -
+  X265 EAC3 5.1" beside the copy its NFO grounds, with no catalog record of its own. It also
+  rewrites the snapshot-only changes made under 85: an episode's copies joined by the catalog's
+  title or their own (`episodeCopyID`), and a film named as its folder before its release's notes.
 
 ## Search
 
