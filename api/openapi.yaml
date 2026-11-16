@@ -1347,7 +1347,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         name:
@@ -1360,6 +1359,8 @@ components:
         reason:
           description: Why the clip is not a candidate; absent when it is one
           enum:
+            - facts
+            - era
             - role
             - duration
             - quality
@@ -2760,7 +2761,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         rungs:
@@ -2811,7 +2811,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
       required:
@@ -9266,7 +9265,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         totalMs:
@@ -9300,7 +9298,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         name:
@@ -9453,7 +9450,6 @@ components:
           enum:
             - exact
             - widened
-            - audience
             - bumper_card
           type: string
         totalMs:

@@ -46,8 +46,7 @@ const full: CoverageDTO = {
   ...NO_LIMIT,
   rungs: [
     { level: "exact", clips: 4 },
-    { level: "widened", clips: 5 },
-    { level: "audience", clips: 9 },
+    { level: "widened", clips: 9 },
   ],
 };
 
@@ -64,9 +63,8 @@ describe("CoverageMeter", () => {
     renderMeter(<CoverageMeter coverage={full} />);
     expect(await screen.findByText("Exact era + audience")).toBeInTheDocument();
     expect(screen.getByText("A decade either side")).toBeInTheDocument();
-    expect(screen.getByText("Any era, right audience")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getAllByText("9").length).toBeGreaterThan(0);
   });
 
   // ⚠ The total is the widest rung, not a sum. 4+5+9 would claim 18 eligible commercials for a
@@ -95,7 +93,6 @@ describe("CoverageMeter", () => {
           ...NO_LIMIT,
           rungs: [
             { level: "exact", clips: 4 },
-            { level: "audience", clips: 9 },
           ],
         }}
       />,
@@ -323,7 +320,6 @@ describe("CoverageMeter", () => {
           rungs: [
             { level: "exact", clips: 0 },
             { level: "widened", clips: 0 },
-            { level: "audience", clips: 0 },
           ],
           ...NO_LIMIT,
           criteria: [

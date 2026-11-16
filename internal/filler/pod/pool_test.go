@@ -73,7 +73,6 @@ func TestPoolCounts_LeavesUntaggedToTheStore(t *testing.T) {
 func TestLevelWorseThan_FollowsTheLadder(t *testing.T) {
 	ladder := []pod.MatchLevel{
 		pod.MatchBumperCard,
-		pod.MatchAudience,
 		pod.MatchWidened,
 		pod.MatchExact,
 	}

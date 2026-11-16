@@ -27,6 +27,8 @@ import "fmt"
 type FitReason string
 
 const (
+	FitFacts     FitReason = "facts"     // the clip's role, era or audience is unknown, so it fits no channel
+	FitEra       FitReason = "era"       // further from the channel's era than a decade either side
 	FitRole      FitReason = "role"      // the channel does not air this role of clip
 	FitDuration  FitReason = "duration"  // too long or too short for this channel's breaks
 	FitQuality   FitReason = "quality"   // below the channel's minimum-quality floor
@@ -90,6 +92,10 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		fit.Reason = FitExcluded
 		return fit
 	}
+	if !FactsComplete(c) {
+		fit.Reason = FitFacts
+		return fit
+	}
 	if !GeographicallyEligible(c, policy.area(w.Geography)) {
 		fit.Reason = FitGeography
 		return fit
@@ -133,6 +139,14 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		return fit
 	}
 
+	// The audience ceiling holds for bookends and body alike. It is the predicate the pools use,
+	// so the note never names a setting that is not the problem (`TestFitFor_AgreesWithTheLadder`
+	// catches the pair drifting apart).
+	if len(filterAudience(one, w.Audience)) == 0 {
+		fit.Reason = FitAudience
+		return fit
+	}
+
 	// Only break-body clips run the ladder. A bookend that passed the kind filter is eligible as a
 	// bookend and has no rung — see the doc comment.
 	if c.EffectivePlacement() != PlacementBreakBody {
@@ -147,15 +161,6 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 		fit.Reason = FitCategory
 		return fit
 	}
-	// ⚠ The BOTTOM rung's predicate, not the strict one — otherwise this reports "wrong audience"
-	// for a clip `candidatePools` actually places on the audience rung, and the note tells an
-	// operator to fix a setting that is not the problem. `TestFitFor_AgreesWithTheLadder` is what
-	// catches this pair drifting apart.
-	if len(filterAudienceWithUngrounded(one, w.Audience)) == 0 {
-		fit.Reason = FitAudience
-		return fit
-	}
-
 	// It is a candidate. Which rung? The same order candidatePools builds them in, so a fit
 	// note cannot claim a tighter rung than the pool the clip actually lands in.
 	switch {
@@ -164,7 +169,7 @@ func FitFor(c Clip, w Window, policy Policy) Fit {
 	case len(filterEraWindows(one, widenEraWindows(w.eraWindows()))) > 0:
 		fit.Level = MatchWidened
 	default:
-		fit.Level = MatchAudience
+		fit.Reason = FitEra
 	}
 	return fit
 }

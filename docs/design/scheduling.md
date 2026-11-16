@@ -328,11 +328,14 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   the list's runtime). A longer spacing would leave every clip cooling and Tunarr would fall back to
   flex. A larger list earns a longer spacing. Loomarr's own playout ranks by recency instead, so it
   honours the full spacing and relaxes it only when the whole ladder is resting.
-- **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
-  with an ungrounded audience → the channel's station material (bumpers and idents, resting or not,
+- **Fallback ladder:** exact era → era widened by a decade either side → the channel's station
+  material (bumpers and idents, resting or not,
   #2036) → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
+  Nothing further away than the decade either side ever airs (#3838 decision 21): once the two
+  rungs are spent, era-correct repeats, least recently aired first, fill the break, and then the
+  station material.
 - **The station-only fallback holds the same one-station-segment limit as any other break.**
 - **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
   seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
@@ -367,11 +370,22 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   from the shows. The region preference stays the household's: the channel inherits it, less its
   own country.
 
-**Audience is an allowlist and never weakens** (a kids and teen guardrail):
+**Audience is a ceiling, and an unknown audience is in no ceiling** (a kids and teen guardrail,
+#3838 decision 8):
 
-- A `kids` channel admits only clips grounded `kids` or `family`, on every rung.
-- An ungrounded-audience clip is admitted only to `general` or `late_night` channels.
+- A `kids` channel admits clips grounded `kids` or `family`.
+- A `family` or `general` channel admits `kids`, `family` and `general`.
+- A `late_night` channel admits everything grounded. A channel that names no audience admits every
+  clip whose audience is grounded.
+- A clip with no grounded audience airs on no channel. Doubt resolves to the stricter reading.
 - A new audience value admits nothing until someone decides it should.
+- The ceiling holds for bumpers and station IDs as it does for ads, and a channel's coverage counts
+  the bookends its own ceiling admits.
+
+**A clip airs only with its facts** (#3838 decision 6). A clip with no concrete role, no era or no
+audience fits no channel, whatever the channel's settings; the geography boundary already refuses an
+unknown country once the installation has one. The one catalog filter assembly, coverage and per-clip
+fit share enforces it, so a fit note says `facts` rather than blaming a setting.
 
 Loomarr ships an embedded default bumper card and sets it as each Tunarr channel's fallback at
 creation; operators can replace it per channel.

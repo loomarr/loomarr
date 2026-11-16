@@ -29,11 +29,6 @@ const LEVEL_COPY: Record<CoverageDTOLevel, { tone: StatusTone; label: string; hi
     label: "Widened the era",
     hint: "Nothing matches this channel's era, so breaks draw from a decade either side of it.",
   },
-  audience: {
-    tone: "warn",
-    label: "Audience only",
-    hint: "No era match at all — breaks draw from any commercial this channel's audience can take.",
-  },
   bumper_card: {
     tone: "error",
     label: "No commercials",
@@ -56,7 +51,6 @@ const UNKNOWN_LEVEL = {
 const RUNG_LABEL: Record<CoverageDTOLevel, string> = {
   exact: "Exact era + audience",
   widened: "A decade either side",
-  audience: "Any era, right audience",
   bumper_card: "Built-in card",
 };
 

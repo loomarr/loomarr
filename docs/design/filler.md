@@ -172,6 +172,8 @@ Each clip carries the metadata that lets the scheduler place it:
   `interstitial`, `political` or `news` (the column, the Go field and the wire all say `role`
   since #2323). `unclassified` means no exact role is established; it is
   descriptive, not a lifecycle state, and an unknown filename defaults to it, never to `commercial`.
+  A clip whose role, era or audience is unknown fits no channel and never airs (#3838 decision 6;
+  `scheduling.md` "Breaks and pods"). Country is judged by the geography boundary.
 - **Political ads and news are opt-in** (#2037). `political` is a campaign or issue ad; `news` is a
   news or weather segment, whose format tag sits under `interstitial`. Both download and pass the
   defect floor like any clip, so opting in is instant, but a channel that chose no roles (its policy's
