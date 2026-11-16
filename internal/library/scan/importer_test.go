@@ -495,12 +495,14 @@ func TestImportSymlinkedFolderKeepsOnePath(t *testing.T) {
 
 // A show's own tvshow.nfo is part of each episode's identity (#3226): giving it a TMDB id grounds
 // the show on the next pass, a full walk or a folder pass over one season, with no episode file
-// touched and no header read again.
+// touched and no header read again. The folder pass knows the other season only from its row, and
+// still reads the show's folder for the season it walks.
 func TestImportSeriesNFOChangeRewritesTheShow(t *testing.T) {
 	for _, pass := range []string{"full", "season folder"} {
 		t.Run(pass, func(t *testing.T) {
 			h := newHarness(t)
 			h.file("Example Show (2001)/Season 1/Example Show S01E01.mkv", 10)
+			h.file("Example Show (2001)/Season 2/Example Show S02E01.mkv", 10)
 			h.run()
 			origin := seriesOrigin(h.root, "Example Show (2001)")
 			if ids := h.item(origin).ExternalIDs; len(ids) != 0 {
