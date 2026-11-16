@@ -22,7 +22,13 @@ func ScanDir(ctx context.Context, dir string, probe tools.Prober, minDurationMs 
 	if len(minDurationMs) > 0 {
 		minMs = minDurationMs[0]
 	}
-	clips, skipped, _, err = scanDir(ctx, dir, "", probe, minMs)
+	clips, skipped, _, err = scanDir(ctx, dir, "", probe, nil, minMs)
+	return clips, skipped, err
+}
+
+// ScanDirCached is ScanDir remembering probe results in cache between calls.
+func ScanDirCached(ctx context.Context, dir string, probe tools.Prober, cache *ProbeCache) (clips []RawClip, skipped int, err error) {
+	clips, skipped, _, err = scanDir(ctx, dir, "", probe, cache, 0)
 	return clips, skipped, err
 }
 

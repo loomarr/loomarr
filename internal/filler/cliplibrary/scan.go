@@ -79,13 +79,14 @@ func QualityFromHeight(h int) string {
 // unread names the subtrees the walk could not read (slash paths relative to dir). It is not the
 // same as skipped: a clip in an unreadable subtree was not rejected, it was never seen, so the
 // catalog's rows under it say nothing about whether the files still exist (#2673).
-func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
+func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, probes *ProbeCache, minMs int64) (found []RawClip, skipped int, unread []string, err error) {
 	if dir == "" {
 		return nil, 0, nil, nil
 	}
 	if probe == nil {
 		probe = FFprobe
 	}
+	pass := probes.begin()
 	watchInside := ""
 	if rel, relErr := filepath.Rel(dir, watchDir); watchDir != "" && relErr == nil && rel != "." &&
 		!filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -145,7 +146,8 @@ func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minM
 		}
 		rel = filepath.ToSlash(rel)
 
-		pr, probeErr := probe(ctx, path)
+		info, _ := d.Info() // a failed stat only means this file is probed rather than remembered
+		pr, probeErr := pass.probe(ctx, path, info, probe)
 		if probeErr != nil || pr.DurationMs <= 0 {
 			// No usable duration means the pod assembler cannot place it: it fills a break to
 			// a target length, so a zero-duration clip would either be skipped downstream or
@@ -279,6 +281,7 @@ func scanDir(ctx context.Context, dir, watchDir string, probe tools.Prober, minM
 		// would present as "filler mysteriously does nothing".
 		return nil, skipped, nil, fmt.Errorf("scan filler dir %s: %w", dir, walkErr)
 	}
+	pass.finish()
 	return found, skipped, unread, nil
 }
 
@@ -548,6 +551,9 @@ type DirSource struct {
 	Layout Layout
 	// Probe reads durations; nil ⇒ FFprobeDuration.
 	Probe tools.Prober
+	// Probes, when non-nil, spares ffprobe the files that have not changed since an earlier scan.
+	// Nil probes every file on every scan.
+	Probes *ProbeCache
 	// Tunarr, when non-nil, supplies program uuids for clips it knows. Nil is a fully
 	// supported configuration — an install with no Tunarr — not a degraded one.
 	Tunarr TunarrClipSource
@@ -617,7 +623,7 @@ func (d DirSource) ScanLocalClips(ctx context.Context) (LocalScan, error) {
 	if d.MinDuration != nil {
 		minMs = d.MinDuration().Milliseconds()
 	}
-	clips, rejected, unread, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, minMs)
+	clips, rejected, unread, err := scanDir(ctx, d.Layout.ClipDir(), d.Layout.WatchDir(), d.Probe, d.Probes, minMs)
 	if err != nil {
 		return LocalScan{}, err
 	}

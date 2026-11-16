@@ -54,6 +54,30 @@ func (p *Pipeline) tombstone(ctx context.Context, clip clipstore.Clip) {
 	}
 }
 
+// RejectAirFault feeds back that a Ready clip failed to encode at air time, repeatedly (#3855): the
+// row is rejected as unplayable with the cause and the clip is taken out of rotation, so no break
+// picks it again. A clip that is not Ready is still on the conveyor, which owns it; an unknown
+// clip is not the pipeline's to act on. Both are left alone and report no error.
+func (p *Pipeline) RejectAirFault(ctx context.Context, hash, detail string) error {
+	row, found, err := p.store.GetClipPipeline(ctx, hash)
+	if err != nil {
+		return fmt.Errorf("read pipeline row %s: %w", hash, err)
+	}
+	if !found || row.Disposition != pipelinestate.DispositionReady {
+		return nil
+	}
+	clip, found, err := p.clips.GetClip(ctx, hash)
+	if err != nil {
+		return fmt.Errorf("read clip %s: %w", hash, err)
+	}
+	if !found {
+		return nil
+	}
+	row.Disposition = pipelinestate.DispositionRejected
+	row.RejectReason, row.RejectDetail = pipelinestate.ReasonUnplayable, detail
+	return p.persist(ctx, row, clip)
+}
+
 func (p *Pipeline) publish(row pipelinestate.ClipPipeline, clip clipstore.Clip) {
 	if p.notify != nil {
 		p.notify(row, clip)

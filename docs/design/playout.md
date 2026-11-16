@@ -62,6 +62,12 @@ viewer leaves. There is no boot warm-up, and the channel packager is the only li
   Reopening a clip at its last frame started an encoder that produced nothing and failed, which on
   VAAPI reads as a GPU fault (`A hardware frames reference is required`, 2026-10-24). Any other
   early end, including a stream that ended on a bad fragment, rejoins at once.
+  An item that cannot be opened, or whose encoder ends without a frame, reports `Item.Faulted`; a
+  late item, a decoder mismatch and a stopped channel do not, since they say nothing about the
+  item's own bytes. For a filler clip the app counts these per clip: three airings in a row feed
+  the clip back to the filler pipeline, which rejects it as `unplayable` with the cause and takes
+  it out of rotation ([filler](filler.md#filler-lets-go-on-its-own)); an airing that puts frames on
+  the channel starts the count again. The count is per process.
   A slot with **less than half a frame** left, an item or a card alike, airs nothing: the schedule is
   asked what airs at its end instead. For a card this is not cosmetic. Its slate would round to no
   frames, the timeline would never pass the boundary, and the packager would ask for that same

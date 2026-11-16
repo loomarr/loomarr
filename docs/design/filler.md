@@ -42,6 +42,13 @@ route:
   the filename is a grounding signal for era and brand. The tagger reads it from the sidecar.
 - Loomarr rearranges only its own clip folder. The watch folder is drained (moved, not copied, so
   it never becomes a second copy of the library) and nothing outside the two folders is touched.
+- **The 15-minute sync does not probe unchanged files.** A per-process probe cache keeps what
+  ffprobe reported for each file with the file's size and modification time; a file with both
+  unchanged is not probed again, and one that changed, or whose probe failed, is. The content hash
+  and the sidecar are still read every scan. After a restart the first scan probes every file once.
+- A clip that fails to encode at air time three airings in a row is rejected as `unplayable` and
+  taken out of rotation (`Pipeline.RejectAirFault`); its fetched files go with the other rejects
+  after a week, and a clip added by hand is never deleted.
 - A completed download runs the ordinary catalog sync and nudges the pipeline before its terminal
   success event, so new held clips are already in Incoming. A sync failure is an ingest failure.
 - **The two paths are one layout, applied per application generation.** Changing either persists

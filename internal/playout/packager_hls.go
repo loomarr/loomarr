@@ -46,6 +46,11 @@ type PackagerItem struct {
 	// or a read of the schedule airs nothing. The packager resolves an airing again after an encoder
 	// restart, so the recorder is idempotent per airing.
 	RecordAiringServed func(ctx context.Context)
+	// Faulted, if set, receives why the item's encoder produced nothing (packager.Item.Faulted);
+	// Healthy, if set, is called when the item put frames on the channel. Together they let a
+	// filler clip that keeps failing be fed back to the catalog.
+	Faulted func(err error)
+	Healthy func()
 }
 
 // WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
@@ -664,7 +669,13 @@ func (m *PackagerHLS) schedule(
 				}
 			}, ladder.watch(monitor, log, it.Label))
 		}
-		item.Delivered = func(frames int64) { delivered.Store(frames) }
+		item.Faulted = it.Faulted
+		item.Delivered = func(frames int64) {
+			delivered.Store(frames)
+			if frames > 0 && it.Healthy != nil {
+				it.Healthy()
+			}
+		}
 		return item, nil
 	}
 }

@@ -302,6 +302,16 @@ func buildFillerSubsystem(
 
 	registry.Add(fillerPipelineJob(routine.NewPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
+	if playoutResolver != nil {
+		// A filler clip that keeps failing to encode at air time is rejected and taken off air.
+		playoutResolver.Faults.SetReporter(func(ctx context.Context, hash, detail string) error {
+			err := pipeline.RejectAirFault(ctx, hash, detail)
+			if err != nil {
+				log.Warn("playout: could not feed a failing clip back to the catalog", "clip", hash, "err", err)
+			}
+			return err
+		})
+	}
 	adapter.afterIngest = func(ctx context.Context) error {
 		if _, err := syncer.Sync(ctx); err != nil {
 			return err
