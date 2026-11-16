@@ -207,6 +207,13 @@ where the ones above left a gap. A tag is a fact only when its signal literally 
 - **Era must appear literally** in the filename, sidecar text or transcript. A vision or split guess
   that does not is recorded only as an uncited Context suggestion (an observation), shown as
   "Likely" until the operator sets the era (`PATCH /v1/filler/tags`).
+- **A write names what it changes.** `PATCH /v1/filler/tags` writes `era` and `audience` only when
+  the body carries them: omitted leaves the stored value and its evidence alone, an explicit `0` or
+  empty string clears. The same holds for the bulk retag.
+- **A frame read yields to stronger evidence.** The vision pass writes `era` and `brand` only while
+  the axis holds no item-metadata or operator evidence; the rest of the pass (visible text,
+  taxonomy) always lands. An operator who clears an era keeps that choice: the cleared axis holds
+  operator evidence, so no later frame read dates the clip again.
 - **Transcription is selective:** only when the source description is thin or a text-only pass
   left the clip unidentified. It is local by default; a connected service is an explicit opt-in.
   Transcripts persist to the store and the sidecar.

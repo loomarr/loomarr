@@ -333,6 +333,7 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   #2036) → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
+- **The station-only fallback holds the same one-station-segment limit as any other break.**
 - **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
   seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
   half of a break's commercials are in-season clips, and at least one when a rested one fits: the

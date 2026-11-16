@@ -596,7 +596,8 @@ func stationBreak(catalog []Clip, w Window, policy Policy, used map[string]bool,
 		if len(pod.Entries) >= maxTailClips {
 			break
 		}
-		if used[c.ID()] || c.DurationMs <= 0 || c.DurationMs > remainingMs {
+		// taken, not used: a placed station segment reserves the break's one slot for it.
+		if taken(used, c) || c.DurationMs <= 0 || c.DurationMs > remainingMs {
 			continue
 		}
 		pod.append(clipToEntry(c, w, policy), used)

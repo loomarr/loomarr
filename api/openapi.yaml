@@ -8895,6 +8895,7 @@ components:
           readOnly: true
           type: string
         audience:
+          description: Omit to leave unchanged; send an empty string to clear.
           enum:
             - kids
             - family
@@ -8907,6 +8908,7 @@ components:
           maxLength: 120
           type: string
         era:
+          description: The clip's era (a year). Omit to leave unchanged; send 0 to clear.
           format: int64
           type: integer
         geography:
