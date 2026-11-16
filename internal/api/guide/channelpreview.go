@@ -174,7 +174,7 @@ type channelCoverageOutput struct {
 // buckets inline, with five mutually inconsistent era/audience predicates. Here the answer
 // comes from `pod.Coverage`, which calls the same `candidatePools` that `Assemble` calls,
 // through the same `SelectionForChannel` derivation the previews use. A meter that says
-// "exact" while breaks resolve at "audience" is a confident wrong answer about why a channel
+// "exact" while breaks resolve at "widened" is a confident wrong answer about why a channel
 // sounds the way it does, which is worse than no meter.
 //
 // Read-only, so any authenticated user may call it — same as the pod preview it describes.

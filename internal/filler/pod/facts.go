@@ -7,14 +7,3 @@ package pod
 func FactsComplete(c Clip) bool {
 	return c.Role.ValidConcrete() && c.Era > 0 && c.Audience != ""
 }
-
-// filterFacts keeps the clips that carry every fact a break needs.
-func filterFacts(in []Clip) []Clip {
-	out := make([]Clip, 0, len(in))
-	for _, c := range in {
-		if FactsComplete(c) {
-			out = append(out, c)
-		}
-	}
-	return out
-}

@@ -334,8 +334,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
   instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
   Nothing further away than the decade either side ever airs (#3838 decision 21): once the two
-  rungs are spent, era-correct repeats, least recently aired first, fill the break, and then the
-  station material.
+  rungs are spent, clips resting on those rungs, least recently aired first, come before the
+  station material. Bookends keep their own rule: the channel's era first, then any era.
 - **The station-only fallback holds the same one-station-segment limit as any other break.**
 - **Holidays (#2030).** A clip is seasonal when a tag names a holiday with dates; a holiday is its
   seasonal tag. Out of season it never airs, bumpers and station IDs included. In season, at most
@@ -370,8 +370,8 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   from the shows. The region preference stays the household's: the channel inherits it, less its
   own country.
 
-**Audience is a ceiling, and an unknown audience is in no ceiling** (a kids and teen guardrail,
-#3838 decision 8):
+**Audience is a ceiling, and an unknown audience is in no ceiling** (a kids and teen
+guardrail, #3838 decision 8):
 
 - A `kids` channel admits clips grounded `kids` or `family`.
 - A `family` or `general` channel admits `kids`, `family` and `general`.

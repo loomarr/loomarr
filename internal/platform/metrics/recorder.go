@@ -306,7 +306,7 @@ func New(options Options) *Recorder {
 	for _, reason := range []string{"hardware_to_software", "file_to_stream", "other"} {
 		playoutMetrics.fallbacks.WithLabelValues(reason)
 	}
-	for _, level := range []string{"exact", "widened", "audience", "bumper_card", "other"} {
+	for _, level := range []string{"exact", "widened", "bumper_card", "other"} {
 		fillerMetrics.pods.WithLabelValues(level)
 	}
 	for _, kind := range []string{"prompt", "cached", "completion"} {
@@ -583,7 +583,7 @@ func (r *Recorder) ChannelSlotSubstitutions(count int) {
 
 // FillerPodAssembled records one bounded fallback-ladder rung reached by an attached pod.
 func (r *Recorder) FillerPodAssembled(matchLevel string) {
-	matchLevel = closedLabel(matchLevel, "exact", "widened", "audience", "bumper_card")
+	matchLevel = closedLabel(matchLevel, "exact", "widened", "bumper_card")
 	r.filler.pods.WithLabelValues(matchLevel).Inc()
 }
 

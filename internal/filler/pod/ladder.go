@@ -77,13 +77,11 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //     intro/return bumpers it places. A clip that does not fit whole is skipped for a shorter
 //     one; an ad is never cut to fit.
 //
-// ⚠ #1684: this took ONLY the tightest pool with an un-used clip. `used` is per break, so that
-// pool was never exhausted and the ladder never widened: a channel whose exact rung held one
-// grounded clip aired that clip alone in every break while readiness reported the 16 clips on
-// its bottom rung. With the LLM off most clips have no grounded audience and live on that
-// bottom rung, so a real catalog hit this on most channels. Every rung is already inside the
-// channel's audience ceiling (`candidatePools`), so drawing from all three admits nothing the
-// channel could not already air.
+// ⚠ #1684: every rung with an un-used clip feeds the break, not only the tightest. `used` is per
+// break, so a tight pool is never exhausted by one break, and drawing from the tightest alone
+// would air a one-clip exact rung alone in every break while readiness reported the clips on the
+// widened rung. Both rungs are already inside the channel's audience ceiling (`candidatePools`),
+// so drawing from both admits nothing the channel could not already air.
 //   - CATEGORY VARIETY: never two clips of the same Category consecutively (§10 —
 //     "so it doesn't play three car ads back to back"). Implemented as the two-pass
 //     place(false)/place(true): the second pass tops the pod up and accepts a repeat

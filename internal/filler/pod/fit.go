@@ -33,7 +33,7 @@ const (
 	FitDuration  FitReason = "duration"  // too long or too short for this channel's breaks
 	FitQuality   FitReason = "quality"   // below the channel's minimum-quality floor
 	FitCategory  FitReason = "category"  // the channel narrowed to categories this clip is not in
-	FitAudience  FitReason = "audience"  // wrong audience, and not a general-audience clip
+	FitAudience  FitReason = "audience"  // outside the channel's audience ceiling
 	FitGeography FitReason = "geography" // foreign, out-of-radius local, or unknown geography
 	FitExcluded  FitReason = "excluded"  // the operator excluded it from this channel
 	FitSeason    FitReason = "season"    // a holiday clip outside its season (season.go)

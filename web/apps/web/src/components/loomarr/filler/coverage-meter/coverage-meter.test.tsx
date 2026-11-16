@@ -67,8 +67,8 @@ describe("CoverageMeter", () => {
     expect(screen.getAllByText("9").length).toBeGreaterThan(0);
   });
 
-  // ⚠ The total is the widest rung, not a sum. 4+5+9 would claim 18 eligible commercials for a
-  // catalog holding 9 — the rungs nest, so adding them counts one clip up to three times.
+  // ⚠ The total is the widest rung, not a sum. 4+9 would claim 13 eligible commercials for a
+  // catalog holding 9 — the rungs nest, so adding them counts one clip twice.
   it("reports the widest rung as the total, not the sum", async () => {
     renderMeter(<CoverageMeter coverage={full} />);
     expect(await screen.findByText("9 eligible commercials")).toBeInTheDocument();
@@ -91,9 +91,7 @@ describe("CoverageMeter", () => {
           total: 9,
           criteria: HEALTHY,
           ...NO_LIMIT,
-          rungs: [
-            { level: "exact", clips: 4 },
-          ],
+          rungs: [{ level: "exact", clips: 4 }],
         }}
       />,
     );

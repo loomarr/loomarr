@@ -74,9 +74,8 @@ func TestChannelFillerCoverage_RendersTheLadder(t *testing.T) {
 			t.Errorf("rung %d = %q, want %q", i, body.Rungs[i].Level, w)
 		}
 	}
-	// Total is the widest rung, NOT a sum — the rungs nest, and 4+5+9 would report a
-	// catalog twice its real size.
-	// (4+9 would report 13.)
+	// Total is the widest rung, NOT a sum: the rungs nest, and 4+9 would report 13 for a
+	// catalog of 9.
 	if body.Total != 9 {
 		t.Errorf("total = %d, want 9 (the widest rung, not the sum)", body.Total)
 	}
