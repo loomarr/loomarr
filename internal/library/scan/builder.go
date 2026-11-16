@@ -473,6 +473,8 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	resolved := res.resolved
 	facts, coverage := itemFacts(resolved)
+	// What its NFO or catalog says the file is, before any name stands in for it.
+	known := facts
 	if facts.Name == "" {
 		facts.Name = fallbackName(file.Rel, id.kind, file.Part, file.Sole)
 		// An episode numbered across its show is named by the title after its number, as one
@@ -520,7 +522,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	// A film's copies in its own folder are one title too, though the catalog grounds only one:
 	// "Harrow Fen (2011) - X265 EAC3 5.1" beside the Radarr copy its NFO names.
 	if id.kind == mp.KindMovie {
-		if key := filmCopyID(b.root, file.Rel); key != "" {
+		if key := filmCopyID(b.root, file.Rel, known.Name, known.ProductionYear); key != "" {
 			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: filmCopiesNamespace, Value: key})
 		}
 	}
@@ -535,7 +537,12 @@ const filmCopiesNamespace = "loomarr-film"
 // Fen.mkv", "Harrow Fen (2011) - 1080p.mkv" in "Harrow Fen (2011)/"). A file named otherwise is
 // another film kept there ("Harrow Fen 2 (2013)", "Harrow Fen (1985)"), and a folder with no year
 // is no one film's: "" for those, and for a file in no film's folder.
-func filmCopyID(root, rel string) string {
+//
+// What the file's own NFO or catalog record says it is (title, year) outranks its name: "Harrow
+// Fen.mkv" whose NFO says 1985 is the 1985 film kept in the 2011 one's folder. A catalog's year a
+// year off its folder's is the same film, as catalogs date a film by its release in one country
+// or another; a title sharing no word with the folder's is another film.
+func filmCopyID(root, rel, title string, year int) string {
 	dir := filmFolder(path.Dir(rel))
 	if dir == "." || shelfAt(dir) {
 		return ""
@@ -544,8 +551,11 @@ func filmCopyID(root, rel string) string {
 	if folderYear == 0 || folderTitle == "" {
 		return ""
 	}
-	title, year, _ := searchQuery(plainStem(path.Base(rel)), 0)
-	if (year != 0 && year != folderYear) || !sameWords(title, folderTitle) {
+	named, namedYear, _ := searchQuery(plainStem(path.Base(rel)), 0)
+	if (namedYear != 0 && namedYear != folderYear) || !sameWords(named, folderTitle) {
+		return ""
+	}
+	if year != 0 && (year < folderYear-1 || year > folderYear+1) || title != "" && apart(title, folderTitle) {
 		return ""
 	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d", Authority(root), dir, folderYear)))
