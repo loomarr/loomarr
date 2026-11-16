@@ -43,11 +43,16 @@ import { installMockBackend } from "./mock-backend";
 // only the median. The first session of a job tends to be the slowest: it pays the runner's cold
 // disk and the browser's cold code cache.
 //
+// RUNS is 5, not 3 (2026-11-16). The macOS runner adds a ~60 ms spike to roughly one sample in six
+// on every route, unrelated to the route's own work: a 12-session diagnostic showed warm Settings
+// with no reads and no long tasks still landing anywhere from 15 to 97 ms. With 3 sessions, two
+// spikes fail a tight budget (Settings warm failed ~1 run in 11); with 5 it takes three.
+//
 // Warm is already near the 100 ms goal; cold misses 300 ms on Home and Library, and Settings and
 // Requests land well inside it. Those two are where the loader work has most to earn.
 
 const API_DELAY_MS = 100;
-const RUNS = 3;
+const RUNS = 5;
 
 interface Destination {
   name: string;

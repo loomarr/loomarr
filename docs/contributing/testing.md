@@ -108,7 +108,8 @@ Library, Requests and Settings and opens a channel, then reads the app's own
 - Every `/v1` read is held for a fixed 100 ms, so results do not depend on the runner's backend
   speed. A page that waits on two reads in a row costs two delays.
 - Cold is a page asked for the first time in the session; warm is the same page again with its data
-  cached. Each is asserted on the median of three fresh sessions, with zero retries.
+  cached. Each is asserted on the median of five fresh sessions, with zero retries. Five, because the
+  macOS runner spikes about one sample in six by ~60 ms whatever the route does.
 - The budgets are a ratchet set just above what main measures. The goal is warm 100 ms and cold
   300 ms on every route. A PR that makes a route faster lowers its budget; none is raised without
   a reason in the commit.
