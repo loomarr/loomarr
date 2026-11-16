@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api/system"
 	"github.com/loomarr/loomarr/internal/app/playoutresolve"
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/channels/growth"
 	"github.com/loomarr/loomarr/internal/channels/recurate"
 	"github.com/loomarr/loomarr/internal/filler/cliplibrary"
 	"github.com/loomarr/loomarr/internal/library/mediaserver"
@@ -139,6 +140,15 @@ func buildSuggestions(
 	))
 	service = service.WithAutoCurate(recurate.NewCurator(st, approver, recurate.NewSettingsThresholds(set), log))
 	registry.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
+	// Channels grow from the line their seeds draw (#4333), through the same approve → bind path.
+	// A model is configured when the live selection names one; then unclear fits wait for review.
+	hasModel := func() bool {
+		if sw, ok := provider.(*llm.Swappable); ok {
+			return sw.Model() != ""
+		}
+		return provider != nil
+	}
+	registry.Add(growth.NewFill(st, result.durableWorkflow, approver, hasModel, time.Now, log).Job())
 
 	result.suggest = service
 	result.progress = service

@@ -109,6 +109,9 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 	if incoming.Filler == nil {
 		out.Filler = current.Filler
 	}
+	if incoming.Growth == nil { // the same rule: absence keeps the switch and what was declined
+		out.Growth = current.Growth
+	}
 
 	set := pathSet(current.OperatorSet)
 	// pin marks a field operator-dirty only when it CHANGED and the new value is non-empty.
