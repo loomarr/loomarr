@@ -495,7 +495,7 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 	}
 	// Every copy of one episode names it alike, so its copies are one title from the first pass,
 	// whatever ids each carries: a 720p beside a 1080p, a "Season 01" beside a "Season 1". One the
-	// catalog describes by a title its name doesn't give ("In Between" for "Between the Time") is
+	// catalog describes by a title its name doesn't give ("Low Tide" for "The Ebb") is
 	// joined by the catalog's, so copies it describes as one episode are one title however their
 	// names call it. A name the catalog's title agrees with joins by the name, so copies named alike
 	// stay one title though only one is described yet, or only one is in Needs you.
@@ -517,7 +517,7 @@ const copiesNamespace = "loomarr-episode"
 
 // episodeCopyID is the id an episode's copies share: its series folder, its own mark's season and
 // episodes, and its title (the catalog's, or else the one its name gives after the mark), small
-// words aside and the rest run together ("Back Doors" is "Backdoors"). Two files that number one
+// words aside and the rest run together ("Gate Ways" is "Gateways"). Two files that number one
 // episode but name it apart ("The Pit", "Low Ground") with no catalog to say otherwise are two
 // episodes, one of them misnumbered, and never one title's copies; a name with no title of its own
 // joins only another with none. "" for an episode with no series folder or no mark of its own.
