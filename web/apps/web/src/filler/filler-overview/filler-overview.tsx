@@ -302,21 +302,21 @@ const FillerOverview = () => {
                   key={channel.channelId}
                   coverage={channel}
                   title={
-                    <Text as="span" textRole="cardLabel">
-                      <TextLink
-                        render={
-                          <Link
-                            to="/channels/$id/filler"
-                            params={{ id: channel.channelId }}
-                            search={{ from: "filler" }}
-                          />
-                        }
-                        tone="inherit"
-                        underline="hover"
-                      >
+                    <TextLink
+                      render={
+                        <Link
+                          to="/channels/$id/filler"
+                          params={{ id: channel.channelId }}
+                          search={{ from: "filler" }}
+                        />
+                      }
+                      tone="inherit"
+                      underline="hover"
+                    >
+                      <Text as="span" textRole="cardLabel" tone="primary">
                         {channel.number} · {channel.name}
-                      </TextLink>
-                    </Text>
+                      </Text>
+                    </TextLink>
                   }
                 />
               ))
