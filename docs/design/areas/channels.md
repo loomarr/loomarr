@@ -8,7 +8,7 @@ One area of the [package map](../package-map.md#start-here).
 
 ## Imports from other areas
 
-- **platform** · 37 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
+- **platform** · 38 imports — the store every channel write goes through, the jobs and settings behind reconcile and re-curation, the activity feed, the language model for recommendations, and the holiday, language and audience-rating vocabularies
 - **library** · 10 imports — the titles a channel plays: `library/provision` keys and states, `library/inventory` breakanalysis, and `library/titlesearch` candidates for re-curation
 - **proposals** · 9 imports — binding an approved proposal into a channel, and re-curating a self-updating channel through the suggester
 - **filler** · 3 imports — asking the filler engine for the pod that fills a break
@@ -22,7 +22,7 @@ One area of the [package map](../package-map.md#start-here).
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
 - **`channels/edit`** · 1 importer · → `channels/approval`, `channels/schedule`, `library/provision`, `platform/activity`, `platform/store`, `platform/store/activitystore`, `platform/store/channelstore`
   One write path for an operator's channel changes (§7): creating a hand-made channel, and every edit after it — the PATCH form, an icon or watermark upload, a detach.
-- **`channels/growth`** · 1 importer · → `channels/schedule`, `library/provision`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`, `proposals/suggest`, `proposals/workflow`
+- **`channels/growth`** · 1 importer · → `channels/schedule`, `library/provision`, `platform/holidayvocab`, `platform/jobs`, `platform/rating`, `platform/settings`, `platform/store/channelstore`, `platform/store/librarystore`, `platform/store/proposalstore`, `proposals`, `proposals/accept`, `proposals/suggest`, `proposals/workflow`
   Decides what may join a channel by itself (#4140 step 2, #4333): the line its seeds draw, how a library title sits against that line, how big the channel should be, and the nightly fill that adds the titles that fit.
 - **`channels/ideas`** · 2 importers · → `library/provision`, `platform/holidayvocab`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
