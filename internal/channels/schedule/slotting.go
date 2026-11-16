@@ -27,9 +27,10 @@ import (
 //
 // ⚠ It answers "why isn't X on my channel", but reaches exactly one reader: both
 // channel-preview endpoints, via
-// `channels.CycleResult.Excluded`. **Reconcile still throws its copy away** — it has nowhere to
-// put one (no column, no event), and the preview recomputes the identical report from the same
-// pure builder, so the operator-facing answer is the same one reconcile made.
+// `channels.CycleResult.Excluded`. Reconcile keeps only the per-title summary of it
+// (DesiredLineup.Unairable, written to policy.unairable); the preview recomputes the identical
+// per-episode report from the same pure builder, so the operator-facing answer is the same one
+// reconcile made.
 //
 // Proposal review does NOT show it yet, despite programming-design §9 listing it there.
 type ExclusionReport struct {

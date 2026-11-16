@@ -358,7 +358,8 @@ func (e *Engine) planReconcile(
 	// channel's policy so the UI surfaces them; recomputed from scratch each
 	// reconcile, so a recovered pool automatically un-relaxes to an empty list.
 	// WithApplied is the reconcile-only writer — it touches Applied and nothing else (§2.1).
-	ch.Policy = ch.Policy.WithApplied(desired.Applied)
+	// The titles that cannot air are recorded the same way, for the channel page (#4140).
+	ch.Policy = ch.Policy.WithApplied(desired.Applied).WithUnairable(desired.Unairable)
 
 	// Filler is not inlined into desired. An internal encoder resolves each SlotFiller
 	// at airtime; Tunarr receives it as FLEX and fills it from the attached list below.

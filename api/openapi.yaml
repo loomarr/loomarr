@@ -1607,6 +1607,11 @@ components:
           $ref: "#/components/schemas/SeasonalPolicy"
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
+        unairable:
+          items:
+            $ref: "#/components/schemas/UnairableTitle"
+          maxItems: 512
+          type: array
         watermark:
           $ref: "#/components/schemas/WatermarkPolicy"
         window:
@@ -13640,6 +13645,27 @@ components:
       required:
         - sourceId
         - librariesEnabled
+      type: object
+    UnairableTitle:
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+        reason:
+          enum:
+            - not_in_library
+            - no_episodes_in_seasons
+            - over_ceiling
+            - unrated
+            - out_of_scope
+            - no_episodes_selected
+          type: string
+        title:
+          type: string
+      required:
+        - key
+        - title
+        - reason
       type: object
     UpcomingOutputBody:
       additionalProperties: false

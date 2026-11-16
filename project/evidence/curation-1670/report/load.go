@@ -35,6 +35,8 @@ type Channel struct {
 	FillerEra                  []YearRange // empty: the channel names no filler era
 	FillerRoles                []string    // empty: the default roles
 	Lineup                     []LineupTitle
+	// Reported is the lineup keys the channel says it cannot air, with a reason (#4140).
+	Reported map[string]bool
 }
 
 // LineupTitle is one approved lineup entry and how much of it the library holds.
@@ -133,10 +135,14 @@ func loadSettings(ctx context.Context, db *sql.DB, s *Snapshot) error {
 // policyJSON is the subset of schedule.ChannelPolicy the report reads. It is decoded here rather
 // than through the schedule package so a snapshot from an older install still loads.
 type policyJSON struct {
-	Ordering string        `json:"ordering"`
-	Applied  []Relaxation  `json:"applied"`
-	Rules    []any         `json:"rules"`
-	Filler   *fillerPolicy `json:"filler"`
+	Ordering string       `json:"ordering"`
+	Applied  []Relaxation `json:"applied"`
+	Rules    []any        `json:"rules"`
+	// Unairable is what reconcile reported it cannot air (#4140); absent on older installs.
+	Unairable []struct {
+		Key string `json:"key"`
+	} `json:"unairable"`
+	Filler *fillerPolicy `json:"filler"`
 }
 
 type fillerPolicy struct {
@@ -161,6 +167,12 @@ func loadChannels(ctx context.Context, db *sql.DB, s *Snapshot) error {
 			return fmt.Errorf("channel %s policy: %w", c.ID, err)
 		}
 		c.Ordering, c.Applied, c.Rules = p.Ordering, p.Applied, len(p.Rules)
+		for _, u := range p.Unairable {
+			if c.Reported == nil {
+				c.Reported = map[string]bool{}
+			}
+			c.Reported[u.Key] = true
+		}
 		if p.Filler != nil {
 			c.FillerRoles = p.Filler.Roles
 			c.FillerEra = append(c.FillerEra, p.Filler.EraWindows...)

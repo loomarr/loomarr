@@ -38,6 +38,11 @@ type ChannelPolicy struct {
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
 	// Each separation guard relaxes at most once (§7), so a channel records at most four.
 	Applied []AppliedRelaxation `json:"applied,omitempty" maxItems:"8"`
+	// Unairable lists the lineup titles that put nothing into the cycle at the last reconcile,
+	// each with why (#4140): not in the library, no episodes in the chosen seasons, refused by
+	// the ceiling or the scope. Reconcile-owned like Applied: recomputed each reconcile, ignored
+	// on write, and empty once every title airs.
+	Unairable []UnairableTitle `json:"unairable,omitempty" maxItems:"512"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
 	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently

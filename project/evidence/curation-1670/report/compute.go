@@ -46,7 +46,8 @@ type ChannelReport struct {
 	MaxShowShare float64 `json:"maxShowShare"` // the largest share of a whole day one title took
 	ShowsPerDay  int     `json:"showsPerDay"`  // median distinct titles on a whole day
 
-	NeverScheduled   []string     `json:"neverScheduled"` // lineup titles with no start in the span
+	NeverScheduled   []string     `json:"neverScheduled"`  // lineup titles with no start in the span
+	NeverUnreported  []string     `json:"neverUnreported"` // of those, the ones the channel does not report it cannot air
 	Relaxations      []Relaxation `json:"relaxations"`
 	RelaxedToNothing bool         `json:"relaxedToNothing"`
 
@@ -122,6 +123,9 @@ func Compute(s Snapshot, from, to time.Time, loc *time.Location) Report {
 		for _, t := range c.Lineup {
 			if !dealt[t.Key] {
 				never = append(never, t.Title)
+				if !c.Reported[t.Key] {
+					cr.NeverUnreported = append(cr.NeverUnreported, t.Title)
+				}
 			}
 		}
 		cr.NeverScheduled = never
