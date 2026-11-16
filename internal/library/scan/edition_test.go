@@ -2,6 +2,10 @@ package scan
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	mp "github.com/loomarr/loomarr/internal/library/metadataprovider"
@@ -45,6 +49,65 @@ func TestAFilmNamedAsItsFolderWithItsReleasesNotesIsNamedAsTheFolder(t *testing.
 		if got := fallbackName(rel, mp.KindMovie, 0, true); got != want {
 			t.Errorf("fallbackName(%q) = %q, want %q", rel, got, want)
 		}
+	}
+}
+
+// A film's copies in its own folder are one title, though only one is grounded: the copy no
+// catalog names takes the grounded copy's name and year. A film named otherwise there, or by
+// another year, is its own.
+func TestAFilmsCopiesInItsFolderAreOneTitle(t *testing.T) {
+	const grounded = "Harrow Fen (2011) [imdbid-tt9440001] - [Remux-1080p][DTS-HD MA 5.1][AVC]-GRP.mkv"
+	doc := `<movie><title>Harrow Fen</title><year>2011</year><uniqueid type="imdb">tt9440001</uniqueid></movie>`
+	for _, c := range []struct {
+		name        string
+		copies, own []string
+	}{
+		{"a copy by its notes", []string{"Harrow Fen (2011) - X265 EAC3 5.1.mkv"}, nil},
+		{"a copy by its title", []string{"Harrow Fen.mkv"}, nil},
+		{"other films", nil, []string{"Harrow Fen 2 (2013).mkv", "Harrow Fen (1985).mkv"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			dir := "Harrow Fen (2011)/"
+			h.file(dir+grounded, 30)
+			for _, rel := range slices.Concat(c.copies, c.own) {
+				h.file(dir+rel, 10)
+			}
+			p := filepath.Join(h.root, filepath.FromSlash(dir+grounded))
+			if err := os.WriteFile(strings.TrimSuffix(p, ".mkv")+".nfo", []byte(doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			h.run()
+			rows, err := h.st.LibraryFiles(ctx, h.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := map[string]string{}
+			for _, r := range rows {
+				items[filepath.Base(r.Path)] = r.ItemID
+			}
+			film := items[grounded]
+			for _, name := range c.copies {
+				if items[name] != film {
+					t.Errorf("%s is item %q; want the grounded copy's %q", name, items[name], film)
+				}
+			}
+			for _, name := range c.own {
+				if items[name] == "" || items[name] == film {
+					t.Errorf("%s is item %q; want a title of its own, not %q", name, items[name], film)
+				}
+			}
+			it, _ := ProjectLibraryItem(h.item(fileOrigin(h.root, dir+grounded)))
+			if it.Name != "Harrow Fen" || it.Year != 2011 {
+				t.Errorf("the film is %q (%d); want Harrow Fen (2011)", it.Name, it.Year)
+			}
+			for _, id := range it.IDs {
+				if id.Namespace == filmCopiesNamespace {
+					t.Errorf("the film lists the scanner's own copy id %v", id)
+				}
+			}
+		})
 	}
 }
 

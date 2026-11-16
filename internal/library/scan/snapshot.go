@@ -82,7 +82,7 @@ func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.Mod
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
 // written once more with the new shape; its header is kept, so none is opened again. What each
 // version changed is in docs/design/library.md, "Write versions".
-const writeVersion = 85
+const writeVersion = 87
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -267,9 +267,9 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 		}
 	}
 	for _, id := range item.ExternalIDs {
-		// A movie in parts' own mark, and an episode's copies', only hold them together; no
-		// catalog knows them.
-		if id.Namespace != partsNamespace && id.Namespace != copiesNamespace {
+		// A movie in parts' own mark, and an episode's or a film's copies', only hold them
+		// together; no catalog knows them.
+		if id.Namespace != partsNamespace && id.Namespace != copiesNamespace && id.Namespace != filmCopiesNamespace {
 			it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
 		}
 	}

@@ -29,7 +29,7 @@ func (s *sqlStore) ApplyInventorySnapshot(ctx context.Context, snapshot inventor
 	if err != nil {
 		return "", err
 	}
-	grounded, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.Kind, clean.ExternalIDs)
+	grounded, err := s.inventoryItemIDsByExternalIDs(ctx, tx, clean.Kind, clean.Origin, clean.ExternalIDs)
 	if err != nil {
 		return "", err
 	}
@@ -289,14 +289,19 @@ func (s *sqlStore) inventoryItemIDsByExternalIDs(
 	ctx context.Context,
 	tx *sql.Tx,
 	kind inventory.ItemKind,
+	origin inventory.OriginKey,
 	externalIDs []inventory.ExternalID,
 ) (map[inventory.ItemID]bool, error) {
 	ids := make(map[inventory.ItemID]bool)
 	for _, externalID := range externalIDs {
+		// The origin's own ids, as it was last written, are the ones this write replaces: only
+		// another origin's ground it. A copy linked to another title follows that title's item
+		// though its earlier write left an id of its own on the item it founded.
 		rows, err := tx.QueryContext(ctx, s.ph(`SELECT DISTINCT e.item_id FROM inventory_external_ids e
 			JOIN inventory_items i ON i.id = e.item_id
-			WHERE e.namespace = ? AND e.external_id = ? AND i.kind = ?`),
-			externalID.Namespace, externalID.Value, string(kind))
+			WHERE e.namespace = ? AND e.external_id = ? AND i.kind = ?
+			  AND NOT (e.authority_id = ? AND e.external_item_id = ?)`),
+			externalID.Namespace, externalID.Value, string(kind), string(origin.Authority), origin.ExternalItemID)
 		if err != nil {
 			return nil, fmt.Errorf("find grounded inventory identity: %w", err)
 		}

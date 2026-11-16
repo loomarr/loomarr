@@ -508,7 +508,39 @@ func (b *builder) snapshot(ctx context.Context, file File, id identity, now time
 			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: copiesNamespace, Value: key})
 		}
 	}
+	// A film's copies in its own folder are one title too, though the catalog grounds only one:
+	// "Harrow Fen (2011) - X265 EAC3 5.1" beside the Radarr copy its NFO names.
+	if id.kind == mp.KindMovie {
+		if key := filmCopyID(b.root, file.Rel); key != "" {
+			snapshot.ExternalIDs = append(snapshot.ExternalIDs, inventory.ExternalID{Namespace: filmCopiesNamespace, Value: key})
+		}
+	}
 	return snapshot, waiting
+}
+
+// filmCopiesNamespace is copiesNamespace's for a film's copies. It is never listed.
+const filmCopiesNamespace = "loomarr-film"
+
+// filmCopyID is the id a film's copies in its own folder share: the folder, with its title and
+// year, for a file whose name gives that title, small words aside, and that year or none ("Harrow
+// Fen.mkv", "Harrow Fen (2011) - 1080p.mkv" in "Harrow Fen (2011)/"). A file named otherwise is
+// another film kept there ("Harrow Fen 2 (2013)", "Harrow Fen (1985)"), and a folder with no year
+// is no one film's: "" for those, and for a file in no film's folder.
+func filmCopyID(root, rel string) string {
+	dir := filmFolder(path.Dir(rel))
+	if dir == "." || shelfAt(dir) {
+		return ""
+	}
+	folderTitle, folderYear, _ := searchQuery(path.Base(dir), 0)
+	if folderYear == 0 || folderTitle == "" {
+		return ""
+	}
+	title, year, _ := searchQuery(plainStem(path.Base(rel)), 0)
+	if (year != 0 && year != folderYear) || !sameWords(title, folderTitle) {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%d", Authority(root), dir, folderYear)))
+	return hex.EncodeToString(sum[:16])
 }
 
 // copiesNamespace is the scanner's own id for an episode's copies: every copy of one episode
