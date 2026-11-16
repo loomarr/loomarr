@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -44,14 +45,29 @@ func (f *fakeStore) AcquisitionArtifactForClip(_ context.Context, _, clipHash st
 	return a, ok, nil
 }
 
-func (f *fakeStore) ListClipPipelines(_ context.Context, _ pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
+func (f *fakeStore) ListClipPipelines(_ context.Context, filter pipelinestate.PipelineFilter) ([]pipelinestate.ClipPipeline, error) {
 	var out []pipelinestate.ClipPipeline
 	for _, r := range f.rows {
-		if r.Disposition == pipelinestate.DispositionRejected {
+		if slices.Contains(filter.Dispositions, r.Disposition) {
 			out = append(out, r)
 		}
 	}
 	return out, nil
+}
+
+// RetireReadyClip applies the same qualification as the SQL store: a fetched, unpinned Ready clip
+// not yet let go.
+func (f *fakeStore) RetireReadyClip(_ context.Context, hash string, at time.Time) (bool, error) {
+	r, c := f.rows[hash], f.clips[hash]
+	if r.Disposition != pipelinestate.DispositionReady || r.AcquisitionID == "" || !r.FilesDeletedAt.IsZero() ||
+		f.pinned[hash] || c.Held || !c.RemovedAt.IsZero() || c.IsComposite {
+		return false, nil
+	}
+	f.retires++
+	r.FilesDeletedAt = at
+	c.RemovedAt = at
+	f.rows[hash], f.clips[hash] = r, c
+	return true, nil
 }
 
 func (f *fakeStore) RetireRejectedClip(_ context.Context, hash string, rejectedBy, at time.Time) (bool, error) {

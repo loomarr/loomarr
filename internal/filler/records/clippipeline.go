@@ -259,6 +259,54 @@ func (s *sqlStore) RetireRejectedClip(ctx context.Context, hash string, rejected
 	return true, nil
 }
 
+// RetireReadyClip commits to deleting the files of a clip Loomarr fetched that is on air (#3855,
+// decision 13 of #3838): a full budget evicts it for room. In one transaction it re-checks the row
+// is still Ready, fetched and not yet let go, and that no channel pins it; then it removes and reaps
+// the clip and stamps the row's files_deleted_at. The row, its fingerprint and its airings stay, and
+// the consumed acquisition still blocks a re-download. It reports whether it retired the clip; the
+// caller deletes the files after it commits.
+func (s *sqlStore) RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin retire ready clip %s: %w", hash, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	clipTx := s.db.Clips(tx)
+	if _, err := clipTx.LockPublication(ctx, hash); errors.Is(err, clipstore.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock ready clip %s: %w", hash, err)
+	}
+	query := storedb.LockRows(s.dialect, `SELECT clip_hash FROM filler_clip_pipeline
+		WHERE clip_hash = ? AND disposition = ? AND acquisition_id <> '' AND files_deleted_at = 0`)
+	var found string
+	err = tx.QueryRowContext(ctx, s.ph(query), hash, string(pipelinestate.DispositionReady)).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("lock ready clip %s: %w", hash, err)
+	}
+	if pinned, err := clipTx.Pinned(ctx, hash); err != nil {
+		return false, fmt.Errorf("retire ready clip %s: %w", hash, err)
+	} else if pinned {
+		return false, nil
+	}
+	if retired, err := clipTx.RetireReady(ctx, hash, at); err != nil {
+		return false, fmt.Errorf("retire ready clip %s: %w", hash, err)
+	} else if !retired {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET files_deleted_at = ? WHERE clip_hash = ?`),
+		epoch(at), hash); err != nil {
+		return false, fmt.Errorf("mark ready clip %s files deleted: %w", hash, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit retire ready clip %s: %w", hash, err)
+	}
+	return true, nil
+}
+
 // GetClipPipeline reads one row. Absence is not an error — an un-enrolled clip is ordinary.
 func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error) {
 	p, err := scanClipPipeline(s.db.QueryRowContext(ctx, s.ph(clipPipelineSelect+` WHERE clip_hash = ?`), hash))

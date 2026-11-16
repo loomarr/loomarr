@@ -489,7 +489,10 @@ reservations and the operator-facing decision.
 - **Automatic filler allowance:** `min(10% of capacity, 20 GiB)`; a positive
   `filler.storage.library_budget_gb` replaces it. Availability is the smaller of the remaining
   allowance and free bytes above the hard reserve, less active reservations on that filesystem.
-  Lowering the allowance pauses new automatic work and deletes nothing.
+  Lowering the allowance pauses new automatic work and deletes nothing itself; a reservation it
+  refuses is then answered by [eviction](#a-full-budget-evicts-instead-of-stopping-filler). The
+  allowance stays the operator's number, or the automatic one, until per-set targets size it
+  (step 4 of #3838).
 - A confirmed manual import may exceed the soft allowance, never the hard reserve. An unknown
   estimate or capacity is never permission to write.
 - `Reserve(estimate)` is atomic per filesystem and returns a lease or one pause reason:
@@ -561,6 +564,44 @@ The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decisio
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
   `change_storage_limit`. `approaching` starts at the smaller of 1 GiB and 20% of the allowance.
   The browser does no capacity arithmetic.
+
+### A full budget evicts instead of stopping filler
+
+A full library budget never stops filler (#3855, decision 13 of #3838). The governor remembers the
+largest reservation it refused for `library_limit`, the **shortfall**: that reservation less the
+room the allowance has left, counting any overage as well (an allowance lowered below what the
+library holds). A reservation as large succeeding clears it, so work that stops asking stops freeing
+space. A refusal for `host_reserve` is never answered this way: the host's reserve is not the
+library's to spend.
+
+The hourly `filler-upkeep` job reads the shortfall after its other steps and, while it is
+positive, frees room in this order, stopping at the first rung that is enough:
+
+1. **Leftover download staging**, which the pass has already cleaned.
+2. **Rejects** Loomarr fetched, oldest first, without waiting out their week.
+3. **Clips that fit no live channel**, without waiting out their week. A holiday clip out of season
+   is not one: it is kept through the off-season (decision 9).
+4. **Surplus beyond the evening target**, most aired first. A channel's evening target is the pool
+   fetching already sizes it to (`PoolTargets.For`, from the household's longest watched evening
+   without a repeat, and 80 until it has four weeks of history). It keeps that many of the clips it
+   can air, nearest its era first and least aired first within an era rung; a clip kept by any
+   channel is not surplus. Aired counts are the household's, across channels.
+
+Never evicted, however large the shortfall: a clip a channel keeps for its target, a bumper or
+station ID a channel can air, a clip in a break on a channel's timeline from just before now to the
+end of the four-hour guide window (assembled as the guide assembles it), a pinned clip, and a clip
+added by hand (decision 15). With no live channel nothing is called idle, and with no timeline
+wired or no read of the channels or the coming breaks, no clip on air is evicted: rejects are the
+only rung that still runs.
+
+An eviction is a retire, as for a reject: in one transaction the clip is removed and reaped, its
+pipeline row records `files_deleted_at`, and a pin, a changed row or a hand-added clip refuses it.
+The row, fingerprint and airings stay, and the consumed acquisition still blocks a re-download. The
+files go to quarantine after the commit, so they count toward the budget until the day is up. Room
+asked for is therefore the shortfall less what quarantine already holds and what the pass emptied
+from it (the governor re-measures every ten minutes): asking again every hour must not evict twice
+for one refusal. A crash between the commit and the move leaves bytes on disk, and every pass moves
+the files of any clip already let go, whether or not a fetch is refused.
 
 **Two downloaders, two gates.** Archive.org needs only `ffmpeg`; YouTube needs `yt-dlp` and
 `ffmpeg`. Availability is reported per source, never as one blanket verdict, because a missing

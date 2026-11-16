@@ -8,6 +8,7 @@ package quarantine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -75,6 +76,35 @@ func (b Bin) Dispose(path string) error {
 		return os.RemoveAll(path)
 	}
 	return err
+}
+
+// Held is how many bytes wait in quarantine: space that is still counted against the filler
+// budget and frees itself within a day.
+func (b Bin) Held() (int64, error) {
+	var total int64
+	err := filepath.WalkDir(filepath.Join(b.root, DirName), func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.Type().IsRegular() {
+			info, err := d.Info()
+			if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				return err
+			}
+			total += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("measure quarantine: %w", err)
+	}
+	return total, nil
 }
 
 // Empty deletes every batch that has waited at least Hold and reports how many it deleted. A batch is

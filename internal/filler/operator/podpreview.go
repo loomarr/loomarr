@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/filler/clips"
 	"github.com/loomarr/loomarr/internal/filler/pod"
 	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
@@ -127,6 +128,39 @@ func (a PodPreview) ClipFit(ctx context.Context, clipPath string) (map[string]po
 	return out, nil
 }
 
+// liveChannels is the channels whose breaks are airing, with the selection each resolves to.
+//
+// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused, not
+// detached" (every managed state qualifies, drifted included — a transient "the guide is catching
+// up", not a channel that stopped airing). The pool strip and eviction both ask this, so a clip is
+// never called idle by one and in use by the other.
+func (a PodPreview) liveChannels(ctx context.Context) ([]pod.PoolChannel, error) {
+	chans, err := a.store.ListChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pod.PoolChannel, 0, len(chans))
+	for _, ch := range chans {
+		if !ch.Status.Reconcilable() {
+			continue
+		}
+		out = append(out, pod.PoolChannel{
+			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Selection: channels.SelectionForChannel(ch),
+		})
+	}
+	return out, nil
+}
+
+// Standing reads how the live channels stand toward the clips on air, for a full budget to evict
+// by (#3855): the clips that fit no channel, then the surplus beyond each channel's evening target.
+func (a PodPreview) Standing(ctx context.Context, airings []clips.Airing, spacing time.Duration, now time.Time) (pod.Standing, error) {
+	live, err := a.liveChannels(ctx)
+	if err != nil {
+		return pod.Standing{}, err
+	}
+	return a.pods.StandingFor(ctx, live, airings, spacing, now)
+}
+
 // Pool reports catalog-wide filler health for the Filler page's pool strip (§10 V35).
 //
 // ⚠ **Every per-channel number here comes from the SAME `Coverage` call the channel page makes**,
@@ -138,21 +172,9 @@ func (a PodPreview) ClipFit(ctx context.Context, clipPath string) (map[string]po
 // Paused and detached channels are excluded: their breaks are not airing, so counting them as
 // "uncovered" would report a problem the operator deliberately created.
 func (a PodPreview) Pool(ctx context.Context) (pod.PoolReport, error) {
-	chans, err := a.store.ListChannels(ctx)
+	poolChannels, err := a.liveChannels(ctx)
 	if err != nil {
 		return pod.PoolReport{}, err
-	}
-	// Only channels whose breaks are airing: Reconcilable is the one definition of "not paused,
-	// not detached" (every managed state qualifies, drifted included — a transient "the guide is
-	// catching up", not a channel that stopped airing).
-	poolChannels := make([]pod.PoolChannel, 0, len(chans))
-	for _, ch := range chans {
-		if !ch.Status.Reconcilable() {
-			continue
-		}
-		poolChannels = append(poolChannels, pod.PoolChannel{
-			ChannelID: ch.ID, Name: ch.Name, Number: ch.Number, Selection: channels.SelectionForChannel(ch),
-		})
 	}
 	// ⚠ ONE catalog load answers the counts and every channel's coverage (PoolFor), and each channel's
 	// number is the SAME `Coverage` derivation the channel page shows — the invariant this function

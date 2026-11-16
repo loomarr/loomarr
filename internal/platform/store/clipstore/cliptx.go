@@ -236,6 +236,16 @@ func (c ClipTx) Reap(ctx context.Context, hash string, untouchedSince, at time.T
 		epoch(at), epoch(at), epoch(at), hash, true, false, epoch(untouchedSince))
 }
 
+// RetireReady takes a clip that is on air off the catalog for good before its files are deleted, as
+// RetireDefectiveCopy does for a copy that failed the floor: removed, so nothing airs it, and
+// reaped, so a sync that no longer finds the file keeps the row. A clip that is held, composite,
+// already removed or already reaped is left alone and reports false.
+func (c ClipTx) RetireReady(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET removed_at = ?, reaped_at = ?, updated_at = ?
+		WHERE hash = ? AND held = ? AND removed_at = 0 AND is_composite = ? AND reaped_at IS NULL`,
+		epoch(at), epoch(at), epoch(at), hash, false, false)
+}
+
 // ClipPublication is what terminal readiness checks about a clip before publishing it.
 type ClipPublication struct {
 	Held, Removed, Composite bool
