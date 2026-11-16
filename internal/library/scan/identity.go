@@ -2,6 +2,7 @@ package scan
 
 import (
 	"path"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -182,6 +183,45 @@ func atoi(s string) int {
 // Which show an episode is, is seriesFolderOf's; what is no title at all (extras, samples, a
 // NAS's folders) the walk decides before this (walk.go's skippedDir, extras.go's extraName); a movie's or
 // show's search words and year are searchQuery's (match.go).
+// namedKey is all embeddedRecord reads of a file its folder's videos say nothing of together.
+type namedKey struct {
+	rel  string
+	part int
+	sole bool
+}
+
+type namedRecord struct {
+	record    mp.Record
+	seriesDir string
+}
+
+// namedOnce is embeddedRecord, answered once per file name for as long as the name stands. A file
+// a pass knows only from its row, as a folder pass knows every other file of its root, comes with
+// no folder notes; one with notes is named afresh, as they may have changed.
+func (im *Importer) namedOnce(file File) (mp.Record, string) {
+	if !reflect.ValueOf(file.Notes).IsZero() {
+		// A full pass sees the file still there: what a folder pass named it by its row stands.
+		bare := namedKey{rel: file.Rel}
+		if got, ok := im.named[bare]; ok && im.namedNow != nil {
+			im.namedNow[bare] = got
+		}
+		return embeddedRecord(file)
+	}
+	key := namedKey{rel: file.Rel, part: file.Part, sole: file.Sole}
+	got, ok := im.named[key]
+	if !ok {
+		got.record, got.seriesDir = embeddedRecord(file)
+		if im.named == nil {
+			im.named = map[namedKey]namedRecord{}
+		}
+		im.named[key] = got
+	}
+	if im.namedNow != nil {
+		im.namedNow[key] = got
+	}
+	return got.record, got.seriesDir
+}
+
 func embeddedRecord(file File) (mp.Record, string) {
 	file = regrouped(file)
 	segments := strings.Split(file.Rel, "/")

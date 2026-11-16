@@ -44,8 +44,10 @@ type seriesSeen struct {
 	itemID string
 	// sidecars are the series folder's own tvshow.nfo and folder art, stat'd once per pass. Each
 	// episode's identity digest includes them, so editing one rewrites the episodes and, through
-	// them, the series, in a full walk and a folder pass alike (#3226).
-	sidecars map[string]Stat
+	// them, the series, in a full walk and a folder pass alike (#3226). sidecarsRead is whether they
+	// are: only a file the pass writes needs them, so a folder pass reads no other show's folder.
+	sidecars     map[string]Stat
+	sidecarsRead bool
 	// last is the highest episode number on disk in each season, from every file the pass
 	// identified before writing any.
 	last map[int]int
@@ -197,12 +199,15 @@ func newBuilder(im *Importer, root string, idx managerIndex) *builder {
 	}
 }
 
-func (b *builder) identify(file File) identity {
+// identify reads what a file is from its name, its arr's record and its own NFO. One the pass
+// only sees beside those it walked (other) is never written, so it needs no digest, and its show's
+// folder is not read for it.
+func (b *builder) identify(file File, other bool) identity {
 	m := b.idx.byPath[file.Path]
 	for d := path.Dir(file.Rel); d != "." && !b.dirs[d]; d = path.Dir(d) {
 		b.dirs[d] = true
 	}
-	embedded, seriesDir := embeddedRecord(file)
+	embedded, seriesDir := b.im.namedOnce(file)
 	// A file whose name says nothing of an episode is one when its own NFO says so: a scraper
 	// placed it ("Kettle Bay - Tidewater.mkv" beside an <episodedetails>). So is a file only its
 	// folder places as an episode a film when its own NFO is a <movie>: "TV/Odd/abc123.mkv" beside
@@ -255,9 +260,11 @@ func (b *builder) identify(file File) identity {
 	if id.kind == mp.KindEpisode {
 		s := b.series[id.seriesDir]
 		if s == nil {
-			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}, years: map[int]int{}, named: map[string]int{},
-				sidecars: seriesFolderSidecars(filepath.Join(b.root, filepath.FromSlash(id.seriesDir)))}
+			s = &seriesSeen{dir: id.seriesDir, ids: embedded.Parent, last: map[int]int{}, years: map[int]int{}, named: map[string]int{}}
 			b.series[id.seriesDir] = s
+		}
+		if !other && !s.sidecarsRead {
+			s.sidecars, s.sidecarsRead = seriesFolderSidecars(filepath.Join(b.root, filepath.FromSlash(id.seriesDir))), true
 		}
 		seriesSidecars = s.sidecars
 		if m.series != nil {
@@ -275,7 +282,9 @@ func (b *builder) identify(file File) identity {
 		}
 		b.seen[seriesOrigin(b.root, id.seriesDir)] = true
 	}
-	id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
+	if !other {
+		id.digest = identityDigest(file, m, embedded, b.im.reader(), seriesSidecars)
+	}
 	return id
 }
 

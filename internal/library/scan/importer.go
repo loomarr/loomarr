@@ -131,6 +131,10 @@ type Importer struct {
 	listed func(root string)
 	// nfoRoots are the NFOs read for whether they say their file is an episode.
 	nfoRoots nfoRoots
+	// named are the records files' names gave (embeddedRecord), kept from one pass to the next
+	// under run: a folder pass identifies every other file of its root too, and its names have
+	// not changed. A full pass keeps only what it named.
+	named, namedNow map[namedKey]namedRecord
 
 	// run serializes every write to the Library: a pass's import of what it walked, and each header
 	// read's write. A full pass lists each root without it (importAll). The header stage waits for
@@ -312,6 +316,8 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		}
 	}()
 	im.setProgress(func(p *Progress) { p.Roots, p.ArrIncomplete = nil, false })
+	im.namedNow = map[namedKey]namedRecord{}
+	defer func() { im.namedNow = nil }()
 	// Its total is known once the roots are listed below.
 	im.Tracker.Begin(StepWalking, 0)
 	defer im.Tracker.End(StepWalking)
@@ -412,6 +418,8 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		queue = append(queue, waiting...)
 	}
 	im.setProgress(func(p *Progress) { p.Roots = results })
+	// The names this pass gave are the ones that stand; a name gone since the last is let go.
+	im.named, im.namedNow = im.namedNow, nil
 	return queue, nil
 }
 
@@ -679,7 +687,7 @@ func (im *Importer) importListed(ctx context.Context, root string, idx managerIn
 			continue
 		}
 		if rel, err := filepath.Rel(root, r.Path); err == nil {
-			others = append(others, b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)}))
+			others = append(others, b.identify(File{Path: r.Path, Rel: filepath.ToSlash(rel)}, true))
 		}
 	}
 	// Every file is identified before any is written, so an episode's series knows each season on
@@ -688,7 +696,7 @@ func (im *Importer) importListed(ctx context.Context, root string, idx managerIn
 	for i, file := range walk.Files {
 		// One listed late is identified, if still there, from its row among the others.
 		if file.Problem == "" && !listedLate(file.Path) {
-			ids[i] = b.identify(file)
+			ids[i] = b.identify(file, false)
 		}
 	}
 	b.splitNamed(ids, others)
