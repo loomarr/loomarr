@@ -21,6 +21,7 @@ type libraryFrames interface {
 	LibraryScanChanged(p scan.ProgressSnapshot)
 	LibraryTitlesChanged()
 	LibraryRootsChanged()
+	LibraryFolderSummarized(s scan.FolderSummary)
 }
 
 // libraryFramesFor is the Tracker that paces library_scan frames from what it records, and the

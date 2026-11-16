@@ -151,6 +151,21 @@ describe("LibraryTitle", () => {
     cleanup();
   });
 
+  it("names each part of a movie split over several files", () => {
+    const part = (n: number) =>
+      ({
+        ...MOVIE.files[0],
+        path: `/media/movies/Paper Kites (1996)/Paper Kites - cd${n}.mkv`,
+        part: n,
+      }) as LibraryTitleDetail["files"][number];
+    const { host, button, cleanup } = render({ ...MOVIE, files: [part(1), part(2)] });
+    act(() => button("Technical details").click());
+    expect(host.textContent).toContain("Part 1 of 2");
+    expect(host.textContent).toContain("Part 2 of 2");
+    expect(host.textContent).not.toContain("An extra copy");
+    cleanup();
+  });
+
   it("offers to remove an extra copy, and says when it couldn't", async () => {
     const extra = {
       ...MOVIE.files[0],
@@ -234,6 +249,20 @@ describe("LibraryTitle", () => {
     expect(host.textContent).toContain("Getting ready");
     // Only the episode getting ready twirls; the ready one beside it doesn't.
     expect(host.querySelectorAll('[data-testid="library-twirl"]').length).toBe(1);
+    cleanup();
+  });
+
+  it("shows no number for a special that has none", () => {
+    const unnumbered: LibraryTitleDetail = {
+      ...SERIES,
+      seasons: [
+        { number: 0, episodes: [{ id: "90000921", name: "Harbour - The Movie", number: 0, ready: true }] },
+      ],
+    };
+    const { host, button, cleanup } = render(unnumbered);
+    act(() => button("Specials").click());
+    expect(host.textContent).toContain("Harbour - The Movie");
+    expect(host.textContent).not.toContain("0Harbour - The Movie");
     cleanup();
   });
 

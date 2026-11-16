@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { WatchLine } from "./watch-line";
 
 // ⚠ The HEALTH RULE is not tested here, because it is not here. It briefly lived in a

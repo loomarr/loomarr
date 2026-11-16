@@ -14,6 +14,7 @@ import {
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHouseholdTimeZone } from "@/channels/use-household-time-zone";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { ServedImage } from "@/components/loomarr/served-image";
 import { useRouteContent } from "@/lib/use-route-content";
@@ -66,6 +67,7 @@ interface LibraryPageProps {
 const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const timeZone = useHouseholdTimeZone();
   const [typed, setTyped] = useState(search);
   const settled = useSettled(typed.trim());
   const needs = useLibraryNeeds();
@@ -195,6 +197,7 @@ const LibraryPage = ({ filter, search, view = "titles" }: LibraryPageProps) => {
           needsYou: needs.needs.length + needs.problems.length > 0,
           details: current.details,
         }}
+        timeZone={timeZone}
         titles={titles}
       />
     </>

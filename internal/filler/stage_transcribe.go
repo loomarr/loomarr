@@ -20,7 +20,7 @@ import (
 // It goes through the `MediaTools.Transcribe` seam, is selective about thin sources, and records
 // the `TranscriptNone` sentinel for a wordless clip.
 //
-// ⚠ **It runs before `tag`, and as a rung that ordering is now guaranteed rather than hoped for.**
+// ⚠ **It runs before `tag`, and as a rung that ordering is guaranteed rather than hoped for.**
 // The transcript is one of the text signals the tagger grounds against, so a tagger that runs
 // first scores a clip against a transcript that arrives ten minutes later — which is precisely
 // what two independent cron schedules produced. `StageOrder` states the dependency once.

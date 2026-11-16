@@ -6,10 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -77,36 +80,9 @@ var sortLetters = map[rune]string{'ø': "o", 'æ': "ae", 'œ': "oe", 'ß': "ss",
 func revision(st Stat) string { return fmt.Sprintf("stat:%d:%d", st.Size, st.ModifiedNs) }
 
 // writeVersion changes when what a write produces from the same inputs changes, so every file is
-// written once more with the new shape; its header is kept, so none is opened again.
-//
-//	2: titles name the catalog row their details come from (library_items.catalog).
-//	3: titles note their scan origin and whether anything grounds them (Needs you).
-//	4: titles note what said which title they are, and its page (Wrong title?).
-//	5: each origin notes where its shown details came from (Technical details).
-//	6: a file's origin notes whether its arr lists it (the copy that plays).
-//	7: a multi-episode file carries every episode's ids, not only its first's.
-//	8: extras are not titles (0047); the digest drops what only an extra used.
-//	9: NFOs are read in full (decision 59): older id tags, tags, ratings, people and sets.
-//	10: a movie's or series' origin carries how it is listed; the store projects its row (0047).
-//	12: every title, episodes too, is listed with its facts and who supplied each (decision 40).
-//	13: an episode with a TVDB id asks the catalog for TMDB's view of it (decision 53).
-//	14: every title's files, tracks and artwork are listed with it (decisions 41, 44).
-//	15: an episode with no TVDB id takes TMDB's entry for its season and number, when TMDB numbers
-//	    the series as the disk does (decision 53).
-//	16: an audio track whose container states no channel layout is labelled as ffmpeg states it.
-//	17: a movie's file notes its edition, and each edition has its own copy that plays (decision 54).
-//	18: a series carries a poster for each season it has one for (decisions 45, 61).
-//	19: a file notes the trickplay files beside it (decision 61).
-//	20: a file notes its external subtitle and audio files and its .edl markers, and lists its
-//	    chapters and its tracks' commentary, SDH and descriptive flags (decisions 45, 46, 61).
-//	21: a title lists every studio or network, and its tagline, countries and trailer (decision 46).
-//	22: a title lists its people with their role, character, TMDB id and photo (decision 49).
-//	23: a movie's set is listed as the catalog row the catalog provider fetches it by.
-//	24: a person is linked by any catalog's id (namespace and value), not a TMDB id.
-//	25: an episode its show's catalog can't number is marked, and one whose show has an answer is
-//	    numbered by the order picked (decision 53).
-//	26: a title sorts by its letters with the accents taken off ("À Nous" under A).
-const writeVersion = 26
+// written once more with the new shape; its header is kept, so none is opened again. What each
+// version changed is in docs/design/library.md, "Write versions".
+const writeVersion = 87
 
 // identityDigest digests everything that says what a file is, so a change to any of it, and
 // nothing else, rewrites the file's inventory item. reader is the header.Version, so a reader that
@@ -121,7 +97,11 @@ func identityDigest(file File, m managed, embedded mp.Record, reader int, series
 		Embedded       mp.Record
 		Sidecars       map[string]Stat
 		SeriesSidecars map[string]Stat `json:",omitempty"`
-	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars})
+		// Notes can number a file differently when a file beside it comes or goes.
+		Notes folderNotes `json:",omitzero"`
+		// Part changes when another part of its movie comes or goes.
+		Part int `json:",omitzero"`
+	}{writeVersion, reader, m.records, m.series, embedded, file.Sidecars, seriesSidecars, file.Notes, file.Part})
 	digest := sha256.Sum256(payload)
 	return hex.EncodeToString(digest[:16])
 }
@@ -160,9 +140,8 @@ type DetailsFrom struct {
 type originExtension struct {
 	From DetailsFrom `json:"from"`
 	fileNotes
-	// Listed is how a title is listed in the Library; nil for an origin written before it carried
-	// one (a movie or series before write version 10, an episode before 12), whose row stays as it
-	// was until it is written again.
+	// Listed is how a title is listed in the Library; nil for an origin written before origins
+	// carried one, whose row stays as it was until it is written again.
 	Listed *listedExtension `json:"listed,omitempty"`
 }
 
@@ -173,6 +152,8 @@ type fileNotes struct {
 	Managed bool `json:"managed,omitempty"`
 	// Edition is the labelled version of a movie this file is, "" for the default (decision 54).
 	Edition string `json:"edition,omitempty"`
+	// Part is which part of a movie in parts this file is, from 1; 0 for a whole file.
+	Part int `json:"part,omitempty"`
 	// Trickplay are the trickplay files beside it, by path: referenced, never imported (decision 61).
 	Trickplay []string `json:"trickplay,omitempty"`
 	// External are the subtitle and audio files beside it, as their names describe them; Markers
@@ -196,11 +177,11 @@ type listedExtension struct {
 
 // originExtensionOf is res's provenance, how the title is listed (series is an episode's series
 // origin) and what the scanner notes about the file, as an origin's Observation.Extension. Only a
-// movie has an edition.
+// movie has an edition or parts.
 func originExtensionOf(kind mp.Kind, res resolution, series inventory.OriginKey, file fileNotes) json.RawMessage {
 	r := res.resolved
 	if kind != mp.KindMovie {
-		file.Edition = ""
+		file.Edition, file.Part = "", 0
 	}
 	ext := originExtension{From: DetailsFrom{
 		Name: r.Title.From.Provider, Description: r.Overview.From.Provider, Rating: r.Certification.From.Provider,
@@ -226,10 +207,20 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 	if item.Kind != kindMovie && item.Kind != kindSeries && item.Kind != kindEpisode {
 		return librarystore.LibraryItem{}, false
 	}
-	// Present beats missing, then newer beats older; the key breaks a tie, so the pick is stable.
+	// Present beats missing, then a copy grounded in the catalog beats one known only by its name
+	// (two copies of one title, one with an NFO naming its TMDB id: the title is named by that one,
+	// whichever copy was written last), then newer beats older; the key breaks a tie, so the pick is
+	// stable.
+	grounded := func(o inventory.ItemOrigin) bool {
+		listed := readOriginExtension(o.Observation.Extension).Listed
+		return listed != nil && listed.Catalog.String() != ""
+	}
 	better := func(o, than inventory.ItemOrigin) bool {
 		if o.MissingAt.IsZero() != than.MissingAt.IsZero() {
 			return o.MissingAt.IsZero()
+		}
+		if g := grounded(o); g != grounded(than) {
+			return g
 		}
 		if !o.Observation.ObservedAt.Equal(than.Observation.ObservedAt) {
 			return o.Observation.ObservedAt.After(than.Observation.ObservedAt)
@@ -276,7 +267,11 @@ func ProjectLibraryItem(item inventory.Item) (librarystore.LibraryItem, bool) {
 		}
 	}
 	for _, id := range item.ExternalIDs {
-		it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		// A movie in parts' own mark, and an episode's or a film's copies', only hold them
+		// together; no catalog knows them.
+		if id.Namespace != partsNamespace && id.Namespace != copiesNamespace && id.Namespace != filmCopiesNamespace {
+			it.IDs = append(it.IDs, librarystore.LibraryID{Namespace: id.Namespace, Value: id.Value})
+		}
 	}
 	for _, a := range facts.Artwork {
 		it.Art = append(it.Art, librarystore.LibraryArt{Kind: a.Kind, Season: a.Season, Ref: a.Ref})
@@ -304,7 +299,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 			}
 			f := o.Observation.Facts
 			src := librarystore.LibrarySource{Path: o.Locator.Path, Container: f.Container, SizeBytes: f.SizeBytes,
-				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition}
+				Bitrate: f.Bitrate, DurationMs: f.DurationMillis, Edition: exts[o.Key].Edition, Part: exts[o.Key].Part}
 			for _, ref := range exts[o.Key].Trickplay {
 				src.Trickplay = append(src.Trickplay, librarystore.LibraryTrickplay{Ref: ref, Format: "bif"})
 			}
@@ -331,6 +326,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 	}
 	slices.SortFunc(files, func(a, b file) int { return strings.Compare(a.src.Path, b.src.Path) })
 	plays := playingCopies(len(files), func(i int) string { return files[i].src.Edition },
+		func(i int) int { return files[i].src.Part },
 		func(i int) bool { return files[i].managed }, func(i int) int {
 			for _, st := range files[i].src.Streams {
 				if st.Kind == string(inventory.StreamVideo) {
@@ -338,7 +334,7 @@ func librarySources(item inventory.Item) []librarystore.LibrarySource {
 				}
 			}
 			return 0
-		}, func(i int) int64 { return files[i].src.SizeBytes })
+		}, func(i int) int64 { return files[i].src.SizeBytes }, func(i int) int64 { return files[i].src.DurationMs })
 	out := make([]librarystore.LibrarySource, len(files))
 	for i, f := range files {
 		out[i] = f.src
@@ -355,6 +351,7 @@ func libraryStream(st inventory.Stream) librarystore.LibraryStream {
 		Commentary: st.Disposition.Comment, HearingImpaired: st.Disposition.HearingImpaired,
 		Descriptive: st.Disposition.VisualImpaired,
 		Channels:    st.Channels, ChannelLayout: st.ChannelLayout, SampleRate: st.SampleRate,
+		BitRate: st.BitRate, BitDepth: st.BitDepth,
 		Width: st.Width, Height: st.Height, FrameRate: st.FrameRate, PixelFormat: st.PixelFormat,
 		ColorTransfer: st.ColorTransfer,
 	}
@@ -463,11 +460,267 @@ func sourceSnapshot(file File, read *inventory.SourceFacts, version int, at time
 	}
 }
 
-// fallbackName is a title from a file name when no source names the item.
-func fallbackName(rel string) string {
-	name := rel[strings.LastIndex(rel, "/")+1:]
-	if dot := strings.LastIndex(name, "."); dot > 0 {
-		name = name[:dot]
+var (
+	// makeMKVTitle matches MakeMKV's mark for a title it ripped, at a name's end: "title_t00",
+	// "GILDED_MOOR_t01", and its older versions' "title00".
+	makeMKVTitle = regexp.MustCompile(`(?i)(?:^title_?t?|_t)\d{2}$`)
+	// discLabel matches the disc's place, or its screen's shape, a disc's label ends in: "OSTREVIN
+	// D1", "OSTREVIN DISC 2", "GLOAM RISE WS", "GLOAM RISE FS".
+	discLabel = regexp.MustCompile(`(?i)[ ]+(?:d(?:isc)?[ ]?\d|ws|fs|widescreen|fullscreen)$`)
+)
+
+// genericStem matches a file's name that says what it is, never which: "movie", "film", "video",
+// "main", "feature", "main feature", "1", "01", and a DVD's title set copied out of its disc,
+// "VTS_01_1".
+var genericStem = regexp.MustCompile(`(?i)^(?:movie|film|video|main|feature|main[ ._-]?feature|the[ ._-]movie|\d{1,2}|vts[ ._]\d{2}[ ._]\d)$`)
+
+// runsOn says whether a title is another's with more words after it: "Brook 2" and "Heath Part 2"
+// run on from "Brook" and "Heath".
+// filmFolder is the folder that names the film a file in dir is: dir, or the film's folder above a
+// disc's or a version's own, which names no film ("Holm Fen (2004)/Disc 1/", "Ashlee Vane
+// (2015)/4K/").
+func filmFolder(dir string) string {
+	for dir != "." && path.Dir(dir) != "." {
+		words := strings.Fields(folderKey(path.Base(dir)))
+		if !partFolder.MatchString(path.Base(dir)) && (len(words) == 0 || slices.ContainsFunc(words, func(w string) bool { return !releaseToken(w) })) {
+			break
+		}
+		dir = path.Dir(dir)
 	}
-	return strings.TrimSpace(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), ""))
+	return dir
+}
+
+// abbreviates says whether code, one word of two to five letters, shortens a name of two words or
+// more: its letters run through the name's in order, the first its first. "atc" shortens "Ashtree
+// Combe", "cwf" "Corwen Fields"; "Up" is no shortening of one word, "Upside".
+func abbreviates(code, name string) bool {
+	code = strings.ToLower(code)
+	if n := utf8.RuneCountInString(code); n < 2 || n > 5 || strings.ContainsFunc(code, func(r rune) bool { return !unicode.IsLetter(r) }) {
+		return false
+	}
+	words := strings.Fields(normName(name))
+	// A word of the name, or the start of its first, is a title of its own: "Brisk" in "Brisk
+	// Trilogy/" is one of its films.
+	if len(words) < 2 || slices.Contains(words, code) || strings.HasPrefix(words[0], code) {
+		return false
+	}
+	letters := []rune(strings.Join(words, ""))
+	want := []rune(code)
+	if letters[0] != want[0] {
+		return false
+	}
+	at := 0
+	for _, r := range letters {
+		if at < len(want) && r == want[at] {
+			at++
+		}
+	}
+	return at == len(want)
+}
+
+func runsOn(title, other string) bool {
+	words, own := strings.Fields(normName(title)), strings.Fields(normName(other))
+	return len(own) > 0 && len(words) > len(own) && slices.Equal(words[:len(own)], own)
+}
+
+// duplicateMark is the word a file manager adds to a duplicated file, after the film's year:
+// "Kilo (2016) copy", "Kilo (2016) copy 2", "Kilo (2016) - Copy (2)". Only after a year, so a
+// title that holds the word ("Certified Copy (2010)") keeps it. Every copy of one film is then
+// named alike, whichever file the item takes its name from (#4010).
+var duplicateMark = regexp.MustCompile(`(?i)(\(\d{4}\))\s*(?:-\s*)?copy(?:\s*\(?\d+\)?)?$`)
+
+// markSpan is where an episode's mark is in its file's name (markIn), with the further episodes of
+// a file holding several: "S01E04-E05", "1x04-1x05".
+func markSpan(name string) (start, end int, ok bool) {
+	m := markIn(name)
+	if m == nil {
+		return 0, 0, false
+	}
+	// From the "S" or "T" before the season to the episode's number, or a "1x02" whole.
+	more, start, end := moreEpisodesS, m[2]-1, m[5]
+	if m[2] < 0 {
+		more, start, end = moreEpisodesX, m[6], m[9]
+	}
+	for {
+		next := more.FindStringIndex(name[end:])
+		if next == nil {
+			next = moreBare.FindStringIndex(name[end:])
+		}
+		if next == nil || next[1] == 0 {
+			return start, end, true
+		}
+		end += next[1]
+	}
+}
+
+// episodeName is what an episode's file calls it until a catalog does: what follows its own mark,
+// its release's notes set aside. "Kettle Bay (2005) - S01E03 - The Long Tide [WEBDL-1080p]" is "The
+// Long Tide". A name whose mark has no title after it, "Golf Show (2005) S01E02 [HDTV-720p]", is
+// the show and its mark, "Golf Show S01E02". A name with no mark, "Kettle Bay - Holiday Special
+// [1080p]" in its Specials, is what follows its show's name: "Holiday Special".
+func episodeName(rel, name string) string {
+	if start, end, ok := markSpan(name); ok {
+		mark := strings.Trim(name[start:end], " ._-[]()")
+		if title, ok := titleIn(name[end:]); ok {
+			return title
+		}
+		if title, _, _ := searchQuery(name[:start], 0); title != "" {
+			return title + " " + mark
+		}
+		return mark
+	}
+	for d := path.Dir(rel); d != "."; d = path.Dir(d) {
+		if folder := showFolderName(path.Base(d)); folder != "" {
+			if m := showPrefix(folder).FindStringIndex(name); m != nil {
+				// A dated episode's title follows its day, "Kettle Bay - 2014-04-04 - Low Tide";
+				// the day is its premiere date, listed apart. The show's name may read the day's
+				// year as its own ("Kettle.Bay.2014.04.04.Low.Tide"), so the day may start before
+				// the name ends.
+				if d := nameDay.FindStringSubmatchIndex(name); d != nil && d[2] >= m[0] && d[2] <= m[1] && d[3] > m[1] {
+					if title, ok := titleIn(name[d[1]:]); ok {
+						return title
+					}
+				}
+				if title, ok := titleIn(name[m[1]:]); ok {
+					return title
+				}
+				break
+			}
+		}
+	}
+	if title, _, _ := searchQuery(name, 0); title != "" {
+		return title
+	}
+	return name
+}
+
+// titleIn is the title in what follows an episode's mark or its show's name, read as a search reads
+// it, when there is one and not only the release's notes. A year last in it, not bracketed, is the
+// title's: "Airport 2010", "March 8 1983". An episode's release year comes before its mark.
+func titleIn(rest string) (string, bool) {
+	rest = trimReleaseNotes(strings.Trim(rest, " ._-"))
+	if onlyReleaseNotes(rest) {
+		return "", false
+	}
+	title, _, whole := searchQuery(rest, 0)
+	return cmp.Or(whole, title), title != ""
+}
+
+// bracketedYear is a year written as a show's folder writes it: "(2005)", "[2005]".
+var bracketedYear = regexp.MustCompile(`^[(\[](?:19|20)\d{2}[)\]]$`)
+
+// nameDay is a day a dated episode's name gives (its first group), with the separators after it:
+// "2014-04-04 - ", "2014.04.04.".
+var nameDay = regexp.MustCompile(`(?:^|[ ._-])((?:19|20)\d{2}[-. ]\d{2}[-. ]\d{2})(?:[ ._]*-[ ._]*|[ ._]+|$)`)
+
+// onlyReleaseNotes says whether what follows an episode's mark starts with a word only a release
+// carries (releaseMark), so it holds the release's notes and no title: "[HDTV-720p]",
+// "720p.HDTV.x264-GRP". A word a title may carry too (releaseWord) doesn't say so.
+func onlyReleaseNotes(s string) bool {
+	words := strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune(" ._[](){}", r) })
+	if len(words) == 0 {
+		return true
+	}
+	first, _, _ := strings.Cut(words[0], "-")
+	return releaseMark.MatchString(words[0]) || releaseMark.MatchString(first)
+}
+
+// showPrefix matches a show's name at the start of one of its files' names, written with any of
+// the separators names use between its words, with the show's year after it if the name has one,
+// and the separators after that: "Kettle Bay (2005) - ", "Kettle.Bay.".
+func showPrefix(show string) *regexp.Regexp {
+	words := strings.FieldsFunc(show, func(r rune) bool { return strings.ContainsRune(" ._-", r) })
+	// The folder's year, "Kettle Bay (2005)", is the optional one after the name: a file may leave
+	// it out.
+	if n := len(words); n > 1 && bracketedYear.MatchString(words[n-1]) {
+		words = words[:n-1]
+	}
+	for i, w := range words {
+		words[i] = regexp.QuoteMeta(w)
+	}
+	return regexp.MustCompile(`(?i)^` + strings.Join(words, `[ ._-]+`) +
+		`(?:[ ._]*[(\[]?(?:19|20)\d{2}[)\]]?)?(?:[ ._]*-[ ._]*|[ ._]+)`)
+}
+
+// fallbackName is a title from a file name when no source names the item. A movie whose file name
+// has no year, in a folder whose name has one ("Ashgrove (2015)/asg-1080p.mkv"), is named by the
+// folder: a release or rip names its folder and leaves the file a code. A part of a movie in parts
+// (part > 0) is named without its part mark; one whose part has a folder of its own ("CD1/") is
+// named by the movie's folder, the one name all its parts share. An episode is named by its file's
+// title (episodeName).
+//
+// sole says the file is its folder's only video. Beside others, a name that is no film's own
+// (bonusBeside), "Gale Spit (2004)/Cast Q and A.mkv" or "…/Return to Gale Spit.mkv", keeps its own:
+// a bonus feature named by the folder would be a second copy of the film, and a film kept there
+// is its own title. Either is listed, never skipped.
+func fallbackName(rel string, kind mp.Kind, part int, sole bool) string {
+	clean := func(name string) string {
+		name = strings.Join(strings.Fields(editionTag.ReplaceAllString(embeddedID.ReplaceAllString(name, ""), "")), " ")
+		return duplicateMark.ReplaceAllString(name, "$1")
+	}
+	// The name keeps its release's notes, which the catalog's search sets aside; what the name is
+	// is read without them ("bc [1080p]" is the folder's initials).
+	name, plain := stem(path.Base(rel)), plainStem(path.Base(rel))
+	if part > 0 {
+		name, plain = withoutPart(name), withoutPart(plain)
+		if dir := path.Dir(rel); partFolder.MatchString(path.Base(dir)) && path.Dir(dir) != "." {
+			return clean(path.Base(path.Dir(dir)))
+		}
+	}
+	if kind == mp.KindEpisode {
+		return clean(episodeName(rel, name))
+	}
+	// A recorder names a film it recorded by the film, then its channel and when it began: "Iron
+	// Spire (2011)_Film4_2022_05_01_21_00_00" and "Grey Harbour (1958) 2022-01-01" are "Iron Spire
+	// (2011)" and "Grey Harbour (1958)".
+	if kind == mp.KindMovie && recordedFilm(plain, path.Dir(rel)) {
+		return clean(recordedTitle(plain))
+	}
+	if kind == mp.KindMovie && (recording.MatchString(plain) || recordedAt.MatchString(plain)) {
+		return clean(datedShow(plain))
+	}
+	// MakeMKV names a title it rips "title_t00", or its disc's label and "_t00": the label, or
+	// the folder it was ripped into, names the film ("GILDED_MOOR/title_t00.mkv").
+	if m := makeMKVTitle.FindStringSubmatchIndex(plain); m != nil && kind == mp.KindMovie {
+		label := strings.Trim(strings.ReplaceAll(plain[:m[0]], "_", " "), " ")
+		dir := filmFolder(path.Dir(rel))
+		// A label that is the film's own folder's title, "Ferrisdale (1996)/Ferrisdale_t00", takes
+		// the folder's name, year and all.
+		title, year, _ := searchQuery(path.Base(dir), 0)
+		if dir != "." && !shelfAt(dir) &&
+			(len(label) <= 3 || strings.EqualFold(label, "title") || year != 0 && sameWords(discLabel.ReplaceAllString(label, ""), title)) {
+			label = strings.ReplaceAll(path.Base(dir), "_", " ")
+		}
+		return clean(discLabel.ReplaceAllString(label, ""))
+	}
+	// A camera's clip is its own video, never the film its folder ("Holiday 2018/") seems to name.
+	if dir := filmFolder(path.Dir(rel)); kind == mp.KindMovie && dir != "." && !cameraClip.MatchString(plain) {
+		folder := clean(path.Base(dir))
+		// A file named by its folder's initials, "Brindle Cove/bc.mkv", is named by the folder.
+		// So is one named by what it is rather than what it is called: "Pikestaff/movie.mkv",
+		// "Pikefen/1.mkv", "main.mkv", "feature.mkv".
+		// So is one a release shortened past knowing, "Corwick Dene/CD.1080p.mkv", "Ashtree
+		// Combe/atc.mkv": a code whose letters run through the folder's name from its first.
+		code, _, _ := searchQuery(name, 0)
+		if !catchAllFolder(folder) && (len(plain) > 1 && strings.EqualFold(plain, initials(folder)) || genericStem.MatchString(plain) ||
+			abbreviates(code, folder)) {
+			return folder
+		}
+		// A sequel kept in the first film's folder, "Brook (2010)/Brook 2.mkv", says more than the
+		// folder's title: it is its own.
+		if fileTitle, fileYear, _ := searchQuery(name, 0); fileYear == 0 {
+			if title, year, _ := searchQuery(folder, 0); year != 0 && title != "" && !runsOn(fileTitle, title) &&
+				(sole || !bonusBeside(path.Base(dir), path.Base(rel))) {
+				return folder
+			}
+		} else if title, year, _ := searchQuery(folder, 0); year == fileYear &&
+			(runsOn(title, fileTitle) || sameWords(title, fileTitle) && !sameWords(name, path.Base(dir))) {
+			// A release's file named short, "Wren.Harbor.2003…-GRP/wren.2003.1080p.mkv", is the film
+			// its folder names in full, of the same year; so is one named as its folder, then its
+			// release's notes, "Gorse Hollow (1990) - X265 EAC3 5.1". One named just as its folder
+			// is, "ashgrove (2015)", keeps its own.
+			return folder
+		}
+	}
+	return clean(name)
 }

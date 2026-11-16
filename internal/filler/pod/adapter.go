@@ -504,15 +504,19 @@ func (a *Adapter) CoverageFrom(clips []Clip, channelID string, sel Selection) Co
 // than loading the catalog: the caller (the picker) already has it, and re-reading the whole
 // catalog once per channel row would make an N-channel picker an N-catalog-load operation.
 func (a *Adapter) FitForChannel(channelID string, sel Selection, c Clip) Fit {
+	return FitFor(c, a.fitWindow(channelID, sel, time.Time{}), a.pol())
+}
+
+// fitWindow is the window fit is asked against: one channel's selection in the season of `at`
+// (the clock's now when zero). Seed 0, for CoverageFor's reason: fit is a property of the clip and
+// the selection, never of one break, so a real seed would imply an answer that varies per pod.
+func (a *Adapter) fitWindow(channelID string, sel Selection, at time.Time) Window {
 	pol := a.pol()
-	breakDurationMs := effectiveBreakDurationMs(sel, pol)
 	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4
 	}
-	// Seed 0, for CoverageFor's reason: fit is a property of the clip and the selection, never
-	// of one break, so a real seed would imply an answer that varies per pod.
-	return FitFor(c, a.windowFor(channelID, 0, sel, podMax, breakDurationMs, a.seasonAt(pol, time.Time{})), pol)
+	return a.windowFor(channelID, 0, sel, podMax, effectiveBreakDurationMs(sel, pol), a.seasonAt(pol, at))
 }
 
 // PoolCounts reports the catalog-wide half of the pool strip (§10 V35) — how much material

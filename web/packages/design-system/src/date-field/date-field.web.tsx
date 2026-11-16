@@ -2,7 +2,7 @@
 import { useThemeName } from "@tamagui/core";
 import { useId, useState } from "react";
 
-import { Text } from "../primitives";
+import { Text } from "../text";
 import { semanticRadius, semanticSpace, semanticTargets, typography } from "../tokens";
 import type { DateFieldProps } from "./date-field.type";
 

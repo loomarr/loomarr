@@ -99,7 +99,7 @@ type enqueueInput struct {
 		TVDBID    int    `json:"tvdbId,omitempty"`
 		Name      string `json:"name,omitempty"`
 		Year      int    `json:"year,omitempty"`
-		Seasons   []int  `json:"seasons,omitempty"`
+		Seasons   []int  `json:"seasons,omitempty" maxItems:"200"` // the longest-running series has about sixty seasons
 	}
 }
 type titleOutput struct{ Body TitleDTO }

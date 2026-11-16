@@ -88,16 +88,6 @@ const parseMmSs = (text: string): number | undefined => {
   return (Number(m[1]) * 60 + Number(m[2])) * 1000;
 };
 
-// "8:00 PM" for the EPG. Fixed 12-hour, zero-padded minutes, locale-independent.
-const formatEpgTime = (t: Instant): string => {
-  const d = new Date(msOf(t));
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12 || 12;
-  return `${h}:${String(m).padStart(2, "0")} ${ampm}`;
-};
-
 // A 0–1 ratio as a percentage: 0.87 → "87%". The domain is documented and enforced
 // here BECAUSE it is ambiguous: the suggester's confidence is a ratio, while the LLM
 // pull's progress is already 0–100. Two conventions with no named helper is how one
@@ -254,8 +244,9 @@ const humanizeRelaxation = (step: { kind: string; from: string; to: string }) =>
 //
 // Our tracks carry ISO 639-2 (3-letter, "eng"); Intl prefers 639-1 but accepts many 3-letter
 // codes. Where it can't resolve one it returns the input unchanged, so we fall back to the
-// upper-cased code. Intl.DisplayNames throws on a malformed code, and very old runtimes lack it,
-// so both are guarded; the one instance is created lazily and reused.
+// upper-cased code. Intl.DisplayNames throws on a malformed code, and a runtime can lack it, so
+// both are guarded; the one instance is created lazily and reused. Hermes lacks it: the native
+// apps install it from @loomarr/native-app (src/intl-polyfills) before any screen draws.
 let displayNames: Intl.DisplayNames | undefined;
 let displayNamesInitialised = false;
 
@@ -318,7 +309,6 @@ export {
   formatClipDuration,
   formatCompactCount,
   formatDuration,
-  formatEpgTime,
   formatGiB,
   formatMmSs,
   formatPercent,

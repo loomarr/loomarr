@@ -3,7 +3,7 @@ import type { FillerProviderDescriptionDTO } from "@loomarr/api/models/fillerPro
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Action, Field, PressableRow } from "@loomarr/design-system";
+import { Action, Combobox, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +19,9 @@ interface ProviderSourceFinderProps {
 // provider's rule, so it is the same for every provider.
 const SEARCH_PAUSE_MS = 500;
 
+const suggestionValue = (suggestion: FillerSourceSuggestionDTO) =>
+  `${suggestion.provider}:${suggestion.canonicalId}`;
+
 // One search-or-paste field for one provider. Search and exact resolution are deliberately
 // read-only; the separate final button is the only action that registers background work.
 //
@@ -27,14 +30,12 @@ const SEARCH_PAUSE_MS = 500;
 const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) => {
   const kind = provider.id;
   const minimumQueryLength = provider.findMinQuery ?? 2;
-  const listID = useId();
   const inputID = useId();
   const currentInput = useRef("");
   const resolveGeneration = useRef(0);
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [active, setActive] = useState(-1);
   const [selected, setSelected] = useState<FillerSourceSuggestionDTO>();
   const [verified, setVerified] = useState(false);
 
@@ -115,7 +116,6 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
     setVerified(false);
     currentInput.current = suggestion.title;
     setInput(suggestion.title);
-    setActive(-1);
     resolveInput(suggestion.canonicalUrl);
   };
 
@@ -126,7 +126,6 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
     setDebounced("");
     setSelected(undefined);
     setVerified(false);
-    setActive(-1);
     document.getElementById(inputID)?.focus();
   };
 
@@ -159,53 +158,51 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
 
   return (
     <div className="mt-3 max-w-2xl">
-      <form
-        className="flex flex-col gap-2 sm:flex-row"
+      <Stack
+        direction={{ base: "column", sm: "row" }}
+        gap="2"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
+        render="form"
       >
         <div className="min-w-0 flex-1">
-          <Field
-            accessibilityLabel={provider.findLabel}
-            aria-activedescendant={active >= 0 ? `${listID}-${active}` : undefined}
-            aria-autocomplete="list"
-            aria-controls={listID}
-            aria-expanded={showSuggestions && suggestions.length > 0}
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect={false}
+          {/* No option is highlighted until the arrow keys move there, so Enter on typed words still
+              submits the form (a search), and on a highlighted suggestion picks it. */}
+          <Combobox
             disabled={!enabled}
+            emptyText={
+              showSuggestions && !suggestionsQuery.isFetching && debounced.length >= minimumQueryLength
+                ? provider.findNoMatches
+                : undefined
+            }
             id={inputID}
-            onChangeText={(text) => {
+            inputValue={input}
+            label={provider.findLabel ?? "Find a source"}
+            loading={showSuggestions && suggestionsQuery.isFetching && suggestions.length === 0}
+            onInputValueChange={(text) => {
               resolveGeneration.current += 1;
               currentInput.current = text;
               setInput(text);
               setSelected(undefined);
               setVerified(false);
-              setActive(-1);
             }}
-            onKeyPress={(event) => {
-              const key = event.nativeEvent.key;
-              if (!showSuggestions || suggestions.length === 0) return;
-              if (key === "ArrowDown") {
-                event.preventDefault();
-                setActive((current) => Math.min(current + 1, suggestions.length - 1));
-              } else if (key === "ArrowUp") {
-                event.preventDefault();
-                setActive((current) => Math.max(current - 1, 0));
-              } else if (key === "Escape") {
-                setActive(-1);
-              } else if (key === "Enter" && active >= 0) {
-                event.preventDefault();
-                const choice = suggestions[active];
-                if (choice) choose(choice);
-              }
+            onSelect={(option) => {
+              const choice = suggestions.find((suggestion) => suggestionValue(suggestion) === option.value);
+              if (choice) choose(choice);
             }}
+            options={
+              showSuggestions
+                ? suggestions.map((suggestion) => ({
+                    description: suggestion.description || suggestion.canonicalId,
+                    label: suggestion.title,
+                    trailing: suggestion.alreadyAdded ? "Added" : targetLabel(suggestion),
+                    value: suggestionValue(suggestion),
+                  }))
+                : []
+            }
             placeholder={provider.findPlaceholder}
-            role="combobox"
-            value={input}
           />
         </div>
         <Action
@@ -231,65 +228,31 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
                   ? provider.findAdd
                   : "Search"}
         </Action>
-      </form>
+      </Stack>
 
       {!enabled && (
-        <p className="text-muted-foreground mt-2 text-xs">Resume this service to find a source.</p>
-      )}
-
-      {showSuggestions && (
-        <div
-          id={listID}
-          role="listbox"
-          aria-label={`${provider.findLabel} results`}
-          className="border-border bg-popover mt-1 max-h-72 w-full overflow-y-auto rounded-lg border p-1"
-        >
-          {suggestionsQuery.isFetching && suggestions.length === 0 && (
-            <p className="text-muted-foreground px-3 py-2 text-sm">Searching…</p>
-          )}
-          {!suggestionsQuery.isFetching &&
-            suggestions.length === 0 &&
-            debounced.length >= minimumQueryLength && (
-              <p className="text-muted-foreground px-3 py-2 text-sm">{provider.findNoMatches}</p>
-            )}
-          {suggestions.map((suggestion, index) => (
-            <PressableRow
-              accessibilityRole="option"
-              id={`${listID}-${index}`}
-              key={`${suggestion.provider}:${suggestion.canonicalId}`}
-              onHoverIn={() => setActive(index)}
-              onPress={() => choose(suggestion)}
-              selected={active === index}
-            >
-              <span className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-sm font-medium">{suggestion.title}</span>
-                <span className="text-muted-foreground block truncate text-xs">
-                  {suggestion.description || suggestion.canonicalId}
-                </span>
-              </span>
-              <span className="text-muted-foreground shrink-0 text-xs">
-                {suggestion.alreadyAdded ? "Added" : targetLabel(suggestion)}
-              </span>
-            </PressableRow>
-          ))}
-        </div>
+        <Text as="p" className="mt-2" textRole="hint" tone="secondary">
+          Resume this service to find a source.
+        </Text>
       )}
 
       {selected && (
         <div className="bg-muted/35 mt-2 rounded-lg px-3 py-2">
-          <div className="flex items-start justify-between gap-4">
+          <Stack align="start" direction="row" gap="4" justify="between">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{selected.title}</p>
+              <Text as="p" className="truncate" textRole="cardLabel">
+                {selected.title}
+              </Text>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="text-muted-foreground text-xs">
+            <Stack align="center" direction="row" flexShrink={0} gap="inline">
+              <Text as="span" textRole="hint" tone="secondary">
                 {selected.alreadyAdded ? "Already added" : targetLabel(selected)}
-              </span>
+              </Text>
               <Action onPress={cancelSelection} variant="ghost">
                 Cancel
               </Action>
-            </div>
-          </div>
+            </Stack>
+          </Stack>
           <SourceContentPreview
             provider={provider}
             canonicalUrl={selected.canonicalUrl}
@@ -299,19 +262,19 @@ const ProviderSourceFinder = ({ provider, enabled }: ProviderSourceFinderProps) 
           {verified &&
             !selected.alreadyAdded &&
             (!selected.previewItems || selected.previewItems.length === 0) && (
-              <p className="text-muted-foreground mt-2 text-xs">
+              <Text as="p" className="mt-2" textRole="hint" tone="secondary">
                 Loomarr checks a few new items at a time, and reviews every clip before it can play.
-              </p>
+              </Text>
             )}
         </div>
       )}
 
       {problem && (
-        <p className="text-onair-300 mt-2 text-sm">
+        <Text as="p" className="mt-2" textRole="compact" tone="danger">
           {problem.detail ??
             problem.title ??
             `${provider.label} is not responding right now. Try again in a moment.`}
-        </p>
+        </Text>
       )}
     </div>
   );

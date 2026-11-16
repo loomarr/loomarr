@@ -176,10 +176,12 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   the encoder, transcode reason and session, and get **Copy stream URL**), Info (the on-air
   programme's card in full) and Channels, all behind More except the utilities'. On desktop they open
   as a menu over the keys; on a phone as a sheet (§9.5). One is open at a time.
-- **Audio, subtitles and quality are per viewer and remembered**, chosen among the renditions the
-  Channel publishes: the default audio plus at most one alternate, and soft WebVTT subtitles
-  (`C` cycles them; [`playout.md`](playout.md)). The choice switches the rendition; it never
-  restarts the encoder.
+- **Audio, subtitles and quality are per viewer and remembered.** Audio and quality are among the
+  renditions the Channel publishes (the default audio plus at most one alternate); that choice
+  switches the rendition and never restarts the encoder. Subtitles are soft and served beside the
+  stream (`GET /v1/channels/{id}/subtitles`, [`playout.md`](playout.md)): the player asks for the
+  cues of the remembered track key around its playhead, on the channel's wall clock, and draws them
+  over the picture (`C` cycles them).
 - **Leaving `/watch`** stops playback, unless the viewer is in the browser's picture-in-picture
   (`P`; hidden where unsupported). There is no in-app mini-player; the one-`<video>` rule stands.
   The route hides the app nav and has a back arrow in the top left corner.
@@ -200,8 +202,11 @@ on-demand catalogue, and catch-up means the fifteen-minute window [Pause](#pause
   `@loomarr/ui`, one PR each. A television has four keys (Last channel, Subtitles, Audio, More) and
   remote focus starts on the film strip's on-air block (§9.7). Their Audio reads the same two things
   the web's does (the airing programme's tracks and the channel's language, both a member's reads,
-  `@loomarr/core/channel-audio`), each time it opens. Subtitles stays hidden on every client until
-  the master playlist carries renditions (#2088).
+  `@loomarr/core/channel-audio`), each time it opens. Subtitles are `@loomarr/core/channel-subtitles` on every
+  client: the menu's choices, `C`'s next one, and a follower that asks for the remembered track's
+  cues along the picture's own clock; `PlayerChrome` draws the line (`captions`). The phone and TV
+  remember the choice on the device (`usePairedSubtitles`, `@loomarr/paired-client`); a television's
+  menu starts its focus on the choice in use, and its line stays while the controls are down.
 
 ## Android TV
 
@@ -217,7 +222,8 @@ the user's home-screen ordering.
   controls are up, Left and Right move focus through them instead (frontend-design §9.7). The More
   key opens a menu over the keys (Channels, Info, and Start over and Go live when behind): every
   arrow moves through its rows, the controls stay up until a choice, and Menu or Back closes it, as
-  they close Info, the on-air card pinned open, before doing anything else (§9.5). The Audio key
+  they close Info, the on-air card pinned open, before doing anything else (§9.5). Closing a menu
+  hands the remote's focus back to the key that opened it. The Audio key
   opens the channel's language in the same place, read-only, so focus stays on the key, whose OK
   closes it as Menu or Back does. Channel
   identity and the programme bar appear together and clear after five seconds. During filler the

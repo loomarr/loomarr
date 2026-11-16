@@ -1,28 +1,20 @@
+export type { BadgeShape, BadgeTone } from "./badge";
+export { Badge } from "./badge";
 export type {
   ArtworkState,
-  BadgeShape,
-  BadgeTone,
   ChannelIdentColorHue,
   ProgressTone,
   ScreenProps,
-  StatusTone,
-  StatusWordKind,
-  StatusWordProps,
-  TextProps,
-  TextTone,
 } from "./primitives";
 export {
   ArtworkFrame,
-  Badge,
   CHANNEL_IDENT_WASH_PERCENT,
   channelIdentColors,
   channelIdentHues,
   FocusSurface,
-  lineHeightPx,
   ProgressTrack,
   Screen,
-  StatusDot,
-  StatusWord,
   Surface,
-  Text,
 } from "./primitives";
+export type { StatusTone, StatusWordKind, StatusWordProps } from "./status-indicators";
+export { StatusDot, StatusWord } from "./status-indicators";

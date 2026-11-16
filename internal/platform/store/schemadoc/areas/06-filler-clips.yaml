@@ -366,6 +366,34 @@ tables:
         The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not
         chosen for a gap.
 
+  - name: filler_download_failures
+    about: >
+      One row per item whose download has not worked yet. A failed download is tried three times over
+      a day, then rests 30 days; an item that waits for room is kept here too, with no failure
+      counted. The row has what a retry needs, so an item no source listing offers any more is still
+      retried.
+    retention: >
+      Deleted when the item downloads. The nightly housekeeping task also deletes the rows of a
+      source that was deleted. An item that keeps failing stays, tried once every 30 days.
+    columns:
+      item_key: >
+        Identifies the item: the provider's id for it within its source, or its address for a typed
+        URL.
+      provider: The provider that downloads it, such as archive or youtube.
+      source_id: The registered source it came from (filler_sources.id). Empty for a typed URL.
+      remote_id: The provider's id for the item. Empty for a typed URL.
+      url: The address to download.
+      duration_ms: The length the listing gave, in milliseconds; 0 when it gave none.
+      height: The picture height the listing gave, in pixels; 0 when it gave none.
+      gap: >
+        The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not
+        chosen for a gap.
+      failures: How many attempts have failed. Waiting for room does not count.
+      first_failed_at: When the first attempt failed, in Unix seconds; 0 if none has.
+      last_failed_at: When the latest attempt failed, in Unix seconds; 0 if none has.
+      retry_at: The earliest the item is tried again, in Unix seconds.
+      last_error: Why the latest attempt failed or waited.
+
   - name: filler_clip_pipeline
     about: >
       Each clip's preparation: which step it is at, how that step is going, and the clip's outcome
@@ -412,6 +440,9 @@ tables:
       preparation_progress: Percent done across the whole preparation attempt; -1 means unknown.
       stage_queued_at: When the current step was queued, in Unix seconds.
       stage_started_at: When the current step started running, in Unix seconds.
+      files_deleted_at: >
+        When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix
+        seconds; the row stays as the record of why. 0 while the files are kept.
 
   - name: filler_clip_variants
     about: >

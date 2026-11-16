@@ -55,7 +55,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"merge-gate-cache.yml":        {jobs: map[string]int{"run": 7}},
 		"curated-sources.yml":         {jobs: map[string]int{"check": 2}},
 		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
-		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
+		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3, "library-scale": 3}},
 		"ffmpeg-pin-refresh.yml":      {jobs: map[string]int{"refresh": 3}},
 		"image-benchmark.yml":         {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":                   {jobs: map[string]int{"build": 5, "deploy": 1}},
@@ -63,8 +63,8 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"release.yml":                 {jobs: map[string]int{"build": 7, "publish": 9}},
 		"rust-maintenance.yml":        {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
 		"staging.yml":                 {jobs: map[string]int{"build-image": 4, "control": 2}},
-		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 1, "render": 1, "commit": 4, "ci": 1}},
-		"visual-baselines-render.yml": {jobs: map[string]int{"render": 10}},
+		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 2, "render": 1, "commit": 4, "release": 1}},
+		"visual-baselines-render.yml": {jobs: map[string]int{"render": 12}},
 	}
 }
 

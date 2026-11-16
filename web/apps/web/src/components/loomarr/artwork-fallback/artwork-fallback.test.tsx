@@ -1,8 +1,9 @@
 import { CHANNEL_IDENT_HUES } from "@loomarr/core/guide";
 import { channelIdentColors } from "@loomarr/design-system";
 import { compositeTint, contrast, staticScale } from "@loomarr/design-system/web-theme";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { ArtworkFallback } from "./artwork-fallback";
 
 describe("ArtworkFallback", () => {
@@ -51,10 +52,11 @@ describe("ArtworkFallback", () => {
     expect(screen.queryByText("OT")).not.toBeInTheDocument();
   });
 
-  it("merges a caller className with its own layout classes", () => {
+  it("keeps a caller className and fills its frame", () => {
     render(<ArtworkFallback className="rounded-md" />);
     const el = screen.getByRole("presentation");
     expect(el.className).toContain("rounded-md");
-    expect(el.className).toContain("size-full");
+    expect(getComputedStyle(el).width).toBe("100%");
+    expect(getComputedStyle(el).height).toBe("100%");
   });
 });

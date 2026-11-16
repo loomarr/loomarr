@@ -118,10 +118,20 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
     // Warms on the exact signed URL the real tune will reuse (see warmSource for the protocol).
     warm: async (channel, signal) => {
       const minted = await mint(channel, signal);
+      const mintedAt = Date.now();
       const { mediaUri, warmed } = await warmSource(minted.uri, (url) =>
         request(url, { method: "GET", signal }),
       );
-      return { ...minted, ...(mediaUri ? { mediaUri } : {}), warmed };
+      // As in `start`: the server held the master until the channel was ready, so the mint-time clock
+      // reading counts that wait. The warmer advances it from here for as long as the warm is kept.
+      const serverTimeMs =
+        minted.serverTimeMs === undefined ? undefined : minted.serverTimeMs + (Date.now() - mintedAt);
+      return {
+        ...minted,
+        ...(serverTimeMs === undefined ? {} : { serverTimeMs }),
+        ...(mediaUri ? { mediaUri } : {}),
+        warmed,
+      };
     },
   };
 };

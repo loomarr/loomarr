@@ -28,9 +28,36 @@ change per channel.
   playout and the guide read it directly. `CyclePreview` is only the authoring and forecast surface:
   it depends on mutable airing history and availability, so recomputing it at playout time could
   move the same wall clock into an unrelated episode.
-- Each channel row carries one **playout anchor**, stamped when a building or empty channel first
-  goes live, so a first tune starts near the first accepted programme. Lineup edits, backend
-  changes and restarts preserve it. It moves only when the **rolling window turns** (#1675).
+- Each channel row carries one **playout anchor**, to the millisecond, stamped when a building or
+  empty channel first goes live, so a first tune starts near the first accepted programme. Backend
+  changes and restarts preserve it. It moves when the **rolling window turns** (#1675), and when a
+  re-deal inside a window starts the cycle again at the programme on air (below).
+- **Nothing that has aired moves inside a window** (#4140). The channel row records what the
+  accepted cycle was dealt from (`dealt_from`): what an operator decided (lineup titles and their
+  season and episode choices, the channel's policy without its applied relaxations, its ordering,
+  the install's break, window and calendar settings, and whether the channel has filler to air at
+  all, since that decides whether it has breaks) and the deal itself. Library facts are not decisions:
+  a re-read runtime, a second file for an episode (a remux upgrade), an added episode, a healed
+  rating or collection.
+  - **Library facts wait for the next window.** While the decisions are unchanged, reconcile keeps
+    the accepted cycle and only heals, in place and at the same runtime, a programme that has not
+    finished airing and whose file vanished: a re-identified file (the same film, or the same
+    season and episode) takes the new item, and anything else becomes a placeholder that airs
+    filler. A placeholder whose title resolves again becomes the programme again the same way, so
+    a mount that drops out for one sweep costs that sweep only. On the install, a series rewritten through the day re-dealt the window at every
+    reconcile; the programme on air changed under the viewer and the scheduled ledger, walking
+    each new cycle from the anchor, recorded programmes that never aired.
+  - **An edit applies at once, after the programme on air** (`Engine.windowDeal`). The programme on
+    air and anything starting within the packager's run-ahead keep their times, with the break
+    after each; the rest is the new deal without the programmes that aired since the window opened.
+    When the new cycle airs to the window's end without looping, everything that aired is kept
+    ahead of it and the anchor stays (`playout.KeepOnAir`), so the guide still shows the earlier
+    hours as they aired. Otherwise (a pool shorter than the window) the cycle starts at the
+    programme on air, which becomes the anchor. An edit that leaves the programme on air
+    ineligible, or the channel nothing to air, takes effect from the anchor at once.
+  - **A window that never turns** has no next window to wait for, so a library change that changes
+    the deal re-deals after the programme on air, once: the next reconcile deals the same and keeps
+    it.
 - **Rolling windows turn with carry-over.** Windows are laid on the wall clock of `guide.timezone`
   (else the container's zone), so a daily window turns at local midnight, and a DST day is 23 or 25
   hours long. The programme on air across the boundary finishes on the arrangement it began in;
@@ -156,8 +183,10 @@ own clock. Artwork is resolved only for the chosen airings, in one batch.
 
 `airings` records one row per airing of a unit, an episode or a film
 (`{channel_id, library_item_id, aired_at, recorded_at, key}`), written by the playout resolver when
-it resolves a programme for streaming. Re-resolving the same airing writes nothing new, so
-`recorded_at` is when the airing was first observed. The write is best-effort: a failed insert is
+it resolves a programme for streaming. `aired_at` is when the programme began on air
+(`Airing.ProgramStartedAt`): for a programme split at natural breaks, its first segment's start,
+whichever segment the viewer tuned into, so one airing is one row (#4140). Re-resolving the same
+airing writes nothing new, so `recorded_at` is when the airing was first observed. The write is best-effort: a failed insert is
 logged and the programme still airs. Each write prunes that unit's rows older than eight days down
 to the newest of them, so the table stays bounded by lineup size. It is Loomarr's own broadcast
 record, not viewer watch state.
@@ -244,16 +273,12 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   a floor, never the reason a fitting clip is left out: the adapter sizes the clip ceiling from the
   break length over the shortest eligible clip (at most 64). Time, not count, bounds the pod.
 - **A re-size never moves what is on air.** Every airing is found by walking the accepted cycle
-  from its anchor, so a break that has aired keeps its length. On a reconcile that re-sizes breaks
-  (the catalog changed), each break that has aired or starts within `channels.MidRollFreezeHorizon`
-  keeps its accepted length, and only later breaks take the new one (`playout.KeepAcceptedBreaks`).
-  The hold runs up to the first slot whose timing changed (a programme added, removed or
-  re-timed), so what airs before an edit stays put; a change that moves nothing (a re-identified
-  file, a healed title) does not end it. It never outlasts the break length: a shorter
-  `breakDuration` is an edit and applies to every break at once, aired ones included, so it can
-  move what is on air and restart the stream once. A smaller catalog stays held,
-  and those breaks air what fits, then the card. A placeholder (a keyed filler slot at a missing
-  programme's runtime) is not a break: its pod keeps the configured break length.
+  from its anchor, so a break that has aired keeps its length. A catalog change that re-sizes
+  breaks is a library fact: the window keeps its breaks until it turns, and a smaller catalog's
+  breaks air what fits, then the card. A shorter `breakDuration` is an edit: it applies from the
+  programme after the one on air, and the breaks that aired keep their length (#4140). A
+  placeholder (a keyed filler slot at a missing programme's runtime) is not a break: its pod keeps
+  the configured break length.
 - **A schedule change restarts a stream only when it changes what is on air.** The packager reads
   the accepted cycle at every item boundary, so a change from its next lookup on reaches the stream
   by itself. Reconcile stops a channel's packager only when the new cycle airs something different

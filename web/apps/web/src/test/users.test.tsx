@@ -398,8 +398,9 @@ describe("Users page", () => {
   it("explains rather than offering import when no media server is connected", async () => {
     stubUsers({ userSync: false });
     renderAt("/people");
-    await screen.findByText("Ada");
-    await userEvent.click(screen.getByRole("button", { name: /import from emby\/jellyfin/i }));
+    // The People route's loader has the roster in before the page paints, so "Ada" (the signed-in
+    // account in the shell, and the first row) is on screen twice at once; wait on the opener.
+    await userEvent.click(await screen.findByRole("button", { name: /import from emby\/jellyfin/i }));
     expect(await screen.findByText(/connect a media server first/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sync existing/i })).not.toBeInTheDocument();
   });

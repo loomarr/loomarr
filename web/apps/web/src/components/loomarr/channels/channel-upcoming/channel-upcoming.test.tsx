@@ -1,7 +1,11 @@
-import { getChannelTimelineMockHandler, getChannelUpcomingMockHandler } from "@loomarr/api/msw";
-import { formatEpgTime } from "@loomarr/core/format";
+import {
+  getChannelTimelineMockHandler,
+  getChannelUpcomingMockHandler,
+  getHouseholdMockHandler,
+} from "@loomarr/api/msw";
+import { formatGuideTime } from "@loomarr/core/guide";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "@/test/msw/server";
@@ -15,8 +19,30 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 describe("ChannelUpcoming", () => {
   // The rows also read the channel's timeline for episode names; most tests have none to give.
+  // The household read supplies the timezone; most tests leave it unset (the device's zone).
   beforeEach(() => {
-    server.use(getChannelTimelineMockHandler({ airings: [], serverNowMs: Date.now() }));
+    server.use(
+      getChannelTimelineMockHandler({ airings: [], serverNowMs: Date.now() }),
+      getHouseholdMockHandler({ timeZone: "" }),
+    );
+  });
+
+  it("says each start time on the household clock, as the Guide does, not the device's", async () => {
+    // 06:00 UTC is 7:00 PM in Auckland in January (NZDT, UTC+13): no device zone reads it that way
+    // except Auckland's own.
+    const start = Date.UTC(2027, 0, 15, 6, 0);
+    server.use(
+      getHouseholdMockHandler({ timeZone: "Pacific/Auckland" }),
+      getChannelUpcomingMockHandler({
+        upcoming: [{ gap: false, startMs: start, stopMs: start + 1_800_000, title: "Evening show" }],
+      }),
+    );
+
+    render(<ChannelUpcoming channelId="ch-1" />, { wrapper });
+
+    const row = (await screen.findByText("Evening show")).closest("li");
+    await waitFor(() => expect(row).toHaveTextContent(formatGuideTime(start, "Pacific/Auckland")));
+    expect(formatGuideTime(start, "Pacific/Auckland")).toMatch(/^7:00\s?PM$/);
   });
 
   it.each([false, true])(
@@ -46,7 +72,7 @@ describe("ChannelUpcoming", () => {
     render(<ChannelUpcoming channelId="ch-1" live />, { wrapper });
 
     const airing = (await screen.findByText("Airing show")).closest("li");
-    expect(airing).toHaveTextContent(formatEpgTime(start));
+    expect(airing).toHaveTextContent(formatGuideTime(start));
     expect(airing).toHaveTextContent("Now");
     expect(screen.getByText("Later show").closest("li")).not.toHaveTextContent("Now");
   });

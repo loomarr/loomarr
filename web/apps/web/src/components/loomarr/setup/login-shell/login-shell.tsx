@@ -1,4 +1,4 @@
-import { Card } from "@loomarr/design-system";
+import { Card, Stack } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { LoginShellProps } from "./login-shell.type";
@@ -9,11 +9,19 @@ import type { LoginShellProps } from "./login-shell.type";
 // and card together — is a gallery-testable unit; the route only supplies `children`.
 // Same split as WizardShell / SettingsFields: presentation here, data-binding at the route.
 const LoginShell = ({ children, className }: LoginShellProps) => (
-  <main
-    className={cn(
-      "bg-background relative flex min-h-screen flex-col items-center justify-center gap-8 p-6",
-      className,
-    )}
+  <Stack
+    align="center"
+    backgroundColor="$surfaceCanvas"
+    // Padding stays a class: the join and reset routes pass `py-10`, which `cn` lets replace
+    // the default, where a padding prop would beat it.
+    className={cn("p-6", className)}
+    gap="8"
+    justify="center"
+    // A prop, not `min-h-screen`: the View base rule's `min-height: 0` is unlayered and beats the
+    // utility, which collapsed the page to its content and lifted the card off centre.
+    minHeight="100vh"
+    position="relative"
+    render="main"
   >
     {/* Static sits behind; content siblings get an explicit stacking context above it, since
         a position:absolute layer paints OVER position:static content regardless of DOM order. */}
@@ -23,7 +31,7 @@ const LoginShell = ({ children, className }: LoginShellProps) => (
     <Card gap={20} maxWidth={384} padding={32} position="relative" width="100%" zIndex={10}>
       {children}
     </Card>
-  </main>
+  </Stack>
 );
 
 export { LoginShell };

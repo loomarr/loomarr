@@ -4,7 +4,7 @@ import { Platform, Pressable } from "react-native";
 
 import { Icon } from "../icon";
 import { type IconName, icons } from "../icons";
-import { lineHeightPx } from "../primitives";
+import { lineHeightPx } from "../text";
 import { TamaguiText } from "../text-base";
 import { brandChroma } from "../tokens";
 import { useViewportInsets } from "../viewport";

@@ -1,6 +1,6 @@
 import * as helpApi from "@loomarr/api/endpoints/help";
 import { unwrap } from "@loomarr/api/unwrap";
-import { Card } from "@loomarr/design-system";
+import { Card, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -64,44 +64,57 @@ const HelpPage = () => {
   if (list.error) return <ErrorState error={list.error} onRetry={() => list.refetch()} />;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <Stack height="100%" minHeight={0}>
       <PageHeader title="Help" description="Ships with Loomarr. No internet needed." />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6 md:flex-row">
+      <Stack
+        direction={{ base: "column", md: "row" }}
+        flex={1}
+        flexShrink={1}
+        gap="6"
+        minHeight={0}
+        overflow="auto"
+        padding="section"
+      >
         <nav aria-label="Help pages" className="md:w-56 md:shrink-0">
           <Card gap={12} padding={12}>
             <SearchField label="Search" onChangeText={setQ} placeholder="Filter pages" value={q} />
-            <ul className="flex flex-col gap-1">
+            <Stack gap="1" render="ul">
               {visible.map((d) => (
-                <li key={d.slug}>
+                // The row's own inset is 4px wider than the list's, so it hangs out by that much and
+                // the titles stay in line with the search field above.
+                <Stack key={d.slug} marginHorizontal={-4} render="li">
                   {/* A link, not a button: each page is a place with its own URL, so it opens in a new
                       tab and reads as navigation to assistive tech (#2751). */}
-                  <Link
-                    to="/help"
-                    search={{ page: d.slug }}
+                  <PressableRow
                     aria-current={d.slug === active ? "page" : undefined}
-                    className={
-                      d.slug === active
-                        ? "bg-static-800 block w-full rounded-md px-2 py-1.5 text-left text-sm"
-                        : "text-muted-foreground hover:bg-static-900 block w-full rounded-md px-2 py-1.5 text-left text-sm"
-                    }
+                    render={<Link to="/help" search={{ page: d.slug }} />}
+                    selected={d.slug === active}
                   >
-                    {d.title}
-                  </Link>
-                </li>
+                    <Text as="span" textRole="compact" tone={d.slug === active ? "primary" : "secondary"}>
+                      {d.title}
+                    </Text>
+                  </PressableRow>
+                </Stack>
               ))}
               {visible.length === 0 && (
-                <li className="text-muted-foreground px-2 py-1.5 text-sm">No pages match.</li>
+                <Stack paddingHorizontal={8} paddingVertical={6} render="li">
+                  <Text textRole="compact" tone="secondary">
+                    No pages match.
+                  </Text>
+                </Stack>
               )}
-            </ul>
+            </Stack>
           </Card>
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <Stack flex={1} flexShrink={1} minWidth={0}>
           {doc.error ? (
             <ErrorState error={doc.error} onRetry={() => doc.refetch()} />
           ) : doc.isLoading ? (
-            <p className="text-muted-foreground text-sm">Loading…</p>
+            <Text as="p" textRole="compact" tone="secondary">
+              Loading…
+            </Text>
           ) : (
             <DocView
               markdown={markdown}
@@ -110,9 +123,9 @@ const HelpPage = () => {
               }
             />
           )}
-        </div>
-      </div>
-    </div>
+        </Stack>
+      </Stack>
+    </Stack>
   );
 };
 

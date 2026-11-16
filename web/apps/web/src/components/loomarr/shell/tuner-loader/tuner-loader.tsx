@@ -1,3 +1,4 @@
+import { Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import { TvStatic } from "../tv-static";
 import type { TunerLoaderProps } from "./tuner-loader.type";
@@ -43,7 +44,16 @@ const TunerLoader = ({
   backdrop,
   className,
 }: TunerLoaderProps) => (
-  <div className={cn("pointer-events-none absolute inset-0", className)} aria-hidden>
+  <Stack
+    aria-hidden
+    bottom={0}
+    className={className}
+    left={0}
+    pointerEvents="none"
+    position="absolute"
+    right={0}
+    top={0}
+  >
     {/* The wash over the picture beneath. Its resting style IS the drained frame of `held-drain`:
         the picture greyed, flattened and left at 12% under static-950. */}
     <div
@@ -75,7 +85,17 @@ const TunerLoader = ({
         motion. On a switch it thickens in over the draining frame. */}
     <TvStatic variant="wash" className={cn(heldFrame && "motion-safe:animate-wash-thicken")} />
 
-    <div className="relative z-[1] flex size-full flex-col items-center justify-center gap-3 px-4 text-center">
+    <Stack
+      align="center"
+      className="text-center"
+      gap="control"
+      height="100%"
+      justify="center"
+      paddingHorizontal={16}
+      position="relative"
+      width="100%"
+      zIndex={1}
+    >
       {/* Phosphor bars. Fixed-height rail so the jittering bar heights have room; items-end so they
           grow from a common baseline like a level meter. `h-*` is animated by signal-lock, so the
           static (reduced-motion) height comes from the keyframe's locked frame. */}
@@ -105,15 +125,12 @@ const TunerLoader = ({
       )}
 
       {/* The readout — mono, tracked-out amber with the blinking cursor as the one extra sign of life. */}
-      <p
-        className="text-signal font-mono text-[clamp(11px,1.3vw,13px)] font-medium tracking-[0.24em]"
-        style={{ textShadow: READOUT_HALO }}
-      >
+      <Text as="p" style={{ textShadow: READOUT_HALO }} textRole="metadata" tone="signal" tracking={0.24}>
         <span>{label}</span>
         <span className="motion-safe:animate-[onair-pulse_1s_steps(2,end)_infinite]">_</span>
-      </p>
-    </div>
-  </div>
+      </Text>
+    </Stack>
+  </Stack>
 );
 
 export { TunerLoader };

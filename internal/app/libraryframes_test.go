@@ -81,3 +81,4 @@ type recordedFrames struct {
 func (r *recordedFrames) LibraryScanChanged(p scan.ProgressSnapshot) { r.scans = append(r.scans, p) }
 func (r *recordedFrames) LibraryTitlesChanged()                      { r.titles++ }
 func (r *recordedFrames) LibraryRootsChanged()                       { r.roots++ }
+func (r *recordedFrames) LibraryFolderSummarized(scan.FolderSummary) {}

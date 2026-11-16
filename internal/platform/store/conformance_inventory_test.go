@@ -126,6 +126,41 @@ func testInventoryGroundedIdentity(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// An id grounds an episode only on the same episode: a stale NFO copied beside another episode's
+// file carries its id, and the two are not one title with an extra copy.
+func testInventoryEpisodeIDsKeepTheirNumbers(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	episode := func(file string, season, number int) inventory.Snapshot {
+		s := inventorySnapshot("scan-a", file, "file", "rev-"+file, file, at)
+		s.Observation.Facts.SeasonNumber, s.Observation.Facts.EpisodeNumber = season, number
+		s.ExternalIDs = []inventory.ExternalID{{Namespace: "tvdb", Value: "90000801"}}
+		return s
+	}
+	sixth, eighteenth, copyOf := episode("e06", 2, 6), episode("e18", 2, 18), episode("e06-720p", 2, 6)
+	sixthID, err := st.ApplyInventorySnapshot(ctx, sixth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eighteenthID, err := st.ApplyInventorySnapshot(ctx, eighteenth)
+	if err != nil || eighteenthID == sixthID {
+		t.Fatalf("another episode with the same id = (%q, %v), want an item of its own", eighteenthID, err)
+	}
+	if id, err := st.ApplyInventorySnapshot(ctx, copyOf); err != nil || id != sixthID {
+		t.Fatalf("a second copy of the episode = (%q, %v), want %q", id, err, sixthID)
+	}
+	for _, s := range []inventory.Snapshot{sixth, eighteenth} {
+		if _, err := st.ApplyInventorySnapshot(ctx, s); err != nil {
+			t.Fatalf("written again: %v", err)
+		}
+	}
+	if item, _, _ := st.InventoryItem(ctx, inventory.ItemRef{ID: eighteenthID}); len(item.Origins) != 1 {
+		t.Fatalf("the 18th = %+v, want its own file only", item)
+	}
+}
+
 // An origin written before its ids were known follows them to the item they name, taking its
 // sources, when it is its item's only origin; otherwise it is a conflict. Ids name items of the
 // origin's own kind only.

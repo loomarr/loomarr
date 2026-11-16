@@ -294,7 +294,7 @@ type UserStore interface {
 	GetDevicePairing(ctx context.Context, codeHash string, now time.Time) (DevicePairing, error)
 	GetDevicePairingByUserCode(ctx context.Context, userCode string, now time.Time) (DevicePairing, error)
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
-	DeleteDevicePairing(ctx context.Context, codeHash string) error
+	RedeemDevicePairing(ctx context.Context, codeHash, tokenHash string, at time.Time) (DevicePairing, error)
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) (int, error)
 	CreateDeviceToken(ctx context.Context, t DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)

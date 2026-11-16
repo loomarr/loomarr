@@ -91,6 +91,8 @@ type FillerAcquisitionStore interface {
 	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
 	// the bounded acquisition history page.
 	AcquisitionRepairSummary(ctx context.Context) (acquisition.RepairSummary, error)
+	// DownloadLedger remembers each item that has not downloaded yet, so it retries on its own.
+	acquisition.DownloadLedger
 }
 
 // FillerInferenceStore owns append-only call attribution and the atomic budget
@@ -202,6 +204,12 @@ type FillerPipelineStore interface {
 	GetClipPipeline(ctx context.Context, hash string) (pipelinestate.ClipPipeline, bool, error)
 	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
 	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
+	// RetireRejectedClip reaps a fetched, unpinned clip rejected no later than rejectedBy and marks
+	// its row's files deleted, in one transaction; false when the row no longer qualifies.
+	RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error)
+	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
+	// deleted, in one transaction, so a full budget can evict it; false when it no longer qualifies.
+	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)

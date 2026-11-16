@@ -1,13 +1,17 @@
 import { playerChrome, ThemeScope, useViewportInsets } from "@loomarr/design-system";
 import { memo, useDeferredValue, useState } from "react";
 import { type LayoutChangeEvent, Platform, View } from "react-native";
-
+import { CASTING_LIFT, CastingCard } from "./casting-card";
 import { ChannelBand } from "./channel-band";
+import { ChannelCards } from "./channel-cards";
 import { gradientOr, webOnly } from "./flat";
 import { IdentBackdrop } from "./ident-backdrop";
+import { PlayerCaption } from "./player-caption";
 import type { PlayerChromeProps } from "./player-chrome.type";
 import { PlayerKeys } from "./player-keys";
+import { menuWidth } from "./player-menu";
 import { PlayerReadout } from "./player-readout";
+import { sheetWidth } from "./player-sheet";
 import { PlayerLeave, PlayerUtilities, UTILITY_SIZE } from "./player-utilities";
 import { PortraitChrome } from "./portrait-chrome";
 import { TuneDip } from "./tune-dip";
@@ -34,6 +38,8 @@ const READOUT_REACH = { pointer: 150, touch: 100 } as const;
 const ChromeBody = memo(
   ({
     band,
+    captions = [],
+    casting,
     density,
     formatTime,
     ident = false,
@@ -47,17 +53,24 @@ const ChromeBody = memo(
     readout,
     schedule,
     sheet,
+    surf,
     unmute,
-    utilities,
+    utilities: utilitiesIn,
     visible,
     watermark,
   }: PlayerChromeProps) => {
+    // While casting, the AirPlay key lights (§9.7).
+    const utilities = casting ? { ...utilitiesIn, airPlayCasting: true } : utilitiesIn;
     const tv = layout === "tv";
     const touch = density === "touch";
     const pointer = keys.pointer;
+    // Flipping channels (§9.2): the cards take the band's place with the keys up beside them, and the
+    // utilities and Leave step away until the flipping stops. A television's keys step away too: the
+    // remote is what flips, so the cards have the whole width (J's `tv--surfing` tile).
+    const surfing = surf !== undefined && !sheet;
     // The station-ID card stands in for hidden controls: the band alone, fuller.
-    const card = ident && !visible && !sheet;
-    const controls = visible;
+    const card = ident && !visible && !sheet && !surfing;
+    const controls = visible || surfing;
     const shown = controls || card;
     // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540. A phone keeps clear
     // of its safe areas: the Dynamic Island, the home indicator and, on its side, both ends (§9.7).
@@ -100,12 +113,16 @@ const ChromeBody = memo(
         <ThemeScope theme="dark">
           <PortraitChrome
             band={band}
+            captions={captions}
+            casting={casting}
             formatTime={formatTime}
             insets={insets}
             keys={keys}
             live={live}
             onGoLive={onGoLive}
             onLeave={onLeave}
+            readout={readout}
+            surf={sheet ? undefined : surf}
             unmute={unmute}
             utilities={utilities}
           />
@@ -137,6 +154,12 @@ const ChromeBody = memo(
           style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
         />
         <TuneDip tuneKey={band.channelNumber} />
+        {casting ? (
+          // The picture is on the receiver, so the whole screen says where it went. The card sits
+          // under the keys (the scrim below draws no gradient over it), with its content lifted clear
+          // of the band, and it stays when the controls hide.
+          <CastingCard {...casting} lift={CASTING_LIFT} top={0} zIndex={29} />
+        ) : null}
         {card && band.backdrop && frame.width > 0 ? (
           <IdentBackdrop art={band.backdrop} frame={frame} />
         ) : null}
@@ -153,10 +176,13 @@ const ChromeBody = memo(
             position: "absolute",
             right: 0,
             zIndex: 30,
-            ...gradientOr(
-              `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
-              playerChrome.scrimMid,
-            ),
+            // The casting card is opaque, so the scrim would only dim it.
+            ...(casting
+              ? null
+              : gradientOr(
+                  `linear-gradient(0deg, ${playerChrome.scrimFoot}, ${playerChrome.scrimMid} 55%, transparent)`,
+                  playerChrome.scrimMid,
+                )),
             ...webOnly({ transition: "opacity 120ms ease" }),
           }}
         >
@@ -174,18 +200,22 @@ const ChromeBody = memo(
               onLayout={(e: LayoutChangeEvent) => setBandHeight(e.nativeEvent.layout.height)}
               style={{ flex: 1, marginBottom: bandLift, minWidth: 0 }}
             >
-              <ChannelBand
-                band={band}
-                density={density}
-                formatTime={formatTime}
-                ident={card}
-                live={live}
-                onGoLive={onGoLive}
-                schedule={schedule}
-                tv={tv}
-              />
+              {surf && surfing ? (
+                <ChannelCards density={density} surf={surf} />
+              ) : (
+                <ChannelBand
+                  band={band}
+                  density={density}
+                  formatTime={formatTime}
+                  ident={card}
+                  live={live}
+                  onGoLive={onGoLive}
+                  schedule={schedule}
+                  tv={tv}
+                />
+              )}
             </View>
-            {card ? null : (
+            {card || (tv && surfing) ? null : (
               // The control cluster: everything you can press, in one place. The utilities are a smaller
               // row over the main keys, sharing their right edge (§9.3). A television has none: its
               // Subtitles and Audio are main keys, and the remote has the rest. What a key opens is a
@@ -203,13 +233,13 @@ const ChromeBody = memo(
                 testID="player-cluster"
               >
                 {menu}
-                {tv ? null : <PlayerUtilities {...utilities} />}
+                {tv || surfing ? null : <PlayerUtilities {...utilities} />}
                 <PlayerKeys {...keys} {...(tv ? { audio: utilities } : {})} />
               </View>
             )}
           </View>
         </View>
-        {onLeave && !tv ? (
+        {onLeave && !tv && !surfing ? (
           // Leave: the top left corner, where people reach to leave (§9.3). The rating sits beside it.
           // A television has none: the remote's Back leaves.
           <View
@@ -244,6 +274,16 @@ const ChromeBody = memo(
           </View>
         ) : null}
         {readout ? <PlayerReadout density={density} top={readoutAt} {...readout} /> : null}
+        {/* The subtitle: lifted clear of the band while it is up, at the picture's foot while it is
+            down. A side sheet keeps the line in what shows of the picture, at its foot; an open menu
+            keeps it centred left of the menu, which rises over the keys beside it (#3905). */}
+        <PlayerCaption
+          bottom={shown && !sheet ? bottomBase + bandLift + bandHeight + 16 : bottomBase + 12}
+          density={density}
+          lines={captions}
+          right={sheet ? sheetWidth(density) + insets.right : shown && menu ? side + menuWidth(density) : 0}
+          where={tv ? "tv" : touch ? "landscape" : "pointer"}
+        />
         {panel}
         {sheetLayer}
       </ThemeScope>

@@ -1,5 +1,5 @@
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action, ActivityIndicator, ChoiceCard, Icon, icons } from "@loomarr/design-system";
+import { Action, ActivityIndicator, ChoiceCard, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { useCompleteSetup } from "../use-complete-setup";
@@ -34,18 +34,18 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-muted-foreground text-sm">
+    <Stack gap="4">
+      <Text as="p" textRole="compact" tone="secondary">
         Pick a starting point. You can edit it before Loomarr builds anything. Since you're an admin, you can
         approve your own lineup and watch it go on the air.
         {!llmReady &&
           " No AI service is connected yet, so Loomarr can't build a lineup from a template until you " +
             "set one up. Pick one anyway to save it as a draft, or finish without a channel for now."}
-      </p>
+      </Text>
 
       {complete.error != null && <ErrorState error={complete.error} />}
 
-      <ul className="flex flex-col gap-2">
+      <Stack gap="inline" render="ul">
         {CHANNEL_TEMPLATES.map((t) => (
           <li key={t.id}>
             <ChoiceCard
@@ -63,7 +63,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
             />
           </li>
         ))}
-      </ul>
+      </Stack>
 
       <Action
         disabled={complete.isPending}
@@ -73,7 +73,7 @@ const FirstChannelStep = ({ llmReady }: FirstChannelStepProps) => {
       >
         Finish setup without a channel
       </Action>
-    </div>
+    </Stack>
   );
 };
 

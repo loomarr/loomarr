@@ -1,4 +1,13 @@
-import { Icon, icons, playerChrome, Text, useFocusLook, useViewportInsets } from "@loomarr/design-system";
+import {
+  type Density,
+  Icon,
+  icons,
+  NonModalDialog,
+  playerChrome,
+  Text,
+  useFocusLook,
+  useViewportInsets,
+} from "@loomarr/design-system";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
@@ -50,14 +59,17 @@ const CloseKey = ({ title, onPress }: { title: string; onPress: () => void }) =>
   );
 };
 
+/** J's right-hand sheet width, before the right safe area it widens by. */
+const SHEET_WIDTH = { pointer: 416, touch: 384 } as const;
+const sheetWidth = (density: Density) => (density === "touch" ? SHEET_WIDTH.touch : SHEET_WIDTH.pointer);
+
 // On a phone on its side the notch or the home indicator can sit at the right edge: the sheet widens by
 // that inset and pads it, so its content keeps J's width clear of them. A browser's insets are zero.
 const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheetProps) => {
   const insets = useViewportInsets();
   return (
-    <View
-      aria-label={title}
-      role="dialog"
+    <NonModalDialog
+      label={title}
       style={{
         backgroundColor: playerChrome.surface,
         borderLeftColor: playerChrome.hairline,
@@ -68,7 +80,7 @@ const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheet
         position: "absolute",
         right: 0,
         top: 0,
-        width: (density === "touch" ? 384 : 416) + insets.right,
+        width: sheetWidth(density) + insets.right,
         zIndex: 40,
       }}
     >
@@ -102,8 +114,8 @@ const PlayerSheet = ({ channel, children, density, onClose, title }: PlayerSheet
       >
         {children}
       </ScrollView>
-    </View>
+    </NonModalDialog>
   );
 };
 
-export { PlayerSheet };
+export { PlayerSheet, sheetWidth };

@@ -11,7 +11,9 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SettingsFields } from "@/components/loomarr/settings/settings-fields";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { readyTitleOf } from "@/library/ready-title";
+import { useFolderBrowser } from "@/library/use-folder-browser";
 import { useLibraryFolders } from "@/library/use-library-folders";
+import { useSettingsDraft } from "@/settings/settings-draft";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { ChecklistStep } from "../checklist-step";
 import { useArrsFromRequester } from "../use-arrs-from-requester";
@@ -35,6 +37,7 @@ const LibraryStep = (props: LibraryStepProps) => (
 
 const LibraryStepBody = ({ backend }: LibraryStepProps) => {
   const folders = useLibraryFolders();
+  const folderBrowser = useFolderBrowser();
   const entries = useSettingsEntries();
   const value = (key: SettingKey) => entries.find((e) => e.key === key)?.value ?? "";
   const arrsMissing =
@@ -58,6 +61,7 @@ const LibraryStepBody = ({ backend }: LibraryStepProps) => {
         checking={folders.checking}
         folders={body.roots}
         onAddFolder={folders.onAddFolder}
+        folderBrowser={folderBrowser}
         onCheckAgain={folders.onCheckAgain}
         onUseFolder={folders.onUseFolder}
         pathMap={body.pathMap}
@@ -97,12 +101,13 @@ const LibraryStepBody = ({ backend }: LibraryStepProps) => {
 const LoomarrAddress = () => {
   const queryClient = useQueryClient();
   const entries = useSettingsEntries().filter((e) => e.key === SettingKey.ServerPublicURL);
-  const [edits, setEdits] = useState<Record<string, string>>({});
+  const { edits, setEdit, dropSaved } = useSettingsDraft();
   const patch = settingsApi.useSettingsPatch({
     mutation: {
-      onSuccess: async () => {
+      onSuccess: async (response, { data }) => {
         await invalidateSettings(queryClient);
-        setEdits({});
+        // A refused address stays in the field, beside the message the results give for it.
+        dropSaved(response, data.edits);
       },
     },
   });
@@ -111,7 +116,7 @@ const LoomarrAddress = () => {
       <SettingsFields
         entries={entries}
         values={edits}
-        onChange={(key, v) => setEdits((previous) => ({ ...previous, [key]: v }))}
+        onChange={setEdit}
         results={unwrap(patch.data, (b) => b.results) ?? undefined}
         descriptionIds={{ [SettingKey.ServerPublicURL]: "library-step-address" }}
       />

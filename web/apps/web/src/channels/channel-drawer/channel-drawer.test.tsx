@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { render } from "@/test/render";
 import { ChannelDrawer } from "./channel-drawer";
 import type { DrawerChannel } from "./channel-drawer.type";
 

@@ -96,13 +96,14 @@ replace local transcription and vision; those modalities stay operator choices.
 | Web routing | TanStack Router | typed routes sharing the Query client |
 | Legacy web styling | Tailwind + shadcn/ui on Base UI + CVA | only on surfaces not yet migrated (#970); removed when migration completes |
 | Web dialog behaviour | `@base-ui/react` Dialog, behind `@loomarr/design-system`'s `Dialog` (`dialog.web.tsx`; native is a React Native `Modal`) | focus trap, Escape, outside press, labelling, scroll lock and focus return without a hand-rolled modal (#2147). Callers never import Base UI for a dialog |
-| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Its `RETIRED` list names the last files allowed to import a copied component the design system has replaced, or its Base UI primitive; any other file fails, tests and stories included, and an unused allowance fails too (#2147). Never ships in the product |
+| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack (including raw type-size and type-weight/tracking/leading utilities, which belong to the design system's `Text` roles) per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Its `RETIRED` list names the last files allowed to import a copied component the design system has replaced, or its Base UI primitive; any other file fails, tests and stories included, and an unused allowance fails too (#2147). Never ships in the product |
 | Lineup reordering | `@dnd-kit` | accessible, keyboard-capable sortable list |
 | Web previews | `react-dom` portal behind the shared design system | keep contextual detail outside scrolling and clipping ancestors; native adapters do not load the web renderer |
 | DOM test environment | jsdom 30.0.1 | exercise preview focus, pointer and viewport lifecycles without a browser; the shared UI package uses the same exact pin |
 | Guide rows | `@tanstack/react-virtual` | windows the guide's rows |
 | Image placeholders | `thumbhash` | decodes the placeholder the server stores, without a canvas |
 | Forms | `@tanstack/react-form` | uses the zod schemas directly |
+| Web query-cache persistence | `@tanstack/react-query-persist-client` + `idb-keyval` | a cold open paints the last-known page from IndexedDB, then revalidates; the persister is an allowlist keyed by user and build and cleared on sign-out (#3399) |
 | Help | `react-markdown` + `remark-gfm` | renders the embedded help offline |
 | Component workshop | Storybook 10 with a11y and themes addons | the component contract; the visual gate runs Playwright over its static build |
 | Tests | Vitest, Testing Library, Playwright, `@axe-core/playwright` | units, visual, accessibility and e2e |

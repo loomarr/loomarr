@@ -69,6 +69,8 @@ const OptionRow = ({
       // aria-* directly: RN-web drops accessibilityState.checked, which would leave the choice unread.
       aria-checked={option.selected}
       aria-label={option.label}
+      // A television's remote starts on the choice in use.
+      hasTVPreferredFocus={density === "tv" && option.selected}
       role="radio"
       {...focusHandlers}
       onHoverIn={() => setHovered(true)}

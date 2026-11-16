@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 interface FillerSourcesProps {
   sources: FillerSourceDTO[];
   /**
-   * ⚠ `total` (the catalog size) was here and is GONE. This header reads "N of M on" — the
+   * ⚠ No `total` (the catalog size) prop, deliberately. This header reads "N of M on" — the
    * mock's `svcOnLine` — and the catalog total belongs to the page header's `watchLine` pill,
    * which gets it from `GET /v1/filler/watch`. Two components reporting the same number is how
    * they start disagreeing.

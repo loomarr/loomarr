@@ -18,6 +18,8 @@ import { CARD_WIDTH, PreviewCard } from "../preview-card";
 const GAP = 4;
 const MIN_BREAK = 40;
 const TICK_MINUTES = [30, 60, 90] as const;
+/** The least room between the scale's "−15m" and "Live" for both to show. */
+const LABEL_GAP = 8;
 /** The block on air's quiet outline. */
 const NOW_EDGE = "rgba(255, 255, 255, 0.4)";
 
@@ -76,6 +78,8 @@ const PreviewPlaybar = ({
 }: PreviewPlaybarProps) => {
   const [width, setWidth] = useState(0);
   const [pointed, setPointed] = useState<string | undefined>(undefined);
+  const [pastLabel, setPastLabel] = useState(0);
+  const [liveLabel, setLiveLabel] = useState(0);
   const show = (id: string | undefined) => {
     setPointed(id);
     onPreviewChange?.(id !== undefined);
@@ -84,6 +88,9 @@ const PreviewPlaybar = ({
   const { boxes, xAt } = layoutPlaybar(segments, window, width, { gap: GAP, minBreak: MIN_BREAK });
   const head = xAt(Math.min(playheadMs, window.nowMs));
   const liveX = xAt(window.nowMs);
+  // Fifteen minutes is a sliver of a touch strip, so "Live" can sit on the left edge: "−15m" shows
+  // only where it clears "Live" (#3566), once both are measured so neither flashes in first.
+  const pastShown = pastLabel > 0 && liveLabel > 0 && pastLabel + LABEL_GAP <= liveX - liveLabel / 2;
   const behind = playheadMs < window.nowMs - 1000;
   const nowId = boxes.find((b) => b.segment.startMs <= window.nowMs && window.nowMs < b.segment.stopMs)?.id;
   const open = pointed ?? (pinNow ? nowId : undefined);
@@ -309,9 +316,11 @@ const PreviewPlaybar = ({
       >
         {width > 0 ? (
           <>
+            {/* Kept laid out while hidden, so its width is known when room returns. */}
             <Text
               density={density}
-              style={{ left: 0, position: "absolute" }}
+              onLayout={(e: LayoutChangeEvent) => setPastLabel(e.nativeEvent.layout.width)}
+              style={{ left: 0, opacity: pastShown ? 1 : 0, position: "absolute" }}
               textRole="cardMeta"
               tone="muted"
             >
@@ -319,6 +328,7 @@ const PreviewPlaybar = ({
             </Text>
             <Text
               density={density}
+              onLayout={(e: LayoutChangeEvent) => setLiveLabel(e.nativeEvent.layout.width)}
               strong
               style={{ left: liveX, position: "absolute", transform: [{ translateX: "-50%" }] }}
               textRole="cardMeta"

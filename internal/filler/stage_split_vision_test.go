@@ -601,6 +601,35 @@ func TestSplitStage_ResumesOnlyReviewsItCanImprove(t *testing.T) {
 	}
 }
 
+// A review holding a segment whose duplicate check could not run is offered back to the split stage,
+// at restart and on the slow re-check cadence; checked and duplicate-free reviews are not.
+func TestSplitStage_RequeuesReviewsHoldingAnUncheckedSegment(t *testing.T) {
+	ready := func(hash string, seg split.Segment) SplitProposal {
+		return SplitProposal{ClipHash: hash, Segments: []split.Segment{seg}}
+	}
+	queue := proposalQueue{proposals: []SplitProposal{
+		ready("unchecked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true, DedupUnchecked: true}),
+		ready("checked", split.Segment{StartMs: 0, EndMs: 30_000, Looked: true}),
+	}}
+	s := NewSplitStage(nil, queue).WithAutoConfirm(*gatePolicy(), func() time.Duration { return 10 * time.Second })
+
+	for name, pick := range map[string]func(context.Context) (map[string]struct{}, error){
+		"restart scan":    s.resumableReviewHashes,
+		"recheck cadence": s.uncheckedReviewHashes,
+	} {
+		hashes, err := pick(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := hashes["unchecked"]; !ok {
+			t.Errorf("%s: the unchecked review was not requeued", name)
+		}
+		if _, ok := hashes["checked"]; ok {
+			t.Errorf("%s: a checked review was requeued", name)
+		}
+	}
+}
+
 type pendingStructureShadow struct {
 	pending map[string]bool
 }
@@ -631,6 +660,42 @@ func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testin
 	}
 	if _, ok := hashes["observed"]; ok {
 		t.Fatal("observed proposal was requeued again")
+	}
+}
+
+type failingStructureShadow struct {
+	pendingStructureShadow
+	failing string
+}
+
+func (s failingStructureShadow) NeedsStructureSplitObservation(ctx context.Context, proposal SplitProposal) (bool, error) {
+	if proposal.ClipHash == s.failing {
+		return false, errors.New("shadow store unavailable")
+	}
+	return s.pendingStructureShadow.NeedsStructureSplitObservation(ctx, proposal)
+}
+
+// One proposal whose shadow state cannot be read stays in review; it does not stop every other
+// proposal from being requeued.
+func TestSplitStageResumesOtherReviewsPastAnUnreadableShadow(t *testing.T) {
+	queue := proposalQueue{proposals: []SplitProposal{
+		{ClipHash: "unreadable", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+		{ClipHash: "unobserved", Segments: []split.Segment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
+	}}
+	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: failingStructureShadow{
+		pendingStructureShadow: pendingStructureShadow{pending: map[string]bool{"unobserved": true}},
+		failing:                "unreadable",
+	}})
+
+	hashes, err := stage.resumableReviewHashes(t.Context())
+	if err != nil {
+		t.Fatalf("one unreadable shadow failed the whole requeue: %v", err)
+	}
+	if _, ok := hashes["unobserved"]; !ok {
+		t.Fatal("the readable unobserved proposal was not requeued")
+	}
+	if _, ok := hashes["unreadable"]; ok {
+		t.Fatal("the proposal whose shadow could not be read was requeued; it stays in review")
 	}
 }
 

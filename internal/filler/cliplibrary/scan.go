@@ -423,7 +423,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (tools.Probed, error) {
 	// The VIDEO stream's height specifically. Taking streams[0] would read the audio track on
 	// any file that lists audio first — which reports height 0 and silently downgrades a 1080p
 	// clip to "no quality". An audio-only clip legitimately has none.
-	// ⚠ No `break` on the video match any more: the loop now answers TWO questions, and stopping
+	// ⚠ No `break` on the video match: the loop answers TWO questions, and stopping
 	// at the first video stream would report `HasAudio: false` for every file that happens to
 	// list its video track first — which is most of them. The whole stream list is cheap.
 	result := tools.Probed{DurationMs: int64(secs * 1000)}

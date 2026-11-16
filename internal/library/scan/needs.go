@@ -40,13 +40,13 @@ func (l *Library) Needs(ctx context.Context) ([]Need, error) {
 	if err != nil {
 		return nil, err
 	}
+	files, err := l.ItemStore.LibraryItemsFiles(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Need, 0, len(needs))
 	for _, n := range needs {
-		files, err := l.ItemStore.LibraryItemFiles(ctx, n.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files})
+		out = append(out, Need{LibraryNeed: n, Candidates: candidates[n.ID], Present: files[n.ID]})
 	}
 	return out, nil
 }
@@ -197,8 +197,12 @@ func (l *Library) now() time.Time {
 	return time.Now()
 }
 
-// rewriteFolders asks for a pass over the folders holding files, one call per root.
+// rewriteFolders asks for a pass over the folders holding files, one call per root. With no
+// rewrite, nothing is asked.
 func rewriteFolders(files []librarystore.LibraryFilePath, rewrite func(root string, dirs ...string)) {
+	if rewrite == nil {
+		return
+	}
 	dirs := map[string]map[string]bool{}
 	for _, f := range files {
 		if dirs[f.Root] == nil {

@@ -29,15 +29,20 @@ const retryDelay = backoff(Math.random);
 // staleTime overrides this, so a frame-fed read should not.
 const STALE_MS = 15_000;
 
+// How long an unused read stays in memory. A read leaves the cache, and so the stored copy of it,
+// when it is collected, so this is the longest a page's data can wait to be opened again and
+// still paint from the cache after a reload.
+const GC_MS = 24 * 60 * 60 * 1000;
+
 const staleTime = (query: { queryKey: readonly unknown[] }): number =>
   isFrameFed(query.queryKey) ? Number.POSITIVE_INFINITY : STALE_MS;
 
 const createQueryClient = () =>
   new QueryClient({
     defaultOptions: {
-      queries: { retry: 1, retryDelay, refetchOnWindowFocus: false, staleTime },
+      queries: { retry: 1, retryDelay, refetchOnWindowFocus: false, staleTime, gcTime: GC_MS },
       mutations: { retry: 0 },
     },
   });
 
-export { backoff, createQueryClient, MAX_RETRY_DELAY_MS, retryDelay, STALE_MS, staleTime };
+export { backoff, createQueryClient, GC_MS, MAX_RETRY_DELAY_MS, retryDelay, STALE_MS, staleTime };

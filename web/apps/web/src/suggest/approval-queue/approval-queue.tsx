@@ -9,6 +9,7 @@ import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { approvalChannelEffect } from "@loomarr/core/requests";
+import { Stack } from "@loomarr/design-system";
 import {
   ApprovalBulkGroup,
   ApprovalConsequenceDialog,
@@ -264,7 +265,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
     (deny.isError && deny.variables?.id === id ? deny.error : undefined);
 
   return (
-    <div className="flex flex-col gap-2.5">
+    <Stack gap="2.5">
       {/* Feedback and lookup errors are not about one row, so they stay here. A bulk call's
           failure is shown inside its own dialog, which is where the operator is looking. */}
       {feedback.error != null && <ErrorState error={feedback.error} onRetry={feedback.retry} />}
@@ -413,7 +414,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
       )}
 
       {reviewDialog}
-    </div>
+    </Stack>
   );
 };
 

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sort"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/channels/schedule"
 )
 
 // This file builds the fallback ladder (§10): the ordered sequence of candidate
@@ -151,7 +153,7 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
 	// (§10 — the ladder is the duration fallback, variety is a placement rule).
 	//
-	// ⚠ V45a: `c.Category` is now the DERIVED primary product leaf, so "no two back-to-back with the
+	// ⚠ V45a: `c.Category` is the DERIVED primary product leaf, so "no two back-to-back with the
 	// same Category" reads as "don't stack two clips of the same product family" — two beer ads are a
 	// repeat, a beer and a car ad are not. That is the right granularity and the rule is unchanged; a
 	// clip with no product tag ("" Category) is exempt from the repeat check, as an untagged one was.
@@ -410,35 +412,26 @@ func filterEraWindows(clips []Clip, windows []EraRange) []Clip {
 }
 
 // NormalizeEraWindows sorts and merges overlapping or adjacent windows while
-// retaining disjoint gaps. An explicit any window canonicalizes to just any.
+// retaining disjoint gaps. An explicit any window canonicalizes to just any. The merge is
+// schedule.NormalizeRanges, the one that normalizes a channel's stored date windows, so a
+// zero To (open-ended) absorbs every later window here exactly as it does there.
 func NormalizeEraWindows(in []EraRange) []EraRange {
 	if len(in) == 0 {
 		return nil
 	}
-	for _, r := range in {
+	ranges := make([]schedule.Range, len(in))
+	for i, r := range in {
 		if r.Any() {
 			return []EraRange{{}}
 		}
+		ranges[i] = schedule.Range{From: r.From, To: r.To}
 	}
-	out := append([]EraRange(nil), in...)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].From == out[j].From {
-			return out[i].To < out[j].To
-		}
-		return out[i].From < out[j].From
-	})
-	n := 0
-	for _, r := range out {
-		if n == 0 || r.From > out[n-1].To+1 {
-			out[n] = r
-			n++
-			continue
-		}
-		if r.To > out[n-1].To {
-			out[n-1].To = r.To
-		}
+	merged := schedule.NormalizeRanges(ranges)
+	out := make([]EraRange, len(merged))
+	for i, r := range merged {
+		out[i] = EraRange{From: r.From, To: r.To}
 	}
-	return out[:n:n]
+	return out
 }
 
 func filterAudience(clips []Clip, aud Audience) []Clip {

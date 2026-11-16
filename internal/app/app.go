@@ -168,7 +168,7 @@ func buildHandler(
 	// One household calendar (#2030): the channel engine, the on-screen logo and the commercial
 	// breaks date holidays alike.
 	calendar := householdCalendar(set, foundation.holidays, log)
-	watermarks := newChannelWatermarks(rootCtx, st, set, calendar, foundation.diagnostics, log)
+	watermarks := newChannelWatermarks(owner, st, set, calendar, foundation.diagnostics, log)
 
 	buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)

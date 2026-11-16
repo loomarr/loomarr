@@ -1,5 +1,4 @@
-import { Action, Card, Icon, icons } from "@loomarr/design-system";
-import { cn } from "@/lib/utils";
+import { Action, Card, Grid, Icon, icons, PressableRow, Stack, Text } from "@loomarr/design-system";
 import { BrandLockup, TvStatic } from "../../shell";
 import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 
@@ -9,13 +8,20 @@ import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 // form and its nav. The rail is resume-safe by construction — it renders whatever status
 // the caller derived from GET /v1/setup/status, so a refresh loses nothing — and skipped
 // steps render neutral, never red (§6): an optional step you passed on is not a failure.
-const MARKER: Record<WizardStepStatus, string> = {
-  done: "border-lock bg-lock-tint-15 text-lock",
+const MARKER: Record<WizardStepStatus, { backgroundColor?: string; borderColor: string }> = {
+  done: { backgroundColor: "$stateSuccessSurface", borderColor: "$stateSuccess" },
   // Where you are is neutral (#1909 Q1): its row already takes the elevated fill, so the marker is
   // a foreground ring and number. Amber is focus or the primary action.
-  current: "border-foreground font-semibold text-foreground",
-  pending: "border-border text-static-400",
-  skipped: "border-border text-static-400",
+  current: { borderColor: "$contentPrimary" },
+  pending: { borderColor: "$borderDecorative" },
+  skipped: { borderColor: "$borderDecorative" },
+};
+
+const MARKER_TONE: Record<WizardStepStatus, "primary" | "secondary" | "success"> = {
+  done: "success",
+  current: "primary",
+  pending: "secondary",
+  skipped: "secondary",
 };
 
 const WizardShell = ({
@@ -37,8 +43,14 @@ const WizardShell = ({
   busy = false,
   className,
 }: WizardShellProps) => (
-  <main
-    className={cn("bg-background relative grid min-h-screen grid-cols-1 md:grid-cols-[17rem_1fr]", className)}
+  <Grid
+    backgroundColor="$surfaceCanvas"
+    className={className}
+    columns={{ base: 1, md: ["17rem", "1fr"] }}
+    // A prop, not `min-h-screen`: a View's own `min-height: 0` outranks the utility.
+    minHeight="100vh"
+    position="relative"
+    render="main"
   >
     {/* Behind everything: the static is a positioned layer, so content siblings need an
         explicit stacking context above it (relative z-10) — otherwise a position:absolute
@@ -47,112 +59,171 @@ const WizardShell = ({
 
     {/* Left rail: brand + vertical step list. Fixed width on desktop; on narrow screens it
         stacks above the content (the whole wizard is desktop-first, but never broken). */}
-    <aside className="border-border bg-card relative z-10 flex flex-col gap-6 border-b px-6 py-8 shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0">
-      <div className="flex flex-col gap-1">
+    <Stack
+      backgroundColor="$surfaceRaised"
+      borderColor="$borderDecorative"
+      className="border-b shadow-[4px_0_16px_-6px_rgba(0,0,0,0.6)] md:border-r md:border-b-0"
+      gap="section"
+      paddingHorizontal={24}
+      paddingVertical={32}
+      position="relative"
+      render="aside"
+      zIndex={10}
+    >
+      <Stack gap="1">
         <BrandLockup variant="compact" />
-        <p className="mt-2 text-base font-semibold">Let's get you on the air</p>
-        <p className="text-muted-foreground font-mono text-xs">First-run setup · saved as you go</p>
-      </div>
+        <Stack marginTop={8}>
+          <Text as="p" textRole="heading">
+            Let's get you on the air
+          </Text>
+        </Stack>
+        <Text as="p" textRole="mono" tone="secondary">
+          First-run setup · saved as you go
+        </Text>
+      </Stack>
 
-      <ol aria-label="Setup steps" className="flex flex-col gap-1">
+      <Stack aria-label="Setup steps" gap="1" render="ol">
         {steps.map((step, i) => {
           const status = statusById[step.id] ?? "pending";
           const isCurrent = step.id === currentId;
           const subItems = isCurrent ? step.subItems : undefined;
-          const row = cn(
-            "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5",
-            isCurrent && "bg-static-800",
-          );
           // A reached step is a way back to it. One not yet reached stays text: clicking ahead
           // would land on the frontier anyway (resolveStep), which reads as a broken link.
           const canGo = !isCurrent && onStep !== undefined && reachable?.has(step.id) === true;
           const content = (
             <>
-              <span
-                className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
-                  MARKER[status],
-                )}
+              <Stack
+                align="center"
+                {...MARKER[status]}
+                borderRadius={999}
+                borderWidth={1}
+                flexShrink={0}
+                height={24}
+                justify="center"
+                render="span"
+                width={24}
               >
                 {status === "done" ? (
-                  <Icon decorative glyph={icons.selected} size="compact" tone="inherit" />
+                  <Icon decorative glyph={icons.selected} size="compact" tone={MARKER_TONE[status]} />
                 ) : (
-                  i + 1
+                  <Text as="span" strong={status === "current"} textRole="mono" tone={MARKER_TONE[status]}>
+                    {i + 1}
+                  </Text>
                 )}
-              </span>
-              <span
-                className={cn("text-sm", isCurrent ? "text-foreground font-medium" : "text-muted-foreground")}
+              </Stack>
+              <Text
+                as="span"
+                textRole={isCurrent ? "cardLabel" : "compact"}
+                tone={isCurrent ? "primary" : "secondary"}
               >
                 {step.title}
-              </span>
-              {status === "skipped" && <span className="text-static-400 ml-auto text-xs">skipped</span>}
+              </Text>
+              {status === "skipped" && (
+                <Stack marginLeft="auto" render="span">
+                  <Text as="span" textRole="hint" tone="secondary">
+                    skipped
+                  </Text>
+                </Stack>
+              )}
             </>
           );
           return (
             <li key={step.id} aria-current={isCurrent ? "step" : undefined}>
-              {canGo ? (
-                <button
-                  type="button"
-                  onClick={() => onStep?.(step.id)}
-                  className={cn(row, "w-[calc(100%+1rem)] cursor-pointer text-left")}
-                >
-                  {content}
-                </button>
-              ) : (
-                <div className={row}>{content}</div>
-              )}
+              {/* The row's own inset (its 2px border and 10px padding) bleeds outward, so the step
+                  markers line up with the heading above and only the fill reaches past it. */}
+              <Stack marginHorizontal={-12}>
+                {canGo ? (
+                  <PressableRow onPress={() => onStep?.(step.id)}>{content}</PressableRow>
+                ) : (
+                  <Stack
+                    align="center"
+                    backgroundColor={isCurrent ? "surfaceElevated" : undefined}
+                    direction="row"
+                    gap="control"
+                    paddingHorizontal={12}
+                    paddingVertical={10}
+                  >
+                    {content}
+                  </Stack>
+                )}
+              </Stack>
 
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current
                 // step. The vertical guide line ties them to their parent.
-                <ul className="border-border mt-1 ml-[1.6rem] flex flex-col gap-0.5 border-l pl-3">
+                <Stack
+                  borderColor="$borderDecorative"
+                  borderLeftWidth={1}
+                  gap="0.5"
+                  marginLeft={25.6}
+                  marginTop={4}
+                  paddingLeft={12}
+                  render="ul"
+                >
                   {subItems.map((sub) => {
                     const active = sub.id === activeSubItem;
                     return (
                       <li key={sub.id}>
-                        <button
-                          type="button"
-                          onClick={() => onSubItem?.(sub.id)}
+                        <PressableRow
                           aria-current={active ? "true" : undefined}
-                          className={cn(
-                            "w-full cursor-pointer rounded px-2 py-1 text-left text-sm transition-colors",
-                            active
-                              ? "text-foreground font-semibold"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
+                          onPress={() => onSubItem?.(sub.id)}
+                          selected={active}
                         >
-                          {sub.label}
-                        </button>
+                          <Text
+                            as="span"
+                            strong={active}
+                            textRole="compact"
+                            tone={active ? "primary" : "secondary"}
+                          >
+                            {sub.label}
+                          </Text>
+                        </PressableRow>
                       </li>
                     );
                   })}
-                </ul>
+                </Stack>
               )}
             </li>
           );
         })}
-      </ol>
-    </aside>
+      </Stack>
+    </Stack>
 
     {/* Content column: the current step. Stacked above the static like the rail. */}
-    <div className="relative z-10 flex min-w-0 flex-col">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-8 md:py-12">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold">{title}</h1>
-          {description && <p className="text-muted-foreground text-sm">{description}</p>}
-        </div>
+    <Stack flexShrink={1} minWidth={0} position="relative" zIndex={10}>
+      <Stack
+        className="py-8 md:py-12"
+        flexBasis="0%"
+        flexGrow={1}
+        flexShrink={1}
+        gap="6"
+        marginHorizontal="auto"
+        maxWidth={672}
+        paddingHorizontal={24}
+        width="100%"
+      >
+        <Stack gap="1">
+          <Text as="h1" strong textRole="display">
+            {title}
+          </Text>
+          {description && (
+            <Text as="p" textRole="compact" tone="secondary">
+              {description}
+            </Text>
+          )}
+        </Stack>
 
         <Card gap={20} padding={24}>
           {children}
         </Card>
 
-        <div className="flex items-center gap-2">
+        <Stack align="center" direction="row" gap="inline">
           {onBack && (
             <Action disabled={busy} onPress={onBack} variant="ghost">
               Back
             </Action>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <Stack align="center" direction="row" gap="inline" marginLeft="auto">
             {onSkip && (
               <Action disabled={busy} onPress={onSkip} variant="outline">
                 Skip for now
@@ -163,11 +234,11 @@ const WizardShell = ({
                 {nextLabel}
               </Action>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
+          </Stack>
+        </Stack>
+      </Stack>
+    </Stack>
+  </Grid>
 );
 
 export { WizardShell };

@@ -106,6 +106,21 @@ func testLibraryItems(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || len(files) != 2 || files[0].Path != "/media/show/e1.mkv" || files[1].SeriesID != "s1" {
 		t.Fatalf("series files = %+v, %v", files, err)
 	}
+	// Many titles' files are one read: each title its own present files, in path order, and a
+	// title with none (or no such title) has none.
+	many, err := st.LibraryItemsFiles(ctx, []string{"s1", "m1", "gone", "nobody"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := map[string][]string{}
+	for id, fs := range many {
+		for _, f := range fs {
+			paths[id] = append(paths[id], f.Path)
+		}
+	}
+	if want := map[string][]string{"s1": {"/media/show/e1.mkv", "/media/show/e2.mkv"}, "m1": {"/media/100.mkv"}}; !reflect.DeepEqual(paths, want) {
+		t.Fatalf("many titles' files = %v, want %v", paths, want)
+	}
 
 	// A file Loomarr moved away goes missing at once, unheld; a missing one keeps when it went.
 	held := file("/media/show/e2.mkv", "e2", "s1", LibraryHeaderPending)
@@ -202,8 +217,8 @@ func testLibraryItemProblems(t *testing.T, newStore NewStoreFunc) {
 	if page.Total != 3 || len(got) != 3 || got[0] != "show" || got[1] != "broken" || got[2] != "twice" {
 		t.Fatalf("problems = %v (total %d), want show, broken and twice", got, page.Total)
 	}
-	if page.Items[1].Unplayable != 1 || page.Items[1].ExtraBytes != 0 || page.Items[2].Unplayable != 0 ||
-		page.Items[2].Files != 2 || page.Items[2].ExtraBytes != 30 {
+	if page.Items[1].Unplayable != 1 || page.Items[1].ExtraCopies != 0 || page.Items[1].ExtraBytes != 0 ||
+		page.Items[2].Unplayable != 0 || page.Items[2].Files != 2 || page.Items[2].ExtraCopies != 1 || page.Items[2].ExtraBytes != 30 {
 		t.Errorf("problem counts = %+v, want Twice Film's 30-byte copy extra", page.Items)
 	}
 	if all, err := st.ListLibraryItems(ctx, LibraryItemQuery{}); err != nil || all.Total != 6 {

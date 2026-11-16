@@ -118,7 +118,16 @@ const HeldRemoval: Story = {
     status: {
       health: "ok",
       scan: IDLE,
-      held: [{ path: "/media/movies", movies: 2406, episodes: 0, other: 0 }],
+      held: [
+        {
+          path: "/media/movies",
+          movies: 2406,
+          episodes: 0,
+          other: 0,
+          titles: ["Amber Hollow", "Brightwater", "Calder Point"],
+          titleCount: 2406,
+        },
+      ],
       offline: [],
     },
   },
@@ -565,7 +574,7 @@ const WizardStepAdding: Story = {
     <LibraryWizardStep
       {...wizardStep}
       folders={[{ ...wizardFolders[0], inUse: true } as (typeof wizardFolders)[number]]}
-      readySoFar={TITLES.filter((t) => t.ready).map((t) => ({ id: t.id, name: t.name, poster: t.poster }))}
+      readySoFar={TITLES.map((t) => ({ id: t.id, name: t.name, ready: t.ready, poster: t.poster }))}
       scan={READING}
     />
   ),

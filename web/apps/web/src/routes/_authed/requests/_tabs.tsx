@@ -1,4 +1,5 @@
 import type { RequestTab } from "@loomarr/core/requests";
+import { Grid, Stack } from "@loomarr/design-system";
 import { NavTabs } from "@loomarr/ui";
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -12,7 +13,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { useRouteContent } from "@/lib/use-route-content";
 import { ensureRequests, useRequests } from "@/queue/use-requests";
 
-// Requests — what you've asked for, and anything that needs you (#1405; this was "Queue"). Three
+// Requests — what you've asked for, and anything that needs you (#1405; `/queue` redirects here). Three
 // tabs, each its own PATH so a tab can be linked and reopened:
 //   Needs you    — approvals waiting on an admin, and your own requests that couldn't be built
 //   In progress  — every unfinished request, with one status line
@@ -43,14 +44,14 @@ const RequestsLayout = () => {
   const nothingRequested = !isLoading && error == null && entries.length === 0 && pendingApprovals === 0;
 
   return (
-    <div className="flex h-full flex-col">
+    <Stack height="100%">
       <PageHeader title="Requests" description="Channels you've asked for and where each one stands." />
       {error != null ? (
-        <div className="p-6">
+        <Stack padding={24}>
           <ErrorState error={error} onRetry={refetch} />
-        </div>
+        </Stack>
       ) : nothingRequested ? (
-        <div className="p-6">
+        <Stack padding={24}>
           {ideas}
           <EmptyState
             title="You haven't requested a channel yet"
@@ -60,11 +61,11 @@ const RequestsLayout = () => {
               onClick: () => void navigate({ to: "/requests/new" }),
             }}
           />
-        </div>
+        </Stack>
       ) : (
         <>
           {ideas}
-          <div className="px-6">
+          <Stack paddingHorizontal={24}>
             <NavTabs
               label="Requests sections"
               variant="underline"
@@ -87,21 +88,28 @@ const RequestsLayout = () => {
                 { id: "done", label: "Done", to: "/requests/done", count: inTab("done").length },
               ]}
             />
-          </div>
-          <div
+          </Stack>
+          <Grid
             id={`panel-${activeId}`}
             role="tabpanel"
             aria-labelledby={`tab-${activeId}`}
-            // Rows as tall as their content (`auto-rows-max`), so the panel scrolls. A flex column,
+            columns={["auto"]}
+            flexBasis="0%"
+            flexGrow={1}
+            flexShrink={1}
+            gap="6"
+            overflow="auto"
+            padding={24}
+            // Rows as tall as their content (`max-content`), so the panel scrolls. A flex column,
             // or plain auto rows, shrank an `overflow-hidden` list instead (its minimum height is
             // 0), hiding its last rows with nothing to scroll (#1785, 320×640).
-            className="grid flex-1 auto-rows-max gap-6 overflow-auto p-6"
+            style={{ gridAutoRows: "max-content" }}
           >
             <Outlet />
-          </div>
+          </Grid>
         </>
       )}
-    </div>
+    </Stack>
   );
 };
 

@@ -2,29 +2,26 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { audioChoices } from "@loomarr/core/channel-audio";
-import { formatGuideTime } from "@loomarr/core/guide";
-import { ThemeScope } from "@loomarr/design-system";
-import type { PlayerFailureCause } from "@loomarr/player";
 import {
-  PlayerAudio,
-  PlayerBottomSheet,
+  createChannelSubtitlesSource,
+  nextSubtitle,
+  SUBTITLES_OFF,
+  subtitleChoices,
+  useChannelSubtitles,
+} from "@loomarr/core/channel-subtitles";
+import { formatGuideTime } from "@loomarr/core/guide";
+import { Stack } from "@loomarr/design-system";
+import {
   PlayerChrome,
-  PlayerCover,
-  PlayerDetails,
   PlayerDetailsPanel,
-  PlayerInfo,
-  PlayerMenu,
-  PlayerMore,
-  PlayerOptions,
-  PlayerSheet,
   PlayerVolume,
   playbarFromTimeline,
   rungFor,
+  surfCardsFromGuide,
+  useSurfCards,
   watermarkOf,
 } from "@loomarr/ui";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { ChannelDrawer } from "@/channels/channel-drawer";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VideoPlayer, type VideoPlayerChrome } from "@/components/loomarr/player/video-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { copyText } from "@/lib/copy-text";
@@ -32,12 +29,24 @@ import { useCoarsePointer } from "@/lib/use-coarse-pointer";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { TunerOSD } from "../tuner-osd";
 import { usePlaybackDetails } from "../use-playback-details";
+import { useSubtitlesPreference } from "../use-subtitles-preference";
 import { useSwitchSound } from "../use-switch-sound";
 import { useTunePhase } from "../use-tune-phase";
 import type { WatchChannels } from "../use-watch-channels";
 import type { WatchPlayer } from "../use-watch-player";
 import { useWatchShortcuts } from "../use-watch-shortcuts";
 import { useWatchTelemetry } from "../use-watch-telemetry";
+import { FirstPlayMuted } from "./first-play-muted";
+import { FlashOnVolume } from "./flash-on-volume";
+import { HideForIdent } from "./hide-for-ident";
+import { HoldWhile } from "./hold-while";
+import { PausedCover } from "./paused-cover";
+import { qualityOptionsFor } from "./quality-options";
+import { sheetFor } from "./sheet-for";
+import { StoppedCover } from "./stopped-cover";
+import { useExpiryNotice } from "./use-expiry-notice";
+import { useStationIdent } from "./use-station-ident";
+import { useVolumeLevel } from "./use-volume-level";
 
 // ChannelWatch — the full-bleed `/watch/$id` player: play a channel live in the browser (§9, #2088).
 //
@@ -51,6 +60,10 @@ import { useWatchTelemetry } from "../use-watch-telemetry";
 // ⚠ Audio only SHOWS the channel's default audio language. An admin sets it on the channel's info
 // page (#2088); the per-viewer choice between renditions comes with the alternate-audio step.
 
+// Subtitles are read beside the stream with the session cookie, the same-origin request every
+// member read makes.
+const subtitlesSource = createChannelSubtitlesSource((input, init) => fetch(input, init));
+
 interface ChannelWatchProps {
   channel: ChannelDTO;
   isAdmin: boolean;
@@ -61,119 +74,6 @@ interface ChannelWatchProps {
   /** The channels around this one: the drawer, the phone panel, and the recents record. */
   channels?: WatchChannels;
 }
-
-// The station-ID card's time on screen after a settled tune (playback-clients: Station ID).
-const IDENT_MS = 5_000;
-
-// What the stopped cover says for each cause, in plain words (the H mock's copy). A channel the app
-// can't play has no cause and reads as a stream that stopped.
-const STOPPED_COVER: Record<PlayerFailureCause | "none", { message?: string; title: string }> = {
-  channel: {
-    message:
-      "Loomarr is running, but it couldn't start the video for this channel. Trying again usually fixes it.",
-    title: "This channel couldn't start",
-  },
-  none: { title: "The stream stopped." },
-  server: {
-    message:
-      "The picture stopped because this device lost touch with Loomarr. Check that the server is running and that you're on the same network, then try again.",
-    title: "Loomarr's server isn't answering",
-  },
-  stream: { message: "Trying again usually brings it back.", title: "The stream stopped." },
-};
-
-// A rung as Settings names it: the premium by its class, the rest by lines.
-const rungLabel = (height: number) => (height >= 2160 ? "4K" : `${height}p`);
-
-// HoldWhile keeps the player's controls shown while `on`: VideoPlayer's hold is a count, so each
-// hold(true) is paired with exactly one hold(false), here by the effect's cleanup.
-const HoldWhile = ({ hold, on }: { hold: VideoPlayerChrome["hold"]; on: boolean }) => {
-  useEffect(() => {
-    if (!on) return;
-    hold(true);
-    return () => hold(false);
-  }, [hold, on]);
-  return null;
-};
-
-// The session's first play starts muted (§9.3), so a channel never blasts at someone who just opened
-// the player; a pill takes one tap to undo it. Only the session's first play: later channels, and
-// reopening Watch, keep the sound as the viewer left it.
-const FIRST_PLAY_KEY = "loomarr.player.first-play";
-const firstPlayOfSession = () => {
-  try {
-    if (sessionStorage.getItem(FIRST_PLAY_KEY)) return false;
-    sessionStorage.setItem(FIRST_PLAY_KEY, "1");
-  } catch {
-    // No session storage (a private window): treat it as a first play only once per mount.
-  }
-  return true;
-};
-
-// FirstPlayMuted mutes the player once, on the session's first play, and tells the screen to show the
-// pill until the sound comes on by any means (the pill, the key, M).
-const FirstPlayMuted = ({
-  chrome,
-  onUnmuted,
-  onStart,
-}: {
-  chrome: VideoPlayerChrome;
-  onStart: () => void;
-  onUnmuted: () => void;
-}) => {
-  const { setMuted } = chrome;
-  const seenMuted = useRef(false);
-  const started = useRef(false);
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    if (!firstPlayOfSession()) return;
-    setMuted(true);
-    onStart();
-  }, [setMuted, onStart]);
-  useEffect(() => {
-    if (chrome.muted) seenMuted.current = true;
-    else if (seenMuted.current) onUnmuted();
-  }, [chrome.muted, onUnmuted]);
-  return null;
-};
-
-// HideForIdent clears the controls as the station-ID card arrives, so the card stands alone as the
-// mock draws it; moving the pointer brings the controls back in its place.
-// How long a change of level or mute shows the volume level (§9.5).
-const VOLUME_FLASH_MS = 1_500;
-
-// FlashOnVolume shows the volume level for a moment when the level or mute changes after mount.
-// The session's first play mutes itself (quiet): the unmute pill says so, and the level stays away.
-const FlashOnVolume = ({
-  muted,
-  onChange,
-  quiet,
-  volume,
-}: {
-  muted: boolean;
-  onChange: () => void;
-  quiet: boolean;
-  volume: number;
-}) => {
-  const seen = useRef({ muted, volume });
-  useEffect(() => {
-    if (seen.current.muted === muted && seen.current.volume === volume) return;
-    seen.current = { muted, volume };
-    if (!quiet) onChange();
-  }, [muted, volume, onChange, quiet]);
-  return null;
-};
-
-const HideForIdent = ({ hide, ident }: { hide: VideoPlayerChrome["hide"]; ident: boolean }) => {
-  useEffect(() => {
-    if (ident) hide();
-  }, [hide, ident]);
-  return null;
-};
-
-// Picture in picture is the browser's: offered only where it is.
-const pipSupported = typeof document !== "undefined" && document.pictureInPictureEnabled === true;
 
 const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWatchProps) => {
   const drawer = channels?.drawer;
@@ -198,16 +98,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     },
     [playerAttach],
   );
-  const expiryNoticeRef = useRef({ channelId: channel.id, revision: 0 });
-  useEffect(() => {
-    if (expiryNoticeRef.current.channelId !== channel.id) {
-      expiryNoticeRef.current = { channelId: channel.id, revision: 0 };
-    }
-    const revision = player.liveTransport.state.noticeRevision;
-    if (revision <= expiryNoticeRef.current.revision) return;
-    expiryNoticeRef.current.revision = revision;
-    toast.info("That paused point is no longer available, so you're back live.");
-  }, [channel.id, player.liveTransport.state.noticeRevision]);
+  useExpiryNotice(channel.id, player.liveTransport.state.noticeRevision);
 
   // Whether the player holds a picture: once any channel has played here, a switch leaves its last
   // frame held in the <video> while the next one loads (VideoPlayer's held poster), and the tuner's
@@ -267,21 +158,20 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // still applies when a programme with that track airs (audioChoices keeps it).
   const audio = audioChoices(tracksBody?.audio ?? [], channel.policy?.playout?.audioLanguage);
 
-  // Quality (#2088 decision 7): Auto, naming the rung on air, then the channel's rungs. A remembered
-  // rung this channel doesn't offer shows Auto chosen, because Auto is what plays.
-  const { rungs, height: onAir } = player.ladder;
-  const pinned = player.quality !== "auto" && rungs.some((rung) => rung.height === player.quality);
-  const qualityOptions =
-    rungs.length > 0
-      ? [
-          { label: onAir ? `Auto · ${rungLabel(onAir)}` : "Auto", selected: !pinned, value: "auto" },
-          ...rungs.map((rung) => ({
-            label: rungLabel(rung.height),
-            selected: pinned && rung.height === player.quality,
-            value: String(rung.height),
-          })),
-        ]
-      : undefined;
+  // Subtitles (§9.5): the viewer's remembered track, followed along the picture's own clock, so a
+  // viewer behind live reads the lines of what is on screen. C steps through the menu's choices.
+  const [subtitlesKey, setSubtitlesKey] = useSubtitlesPreference();
+  const subtitles = useChannelSubtitles(
+    subtitlesSource,
+    channel.id,
+    viewerTimeMs,
+    subtitlesKey,
+    !paused && player.status === "playing",
+  );
+  const subtitleOptions = subtitleChoices(subtitles.tracks ?? [], subtitlesKey);
+  const subtitlesOn = subtitlesKey !== SUBTITLES_OFF;
+
+  const qualityOptions = qualityOptionsFor(player);
 
   // The channel on the OSD is the one asked for, from the moment the controller starts its tune.
   const osdChannel = channel;
@@ -318,18 +208,9 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
       : undefined;
 
   // The station-ID card (§9.1): every settled tune shows it for five seconds, while the controls are
-  // hidden. A retune drops it until the new channel settles, then shows it afresh.
-  // A retune hides it by derivation: a state change here would render this tree a second time
-  // inside the press, holding up the tuning overlay.
+  // hidden.
   const settled = !tuning && player.status === "playing";
-  const [identUp, setIdentUp] = useState(false);
-  useEffect(() => {
-    if (!settled) return;
-    setIdentUp(true);
-    const timer = window.setTimeout(() => setIdentUp(false), IDENT_MS);
-    return () => window.clearTimeout(timer);
-  }, [settled]);
-  const ident = settled && identUp;
+  const ident = useStationIdent(settled);
 
   const [switchSoundOn, setSwitchSoundOn] = useSwitchSound({
     channelId: osdChannel.id,
@@ -346,21 +227,8 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   // Playback details (§9.5): a panel at the upper left on a pointer, a sheet on a phone. I toggles it.
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // The volume level (§9.5, desktop): opened by the Volume key in the menu's place, and shown for a
-  // moment when the level or mute changes.
-  const [volumeOpen, setVolumeOpen] = useState(false);
-  // A count of changes, not a flag: each change restarts the moment; zero is hidden.
-  const [volumeFlash, setVolumeFlash] = useState(0);
-  const flashVolume = useCallback(() => setVolumeFlash((n) => n + 1), []);
-  useEffect(() => {
-    if (volumeFlash === 0) return;
-    const timer = window.setTimeout(() => setVolumeFlash(0), VOLUME_FLASH_MS);
-    return () => window.clearTimeout(timer);
-  }, [volumeFlash]);
-  const closeVolume = () => {
-    setVolumeOpen(false);
-    setVolumeFlash(0);
-  };
+  const { closeVolume, flashVolume, setVolumeFlash, setVolumeOpen, volumeFlash, volumeOpen } =
+    useVolumeLevel();
 
   const { sheet, toggleSheet, closeSheet, entry, onShortcut } = useWatchShortcuts({
     channels: drawer?.channels,
@@ -368,6 +236,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
     infoAsCard: !touch,
     onDetails: () => setDetailsOpen((open) => !open),
     onLast: goLast,
+    onNextSubtitles: () => setSubtitlesKey(nextSubtitle(subtitleOptions)),
     // Esc closes the top layer, then leaves: the details panel and the volume level are layers too.
     onLeave: () =>
       detailsOpen ? setDetailsOpen(false) : volumeOpen || volumeFlash > 0 ? closeVolume() : onLeave(),
@@ -377,7 +246,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // One thing in the menu's place at a time: opening a menu or sheet closes the level.
   useEffect(() => {
     if (sheet) setVolumeOpen(false);
-  }, [sheet]);
+  }, [sheet, setVolumeOpen]);
   const volumeShown = !touch && !sheet && (volumeOpen || volumeFlash > 0);
 
   const detailRows = usePlaybackDetails(detailsOpen || sheet === "details", videoRef, {
@@ -390,9 +259,19 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // The number readout, top right of the frame, drawn by the chrome (it keeps it clear of the
   // watermark): the digits so far, dashed out to the longest channel number, over "Enter channel" or,
   // for a number no channel has, "No such channel". On a solid ink backing (§9.2), white, never amber.
+  // Flipping (§9.2): each Channel key tunes at once, and the cards ride along in the band's place; the
+  // band is down, so the readout names the channel.
+  const guide = channels?.guide;
+  const surfCards = useMemo(
+    () => (guide ? surfCardsFromGuide(player.catalog, guide.layout, guide.nowMs) : []),
+    [player.catalog, guide],
+  );
+  const surf = useSurfCards(surfCards, channel.id, player.flipKey);
   const readout = entry.digits
     ? { digits: entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–"), missed: entry.missed }
-    : undefined;
+    : surf
+      ? { digits: String(osdChannel.number), name: osdChannel.name, quiet: true }
+      : undefined;
   // The channel's bug is burned into the picture; the chrome keeps out of its corner (§9.6, #2772).
   const watermark = watermarkOf(channel.policy?.watermark);
 
@@ -401,146 +280,53 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
   // still the console drawer (#1659 W1) everywhere, until it is rebuilt on the sheet.
   const placement = onPhone ? "bottom" : touch ? "right" : "menu";
   const inMenu = placement === "menu" && sheet !== "channels";
-  // The right-hand sheet's own name for the channel it is about.
-  const sheetChannel = { name: osdChannel.name, number: String(osdChannel.number) };
-  const sheetOf = (title: string, body: ReactNode, back?: () => void) =>
-    placement === "menu" ? (
-      // More names no heading: its rows say what they are. Picture is its second page.
-      <PlayerMenu
-        density={density}
-        heading={title !== "More"}
-        key={title}
-        title={title}
-        {...(back ? { onBack: back } : {})}
-      >
-        {body}
-      </PlayerMenu>
-    ) : placement === "bottom" ? (
-      <PlayerBottomSheet key={title} onClose={closeSheet} title={title}>
-        {body}
-      </PlayerBottomSheet>
-    ) : (
-      <PlayerSheet channel={sheetChannel} density={density} key={title} onClose={closeSheet} title={title}>
-        {body}
-      </PlayerSheet>
-    );
   const live = player.liveTransport.state;
 
   // What is open: a menu or a sheet, by placement. Info on a pointer is neither: it is the block on
   // air's card on the film strip, pinned open in full (the strip's `info`).
   const openSheetFor = (chrome: VideoPlayerChrome) =>
-    sheet === "audio" ? (
-      sheetOf(
-        "Audio",
-        <PlayerAudio
-          density={density}
-          options={audio}
-          switchSound={{ on: switchSoundOn, onChange: setSwitchSoundOn }}
-        />,
-      )
-    ) : sheet === "picture" ? (
-      sheetOf(
-        "Picture",
-        qualityOptions ? (
-          <PlayerOptions
-            density={density}
-            label="Picture quality"
-            onSelect={(value) => player.setQuality(value === "auto" ? "auto" : Number(value))}
-            options={qualityOptions}
-          />
-        ) : null,
-        placement === "menu" ? () => toggleSheet("more") : undefined,
-      )
-    ) : sheet === "more" ? (
-      sheetOf(
-        "More",
-        <PlayerMore
-          channels={drawer ? { onPress: () => toggleSheet("channels") } : undefined}
-          density={density}
-          formatTime={formatGuideTime}
-          goLive={
-            live.mode === "live"
-              ? undefined
-              : { detail: formatGuideTime(serverNowMs ?? Date.now()), onPress: chrome.goLive }
-          }
-          info={info ? { onPress: () => toggleSheet("info") } : undefined}
-          pictureInPicture={
-            pipSupported
-              ? {
-                  onPress: () => {
-                    closeSheet();
-                    void videoRef.current?.requestPictureInPicture().catch(() => undefined);
-                  },
-                }
-              : undefined
-          }
-          playbackDetails={{
-            onPress: () => {
-              if (touch) toggleSheet("details");
-              else {
-                closeSheet();
-                setDetailsOpen(true);
-              }
-            },
-          }}
-          picture={
-            qualityOptions
-              ? {
-                  detail: qualityOptions.find((o) => o.selected)?.label ?? "Auto",
-                  onPress: () => toggleSheet("picture"),
-                }
-              : undefined
-          }
-          // A phone has no film strip in its band, so its More keeps the schedule.
-          schedule={
-            touch && airings.length > 0
-              ? {
-                  onSeek: chrome.seekTo,
-                  playheadMs: viewerTimeMs,
-                  segments: chromeData.segments,
-                  window: chromeData.window,
-                }
-              : undefined
-          }
-          startOver={
-            startOverMs === undefined || !info
-              ? undefined
-              : { detail: info.title, onPress: () => chrome.seekTo(startOverMs) }
-          }
-        />,
-      )
-    ) : sheet === "details" ? (
-      sheetOf("Playback details", <PlayerDetails density={density} onCopy={copyDetails} rows={detailRows} />)
-    ) : sheet === "info" && info && placement !== "menu" ? (
-      sheetOf("Info", <PlayerInfo density={density} formatTime={formatGuideTime} info={info} />)
-    ) : sheet === "channels" && drawer ? (
-      <ChannelDrawer
-        channels={drawer.channels}
-        tunedId={osdChannel.id}
-        favourites={drawer.favourites}
-        recent={drawer.recent}
-        nowPercent={drawer.nowPercent}
-        onTune={player.tune}
-        onFavourite={drawer.onFavourite}
-        onClose={closeSheet}
-      />
-    ) : undefined;
+    sheetFor({
+      audio,
+      chrome,
+      closeSheet,
+      copyDetails,
+      density,
+      detailRows,
+      drawer,
+      hasAirings: airings.length > 0,
+      info,
+      live,
+      osdChannel,
+      placement,
+      player,
+      playbackWindow: chromeData.window,
+      qualityOptions,
+      segments: chromeData.segments,
+      serverNowMs,
+      setDetailsOpen,
+      setSubtitlesKey,
+      setSwitchSoundOn,
+      sheet,
+      startOverMs,
+      subtitleOptions,
+      switchSoundOn,
+      toggleSheet,
+      touch,
+      video: videoRef,
+      viewerTimeMs,
+    });
 
   // A stream that stopped has nothing for the playbar to stand on, so Retry and the way out take the
   // frame in the chrome's place.
   const errorCover =
     player.status === "error" ? (
-      <ThemeScope theme="dark">
-        <PlayerCover
-          channelLabel={channelLabel}
-          density={density}
-          kind="error"
-          onLeave={onLeave}
-          message={STOPPED_COVER[player.failureCause ?? "none"].message}
-          onRetry={player.retry}
-          title={STOPPED_COVER[player.failureCause ?? "none"].title}
-        />
-      </ThemeScope>
+      <StoppedCover
+        channelLabel={channelLabel}
+        density={density}
+        failureCause={player.failureCause}
+        onLeave={onLeave}
+        onRetry={player.retry}
+      />
     ) : undefined;
 
   // The chrome over the picture (§9), or the error cover in its place.
@@ -560,6 +346,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         {errorCover ?? (
           <PlayerChrome
             band={chromeData.band}
+            captions={subtitles.lines}
             density={density}
             formatTime={formatGuideTime}
             ident={ident}
@@ -605,6 +392,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
             }
             onGoLive={chrome.goLive}
             readout={readout}
+            {...(surf ? { surf } : {})}
             panel={
               detailsOpen && !touch ? (
                 <PlayerDetailsPanel
@@ -635,7 +423,10 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
               fullscreen: chrome.fullscreen,
               onAudio: () => toggleSheet("audio"),
               onFullscreen: chrome.toggleFullscreen,
+              onSubtitles: () => toggleSheet("subtitles"),
               pointer: !touch,
+              subtitlesOn,
+              subtitlesOpen: sheet === "subtitles",
             }}
             unmute={startedMuted && chrome.muted ? () => chrome.setMuted(false) : undefined}
             // The quiet flip keeps the band up (§9.4); only the full signature hides it.
@@ -665,7 +456,17 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
         signature ? (
           <>
             {player.stillURL && (
-              <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
+              <img
+                src={player.stillURL}
+                alt=""
+                style={{
+                  height: "100%",
+                  inset: 0,
+                  objectFit: "contain",
+                  position: "absolute",
+                  width: "100%",
+                }}
+              />
             )}
             <TunerLoader backdrop={holdBackdrop} channel={osdChannel} heldFrame={heldFrame} />
           </>
@@ -682,28 +483,18 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
 
   if (paused) {
     return (
-      <section className="relative flex min-h-0 flex-1 flex-col">
-        <ThemeScope theme="dark">
-          <PlayerCover
-            channelLabel={channelLabel}
-            density={density}
-            kind="off-air"
-            // The web mock's words; the way back is an admin's, so members get the first sentence.
-            message={
-              isAdmin
-                ? "This channel is paused, so there's nothing to watch. Resume it under Danger zone."
-                : "This channel is paused, so there's nothing to watch."
-            }
-            onLeave={onLeave}
-            title={`${channel.name} is off air`}
-          />
-        </ThemeScope>
-      </section>
+      <PausedCover
+        channelLabel={channelLabel}
+        channelName={channel.name}
+        density={density}
+        isAdmin={isAdmin}
+        onLeave={onLeave}
+      />
     );
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <Stack flexBasis="0%" flexGrow={1} flexShrink={1} minHeight={0} render="section">
       <div className="relative min-h-0 flex-1">
         {playerEl}
         {/* The wash's centred channel line is the visible readout; this is the same line for a
@@ -712,7 +503,7 @@ const ChannelWatch = ({ channel, isAdmin, onLeave, player, channels }: ChannelWa
           <TunerOSD number={osdChannel.number} name={osdChannel.name} currentTitle={player.currentTitle} />
         )}
       </div>
-    </section>
+    </Stack>
   );
 };
 

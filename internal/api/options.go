@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"time"
 
 	catalogapi "github.com/loomarr/loomarr/internal/api/catalog"
@@ -63,7 +64,9 @@ type Options struct {
 	// instance with no store behind it. The channel, guide and library routes draw their art from it.
 	Images       imagesapi.ImageService
 	CookieSecure string // COOKIE_SECURE: auto|true|false (§11)
-	TrustProxy   bool   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
+	// TrustedProxies is `security.trusted_proxies`: forwarding headers are honored only from a
+	// socket peer inside one of these ranges (§11). Empty trusts none.
+	TrustedProxies []netip.Prefix
 
 	People    PeopleOptions
 	Setup     SetupOptions

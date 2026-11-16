@@ -30,7 +30,7 @@ it("chooses one server-resolved location from the typeahead", async () => {
     ),
   });
   await userEvent.type(screen.getByRole("combobox", { name: "Location" }), "North Greenbush");
-  const option = await screen.findByRole("option", { name: "North Greenbush, United States" });
+  const option = await screen.findByRole("option", { name: /^North Greenbush/ });
   // The city leads, and the region and country tell same-named cities apart.
   expect(option).toHaveTextContent("North Greenbush");
   expect(option).toHaveTextContent("New York, United States");

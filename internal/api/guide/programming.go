@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/channels/schedule"
 	"github.com/loomarr/loomarr/internal/filler/pod"
+	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
 	"github.com/loomarr/loomarr/internal/platform/store"
 )
 
@@ -57,7 +58,8 @@ type previewProgrammingInput struct {
 	Body struct {
 		// Lineup is the draft lineup (omit to use the saved one). Lowered by key like a PATCH —
 		// rich scheduling metadata carried forward, so the preview matches what a save would air.
-		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty"`
+		// The same 1000-entry ceiling as a PATCH, since the preview lowers what a save would.
+		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty" maxItems:"1000"`
 		// Policy is the draft policy (omit to use the saved one). Validated like a policy write.
 		Policy *schedule.ChannelPolicy `json:"policy,omitempty"`
 	}
@@ -118,7 +120,7 @@ func (s *Handlers) previewChannelProgramming(ctx context.Context, in *previewPro
 	if err != nil {
 		return nil, err
 	}
-	draftLineup, draftPolicy, err := lowerProgrammingDraft(in.Body.Lineup, in.Body.Policy)
+	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), s.storedPolicy(ctx, in.ID), in.Body.Lineup, in.Body.Policy)
 	if err != nil {
 		return nil, err
 	}
@@ -190,10 +192,28 @@ func parsePreviewInstant(name, raw string) (time.Time, error) {
 	return t, nil
 }
 
+// storedPolicy is the channel's saved policy, or the empty one when it cannot be read: the engine
+// call that follows reports a missing channel, and an empty baseline only means the draft is held to
+// every check.
+func (s *Handlers) storedPolicy(ctx context.Context, channelID string) schedule.ChannelPolicy {
+	if s.store == nil {
+		return schedule.ChannelPolicy{}
+	}
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return schedule.ChannelPolicy{}
+	}
+	return ch.Policy
+}
+
 // lowerProgrammingDraft validates and lowers a {lineup?, policy?} draft exactly as a save would.
 // Shared by both draft previews so the change list cannot accept a draft the single-point
 // preview refuses, or lower it differently.
-func lowerProgrammingDraft(lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
+//
+// stored is the policy the channel holds now. A rule the draft leaves exactly as stored is not
+// checked, as in the save (see ChannelPolicy.ValidateEditOf): a draft of an unrelated edit must not
+// be refused for a rule the save would let stand.
+func lowerProgrammingDraft(holidays holidayvocab.Vocabulary, stored schedule.ChannelPolicy, lineup []channelsapi.LineupEntryDTO, policy *schedule.ChannelPolicy) ([]schedule.LineupEntry, *schedule.ChannelPolicy, error) {
 	// Draft lineup: validate + convert the lossy DTOs; the engine lowers them by key like a
 	// PATCH (ApplyLineup PreserveByKey). Nil ⇒ the saved lineup.
 	var draftLineup []schedule.LineupEntry
@@ -210,9 +230,8 @@ func lowerProgrammingDraft(lineup []channelsapi.LineupEntryDTO, policy *schedule
 		if err := policy.DateAliasConflict(); err != nil {
 			return nil, nil, httpcore.AmbiguousDatesError(err)
 		}
-		if err := policy.Validate(); err != nil {
-			return nil, nil, httpcore.ProblemWithCause(http.StatusUnprocessableEntity, "Invalid policy",
-				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", err)
+		if err := policy.ValidateEditOf(stored, holidays); err != nil {
+			return nil, nil, channelsapi.InvalidPolicyProblem(err)
 		}
 	}
 	return draftLineup, policy, nil
@@ -225,7 +244,7 @@ type previewProgrammingChangesInput struct {
 	// Body is the SAME draft shape as programming/preview, deliberately restated rather than
 	// shared: naming the type would rename the existing endpoint's generated request type.
 	Body struct {
-		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty"`
+		Lineup []channelsapi.LineupEntryDTO `json:"lineup,omitempty" maxItems:"1000"`
 		Policy *schedule.ChannelPolicy      `json:"policy,omitempty"`
 	}
 }
@@ -277,7 +296,7 @@ func (s *Handlers) previewChannelProgrammingChanges(ctx context.Context, in *pre
 	if err != nil {
 		return nil, err
 	}
-	draftLineup, draftPolicy, err := lowerProgrammingDraft(in.Body.Lineup, in.Body.Policy)
+	draftLineup, draftPolicy, err := lowerProgrammingDraft(s.holidayCalendar().Vocab(), s.storedPolicy(ctx, in.ID), in.Body.Lineup, in.Body.Policy)
 	if err != nil {
 		return nil, err
 	}

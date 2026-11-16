@@ -21,9 +21,10 @@ type AcquisitionCleanupStore interface {
 	ListRecoverableAcquisitionArtifactsAfter(context.Context, acquisition.ArtifactCursor, int) ([]acquisition.Artifact, error)
 }
 
-// AcquisitionCleaner owns the only user-triggered storage cleanup in Filler. It removes stale
-// numbered attempt directories only after their durable acquisition run is terminal and no staged
-// or repair artifact still depends on them. Unknown paths and symlinked trees are never candidates.
+// AcquisitionCleaner removes leftover download staging: stale numbered attempt directories, only
+// after their durable acquisition run is terminal and no staged or repair artifact still depends on
+// them. Unknown paths and symlinked trees are never candidates. The storage cleanup route runs it on
+// request, and the upkeep job every hour (#3855).
 type AcquisitionCleaner struct {
 	watchDir string
 	store    AcquisitionCleanupStore
@@ -41,6 +42,15 @@ func NewAcquisitionCleaner(watchDir string, store AcquisitionCleanupStore, now f
 		now = time.Now
 	}
 	return &AcquisitionCleaner{watchDir: watchDir, store: store, now: now, remove: os.RemoveAll}
+}
+
+// WithDisposal hands each leftover tree to dispose instead of deleting it. Upkeep passes the
+// quarantine's Dispose, so staging it clears waits a day like every other delete of its own
+// (#3855); the storage cleanup route keeps deleting at once, since its operator asked for the
+// space now.
+func (c *AcquisitionCleaner) WithDisposal(dispose func(string) error) *AcquisitionCleaner {
+	c.remove = dispose
+	return c
 }
 
 func (c *AcquisitionCleaner) Preview(ctx context.Context) (acquisition.StorageCleanupPreview, error) {

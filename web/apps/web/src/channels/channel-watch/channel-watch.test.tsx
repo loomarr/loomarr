@@ -1,9 +1,11 @@
 import type { ChannelTracksOutputBody } from "@loomarr/api";
 import {
   getChannelPlayUrlMockHandler,
+  getChannelSubtitlesMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
+import { layoutGuide } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -43,6 +45,7 @@ const diagnosticsRecord = vi.hoisted(() => vi.fn());
 const watchPlayer = (overrides: Partial<WatchPlayer> = {}): WatchPlayer => ({
   attach: hls.attach,
   canSurf: true,
+  catalog: [],
   ladder: { rungs: [] },
   liveTransport: hls.liveTransport,
   playbackSessionId: "playback_1",
@@ -145,6 +148,8 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
       probed = true;
       return { audio: tracks.audio ?? [], subtitles: tracks.subtitles ?? [] };
     }),
+    // The subtitles beside the stream, read along the playhead: a programme with none.
+    getChannelSubtitlesMockHandler({ cues: [], pending: false, tracks: [] }),
   );
   return { wasProbed: () => probed };
 };
@@ -211,6 +216,45 @@ describe("ChannelWatch pickers", () => {
     ]);
     // The channel's own choice (Auto, unset) is the one marked.
     expect(within(languages).getAllByRole("listitem")[0]).toHaveAttribute("aria-current", "true");
+  });
+
+  it("lists the programme's subtitles, draws the chosen track's line, and remembers it; C steps on", async () => {
+    stubTracks();
+    // The programme on air has English and English for the deaf and hard of hearing; each track's
+    // cue at the playhead (1,000,000) names the track it was asked for.
+    const asked: (string | null)[] = [];
+    server.use(
+      getChannelSubtitlesMockHandler(({ request }) => {
+        const track = new URL(request.url).searchParams.get("track");
+        asked.push(track);
+        return {
+          cues: track ? [{ endMs: 1_002_000, startMs: 999_000, text: `Line in ${track}` }] : [],
+          pending: false,
+          tracks: [
+            { forced: false, hearingImpaired: false, key: "en", language: "en", title: "" },
+            { forced: false, hearingImpaired: true, key: "en-sdh", language: "en", title: "SDH" },
+          ],
+        };
+      }),
+    );
+    render(<ChannelWatch channel={live} isAdmin onLeave={vi.fn()} />, { wrapper: makeWrapper() });
+    await startWatching();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Subtitles" }));
+    const choices = within(menu("Subtitles")).getByRole("radiogroup", { name: "Subtitles" });
+    await waitFor(() => expect(within(choices).getAllByRole("radio")).toHaveLength(3));
+    expect(within(choices).getByRole("radio", { name: "Off" })).toHaveAttribute("aria-checked", "true");
+    expect(within(choices).getByRole("radio", { name: "English, with sounds" })).toBeInTheDocument();
+    // Off reads the tracks alone: no track is read from the media until one is chosen.
+    expect(asked).toEqual([null]);
+
+    await userEvent.click(within(choices).getByRole("radio", { name: "English" }));
+    expect(await screen.findByText("Line in en")).toBeInTheDocument();
+    expect(localStorage.getItem("loomarr.player.subtitles")).toBe("en");
+
+    await userEvent.keyboard("{Escape}c");
+    expect(await screen.findByText("Line in en-sdh")).toBeInTheDocument();
+    localStorage.clear();
   });
 
   it("does not fetch tracks for a paused channel (nothing airing to probe)", async () => {
@@ -415,6 +459,74 @@ describe("ChannelWatch — full-bleed route", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Channel up" }));
     await userEvent.click(screen.getByRole("button", { name: "Channel down" }));
     expect(hls.step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+  });
+
+  it("puts the channel cards in the band's place while Channel up and down flip, the readout naming the channel", async () => {
+    stubTracks();
+    const catalog = [
+      { id: "ch-1", inAppPlayable: true, name: "Late Night Noir", number: 42 },
+      { id: "ch-9", inAppPlayable: true, name: "Movie Matinee", number: 9 },
+    ];
+    const nowMs = Date.now();
+    const hour = 3_600_000;
+    const guide = {
+      layout: layoutGuide(
+        {
+          channels: [
+            {
+              airings: [
+                {
+                  kind: "program" as const,
+                  scheduleBlockId: "b",
+                  startMs: nowMs - hour,
+                  stopMs: nowMs + hour,
+                  title: "A heist film",
+                },
+              ],
+              channelId: "ch-9",
+              name: "Movie Matinee",
+              number: 9,
+              pendingCount: 0,
+              status: "live" as const,
+            },
+          ],
+          fromMs: nowMs - hour,
+          timezone: "UTC",
+          toMs: nowMs + hour,
+        },
+        nowMs,
+      ),
+      nowMs,
+    };
+    const watch = (flipKey?: string) => (
+      <ChannelWatch
+        channel={live}
+        isAdmin={false}
+        onLeave={vi.fn()}
+        player={{ catalog, ...(flipKey ? { flipKey } : {}) }}
+        channels={{
+          drawer: { channels: [], favourites: [], recent: [], nowPercent: 0, onFavourite: vi.fn() },
+          guide,
+          onTuneSettled: vi.fn(),
+        }}
+      />
+    );
+    // Opened on a channel: no flip yet, so the band.
+    const view = render(watch(), { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: "Channel up" });
+    expect(screen.queryByRole("list", { name: "Channels" })).not.toBeInTheDocument();
+
+    // A flip tuned this channel: the cards come up, each saying what is on, and the readout names it.
+    view.rerender(watch("ch-1"));
+    const cards = await screen.findByRole("list", { name: "Channels" });
+    expect(within(cards).getByText("Watching now")).toBeInTheDocument();
+    expect(within(cards).getByText("A heist film")).toBeInTheDocument();
+    // Drawn, not announced: the tuner's own status announces the tune, and a second would repeat it.
+    const quiet = Array.from(document.querySelectorAll('[aria-hidden="true"]')).map((el) => el.textContent);
+    expect(quiet).toContain("42Late Night Noir");
+    expect(screen.queryAllByRole("status").map((el) => el.textContent)).not.toContain("42Late Night Noir");
+    // Leave steps away while flipping.
+    expect(screen.queryByRole("button", { name: "Leave" })).not.toBeInTheDocument();
   });
 
   it("has no Last key until there is a channel to return to, then tunes it from the key and from L", async () => {

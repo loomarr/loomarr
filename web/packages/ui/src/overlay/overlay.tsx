@@ -1,16 +1,20 @@
 import {
   Action,
-  ModalLayer,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Surface,
   semanticMotion,
   semanticSpace,
   Text,
   useReducedMotionPreference,
   useResolvedViewportInsets,
-  ViewportStage,
 } from "@loomarr/design-system";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Modal, View } from "react-native";
+import { Animated } from "react-native";
 
 import type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./overlay.type";
 
@@ -19,16 +23,32 @@ type OverlayPanelProps = Pick<
   "actions" | "children" | "density" | "description" | "eyebrow" | "title"
 > & {
   contentInsets?: { bottom: number; left: number; right: number; top: number };
-  edgeToEdge?: boolean;
-  modal?: boolean;
 };
+
+type OverlayDensity = NonNullable<OverlayPanelProps["density"]>;
+
+// A button for each action, in whatever row or column its container draws.
+const overlayActions = (actions: readonly OverlayAction[], density: OverlayDensity) =>
+  actions.map((action) => (
+    <Action
+      density={density}
+      disabled={action.disabled}
+      hasTVPreferredFocus={density === "tv" && action.preferredFocus}
+      key={action.label}
+      onPress={action.onPress}
+      selected={action.selected}
+      tone={action.tone ?? "secondary"}
+    >
+      {action.label}
+    </Action>
+  ));
 
 const OverlayActions = ({
   actions,
   density,
 }: {
   actions?: readonly OverlayAction[];
-  density: NonNullable<OverlayPanelProps["density"]>;
+  density: OverlayDensity;
 }) =>
   actions?.length ? (
     <Surface
@@ -41,19 +61,7 @@ const OverlayActions = ({
       flexWrap={density === "touch" ? "nowrap" : "wrap"}
       gap="control"
     >
-      {actions.map((action) => (
-        <Action
-          density={density}
-          disabled={action.disabled}
-          hasTVPreferredFocus={density === "tv" && action.preferredFocus}
-          key={action.label}
-          onPress={action.onPress}
-          selected={action.selected}
-          tone={action.tone ?? "secondary"}
-        >
-          {action.label}
-        </Action>
-      ))}
+      {overlayActions(actions, density)}
     </Surface>
   ) : null;
 
@@ -64,23 +72,18 @@ const OverlayPanel = ({
   density = "pointer",
   description,
   eyebrow,
-  edgeToEdge = false,
-  modal = false,
   title,
 }: OverlayPanelProps) => (
   <Surface
     gap="control"
-    maxWidth={modal ? (density === "tv" ? 880 : 600) : undefined}
     padding={density === "tv" ? 32 : "section"}
     paddingBottom={contentInsets?.bottom}
     paddingLeft={contentInsets?.left}
     paddingRight={contentInsets?.right}
     paddingTop={contentInsets?.top}
-    // Spread, not `borderRadius={… : undefined}`: Tamagui 3 reads an explicit undefined at the call
-    // site as "remove this style", which strips the overlay level's own radius.
-    {...(edgeToEdge ? { borderRadius: 0 } : {})}
+    // Edge to edge: the panel spans the frame, so it has no corners.
+    borderRadius={0}
     width="100%"
-    zIndex={modal ? 1 : undefined}
     level="overlay"
   >
     {eyebrow ? (
@@ -102,65 +105,39 @@ const OverlayPanel = ({
 );
 
 /**
- * Blocking composition. React Native supplies the two real platform adapters: a native modal on
- * device and a portal with focus trap, Escape handling, stacking, and focus return on the web.
+ * Blocking composition on the design system's `Dialog`, which supplies the platform adapters: a
+ * native modal on device, and on the web a portal with focus trap, Escape handling, stacking and
+ * focus return. `dismissible={false}` makes it one that must be answered.
  */
 const ModalOverlay = ({
+  actions,
+  children,
+  density = "pointer",
+  description,
   dismissible = true,
+  eyebrow,
   onDismiss,
-  reducedMotion,
+  title,
   visible,
-  ...content
-}: ModalOverlayProps) => {
-  const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
-  return (
-    <Modal
-      accessibilityLabel={content.title}
-      accessibilityViewIsModal
-      animationType={prefersReducedMotion === false ? "fade" : "none"}
-      hardwareAccelerated
-      navigationBarTranslucent
-      onRequestClose={dismissible ? onDismiss : () => undefined}
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      transparent
-      visible={visible}
-    >
-      {/* A native modal is a root of its own, outside the app's viewport stage. */}
-      <ViewportStage>
-        <Surface
-          alignItems="center"
-          backgroundColor="transparent"
-          borderRadius={0}
-          borderWidth={0}
-          flex={1}
-          justifyContent="center"
-          padding="section"
-        >
-          <View
-            accessibilityElementsHidden
-            accessible={false}
-            importantForAccessibility="no-hide-descendants"
-            onResponderRelease={dismissible ? onDismiss : undefined}
-            onStartShouldSetResponder={() => dismissible}
-            style={{
-              bottom: 0,
-              left: 0,
-              position: "absolute",
-              right: 0,
-              top: 0,
-            }}
-          >
-            <Surface backgroundColor="artworkScrim" borderRadius={0} borderWidth={0} flex={1} />
-          </View>
-          <ModalLayer visible={visible}>
-            <OverlayPanel {...content} modal />
-          </ModalLayer>
-        </Surface>
-      </ViewportStage>
-    </Modal>
-  );
-};
+}: ModalOverlayProps) => (
+  <Dialog dismissible={dismissible} onOpenChange={(open) => !open && onDismiss()} open={visible}>
+    <DialogContent density={density}>
+      <DialogHeader>
+        {eyebrow ? (
+          <Text density={density} textRole="metadata" tone="info">
+            {eyebrow}
+          </Text>
+        ) : null}
+        <DialogTitle>{title}</DialogTitle>
+        {description ? <DialogDescription>{description}</DialogDescription> : null}
+      </DialogHeader>
+      {children}
+      {actions?.length ? (
+        <DialogFooter stacked={density === "touch"}>{overlayActions(actions, density)}</DialogFooter>
+      ) : null}
+    </DialogContent>
+  </Dialog>
+);
 
 const useTransientPresence = (visible: boolean, reducedMotion?: boolean) => {
   const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
@@ -244,7 +221,6 @@ const TransientOverlay = ({
             top: placement === "top" ? insets.top : semanticSpace.section,
           }}
           density={density}
-          edgeToEdge
         />
       </Surface>
     </Animated.View>

@@ -5,7 +5,8 @@ import { Pressable } from "react-native";
 import { Icon } from "../icon";
 import { icons } from "../icons";
 import { Action, ChoiceGroup } from "../interaction";
-import { Surface, Text } from "../primitives";
+import { Surface } from "../primitives";
+import { Text } from "../text";
 import { type Density, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 
 type TabOption<Value extends string> = {

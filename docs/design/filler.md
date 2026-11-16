@@ -489,7 +489,10 @@ reservations and the operator-facing decision.
 - **Automatic filler allowance:** `min(10% of capacity, 20 GiB)`; a positive
   `filler.storage.library_budget_gb` replaces it. Availability is the smaller of the remaining
   allowance and free bytes above the hard reserve, less active reservations on that filesystem.
-  Lowering the allowance pauses new automatic work and deletes nothing.
+  Lowering the allowance pauses new automatic work and deletes nothing itself; a reservation it
+  refuses is then answered by [eviction](#a-full-budget-evicts-instead-of-stopping-filler). The
+  allowance stays the operator's number, or the automatic one, until per-set targets size it
+  (step 4 of #3838).
 - A confirmed manual import may exceed the soft allowance, never the hard reserve. An unknown
   estimate or capacity is never permission to write.
 - `Reserve(estimate)` is atomic per filesystem and returns a lease or one pause reason:
@@ -516,11 +519,106 @@ reservations and the operator-facing decision.
 - Restart forgets leases but not bytes. Automatic cleanup removes only cancelled or incomplete
   private staging, superseded temporary output and unreferenced generated artifacts under a
   retention contract; never admitted clips, pinned media, review evidence, source masters, symlinks
-  or unknown files.
+  or unknown files. The one exception is a clip let go by [upkeep](#filler-lets-go-on-its-own).
+
+### Filler lets go on its own
+
+Filler is a cache sized to the channels (#3838), so work that failed does not keep its space.
+The hourly `filler-upkeep` job (#3855) has fixed numbers and no setting (decision 25 of #3838):
+
+- **A clip Loomarr fetched and rejected a week ago is let go.** In one transaction the row is
+  re-checked: still rejected for at least 7 days, fetched (it has an acquisition), and pinned by no
+  channel. Then the clip is taken off the catalog for good (removed and reaped, as
+  `RetireDefectiveCopy` does) and its pipeline row records `files_deleted_at`. The row keeps its
+  reason, so "why did this go?" stays answerable, and it is no longer offered for retry or restore.
+  A clip added by hand is never let go, and the consumed acquisition still blocks a re-download.
+- **Its files go after the commit:** the playback file, the master and evidence copy only it names,
+  then the sidecar last, since the sidecar is what names the others. A crash between the commit and
+  the move leaves only bytes, and the next pass finishes the move.
+- **Deleted files wait a day in quarantine** (`.loomarr-media/quarantine/<unix time>/`, keeping
+  their path under the clip folder) before the bytes go, and the bytes count toward the budget
+  until they are gone. A wrong delete is put back by moving its files from the batch to the same
+  path under the clip folder. A released original also needs its path written back into the
+  clip's sidecar (`mediaAssets.sourceMaster.path`, the master's path under the clip folder), with
+  its provenance sidecar moved back beside it; while the clip stays Ready and fetched, the next
+  pass releases it again.
+- **A failed download retries on its own** (decision 12). `filler_download_failures` holds one row
+  per item that has not downloaded, keyed by the provider's id for it (a typed URL by its address)
+  and carrying what a retry needs, so an item no listing offers any more is still retried. Three
+  attempts fall inside a day (the first, one 6 hours after its failure, one 18 hours after that),
+  then the item rests 30 days (`pipelinestate.FailureRest`) and is tried once each time the rest
+  ends. A scheduled source check does not offer a resting item again; the operator's **Look for new
+  clips** does. The scheduled fetch pass first queues up to ten items whose retry is due, through
+  the ordinary ingest path, after claiming each for six hours so a slow download or a restart does
+  not start a second copy; an item of a disabled source waits, and one of a deleted source is
+  forgotten. A download that works deletes the row; so does the nightly purge when
+  the item's source is gone.
+- **A temporary cause is never a failure.** A reservation the governor no longer grants (no room:
+  `library_limit`, `host_reserve`, an unmeasurable disk) or a capacity refusal during the download
+  defers the item an hour with no failure counted, and the run reports it as skipped. In the
+  pipeline, a rung whose AI backend is down, busy (429) or past a call budget (`ErrAIUnavailable`)
+  waits 15 minutes with no attempt spent, so the clip is neither skipped past the rung nor failed.
+- **Leftover download staging is cleaned every hour** by the same rules as the storage cleanup
+  route: a terminal run, no artifact depending on it, and 24 hours old. Upkeep sends it to the
+  quarantine when the watch folder is inside the clip folder (the default); a watch folder set
+  elsewhere can be another disk, so its staging is deleted at once. The storage cleanup route
+  deletes at once too, since the operator asked for the space now.
+- **A Ready clip Loomarr fetched lets go of its original download**
+  ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)). The master goes to
+  quarantine first, then the sidecar keeps the master's digest, length and sparse id with no path.
+  A crash between the two leaves a sidecar naming a missing file, and the next pass finishes the
+  release. A clip added by hand keeps its original, and so does a clip the library re-encode still
+  has to move onto the current profile, until it has. So does a clip whose airing copy is missing
+  or not the bytes its sidecar records, and one whose acquisition intake has not consumed (sync
+  marks it in repair when a file stops matching); each pass looks again. Nothing is released until
+  encoder detection has settled, since before then every host reads as software, nor while it
+  settled on software on a host that measured a hardware encoder within the week. An original
+  another clip still names stays until the last of them is released, and while any clip's sidecar
+  cannot be read no original is released. The release, the defect floor's evidence release
+  and a rewind's hold share one lock per sidecar, so none of them undoes another's change.
 - The server projects one capacity snapshot with a state (`healthy`, `approaching`, `paused`,
   `unknown`) and the actions `free_disposable_space`, `choose_another_folder` and
   `change_storage_limit`. `approaching` starts at the smaller of 1 GiB and 20% of the allowance.
   The browser does no capacity arithmetic.
+
+### A full budget evicts instead of stopping filler
+
+A full library budget never stops filler (#3855, decision 13 of #3838). The governor remembers the
+largest reservation it refused for `library_limit`, the **shortfall**: that reservation less the
+room the allowance has left, counting any overage as well (an allowance lowered below what the
+library holds). A reservation as large succeeding clears it, so work that stops asking stops freeing
+space. A refusal for `host_reserve` is never answered this way: the host's reserve is not the
+library's to spend.
+
+The hourly `filler-upkeep` job reads the shortfall after its other steps and, while it is
+positive, frees room in this order, stopping at the first rung that is enough:
+
+1. **Leftover download staging**, which the pass has already cleaned.
+2. **Rejects** Loomarr fetched, oldest first, without waiting out their week.
+3. **Clips that fit no channel**, without waiting out their week. A paused channel still counts,
+   since pausing resumes and must not become a deletion; a detached channel does not. A holiday
+   clip out of season is not one: it is kept through the off-season (decision 9).
+4. **Surplus beyond the evening target**, most aired first. A channel's evening target is the pool
+   fetching already sizes it to (`PoolTargets.For`, from the household's longest watched evening
+   without a repeat, and 80 until it has four weeks of history). It keeps that many of the clips it
+   can air, nearest its era first and least aired first within an era rung; a clip kept by any
+   channel is not surplus. Aired counts are the household's, across channels.
+
+Never evicted, however large the shortfall: a clip a channel keeps for its target, a bumper or
+station ID a channel can air, a clip in a break on a channel's timeline from just before now to the
+end of the four-hour guide window (assembled as the guide assembles it), a pinned clip, and a clip
+added by hand (decision 15). With no channel nothing is called idle, and with no timeline
+wired or no read of the channels or the coming breaks, no clip on air is evicted: rejects are the
+only rung that still runs.
+
+An eviction is a retire, as for a reject: in one transaction the clip is removed and reaped, its
+pipeline row records `files_deleted_at`, and a pin, a changed row or a hand-added clip refuses it.
+The row, fingerprint and airings stay, and the consumed acquisition still blocks a re-download. The
+files go to quarantine after the commit, so they count toward the budget until the day is up. Room
+asked for is therefore the shortfall less what quarantine already holds and what the pass emptied
+from it (the governor re-measures every ten minutes): asking again every hour must not evict twice
+for one refusal. A crash between the commit and the move leaves bytes on disk, and every pass moves
+the files of any clip already let go, whether or not a fetch is refused.
 
 **Two downloaders, two gates.** Archive.org needs only `ffmpeg`; YouTube needs `yt-dlp` and
 `ffmpeg`. Availability is reported per source, never as one blanket verdict, because a missing
@@ -820,11 +918,15 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
 - **The best copy is the cleanest.** Creative identity ranks copies of one ad by their defect
   findings first: fewer checks near or past their bar wins, then resolution and the rest of the
   ladder. A cleaner copy of an ad already on air replaces it the same way, keeping its history.
-- **An admitted clip keeps its source master and its playback copy.** The floor's next pass drops
-  its evidence copy: the sidecar stops naming it first, then the file goes once no sidecar names
-  it. Screening and split read evidence before admission, and every later check reads the
-  playback file. A rewind to split or screening on such a clip starts at the transcode instead,
-  which rebuilds the evidence copy from the master.
+- **An admitted clip keeps its playback copy, and its source master until upkeep releases it.** The
+  floor's next pass drops its evidence copy: the sidecar stops naming it first, then the file goes
+  once no sidecar names it. Screening and split read evidence before admission, and every later
+  check reads the playback file. A rewind to split or screening on such a clip starts at the
+  transcode instead, which rebuilds the evidence copy from the master. Once a fetched clip's master
+  is released ([Filler lets go on its own](#filler-lets-go-on-its-own)), a rewind to screening or
+  earlier retires it instead: it comes off air as a `retired` reject with no retry, upkeep deletes
+  its files when a reject's week is over, and the fetcher's top-up replaces it. Later rungs read
+  the playback copy and still rewind.
 - **Breaks hold up while the pool refills.** A purge shrinks the pool below its target, and the
   fetcher fetches toward the target again. Meanwhile pod assembly fills a break in this order:
   1. a rested ad;
@@ -866,8 +968,11 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
   its own recorded recipe and measurement. Both derivatives are built from the master, staged,
   fully decoded and checked, then atomically named; a failed check holds the clip and keeps the
   master.
-- A master is deleted only with the one clip whose sidecar names it: an inferior copy merged into
-  its survivor (#2033) or a defective copy retired (#2036). Otherwise masters stay. An admitted
+- A master is deleted with the one clip whose sidecar names it: an inferior copy merged into its
+  survivor (#2033), a defective copy retired (#2036), or a fetched reject let go (#3855). A Ready
+  fetched clip's master is released by upkeep
+  ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)); the sidecar keeps its
+  digest and length with no path. A hand-added clip's master stays. An admitted
   clip's evidence copy is dropped and rebuilt from its master on demand (see
   [Enforcement](#enforcement-2036)).
 

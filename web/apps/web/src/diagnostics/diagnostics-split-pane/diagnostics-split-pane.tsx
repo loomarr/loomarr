@@ -1,4 +1,4 @@
-import { Action, Icon, icons, Tooltip } from "@loomarr/design-system";
+import { Action, Icon, icons, Stack, Tooltip } from "@loomarr/design-system";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -121,7 +121,16 @@ const DiagnosticsSplitPane = ({
               Hide details
             </Action>
           </Tooltip>
-          <div className="group relative flex min-h-24 flex-1 items-center justify-center self-stretch">
+          <Stack
+            align="center"
+            className="group relative self-stretch"
+            direction="row"
+            flexBasis="0%"
+            flexGrow={1}
+            flexShrink={1}
+            justify="center"
+            minHeight={96}
+          >
             <hr
               aria-label="Resize details"
               aria-orientation="vertical"
@@ -140,10 +149,14 @@ const DiagnosticsSplitPane = ({
                 drag.current = undefined;
               }}
             />
-            <span className="text-muted-foreground group-hover:text-signal pointer-events-none relative flex">
+            <Stack
+              className="text-muted-foreground group-hover:text-signal pointer-events-none relative"
+              direction="row"
+              render="span"
+            >
               <Icon decorative glyph={icons.dragHandle} size="compact" tone="inherit" />
-            </span>
-          </div>
+            </Stack>
+          </Stack>
         </div>
       )}
       <div

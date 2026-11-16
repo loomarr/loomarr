@@ -22,11 +22,15 @@ const StatusLine = ({
   onCheckAgain,
   onRescan,
   onOpenSettings,
-}: Pick<LibraryShelfProps, "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings">) => {
+  timeZone,
+}: Pick<
+  LibraryShelfProps,
+  "status" | "checking" | "onCheckAgain" | "onRescan" | "onOpenSettings" | "timeZone"
+>) => {
   const scan = scanHeadline(status.scan, status.needsYou || status.health === "folder_empty");
   const held = status.held[0];
   const offline = status.health === "folder_offline" ? status.offline[0] : undefined;
-  const waiting = detailsWaiting(status.details, status.scan);
+  const waiting = detailsWaiting(status.details, status.scan, timeZone);
   // What needs the maintainer comes first; the import's own words show only when nothing does.
   // Titles stuck waiting for details come after the folders: Settings says why.
   const alert: [ComponentProps<typeof StatusDot>["tone"], string] | undefined =
@@ -150,7 +154,7 @@ const Tile = ({ title, onOpen }: { title: LibraryShelfTitle; onOpen: () => void 
             ) : null}
           </LibraryPoster>
         </Surface>
-        <Stack gap={2} minHeight={56} minWidth={0}>
+        <Stack flexShrink={1} gap={2} minHeight={56} minWidth={0}>
           {/* Left-aligned: on the web the tile is a <button>, which centres its text. */}
           <Text numberOfLines={2} textAlign="left" textRole="label">
             {title.name}
@@ -194,12 +198,12 @@ const Grid = ({
         // A row is layout only; the titles are the list's items.
         <Line alignItems="flex-start" flexWrap="nowrap" gap="control" paddingBottom="section" role="none">
           {row.map((title) => (
-            <Stack flexBasis={0} flexGrow={1} key={title.id} minWidth={0} role="listitem">
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} key={title.id} minWidth={0} role="listitem">
               <Tile onOpen={() => onOpenTitle(title.id)} title={title} />
             </Stack>
           ))}
           {slots.slice(row.length).map((slot) => (
-            <Stack aria-hidden flexBasis={0} flexGrow={1} key={slot} />
+            <Stack aria-hidden flexBasis={0} flexGrow={1} flexShrink={1} key={slot} />
           ))}
         </Line>
       )}
@@ -233,6 +237,7 @@ const LibraryShelf = ({
   needs,
   showTitles: showGrid = true,
   collections,
+  timeZone,
 }: LibraryShelfProps) => {
   const fresh = status.health === "needs_folders";
   const onCollections = filter === "collections";
@@ -257,6 +262,7 @@ const LibraryShelf = ({
           onOpenSettings={onOpenSettings}
           onRescan={onRescan}
           status={status}
+          timeZone={timeZone}
         />
       </Stack>
       {fresh ? (

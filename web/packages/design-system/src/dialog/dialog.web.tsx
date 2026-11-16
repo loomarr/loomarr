@@ -32,9 +32,24 @@ const rule = `1px solid ${semanticColors.surface.elevated}`;
 
 const LayoutContext = createContext<NonNullable<DialogContentProps["layout"]>>("padded");
 
-const Dialog = ({ children, defaultOpen, onOpenChange, open }: DialogProps) => (
-  <DialogPrimitive.Root defaultOpen={defaultOpen} onOpenChange={(next) => onOpenChange?.(next)} open={open}>
-    {children}
+// Whether the corner close is drawn: a dialog that must be answered has none.
+const DismissibleContext = createContext(true);
+
+const Dialog = ({ children, defaultOpen, dismissible = true, onOpenChange, open }: DialogProps) => (
+  <DialogPrimitive.Root
+    defaultOpen={defaultOpen}
+    onOpenChange={(next, details) => {
+      // Escape and a press outside are asks to close; a dialog that must be answered refuses them. Its
+      // own DialogClose, which is a close press, still closes it.
+      if (!(next || dismissible) && (details.reason === "escape-key" || details.reason === "outside-press")) {
+        details.cancel();
+        return;
+      }
+      onOpenChange?.(next);
+    }}
+    open={open}
+  >
+    <DismissibleContext.Provider value={dismissible}>{children}</DismissibleContext.Provider>
   </DialogPrimitive.Root>
 );
 
@@ -111,6 +126,16 @@ const commandSurface: CSSProperties = {
 
 const fullScreen: CSSProperties = { position: "fixed", inset: 0, zIndex: 50, outline: "none" };
 
+// A sheet docked to the bottom edge, the phone's "More": the content brings its own surface.
+const bottomDock: CSSProperties = {
+  position: "fixed",
+  right: 0,
+  bottom: 0,
+  left: 0,
+  zIndex: 50,
+  outline: "none",
+};
+
 const DialogContent = ({
   accessibilityLabel,
   children,
@@ -124,35 +149,39 @@ const DialogContent = ({
   const side = placement === "side";
   const top = placement === "top";
   const fill = placement === "fill";
+  const bottom = placement === "bottom";
+  const dismissible = useContext(DismissibleContext);
   const resolvedLayout = layout ?? (side ? "sectioned" : "padded");
   const popup: CSSProperties = side
     ? sidePanel
     : fill
       ? fullScreen
-      : top
-        ? commandSurface
-        : {
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            zIndex: 50,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-            boxSizing: "border-box",
-            width: wide ? "calc(100% - 2rem)" : "100%",
-            maxWidth: maxWidths[size],
-            maxHeight: "calc(100dvh - 2rem)",
-            overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
-            padding: resolvedLayout === "sectioned" ? 0 : 24,
-            transform: "translate(-50%, -50%)",
-            border: `1px solid ${semanticColors.border.decorative}`,
-            borderRadius: semanticRadius.cardCompact,
-            background: semanticColors.surface.raised,
-            color: semanticColors.content.primary,
-            boxShadow: shadow,
-            outline: "none",
-          };
+      : bottom
+        ? bottomDock
+        : top
+          ? commandSurface
+          : {
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              zIndex: 50,
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              boxSizing: "border-box",
+              width: wide ? "calc(100% - 2rem)" : "100%",
+              maxWidth: maxWidths[size],
+              maxHeight: "calc(100dvh - 2rem)",
+              overflow: resolvedLayout === "sectioned" ? "hidden" : "auto",
+              padding: resolvedLayout === "sectioned" ? 0 : 24,
+              transform: "translate(-50%, -50%)",
+              border: `1px solid ${semanticColors.border.decorative}`,
+              borderRadius: semanticRadius.cardCompact,
+              background: semanticColors.surface.raised,
+              color: semanticColors.content.primary,
+              boxShadow: shadow,
+              outline: "none",
+            };
   return (
     <DialogPrimitive.Portal container={portalContainer as HTMLElement | ShadowRoot | null | undefined}>
       <DialogPrimitive.Backdrop
@@ -164,7 +193,7 @@ const DialogContent = ({
         style={popup}
       >
         <LayoutContext.Provider value={resolvedLayout}>{children}</LayoutContext.Provider>
-        {top || fill ? null : <CornerClose />}
+        {top || fill || bottom || !dismissible ? null : <CornerClose />}
       </DialogPrimitive.Popup>
     </DialogPrimitive.Portal>
   );
@@ -186,15 +215,19 @@ const DialogHeader = ({ children }: DialogSectionProps) => {
   );
 };
 
-const DialogFooter = ({ children, spread = false }: DialogFooterProps) => {
+const DialogFooter = ({ children, spread = false, stacked = false }: DialogFooterProps) => {
   const sectioned = useContext(LayoutContext) === "sectioned";
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: spread ? "space-between" : "flex-end",
         gap: 8,
-        ...(spread ? { flexWrap: "wrap" } : {}),
+        ...(stacked
+          ? { flexDirection: "column", alignItems: "stretch" }
+          : {
+              justifyContent: spread ? "space-between" : "flex-end",
+              ...(spread ? { flexWrap: "wrap" } : {}),
+            }),
         ...(sectioned ? { padding: "16px 24px", borderTop: rule } : {}),
       }}
     >
@@ -205,7 +238,8 @@ const DialogFooter = ({ children, spread = false }: DialogFooterProps) => {
 
 // A padded title keeps clear of the corner close; a sectioned header already does.
 const DialogTitle = ({ children }: DialogSectionProps) => {
-  const padded = useContext(LayoutContext) === "padded";
+  const dismissible = useContext(DismissibleContext);
+  const padded = useContext(LayoutContext) === "padded" && dismissible;
   return (
     <DialogPrimitive.Title
       style={{

@@ -45,6 +45,7 @@ const ResetPasswordScreen = () => {
   );
 };
 
+// no-loader: the recovery preview is a POST made with a grant taken from the URL fragment, not a query
 const Route = createFileRoute("/reset-password")({
   beforeLoad: () => ({ grant: takeAccountActionGrantFromLocation() }),
   component: ResetPasswordScreen,

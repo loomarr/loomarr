@@ -52,6 +52,10 @@ type StillSource struct {
 	Input string
 	// HDR marks a PQ/HLG source, whose frame must be tone-mapped to look right as a JPEG.
 	HDR bool
+	// PartStart is how far into the programme Input begins: for a movie in parts, the length of
+	// the parts before the one on now; 0 for a whole file. The still seeks to the airing's offset
+	// less it.
+	PartStart time.Duration
 	// Keyframe is the source's last keyframe at or before the airing's offset, from Loomarr's
 	// measured keyframe index; Indexed says it is known. The still seeks straight to it. Without an
 	// index, ffmpeg's container seek finds the same keyframe where the container has an index.
@@ -375,7 +379,7 @@ func (s airingStillSource) newestStillSegment(ctx context.Context, channelID str
 			if !ok || source.Input == "" {
 				return nil, errors.New("the airing has no readable source")
 			}
-			seek := airing.Offset
+			seek := airing.Offset - source.PartStart
 			if source.Indexed {
 				seek = source.Keyframe
 			}

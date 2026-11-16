@@ -18,7 +18,7 @@ committed, a `*-verify` target that fails CI on drift.
 | `docs/diagrams/generated/*.svg` | D2 sources | `make diagrams` | `make diagrams-verify` |
 | `web/packages/design-system/generated/` | `packages/design-system/src/tokens` | `make fe-tokens` | `make fe-tokens-verify` |
 | Visual baselines | Playwright, pinned image | [Visual baselines workflow](testing.md#updating-visual-baselines) | `make fe-visual` |
-| e2e snapshots | Playwright, pinned image | `make e2e-update` | `make e2e` |
+| e2e snapshots | Playwright, pinned image | [Visual baselines workflow](testing.md#updating-visual-baselines) (`make e2e-update`) | `make e2e` |
 
 These are committed so a reviewer sees the effect in the diff — a renamed field shows up as a
 spec change in the same PR.

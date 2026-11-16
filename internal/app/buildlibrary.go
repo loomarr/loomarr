@@ -112,6 +112,9 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Disk:    scan.OSDisk{},
 		Now:     time.Now,
 	}
+	if deps.frames != nil {
+		roots.Summarized = deps.frames.LibraryFolderSummarized
+	}
 	inv := inventory.New(st)
 	resolver, err := precedence.New("US")
 	if err != nil {
@@ -177,6 +180,10 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		im.RootReadability = deps.notify.LibraryFolder
 	}
 	scanner := scan.NewScanner(im, scan.ReconcileInterval)
+	// The Enricher's rewrites of a folder wait for its header reads (Scanner.Rewrite); each folder's
+	// last read, or the stage's end, lets them go.
+	im.AfterReading = scanner.ReleaseHeld
+	im.FolderRead = scanner.ReleaseFolder
 	watcher := &scan.Watcher{Scanner: scanner}
 	hooks := &scan.ArrHooks{
 		Scanner: scanner,
@@ -202,7 +209,7 @@ func buildLibrary(st libraryStore, set resolved, deps libraryBuild) libraryServi
 		Orders: st, CollectionStore: st, Records: st, Keys: keys}
 	if provider != nil {
 		enricher = &scan.Enricher{
-			Store: st, Provider: provider, Rewrite: scanner.PassFolders,
+			Store: st, Provider: provider, Rewrite: scanner.Rewrite,
 			Language: func() string {
 				language, err := provider.Language()
 				if err != nil {

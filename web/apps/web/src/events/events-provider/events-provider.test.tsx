@@ -55,7 +55,7 @@ describe("LoomarrEventsProvider", () => {
     // and left out of the other.
     expect(EVENT_TYPES).toEqual(Object.keys(EVENT_INVALIDATIONS));
     expect(EVENT_TYPES).toContain("database");
-    // Beside the frames, the stream hears its own "open" (a reconnect) and "error" (a source closed
+    // Beside the frames, the stream hears its own "open" (first or after a drop) and "error" (a source closed
     // for good, which it replaces).
     const lifecycle = ["error", "open"];
     const subscribed = stream.subscribedTypes();

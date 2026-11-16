@@ -21,6 +21,14 @@ ends with a completed terminal rung that the ready commit validates against.
 - **Retries** back off 5 min, 30 min, 2 h, then resolve: a `probe` failure rejects (an unmeasurable
   file is not a clip); `transcribe`, `vision` and `language` skip and advance, so a missing
   transcript never strands a clip.
+- **A terminal commit refused as stale rests.** A clip whose publication keeps failing with
+  `ErrReadyStale` (the clip or its row changed under the pipeline) cannot be published by trying
+  again, so after three attempts it rests 30 days and is tried once more when the rest ends. Nothing
+  is rejected, so the clip is never let go for it. A commit that fails for the install's reasons
+  (the catalog could not be written) keeps the 2-hour backoff.
+- **An unavailable AI backend is a wait, not a failure.** A vision call that fails with a transient
+  error (unreachable, 429, 5xx, a call budget) returns `ErrAIUnavailable`; the rung waits 15 minutes
+  with no attempt spent and the reason on the ladder.
 - **Running out of time is a deferral, not a failure.** A deadline returns the clip to the queue with
   its progress kept; any rung that treated a timeout as failure would loop forever.
 - **Recovery rewinds the dependency suffix.** An admin may restart at the failed stage once the cause
@@ -32,7 +40,9 @@ ends with a completed terminal rung that the ready commit validates against.
   `ready`, `complete` (a processed composite container, not playable), `rejected`, `dismissed`. A
   failed rung carries a stable failure code, the retryable rung and one sanctioned recovery action.
   Retrying a terminal execution failure and clearing its tombstone is one transaction, and the clip is
-  held before it reappears.
+  held before it reappears. A fetched reject a week old is let go
+  ([upkeep](filler.md#filler-lets-go-on-its-own)): its row stays `rejected` with its failure code,
+  records `files_deleted_at`, and offers no recovery action, since the bytes are gone.
 
 State lives in **`filler_clip_pipeline`, a sibling of `clips`**, because `clips` is a synced cache
 that has been dropped and rebuilt; pipeline state records work already paid for. The finished ladder
@@ -108,8 +118,10 @@ one deliberate exception to the rule against backfill.
 
 - **Which clips.** An airing top-level clip whose playback was encoded from its retained source
   master, under a profile other than the current one. A clip whose playback file is its own
-  download has no original to encode from again, and a split child is cut from its parent, so
-  neither is replaced. A host without a hardware encoder replaces nothing: the re-encode is what
+  download has no original to encode from again, a split child is cut from its parent, and a
+  clip whose master upkeep released has none left
+  ([0048](decisions/0048-a-ready-clip-keeps-only-its-airing-copy.md)), so none of them is
+  replaced. Upkeep keeps a fetched clip's master until this re-encode has moved it. A host without a hardware encoder replaces nothing: the re-encode is what
   moves the library onto the GPU, and on the CPU it would spend the machine for no saving.
 - **Only idle capacity.** A pipeline pass that finds no due conveyor work re-encodes one clip, so
   a new arrival always goes first. It runs under the playout budget's background context, so a
@@ -119,7 +131,7 @@ one deliberate exception to the rule against backfill.
   floor measures the staged file and the judge rules on a borderline picture, as at admission.
   Only bytes the floor admits are published, and the switch is one transaction: the re-key, and
   the floor's record for the new bytes in place of the old one's. The old playback file and
-  evidence copy go after the commit; the master always stays.
+  evidence copy go after the commit; the master stays for upkeep to release.
 - **A failed replacement changes nothing.** An encode error, a QC or loudness refusal, a defect
   verdict, a judge that cannot rule, or a failed commit discards the replacement, and its bytes
   with it, so a scan cannot catalogue it as a second clip. The clip airs on as it was. The pass

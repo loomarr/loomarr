@@ -15,7 +15,8 @@ type LibraryItemFacts struct {
 	// Rating is the item's own content rating, else its series'.
 	Rating string
 	// RuntimeMs is the playing file's own duration (the default edition's, when a movie plays one
-	// in each), else the catalog's runtime.
+	// in each), its parts' together for a movie in parts, else the catalog's runtime while any of
+	// them is unread.
 	RuntimeMs int64
 }
 
@@ -48,8 +49,9 @@ func (s *Store) libraryItemFacts(ctx context.Context, ids []string, out map[stri
 	}
 	rows, err := s.h.QueryContext(ctx, s.ph(`SELECT i.id, COALESCE(i.series_id, ''), i.overview, i.year,
 		COALESCE(NULLIF(i.rating, ''), sr.rating, ''),
-		COALESCE(NULLIF((SELECT src.duration_ms FROM library_sources src WHERE src.item_id = i.id AND src.plays
-			ORDER BY src.edition <> '', src.path LIMIT 1), 0), i.runtime_ms)
+		COALESCE(NULLIF((SELECT CAST(CASE WHEN MIN(src.duration_ms) > 0 THEN SUM(src.duration_ms) ELSE 0 END AS BIGINT)
+			FROM library_sources src WHERE src.item_id = i.id AND src.plays AND src.edition = (SELECT e.edition
+			FROM library_sources e WHERE e.item_id = i.id AND e.plays ORDER BY e.edition <> '', e.path LIMIT 1)), 0), i.runtime_ms)
 		FROM library_items i LEFT JOIN library_items sr ON sr.id = i.series_id
 		WHERE i.id IN (`+in+`)`), args...)
 	if err != nil {

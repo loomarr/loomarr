@@ -165,6 +165,11 @@ func (p ClipPipeline) Lifecycle(at time.Time) PipelineLifecycle {
 		case p.RejectReason.Soft():
 			out.Recovery = RecoveryRestore
 		}
+		if !p.FilesDeletedAt.IsZero() {
+			// The bytes are gone, so neither a retry nor a restore has anything to work on. The
+			// failure code stays: it is still why the clip was let go.
+			out.Recovery, out.RetryStage = "", ""
+		}
 	}
 	return out
 }

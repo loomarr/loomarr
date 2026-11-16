@@ -2,7 +2,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import type { PodPoolDTOMatchLevel } from "@loomarr/api/models/podPoolDTOMatchLevel";
 import { formatClipDuration } from "@loomarr/core/format";
 import { guideFillerEntryLabel } from "@loomarr/core/guide";
-import { Badge, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
+import { Badge, MediaTile, Stack, StatusLabel, type StatusTone, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { PodTimelineProps } from "./pod-timeline.type";
 
@@ -64,9 +64,9 @@ const PodTimeline = ({
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-static-400 text-xs">{`Pod · ${formatClipDuration(total)}`}</span>
+    <Stack className={className} gap="inline">
+      <Stack align="center" direction="row" gap="inline" wrap>
+        <Text as="span" textRole="hint" tone="secondary">{`Pod · ${formatClipDuration(total)}`}</Text>
         {era ? <Badge shape="square" tone="neutral">{`${era}s`}</Badge> : null}
         {audience ? (
           <Badge shape="square" tone="neutral">
@@ -74,11 +74,18 @@ const PodTimeline = ({
           </Badge>
         ) : null}
         {chip && <StatusLabel tone={chip.tone}>{chip.label}</StatusLabel>}
-      </div>
+      </Stack>
 
-      <ul
-        className="border-border flex h-9 w-full overflow-hidden rounded-md border"
+      <Stack
         aria-label="Pod segments"
+        borderColor="$borderDecorative"
+        borderRadius={6}
+        borderWidth={1}
+        direction="row"
+        height={36}
+        overflow="hidden"
+        render="ul"
+        width="100%"
       >
         {entries.map((entry, i) => (
           <li
@@ -94,29 +101,45 @@ const PodTimeline = ({
             className={cn("border-border min-w-0 border-r last:border-r-0", SEGMENT_FILL[entry.role])}
           >
             {onPreview && entry.hash && !entry.isFallbackCard ? (
-              <button
-                type="button"
-                aria-label={`Preview ${clipName(entry)}`}
-                className="focus-visible:ring-ring flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-inset"
-                onClick={() => onPreview(entry)}
+              // The segment's fill is the list item's own, so the tile draws none; its ring is drawn
+              // inside the bar, which clips anything outside it.
+              <MediaTile
+                bordered={false}
+                fill={false}
+                focusInset
+                height="100%"
+                // The name holds the visible caption (WCAG 2.5.3), after the verb and the clip.
+                label={`Preview ${clipName(entry)}, ${segmentLabel(entry)}`}
+                onPress={() => onPreview(entry)}
+                radius="none"
+                width="100%"
+              >
+                <Stack minWidth={0} paddingHorizontal={4} render="span">
+                  <Text as="span" numberOfLines={1} textRole="caption" tone="primary">
+                    {segmentLabel(entry)}
+                  </Text>
+                </Stack>
+              </MediaTile>
+            ) : (
+              <Stack
+                align="center"
+                direction="row"
+                height="100%"
+                justify="center"
+                minWidth={0}
+                paddingHorizontal={4}
+                render="span"
               >
                 <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
+                <Text aria-hidden as="span" numberOfLines={1} textRole="caption" tone="primary">
                   {segmentLabel(entry)}
                 </Text>
-              </button>
-            ) : (
-              <span className="flex h-full min-w-0 items-center justify-center px-1">
-                <span className="sr-only">{`${clipName(entry)}, ${formatClipDuration(entry.durationMs)}`}</span>
-                <Text aria-hidden as="span" className="truncate" textRole="caption" tone="primary">
-                  {segmentLabel(entry)}
-                </Text>
-              </span>
+              </Stack>
             )}
           </li>
         ))}
-      </ul>
-    </div>
+      </Stack>
+    </Stack>
   );
 };
 

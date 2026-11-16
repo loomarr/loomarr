@@ -36,7 +36,8 @@ describe("Requests tabs", () => {
     expect(screen.getByRole("link", { name: /Done/ })).toHaveTextContent(/Done\s*1\b/);
     expect(screen.getByText("Request j-gen")).toBeInTheDocument();
     expect(screen.queryByText("Request j-done")).not.toBeInTheDocument();
-  });
+    // The first render in the file loads the route tree cold, which a busy CI shard stretches past 5 s.
+  }, 20_000);
 
   // #2738: an admin's own request waiting on approval is already a card in Needs you; listing it in
   // In progress too made one request two rows in two tabs.

@@ -3,9 +3,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type ErrorComponentProps, RouterProvider } from "@tanstack/react-router";
 import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import { watchSessionExpiry } from "@/auth/session-expiry";
 import { AppToaster } from "@/components/loomarr/feedback/app-toaster";
 import { clientDiagnostics, installGlobalClientDiagnostics } from "@/diagnostics/client-reporter";
 import { createQueryClient } from "@/lib/query-client";
+import { startQueryPersistence } from "@/lib/query-persist";
 import { installRouteTiming } from "@/lib/route-timing";
 import { routeTree } from "@/routeTree.gen";
 // Self-hosted Geist (§2.2) — bundled by Vite, no CDN, deterministic visual tests.
@@ -71,11 +73,24 @@ const router = createRouter({
 // Every navigation leaves User Timing entries saying how long its page took to show (#3399).
 installRouteTiming(router);
 
+// A session that ends while the app is open (signed out elsewhere, revoked) drops what this viewer
+// had loaded, as logout does, and goes to sign-in, remembering the page to come back to. /login's own
+// guard sends an unclaimed install to the wizard and signs a dev-login build straight back in.
+watchSessionExpiry(queryClient, () => {
+  queryClient.clear();
+  void router.navigate({ to: "/login", search: { redirect: router.latestLocation.href }, replace: true });
+});
+
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
 }
+
+// The last-known pages come back from IndexedDB before the first render, so a cold open paints
+// them and then revalidates. The entry chunk's hashed URL names this build: a new build starts
+// from an empty cache. A browser that blocks IndexedDB just starts empty.
+await startQueryPersistence({ queryClient, buildId: import.meta.url }).catch(() => undefined);
 
 createRoot(document.getElementById("root")!, {
   onCaughtError: () =>

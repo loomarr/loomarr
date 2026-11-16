@@ -78,7 +78,7 @@ var areas = []area{
 			"are re-curated here, Home's channel ideas come from here, and so does who is watching now.",
 		Packages: []string{
 			"channels", "channels/schedule", "channels/edit", "channels/approval", "channels/recurate",
-			"channels/ideas", "channels/recommend", "channels/viewing",
+			"channels/ideas", "channels/recommend", "channels/viewing", "channels/growth",
 		},
 		MayImport: map[string]string{
 			"platform": "the store every channel write goes through, the jobs and settings behind " +
@@ -127,7 +127,7 @@ var areas = []area{
 		Packages: []string{
 			"playout", "playout/packager", "playout/bench", "playout/watermark", "playout/channelbug", "playout/tunarr",
 			"playout/tunarr/tunarrtest", "playout/livetvpublish", "playout/backendtransition",
-			"playout/landiscovery",
+			"playout/landiscovery", "playout/subtitles",
 		},
 		MayImport: map[string]string{
 			"platform": "the diagnostics process manager that runs every encoder, the store behind a " +
@@ -156,6 +156,7 @@ var areas = []area{
 			"filler/taxonomy", "filler/station", "filler/source", "filler/source/archive",
 			"filler/source/youtube", "filler/location", "filler/language", "filler/pod", "filler/split", "filler/asset", "filler/pipelinestate", "filler/cliplibrary", "filler/acquisition", "filler/identity",
 			"filler/storeadapter", "filler/capability", "filler/routine", "filler/operator",
+			"filler/quarantine", "filler/upkeep",
 		},
 		MayImport: map[string]string{
 			"platform": "the store that records sources, pulls and the catalog, the language models that " +

@@ -634,12 +634,21 @@ checks its behaviour frame to frame instead of its pixels.
 
 ### Updating visual baselines
 
-Regenerate a pull request's baselines with the **Visual baselines** workflow, not a local
-`make fe-visual-update`. The local target runs about 1,400 browser screenshots and saturates the
-machine you're working on. Run the workflow when a pull request changes what a story renders and
-its visual suite fails on the intended change. Read the failure images first
-(`gh run download <run> -p 'playwright-failures-*'`): the workflow accepts every rewritten pixel,
-so it is only for changes you meant.
+The **Visual baselines** workflow regenerates a pull request's screenshot baselines, both the
+visual suite's (`tests/visual/*-snapshots`) and the e2e suite's (`tests/e2e/*-snapshots`). It runs
+on its own: every push to a pull request from a branch of this repository that touches `web/`
+starts it, and it renders when `scripts/ci-impact.sh` selects the visual or e2e suite for the pull
+request's changes. You don't dispatch it, and you don't run `make fe-visual-update` or
+`make e2e-update` locally: the visual target alone takes about 1,400 browser screenshots and
+saturates the machine you're working on.
+
+The workflow accepts every rewritten pixel. Read the bot's commit in the pull request's diff before
+you merge, the way you would read a hand-written one: a PNG that changed when you didn't mean it to
+is a regression, not a baseline. Wait for the run to finish before you arm auto-merge, or the queue
+can take the head before the baselines land on it.
+
+Dispatch it by hand only to re-render without a push, or to [force](#forcing-a-refresh-under-the-threshold)
+a refresh:
 
 ```sh
 gh workflow run visual-baselines.yml --repo loomarr/loomarr -f pr=<number>
@@ -649,32 +658,47 @@ The **Actions** tab runs the same thing: pick **Visual baselines**, then **Run w
 
 1. Resolves the pull request's head branch. It refuses a fork, a closed pull request, the default
    branch, and a pull request in the merge queue, whose branch can't take a push. Take it out of
-   the queue first.
+   the queue first. A fork's pull request, and the bot's own baseline commit, never start a run.
 2. Dispatches **Visual baselines render** (`visual-baselines-render.yml`) at that branch and waits
-   for it. The render builds Storybook from a fresh checkout of the commit, then runs
-   `make fe-visual-update` in the pinned Playwright image. This is the same path CI's visual suite
-   takes. The run fails, and pushes nothing, on an axe violation or a crashing story.
+   for it. The render builds Storybook from a fresh checkout of the commit and runs
+   `make fe-visual-update` in the pinned Playwright image, then builds the SPA and runs
+   `make e2e-update` in the same image. These are the paths CI's Playwright job takes. The run
+   fails, and pushes nothing, on an axe violation, a crashing story, or a broken e2e flow. A failed
+   render keeps Playwright's expected, actual, and diff images as the `playwright-render-failures`
+   artifact.
 3. Checks GitHub's record of the render run: it must be the one this run dispatched, at the
    resolved commit, and it must have succeeded. Then it commits only the PNGs the update rewrote or
-   added under `web/apps/web/tests/visual/`, as `github-actions[bot]`, with both runs in the message.
-   Any other change to the tree fails the run. If nothing changed, the run says so and pushes
-   nothing. If the branch moved after it was rendered, the run fails: dispatch it again.
-4. Dispatches CI with `scope=full` on the branch. A push made with `GITHUB_TOKEN` starts no
-   `pull_request` run, so this run is what reports the required `CI` check on the new head. It is
-   the whole matrix, Playwright included, so it also proves the new baselines pass. If this step
-   fails after the push, re-run only the run's **Re-run CI on the new head** job.
+   added under a `web/apps/web/tests/visual/` or `web/apps/web/tests/e2e/` snapshot directory, as
+   `github-actions[bot]`, with both runs in the message. Any other change to the tree fails the
+   run. If nothing changed, the run says so and pushes nothing. If the branch moved after it was
+   rendered, the push fails; the run the newer push started renders it.
+4. Approves the runs GitHub holds on the bot's commit. The push starts the pull request's
+   `pull_request` runs (CI, CodeQL, and this workflow, which skips itself), but their actor is
+   `github-actions[bot]`. The repository requires approval for a first-time contributor's runs,
+   and the bot counts as one, so GitHub parks each at `action_required`, and a parked CI run keeps
+   the pull request out of the merge queue. This step approves exactly those runs: that commit, this
+   repository, started by the bot. If no CI run appears for the commit at all, it dispatches CI with
+   `scope=full` instead, so the required `CI` check still reports. If the step fails, approve the
+   parked runs in the **Actions** tab.
+
+A newer push cancels the run for the older head. A second manual dispatch waits for the first.
 
 The render is a separate workflow because it runs the branch's own code: pnpm install scripts,
-codegen, and Storybook. **Visual baselines** runs from `main`, and a run's Actions cache scope is the
-ref it runs on. Run there, the branch's code could write caches that main's CI and release builds
-restore. Dispatched at the branch, the render sits in the branch's scope, as the pull request's CI
-does, and it refuses to run at `main`. The render workflow must exist on the branch, so rebase a
-branch cut before it landed onto `main` before you dispatch.
+codegen, Storybook, and the SPA build. A manual dispatch of **Visual baselines** runs from `main`,
+and a run's Actions cache scope is the ref it runs on. Run there, the branch's code could write
+caches that main's CI and release builds restore. Dispatched at the branch, the render sits in the
+branch's scope, as the pull request's CI does, and it refuses to run at `main`. The render workflow
+must exist on the branch, so rebase a branch cut before it landed onto `main`.
 
-GitHub only offers a dispatch for a workflow that exists on `main`, so the run always comes from
-main's copy, and it refuses to run from any other ref. The update only rewrites a baseline whose
-comparison failed. A change smaller than the suite's pixel tolerance leaves the old PNG in place;
-[the per-pixel threshold](#the-per-pixel-threshold) says which changes that is.
+GitHub only offers a dispatch for a workflow that exists on `main`, so a manual run always comes
+from main's copy, and it refuses to run from any other ref. A run that a push starts uses the pull
+request's copy, as CI does. That gives the branch's author nothing new: only a branch of this
+repository gets there, and its author can already push to it. A fork's pull request never reaches a
+job with a write token, and GitHub gives a fork's run a read-only token anyway; the trigger is
+`pull_request`, never `pull_request_target`. The update
+only rewrites a baseline whose comparison failed. A change smaller than the suite's pixel tolerance
+leaves the old PNG in place; [the per-pixel threshold](#the-per-pixel-threshold) says which changes
+that is.
 
 #### The per-pixel threshold
 

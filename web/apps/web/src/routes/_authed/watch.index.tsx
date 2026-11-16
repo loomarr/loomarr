@@ -7,6 +7,7 @@ import { watchChannelId } from "@/channels/watch-channel-id";
 // Bare `/watch` is what someone gets by trimming a Watch URL. It tunes the same channel the nav's
 // Watch item does (`watchChannelId`: last tuned, else the lowest-numbered playable channel), and
 // with nothing to watch it lands on the Guide rather than Not Found.
+// no-loader: redirects to a channel or the Guide in beforeLoad, which reads what it needs
 const Route = createFileRoute("/_authed/watch/")({
   beforeLoad: async ({ context }) => {
     const channels = unwrap(

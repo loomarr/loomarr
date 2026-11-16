@@ -410,6 +410,11 @@ func mockTunarrWithIndex(t *testing.T, got *capture, index map[string]string) *h
 		w.WriteHeader(http.StatusAccepted)
 	})
 	mux.HandleFunc("/api/channels/ch-id/programming", func(w http.ResponseWriter, r *http.Request) {
+		// A read answers with the lineup last posted, program uuids and all, as Tunarr does.
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(got.body)
+			return
+		}
 		got.method, got.path = r.Method, r.URL.Path
 		got.body, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
@@ -417,6 +422,36 @@ func mockTunarrWithIndex(t *testing.T, got *capture, index map[string]string) *h
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// A lineup read back names its programs by the media-server ids it was pushed with, not the
+// Tunarr uuids it was posted as, so a reconcile can see that what Tunarr holds is what it wants.
+// A program Tunarr's index does not name is read back by its uuid, so it differs and is pushed.
+func TestGetLineup_ReadsProgramsBackByTheirMediaServerIDs(t *testing.T) {
+	var got capture
+	srv := mockTunarrWithIndex(t, &got, map[string]string{"lib-1": "uuid-1"})
+	c := tunarr.New(srv.URL, "cfg")
+	pushed := []schedule.Slot{
+		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000},
+		{Kind: schedule.SlotFlex, DurationMs: 120000},
+	}
+	if err := c.SetLineup(context.Background(), "ch-id", pushed); err != nil {
+		t.Fatal(err)
+	}
+	slots, err := c.GetLineup(context.Background(), "ch-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(slots) != 2 || slots[0].Kind != schedule.SlotProgram || slots[0].LibraryItemID != "lib-1" ||
+		slots[1].Kind != schedule.SlotFlex || slots[1].DurationMs != 120000 {
+		t.Fatalf("read back %+v; want the pushed lineup by media-server id", slots)
+	}
+
+	got.body = []byte(`{"lineup":[{"type":"content","id":"uuid-unknown","duration":60000}]}`)
+	slots, err = c.GetLineup(context.Background(), "ch-id")
+	if err != nil || len(slots) != 1 || slots[0].LibraryItemID != "uuid-unknown" {
+		t.Fatalf("read back %+v, %v; want an unindexed program kept by its uuid", slots, err)
+	}
 }
 
 func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {

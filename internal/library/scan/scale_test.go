@@ -3,7 +3,9 @@ package scan
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -11,7 +13,18 @@ import (
 
 // scaleFiles is the library the scale guard builds: big enough that memory held per file stands
 // well clear of the store's and the runtime's own, small enough for every run of the suite.
-const scaleFiles = 2000
+// LOOMARR_SCAN_SCALE_FILES builds a bigger one: the weekly run builds the household's 33k.
+func scaleFiles(t *testing.T) int {
+	raw := os.Getenv("LOOMARR_SCAN_SCALE_FILES")
+	if raw == "" {
+		return 2000
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 2 {
+		t.Fatalf("LOOMARR_SCAN_SCALE_FILES = %q, want a count of at least 2", raw)
+	}
+	return n
+}
 
 // scalePasses is how many passes run while the header stage is held. On the household's library
 // (33k files, 180 TB) step 2 ran for hours, and the passes made meanwhile each handed the whole
@@ -27,6 +40,7 @@ func TestALongHeaderStageHoldsTheLibraryOnce(t *testing.T) {
 		// Under -race it takes a minute; CI runs it in the package's plain run (RACE_AND_PLAIN).
 		t.Skip("builds a library of thousands of files")
 	}
+	scaleFiles := scaleFiles(t)
 	h := newHarness(t)
 	var live atomic.Bool
 	live.Store(true)
@@ -54,22 +68,23 @@ func TestALongHeaderStageHoldsTheLibraryOnce(t *testing.T) {
 		}
 	}
 	grew := heldBytes() - before
-	t.Logf("%d passes left %d KB more held (%d B a file a pass)", scalePasses, grew/1024, grew/(scaleFiles*scalePasses))
+	perPass := int64(scaleFiles * scalePasses)
+	t.Logf("%d passes left %d KB more held (%d B a file a pass)", scalePasses, grew/1024, grew/perPass)
 
 	if got := h.im.Tracker.Snapshot(time.Now()); got.Step != StepReading || got.Total != scaleFiles {
 		t.Errorf("step %v counts %d files after %d passes, want reading %d", got.Step, got.Total, scalePasses, scaleFiles)
 	}
 	const budget = 64 // bytes held per file per pass
-	if limit := int64(budget * scaleFiles * scalePasses); grew > limit {
+	if limit := budget * perPass; grew > limit {
 		t.Errorf("%d passes left %d KB more held (%d B a file a pass), want under %d KB", scalePasses, grew/1024,
-			grew/(scaleFiles*scalePasses), limit/1024)
+			grew/perPass, limit/1024)
 	}
 
 	live.Store(false)
 	if err := <-full; err != nil {
 		t.Fatal(err)
 	}
-	if n := h.reads.Load(); n != scaleFiles {
+	if n := int(h.reads.Load()); n != scaleFiles {
 		t.Errorf("header reads = %d, want %d", n, scaleFiles)
 	}
 }

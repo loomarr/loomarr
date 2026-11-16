@@ -1,4 +1,5 @@
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import { Stack } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -77,7 +78,7 @@ const SecretsSettings = () => {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <Stack gap="control">
       {error != null && <ErrorState error={error} />}
       <SecretsPanel
         secrets={SECRETS}
@@ -86,7 +87,7 @@ const SecretsSettings = () => {
         onRegenerate={onRegenerate}
         busy={busy}
       />
-    </div>
+    </Stack>
   );
 };
 

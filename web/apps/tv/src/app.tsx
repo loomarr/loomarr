@@ -21,6 +21,7 @@ import {
   retryPairedClient,
   useChannelAudio,
   usePairedClient,
+  usePairedSubtitles,
 } from "@loomarr/paired-client";
 import { createPlaybackMarks, NativePlayerView, PairedNativeImage } from "@loomarr/player/native";
 import {
@@ -30,6 +31,7 @@ import {
   pairingBackAvailable,
   playerChromeFromGuide,
   SurfJourney,
+  surfCardsFromGuide,
   useClientDestination,
   type WatchingLayer,
   WatchingSurface,
@@ -91,11 +93,10 @@ const autoTuneSetting = createTvAutoTuneSetting({
   setItem: SecureStore.setItemAsync,
 });
 
-// The channel last watched (#23): a relaunch resumes it instead of the first channel.
-const lastChannel = createLastChannelStore({
-  getItem: SecureStore.getItemAsync,
-  setItem: SecureStore.setItemAsync,
-});
+// What the device remembers: the channel last watched (#23), so a relaunch resumes it instead of the
+// first channel, and the viewer's subtitles.
+const deviceStorage = { getItem: SecureStore.getItemAsync, setItem: SecureStore.setItemAsync };
+const lastChannel = createLastChannelStore(deviceStorage);
 
 // Crash capture installs here, before the first render, so a crash while the app starts is reported too.
 const nativeApp = createNativeApp({ clientVersion });
@@ -115,6 +116,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const {
     catalogState,
     channelAudio,
+    channelSubtitles,
     controller,
     guide,
     guideSnapshot,
@@ -180,6 +182,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
         : "menu"
       : "controls";
   const audioOptions = useChannelAudio(channelAudio, snapshot.channel?.id, layerOpen && layer === "audio");
+  const subtitles = usePairedSubtitles(channelSubtitles, deviceStorage, snapshot);
   useTVEventHandler(({ eventKeyAction, eventType }) =>
     remote.nativeKey(eventType, keyActionOf(eventKeyAction), active === "watching", remoteFocus),
   );
@@ -206,6 +209,11 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     return () => clearInterval(timer);
   }, []);
   const chrome = playerChromeFromGuide({ layout: guideSnapshot.layout, nowMs: clockMs, snapshot });
+  // The cards a flip shows in the band's place (§9.2): the catalog Up and Down step through.
+  const surfCards = useMemo(
+    () => surfCardsFromGuide(snapshot.catalog, guideSnapshot.layout, clockMs),
+    [snapshot.catalog, guideSnapshot.layout, clockMs],
+  );
   const markSwitchShown = useCallback(
     (what: "osd" | "still") => certMarks.held(controller.getSnapshot().attemptId, what),
     [controller],
@@ -244,6 +252,8 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
           playheadMs={watchingScheduleTimeMs(snapshot, clockMs)}
           player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
           snapshot={snapshot}
+          subtitles={subtitles}
+          surfCards={surfCards}
         />
       }
       overlay={

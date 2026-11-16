@@ -1,7 +1,7 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import { intentSchema } from "@loomarr/core/schemas";
 import { CHANNEL_TEMPLATES } from "@loomarr/core/templates";
-import { Action } from "@loomarr/design-system";
+import { Action, Grid, GridItem, Stack, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { IntentInput } from "@/components/loomarr/ai/intent-input";
 import { useAppForm } from "@/lib/app-form";
@@ -53,8 +53,8 @@ const hasDetails = (intent?: Intent): boolean =>
 // The hero (§3) plus the constraints §13 calls "intent-writing hints": era, tone,
 // runtime target, and an acquisition cap. They stay behind a disclosure because the
 // blank-page problem is solved by ONE good sentence, not by a form — but they are here,
-// and they now actually reach the server (`runtimeTargetMin` was unreachable until the
-// submit body was typed from the domain).
+// and they reach the server because the submit body is typed from the domain (an untyped
+// body can silently drop a field such as `runtimeTargetMin`).
 const IntentForm = ({
   initialDescription = "",
   initialIntent,
@@ -92,7 +92,7 @@ const IntentForm = ({
   });
 
   return (
-    <div className="flex flex-col gap-4">
+    <Stack gap="4">
       <form.Field name="description">
         {(field) => (
           <IntentInput
@@ -107,9 +107,11 @@ const IntentForm = ({
       <form.Subscribe selector={(state) => state.errorMap.onSubmit}>
         {(validationError) =>
           validationError ? (
-            <p role="alert" className="text-onair-300 text-sm">
-              {validationError}
-            </p>
+            <div role="alert">
+              <Text as="p" textRole="compact" tone="danger">
+                {validationError}
+              </Text>
+            </div>
           ) : null
         }
       </form.Subscribe>
@@ -124,7 +126,7 @@ const IntentForm = ({
       </Action>
 
       {refining && (
-        <div className="grid grid-cols-2 gap-3">
+        <Grid columns={2} gap="3">
           <form.AppField name="era">
             {(field) => <field.TextField label="Era" placeholder="1990s" />}
           </form.AppField>
@@ -139,21 +141,21 @@ const IntentForm = ({
           </form.AppField>
           <form.AppField name="mustInclude">
             {(field) => (
-              <field.TextField className="col-span-2" label="Must include" placeholder="Point Break, Heat" />
+              <GridItem span="full">
+                <field.TextField label="Must include" placeholder="Point Break, Heat" />
+              </GridItem>
             )}
           </form.AppField>
           <form.AppField name="mustExclude">
             {(field) => (
-              <field.TextField
-                className="col-span-2"
-                label="Must exclude"
-                placeholder="anything with clowns"
-              />
+              <GridItem span="full">
+                <field.TextField label="Must exclude" placeholder="anything with clowns" />
+              </GridItem>
             )}
           </form.AppField>
-        </div>
+        </Grid>
       )}
-    </div>
+    </Stack>
   );
 };
 

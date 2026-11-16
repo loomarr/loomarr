@@ -46,7 +46,7 @@ func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	if !airing.Playable() || streamURL == "" {
 		return item, nil // a card slot: the packager slates it
 	}
-	item.Input, item.Seek = streamURL, airing.Offset
+	item.Input, item.Seek = streamURL, airing.Seek()
 	item.Watermark = s.WatermarkFor(channelID, airing)
 	item.RecordAiringServed = func(ctx context.Context) { s.Res.RecordAiringServed(ctx, channelID, airing, at) }
 	t1 := time.Now()
@@ -55,7 +55,7 @@ func (s PackagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	item.Format = s.Res.FormatOf(ctx, airing.LibraryItemID, streamURL)
 	t3 := time.Now()
 	// A tune-in seeks from here rather than decoding up to a source GOP to reach the offset (#1595).
-	item.Keyframe, item.KeyframeIndexed = s.Res.indexedKeyframe(ctx, streamURL, airing.Offset)
+	item.Keyframe, item.KeyframeIndexed = s.Res.indexedKeyframe(ctx, streamURL, airing.Seek())
 	if s.Log != nil {
 		// The tune-in (G2) split's resolution half; the packager logs the encoder half.
 		s.Log.Info("packager: item resolved", "channel", channelID, "item", item.Label,

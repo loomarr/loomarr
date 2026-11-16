@@ -42,8 +42,13 @@ const Heading = ({ children }: { children: string }) => (
 );
 
 // "3" or, for a file holding two, "3–4".
-const episodeNumber = (number: number, end?: number) =>
-  end && end > number ? `${number}–${end}` : `${number}`;
+// An episode with no number (a special its show's catalog doesn't number) shows none.
+const episodeNumber = (number: number, end?: number) => {
+  if (number <= 0) {
+    return "";
+  }
+  return end && end > number ? `${number}–${end}` : `${number}`;
+};
 
 const Season = ({ season }: { season: LibraryTitleSeason }) => {
   const [open, setOpen] = useState(false);
@@ -71,7 +76,7 @@ const Season = ({ season }: { season: LibraryTitleSeason }) => {
                 {episodeNumber(episode.number, episode.end)}
               </Text>
             </Stack>
-            <Stack flexBasis={0} flexGrow={1} minWidth={0}>
+            <Stack flexBasis={0} flexGrow={1} flexShrink={1} minWidth={0}>
               <Text textRole="body">{episode.name || `Episode ${episode.number}`}</Text>
               {episode.fromFile ? (
                 <Text textRole="hint" tone="muted">

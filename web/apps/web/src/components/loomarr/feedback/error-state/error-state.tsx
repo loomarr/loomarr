@@ -1,5 +1,5 @@
 import { toProblem } from "@loomarr/api/mutator";
-import { Action, Icon, icons } from "@loomarr/design-system";
+import { Action, Card, Icon, icons, Stack, Text } from "@loomarr/design-system";
 import { cn } from "@/lib/utils";
 import type { ErrorStateProps } from "./error-state.type";
 
@@ -7,27 +7,38 @@ import type { ErrorStateProps } from "./error-state.type";
 // `title`/`detail` as words, never raw JSON (§6). Retry is offered only when the
 // caller says the operation is idempotent. Field-level 422 errors render inline via
 // TanStack Form instead (this is the block/list-level error).
-const ErrorState = ({ error, onRetry, className }: ErrorStateProps) => {
+const ErrorState = ({ error, onRetry, retrying = false, className }: ErrorStateProps) => {
   const p = toProblem(error);
   return (
-    <div
+    <Card
+      alignItems="center"
+      borderRadius={8}
+      className={cn("p-8", className)}
+      flexShrink={0}
+      gap={12}
+      justifyContent="center"
       role="alert"
-      className={cn(
-        "border-onair-tint-30 bg-onair-tint-8 flex flex-col items-center justify-center gap-3 rounded-lg border p-8 text-center",
-        className,
-      )}
+      tone="onair"
     >
       <Icon decorative glyph={icons.alert} size="control" tone="danger" />
       <div>
-        <p className="text-onair-300 font-medium">{p.title ?? "Something went wrong"}</p>
-        {p.detail && <p className="text-muted-foreground mt-1 max-w-md text-sm">{p.detail}</p>}
+        <Text as="p" textAlign="center" textRole="cardLabel" tone="danger">
+          {p.title ?? "Something went wrong"}
+        </Text>
+        {p.detail && (
+          <Stack marginTop={4} maxWidth={448}>
+            <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+              {p.detail}
+            </Text>
+          </Stack>
+        )}
       </div>
       {onRetry && (
-        <Action onPress={onRetry} variant="outline">
-          Try again
+        <Action onPress={retrying ? () => undefined : onRetry} variant="outline">
+          {retrying ? "Trying again…" : "Try again"}
         </Action>
       )}
-    </div>
+    </Card>
   );
 };
 

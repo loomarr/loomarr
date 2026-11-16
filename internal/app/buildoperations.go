@@ -339,8 +339,7 @@ func buildAuth(
 	}
 
 	manager := auth.NewManager(st, settings.SessionTTL.Get(set), time.Now)
-	loginLimiter := auth.NewRateLimiter(0.2, 5)
-	result.login = auth.NewLoginService(libraryClient, st, manager, loginLimiter, time.Now)
+	result.login = auth.NewLoginService(libraryClient, st, manager, auth.NewLoginLimiter(), time.Now)
 	result.userSync = auth.NewUserSync(libraryClient, st, time.Now)
 	result.provision = auth.NewProvisioner(st, libraryClient, newID, time.Now)
 	result.sso = auth.NewSSOService(func() auth.SSOConfig {

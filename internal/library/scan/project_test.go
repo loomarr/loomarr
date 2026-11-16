@@ -75,8 +75,6 @@ func TestLibraryStreamLabelsAChannelLayout(t *testing.T) {
 	}
 }
 
-// A title is listed from its present scanner origin over a newer missing one, never from another
-// authority's, and not at all by an origin written before it carried how it is listed.
 // A title sorts by its letters, not their accents: "À Nous" files under A, beside "Alpha", rather
 // than after Z, where an accented first letter's bytes put it.
 func TestATitleSortsByItsLettersNotTheirAccents(t *testing.T) {
@@ -103,6 +101,37 @@ func TestATitleSortsByItsLettersNotTheirAccents(t *testing.T) {
 	}
 }
 
+// A title with two copies, only one of them grounded in the catalog (its NFO names the TMDB id, the
+// other has only a name), is listed by the grounded one whichever was written last: a full rewrite
+// writing the bare copy after it must not rename the title to that copy's file name.
+func TestATitleIsListedByItsGroundedCopyWhicheverWasWrittenLast(t *testing.T) {
+	at := time.Date(2026, 11, 11, 20, 0, 0, 0, time.UTC)
+	listed := func(catalog librarystore.LibraryCatalogKey) json.RawMessage {
+		raw, _ := json.Marshal(originExtension{Listed: &listedExtension{Catalog: catalog}})
+		return raw
+	}
+	copyOf := func(key, name string, observed time.Time, ext json.RawMessage) inventory.ItemOrigin {
+		return inventory.ItemOrigin{
+			Key: inventory.OriginKey{Authority: inventory.AuthorityID(authorityPrefix + "a"), ExternalItemID: key},
+			Observation: inventory.Observation[inventory.ItemFacts]{ObservedAt: observed, Extension: ext,
+				Facts: inventory.ItemFacts{Name: name, SortTitle: name, ProductionYear: 1972}},
+		}
+	}
+	grounded := copyOf("file:remux", "Yankee Lane", at, listed(librarystore.LibraryCatalogKey{
+		Provider: "tmdb", Kind: "movie", ExternalID: "90000573"}))
+	bare := copyOf("file:bluray", "Yankee Lane (1972) - [Bluray-2160p][HDR10]-GRP", at.Add(time.Minute),
+		listed(librarystore.LibraryCatalogKey{}))
+
+	for _, origins := range [][]inventory.ItemOrigin{{grounded, bare}, {bare, grounded}} {
+		got, ok := ProjectLibraryItem(inventory.Item{ID: "m1", Kind: kindMovie, Origins: origins})
+		if !ok || got.Name != "Yankee Lane" || got.Catalog.ExternalID != "90000573" {
+			t.Errorf("listed %q from %+v, want \"Yankee Lane\" from its grounded copy", got.Name, got.Catalog)
+		}
+	}
+}
+
+// A title is listed from its present scanner origin over a newer missing one, never from another
+// authority's, and not at all by an origin written before it carried how it is listed.
 func TestProjectLibraryItemPicksThePresentScannerOrigin(t *testing.T) {
 	at := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 	listed := func(page string) json.RawMessage {

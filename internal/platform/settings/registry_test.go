@@ -70,8 +70,9 @@ func TestRegistry_FillerLanguageOwnsTheClientOptions(t *testing.T) {
 
 func TestRegistry_RestartKeys(t *testing.T) {
 	reg := NewRegistry()
-	// Only the filler folders wait for a restart (#1659). The long-reel files apply live.
-	want := []string{"filler.dir", "filler.watch_dir"}
+	// Only the filler folders and the trusted proxies, which the HTTP layer reads once per
+	// generation, wait for a restart (#1659). The long-reel files apply live.
+	want := []string{"filler.dir", "filler.watch_dir", "security.trusted_proxies"}
 	got := reg.RestartKeys()
 	if len(got) != len(want) {
 		t.Fatalf("RestartKeys = %v, want %v", got, want)

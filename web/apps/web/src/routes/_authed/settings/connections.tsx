@@ -1,5 +1,7 @@
+import * as setupApi from "@loomarr/api/endpoints/setup";
 import { SettingKey } from "@loomarr/api/models/settingKey";
 import { createFileRoute } from "@tanstack/react-router";
+import { viewerIsAdmin } from "@/auth/me-query";
 import { blockTitle } from "@/settings/provider-title";
 import { SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
@@ -87,6 +89,12 @@ const ConnectionsSettings = () => {
 
 const Route = createFileRoute("/_authed/settings/connections")({
   component: ConnectionsSettings,
+  // The settings list is the layout's. What this page adds is the standing verdict on each
+  // connection, which probes the services, so it is started but not waited for. Admin-only.
+  loader: async ({ context: { queryClient } }) => {
+    if (!(await viewerIsAdmin(queryClient))) return;
+    void queryClient.prefetchQuery(setupApi.getSetupStatusQueryOptions());
+  },
   validateSearch: (search: Record<string, unknown>): ConnectionsSearch => ({
     focus: search.focus === "tmdb" ? "tmdb" : undefined,
   }),

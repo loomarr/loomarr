@@ -6,13 +6,17 @@ import { Pressable, View } from "react-native";
 import { ChannelSwitchOverlay } from "../channel-switch-overlay";
 import {
   PlayerAudio,
+  PlayerCaption,
   PlayerChrome,
   PlayerCover,
   type PlayerLiveState,
   PlayerMenu,
   PlayerMore,
+  PlayerOptions,
+  type PlayerSurfChannel,
 } from "./player-chrome";
 import { PlayerReadout } from "./player-chrome/player-readout";
+import { useSurfCards } from "./surf-cards";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
 
 // Watching on a television (frontend-design §9.7): the picture, with the J chrome drawn over it while
@@ -21,8 +25,9 @@ import type { WatchingSurfaceProps } from "./watching-surface.type";
 // OK there opens the Guide, as OK does on the bare picture.
 
 const LIVE: PlayerLiveState = { lagSeconds: 0, mode: "live" };
+const NO_CARDS: readonly PlayerSurfChannel[] = [];
 // A television keeps 5% clear at every edge (overscan): 48 × 27 at 960 × 540.
-const EDGE = { side: 48, top: 28 } as const;
+const EDGE = { bottom: 28, side: 48, top: 28 } as const;
 
 const Centred = ({ label }: { label: string }) => (
   <View
@@ -66,8 +71,8 @@ const SWITCH_REASONS: ReadonlySet<PlayerSnapshot["tuneReason"]> = new Set([
   "step",
 ]);
 
-/** The cover that takes the picture's place, when there is nothing to play. */
-const coverOf = (snapshot: PlayerSnapshot, loadError: string | undefined) => {
+/** The cover that takes the picture's place, when there is nothing to play (§9.5): every client says the same. */
+const playerCoverOf = (snapshot: PlayerSnapshot, loadError: string | undefined) => {
   if (loadError) return { kind: "error", message: loadError, title: "The channels didn't load" } as const;
   if (snapshot.status === "failed")
     return { kind: "error", message: snapshot.error, title: "The stream stopped." } as const;
@@ -110,12 +115,20 @@ const WatchingSurface = ({
   playheadMs,
   player,
   snapshot,
+  subtitles,
+  surfCards = NO_CARDS,
 }: WatchingSurfaceProps) => {
-  const cover = loading ? undefined : coverOf(snapshot, loadError);
+  const cover = loading ? undefined : playerCoverOf(snapshot, loadError);
   const tuning = !loading && snapshot.status === "tuning";
   const switching = tuning && !snapshot.reconnecting && SWITCH_REASONS.has(snapshot.tuneReason);
-  // The controls are up for activity and through a tune; a cover stands in for them.
-  const shown = !loading && !cover && Boolean(chrome) && (controlsVisible || tuning);
+  // Flipping (§9.2): each Up or Down tunes at once, and the cards ride along in the band's place.
+  const surf = useSurfCards(
+    surfCards,
+    snapshot.channel?.id,
+    snapshot.tuneReason === "step" ? snapshot.channel?.id : undefined,
+  );
+  // The controls are up for activity, through a tune and while flipping; a cover stands in for them.
+  const shown = !loading && !cover && Boolean(chrome) && (controlsVisible || tuning || Boolean(surf));
   const typing = Boolean(numberEntry?.digits);
   const countdown = useAutoTuneCountdownLabel(typing ? numberEntry?.expiresAtMs : undefined);
   const previous = snapshot.catalog.find(({ id }) => id === snapshot.previousChannelId);
@@ -139,8 +152,8 @@ const WatchingSurface = ({
     dismissControlsRef.current();
   }, [controlsActivityKey]);
   // The controls clear five seconds after the last handled key (playback-clients), not on a tune, and
-  // not while a menu (Audio or More) is open: it waits for a choice, or for Menu or Back.
-  const menuOpen = layer === "audio" || layer === "more";
+  // not while a menu (Subtitles, Audio or More) is open: it waits for a choice, or for Menu or Back.
+  const menuOpen = layer === "audio" || layer === "more" || layer === "subtitles";
   useEffect(() => {
     if (!shown || tuning || menuOpen) return undefined;
     const timeout = setTimeout(dismissControlsForActivity, 5_000);
@@ -210,8 +223,20 @@ const WatchingSurface = ({
               }}
               layout="tv"
               live={live}
+              captions={subtitles?.captions}
               menu={
-                layer === "audio" ? (
+                layer === "subtitles" && subtitles ? (
+                  // Subtitles on a television (§9.5): the remote starts on the choice in use; OK on a
+                  // row chooses it and the menu stays, so the line changes behind it. Menu or Back closes.
+                  <PlayerMenu density="tv" title="Subtitles">
+                    <PlayerOptions
+                      density="tv"
+                      label="Subtitles"
+                      onSelect={subtitles.choose}
+                      options={subtitles.options}
+                    />
+                  </PlayerMenu>
+                ) : layer === "audio" ? (
                   // Audio on a television (§9.5): the channel's language, read-only, so its rows take no
                   // focus; it stays on the Audio key, whose OK closes the menu as Menu or Back does.
                   <PlayerMenu density="tv" title="Audio">
@@ -258,6 +283,7 @@ const WatchingSurface = ({
                 ) : undefined
               }
               onGoLive={onGoLive}
+              {...(surf ? { surf } : {})}
               schedule={
                 strip
                   ? {
@@ -274,9 +300,21 @@ const WatchingSurface = ({
                 density: "tv",
                 onAudio: () => onLayer(layer === "audio" ? undefined : "audio"),
                 pointer: false,
+                ...(subtitles
+                  ? {
+                      onSubtitles: () => onLayer(layer === "subtitles" ? undefined : "subtitles"),
+                      subtitlesOn: subtitles.on,
+                      subtitlesOpen: layer === "subtitles",
+                    }
+                  : {}),
               }}
               visible
             />
+          ) : null}
+          {/* With the controls down the chrome is not mounted, so the line is drawn here, at the
+              picture's foot (the chrome's own place for it then). */}
+          {!shown && !cover && !loading && subtitles ? (
+            <PlayerCaption bottom={EDGE.bottom + 12} density="tv" lines={subtitles.captions} where="tv" />
           ) : null}
           {shown && snapshot.livePlayback?.noticeRevision ? (
             // The paused point fell out of the window and playback went back to live: web says so in a
@@ -307,6 +345,15 @@ const WatchingSurface = ({
               name={numberEntry.channelName}
               top={EDGE.top}
             />
+          ) : surf && shown && snapshot.channel ? (
+            // While flipping the band is down, so the readout names the channel (§9.2).
+            <PlayerReadout
+              density="tv"
+              digits={String(snapshot.channel.number)}
+              name={snapshot.channel.name}
+              quiet
+              top={EDGE.top}
+            />
           ) : null}
         </ThemeScope>
       ) : null}
@@ -314,4 +361,4 @@ const WatchingSurface = ({
   );
 };
 
-export { WatchingSurface };
+export { playerCoverOf, WatchingSurface };

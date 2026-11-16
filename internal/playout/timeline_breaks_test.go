@@ -2,7 +2,6 @@ package playout
 
 import (
 	"fmt"
-	"slices"
 	"testing"
 	"time"
 
@@ -28,81 +27,82 @@ var (
 	breakNow = breakEpoch.Add(21*time.Hour + 10*time.Minute)
 )
 
-// A reconcile that re-sizes the channel's breaks must not move what is on air: every break that
-// has aired, or airs before the freeze horizon, keeps its accepted length. On 2026-10-24 each
-// re-size moved the programme on air by 40 s to 4.5 min, so the viewer saw scenes again, or the
-// same break twice.
-func TestKeepAcceptedBreaksHoldsTheAiredTimeline(t *testing.T) {
+// A re-deal keeps the programme on air from its first part, and every programme starting before
+// the run-ahead, with the break after each. On the cycle's first pass it also keeps what aired
+// before them, from the anchor, which does not move; once the cycle has looped it keeps from the
+// programme on air, which becomes the anchor. Either way the walk of what is kept airs the same
+// thing as the accepted cycle at every instant up to `until`.
+func TestKeepOnAirKeepsWhatTheStreamMayHaveEncoded(t *testing.T) {
 	accepted := breakCycle(113_366)
-	next := breakCycle(113_866) // half a second longer per break
-	if same := AiringAt(next, breakEpoch, breakNow); same == AiringAt(accepted, breakEpoch, breakNow) {
-		t.Fatal("precondition: re-sized breaks should move the airing on now")
-	}
-
-	until := breakNow.Add(30 * time.Minute)
-	kept := KeepAcceptedBreaks(accepted, next, breakEpoch, until)
-
-	for _, at := range []time.Time{breakEpoch, breakNow, until.Add(-time.Second)} {
-		if got, want := AiringAt(kept, breakEpoch, at), AiringAt(accepted, breakEpoch, at); got != want {
-			t.Fatalf("at %v: kept airs %+v, accepted aired %+v", at.Sub(breakEpoch), got, want)
+	looped := breakEpoch.Add(cycleDuration(accepted) + 5*time.Hour)
+	for _, tc := range []struct {
+		name                  string
+		at                    time.Time
+		fromAnchor, fromStart bool
+	}{
+		{"first pass, from the anchor", breakNow, true, true},
+		{"first pass, from the programme on air", breakNow, false, false},
+		{"looped", looped, true, false},
+	} {
+		until := tc.at.Add(OnAirLookahead)
+		kept, start := KeepOnAir(accepted, breakEpoch, tc.at, until, tc.fromAnchor)
+		onAir := AiringAt(accepted, breakEpoch, tc.at)
+		want := tc.at.Add(-onAir.Offset)
+		if tc.fromStart {
+			want = breakEpoch
 		}
-	}
-	// After the horizon the new length is free to take effect: nothing there has aired.
-	last := kept[len(kept)-1]
-	if last.DurationMs != 113_866 {
-		t.Fatalf("last break = %d ms, want the re-sized 113866 beyond the horizon", last.DurationMs)
-	}
-}
-
-// An edit that changes no timing (a file re-identified, a title healed) keeps every aired break
-// held: nothing it changes moves the walk. One that changes timing (a programme removed or
-// re-timed) holds the breaks before it, so what airs up to the edit stays where it was, and
-// commits the rest as computed.
-func TestKeepAcceptedBreaksHoldsUpToTheFirstTimingChange(t *testing.T) {
-	accepted := breakCycle(113_366)
-	held := func(slots []schedule.Slot) int {
-		n := 0
-		for _, s := range slots {
-			if isBreak(s) && s.DurationMs == 113_366 {
-				n++
+		if !start.Equal(want) {
+			t.Fatalf("%s: kept from %v, want %v", tc.name, start, want)
+		}
+		if len(kept) == 0 || kept[len(kept)-1].Kind != schedule.SlotFiller {
+			t.Fatalf("%s: kept %+v, want whole programmes each with its break", tc.name, kept)
+		}
+		for at := tc.at; at.Before(until); at = at.Add(time.Second) {
+			if got, want := AiringAt(kept, start, at).LibraryItemID, AiringAt(accepted, breakEpoch, at).LibraryItemID; got != want {
+				t.Fatalf("%s: at %v the kept cycle airs %q, the accepted one %q", tc.name, at.Sub(tc.at), got, want)
 			}
 		}
-		return n
 	}
-	aired := held(KeepAcceptedBreaks(accepted, breakCycle(113_866), breakEpoch, breakNow))
-	if aired < 50 {
-		t.Fatalf("precondition: %d breaks aired by 21:10, want about 53", aired)
-	}
-	for _, tc := range []struct {
-		name string
-		edit func([]schedule.Slot) []schedule.Slot
-		held int // breaks held, counting from the cycle start
-	}{
-		{"file re-identified", func(s []schedule.Slot) []schedule.Slot { s[4].LibraryItemID = "other"; return s }, aired},
-		{"title healed", func(s []schedule.Slot) []schedule.Slot { s[4].Title = "Pilot"; return s }, aired},
-		// An episode and its break swapped for the next ones moves no timing, only which episode airs
-		// where (OnAirChanged sees that); a longer programme inserted moves everything after it.
-		{"episode and break removed", func(s []schedule.Slot) []schedule.Slot { return append(s[:4:4], s[6:]...) }, aired},
-		{"film inserted", func(s []schedule.Slot) []schedule.Slot {
-			film := schedule.Slot{Kind: schedule.SlotProgram, LibraryItemID: "film", DurationMs: (95 * time.Minute).Milliseconds()}
-			return slices.Insert(s, 4, film)
-		}, 2},
-		{"programme re-timed", func(s []schedule.Slot) []schedule.Slot { s[2].DurationMs += 1000; return s }, 1},
-	} {
-		if got := held(KeepAcceptedBreaks(accepted, tc.edit(breakCycle(113_866)), breakEpoch, breakNow)); got != tc.held {
-			t.Errorf("%s: %d breaks held, want %d", tc.name, got, tc.held)
-		}
+	if kept, _ := KeepOnAir(nil, breakEpoch, breakNow, breakNow.Add(OnAirLookahead), true); kept != nil {
+		t.Fatalf("an empty cycle kept %+v", kept)
 	}
 }
 
-// Nothing has aired before a channel's anchor, and an empty accepted cycle has nothing to hold.
-func TestKeepAcceptedBreaksBeforeAnythingAired(t *testing.T) {
-	next := breakCycle(113_866)
-	if kept := KeepAcceptedBreaks(breakCycle(113_366), next, breakEpoch, breakEpoch); kept[1].DurationMs != 113_866 {
-		t.Fatal("held a break on a timeline that has not started")
+// A split programme is kept whole from its first part, and dropped whole with its mid-roll.
+func TestSplitProgrammesAreKeptAndDroppedWhole(t *testing.T) {
+	mins := func(m int) int64 { return (time.Duration(m) * time.Minute).Milliseconds() }
+	film := []schedule.Slot{
+		{Kind: schedule.SlotProgram, LibraryItemID: "film", DurationMs: mins(50), Segment: 1},
+		{Kind: schedule.SlotFiller, DurationMs: mins(2), MidRoll: true},
+		{Kind: schedule.SlotProgram, LibraryItemID: "film", DurationMs: mins(40), Segment: 2, SourceOffsetMs: mins(50)},
+		{Kind: schedule.SlotFiller, DurationMs: mins(2)},
 	}
-	if kept := KeepAcceptedBreaks(nil, next, breakEpoch, breakNow); kept[1].DurationMs != 113_866 {
-		t.Fatal("held a break with no accepted cycle")
+	cycle := append(append([]schedule.Slot{}, film...),
+		schedule.Slot{Kind: schedule.SlotProgram, LibraryItemID: "ep", DurationMs: mins(22)},
+		schedule.Slot{Kind: schedule.SlotFiller, DurationMs: mins(2)})
+
+	// Inside the second part: the film is kept from its first part.
+	kept, start := KeepOnAir(cycle, breakEpoch, breakEpoch.Add(60*time.Minute), breakEpoch.Add(61*time.Minute), false)
+	if !start.Equal(breakEpoch) || len(kept) != len(film) {
+		t.Fatalf("kept %d slots from %v, want the film's %d from its start", len(kept), start.Sub(breakEpoch), len(film))
+	}
+	if got := WithoutProgrammes(cycle, map[string]bool{"film": true}); len(got) != 2 || got[0].LibraryItemID != "ep" {
+		t.Fatalf("dropping the film left %+v, want the episode and its break", got)
+	}
+}
+
+// Slots that have finished airing are behind FirstUnfinished; a cycle that has looped airs every
+// slot again.
+func TestFirstUnfinished(t *testing.T) {
+	cycle := breakCycle(113_366)
+	if got := FirstUnfinished(cycle, breakEpoch, breakEpoch.Add(22*time.Minute)); got != 1 {
+		t.Errorf("at the end of the first episode: %d, want its break (1)", got)
+	}
+	if got := FirstUnfinished(cycle, breakEpoch, breakEpoch.Add(-time.Hour)); got != 0 {
+		t.Errorf("before the anchor: %d, want 0", got)
+	}
+	if got := FirstUnfinished(cycle, breakEpoch, breakEpoch.Add(48*time.Hour)); got != 0 {
+		t.Errorf("after the cycle looped: %d, want 0", got)
 	}
 }
 
@@ -113,10 +113,6 @@ func TestOnAirChanged(t *testing.T) {
 
 	if OnAirChanged(accepted, breakEpoch, accepted, breakEpoch, breakNow, to) {
 		t.Error("an identical schedule changed what is on air")
-	}
-	kept := KeepAcceptedBreaks(accepted, breakCycle(113_866), breakEpoch, breakNow.Add(30*time.Minute))
-	if OnAirChanged(accepted, breakEpoch, kept, breakEpoch, breakNow, to) {
-		t.Error("a re-size held through the horizon changed what is on air")
 	}
 	if !OnAirChanged(accepted, breakEpoch, breakCycle(113_866), breakEpoch, breakNow, to) {
 		t.Error("a re-size that moves the programme on air was not seen")

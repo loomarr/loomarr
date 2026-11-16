@@ -1,5 +1,6 @@
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { SettingKey } from "@loomarr/api/models/settingKey";
+import { Card, Stack, Text } from "@loomarr/design-system";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
@@ -62,14 +63,18 @@ const BackupPage = () => {
         },
       ]}
       footer={
-        <div className="flex flex-col gap-3">
-          <aside className="border-caution/40 bg-caution/5 rounded-lg border p-4 text-sm">
-            <h2 className="font-medium">The image volume is separate</h2>
-            <p className="text-muted-foreground mt-1">
-              This backup contains the database, including settings, channels, people, and generated secrets.
-              It does not copy image files or operator-uploaded artwork.
-            </p>
-          </aside>
+        <Stack gap="control">
+          <Card borderRadius={8} padding={16} render="aside" tone="caution">
+            <Stack gap="1">
+              <Text as="h2" textRole="cardLabel">
+                The image volume is separate
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                This backup contains the database, including settings, channels, people, and generated
+                secrets. It does not copy image files or operator-uploaded artwork.
+              </Text>
+            </Stack>
+          </Card>
           <BackupPanel
             list={list.data.data}
             onBackUpNow={handleBackUpNow}
@@ -78,7 +83,7 @@ const BackupPage = () => {
             pending={backUpNow.isPending}
             error={error}
           />
-        </div>
+        </Stack>
       }
     />
   );

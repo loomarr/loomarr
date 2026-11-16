@@ -1,17 +1,18 @@
-import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { render } from "@/test/render";
 import { ColorBars } from "./color-bars";
 
 describe("ColorBars", () => {
   it("renders the seven test-card segments", () => {
     const { container } = render(<ColorBars />);
-    const strip = container.firstElementChild as HTMLElement;
-    expect(strip.children).toHaveLength(7);
+    const strips = [...container.querySelectorAll("[aria-hidden]")].filter((el) => el.children.length === 7);
+    expect(strips).toHaveLength(1);
   });
 
   it("is decorative — hidden from the accessibility tree", () => {
     const { container } = render(<ColorBars />);
     // It names nothing; screen readers must skip it (§1: nostalgia in the margins).
-    expect(container.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    const strip = [...container.querySelectorAll("[aria-hidden]")].find((el) => el.children.length === 7);
+    expect(strip).toHaveAttribute("aria-hidden", "true");
   });
 });

@@ -14,26 +14,29 @@ import { useLibraryScanFrames } from "../use-library-scan-frames";
 // looks for them once by itself.
 
 // While an import runs, its progress arrives as library_scan frames, written into the status read,
-// and "Ready so far" (decision 29) refetches on each library_titles frame: both move on their own,
-// with nothing polling.
-const READY_SO_FAR = 5;
-const reading = (status: LibraryStatusOutputBody | undefined) =>
-  status?.scan.step === LibraryScanDTOStep.reading;
+// and "Found so far" (decision 29) refetches on each library_titles frame: both move on their own,
+// with nothing polling. It lists the latest titles written, ready or not, through every step, so a
+// title shows by name from the walk on and turns into its poster once it is ready.
+const FOUND_SO_FAR = 5;
+const running = (status: LibraryStatusOutputBody | undefined) =>
+  status !== undefined && status.scan.step !== LibraryScanDTOStep.idle;
 
 const useLibraryFolders = ({ enabled = true }: { enabled?: boolean } = {}) => {
   const queryClient = useQueryClient();
   useLibraryScanFrames();
   const roots = libraryApi.useListLibraryRoots({ query: { enabled } });
   const status = libraryApi.useLibraryStatus({ query: { enabled } });
-  const isReading = reading(unwrap(status.data));
-  const ready = libraryApi.useListLibraryItems(
-    { ready: true, sort: ListLibraryItemsSort.recent, limit: READY_SO_FAR },
-    { query: { enabled: enabled && isReading } },
+  const isRunning = running(unwrap(status.data));
+  const found = libraryApi.useListLibraryItems(
+    { sort: ListLibraryItemsSort.recent, limit: FOUND_SO_FAR },
+    { query: { enabled: enabled && isRunning } },
   );
   const refresh = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: libraryApi.getListLibraryRootsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: libraryApi.getLibraryStatusQueryKey() }),
+      // Which folders are in use, inside one, or hold some, as the folder browser lists them.
+      queryClient.invalidateQueries({ queryKey: libraryApi.getBrowseLibraryFoldersQueryKey() }),
     ]);
   const mutation = { mutation: { onSettled: refresh } };
   const discover = libraryApi.useDiscoverLibraryRoots(mutation);
@@ -52,10 +55,11 @@ const useLibraryFolders = ({ enabled = true }: { enabled?: boolean } = {}) => {
     }
   }, [body, discover]);
 
-  // Resolves to a sentence saying why the folder was refused, or undefined when it was added.
-  const onAddFolder = async (path: string) => {
+  // Resolves to a sentence saying why the folder was refused, or undefined when it was added. With
+  // replace, it is used in place of the folders in use inside it.
+  const onAddFolder = async (path: string, options?: { replace?: boolean }) => {
     try {
-      await add.mutateAsync({ data: { path } });
+      await add.mutateAsync({ data: options?.replace ? { path, replace: true } : { path } });
       return undefined;
     } catch (err) {
       const problem = toProblem(err);
@@ -66,8 +70,8 @@ const useLibraryFolders = ({ enabled = true }: { enabled?: boolean } = {}) => {
   return {
     roots: body,
     status: current,
-    /** The latest titles that became ready, last first, while files are read; empty otherwise. */
-    readySoFar: (isReading ? unwrap(ready.data)?.items : undefined) ?? [],
+    /** The latest titles written, ready or not, last first, while an import runs; empty otherwise. */
+    readySoFar: (isRunning ? unwrap(found.data)?.items : undefined) ?? [],
     error: roots.error ?? status.error ?? discover.error ?? setInUse.error,
     refresh,
     checking: discover.isPending,

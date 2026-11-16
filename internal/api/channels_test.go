@@ -1947,8 +1947,9 @@ func TestSetupStatusRequiresAdmin(t *testing.T) {
 
 // fakeGuide is a scripted api.GuideReader keyed by Loomarr channel id.
 type fakeGuide struct {
-	byChannel map[string]guideapi.ChannelNowNext
-	upcoming  map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	byChannel   map[string]guideapi.ChannelNowNext
+	upcoming    map[string][]guideapi.NowNextEntry // per-Loomarr-channel-id "what's on later"; nil ⇒ empty
+	upcomingErr error                              // when set, Upcoming fails with it
 }
 
 func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.ChannelNowNext, error) {
@@ -1956,6 +1957,9 @@ func (f fakeGuide) NowNext(context.Context, time.Time) (map[string]guideapi.Chan
 }
 
 func (f fakeGuide) Upcoming(_ context.Context, channelID string, _ time.Time, limit int) ([]guideapi.NowNextEntry, error) {
+	if f.upcomingErr != nil {
+		return nil, f.upcomingErr
+	}
 	got := f.upcoming[channelID]
 	if limit > 0 && len(got) > limit {
 		got = got[:limit]
@@ -2048,6 +2052,61 @@ func TestChannelUpcoming_PassesLoomarrIDWithoutRequiringTunarrID(t *testing.T) {
 	}
 	if len(body.Upcoming) != 1 || body.Upcoming[0].Title != "Playing locally" {
 		t.Fatalf("upcoming = %+v, want local-id guide result", body.Upcoming)
+	}
+}
+
+// locked is a log sink the server goroutine and the test can share under -race.
+type locked struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (l *locked) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *locked) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// A guide failure keeps the Overview strip empty, but it is logged: an empty strip that is
+// really a broken guide must be findable by the operator.
+func TestChannelUpcoming_AGuideFailureStaysEmptyButIsLogged(t *testing.T) {
+	st := openTestStore(t, t.TempDir()+"/upcoming-fail.db")
+	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.SaveChannel(context.Background(), channelstore.Channel{
+		Channel: schedule.Channel{ID: "ch-internal", Name: "Internal", Number: 42, Status: schedule.StatusLive},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	logs := &locked{}
+	log := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	h := api.Router(log, api.Options{
+		Store: st, Auth: testAuthorizer{}, Log: log,
+		Guide: api.GuideOptions{Reader: fakeGuide{upcomingErr: errors.New("playout timeline unavailable")}},
+	})
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	resp := do(t, srv, http.MethodGet, "/v1/channels/ch-internal/upcoming", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("upcoming with a failing guide → %d, want 200 (the strip stays empty)", resp.StatusCode)
+	}
+	var body struct {
+		Upcoming []guideapi.NowNextEntry `json:"upcoming"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Upcoming == nil || len(body.Upcoming) != 0 {
+		t.Fatalf("upcoming = %#v, want an empty list", body.Upcoming)
+	}
+	if got := logs.String(); !strings.Contains(got, "level=WARN") || !strings.Contains(got, "playout timeline unavailable") {
+		t.Fatalf("a guide failure was swallowed without a WARN; log:\n%s", got)
 	}
 }
 

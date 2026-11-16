@@ -1,4 +1,4 @@
-import { Combobox, type ComboboxOption, Screen, Text } from "@loomarr/design-system";
+import { Combobox, type ComboboxGroup, type ComboboxOption, Screen, Text } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useState } from "react";
 
@@ -6,6 +6,36 @@ const places: readonly ComboboxOption[] = [
   { description: "Washington, United States", label: "Seattle", value: "seattle" },
   { description: "Oregon, United States", label: "Portland", value: "portland" },
 ];
+
+const grouped: readonly ComboboxGroup[] = [
+  { id: "channels", label: "Channels", options: [{ label: "90s Action", trailing: "#42", value: "c1" }] },
+  {
+    id: "library",
+    label: "In your library",
+    options: [
+      { label: "The Velvet Cartographer", trailing: "1995", value: "l1" },
+      { label: "Pelican Point Motel", trailing: "1997", value: "l2" },
+    ],
+  },
+];
+
+// Grouped and always open: the shape the command palette takes on a phone or a TV.
+const GroupedInline = ({ density }: { density: "touch" | "tv" }) => {
+  const [text, setText] = useState("a");
+  return (
+    <Combobox
+      density={density}
+      emptyText="No matches."
+      groups={grouped}
+      inline
+      inputValue={text}
+      label="Search"
+      onInputValueChange={setText}
+      onSelect={(option) => setText(option.label)}
+      placeholder="Search titles and channels"
+    />
+  );
+};
 
 const NativeComboboxWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
   const [text, setText] = useState("");
@@ -15,6 +45,7 @@ const NativeComboboxWorkshop = ({ density = "touch" }: { density?: "touch" | "tv
       <Text density={density} textRole="title">
         Combobox
       </Text>
+      <GroupedInline density={density} />
       <Combobox
         density={density}
         emptyText="No locations found."

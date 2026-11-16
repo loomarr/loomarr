@@ -1,10 +1,14 @@
-import { getLibraryStatusMockHandler, getListLibraryRootsMockHandler } from "@loomarr/api/msw";
+import {
+  getHouseholdMockHandler,
+  getLibraryStatusMockHandler,
+  getListLibraryRootsMockHandler,
+} from "@loomarr/api/msw";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { libraryStatus } from "@/test/fixtures/library";
 import { server } from "@/test/msw/server";
 import { SettingsLibrary } from "./settings-library";
@@ -33,6 +37,17 @@ const inUse = {
 // The wiring: the page reads the folders and status, looks for folders by itself once when none
 // were ever recorded, and shows the server's refusal of a typed folder in its own words.
 describe("SettingsLibrary", () => {
+  beforeEach(() => {
+    // The page tells times in the household's zone, which the household read carries.
+    server.use(getHouseholdMockHandler({ timeZone: "" }));
+    // Add a folder opens the folder browser at the top: nothing in it unless a test says so.
+    server.use(
+      http.get("*/v1/library/browse", () =>
+        HttpResponse.json({ path: "", parent: "", inUse: false, holds: [], folders: [] }),
+      ),
+    );
+  });
+
   it("looks for folders once when none were ever recorded", async () => {
     let discoveries = 0;
     server.use(
@@ -72,7 +87,18 @@ describe("SettingsLibrary", () => {
     server.use(
       getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
       getLibraryStatusMockHandler(
-        libraryStatus({ held: [{ path: "/media/movies", movies: 3, episodes: 0, other: 0 }] }),
+        libraryStatus({
+          held: [
+            {
+              path: "/media/movies",
+              movies: 3,
+              episodes: 0,
+              other: 0,
+              titles: ["Amber Hollow", "Brightwater"],
+              titleCount: 3,
+            },
+          ],
+        }),
       ),
       http.post("*/v1/library/roots/confirm-removal", async ({ request }) => {
         confirmed = await request.json();
@@ -80,6 +106,9 @@ describe("SettingsLibrary", () => {
       }),
     );
     renderPage();
+
+    // The maintainer sees what they would let go before saying it.
+    expect(await screen.findByText(/That's Amber Hollow, Brightwater and 1 more\./)).toBeInTheDocument();
 
     await userEvent.click(await screen.findByRole("button", { name: "They're gone, remove them" }));
     await waitFor(() => expect(confirmed).toEqual({ path: "/media/movies" }));
@@ -99,11 +128,53 @@ describe("SettingsLibrary", () => {
     renderPage();
 
     await userEvent.click(await screen.findByRole("button", { name: "Add a folder" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Type a path instead" }));
     await userEvent.type(screen.getByLabelText("Where is the folder?"), "/media/shows");
     await userEvent.click(screen.getByRole("button", { name: "Add folder" }));
 
     expect(
       await screen.findByText("Loomarr can't open this folder. Check that it is mounted"),
     ).toBeInTheDocument();
+  });
+
+  // Add a folder opens the browser at the top; opening a folder reads it, and Use this folder adds
+  // the folder open now, in place of the folders in use inside it when it holds some.
+  it("adds a folder picked by opening folders", async () => {
+    const asked: string[] = [];
+    let added: unknown;
+    server.use(
+      getListLibraryRootsMockHandler({ roots: [inUse], pathMap: [] }),
+      getLibraryStatusMockHandler(libraryStatus()),
+      http.get("*/v1/library/browse", ({ request }) => {
+        const path = new URL(request.url).searchParams.get("path") ?? "";
+        asked.push(path);
+        return HttpResponse.json(
+          path === ""
+            ? {
+                path: "",
+                parent: "",
+                inUse: false,
+                holds: [],
+                folders: [
+                  { path: "/media", name: "/media", named: false, inUse: false, holds: ["/media/movies"] },
+                ],
+              }
+            : { path: "/media", parent: "", inUse: false, holds: ["/media/movies"], folders: [] },
+        );
+      }),
+      http.post("*/v1/library/roots", async ({ request }) => {
+        added = await request.json();
+        return HttpResponse.json({ roots: [], pathMap: [] });
+      }),
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add a folder" }));
+    await userEvent.click(await screen.findByText("/media"));
+    await userEvent.click(await screen.findByRole("button", { name: "Use this folder instead" }));
+
+    await waitFor(() => expect(added).toEqual({ path: "/media", replace: true }));
+    // The top, then /media; an added folder reads the listing again, for what is in use now.
+    expect(asked.slice(0, 2)).toEqual(["", "/media"]);
   });
 });

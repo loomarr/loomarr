@@ -76,12 +76,18 @@ func testLibraryNeeds(t *testing.T, newStore NewStoreFunc) {
 	if err := st.SaveLibraryCandidates(ctx, "m2", "mystery film 2002", second); err != nil {
 		t.Fatal(err)
 	}
-	cands, err := st.LibraryCandidates(ctx, []string{"m2", "s1"})
+	show := []LibraryCandidate{{Kind: "series", ID: LibraryID{Namespace: "tmdb", Value: "90000204"}, Name: "Mystery Show"}}
+	if err := st.SaveLibraryCandidates(ctx, "s1", "mystery show", show); err != nil {
+		t.Fatal(err)
+	}
+	// Two titles' candidates read at once stay each title's own, each in rank order.
+	cands, err := st.LibraryCandidates(ctx, []string{"m2", "s1", "nobody"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cands["m2"]) != 2 || cands["m2"][0] != second[0] || cands["m2"][1] != second[1] || len(cands["s1"]) != 0 {
-		t.Fatalf("candidates = %+v, want the second search whole, in rank order", cands)
+	if len(cands) != 2 || len(cands["m2"]) != 2 || cands["m2"][0] != second[0] || cands["m2"][1] != second[1] ||
+		len(cands["s1"]) != 1 || cands["s1"][0] != show[0] {
+		t.Fatalf("candidates = %+v, want m2's second search whole, in rank order, and s1's own", cands)
 	}
 	if needs, _ := st.LibraryNeeds(ctx); needs[0].Searched != "mystery film 2002" {
 		t.Fatalf("searched = %q", needs[0].Searched)

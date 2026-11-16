@@ -36,6 +36,27 @@ describe("native player application lifecycle", () => {
     expect(order).toEqual(["pause", "suspend"]);
   });
 
+  // The floating picture is the stream: pausing or releasing it on the way out would close it.
+  it("leaves a picture out of the app as picture in picture playing when the app goes to the background", () => {
+    const pause = vi.fn();
+    const suspend = vi.fn();
+    let pictureInPicture = true;
+    const lifecycle = createNativePlayerLifecycle({
+      controller: { getSnapshot: pausedSnapshot, pause, retry: vi.fn() },
+      refresh: vi.fn(),
+      transport: { inPictureInPicture: () => pictureInPicture, resume: vi.fn(), suspend },
+    });
+
+    lifecycle.enterBackground();
+    expect(pause).not.toHaveBeenCalled();
+    expect(suspend).not.toHaveBeenCalled();
+
+    pictureInPicture = false;
+    lifecycle.enterBackground();
+    expect(pause).toHaveBeenCalledOnce();
+    expect(suspend).toHaveBeenCalledOnce();
+  });
+
   it("recreates the player and refreshes authority before retuning the remembered Channel", async () => {
     const order: string[] = [];
     const lifecycle = createNativePlayerLifecycle({

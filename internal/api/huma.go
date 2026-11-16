@@ -22,7 +22,7 @@ import (
 type Server struct {
 	auth httpcore.Authorizer
 	log  *slog.Logger
-	// origin is COOKIE_SECURE and TRUST_PROXY: where a request came from, how cookies are marked (§11).
+	// origin is COOKIE_SECURE and TRUSTED_PROXIES: where a request came from, how cookies are marked (§11).
 	origin httpcore.Origin
 	// channels is the channel engine; the root reads it only for holidayCalendar.
 	channels guideapi.ChannelService

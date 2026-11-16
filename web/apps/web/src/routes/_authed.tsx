@@ -118,12 +118,13 @@ const Route = createFileRoute("/_authed")({
     try {
       await context.queryClient.ensureQueryData(meQueryOptions());
     } catch (err) {
-      // ⚠ **Only a 401 means "signed out".** This used to be a bare `catch {}`, and with
-      // `meQueryOptions` setting retry:false ("a 401 is a definite answer") NOTHING inspected the
-      // status — so a network blip, a 500, a proxy hiccup or this app's own self-restart bounced a
-      // user holding a perfectly valid cookie to /login?redirect=… . That is not an edge case
-      // here: RestartWatchProvider/RestartOverlay are wired into this very layout because the
-      // operator can restart the server from the Dashboard, and every such restart hit this path.
+      // ⚠ **Only a 401 means "signed out".** `meQueryOptions` sets retry:false ("a 401 is a
+      // definite answer"), so this guard is the only place the status is inspected: a network
+      // blip, a 500, a proxy hiccup or this app's own self-restart must surface as the failure it
+      // is, not bounce a user holding a valid cookie to /login?redirect=… . That is not an edge
+      // case here: RestartWatchProvider/RestartOverlay are wired into this very layout because the
+      // operator can restart the server from the Dashboard, and every such restart passes through
+      // this guard.
       //
       // A non-401 is rethrown so it surfaces as the failure it is — the restart overlay and the
       // error boundary exist to handle exactly that, and neither can if the guard has already

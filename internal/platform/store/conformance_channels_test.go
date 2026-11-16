@@ -51,7 +51,9 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 	// A non-default (hevc) broadcast codec (§9.1 V50) — using the non-default value
 	// proves the column preserves what's written, not that it fell back to the DDL default.
 	ch.BroadcastCodec = BroadcastCodecHEVC
-	ch.PlayoutAnchor = time.Unix(1_700_000_123, 0).UTC()
+	// An anchor between whole seconds: a re-deal starts the cycle at the programme on air (#4140).
+	ch.PlayoutAnchor = time.Unix(1_700_000_123, 268_000_000).UTC()
+	ch.DealtFrom = "a1b2.c3d4"
 	ch.ReconcileDeadline = deadline
 	return ch
 }
@@ -104,6 +106,9 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !got.PlayoutAnchor.Equal(want.PlayoutAnchor) {
 		t.Errorf("playout anchor round-trip: got %v want %v", got.PlayoutAnchor, want.PlayoutAnchor)
+	}
+	if got.DealtFrom != want.DealtFrom {
+		t.Errorf("dealt_from round-trip: got %q want %q", got.DealtFrom, want.DealtFrom)
 	}
 	if !got.ReconcileDeadline.Equal(want.ReconcileDeadline) {
 		t.Errorf("reconcile deadline round-trip: got %v want %v", got.ReconcileDeadline, want.ReconcileDeadline)

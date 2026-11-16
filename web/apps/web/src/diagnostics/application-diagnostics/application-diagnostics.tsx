@@ -1,20 +1,18 @@
 import * as diagnosticsApi from "@loomarr/api/endpoints/diagnostics";
-import type { EventView } from "@loomarr/api/models/eventView";
-import { ListDiagnosticEventsLevel } from "@loomarr/api/models/listDiagnosticEventsLevel";
-import { ListDiagnosticEventsOrder } from "@loomarr/api/models/listDiagnosticEventsOrder";
-import type { ListDiagnosticEventsParams } from "@loomarr/api/models/listDiagnosticEventsParams";
-import { ListDiagnosticEventsSource } from "@loomarr/api/models/listDiagnosticEventsSource";
 import {
   Action,
+  Card,
   Chip,
   CompactSelect,
   Field,
+  Grid,
   Icon,
   icons,
   PressableRow,
+  Stack,
   StatusDot,
-  type StatusTone,
   Surface,
+  Text,
   Tooltip,
 } from "@loomarr/design-system";
 import { SearchField } from "@loomarr/ui";
@@ -22,7 +20,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { useCopied } from "@/lib/use-copied";
 import {
   type ApplicationFilters,
   type EventOrder,
@@ -31,15 +28,13 @@ import {
   eventSources,
   sourceNames,
 } from "../application-filters";
-import { CopyValue } from "../copy-value";
 import { DiagnosticsPager } from "../diagnostics-pager";
 import { DiagnosticsSplitPane } from "../diagnostics-split-pane";
+import { EventDetail } from "./event-detail";
+import { fallbackMessage, formatTime, levelLabel, levelTone, sourceLabel } from "./event-format";
+import { eventParams } from "./event-params";
+import { VerboseCaptureControl } from "./verbose-capture-control";
 
-const RANGE_MS: Record<Exclude<EventRange, "all">, number> = {
-  "1h": 3_600_000,
-  "6h": 21_600_000,
-  "24h": 86_400_000,
-};
 const VIRTUAL_VIEWPORT = { width: 960, height: 520 };
 
 const observeVirtualRect = (
@@ -60,227 +55,6 @@ const observeVirtualRect = (
   const observer = new ResizeObserver(report);
   observer.observe(element);
   return () => observer.disconnect();
-};
-
-const formatTime = (millis: number) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(millis));
-
-const levelTone = (level: EventView["level"]): StatusTone => {
-  if (level === "error") return "error";
-  if (level === "warn") return "warn";
-  if (level === "info") return "ok";
-  return "off";
-};
-
-const levelLabel = (level: EventView["level"]) => {
-  if (level === "warn") return "Warning";
-  return `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
-};
-
-const sourceLabel = (source: EventView["source"]) => sourceNames[source];
-
-const fallbackMessage = (event: EventView) =>
-  event.event
-    .split(/[._]/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-
-const eventParams = (
-  filters: ApplicationFilters,
-  cursor?: string,
-  now = Date.now(),
-): ListDiagnosticEventsParams => {
-  const to = now;
-  // Zero asks the API to apply its one-hour default, so one millisecond after the epoch is the
-  // explicit lower bound for every retained Loomarr event.
-  const timeWindow = filters.range === "all" ? { from: 1, to } : { from: to - RANGE_MS[filters.range], to };
-  return {
-    ...timeWindow,
-    limit: 50,
-    order: ListDiagnosticEventsOrder[filters.order],
-    ...(cursor ? { cursor } : {}),
-    ...(filters.level === "all" ? {} : { level: ListDiagnosticEventsLevel[filters.level] }),
-    ...(filters.source === "all" ? {} : { source: ListDiagnosticEventsSource[filters.source] }),
-    ...(filters.subsystem.trim() ? { subsystem: filters.subsystem.trim() } : {}),
-    ...(filters.text.trim() ? { text: filters.text.trim() } : {}),
-    ...(filters.requestId ? { requestId: filters.requestId } : {}),
-    ...(filters.playbackSessionId ? { playbackSessionId: filters.playbackSessionId } : {}),
-    ...(filters.channelId ? { channelId: filters.channelId } : {}),
-    ...(filters.scheduleBlockId ? { scheduleBlockId: filters.scheduleBlockId } : {}),
-    ...(filters.jobId ? { jobId: filters.jobId } : {}),
-    ...(filters.processRunId ? { processRunId: filters.processRunId } : {}),
-  };
-};
-
-const EventDetail = ({
-  event,
-  onOpenProcess,
-  onOpenRelated,
-}: {
-  event: EventView;
-  onOpenProcess?: (id: string) => void;
-  onOpenRelated?: (kind: "channel" | "job", id: string) => void;
-}) => {
-  const { copied, copy } = useCopied();
-  const correlations = [
-    ["Request id", event.requestId],
-    ["Playback session", event.playbackSessionId],
-    ["Channel", event.channelId],
-    ["Schedule block", event.scheduleBlockId],
-    ["Job", event.jobId],
-    ["Process run", event.processRunId],
-    ["Instance", event.instanceId],
-  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
-  const copyLog = () => void copy(JSON.stringify(event, null, 2));
-  return (
-    <div className="bg-muted/20 space-y-4 p-4 text-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <span className="text-muted-foreground inline-flex items-center gap-2 text-xs">
-            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-            {levelLabel(event.level)} · {sourceLabel(event.source)}
-          </span>
-          <h3 className="mt-2 text-lg font-medium">{event.message || fallbackMessage(event)}</h3>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {formatTime(event.occurredAt)}
-            {event.subsystem ? ` · ${event.subsystem}` : ""}
-          </p>
-        </div>
-        <Tooltip content={copied ? "Copied" : "Copy complete log details"}>
-          <Action
-            icon={copied ? "success" : "copy"}
-            layout="icon"
-            onPress={copyLog}
-            style={{ flexShrink: 0 }}
-            variant="ghost"
-          >
-            {copied ? "Copied log details" : "Copy log details"}
-          </Action>
-        </Tooltip>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {event.processRunId && onOpenProcess && (
-          <Action icon="process" onPress={() => onOpenProcess(event.processRunId ?? "")} variant="outline">
-            Open process output
-          </Action>
-        )}
-        {event.channelId && onOpenRelated && (
-          <Action onPress={() => onOpenRelated("channel", event.channelId ?? "")} variant="outline">
-            Open related Channel
-          </Action>
-        )}
-        {event.jobId && onOpenRelated && (
-          <Action onPress={() => onOpenRelated("job", event.jobId ?? "")} variant="outline">
-            Open related Job
-          </Action>
-        )}
-      </div>
-      <details className="border-border bg-background rounded-md border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Technical details</summary>
-        <div className="mt-3 space-y-3">
-          <p className="text-muted-foreground font-mono text-xs">{event.event}</p>
-          {correlations.length > 0 && (
-            <div className="grid gap-1">
-              {correlations.map(([label, value]) => (
-                <div key={label} className="flex min-w-0 items-center gap-1">
-                  <span className="text-muted-foreground w-28 shrink-0 text-xs">{label}</span>
-                  <CopyValue label={label} value={value} />
-                </div>
-              ))}
-            </div>
-          )}
-          {Object.keys(event.attributes).length === 0 ? (
-            <p className="text-muted-foreground text-xs">No structured attributes.</p>
-          ) : (
-            <pre className="border-border bg-card max-h-56 overflow-auto rounded-md border p-3 font-mono text-xs">
-              {JSON.stringify(event.attributes, null, 2)}
-            </pre>
-          )}
-        </div>
-      </details>
-    </div>
-  );
-};
-
-const VerboseCaptureControl = ({ filters }: { filters: ApplicationFilters }) => {
-  const [duration, setDuration] = useState("5");
-  const query = diagnosticsApi.useGetDiagnosticVerboseCapture({
-    query: { retry: false, refetchInterval: 5_000 },
-  });
-  const start = diagnosticsApi.useStartDiagnosticVerboseCapture();
-  const stop = diagnosticsApi.useStopDiagnosticVerboseCapture();
-  const capture = query.data?.status === 200 ? query.data.data : undefined;
-  const busy = start.isPending || stop.isPending;
-  const startCapture = async () => {
-    await start.mutateAsync({
-      data: {
-        durationMinutes: Number(duration),
-        ...(filters.subsystem.trim() ? { subsystem: filters.subsystem.trim() } : {}),
-        ...(filters.channelId ? { channelId: filters.channelId } : {}),
-      },
-    });
-    await query.refetch();
-  };
-  const stopCapture = async () => {
-    await stop.mutateAsync();
-    await query.refetch();
-  };
-  return (
-    <section className="border-border bg-card rounded-lg border p-3" aria-labelledby="verbose-capture-title">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-64 flex-1">
-          <h3 id="verbose-capture-title" className="text-sm font-medium">
-            Verbose capture
-          </h3>
-          <p className="text-muted-foreground text-xs">
-            Temporarily retain debug events
-            {filters.subsystem.trim() ? ` for ${filters.subsystem.trim()}` : ""}
-            {filters.channelId ? ` on Channel ${filters.channelId}` : ""}. The same redaction, queue, and
-            retention limits still apply.
-          </p>
-        </div>
-        {capture?.active ? (
-          <>
-            <span className="inline-flex items-center gap-2 text-sm">
-              <Icon decorative glyph={icons.capture} size="compact" tone="warning" />
-              Active until {formatTime(capture.endsAt ?? Date.now())}
-            </span>
-            <Action disabled={busy} icon="stop" onPress={() => void stopCapture()} variant="outline">
-              Stop
-            </Action>
-          </>
-        ) : (
-          <>
-            <CompactSelect
-              label="Verbose capture duration"
-              onValueChange={setDuration}
-              options={[
-                { value: "1", label: "1 minute" },
-                { value: "5", label: "5 minutes" },
-                { value: "10", label: "10 minutes" },
-                { value: "15", label: "15 minutes" },
-              ]}
-              value={duration}
-              width={128}
-            />
-            <Action
-              disabled={busy || query.isError}
-              icon="capture"
-              onPress={() => void startCapture()}
-              variant="outline"
-            >
-              Start capture
-            </Action>
-          </>
-        )}
-      </div>
-      {query.isError && <p className="text-onair mt-2 text-xs">Verbose capture is unavailable.</p>}
-      {(start.isError || stop.isError) && (
-        <p className="text-onair mt-2 text-xs">The capture control could not be updated.</p>
-      )}
-    </section>
-  );
 };
 
 const ApplicationDiagnostics = ({
@@ -363,18 +137,18 @@ const ApplicationDiagnostics = ({
   ] as const;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-4" aria-labelledby="logs-title">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <Stack aria-labelledby="logs-title" flexBasis="0%" flexGrow={1} flexShrink={1} gap="4" render="section">
+      <Stack align="start" direction="row" gap="control" justify="between" wrap>
         <div>
-          <h2 id="logs-title" className="text-lg font-medium">
+          <Text as="h2" id="logs-title" textRole="headline">
             Logs
-          </h2>
-          <p className="text-muted-foreground text-sm">
+          </Text>
+          <Text as="p" textRole="compact" tone="secondary">
             Recent Loomarr, player, and process events. {filters.order === "newest" ? "Newest" : "Oldest"}{" "}
             first.
-          </p>
+          </Text>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <Stack direction="row" gap="inline" wrap>
           <Action
             disabled={downloadState === "working"}
             icon="download"
@@ -383,10 +157,10 @@ const ApplicationDiagnostics = ({
           >
             {downloadState === "working" ? "Preparing…" : "Download logs"}
           </Action>
-        </div>
-      </div>
+        </Stack>
+      </Stack>
 
-      <div className="border-border bg-card flex flex-wrap gap-2 rounded-lg border p-3">
+      <Card flexDirection="row" flexWrap="wrap" gap={8} padding={12}>
         <Surface backgroundColor="transparent" borderWidth={0} flexBasis={256} flexGrow={1} minWidth={0}>
           <SearchField
             label="Search logs"
@@ -421,20 +195,19 @@ const ApplicationDiagnostics = ({
         <Action aria-expanded={advanced} icon="filter" onPress={() => setAdvanced(!advanced)} variant="ghost">
           More filters
         </Action>
-      </div>
+      </Card>
 
       {advanced && (
-        <section
-          className="border-border bg-card space-y-4 rounded-lg border p-4"
-          aria-label="More log filters"
-        >
+        <Card aria-label="More log filters" gap={16} padding={16} render="section">
           <div>
-            <h3 className="text-sm font-medium">More filters</h3>
-            <p className="text-muted-foreground text-xs">
+            <Text as="h3" textRole="cardLabel">
+              More filters
+            </Text>
+            <Text as="p" textRole="hint" tone="secondary">
               Use these when you already know the affected source or identifier.
-            </p>
+            </Text>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <Grid columns={{ base: 1, sm: 2 }} gap="3">
             <CompactSelect<EventSource>
               label="Source"
               onValueChange={(source) => updateFilters({ ...filters, source })}
@@ -452,35 +225,39 @@ const ApplicationDiagnostics = ({
               placeholder="Subsystem"
               value={filters.subsystem}
             />
-          </div>
+          </Grid>
           <details>
-            <summary className="text-muted-foreground cursor-pointer text-sm font-medium">
+            <Text as="summary" cursor="pointer" textRole="cardLabel" tone="secondary">
               IDs and correlations
-            </summary>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {correlationFilters.map(([label, key]) => (
-                <Field
-                  accessibilityLabel={label}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  key={key}
-                  onChangeText={(text) => updateFilters({ ...filters, [key]: text || undefined })}
-                  placeholder={label}
-                  value={filters[key] ?? ""}
-                />
-              ))}
-            </div>
+            </Text>
+            <Stack paddingTop={12}>
+              <Grid columns={{ base: 1, sm: 2, lg: 3 }} gap="3">
+                {correlationFilters.map(([label, key]) => (
+                  <Field
+                    accessibilityLabel={label}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    key={key}
+                    onChangeText={(text) => updateFilters({ ...filters, [key]: text || undefined })}
+                    placeholder={label}
+                    value={filters[key] ?? ""}
+                  />
+                ))}
+              </Grid>
+            </Stack>
           </details>
           <details>
-            <summary className="cursor-pointer text-sm font-medium">Verbose capture</summary>
-            <div className="mt-3">
+            <Text as="summary" cursor="pointer" textRole="cardLabel">
+              Verbose capture
+            </Text>
+            <Stack marginTop={12}>
               <VerboseCaptureControl filters={filters} />
-            </div>
+            </Stack>
           </details>
-        </section>
+        </Card>
       )}
 
-      <fieldset className="flex flex-wrap items-center gap-2 text-xs">
+      <Stack align="center" direction="row" gap="inline" render="fieldset" wrap>
         <legend className="sr-only">Severity filters</legend>
         {(
           [
@@ -513,17 +290,21 @@ const ApplicationDiagnostics = ({
           </Chip>
         )}
         {downloadState === "failed" && (
-          <span className="text-onair inline-flex items-center gap-1">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Download failed
-          </span>
+          <Text as="span" textRole="hint" tone="danger">
+            <Stack align="center" direction="row" gap="1" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> Download failed
+            </Stack>
+          </Text>
         )}
         {dropped > 0 && (
-          <span className="text-caution inline-flex items-center gap-1">
-            <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> {dropped} events dropped
-            since startup
-          </span>
+          <Text as="span" textRole="hint" tone="warning">
+            <Stack align="center" direction="row" gap="1" render="span">
+              <Icon decorative glyph={icons.alert} size="compact" tone="inherit" /> {dropped} events dropped
+              since startup
+            </Stack>
+          </Text>
         )}
-      </fieldset>
+      </Stack>
 
       <DiagnosticsPager
         label="Log pages"
@@ -544,13 +325,17 @@ const ApplicationDiagnostics = ({
       {query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : query.isPending ? (
-        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
-          Loading retained diagnostics…
-        </p>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+            Loading retained diagnostics…
+          </Text>
+        </Card>
       ) : events.length === 0 ? (
-        <p className="border-border bg-card text-muted-foreground rounded-lg border px-4 py-8 text-center text-sm">
-          No logs match these filters. Try a longer time range or clear More filters.
-        </p>
+        <Card paddingHorizontal={16} paddingVertical={32}>
+          <Text as="p" textAlign="center" textRole="compact" tone="secondary">
+            No logs match these filters. Try a longer time range or clear More filters.
+          </Text>
+        </Card>
       ) : (
         <DiagnosticsSplitPane
           storageKey="diagnostics-log-details"
@@ -563,7 +348,7 @@ const ApplicationDiagnostics = ({
               aria-label="Logs"
               style={{ height: `${Math.min(Math.max(virtualizer.getTotalSize(), 228), 640)}px` }}
             >
-              <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+              <Stack height={virtualizer.getTotalSize()} position="relative" width="100%">
                 {virtualizer.getVirtualItems().map((virtualRow) => {
                   const event = events[virtualRow.index];
                   if (!event) return null;
@@ -573,51 +358,68 @@ const ApplicationDiagnostics = ({
                       key={event.id}
                       ref={virtualizer.measureElement}
                       data-index={virtualRow.index}
-                      className="border-border absolute top-0 left-0 w-full border-b"
-                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                      style={{
+                        borderBottom: "1px solid var(--borderDecorative)",
+                        left: 0,
+                        position: "absolute",
+                        top: 0,
+                        transform: `translateY(${virtualRow.start}px)`,
+                        width: "100%",
+                      }}
                     >
                       <PressableRow
                         aria-expanded={open}
                         onPress={() => setExpanded(open ? undefined : event.id)}
                         selected={open}
                       >
-                        <div className="grid w-full gap-2 text-left sm:grid-cols-[7rem_minmax(0,1fr)_8rem] sm:items-start">
-                          <span className="inline-flex items-center gap-2 text-xs">
-                            <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
-                            {levelLabel(event.level)}
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-sm font-medium">
+                        <Grid
+                          align={{ base: "stretch", sm: "start" }}
+                          className="text-left"
+                          columns={{ base: 1, sm: ["7rem", "minmax(0,1fr)", "8rem"] }}
+                          gap="2"
+                          width="100%"
+                        >
+                          <Text as="span" textRole="hint" tone="primary">
+                            <Stack align="center" direction="row" gap="2" render="span">
+                              <StatusDot tone={levelTone(event.level)} label={levelLabel(event.level)} />
+                              {levelLabel(event.level)}
+                            </Stack>
+                          </Text>
+                          <Stack flexShrink={1} gap="1" minWidth={0} render="span">
+                            <Text as="span" textRole="cardLabel" tone="primary">
                               {event.message || fallbackMessage(event)}
-                            </span>
-                            <span className="text-muted-foreground mt-1 block text-xs">
+                            </Text>
+                            <Text as="span" textRole="hint" tone="secondary">
                               {sourceLabel(event.source)}
                               {event.subsystem ? ` · ${event.subsystem}` : ""}
                               {event.channelId ? " · Channel involved" : ""}
                               {event.processRunId ? " · Process output available" : ""}
-                            </span>
-                          </span>
-                          <time
-                            className="text-muted-foreground font-mono text-xs sm:text-right"
-                            dateTime={new Date(event.occurredAt).toISOString()}
-                          >
-                            {formatTime(event.occurredAt)}
+                            </Text>
+                          </Stack>
+                          <time className="sm:text-right" dateTime={new Date(event.occurredAt).toISOString()}>
+                            <Text as="span" textRole="mono" tone="secondary">
+                              {formatTime(event.occurredAt)}
+                            </Text>
                           </time>
-                        </div>
+                        </Grid>
                       </PressableRow>
                       {open && (
-                        <div className="border-border border-t lg:hidden">
+                        <Stack
+                          borderColor="borderDecorative"
+                          borderTopWidth={1}
+                          hidden={{ base: false, lg: true }}
+                        >
                           <EventDetail
                             event={event}
                             onOpenProcess={onOpenProcess}
                             onOpenRelated={onOpenRelated}
                           />
-                        </div>
+                        </Stack>
                       )}
                     </article>
                   );
                 })}
-              </div>
+              </Stack>
             </section>
           }
           secondary={
@@ -632,16 +434,20 @@ const ApplicationDiagnostics = ({
                   onOpenRelated={onOpenRelated}
                 />
               ) : (
-                <div className="text-muted-foreground p-6 text-sm">
-                  <p className="text-foreground font-medium">Select a log to see more</p>
-                  <p className="mt-1">Related actions and technical details will appear here.</p>
-                </div>
+                <Stack gap="1" padding={24}>
+                  <Text as="p" textRole="cardLabel">
+                    Select a log to see more
+                  </Text>
+                  <Text as="p" textRole="compact" tone="secondary">
+                    Related actions and technical details will appear here.
+                  </Text>
+                </Stack>
               )}
             </aside>
           }
         />
       )}
-    </section>
+    </Stack>
   );
 };
 

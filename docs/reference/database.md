@@ -83,7 +83,7 @@ one series per table, so `delta(loomarr_database_table_rows[30d])` graphs the sa
 - [Suggestions](#suggestions): [`proposal_jobs`](#proposal_jobs), [`proposal_job_attempts`](#proposal_job_attempts), [`proposals`](#proposals), [`discovery_feedback`](#discovery_feedback), [`quality_receipts`](#quality_receipts), [`quality_daily_aggregates`](#quality_daily_aggregates), [`quality_run_snapshots`](#quality_run_snapshots)
 - [Your library](#your-library): [`library_roots`](#library_roots), [`library_root_paths`](#library_root_paths), [`library_files`](#library_files), [`library_items`](#library_items), [`library_ids`](#library_ids), [`library_genres`](#library_genres), [`library_studios`](#library_studios), [`library_countries`](#library_countries), [`library_people`](#library_people), [`library_filmography`](#library_filmography), [`library_credits`](#library_credits), [`library_tags`](#library_tags), [`library_sources`](#library_sources), [`library_streams`](#library_streams), [`library_chapters`](#library_chapters), [`library_markers`](#library_markers), [`library_trickplay`](#library_trickplay), [`library_art`](#library_art), [`library_catalog`](#library_catalog), [`library_catalog_feeds`](#library_catalog_feeds), [`library_candidates`](#library_candidates), [`library_answers`](#library_answers), [`library_episode_orders`](#library_episode_orders), [`library_collections`](#library_collections), [`library_collection_members`](#library_collection_members), [`titles`](#titles), [`images`](#images), [`clip_images`](#clip_images), [`filler_split_proposal_images`](#filler_split_proposal_images), [`channel_images`](#channel_images), [`library_item_images`](#library_item_images), [`library_candidate_images`](#library_candidate_images), [`image_derivatives`](#image_derivatives)
 - [Media inventory](#media-inventory): [`inventory_items`](#inventory_items), [`inventory_item_origins`](#inventory_item_origins), [`inventory_external_ids`](#inventory_external_ids), [`inventory_sources`](#inventory_sources), [`inventory_source_origins`](#inventory_source_origins), [`inventory_source_measurements`](#inventory_source_measurements), [`inventory_source_analysis`](#inventory_source_analysis)
-- [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
+- [Filler clips](#filler-clips): [`clips`](#clips), [`clip_tags`](#clip_tags), [`taxa`](#taxa), [`taxa_closure`](#taxa_closure), [`taxonomy_seed_revisions`](#taxonomy_seed_revisions), [`filler_sources`](#filler_sources), [`filler_providers`](#filler_providers), [`filler_source_check_outcomes`](#filler_source_check_outcomes), [`filler_pulls`](#filler_pulls), [`filler_pull_commits`](#filler_pull_commits), [`filler_acquisition_runs`](#filler_acquisition_runs), [`filler_acquisition_artifacts`](#filler_acquisition_artifacts), [`filler_download_failures`](#filler_download_failures), [`filler_clip_pipeline`](#filler_clip_pipeline), [`filler_clip_variants`](#filler_clip_variants), [`filler_clip_fingerprints`](#filler_clip_fingerprints), [`filler_clip_defects`](#filler_clip_defects), [`filler_inferior_copies`](#filler_inferior_copies), [`filler_ready_events`](#filler_ready_events), [`filler_curated_offers`](#filler_curated_offers), [`filler_airings`](#filler_airings), [`filler_context_reports`](#filler_context_reports), [`broadcast_stations`](#broadcast_stations), [`broadcast_station_call_signs`](#broadcast_station_call_signs), [`broadcast_station_seed_revisions`](#broadcast_station_seed_revisions)
 - [How filler clips are checked](#how-filler-clips-are-checked): [`filler_inference_evaluations`](#filler_inference_evaluations), [`filler_inference_budget_guards`](#filler_inference_budget_guards), [`filler_enrichment_axes`](#filler_enrichment_axes), [`filler_enrichment_passes`](#filler_enrichment_passes), [`filler_research_web_attempts`](#filler_research_web_attempts), [`filler_research_web_usage`](#filler_research_web_usage), [`filler_structure_window_call_ledger`](#filler_structure_window_call_ledger), [`filler_split_proposals`](#filler_split_proposals), [`filler_split_shadow_decisions`](#filler_split_shadow_decisions)
 - [Notifications](#notifications): [`notification_destinations`](#notification_destinations), [`notification_intents`](#notification_intents), [`notification_delivery_attempts`](#notification_delivery_attempts), [`title_requesters`](#title_requesters), [`channel_requesters`](#channel_requesters)
 - [Settings and housekeeping](#settings-and-housekeeping): [`settings`](#settings), [`secret_protection_metadata`](#secret_protection_metadata), [`secret_data_keys`](#secret_data_keys), [`scheduled_jobs`](#scheduled_jobs), [`interactive_operations`](#interactive_operations), [`activity`](#activity), [`diagnostic_events`](#diagnostic_events), [`diagnostic_process_runs`](#diagnostic_process_runs), [`diagnostic_retained_bytes`](#diagnostic_retained_bytes), [`client_crash_reports`](#client_crash_reports), [`database_table_rows`](#database_table_rows)
@@ -329,6 +329,8 @@ One row per channel. A channel is created by approving a channel request or by h
 | `requested_by` | The person who asked for the channel (users.id). Set when the channel is created and never changed. Null when no member asked, or once that person is deleted. | `TEXT` · may be empty · → `users.id` |
 | `from_request` | Whether the channel was made from a member's request rather than by hand. Refine and auto-curate re-run that request; it outlives the job intent_ref names. | `BOOLEAN` |
 | `intent_ref` | The channel request job (proposal_jobs.id) the channel was created from, while that job is kept; null once the job is purged, and for a channel made by hand. No two channels share one. | `TEXT` · may be empty · → `proposal_jobs.id` |
+| `dealt_from` | Two fingerprints, joined by a dot: what an operator had decided when the current cycle was dealt (the lineup, the channel's rules, break and window settings), and the deal itself. While the first is unchanged, a change in the library does not move the window on air; a change to it re-deals the schedule after the programme on air. Empty until the channel is next scheduled. | `TEXT` |
+| `playout_anchor_ms` | The milliseconds past `playout_anchor`'s second, 0 to 999. A cycle that starts at the programme on air rarely starts on a whole second, and the schedule is laid out from the exact moment. | `INTEGER` |
 
 ### channel_lineup
 
@@ -588,7 +590,7 @@ One row per media file the scanner found under an in-use folder. A file the scan
 | `identity` | A digest of what said what the file is (its arr record, ids in its name, its NFO sidecar) when it was last written to the library. Cleared to make the scanner write the file again. | `TEXT` |
 | `kind` | What the file was last written as, one of movie, episode or extra; empty for a problem file. | `TEXT` |
 | `header` | Whether the file's container header has been read. One of pending (not yet), read, or failed (it can't be read, so the file can't be played). | `TEXT` |
-| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), or invalid_facts (the library refused what was read from it). | `TEXT` |
+| `problem` | Why the file is skipped, or empty for none. One of disc_image (a disc image), identity_conflict (what names the file disagrees), invalid_facts (the library refused what was read from it), broken_link (a symlink whose target is gone), link_outside (a symlink to a path outside the root, which the scan never follows), or empty_file (a video file with no bytes, which makes no title until it is filled). | `TEXT` |
 | `held` | 1 when a walk no longer found the file and that walk's removals are waiting for a person to confirm them. A held file still counts as present. | `BOOLEAN` |
 | `seen_at_ms` | When a walk last found the file, in Unix milliseconds. | `INTEGER` |
 | `missing_at_ms` | When a walk stopped finding the file, in Unix milliseconds; 0 means it is present. | `INTEGER` |
@@ -793,7 +795,8 @@ A title's present files, one row each, with the copy that plays marked. Replaced
 | `bitrate` | The file's overall bitrate in bits per second; 0 when unknown. | `INTEGER` |
 | `duration_ms` | The file's length in milliseconds from its header; 0 until the header is read. | `INTEGER` |
 | `edition` | Which version of the title this file is, such as a director's cut; empty for the usual one. | `TEXT` |
-| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest). | `BOOLEAN` |
+| `plays` | True for the one copy that plays when the title has several (the one its arr lists, else the sharpest, else the biggest), or for each part of a movie in parts, which play in part order. | `BOOLEAN` |
+| `part` | Which part of a movie split over several files ("cd1", "cd2") this file is, from 1; 0 for a whole file. | `INTEGER` |
 
 ### library_streams
 
@@ -829,6 +832,8 @@ Each track of a title's files (video, audio, subtitles), one row each: those ins
 | `hearing_impaired` | True for a track for the deaf and hard of hearing, such as SDH subtitles. | `BOOLEAN` |
 | `descriptive` | True for an audio track that describes the picture. | `BOOLEAN` |
 | `external_ref` | For a track in its own file beside the title's file (such as Film.en.forced.srt), where that file is, as an absolute path; empty for a track inside the file. | `TEXT` |
+| `bitrate` | The track's own bitrate in bits per second, as its container states it (a Matroska BPS tag) or an MP4's sample table measures it; 0 when the file says nothing. | `INTEGER` |
+| `bit_depth` | Bits per sample: a video track's depth (8, 10 or 12), or a lossless or PCM audio track's sample size; 0 for lossy audio or when unknown. | `INTEGER` |
 
 ### library_chapters
 
@@ -1502,6 +1507,28 @@ One row per file a download produced, tracking it from download to the clip fold
 | `remote_id` | The provider's id for the item. Empty for older downloads and typed URLs. | `TEXT` |
 | `gap` | The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not chosen for a gap. | `TEXT` |
 
+### filler_download_failures
+
+One row per item whose download has not worked yet. A failed download is tried three times over a day, then rests 30 days; an item that waits for room is kept here too, with no failure counted. The row has what a retry needs, so an item no source listing offers any more is still retried.
+
+**Kept:** Deleted when the item downloads. The nightly housekeeping task also deletes the rows of a source that was deleted. An item that keeps failing stays, tried once every 30 days.
+
+| Column | What it holds | Type |
+| --- | --- | --- |
+| `item_key` | Identifies the item: the provider's id for it within its source, or its address for a typed URL. | `TEXT` · key |
+| `provider` | The provider that downloads it, such as archive or youtube. | `TEXT` |
+| `source_id` | The registered source it came from (filler_sources.id). Empty for a typed URL. | `TEXT` |
+| `remote_id` | The provider's id for the item. Empty for a typed URL. | `TEXT` |
+| `url` | The address to download. | `TEXT` |
+| `duration_ms` | The length the listing gave, in milliseconds; 0 when it gave none. | `INTEGER` |
+| `height` | The picture height the listing gave, in pixels; 0 when it gave none. | `INTEGER` |
+| `gap` | The channel coverage gap the download was for, such as era:1990-1999. Empty when it was not chosen for a gap. | `TEXT` |
+| `failures` | How many attempts have failed. Waiting for room does not count. | `INTEGER` |
+| `first_failed_at` | When the first attempt failed, in Unix seconds; 0 if none has. | `INTEGER` |
+| `last_failed_at` | When the latest attempt failed, in Unix seconds; 0 if none has. | `INTEGER` |
+| `retry_at` | The earliest the item is tried again, in Unix seconds. | `INTEGER` |
+| `last_error` | Why the latest attempt failed or waited. | `TEXT` |
+
 ### filler_clip_pipeline
 
 Each clip's preparation: which step it is at, how that step is going, and the clip's outcome (ready, rejected, waiting for review). One row per clip, deleted with the clip.
@@ -1530,6 +1557,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `preparation_progress` | Percent done across the whole preparation attempt; -1 means unknown. | `INTEGER` |
 | `stage_queued_at` | When the current step was queued, in Unix seconds. | `INTEGER` |
 | `stage_started_at` | When the current step started running, in Unix seconds. | `INTEGER` |
+| `files_deleted_at` | When Loomarr deleted the files of a clip it fetched and rejected a week earlier, in Unix seconds; the row stays as the record of why. 0 while the files are kept. | `INTEGER` |
 
 ### filler_clip_variants
 

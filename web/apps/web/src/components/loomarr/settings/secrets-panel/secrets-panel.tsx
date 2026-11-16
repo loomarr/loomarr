@@ -1,8 +1,7 @@
-import { Action } from "@loomarr/design-system";
+import { Action, Card, Stack, Text, typography } from "@loomarr/design-system";
 import { ConfirmStep } from "@loomarr/ui";
 import { useState } from "react";
 import { useCopied } from "@/lib/use-copied";
-import { cn } from "@/lib/utils";
 import type { SecretName, SecretsPanelProps } from "./secrets-panel.type";
 
 // Generated credentials (config-design §4), on Sonarr's model: values an operator must
@@ -16,22 +15,45 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
   const { copied, copy } = useCopied<SecretName>();
 
   return (
-    <ul className={cn("flex flex-col gap-3", className)}>
+    <Stack className={className} gap="control" render="ul">
       {secrets.map((secret) => {
         const value = revealed[secret.name];
         const isConfirming = confirming === secret.name;
 
         return (
-          <li key={secret.name} className="border-border bg-card flex flex-col gap-2 rounded-md border p-3">
+          <Card borderRadius={6} gap={8} key={secret.name} padding={12} render="li">
             <div>
-              <p className="text-sm font-medium">{secret.label}</p>
-              <p className="text-muted-foreground text-sm">{secret.purpose}</p>
+              <Text as="p" textRole="cardLabel">
+                {secret.label}
+              </Text>
+              <Text as="p" textRole="compact" tone="secondary">
+                {secret.purpose}
+              </Text>
             </div>
 
-            <div className="flex items-center gap-2">
-              <code className="border-input bg-static-800 flex-1 truncate rounded-md border px-3 py-1.5 font-mono text-sm">
-                {value ?? "••••••••••••••••"}
-              </code>
+            <Stack align="center" direction="row" gap="inline">
+              <Stack
+                backgroundColor="$surfaceElevated"
+                borderColor="$borderControl"
+                borderRadius={6}
+                borderWidth={1}
+                flexBasis="0%"
+                flexGrow={1}
+                flexShrink={1}
+                minWidth={0}
+                paddingHorizontal={12}
+                paddingVertical={6}
+              >
+                <Text
+                  as="code"
+                  numberOfLines={1}
+                  style={{ fontFamily: typography.family.data.web }}
+                  textRole="compact"
+                  tone="primary"
+                >
+                  {value ?? "••••••••••••••••"}
+                </Text>
+              </Stack>
               <Action
                 disabled={busy === secret.name}
                 icon={value ? "conceal" : "reveal"}
@@ -45,7 +67,7 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                   {copied === secret.name ? "Copied" : "Copy"}
                 </Action>
               )}
-            </div>
+            </Stack>
 
             {isConfirming ? (
               <ConfirmStep
@@ -69,10 +91,10 @@ const SecretsPanel = ({ secrets, revealed, onReveal, onRegenerate, busy, classNa
                 Regenerate
               </Action>
             )}
-          </li>
+          </Card>
         );
       })}
-    </ul>
+    </Stack>
   );
 };
 

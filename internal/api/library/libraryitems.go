@@ -141,13 +141,13 @@ type libraryItemDTO struct {
 	Poster *httpcore.ImageDTO `json:"poster,omitempty" doc:"Its poster; absent when it has none, or while one is still being fetched"`
 	// A title with either count above zero needs a look (#2151 decision 24).
 	Unplayable  int `json:"unplayable" doc:"Files that can't be played: their details couldn't be read"`
-	ExtraCopies int `json:"extraCopies" doc:"A movie's files beyond the one that plays"`
+	ExtraCopies int `json:"extraCopies" doc:"A movie's files that never play, beyond the copy of each edition (or each part) that does"`
 }
 
 func libraryItemOf(it librarystore.LibraryItemSummary, posters map[string]*httpcore.ImageDTO) libraryItemDTO {
 	extra := 0
-	if it.Kind == "movie" && it.Files > 1 {
-		extra = it.Files - 1
+	if it.Kind == "movie" {
+		extra = it.ExtraCopies
 	}
 	return libraryItemDTO{
 		ID: it.ID, Kind: it.Kind, Name: it.Name, Year: it.Year, Files: it.Files, Ready: it.Pending == 0,
@@ -223,6 +223,7 @@ type libraryItemFileDTO struct {
 	AudioChannels int                  `json:"audioChannels,omitempty" doc:"The channels of the sound that plays: its default audio stream, else its first"`
 	Subtitles     []librarySubtitleDTO `json:"subtitles" doc:"Its subtitle streams in order; empty for none or while unread"`
 	Extra         bool                 `json:"extra" doc:"A copy that never plays, because another of the title's files does"`
+	Part          int                  `json:"part,omitempty" doc:"Which part of a movie split over several files it is, from 1; absent for a whole file. Every part plays, in order"`
 }
 
 type libraryPictureDTO struct {
@@ -245,7 +246,7 @@ type libraryDetailsFromDTO struct {
 func libraryFileOf(f scan.ItemFile) libraryItemFileDTO {
 	out := libraryItemFileDTO{
 		Path: f.Path, Size: f.Size, Ready: f.Header != librarystore.LibraryHeaderPending,
-		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra,
+		LengthMillis: f.LengthMillis, AudioChannels: f.AudioChannels, Extra: f.Extra, Part: f.Part,
 		Subtitles: make([]librarySubtitleDTO, 0, len(f.Subtitles)),
 	}
 	if f.Picture != nil {

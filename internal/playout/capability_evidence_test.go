@@ -40,6 +40,28 @@ func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing
 	}
 }
 
+func TestRecentHardwareEvidenceOutlivesAChangedHostForAWeek(t *testing.T) {
+	root := t.TempDir()
+	measured := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	if RecentHardwareEvidence(root, measured) {
+		t.Fatal("a host that never measured hardware reports recent hardware")
+	}
+	if err := storeCapabilityEvidence(root, capabilityEvidence{Version: capabilityEvidenceVersion,
+		Fingerprint: "host-with-gpu", Encoder: encode.EncoderNVENC, MaxChannels: 6, ObservedAt: measured}); err != nil {
+		t.Fatal(err)
+	}
+	// The GPU is gone this boot, so the fingerprint no longer matches; the measurement still counts.
+	if _, ok := loadCapabilityEvidence(root, "host-without-gpu", measured.Add(time.Hour), func(string, ...any) {}); ok {
+		t.Fatal("the evidence was reused on a host with another fingerprint")
+	}
+	if !RecentHardwareEvidence(root, measured.Add(6*24*time.Hour)) {
+		t.Fatal("hardware measured six days ago is not recent")
+	}
+	if RecentHardwareEvidence(root, measured.Add(8*24*time.Hour)) {
+		t.Fatal("hardware measured eight days ago still counts")
+	}
+}
+
 func TestMatchingCapabilityEvidenceDoesNotRunEncoderValidation(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
@@ -76,7 +98,7 @@ func TestLoadMatchingCapabilityEvidenceBoundsAStalledIdentityCommand(t *testing.
 	}
 	before := time.Now()
 	_, ok := LoadMatchingObservedCapabilityEvidence(
-		t.Context(), ffmpeg, DefaultProfile(), "test-gpu", t.TempDir(),
+		t.Context(), ffmpeg, DefaultProfile(), "test-gpu", t.TempDir(), nil,
 	)
 	if elapsed := time.Since(before); ok || elapsed >= time.Second {
 		t.Fatalf("matching stalled executable: ok=%v elapsed=%s, want miss below one second", ok, elapsed)
@@ -126,5 +148,25 @@ func TestDetectObservedWithEvidenceRejectsMismatchExpiryAndFailedValidation(t *t
 				t.Fatalf("validation calls=%d, want %d", validationCalls, wantValidation)
 			}
 		})
+	}
+}
+
+func TestDetectObservedWithEvidenceDoesNotStoreEvidenceFromACancelledRun(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	ctx, cancel := context.WithCancel(t.Context())
+	deps := capabilityEvidenceDependencies{
+		now:         func() time.Time { return now },
+		fingerprint: func(context.Context, string, string, Profile) (string, error) { return "host-a", nil },
+		detect: func(context.Context, string, Profile, string) Capacity {
+			cancel() // shutdown arrives while the benchmark is running; whatever it measured is partial
+			return Capacity{Chosen: encode.EncoderNVENC, MaxChannels: 7}
+		},
+	}
+	if _, reused := detectObservedWithEvidence(ctx, "ffmpeg", DefaultProfile(), "nvidia", root, deps); reused {
+		t.Fatal("a cold detection reported reuse")
+	}
+	if _, _, ok := matchingCapabilityEvidence(t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root, deps); ok {
+		t.Fatal("a cancelled run stored capability evidence that the next start would trust")
 	}
 }
