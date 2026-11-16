@@ -1,5 +1,5 @@
 import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
-import { Stack, Text } from "@loomarr/design-system";
+import { Stack } from "@loomarr/design-system";
 import { onTintVar } from "@loomarr/design-system/web-theme";
 import type { ArtworkFallbackProps } from "./artwork-fallback.type";
 
@@ -27,9 +27,12 @@ const ArtworkFallback = ({ channel, label, seed = 0, className }: ArtworkFallbac
       width="100%"
     >
       {words && (
-        <Text as="span" style={{ color: onTintVar(hue) }} textRole="monogram">
+        <span
+          style={{ color: onTintVar(hue) }}
+          className="font-mono text-3xl font-semibold tracking-[0.08em]"
+        >
           {monogramOf(words)}
-        </Text>
+        </span>
       )}
     </Stack>
   );
