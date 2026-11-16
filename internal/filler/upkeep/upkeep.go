@@ -6,7 +6,9 @@
 //     catalog for good, its pipeline row keeps the reason, and its files go to quarantine;
 //  3. releases the original download of every Ready clip Loomarr fetched, once the library
 //     re-encode no longer needs it: the airing copy stays, the sidecar keeps the digest;
-//  4. removes leftover download staging whose run has ended.
+//  4. removes leftover download staging whose run has ended;
+//  5. when a fetch was refused for library_limit, evicts clips in order until the room it asked for
+//     is on its way (evict.go).
 //
 // A clip added by hand (no acquisition) is never let go and keeps its original; a clip pinned by
 // a channel is never let go.
@@ -17,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -51,12 +54,16 @@ type Store interface {
 	// AcquisitionArtifactForClip reads the download a fetched clip came from; its original is
 	// released only once intake has consumed it.
 	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (acquisition.Artifact, bool, error)
+	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
+	// deleted, so a full budget can evict it; false when it no longer qualifies.
+	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
 }
 
 // Bin is the quarantine (quarantine.Bin).
 type Bin interface {
 	Put(files []string) map[string]error
 	Empty() (int, error)
+	Held() (int64, error)
 }
 
 // Cleaner removes leftover download staging (fetch.AcquisitionCleaner).
@@ -82,6 +89,13 @@ type Job struct {
 	// settled remembers Ready clips whose original is released or is kept for good (added by hand),
 	// so a pass reads only new arrivals' sidecars. Per process, like disposed.
 	settled map[string]bool
+	room    Room
+}
+
+// WithRoom lets a pass evict clips for the room a refused fetch asked for.
+func (j *Job) WithRoom(r Room) *Job {
+	j.room = r
+	return j
 }
 
 // WithReencode keeps a clip's original while the library re-encode still needs it. settled
@@ -100,6 +114,8 @@ type Result struct {
 	Originals    int   // Ready clips whose original download was released this pass
 	Leftovers    int   // leftover staging folders removed
 	LeftoverByte int64 // bytes those folders held
+	Evicted      int   // clips taken off the catalog for room this pass, rejects and clips on air together
+	EvictedBytes int64 // bytes those clips' files put into quarantine
 }
 
 // New builds the upkeep job.
@@ -113,13 +129,20 @@ func New(store Store, bin Bin, cleaner Cleaner, clipDir string, now func() time.
 func (j *Job) Run(ctx context.Context) (Result, error) {
 	var res Result
 	var errs []error
+	heldBefore := j.held()
 	n, err := j.bin.Empty()
 	res.Emptied = n
 	if err != nil {
 		j.warn("upkeep: some quarantined files could not be deleted", "err", err)
 		errs = append(errs, err)
 	}
+	// The governor counts what a quarantine batch held until its next measurement, so bytes this
+	// pass just deleted are room that has not yet shown (see makeRoom).
+	emptied := max(heldBefore-j.held(), 0)
 	if err := j.letGoOfRejects(ctx, &res); err != nil {
+		errs = append(errs, err)
+	}
+	if err := j.finishEvictions(ctx, &res); err != nil {
 		errs = append(errs, err)
 	}
 	if err := j.releaseOriginals(ctx, &res); err != nil {
@@ -133,13 +156,17 @@ func (j *Job) Run(ctx context.Context) (Result, error) {
 			errs = append(errs, err)
 		}
 	}
+	if err := j.makeRoom(ctx, &res, emptied); err != nil {
+		errs = append(errs, err)
+	}
 	// held_back is what to read when rejects pile up and none go: a clip row something keeps
 	// rewriting is never "unchanged for a week".
-	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.HeldBack > 0 || res.Quarantined > 0 || res.Originals > 0 || res.Leftovers > 0) {
+	if j.log != nil && (res.Emptied > 0 || res.LetGo > 0 || res.HeldBack > 0 || res.Quarantined > 0 || res.Originals > 0 ||
+		res.Leftovers > 0 || res.Evicted > 0) {
 		j.log.Info("upkeep: filler let go of what it no longer needs", "rejects", res.LetGo, "held_back", res.HeldBack,
 			"originals", res.Originals,
 			"quarantined", res.Quarantined, "emptied", res.Emptied, "leftovers", res.Leftovers,
-			"leftover_bytes", res.LeftoverByte)
+			"leftover_bytes", res.LeftoverByte, "evicted", res.Evicted, "evicted_bytes", res.EvictedBytes)
 	}
 	return res, errors.Join(errs...)
 }
@@ -154,8 +181,7 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 	if err != nil {
 		return err
 	}
-	now := j.now().UTC()
-	rejectedBy := now.Add(-RejectRest)
+	rejectedBy := j.now().UTC().Add(-RejectRest)
 	var referenced *identity.AssetRefs
 	for _, row := range rows {
 		if ctx.Err() != nil {
@@ -164,52 +190,75 @@ func (j *Job) letGoOfRejects(ctx context.Context, res *Result) error {
 		if row.AcquisitionID == "" || j.disposed[row.ClipHash] {
 			continue
 		}
+		if row.FilesDeletedAt.IsZero() && row.UpdatedAt.After(rejectedBy) {
+			continue
+		}
+		retired, _, err := j.letGo(ctx, row, rejectedBy, &referenced)
+		if err != nil {
+			return err
+		}
 		if row.FilesDeletedAt.IsZero() {
-			if row.UpdatedAt.After(rejectedBy) {
-				continue
-			}
-			retired, err := j.store.RetireRejectedClip(ctx, row.ClipHash, rejectedBy, now)
-			if err != nil {
-				return err
-			}
 			if !retired {
 				res.HeldBack++
 				continue
 			}
 			res.LetGo++
 		}
-		if referenced == nil {
-			paths, err := j.store.ListClipPaths(ctx)
-			if err != nil {
-				return err
-			}
-			referenced = identity.ReferencedAssets(j.clipDir, paths, j.log)
-		}
-		if j.quarantine(ctx, row.ClipHash, referenced) {
-			j.disposed[row.ClipHash] = true
+		if j.disposed[row.ClipHash] {
 			res.Quarantined++
 		}
 	}
 	return nil
 }
 
-// quarantine moves a retired clip's own files aside and reports whether all of them went. The
-// sidecar goes last: it names the master and evidence copy, so while any of those is left the
-// next pass can still find them.
-func (j *Job) quarantine(ctx context.Context, hash string, referenced *identity.AssetRefs) bool {
+// letGo retires a fetched reject untouched since rejectedBy, unless an earlier pass already did, and
+// moves its files into quarantine. It reports whether it retired the clip now and how many bytes it
+// set aside. referenced is read once and shared across calls.
+func (j *Job) letGo(ctx context.Context, row pipelinestate.ClipPipeline, rejectedBy time.Time, referenced **identity.AssetRefs) (retired bool, moved int64, err error) {
+	if row.FilesDeletedAt.IsZero() {
+		retired, err = j.store.RetireRejectedClip(ctx, row.ClipHash, rejectedBy, j.now().UTC())
+		if err != nil || !retired {
+			return false, 0, err
+		}
+	}
+	moved, err = j.setAside(ctx, row.ClipHash, referenced)
+	return retired, moved, err
+}
+
+// setAside moves a retired clip's files into quarantine and remembers it did, so the next pass
+// does not read its sidecar again. A clip that could not be set aside whole is tried again.
+func (j *Job) setAside(ctx context.Context, hash string, referenced **identity.AssetRefs) (int64, error) {
+	if *referenced == nil {
+		paths, err := j.store.ListClipPaths(ctx)
+		if err != nil {
+			return 0, err
+		}
+		*referenced = identity.ReferencedAssets(j.clipDir, paths, j.log)
+	}
+	moved, ok := j.quarantine(ctx, hash, *referenced)
+	if ok {
+		j.disposed[hash] = true
+	}
+	return moved, nil
+}
+
+// quarantine moves a retired clip's own files aside and reports how many bytes went and whether all
+// of them did. The sidecar goes last: it names the master and evidence copy, so while any of those
+// is left the next pass can still find them.
+func (j *Job) quarantine(ctx context.Context, hash string, referenced *identity.AssetRefs) (int64, bool) {
 	clip, found, err := j.store.GetClip(ctx, hash)
 	if err != nil {
-		j.warn("upkeep: a rejected clip could not be read; the next pass tries again", "clip", hash, "err", err)
-		return false
+		j.warn("upkeep: a retired clip could not be read; the next pass tries again", "clip", hash, "err", err)
+		return 0, false
 	}
 	if !found {
-		j.warn("upkeep: a rejected clip has no catalog row, so its files cannot be found; the next pass looks again", "clip", hash)
-		return false
+		j.warn("upkeep: a retired clip has no catalog row, so its files cannot be found; the next pass looks again", "clip", hash)
+		return 0, false
 	}
 	full, err := cliplibrary.ClipPath(j.clipDir, clip.Path, filepath.Ext(clip.Path))
 	if err != nil {
-		j.warn("upkeep: a rejected clip has no usable path", "clip", hash, "err", err)
-		return false
+		j.warn("upkeep: a retired clip has no usable path", "clip", hash, "err", err)
+		return 0, false
 	}
 	// The sidecar names the master and the evidence copy, so a clip's files are only set aside when
 	// it can be read: moving the sidecar of a clip whose sidecar could not be parsed would leave
@@ -217,26 +266,33 @@ func (j *Job) quarantine(ctx context.Context, hash string, referenced *identity.
 	// in it, names nothing and is ordinary.
 	tags, state := asset.ReadSidecarTagsState(full)
 	if state == asset.SidecarInvalid {
-		j.warn("upkeep: a rejected clip's sidecar could not be read, so its files are left where they are; the next pass tries again",
+		j.warn("upkeep: a retired clip's sidecar could not be read, so its files are left where they are; the next pass tries again",
 			"clip", hash, "sidecar", tools.SidecarPathFor(full))
-		return false
+		return 0, false
 	}
 	files, err := identity.OwnFiles(j.clipDir, clip.Path, tags, referenced)
 	if err != nil {
-		j.warn("upkeep: a rejected clip's files could not be listed; the next pass tries again", "clip", hash, "err", err)
-		return false
+		j.warn("upkeep: a retired clip's files could not be listed; the next pass tries again", "clip", hash, "err", err)
+		return 0, false
 	}
 	sidecar := tools.SidecarPathFor(full)
 	var media []string
+	var size int64
 	for _, f := range files {
+		if info, err := os.Stat(f); err == nil {
+			size += info.Size()
+		}
 		if f != sidecar {
 			media = append(media, f)
 		}
 	}
-	if j.report(hash, "a rejected clip", j.bin.Put(media)) {
-		return false
+	if j.report(hash, "a retired clip", j.bin.Put(media)) {
+		return 0, false
 	}
-	return !j.report(hash, "a rejected clip", j.bin.Put([]string{sidecar}))
+	if j.report(hash, "a retired clip", j.bin.Put([]string{sidecar})) {
+		return 0, false
+	}
+	return size, true
 }
 
 // releaseOriginals releases the original download of every Ready clip Loomarr fetched (decision 14

@@ -205,6 +205,9 @@ type FillerPipelineStore interface {
 	// RetireRejectedClip reaps a fetched, unpinned clip rejected no later than rejectedBy and marks
 	// its row's files deleted, in one transaction; false when the row no longer qualifies.
 	RetireRejectedClip(ctx context.Context, hash string, rejectedBy, at time.Time) (bool, error)
+	// RetireReadyClip removes and reaps a fetched, unpinned Ready clip and marks its row's files
+	// deleted, in one transaction, so a full budget can evict it; false when it no longer qualifies.
+	RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error)
 	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
 	// total order so one clip cannot starve while another is worked repeatedly.
 	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]pipelinestate.ClipPipeline, error)

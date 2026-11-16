@@ -24,6 +24,10 @@ func (a Upkeep) RetireRejectedClip(ctx context.Context, hash string, rejectedBy,
 	return a.st.RetireRejectedClip(ctx, hash, rejectedBy, at)
 }
 
+func (a Upkeep) RetireReadyClip(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return a.st.RetireReadyClip(ctx, hash, at)
+}
+
 func (a Upkeep) GetClip(ctx context.Context, hash string) (clipstore.Clip, bool, error) {
 	return NewSync(a.st).GetClip(ctx, hash)
 }

@@ -325,6 +325,10 @@ func buildFillerSubsystem(
 	)))
 	registry.Add(fillerDefectsJob(defectFloor))
 	bin := quarantine.New(layout.ClipDir(), time.Now)
+	var guideTimeline fillerRoomTimeline
+	if playoutResolver != nil {
+		guideTimeline = playoutResolver
+	}
 	registry.Add(fillerUpkeepJob(upkeep.New(storeadapter.NewUpkeep(st),
 		bin, fetch.NewAcquisitionCleaner(layout.WatchDir(), st, time.Now).WithDisposal(bin.Dispose),
 		layout.ClipDir(), time.Now, log).WithReencode(pipeline.NeedsReencode, func() bool {
@@ -333,7 +337,9 @@ func buildFillerSubsystem(
 		// settled: its GPU may only be late.
 		return settings.PlayoutEncoder.Get(set) != "" ||
 			playoutResolver != nil && playoutResolver.DetectReady() && !playoutResolver.HardwareMissing()
-	})))
+	}).WithRoom(fillerRoom(storageGovernor, layout.ClipDir(), st, operator.NewPodPreview(st, pods), guideTimeline,
+		func() time.Duration { return time.Duration(settings.FillerCooldownSeconds.Get(set)) * time.Second },
+		time.Now))))
 	autoFetch := acquisition.NewFetcher(
 		storeadapter.NewFetch(
 			st,
