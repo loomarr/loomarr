@@ -33,14 +33,24 @@ func main() {
 	toFlag := flag.String("to", "", "end of the span, RFC 3339 (default: just after the newest one)")
 	tz := flag.String("tz", "Local", "the household's time zone, which lays out days and evenings")
 	out := flag.String("out", "", "also write the report as JSON to this file")
+	grow := flag.Bool("growth", false, "also print each channel's growth line and what the library holds against it (#4333)")
+	var gp GrowthParams
+	flag.IntVar(&gp.Margin, "growth-margin", 3, "years either side of the seeds' span")
+	flag.Float64Var(&gp.Bar, "growth-bar", 0.5, "share of the line's genres a clear fit carries")
+	flag.Float64Var(&gp.MaxShowShare, "growth-share", 0.15, "the largest share of a day one show may take")
+	flag.DurationVar(&gp.DailyAirtime, "growth-airtime", 20*time.Hour, "programme time a day carries, breaks excluded")
 	flag.Parse()
-	if err := run(*dbPath, *fromFlag, *toFlag, *tz, *out, os.Stdout); err != nil {
+	if !*grow {
+		gp = GrowthParams{}
+	}
+	if err := run(*dbPath, *fromFlag, *toFlag, *tz, *out, gp, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "report:", err)
 		os.Exit(1)
 	}
 }
 
-func run(dbPath, fromFlag, toFlag, tz, out string, w io.Writer) error {
+// run prints the report; a non-zero gp also prints the growth table.
+func run(dbPath, fromFlag, toFlag, tz, out string, gp GrowthParams, w io.Writer) error {
 	if dbPath == "" {
 		return fmt.Errorf("-db is required")
 	}
@@ -64,6 +74,11 @@ func run(dbPath, fromFlag, toFlag, tz, out string, w io.Writer) error {
 	r := Compute(s, from, to, loc)
 	if err := printReport(w, r, loc); err != nil {
 		return err
+	}
+	if gp.DailyAirtime > 0 {
+		if _, err := runGrowth(context.Background(), db, s, gp, w); err != nil {
+			return err
+		}
 	}
 	if out == "" {
 		return nil

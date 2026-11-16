@@ -840,6 +840,38 @@ A channel built from an intent shouldn't be frozen at build time — as the libr
 
 The safety posture mirrors the rest of §4/§8: re-curation can *loosen* content over time (add titles) but never *weakens* a gate — the audience ceiling (§4, and the kids-only default), the approval gate, and the per-channel opt-in all still hold. It grows a channel toward its intent; it can't turn a kids channel adult or spend acquisitions a human never authorized.
 
+### 8.2.1. Growth from the line the seeds draw (#4140 step 2, #4333)
+
+Re-curation above is what ships today. #4140 replaces it with deterministic growth. The pure part is `internal/channels/growth`; nothing is wired into reconcile or the fill job yet.
+
+- **The seeds draw the line** (`growth.DrawLine`). Every lineup entry is a seed until growth adds titles of its own. A seed with nothing airable is ignored. One airable seed, or none, fixes the line: a single-show channel never grows. Seeds that all share one franchise make the line that franchise. Otherwise the line has four parts:
+  - **Kinds:** every kind held by at least a quarter of the seeds and by at least two.
+  - **Years:** the seeds' years split into runs wherever neighbours are more than `2 × margin + 1` apart. The line spans the run holding more than half of them, or all of them when no run does, plus `margin` (3) either side.
+  - **Genres:** those at least half the seeds carry.
+  - **Rating:** no higher than the highest rating among the seeds that are not odd.
+
+  A seed outside the kinds, years or genres is **odd**. It keeps airing, is listed, and does not widen the line.
+- **A title sits against the line** (`Line.Classify`) as one of four fits:
+  - **clear** when it carries at least `bar` (0.5) of the line's genres;
+  - **unclear** when it carries fewer, or has no year;
+  - **unrated**, which never joins by itself (decision 29);
+  - **outside**, with the reason.
+
+  The channel's stored scope and ceiling are applied by the scheduler's filter first, so the line only narrows them.
+- **The target** (`growth.TargetFor`) has three parts:
+  - **Episodes:** a week of the channel's series airtime without a repeat.
+  - **Shows:** `⌈1 / maxShowShare⌉` (0.15 → 7), so that none dominates a day.
+  - **Films:** a month's rest for every film (decision 4), sized to the films' share of the airtime.
+
+  A single-show channel has no target.
+- **Measured before anything ships.** `go run ./project/evidence/curation-1670/report -db <copy> -growth` prints, per channel:
+  - the line;
+  - the clear, unclear, unrated and outside counts in the library;
+  - the target;
+  - the shortfall after the clear fits, and after the unclear fits too.
+
+  It also prints a sweep of the bar. On the install (2026-11-15) no series channel is short of episodes; three are short of shows. The bar, the margin and the show share are the simulator's numbers, and they go to the maintainer before the fill job ships.
+
 ## 8.3. Adjacency candidates (a deterministic second corpus)
 
 Re-curation (§8.2) asks the LLM "what else fits this intent?". That is the right question for *interpreting* an intent ("gritty 80s action, nothing campy") and a weak one for *finding adjacency* inside an already-established set — the model free-associates from the intent text, not from the channel's actual contents, and it costs a token spend to do it.
