@@ -246,7 +246,13 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
           <Stack direction="row">
             {/* TextLink carries the 24 px tap area for a line of 12 px text (styles.css, #1785). */}
             <Text as="span" textRole="hint">
-              <TextLink render={<Link to="/filler" data-testid="find-clips" />}>Propose a pull →</TextLink>
+              <TextLink
+                render={<Link to="/filler" data-testid="find-clips" />}
+                tone="primary"
+                underline="hover"
+              >
+                Propose a pull →
+              </TextLink>
             </Text>
           </Stack>
         )}

@@ -272,7 +272,10 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
       )}
       <Text as="p" textRole="compact" tone="secondary">
         How often this channel pauses for filler. Manage the inherited value in{" "}
-        <TextLink render={<Link to="/settings/defaults" />}>Channel defaults</TextLink>.
+        <TextLink render={<Link to="/settings/defaults" />} tone="primary" underline="hover">
+          Channel defaults
+        </TextLink>
+        .
       </Text>
     </Stack>
   );
@@ -400,7 +403,10 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
           </Text>
           <Text as="p" textRole="compact" tone="secondary">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
-            <TextLink render={<Link to="/filler/library" />}>filler library</TextLink>.
+            <TextLink render={<Link to="/filler/library" />} tone="primary" underline="hover">
+              filler library
+            </TextLink>
+            .
           </Text>
         </div>
 
@@ -489,7 +495,10 @@ const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProp
               <>
                 No clips match these choices yet. Breaks use the bumper card for now. Adjust the choices
                 above, or{" "}
-                <TextLink render={<Link to="/filler/library" />}>browse your filler library</TextLink>.
+                <TextLink render={<Link to="/filler/library" />} tone="primary" underline="hover">
+                  browse your filler library
+                </TextLink>
+                .
               </>
             )}
           </Text>

@@ -77,7 +77,9 @@ const LoginForm = ({
       </form.AppField>
 
       <Text as="div" className="-mt-3 self-end" textRole="compact">
-        <TextLink href="/forgot-password">Forgot password?</TextLink>
+        <TextLink href="/forgot-password" tone="primary" underline="hover">
+          Forgot password?
+        </TextLink>
       </Text>
 
       <Action disabled={isPending} submit>

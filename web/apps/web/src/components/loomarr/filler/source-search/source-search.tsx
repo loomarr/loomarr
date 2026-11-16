@@ -205,7 +205,11 @@ const SourceSearch = ({
                     {/* The item's own page, so an operator can look before committing. Opens
                         away from Loomarr, so it says so for anyone not watching the status bar. */}
                     <Text as="div" numberOfLines={1} textRole="compact">
-                      <TextLink render={<a href={clip.url} rel="noreferrer" target="_blank" />}>
+                      <TextLink
+                        render={<a href={clip.url} rel="noreferrer" target="_blank" />}
+                        tone="inherit"
+                        underline="hover"
+                      >
                         {clip.title || clip.id}
                       </TextLink>
                     </Text>

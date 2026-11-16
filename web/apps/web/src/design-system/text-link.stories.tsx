@@ -1,8 +1,9 @@
 import { Text, TextLink } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-// TextLink — a link written into the page: the info colour, an underline, the surrounding type, an
-// optional glyph, and the one amber outline for focus. An in-app link is drawn onto the router's
+// TextLink — a link written into the page: the info colour (or a `tone` that fits its surroundings),
+// an underline (or one that draws on hover), the surrounding type, an optional glyph, and the one
+// amber outline for focus. An in-app link is drawn onto the router's
 // `Link` with `render`; the stories use an anchor, which is what a router link renders.
 const Workshop = ({ width = 520 }: { width?: number }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: width, padding: 24 }}>
@@ -37,6 +38,45 @@ const Workshop = ({ width = 520 }: { width?: number }) => (
   </div>
 );
 
+// The tones and the hover-only underline, for a page that moves its links onto TextLink without
+// changing how they rest: each row is a line of text that already has its own colour, and the link
+// takes it (`inherit`), the amber of the primary action (`primary`), or the quiet text colour that
+// wakes up under the pointer (`muted`). `underline="hover"` draws the line only under the pointer.
+const Tones = () => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 520, padding: 24 }}>
+    <Text as="p" textRole="compact" tone="primary">
+      Takes the text around it:{" "}
+      <TextLink href="/requests/1" tone="inherit" underline="hover">
+        A request title
+      </TextLink>
+    </Text>
+    <Text as="p" textRole="compact" tone="primary">
+      The amber of the primary action:{" "}
+      <TextLink href="/forgot-password" tone="primary" underline="hover">
+        Forgot password?
+      </TextLink>
+    </Text>
+    <Text as="p" textRole="hint" tone="secondary">
+      Quiet until the pointer reaches it:{" "}
+      <TextLink href="/settings/library" tone="muted" underline="hover">
+        Library settings
+      </TextLink>
+    </Text>
+    <Text as="p" textRole="hint" tone="secondary">
+      Quiet, with a hairline underline:{" "}
+      <TextLink href="/filler/incoming" tone="muted">
+        3 being checked
+      </TextLink>
+    </Text>
+    <Text as="p" textRole="compact" tone="primary">
+      The info colour, underlined only under the pointer:{" "}
+      <TextLink href="/login" underline="hover">
+        Sign in instead
+      </TextLink>
+    </Text>
+  </div>
+);
+
 const meta = {
   title: "Loomarr Components/TextLink",
   component: Workshop,
@@ -45,6 +85,20 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
+const TonesAtRest: Story = { render: () => <Tones /> };
+const TonesLight: Story = { globals: { theme: "light" }, render: () => <Tones /> };
+const MutedHovered: Story = {
+  render: () => <Tones />,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.hover(canvas.getByRole("link", { name: "Library settings" }));
+  },
+};
+const InheritFocused: Story = {
+  render: () => <Tones />,
+  play: async ({ canvas }) => {
+    canvas.getByRole("link", { name: "A request title" }).focus();
+  },
+};
 const Light: Story = { globals: { theme: "light" } };
 const Narrow: Story = { args: { width: 260 } };
 const Focused: Story = {
@@ -54,4 +108,4 @@ const Focused: Story = {
 };
 
 export default meta;
-export { Default, Focused, Light, Narrow };
+export { Default, Focused, InheritFocused, Light, MutedHovered, Narrow, TonesAtRest, TonesLight };

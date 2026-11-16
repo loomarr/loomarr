@@ -76,7 +76,11 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                 </Text>
               ) : data.unclassifiedClips > 0 ? (
                 <Text as="span" textRole="compact">
-                  <TextLink render={<Link to="/filler/library" search={{ unclassified: true }} />}>
+                  <TextLink
+                    render={<Link to="/filler/library" search={{ unclassified: true }} />}
+                    tone="primary"
+                    underline="hover"
+                  >
                     Review {data.unclassifiedClips.toLocaleString()} unclassified{" "}
                     {data.unclassifiedClips === 1 ? "clip" : "clips"}
                   </TextLink>
@@ -150,7 +154,11 @@ const TaxonomyTab = ({ isAdmin }: { isAdmin: boolean }) => {
                       </Text>
                       {coverage.untaggedClips > 0 ? (
                         <Text as="span" textRole="hint">
-                          <TextLink render={<Link to="/filler/library" search={{ withoutAxis: axis }} />}>
+                          <TextLink
+                            render={<Link to="/filler/library" search={{ withoutAxis: axis }} />}
+                            tone="primary"
+                            underline="hover"
+                          >
                             Browse {coverage.untaggedClips.toLocaleString()} without this signal
                           </TextLink>
                         </Text>

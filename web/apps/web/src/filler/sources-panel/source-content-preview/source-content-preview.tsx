@@ -70,6 +70,8 @@ const SourceContentPreview = ({
                     <Text as="div" className="min-w-0 flex-1 truncate" textRole="compact">
                       <TextLink
                         render={<a href={item.url} rel="noreferrer" target="_blank" title={item.title} />}
+                        tone="inherit"
+                        underline="hover"
                       >
                         {item.title}
                       </TextLink>

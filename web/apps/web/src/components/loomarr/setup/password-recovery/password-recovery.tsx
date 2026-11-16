@@ -8,7 +8,9 @@ import type { PasswordRecoveryRequestProps, PasswordRecoveryResetProps } from ".
 const SignInLink = () => (
   <Stack direction="row" justify="center">
     <Text as="span" textRole="compact">
-      <TextLink href="/login">Back to sign in</TextLink>
+      <TextLink href="/login" tone="primary" underline="hover">
+        Back to sign in
+      </TextLink>
     </Text>
   </Stack>
 );

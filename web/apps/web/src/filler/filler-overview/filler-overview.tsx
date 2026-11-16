@@ -311,6 +311,8 @@ const FillerOverview = () => {
                             search={{ from: "filler" }}
                           />
                         }
+                        tone="inherit"
+                        underline="hover"
                       >
                         {channel.number} · {channel.name}
                       </TextLink>

@@ -74,7 +74,7 @@ const SourceStatus = ({ source, fetching, fetchError, onFetch }: SourceStatusPro
               ? `${source.count} ready · `
               : `${source.count} ${source.count === 1 ? "clip" : "clips"}`}
             {source.incoming > 0 && (
-              <TextLink href="/filler/incoming">{`${source.incoming} being checked`}</TextLink>
+              <TextLink href="/filler/incoming" tone="muted">{`${source.incoming} being checked`}</TextLink>
             )}
             {source.lastCheckedAt
               ? ` · last checked ${formatRelative(source.lastCheckedAt)}`

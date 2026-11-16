@@ -99,6 +99,8 @@ const TaxonTree = ({
                       title={`Browse clips matching ${taxon.label}, including descendants`}
                     />
                   }
+                  tone="primary"
+                  underline="hover"
                 >
                   {taxon.matchedClips.toLocaleString()} {taxon.matchedClips === 1 ? "clip" : "clips"}
                 </TextLink>

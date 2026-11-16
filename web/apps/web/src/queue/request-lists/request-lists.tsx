@@ -50,7 +50,9 @@ const When = ({ at, verb }: { at: string; verb: string }) => {
 
 // The title as a link to the request's detail, for a row whose one action goes somewhere else.
 const DetailLink = ({ jobId, title }: { jobId: string; title: string }) => (
-  <TextLink render={<Link to="/requests/$jobId" params={{ jobId }} />}>{title}</TextLink>
+  <TextLink render={<Link to="/requests/$jobId" params={{ jobId }} />} tone="inherit" underline="hover">
+    {title}
+  </TextLink>
 );
 
 // Requests › In progress and Done: each request is a row you scan (#1817 Q11, #2765), the same row

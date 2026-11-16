@@ -178,7 +178,9 @@ const AdvancedSettingsTable = ({
                 )}
                 {home ? (
                   <Text as="span" numberOfLines={1} textRole="hint">
-                    <TextLink href={home.path}>{home.label}</TextLink>
+                    <TextLink href={home.path} tone="muted" underline="hover">
+                      {home.label}
+                    </TextLink>
                   </Text>
                 ) : (
                   // A key with no page but this one: say so in words, not the server's group id
