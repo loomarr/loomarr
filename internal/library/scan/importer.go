@@ -433,58 +433,6 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 	return queue, nil
 }
 
-// RunFolders makes a pass over the named folders of one walked root: the ones a change signal
-// named. It writes and removes only what is under them, under the same removal guard, and does not
-// count as the root's scan. A root that is not walked on its own is left to the full pass.
-func (im *Importer) RunFolders(ctx context.Context, root string, dirs []string) error {
-	if len(dirs) == 0 || (im.Enabled != nil && !im.Enabled()) {
-		return nil
-	}
-	queue, err := im.importFolders(ctx, root, dirs)
-	if err != nil {
-		return err
-	}
-	_, err = im.readHeaders(ctx, queue)
-	return err
-}
-
-// importFolders walks and imports the named folders of one root, and returns the files waiting
-// for their header.
-func (im *Importer) importFolders(ctx context.Context, root string, dirs []string) ([]pending, error) {
-	im.run.Lock()
-	defer im.run.Unlock()
-	all, err := im.Store.LibraryRoots(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !scannedRoots(all.Roots)[root] {
-		return nil, nil
-	}
-	idx := im.arrIndex(ctx, all.Paths, false)
-	im.setProgress(func(p *Progress) { p.ArrIncomplete = !idx.complete })
-	// A folder pass is a few folders a change named: it is not step 1 of an import, and shows
-	// only the header reads it queues.
-	result, queue, err := im.scanRoot(ctx, root, idx, dirs, nil)
-	if err != nil {
-		return nil, fmt.Errorf("scan %s: %w", root, err)
-	}
-	im.recordReadability(ctx, result)
-	im.setProgress(func(p *Progress) {
-		for i := range p.Roots {
-			if p.Roots[i].Root == root {
-				// The names it could not read outside the folders it walked still stand.
-				for _, rel := range p.Roots[i].Unreadable {
-					if !under(filepath.Join(root, filepath.FromSlash(rel)), dirs) {
-						result.Unreadable = append(result.Unreadable, rel)
-					}
-				}
-				p.Roots[i] = result
-			}
-		}
-	})
-	return queue, nil
-}
-
 // recordReadability keeps the root's readability, and whether it held anything, as the pass found
 // them, for the status strip. It tells RootsChanged when either changed and RootReadability when
 // readability did. A failed write is logged: the pass's own work stands.
