@@ -1558,7 +1558,7 @@ Each clip's preparation: which step it is at, how that step is going, and the cl
 | `status` | How the current step is going: queued, running, done, failed (retried after a wait) or skipped (did not apply). | `TEXT` |
 | `progress` | Percent done within the current step, 0 to 100. | `INTEGER` |
 | `disposition` | The clip's outcome: running, review (waiting for a person), ready, complete (a composite that has been split), rejected (refused by a check) or dismissed (a person said no). | `TEXT` |
-| `reject_reason` | Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video, black_content, silent_content, too_quiet, unplayable, defect, language, duplicate, screening, sliver or unidentified. Empty when not rejected. | `TEXT` |
+| `reject_reason` | Why the clip was rejected, as a code: unprobeable, too_short, no_audio, no_video, black_content, silent_content, too_quiet, unplayable, defect, language, duplicate, screening, sliver, undecided or unidentified. Empty when not rejected. | `TEXT` |
 | `reject_detail` | The measurement behind the rejection, such as a duration under the minimum or the language heard. | `TEXT` |
 | `attempts` | How many times the current step has been tried. Resets when the clip moves on. | `INTEGER` |
 | `next_run` | When the row may next be worked on, in Unix seconds; 0 means now. | `INTEGER` |

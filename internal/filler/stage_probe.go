@@ -93,7 +93,7 @@ func (s *ProbeStage) Run(ctx context.Context, c clipstore.Clip) (StageResult, er
 		if v, reason, detail := EvaluateMediaQuality(*tags.MediaQuality); v != pipelinestate.VerdictContinue {
 			out := StageResult{Verdict: v, Reason: reason, Detail: detail}
 			if v == pipelinestate.VerdictReview {
-				out.Note, out.Detail = detail, ""
+				out.Note, out.Detail, out.Doubt = detail, "", true
 			}
 			return out, nil
 		}

@@ -58,6 +58,10 @@ type StageResult struct {
 	Spawned []string
 	// Note is the operator-facing sentence persisted on the ladder for a skip or an oddity.
 	Note string
+	// Doubt marks a VerdictReview that is the check itself failing to reach a verdict about the
+	// clip's content, as opposed to a condition of the stage (a lost race, a compilation waiting
+	// to be split). A doubtful check on a clip Loomarr found is a fail (#3838 decision 18).
+	Doubt bool
 }
 
 // Stage is one rung.
@@ -714,6 +718,15 @@ func (p *Pipeline) advance(ctx context.Context, row pipelinestate.ClipPipeline, 
 			row.RejectReason, row.RejectDetail = out.Reason, out.Detail
 			return row.Disposition, p.persist(ctx, row, clip)
 		case pipelinestate.VerdictReview:
+			if out.Doubt && row.AcquisitionID != "" {
+				// A check that cannot decide is a fail for a clip Loomarr found: nobody is asked,
+				// and the clip rests as a reject until upkeep lets it go (decision 18).
+				row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
+				row.ForceRun = false
+				row.Disposition = pipelinestate.DispositionRejected
+				row.RejectReason, row.RejectDetail = pipelinestate.ReasonUndecided, out.Note
+				return row.Disposition, p.persist(ctx, row, clip)
+			}
 			row.Record(row.Stage, pipelinestate.StatusDone, out.Note, row.Attempts, p.now().UTC())
 			row.ForceRun = false
 			row.Disposition = pipelinestate.DispositionReview

@@ -71,7 +71,10 @@ func (s *DefectsStage) Run(ctx context.Context, c clipstore.Clip) (filler.StageR
 		}
 		// No judge could rule: none is configured, or it would not answer. Nothing automatic will
 		// settle the clip, so it is the operator's call rather than a wait with no end.
-		return filler.StageResult{Verdict: pipelinestate.VerdictReview, Note: "borderline picture, and no vision model could rule on it: " + defectDetail(rec)}, nil
+		// For a clip Loomarr found the pipeline reads this as a fail (decision 18); an operator's
+		// own clip waits for the operator.
+		return filler.StageResult{Verdict: pipelinestate.VerdictReview, Doubt: true,
+			Note: "borderline picture, and no vision model could rule on it: " + defectDetail(rec)}, nil
 	default:
 		return filler.StageResult{Verdict: pipelinestate.VerdictDefer, Note: "waiting for the judge to rule on a borderline picture"}, nil
 	}

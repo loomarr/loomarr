@@ -740,7 +740,9 @@ report is not a finished encode, so the rung encodes it again.
 
 - At least 90% black or 90% silent is a hard reject, recorded with its coverage.
 - A black or silent span of at least 5 s, or a frozen span of at least 10 s, goes to review.
-  Freeze alone never auto-rejects.
+  Freeze alone never auto-rejects. For a clip Loomarr found, review is a fail (doubt means drop,
+  #3838 decision 18): the clip is rejected as `undecided`, the measured span is its detail, and
+  upkeep lets it go after the reject rest. A clip an operator added keeps the review.
 - Review holds the clip out of rotation before the review row commits; a store failure leaves the
   row runnable and the persisted report re-emits the verdict without decoding again.
 - Intervals are unioned and clamped to the probed duration; an open trailing event closes at the
@@ -910,9 +912,10 @@ inputs. Its verdicts are enforced at admission and on every re-check (see
   override.
 - **Only a fail that stands is acted on.** That is the detectors' own fail or the judge's fail
   ruling. A borderline clip failed only because no judge could rule (none configured, or it
-  abstained) goes to review with its findings: nothing automatic would settle it, so it is the
-  operator's call. An admitted ad in that state keeps airing and keeps its file; the floor rules
-  on it again once a judge can.
+  abstained) goes to review with its findings: nothing automatic would settle it. For a clip
+  Loomarr found that is a fail (decision 18), rejected as `undecided`; only a clip an operator
+  added waits as a review. An admitted ad in that state keeps airing and keeps its file; the floor
+  rules on it again once a judge can.
 - **A failing copy on air is retired.** A held copy is refused at the rung, which settles its
   conveyor row; the floor retires only published copies. Each pass retires every one whose verdict
   fails and stands. In order:
