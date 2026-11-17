@@ -73,6 +73,36 @@ func (im *Importer) headerWithin(ctx context.Context, released []string, file Fi
 	return nil, 0
 }
 
+// stillScanned reports whether root is still one a pass walks, as the household's folders say now:
+// a root released mid-pass that was never walked has no rows to forget, so only this tells.
+func (im *Importer) stillScanned(ctx context.Context, root string) (bool, error) {
+	all, err := im.Store.LibraryRoots(ctx)
+	if err != nil {
+		return false, err
+	}
+	return scannedRoots(all.Roots)[root], nil
+}
+
+// forgetWalked forgets a root released while a pass walked it: every released root's rows, and
+// the titles the pass wrote of this one. A pass writes each title as it goes and the root's file
+// rows only at its end, so one never walked before has no rows for forgetReleased to find: its
+// titles would stay present with no file.
+func (im *Importer) forgetWalked(ctx context.Context, root string) error {
+	all, err := im.Store.LibraryRoots(ctx)
+	if err != nil {
+		return err
+	}
+	inUse := scannedRoots(all.Roots)
+	if err := im.forgetReleased(ctx, inUse); err != nil || inUse[root] {
+		return err
+	}
+	if err := im.Inventory.MarkUnseen(ctx, Authority(root), im.now(), nil); err != nil {
+		return err
+	}
+	im.titlesChanged()
+	return nil
+}
+
 // forgetReleased marks every file of a root no longer walked unseen and forgets its rows: releasing
 // a root is the maintainer's word, not a walk's guess, so the removal guard does not apply.
 func (im *Importer) forgetReleased(ctx context.Context, inUse map[string]bool) error {

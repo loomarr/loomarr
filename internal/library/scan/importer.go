@@ -367,8 +367,11 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 			results = append(results, RootResult{Root: root.Path, State: RootNested})
 			continue
 		}
-		if im.releasedSince(root.Path, begun) {
-			// Released while the pass listed another root: its files are forgotten already.
+		// Released while the pass listed another root: its files are forgotten already, and one
+		// never walked before has none to forget.
+		if still, err := im.stillScanned(ctx, root.Path); err != nil {
+			return nil, err
+		} else if !still || im.releasedSince(root.Path, begun) {
 			reports[root.Path].close()
 			continue
 		}
@@ -388,6 +391,17 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		}
 		im.run.Lock()
 		held = true
+		// One released while it was listed, before any of its files were written, is not written.
+		if ok && err == nil {
+			still, serr := im.stillScanned(ctx, root.Path)
+			if serr != nil {
+				cancel(nil)
+				return nil, serr
+			}
+			if !still {
+				err = errReleased
+			}
+		}
 		var waiting []pending
 		if ok && err == nil {
 			result, waiting, err = im.importListed(walk, root.Path, idx, nil, listed, result, since, reports[root.Path])
@@ -401,11 +415,7 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		if err != nil && ctx.Err() == nil && (errors.Is(err, errReleased) || errors.Is(context.Cause(walk), errReleased)) {
 			// Released while it was walked: what was written of it is forgotten now, and the
 			// other roots go on.
-			now, err := im.Store.LibraryRoots(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if err := im.forgetReleased(ctx, scannedRoots(now.Roots)); err != nil {
+			if err := im.forgetWalked(ctx, root.Path); err != nil {
 				return nil, err
 			}
 			continue

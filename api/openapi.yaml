@@ -1585,6 +1585,8 @@ components:
           type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
+        growth:
+          $ref: "#/components/schemas/GrowthPolicy"
         midRoll:
           type: boolean
         operatorSet:
@@ -5314,6 +5316,17 @@ components:
         - title
         - markdown
       type: object
+    GrowthPolicy:
+      additionalProperties: false
+      properties:
+        declined:
+          items:
+            type: string
+          maxItems: 1000
+          type: array
+        keep:
+          type: boolean
+      type: object
     GuideAiring:
       additionalProperties: false
       properties:
@@ -8895,6 +8908,7 @@ components:
           readOnly: true
           type: string
         audience:
+          description: Omit to leave unchanged; send an empty string to clear.
           enum:
             - kids
             - family
@@ -8907,6 +8921,7 @@ components:
           maxLength: 120
           type: string
         era:
+          description: The clip's era (a year). Omit to leave unchanged; send 0 to clear.
           format: int64
           type: integer
         geography:
@@ -9791,6 +9806,8 @@ components:
           type: string
         fromIdea:
           description: The library channel idea this request came from, if any
+          type: string
+        growth:
           type: string
         intent:
           $ref: "#/components/schemas/Intent"
@@ -11830,6 +11847,7 @@ components:
         - asr.model
         - suggest.max_acquisitions
         - job.recurate.schedule
+        - job.growth.schedule
         - recurate.min_score_pct
         - recurate.max_titles
         - channel.reconcile_every
@@ -11991,6 +12009,7 @@ components:
         - ASRModel
         - SuggestMaxAcquisitions
         - JobRecurateSchedule
+        - JobGrowthSchedule
         - RecurateMinScorePct
         - RecurateMaxTitles
         - ChannelReconcileEvery

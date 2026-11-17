@@ -1,9 +1,12 @@
 // Package growth decides what may join a channel by itself (#4140 step 2, #4333): the line its
-// seeds draw, how a library title sits against that line, and how big the channel should be.
+// seeds draw, how a library title sits against that line, how big the channel should be, and the
+// nightly fill that adds the titles that fit.
 //
-// It is pure: no store, no library, no model. The channel's stored scope and audience ceiling are
-// applied by the scheduler's own filter before a title reaches here; the line only narrows that,
-// so growth can never admit a title the channel's limits refuse.
+// The line, the classification, the target and the plan are pure: no store, no library, no model.
+// Fill is the nightly job that reads the library and the channels, and adds what the plan chose
+// through a proposal the binder unions onto the lineup. The channel's stored scope and audience
+// ceiling apply first (schedule.Admitted); the line only narrows them, so growth can never admit a
+// title the channel's limits refuse.
 package growth
 
 import (

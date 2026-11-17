@@ -111,6 +111,98 @@ func TestAFilmsCopiesInItsFolderAreOneTitle(t *testing.T) {
 	}
 }
 
+// A file in a film's folder whose own NFO names another year's film is that film, not a copy: the
+// 1985 original kept in the 2011 remake's folder stays its own title, and joins its own folder's
+// item when there is one, while a copy no NFO describes joins the remake.
+func TestAFilmsOwnNFOOutranksItsFoldersCopies(t *testing.T) {
+	ctx := context.Background()
+	nfo := func(tmdb, year string) string {
+		return `<movie><title>Harrow Fen</title><year>` + year + `</year><uniqueid type="tmdb" default="true">` + tmdb + `</uniqueid></movie>`
+	}
+	h := newHarness(t)
+	files := map[string]string{
+		"Harrow Fen (2011)/Harrow Fen (2011) - 1080p.mkv": nfo("90045222", "2011"),
+		"Harrow Fen (2011)/Harrow Fen (2011) - x265.mkv":  "",
+		"Harrow Fen (2011)/Harrow Fen.mkv":                nfo("90045111", "1985"),
+		"Harrow Fen (1985)/Harrow Fen (1985).mkv":         nfo("90045111", "1985"),
+	}
+	for rel, doc := range files {
+		p := h.file(rel, 10)
+		if doc != "" {
+			if err := os.WriteFile(strings.TrimSuffix(p, ".mkv")+".nfo", []byte(doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	h.run()
+	rows, err := h.st.LibraryFiles(ctx, h.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := map[string]string{}
+	for _, r := range rows {
+		rel, _ := filepath.Rel(h.root, r.Path)
+		item[filepath.ToSlash(rel)] = r.ItemID
+		if r.Problem != "" {
+			t.Errorf("%s has problem %q", rel, r.Problem)
+		}
+	}
+	remake, original := item["Harrow Fen (2011)/Harrow Fen (2011) - 1080p.mkv"], item["Harrow Fen (1985)/Harrow Fen (1985).mkv"]
+	if remake == "" || original == "" || remake == original {
+		t.Fatalf("remake %q, original %q; want two titles", remake, original)
+	}
+	if got := item["Harrow Fen (2011)/Harrow Fen (2011) - x265.mkv"]; got != remake {
+		t.Errorf("the undescribed copy is item %q; want the remake's %q", got, remake)
+	}
+	if got := item["Harrow Fen (2011)/Harrow Fen.mkv"]; got != original {
+		t.Errorf("the 1985 file in the remake's folder is item %q; want the original's %q", got, original)
+	}
+}
+
+// Two files in one film's folder that their own NFOs ground as two films by their catalog ids are
+// two titles, however alike their titles and years: a sequel a year on, or a second film of the
+// same name and year.
+func TestFilesTheCatalogGroundsAsTwoFilmsAreTwoTitles(t *testing.T) {
+	nfo := func(tmdb, title, year string) string {
+		return `<movie><title>` + title + `</title><year>` + year + `</year><uniqueid type="tmdb" default="true">` + tmdb + `</uniqueid></movie>`
+	}
+	for name, second := range map[string]string{
+		"a sequel a year on":       nfo("90046333", "Harrow Fen II", "2012"),
+		"same title, another film": nfo("90046444", "Harrow Fen", "2011"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			h := newHarness(t)
+			files := map[string]string{
+				"Harrow Fen (2011)/Harrow Fen (2011).mkv": nfo("90046222", "Harrow Fen", "2011"),
+				"Harrow Fen (2011)/Harrow Fen.mkv":        second,
+			}
+			for rel, doc := range files {
+				p := h.file(rel, 10)
+				if err := os.WriteFile(strings.TrimSuffix(p, ".mkv")+".nfo", []byte(doc), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.run()
+			h.run()
+			rows, err := h.st.LibraryFiles(ctx, h.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			items := map[string]bool{}
+			for _, r := range rows {
+				if r.ItemID == "" || r.Problem != "" {
+					t.Errorf("%s: item %q, problem %q", r.Path, r.ItemID, r.Problem)
+				}
+				items[r.ItemID] = true
+			}
+			if len(items) != 2 {
+				t.Errorf("%d titles for two films; want 2", len(items))
+			}
+		})
+	}
+}
+
 // A duplicated file is named as its original, so a film's name never depends on which of its
 // copies names the item (#4010); a title that holds the word keeps it.
 func TestADuplicatedFileIsNamedAsItsOriginal(t *testing.T) {

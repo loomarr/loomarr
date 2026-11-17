@@ -58,6 +58,14 @@ func (r *ExclusionReport) merge(o ExclusionReport) {
 	r.Items = append(r.Items, o.Items...)
 }
 
+// Admitted is the entries the channel's stored scope and audience ceiling admit: the never-relaxed
+// filters, applied as reconcile applies them. Growth reads it so it never adds a title the channel
+// would refuse to air (#4333).
+func Admitted(entries []LineupEntry, policy ChannelPolicy, strategy Strategy) []LineupEntry {
+	out, _ := filterEntriesWithTrace(entries, policy.Resolved(strategy, false), nil)
+	return out
+}
+
 // filterEntries applies the hard filters to the approved entries and returns the
 // eligible set plus the exclusion report. Order: scope (dates/genre/runtime) then
 // audience (§4 fail-closed). Audience and explicit scope are the NEVER-relaxed

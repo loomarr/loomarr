@@ -98,6 +98,9 @@ type Resolver struct {
 	engine  CyclePreviewer
 	now     func() time.Time
 	metrics *metrics.Recorder
+	// Faults counts the airings of each filler clip that failed to encode and feeds a clip that
+	// keeps failing back to the catalog (#3855).
+	Faults AirFaults
 	// titles resolves a block's acquisition record for the grid's provenance line. Nil ⇒ the
 	// line is simply absent, which is the right degradation: a guide without provenance is
 	// still a guide.
