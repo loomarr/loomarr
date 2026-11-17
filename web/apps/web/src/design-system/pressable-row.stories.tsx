@@ -81,9 +81,9 @@ const meta = {
 // A row that stands apart as a card (a channel in a drawer): the current one is stronger, hover
 // lifts the rest, and a pin sits over its corner.
 const channels = [
-  { name: "Westerns", now: "Gunsmoke", number: "07" },
-  { name: "Cartoons", now: "Saturday Morning", number: "12" },
-  { name: "Movies", now: "Casablanca", number: "21" },
+  { name: "Westerns", now: "A western", number: "07" },
+  { name: "Cartoons", now: "A cartoon", number: "12" },
+  { name: "Movies", now: "A film", number: "21" },
 ] as const;
 
 const BorderedWorkshop = () => {
@@ -95,7 +95,13 @@ const BorderedWorkshop = () => {
         <Text textRole="title">Bordered rows</Text>
         <Surface backgroundColor="transparent" borderWidth={0} gap={7} padding={0}>
           {channels.map((channel) => (
-            <Surface backgroundColor="transparent" borderWidth={0} key={channel.name} padding={0}>
+            <Surface
+              backgroundColor="transparent"
+              borderWidth={0}
+              key={channel.name}
+              padding={0}
+              position="relative"
+            >
               <PressableRow bordered onPress={() => setTuned(channel.name)} selected={tuned === channel.name}>
                 <Surface
                   backgroundColor="transparent"

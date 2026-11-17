@@ -108,6 +108,8 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
               minWidth={0}
               paddingHorizontal={BORDERED_PADDING_X}
               paddingVertical={BORDERED_PADDING_Y}
+              // The row's text starts at the leading edge: a button element centres its text.
+              textAlign="left"
             >
               {typeof children === "function" ? children(state) : children}
             </View>

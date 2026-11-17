@@ -80,6 +80,10 @@ describe("PressableRow", () => {
       unmount();
     });
 
+    it("starts its text at the leading edge, as a button element would not", () => {
+      expect(markupOf(<PressableRow bordered>A</PressableRow>)).toContain("text-align:left");
+    });
+
     it("draws differently from a flat row, and the current row differently from the rest", () => {
       const flat = markupOf(<PressableRow>A</PressableRow>);
       const resting = markupOf(<PressableRow bordered>A</PressableRow>);
