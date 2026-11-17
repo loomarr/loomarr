@@ -1123,6 +1123,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   title leaves it once its catalog id disagrees with one a joined copy holds, for an item of its
   own beside its home (`inventoryOwnPlace`), and stays there. Every file is written once more, so
   titles an earlier build merged either way split.
+- **90:** an NFO's or a file name's id that grounds nothing (its record names another title, or
+  the catalog does not know it) joins the file to no title either: the scanner drops it from the
+  snapshot, so a sequel whose NFO carries the first film's id is a title of its own. Before the
+  catalog answers, an NFO whose film the file's own names call a sequel of ("Harrow Fen 2 (2004)"
+  holding Harrow Fen's NFO, copied whole) is set aside the same way (`namesItsSequel`). Every file
+  is written once more.
 
 ## Search
 

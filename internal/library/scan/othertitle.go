@@ -161,6 +161,24 @@ func wordForWord(a, b string) bool {
 	return true
 }
 
+// namesItsSequel says whether a file's own names call it a sequel of title, the NFO's word for it:
+// "Harrow 2 (2004)" holding an NFO for Harrow, copied from the first film's folder. One way only:
+// an NFO naming the sequel inside the first film's folder is the NFO knowing better than the folder.
+func namesItsSequel(title string, names ...string) bool {
+	count := func(s string) (n int) {
+		for range wordsOf(s) {
+			n++
+		}
+		return n
+	}
+	for _, n := range names {
+		if sequelOf(title, n) && count(n) > count(title) {
+			return true
+		}
+	}
+	return false
+}
+
 // sequelOf says whether one title is the other with a sequel's number added or taken away: their
 // words, a numeral read as its number, differ by that one number.
 func sequelOf(a, b string) bool {
