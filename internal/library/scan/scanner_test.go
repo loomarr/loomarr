@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -90,6 +91,53 @@ func TestScannerSettlesOnceItsFolderPassesHaveRun(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the round's end was never told")
 	}
+}
+
+// A folder pass's header reads wait while the household watches, but the next folders' passes do
+// not wait behind them: a new episode an arr names is a title at once, and its file is read once
+// the viewer stops.
+func TestAFolderPassIsNotHeldBehindReadsWaitingForViewers(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.run()
+	var busy atomic.Bool
+	busy.Store(true)
+	h.im.Busy = busy.Load
+	h.im.Poll = 10 * time.Millisecond
+	sc := NewScanner(h.im, time.Hour)
+	sc.Debounce = 10 * time.Millisecond
+	rounds := make(chan struct{}, 4)
+	sc.AfterFolders = func() { rounds <- struct{}{} }
+	done := make(chan struct{})
+	go func() { sc.passFolders(ctx); close(done) }()
+	round := func(rel string) {
+		p := h.file(rel, 10)
+		sc.PassFolders(h.root, filepath.Dir(filepath.Dir(p)))
+		select {
+		case <-rounds:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s: the folder pass waited for the viewer", rel)
+		}
+		if _, ok := ProjectLibraryItem(h.item(fileOrigin(h.root, rel))); !ok {
+			t.Fatalf("%s is no title while the viewer watches", rel)
+		}
+	}
+	round("Quillmoor/Season 1/Quillmoor - S01E01.mkv")
+	round("Fallow Mere/Season 1/Fallow Mere - S01E01.mkv")
+	if h.reads.Load() != 0 {
+		t.Fatalf("%d headers read while the viewer watches", h.reads.Load())
+	}
+	busy.Store(false)
+	deadline := time.Now().Add(5 * time.Second)
+	for h.reads.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := h.reads.Load(); n < 2 {
+		t.Fatalf("%d headers read once the viewer stopped; want both", n)
+	}
+	cancel()
+	<-done
 }
 
 // A header stage tells of each folder once its files are read and saved, while it reads on, so a
