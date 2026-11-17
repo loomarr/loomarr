@@ -656,12 +656,32 @@ func (b *builder) resolveNamed(ctx context.Context, origin inventory.OriginKey, 
 	// does one whose record is another title than the files name: an NFO copied from another
 	// film's folder, or an id typed wrong.
 	fromFiles := out.match.Basis == string(mp.BasisSidecar) || out.match.Basis == string(mp.BasisEmbeddedID)
+	setAside := false
 	if ok && titled && fromFiles && namesAnother(out.resolved, named, rec) {
-		ok, rec = false, mp.Record{}
+		ok, rec, setAside = false, mp.Record{}, true
 		out.match, out.catalog = librarystore.LibraryMatch{}, librarystore.LibraryCatalogKey{}
 	}
+	// Before the catalog answers, the NFO's own words are all there is: one that names the first
+	// film inside its sequel's folder is set aside the same way.
+	if !ok && titled && fromFiles && in.Kind == mp.KindMovie {
+		for _, own := range in.Records {
+			if own.Source.Basis == mp.BasisSidecar && own.Descriptive != nil &&
+				namesItsSequel(own.Descriptive.Title, named.name.title, named.folder.title) {
+				setAside = true
+				out.match, out.catalog, out.waiting = librarystore.LibraryMatch{}, librarystore.LibraryCatalogKey{}, false
+				break
+			}
+		}
+	}
 	if !ok && !waiting && titled && fromFiles && b.im.catalogMisses(ctx, out.catalog) {
-		out.match = librarystore.LibraryMatch{}
+		out.match, setAside = librarystore.LibraryMatch{}, true
+	}
+	if setAside {
+		// An id that grounds nothing joins nothing either: the store would make the sequel whose
+		// NFO was copied from the first film's folder a copy of the first film.
+		out.resolved.IDs = slices.DeleteFunc(slices.Clone(out.resolved.IDs), func(id precedence.Picked[mp.ExternalID]) bool {
+			return id.From.Basis == mp.BasisSidecar || id.From.Basis == mp.BasisEmbeddedID
+		})
 	}
 	if ok {
 		out.record = &rec

@@ -1806,6 +1806,68 @@ func TestAnIDWhoseRecordIsAnotherTitleGroundsNothing(t *testing.T) {
 	}
 }
 
+// A sequel whose NFO carries the first film's id is a title of its own once the catalog answers:
+// an id that grounds nothing joins the sequel to no title either. One copied whole from the first
+// film's folder is apart before the answer too, its folder naming a sequel of the film its NFO
+// names; one whose own title is right and id typed wrong cannot be told until the catalog answers.
+func TestASequelsNFOWithTheFirstFilmsIDJoinsNoTitle(t *testing.T) {
+	ctx := context.Background()
+	first := "Movies/Harrow Fen (2001)/Harrow Fen (2001).mkv"
+	sequel := "Movies/Harrow Fen 2 (2004)/Harrow Fen 2 (2004).mkv"
+	doc := func(title, year string) string {
+		return `<movie><title>` + title + `</title><year>` + year + `</year><uniqueid type="tmdb" default="true">9100031</uniqueid></movie>`
+	}
+	for _, c := range []struct {
+		name, sequelDoc string
+		apartBefore     bool
+	}{
+		{"copied whole", doc("Harrow Fen", "2001"), true},
+		{"typed wrong", doc("Harrow Fen 2", "2004"), false},
+	} {
+		sequelDoc := c.sequelDoc
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.im.Catalog = h.st
+			for rel, d := range map[string]string{first: doc("Harrow Fen", "2001"), sequel: sequelDoc} {
+				p := h.file(rel, 10)
+				if err := os.WriteFile(p[:len(p)-len(".mkv")]+".nfo", []byte(d), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			apart := func(when string) {
+				a, b := h.item(fileOrigin(h.root, first)), h.item(fileOrigin(h.root, sequel))
+				if a.ID == "" || a.ID == b.ID {
+					t.Errorf("%s: the sequel is item %q, the first film %q; want two titles", when, b.ID, a.ID)
+				}
+			}
+			h.run()
+			if c.apartBefore {
+				apart("before the catalog answers")
+			}
+			catalog := &fakeCatalog{records: map[string]mp.Record{"9100031": {
+				Source: mp.Source{Provider: mp.IDTMDB, Basis: mp.BasisCatalog, Catalog: mp.NamespaceTMDB},
+				Kind:   mp.KindMovie, IDs: []mp.ExternalID{{Namespace: mp.NamespaceTMDB, Value: "9100031"}},
+				Descriptive: &mp.Descriptive{Title: "Harrow Fen", Year: 2001},
+			}}}
+			e := &Enricher{Store: h.st, Provider: catalog, Rewrite: func(root string, dirs ...string) {
+				if err := h.im.RunFolders(ctx, root, dirs); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			for range 4 {
+				if err := e.Tick(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h.run()
+			apart("after")
+			if it, _ := ProjectLibraryItem(h.item(fileOrigin(h.root, first))); it.Match.Basis == "" {
+				t.Errorf("the first film = %q, want it matched by its NFO", it.Name)
+			}
+		})
+	}
+}
+
 // A movie id whose record is another film of its year grounds nothing either: one no name of the
 // files shares a word with that runs another length, a sequel's (an NFO copied from the next film's folder), or one far
 // longer or shorter than the file whose title the folder does not give (a film's tag naming the
