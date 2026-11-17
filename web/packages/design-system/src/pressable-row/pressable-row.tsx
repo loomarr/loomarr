@@ -224,7 +224,14 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
           onHoverIn={() => setHovered(true)}
           onHoverOut={() => setHovered(false)}
           ref={ref}
-          style={({ pressed }) => ({ opacity: disabled ? 0.55 : pressed ? 0.82 : 1, width: "100%" })}
+          // The focus look is the row's own amber border, so the browser's default outline stays off.
+          // React Native's outline types stop at `solid`; react-native-web writes `none` through.
+          style={({ pressed }) => ({
+            opacity: disabled ? 0.55 : pressed ? 0.82 : 1,
+            outlineStyle: "none" as never,
+            outlineWidth: 0,
+            width: "100%",
+          })}
           {...props}
         >
           {drawn(idle)}
