@@ -11,7 +11,12 @@ import { cloneElement, forwardRef, isValidElement, useState } from "react";
 import { Pressable } from "react-native";
 
 import { useFocusLook } from "../focus-look";
-import { semanticSpace } from "../tokens";
+import { semanticRadius, semanticSpace } from "../tokens";
+
+// A bordered row's content sits 13px by 12px inside its 1px hairline: the 2px focus border inside
+// that leaves 10px and 9px of padding.
+const BORDERED_PADDING_X = semanticSpace.control - 2;
+const BORDERED_PADDING_Y = 9;
 
 /** What a router link reports about itself, which a link row reads to draw the current page. */
 type PressableRowLinkState = { isActive: boolean };
@@ -29,6 +34,13 @@ type PressableRowProps = Omit<ComponentProps<typeof Pressable>, "children" | "st
    * override it.
    */
   selected?: boolean | ((state: PressableRowLinkState) => boolean);
+  /**
+   * Draw the row as a card of its own: a rounded hairline border, content stacked in a column, the
+   * current row with a stronger border and the elevated fill, a raised fill on hover. For a row
+   * that stands apart from its neighbours (a channel in a drawer) rather than sharing a list's
+   * rules. `divided` has no meaning on it.
+   */
+  bordered?: boolean;
   /** A hairline under the row, for rows stacked in a list. */
   divided?: boolean;
   /**
@@ -62,6 +74,7 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
       {
         accessibilityRole,
         accessibilityState,
+        bordered = false,
         children,
         disabled = false,
         divided = false,
@@ -78,26 +91,49 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
       const role = accessibilityRole ?? (render ? undefined : "button");
       const isSelected = (state: PressableRowLinkState) =>
         typeof selected === "function" ? selected(state) : selected;
-      const drawn = (state: PressableRowLinkState) => (
-        <View
-          backgroundColor={isSelected(state) || (hovered && !disabled) ? "$surfaceElevated" : "transparent"}
-          borderBottomColor="$borderDecorative"
-          borderBottomWidth={divided ? 1 : 0}
-        >
+      const drawn = (state: PressableRowLinkState) =>
+        bordered ? (
           <View
-            alignItems="center"
-            borderColor={focusLook.focused ? "$actionFocus" : "transparent"}
-            borderWidth={2}
-            flexDirection="row"
-            gap={semanticSpace.control}
-            minWidth={0}
-            paddingHorizontal={semanticSpace.control - 2}
-            paddingVertical={semanticSpace.inline}
+            backgroundColor={
+              isSelected(state) ? "$surfaceElevated" : hovered && !disabled ? "$surfaceRaised" : "transparent"
+            }
+            borderColor={isSelected(state) ? "$borderDecorative" : "$surfaceElevated"}
+            borderRadius={semanticRadius.cardCompact}
+            borderWidth={1}
           >
-            {typeof children === "function" ? children(state) : children}
+            <View
+              borderColor={focusLook.focused ? "$actionFocus" : "transparent"}
+              borderRadius={semanticRadius.cardCompact - 1}
+              borderWidth={2}
+              minWidth={0}
+              paddingHorizontal={BORDERED_PADDING_X}
+              paddingVertical={BORDERED_PADDING_Y}
+              // The row's text starts at the leading edge: a button element centres its text.
+              textAlign="left"
+            >
+              {typeof children === "function" ? children(state) : children}
+            </View>
           </View>
-        </View>
-      );
+        ) : (
+          <View
+            backgroundColor={isSelected(state) || (hovered && !disabled) ? "$surfaceElevated" : "transparent"}
+            borderBottomColor="$borderDecorative"
+            borderBottomWidth={divided ? 1 : 0}
+          >
+            <View
+              alignItems="center"
+              borderColor={focusLook.focused ? "$actionFocus" : "transparent"}
+              borderWidth={2}
+              flexDirection="row"
+              gap={semanticSpace.control}
+              minWidth={0}
+              paddingHorizontal={semanticSpace.control - 2}
+              paddingVertical={semanticSpace.inline}
+            >
+              {typeof children === "function" ? children(state) : children}
+            </View>
+          </View>
+        );
       const idle: PressableRowLinkState = { isActive: false };
 
       if (isWeb && render && isValidElement(render)) {
@@ -188,7 +224,14 @@ const PressableRow: ForwardRefExoticComponent<PressableRowProps & RefAttributes<
           onHoverIn={() => setHovered(true)}
           onHoverOut={() => setHovered(false)}
           ref={ref}
-          style={({ pressed }) => ({ opacity: disabled ? 0.55 : pressed ? 0.82 : 1, width: "100%" })}
+          // The focus look is the row's own amber border, so the browser's default outline stays off.
+          // React Native's outline types stop at `solid`; react-native-web writes `none` through.
+          style={({ pressed }) => ({
+            opacity: disabled ? 0.55 : pressed ? 0.82 : 1,
+            outlineStyle: "none" as never,
+            outlineWidth: 0,
+            width: "100%",
+          })}
           {...props}
         >
           {drawn(idle)}

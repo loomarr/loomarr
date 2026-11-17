@@ -71,4 +71,17 @@ describe("Icon", () => {
     expect(markup).toContain('aria-hidden="true"');
     expect(markup).not.toContain("aria-label=");
   });
+
+  it("draws the filled star solid in the colour the outline star strokes with", () => {
+    const draw = (glyph: typeof icons.star) =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <Icon color="#123456" decorative glyph={glyph} />
+        </LoomarrProvider>,
+      );
+    expect(draw(icons.star)).toContain('fill="none"');
+    expect(draw(icons.star)).toContain('stroke="#123456"');
+    expect(draw(icons.starFilled)).toContain('fill="#123456"');
+    expect(draw(icons.starFilled)).toContain('stroke="#123456"');
+  });
 });
