@@ -161,6 +161,46 @@ func testInventoryEpisodeIDsKeepTheirNumbers(t *testing.T, newStore NewStoreFunc
 	}
 }
 
+// An inferred id joins a title only where no catalog id says otherwise: a file a catalog grounds
+// as another film keeps a title of its own and leaves the inferred id behind, so a copy no catalog
+// grounds still joins the one title that holds it; a file grounded by another catalog joins.
+func testInventoryInferredIDsYieldToCatalogs(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	folder := inventory.ExternalID{Namespace: inventory.InferredNamespacePrefix + "film", Value: "harrow-fen-2011"}
+	film := func(file string, ids ...inventory.ExternalID) inventory.Snapshot {
+		s := inventorySnapshot("scan-a", file, "file", "rev-"+file, file, at)
+		s.Kind = "movie"
+		s.ExternalIDs = append(ids, folder)
+		return s
+	}
+	first, err := st.ApplyInventorySnapshot(ctx, film("first", inventory.ExternalID{Namespace: "tmdb", Value: "90047222"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := st.ApplyInventorySnapshot(ctx, film("other", inventory.ExternalID{Namespace: "tmdb", Value: "90047444"}))
+	if err != nil || other == first {
+		t.Fatalf("a file the catalog grounds as another film = (%q, %v), want a title of its own", other, err)
+	}
+	if id, err := st.ApplyInventorySnapshot(ctx, film("copy")); err != nil || id != first {
+		t.Fatalf("a copy no catalog grounds = (%q, %v), want %q", id, err, first)
+	}
+	if id, err := st.ApplyInventorySnapshot(ctx, film("imdb", inventory.ExternalID{Namespace: "imdb", Value: "tt9047222"})); err != nil || id != first {
+		t.Fatalf("a copy another catalog grounds = (%q, %v), want %q", id, err, first)
+	}
+	item, _, err := st.InventoryItem(ctx, inventory.ItemRef{ID: other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range item.ExternalIDs {
+		if id.Inferred() {
+			t.Errorf("the other film carries the folder's inferred id %v", id)
+		}
+	}
+}
+
 // An origin written before its ids were known follows them to the item they name, taking its
 // sources, when it is its item's only origin; otherwise it is a conflict. Ids name items of the
 // origin's own kind only.

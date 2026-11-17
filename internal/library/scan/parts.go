@@ -10,6 +10,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/loomarr/loomarr/internal/library/inventory"
 )
 
 // partToken matches the last part mark in a file's stem: "cd1", "part 2", "pt.B", "(disc 1)",
@@ -168,7 +170,7 @@ func videosIn(dir string) []string {
 
 // partsNamespace is the scanner's own id for a movie in parts: every part of one set carries the
 // same value, so the parts are one title before any catalog names it. It is never listed.
-const partsNamespace = "loomarr-parts"
+const partsNamespace = inventory.InferredNamespacePrefix + "parts"
 
 // partsID is the id a set's parts share, from where the set is in its root.
 func partsID(set string) string {
