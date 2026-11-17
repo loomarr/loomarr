@@ -1111,6 +1111,12 @@ header is kept, so no file is opened again. Each version and what it changed:
   X265 EAC3 5.1" beside the copy its NFO grounds, with no catalog record of its own. It also
   rewrites the snapshot-only changes made under 85: an episode's copies joined by the catalog's
   title or their own (`episodeCopyID`), and a film named as its folder before its release's notes.
+- **88:** a film's copies are one title only as far as their catalogs agree. The store joins a file
+  by an id the library infers (`inventory.ExternalID.Inferred`: a film's folder, an episode's
+  copies, a split file's parts) only to a title that holds no catalog id of a kind the file's own
+  catalog ids have, none of which match. So a second film kept in a film's folder is its own title,
+  whichever pass finds it, and copies grounded by different catalogs (tmdb only, imdb only) are
+  one. Every file is written once more, so a film an earlier build merged with another splits.
 
 ## Search
 

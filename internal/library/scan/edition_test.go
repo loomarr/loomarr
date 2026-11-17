@@ -160,29 +160,44 @@ func TestAFilmsOwnNFOOutranksItsFoldersCopies(t *testing.T) {
 }
 
 // Two files in one film's folder that their own NFOs ground as two films by their catalog ids are
-// two titles, however alike their titles and years: a sequel a year on, or a second film of the
-// same name and year.
+// two titles, however alike their titles and years (a sequel a year on, or a second film of the
+// same name and year), and whether the second is found in the first's pass or a later one. Two
+// copies whose NFOs name the film by different catalogs are one title.
 func TestFilesTheCatalogGroundsAsTwoFilmsAreTwoTitles(t *testing.T) {
-	nfo := func(tmdb, title, year string) string {
-		return `<movie><title>` + title + `</title><year>` + year + `</year><uniqueid type="tmdb" default="true">` + tmdb + `</uniqueid></movie>`
+	nfo := func(id, title, year string) string {
+		kind := "tmdb"
+		if strings.HasPrefix(id, "tt") {
+			kind = "imdb"
+		}
+		return `<movie><title>` + title + `</title><year>` + year + `</year><uniqueid type="` + kind + `" default="true">` + id + `</uniqueid></movie>`
 	}
-	for name, second := range map[string]string{
-		"a sequel a year on":       nfo("90046333", "Harrow Fen II", "2012"),
-		"same title, another film": nfo("90046444", "Harrow Fen", "2011"),
+	for _, c := range []struct {
+		name, second string
+		later        bool
+		titles       int
+	}{
+		{"a sequel a year on", nfo("90046333", "Harrow Fen II", "2012"), false, 2},
+		{"same title, another film", nfo("90046444", "Harrow Fen", "2011"), false, 2},
+		{"a sequel found a pass later", nfo("90046333", "Harrow Fen II", "2012"), true, 2},
+		{"another film found a pass later", nfo("90046444", "Harrow Fen", "2011"), true, 2},
+		{"the film by another catalog", nfo("tt9046222", "Harrow Fen", "2011"), false, 1},
+		{"the film by another catalog a pass later", nfo("tt9046222", "Harrow Fen", "2011"), true, 1},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			ctx := context.Background()
 			h := newHarness(t)
-			files := map[string]string{
-				"Harrow Fen (2011)/Harrow Fen (2011).mkv": nfo("90046222", "Harrow Fen", "2011"),
-				"Harrow Fen (2011)/Harrow Fen.mkv":        second,
-			}
-			for rel, doc := range files {
+			add := func(rel, doc string) {
 				p := h.file(rel, 10)
 				if err := os.WriteFile(strings.TrimSuffix(p, ".mkv")+".nfo", []byte(doc), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
+			add("Harrow Fen (2011)/Harrow Fen (2011).mkv", nfo("90046222", "Harrow Fen", "2011"))
+			if c.later {
+				h.run()
+				h.run()
+			}
+			add("Harrow Fen (2011)/Harrow Fen.mkv", c.second)
 			h.run()
 			h.run()
 			rows, err := h.st.LibraryFiles(ctx, h.root)
@@ -196,8 +211,8 @@ func TestFilesTheCatalogGroundsAsTwoFilmsAreTwoTitles(t *testing.T) {
 				}
 				items[r.ItemID] = true
 			}
-			if len(items) != 2 {
-				t.Errorf("%d titles for two films; want 2", len(items))
+			if len(items) != c.titles {
+				t.Errorf("%d titles; want %d", len(items), c.titles)
 			}
 		})
 	}

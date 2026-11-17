@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -50,6 +51,14 @@ type ExternalID struct {
 	Namespace string `json:"namespace"`
 	Value     string `json:"value"`
 }
+
+// InferredNamespacePrefix begins the namespace of an id the library infers from where a file sits
+// (a film's folder, an episode's copies, a split file's parts) rather than one a catalog gives.
+const InferredNamespacePrefix = "loomarr-"
+
+// Inferred reports whether id is one the library infers: it joins a title only where no catalog id
+// of the title's says otherwise.
+func (id ExternalID) Inferred() bool { return strings.HasPrefix(id.Namespace, InferredNamespacePrefix) }
 
 // Person is someone credited on a title (#2151 decision 49). Role is what they did, lower case
 // (actor, director, writer, creator, or what the source calls it); Character is an actor's part.
