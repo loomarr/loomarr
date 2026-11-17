@@ -49,6 +49,15 @@ describe("PressableRow", () => {
     );
   });
 
+  it("draws no browser outline on the button, so only the amber border shows when it has focus", () => {
+    for (const bordered of [false, true]) {
+      const markup = markupOf(<PressableRow bordered={bordered}>A</PressableRow>);
+      const button = /<[a-z]+[^>]*role="button"[^>]*>/.exec(markup)?.[0] ?? "";
+      expect(button).toContain("outline-style:none");
+      expect(button).toMatch(/outline-width:0(px)?(;|")/);
+    }
+  });
+
   describe("bordered", () => {
     const mount = (ui: React.ReactNode) => {
       const container = document.createElement("div");
