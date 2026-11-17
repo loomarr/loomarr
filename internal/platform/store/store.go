@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/people/secretprotection"
 	"github.com/loomarr/loomarr/internal/platform/diagnostics"
 	"github.com/loomarr/loomarr/internal/platform/holidayvocab"
+	"github.com/loomarr/loomarr/internal/platform/store/channelstore"
 	"github.com/loomarr/loomarr/internal/platform/store/clipstore"
 	"github.com/loomarr/loomarr/internal/platform/store/identitystore"
 	"github.com/loomarr/loomarr/internal/platform/store/qualitystore"
@@ -121,6 +122,10 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// GrowthReviews is the model's verdict on each title it reviewed for the channel (#4333);
+	// SaveGrowthReview replaces one.
+	GrowthReviews(ctx context.Context, channelID string) (map[provision.Key]channelstore.GrowthReview, error)
+	SaveGrowthReview(ctx context.Context, r channelstore.GrowthReview) error
 	// ChannelRequesters maps channel id to the name of the person whose request made it (#1663).
 	ChannelRequesters(ctx context.Context) (map[string]string, error)
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped

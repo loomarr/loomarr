@@ -85,6 +85,13 @@ func (s *Swappable) Chat(ctx context.Context, messages []Message, opts ChatOptio
 // CachesPromptPrefix delegates to the active provider.
 func (s *Swappable) CachesPromptPrefix() bool { return CachesPromptPrefix(*s.current.Load()) }
 
+// SelfHosted reports whether the active provider is an operator-run endpoint. A provider that
+// does not say counts as hosted, so whoever meters spend on it never understates it.
+func (s *Swappable) SelfHosted() bool {
+	p, ok := (*s.current.Load()).(interface{ SelfHosted() bool })
+	return ok && p.SelfHosted()
+}
+
 // Name delegates to the active provider ("ollama"|"openai"), and thus changes when
 // the provider kind is swapped.
 func (s *Swappable) Name() string {
