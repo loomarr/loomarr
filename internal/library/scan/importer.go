@@ -415,11 +415,7 @@ func (im *Importer) importAll(ctx context.Context) ([]pending, error) {
 		if err != nil && ctx.Err() == nil && (errors.Is(err, errReleased) || errors.Is(context.Cause(walk), errReleased)) {
 			// Released while it was walked: what was written of it is forgotten now, and the
 			// other roots go on.
-			now, err := im.Store.LibraryRoots(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if err := im.forgetReleased(ctx, scannedRoots(now.Roots)); err != nil {
+			if err := im.forgetWalked(ctx, root.Path); err != nil {
 				return nil, err
 			}
 			continue
